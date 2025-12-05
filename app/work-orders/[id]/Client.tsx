@@ -883,7 +883,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     return <div className="p-6 text-red-500">Missing work order id.</div>;
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
-    <div className={`animate-pulse rounded-lg bg-neutral-800/60 ${className}`} />
+    <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
   );
 
   return (
@@ -901,7 +901,7 @@ export default function WorkOrderIdClient(): JSX.Element {
            (PreviousPageButton handles history.back() when no explicit target) */}
         <PreviousPageButton />
         {wo?.custom_id && (
-          <span className="rounded-full border border-neutral-800 bg-neutral-900/70 px-3 py-1 text-xs text-neutral-300">
+          <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground">
             Internal ID: {wo.id.slice(0, 8)}
           </span>
         )}
@@ -940,7 +940,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-xl font-semibold text-white sm:text-2xl">
+                    <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
                       Work Order{" "}
                       <span className="text-orange-400">
                         {wo.custom_id || `#${wo.id.slice(0, 8)}`}
@@ -966,33 +966,33 @@ export default function WorkOrderIdClient(): JSX.Element {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-neutral-400">
+                  <p className="text-xs text-muted-foreground">
                     Created {createdAtText}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-3 text-xs text-neutral-300 sm:grid-cols-4">
+              <div className="mt-3 grid gap-3 text-xs text-muted-foreground sm:grid-cols-4">
                 <div>
-                  <div className="text-neutral-500">Created</div>
-                  <div>{createdAtText}</div>
+                  <div>Created</div>
+                  <div className="text-foreground">{createdAtText}</div>
                 </div>
                 <div>
-                  <div className="text-neutral-500">WO ID</div>
-                  <div className="truncate font-mono text-[11px] text-neutral-200">
+                  <div>WO ID</div>
+                  <div className="truncate font-mono text-[11px] text-foreground">
                     {wo.id}
                   </div>
                 </div>
                 <div>
-                  <div className="text-neutral-500">Custom ID</div>
-                  <div className="truncate">
+                  <div>Custom ID</div>
+                  <div className="truncate text-foreground">
                     {wo.custom_id ?? (
-                      <span className="text-neutral-500">Not set</span>
+                      <span className="text-muted-foreground">Not set</span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className="text-neutral-500">Status</div>
+                  <div>Status</div>
                   <div className="mt-0.5">
                     <span className={chip(wo.status)}>
                       {(wo.status ?? "awaiting").replaceAll("_", " ")}
@@ -1005,7 +1005,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             {/* Vehicle & Customer */}
             <div className="rounded-xl border border-border bg-card/95 p-4">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text_white sm:text-base">
+                <h2 className="text-sm font-semibold text-foreground sm:text-base">
                   Vehicle &amp; Customer
                 </h2>
                 <button
@@ -1021,17 +1021,17 @@ export default function WorkOrderIdClient(): JSX.Element {
               {showDetails && (
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   {/* Vehicle */}
-                  <div className="rounded-lg bg-neutral-950/60 p-3">
-                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                  <div className="rounded-lg bg-muted p-3">
+                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Vehicle
                     </h3>
                     {vehicle ? (
                       <>
-                        <p className="text-sm font-medium text-white">
+                        <p className="text-sm font-medium text-foreground">
                           {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
                           {vehicle.model ?? ""}
                         </p>
-                        <p className="mt-1 text-xs text-neutral-400">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           VIN:{" "}
                           <span className="font-mono">
                             {vehicle.vin ?? "—"}
@@ -1039,7 +1039,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                           <br />
                           Plate:{" "}
                           {vehicle.license_plate ?? (
-                            <span className="text-neutral-500">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                           <br />
                           Mileage:{" "}
@@ -1051,29 +1051,31 @@ export default function WorkOrderIdClient(): JSX.Element {
                         </p>
                       </>
                     ) : (
-                      <p className="text-sm text-neutral-500">
+                      <p className="text-sm text-muted-foreground">
                         No vehicle linked yet.
                       </p>
                     )}
                   </div>
 
                   {/* Customer */}
-                  <div className="rounded-lg bg-neutral-950/60 p-3">
-                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                  <div className="rounded-lg bg-muted p-3">
+                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Customer
                     </h3>
                     {customer ? (
                       <>
-                        <p className="text-sm font-medium text-white">
+                        <p className="text-sm font-medium text-foreground">
                           {[customer.first_name ?? "", customer.last_name ?? ""]
                             .filter(Boolean)
                             .join(" ") || "—"}
                         </p>
-                        <p className="mt-1 text-xs text-neutral-400">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           {customer.phone ?? "—"}{" "}
                           {customer.email ? (
                             <>
-                              <span className="mx-1 text-neutral-600">•</span>
+                              <span className="mx-1 text-muted-foreground">
+                                •
+                              </span>
                               {customer.email}
                             </>
                           ) : null}
@@ -1089,7 +1091,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         )}
                       </>
                     ) : (
-                      <p className="text-sm text-neutral-500">
+                      <p className="text-sm text-muted-foreground">
                         No customer linked yet.
                       </p>
                     )}
@@ -1099,7 +1101,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {/* Awaiting Customer Approval */}
-            <div className="rounded-xl border border-blue-900/60 bg-gradient-to-b from-slate-950 to-slate-950/90 p-4">
+            <div className="rounded-xl border border-border bg-card/95 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-blue-200 sm:text-base">
                   Awaiting customer approval
@@ -1107,7 +1109,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               </div>
 
               {!hasAnyApprovalItems ? (
-                <p className="text-xs text-neutral-400">
+                <p className="text-xs text-muted-foreground">
                   No lines waiting for approval.
                 </p>
               ) : (
@@ -1134,17 +1136,17 @@ export default function WorkOrderIdClient(): JSX.Element {
                         return (
                           <div
                             key={ln.id}
-                            className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
+                            className="rounded-lg border border-border bg-muted p-3"
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <div className="truncate text-sm font-medium text-white">
+                                <div className="truncate text-sm font-medium text-foreground">
                                   {idx + 1}.{" "}
                                   {ln.description ||
                                     ln.complaint ||
                                     "Untitled job"}
                                 </div>
-                                <div className="mt-0.5 text-[11px] text-neutral-400">
+                                <div className="mt-0.5 text-[11px] text-muted-foreground">
                                   {String(ln.job_type ?? "job").replaceAll(
                                     "_",
                                     " ",
@@ -1173,7 +1175,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 )}
 
                                 {ln.notes && (
-                                  <div className="mt-1 text-[11px] text-neutral-400">
+                                  <div className="mt-1 text-[11px] text-muted-foreground">
                                     Notes: {ln.notes}
                                   </div>
                                 )}
@@ -1216,14 +1218,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                       {approvalPendingQuotes.map((q, idx) => (
                         <div
                           key={q.id}
-                          className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
+                          className="rounded-lg border border-border bg-muted p-3"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="truncate text-sm font-medium text-white">
+                              <div className="truncate text-sm font-medium text-foreground">
                                 {idx + 1}. {q.description || "Quoted item"}
                               </div>
-                              <div className="mt-0.5 text-[11px] text-neutral-400">
+                              <div className="mt-0.5 text-[11px] text-muted-foreground">
                                 {String(q.job_type ?? "job").replaceAll(
                                   "_",
                                   " ",
@@ -1239,7 +1241,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 )}
                               </div>
                               {q.notes && (
-                                <div className="mt-1 text-[11px] text-neutral-400">
+                                <div className="mt-1 text-[11px] text-muted-foreground">
                                   Notes: {q.notes}
                                 </div>
                               )}
@@ -1274,12 +1276,12 @@ export default function WorkOrderIdClient(): JSX.Element {
 
             {/* Jobs list */}
             <div className="rounded-xl border border-border bg-card/95 p-4">
-              <div className="mb-3 flex items-center justify_between gap-2">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text_white sm:text-base">
+                  <h2 className="text-sm font-semibold text-foreground sm:text-base">
                     Jobs in this work order
                   </h2>
-                  <p className="text-[11px] text-neutral-500">
+                  <p className="text-[11px] text-muted-foreground">
                     Tap a job to open the focused panel with full controls.
                   </p>
                 </div>
@@ -1298,7 +1300,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               </div>
 
               {sortedLines.length === 0 ? (
-                <p className="text-sm text-neutral-400">No lines yet.</p>
+                <p className="text-sm text-muted-foreground">No lines yet.</p>
               ) : (
                 <div className="space-y-2">
                   {sortedLines.map((ln, idx) => {
@@ -1379,7 +1381,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               onAdded={fetchAll}
             />
 
-            <div className="rounded-xl border border-border bg-card/95 p-4 text-sm text-neutral-300">
+            <div className="rounded-xl border border-border bg-card/95 p-4 text-sm text-muted-foreground">
               <p>
                 Select a job card on the left to open the focused job panel with
                 full editing, punch and inspection controls.
@@ -1392,7 +1394,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       {/* Vehicle photos */}
       {vehicle?.id && (
         <div className="mt-8 space-y-4">
-          <h2 className="text-lg font-semibold text-white sm:text-xl">
+          <h2 className="text-lg font-semibold text-foreground sm:text-xl">
             Vehicle photos
           </h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
