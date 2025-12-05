@@ -1,1 +1,1 @@
-export { default, dynamic, revalidate } from "../../bookings/page";
+export { default } from "../../bookings/page";
