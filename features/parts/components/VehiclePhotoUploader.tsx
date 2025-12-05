@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
-import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
+
+import type { Database } from "@shared/types/types/supabase";
 
 type VehiclePhoto = Database["public"]["Tables"]["vehicle_photos"]["Row"];
 
@@ -15,7 +15,7 @@ interface Props {
 }
 
 export default function VehiclePhotoUploader({ vehicleId, onUpload }: Props) {
-    const supabase = createClientComponentClient<Database>();
+  const supabase = createClientComponentClient<Database>();
 
   const [file, setFile] = useState<File | null>(null);
   const [caption, setCaption] = useState("");
@@ -37,14 +37,18 @@ export default function VehiclePhotoUploader({ vehicleId, onUpload }: Props) {
     }
 
     const fileExt = file.name.split(".").pop();
-    const fileName = `${uuidv4()}.${fileExt}`;
+    const fileName = `${uuidv4()}.${fileExt || "jpg"}`;
     const filePath = `${vehicleId}/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from("vehicle-photos")
-      .upload(filePath, file);
+      .upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
 
     if (uploadError) {
+      console.error("Vehicle photo upload failed", uploadError);
       toast.error("Upload failed");
       setUploading(false);
       return;
@@ -62,56 +66,97 @@ export default function VehiclePhotoUploader({ vehicleId, onUpload }: Props) {
       return;
     }
 
+    const trimmedCaption = caption.trim();
+
     const { data: inserted, error: insertError } = await supabase
       .from("vehicle_photos")
       .insert({
         vehicle_id: vehicleId,
         uploaded_by: user.id,
         url: publicUrl,
-        caption,
+        caption: trimmedCaption || null,
       })
       .select()
       .single();
 
     if (insertError || !inserted) {
+      console.error("Failed to save vehicle photo row", insertError);
       toast.error("Failed to save photo info");
       setUploading(false);
       return;
     }
 
     toast.success("Photo uploaded");
-    if (onUpload) onUpload(inserted);
+    onUpload?.(inserted);
     setFile(null);
     setCaption("");
     setUploading(false);
   };
 
   return (
-    <div className="bg-neutral-800 p-4 rounded-lg border border-neutral-700 space-y-4">
-      <h3 className="text-white font-semibold text-lg">Upload Vehicle Photo</h3>
+    <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 shadow-[0_0_40px_rgba(0,0,0,0.85)]">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-neutral-100">
+            Upload vehicle photo
+          </h3>
+          <p className="mt-0.5 text-[11px] text-neutral-500">
+            Attach walkaround or damage documentation to this vehicle.
+          </p>
+        </div>
+      </div>
 
-      <input
-        type="file"
-        accept="image/*"
-        onChange={(e) => setFile(e.target.files?.[0] || null)}
-        className="text-white"
-      />
+      <div className="space-y-3">
+        {/* file input */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+            Image file
+          </label>
+          <label className="inline-flex w-full cursor-pointer items-center justify-between gap-2 rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-[12px] text-neutral-200 shadow-[0_0_18px_rgba(0,0,0,0.9)] hover:border-[var(--accent-copper-light)] hover:bg-black/60">
+            <span className="truncate">
+              {file ? file.name : "Choose image…"}
+            </span>
+            <span className="rounded-full bg-[var(--accent-copper)]/90 px-2 py-0.5 text-[11px] font-semibold text-black">
+              Browse
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          <p className="text-[10px] text-neutral-500">
+            JPG / PNG recommended. Large images may take a moment to upload.
+          </p>
+        </div>
 
-      <input
-        type="text"
-        placeholder="Enter caption (optional)"
-        value={caption}
-        onChange={(e) => setCaption(e.target.value)}
-        className="w-full p-2 rounded bg-neutral-700 border border-neutral-600 text-white"
-      />
+        {/* caption input */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+            Caption
+          </label>
+          <input
+            type="text"
+            placeholder="e.g. Front right bumper damage, before repair"
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            className="h-9 w-full rounded-full border border-white/15 bg-black/40 px-3 text-[13px] text-neutral-100 placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+          />
+        </div>
 
-      <button
-        onClick={handleUpload}
-        disabled={uploading || !file}
-        className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded font-medium disabled:opacity-50"
-      >
-        {uploading ? "Uploading..." : "Upload Photo"}
-      </button>
+        {/* action */}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={uploading || !file}
+            className="inline-flex items-center justify-center rounded-full bg-[var(--accent-copper)] px-4 py-1.5 text-sm font-semibold text-black shadow-[0_0_24px_rgba(248,113,22,0.55)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {uploading ? "Uploading…" : "Upload photo"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
