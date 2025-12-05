@@ -70,7 +70,11 @@ export default function CauseCorrectionModal({
       size="md"
       hideFooter
     >
-      <div className="space-y-4">
+      {/* 🔹 Make inner content scrollable, not the whole screen */}
+      <div
+        className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
         {/* Job meta */}
         <div className="flex items-center justify-between text-[0.7rem] text-neutral-400">
           <div className="flex flex-col gap-0.5">
