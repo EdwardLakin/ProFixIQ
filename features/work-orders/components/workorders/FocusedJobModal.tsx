@@ -142,6 +142,7 @@ export default function FocusedJobModal(props: {
     setOpenChat(false);
     setOpenAddJob(false);
     setOpenAi(false);
+    setOpenDtc(false); // 🔹 ensure DTC modal also closes
   };
 
   useEffect(() => {
@@ -282,17 +283,20 @@ export default function FocusedJobModal(props: {
     };
   }, [isOpen, workOrderLineId, supabase, loadAllocations]);
 
-  const refresh = useCallback(async () => {
-    const { data: l } = await supabase
-      .from("work_order_lines")
-      .select("*")
-      .eq("id", workOrderLineId)
-      .maybeSingle<WorkOrderLine>();
-    setLine(l ?? null);
-    setTechNotes(l?.notes ?? "");
-    await onChanged?.();
-    await loadAllocations();
-  }, [supabase, workOrderLineId, onChanged, loadAllocations]);
+  const refresh = useCallback(
+    async () => {
+      const { data: l } = await supabase
+        .from("work_order_lines")
+        .select("*")
+        .eq("id", workOrderLineId)
+        .maybeSingle<WorkOrderLine>();
+      setLine(l ?? null);
+      setTechNotes(l?.notes ?? "");
+      await onChanged?.();
+      await loadAllocations();
+    },
+    [supabase, workOrderLineId, onChanged, loadAllocations],
+  );
 
   useEffect(() => {
     const handler = () => void refresh();
@@ -339,7 +343,7 @@ export default function FocusedJobModal(props: {
       window.removeEventListener("inspection:completed", onInspectionDone);
   }, [workOrderLineId]);
 
-    const applyHold = async (reason: string, notes?: string) => {
+  const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
     if (!line) return;
 
@@ -449,7 +453,12 @@ export default function FocusedJobModal(props: {
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-white/15 bg-neutral-950/95 p-5 text-foreground shadow-xl">
+          {/* 🔹 Outer panel: only scroll when AI is *not* open */}
+          <div
+            className={`rounded-lg border border-white/15 bg-neutral-950/95 p-5 text-foreground shadow-xl ${
+              openAi ? "" : "max-h-[75vh] overflow-y-auto"
+            }`}
+          >
             {/* header */}
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="text-lg font-semibold tracking-tight">
@@ -702,6 +711,19 @@ export default function FocusedJobModal(props: {
                       >
                         AI Assist
                       </button>
+
+                      {/* 🔹 DTC Assist button lives with the other controls */}
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenDtc(true);
+                        }}
+                        disabled={busy}
+                      >
+                        DTC Assist (AI)
+                      </button>
                     </>
                   ) : (
                     <>
@@ -724,6 +746,17 @@ export default function FocusedJobModal(props: {
                         }}
                       >
                         AI Assist
+                      </button>
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenDtc(true);
+                        }}
+                        disabled={busy}
+                      >
+                        DTC Assist (AI)
                       </button>
                     </>
                   )}
@@ -828,59 +861,46 @@ export default function FocusedJobModal(props: {
 
       {/* sub-modals */}
       {openComplete && line && (
-  <CauseCorrectionModal
-    isOpen={openComplete}
-    onClose={() => setOpenComplete(false)}
-    jobId={line.id}
-    initialCause={prefillCause}
-    initialCorrection={prefillCorrection}
-    // ✅ COMPLETE job – sets status + punched_out_at
-    onSubmit={async (cause: string, correction: string) => {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          cause,
-          correction,
-          punched_out_at: new Date().toISOString(),
-          status: "completed",
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", line.id);
+        <CauseCorrectionModal
+          isOpen={openComplete}
+          onClose={() => setOpenComplete(false)}
+          jobId={line.id}
+          initialCause={prefillCause}
+          initialCorrection={prefillCorrection}
+          // ✅ COMPLETE job – sets status + punched_out_at
+          onSubmit={async (cause: string, correction: string) => {
+            const { error } = await supabase
+              .from("work_order_lines")
+              .update({
+                cause,
+                correction,
+                punched_out_at: new Date().toISOString(),
+                status: "completed",
+              } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+              .eq("id", line.id);
 
-      if (error) return showErr("Complete job failed", error);
-      toast.success("Job completed");
-      setOpenComplete(false);
-      await refresh();
-    }}
-    // ✅ SAVE STORY ONLY – no status change, no finish
-    onSaveDraft={async (cause: string, correction: string) => {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          cause,
-          correction,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", line.id);
-
-      if (error) return showErr("Save story failed", error);
-      toast.success("Story saved");
-      await refresh();
-      // modal stays open so tech can keep editing or complete later
-    }}
-  />
-
-      )}
-
-      <button
-        type="button"
-        className={btnInfo}
-        onClick={() => {
-            closeAllSubModals();
-            setOpenDtc(true);
+            if (error) return showErr("Complete job failed", error);
+            toast.success("Job completed");
+            setOpenComplete(false);
+            await refresh();
           }}
-        disabled={busy}
-        >
-          DTC Assist (AI)
-      </button>
+          // ✅ SAVE STORY ONLY – no status change, no finish
+          onSaveDraft={async (cause: string, correction: string) => {
+            const { error } = await supabase
+              .from("work_order_lines")
+              .update({
+                cause,
+                correction,
+              } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+              .eq("id", line.id);
+
+            if (error) return showErr("Save story failed", error);
+            toast.success("Story saved");
+            await refresh();
+            // modal stays open so tech can keep editing or complete later
+          }}
+        />
+      )}
 
       {openParts && workOrder?.id && line && (
         <PartsRequestModal
@@ -939,27 +959,25 @@ export default function FocusedJobModal(props: {
       )}
 
       {openDtc && line && (
-  <DtcSuggestionModal
-    isOpen={openDtc}
-    onClose={() => setOpenDtc(false)}
-    jobId={line.id}
-    vehicle={
-      vehicle
-        ? {
-            
-            year: vehicle.year ? String(vehicle.year) : "",
-            make: vehicle.make ?? "",
-            model: vehicle.model ?? "",
+        <DtcSuggestionModal
+          isOpen={openDtc}
+          onClose={() => setOpenDtc(false)}
+          jobId={line.id}
+          vehicle={
+            vehicle
+              ? {
+                  year: vehicle.year ? String(vehicle.year) : "",
+                  make: vehicle.make ?? "",
+                  model: vehicle.model ?? "",
+                }
+              : {
+                  year: "",
+                  make: "",
+                  model: "",
+                }
           }
-        : {
-          
-            year: "",
-            make: "",
-            model: "",
-          }
-    }
-  />
-)}
+        />
+      )}
 
       {openAddJob && workOrder?.id && (
         <AddJobModal
