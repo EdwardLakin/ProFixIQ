@@ -71,42 +71,61 @@ export async function POST(req: Request) {
       job.complaint ||
       "No explicit complaint recorded – infer from job description and DTC context.";
 
-    // Call OpenAI – ask for structured JSON
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL?.trim() || "gpt-5.1",
-      response_format: { type: "json_object" },
-      messages: [
+    // --- OpenAI call with friendly error handling --------------------------
+    let completion;
+    try {
+      completion = await openai.chat.completions.create({
+        model: process.env.OPENAI_MODEL?.trim() || "gpt-5.1",
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: [
+              "You are an expert automotive diagnostician writing clear, shop-friendly job notes.",
+              "Given a vehicle and complaint, generate:",
+              "- cause: 1–3 sentences describing root cause using DTC-style language when appropriate.",
+              "- correction: 2–6 sentences describing what was/will be done, including key checks and specs (but no torque numbers).",
+              "- laborTime: a reasonable flat-rate style estimate in hours.",
+              "Respond ONLY as JSON with keys: cause, correction, laborTime.",
+            ].join(" "),
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              vehicle,
+              complaint,
+              existingCause: job.cause,
+              existingCorrection: job.correction,
+              existingLaborTime: job.labor_time,
+            }),
+          },
+        ],
+      });
+    } catch (err) {
+      console.error("[dtc-suggest] OpenAI error", err);
+      return NextResponse.json(
         {
-          role: "system",
-          content: [
-            "You are an expert automotive diagnostician writing clear, shop-friendly job notes.",
-            "Given a vehicle and complaint, generate:",
-            "- cause: 1–3 sentences describing root cause using DTC-style language when appropriate.",
-            "- correction: 2–6 sentences describing what was/will be done, including key checks and specs (but no torque numbers).",
-            "- laborTime: a reasonable flat-rate style estimate in hours.",
-            "Respond ONLY as JSON with keys: cause, correction, laborTime.",
-          ].join(" "),
+          error:
+            "AI engine error while generating DTC suggestions. Try again or edit manually.",
         },
-        {
-          role: "user",
-          content: JSON.stringify({
-            vehicle,
-            complaint,
-            existingCause: job.cause,
-            existingCorrection: job.correction,
-            existingLaborTime: job.labor_time,
-          }),
-        },
-      ],
-    });
+        { status: 500 },
+      );
+    }
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
 
     let parsed: DtcSuggestion = {};
     try {
       parsed = JSON.parse(raw) as DtcSuggestion;
-    } catch {
-      // fall through to a generic error below
+    } catch (err) {
+      console.error("[dtc-suggest] JSON parse error", err, "raw:", raw);
+      return NextResponse.json(
+        {
+          error:
+            "AI returned an unexpected format while generating DTC suggestions. Try again or edit manually.",
+        },
+        { status: 500 },
+      );
     }
 
     if (!parsed.cause || !parsed.correction) {
@@ -116,6 +135,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // ✅ This is what the modal uses to auto-populate cause/correction/laborTime
     return NextResponse.json({
       suggestion: {
         cause: parsed.cause,
@@ -128,7 +148,10 @@ export async function POST(req: Request) {
     const error = err instanceof Error ? err : new Error("Unexpected error");
     console.error("[dtc-suggest] error", error);
     return NextResponse.json(
-      { error: error.message },
+      {
+        error:
+          "Unexpected error while preparing DTC suggestions. Check server logs for details.",
+      },
       { status: 500 },
     );
   }
