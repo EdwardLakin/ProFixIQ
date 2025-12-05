@@ -48,7 +48,7 @@ export default function TechAssistant({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicle]);
 
-  // Auto-scroll the reply list only
+  // Auto-scroll reply list
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -65,7 +65,7 @@ export default function TechAssistant({
     const text = inputRef.current?.value?.trim();
     if (!text) return;
 
-    // Bundle vehicle + notes so the model stays automotive
+    // Bundle vehicle & notes so the model stays scoped to the job
     const v = vehicle ?? {};
     const lines: string[] = [];
 
@@ -141,7 +141,7 @@ export default function TechAssistant({
           <div className="mb-2 text-xs font-header tracking-wide text-orange-400">
             Notes
           </div>
-          {/* Shorter notes box to give more room to replies */}
+          {/* Shorter notes box to leave headroom for replies */}
           <textarea
             className={`${inputBase} h-20`}
             placeholder="Shop notes / context (symptoms, readings, conditions, DTCs). The assistant will use this."
@@ -200,12 +200,12 @@ export default function TechAssistant({
         </div>
       </div>
 
-      {/* CARD: Conversation – ONLY this list scrolls */}
-      <div className="flex flex-col rounded-lg border border-white/10 bg-black/40 backdrop-blur">
+      {/* CARD: Conversation – fixed height, only this scrolls */}
+      <div className="flex h-[50vh] flex-col rounded-lg border border-white/10 bg-black/40 backdrop-blur">
         {/* Scrollable messages area */}
         <div
           ref={scrollRef}
-          className="max-h-[40vh] space-y-3 overflow-y-auto p-4"
+          className="flex-1 space-y-3 overflow-y-auto p-4"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {messages.map((m, i) => {
@@ -274,7 +274,7 @@ export default function TechAssistant({
           )}
         </div>
 
-        {/* Composer stays pinned under the scroll area */}
+        {/* Composer pinned to bottom of card */}
         <form
           onSubmit={onSubmit}
           className="flex gap-2 border-t border-white/10 p-3"
