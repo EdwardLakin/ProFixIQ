@@ -29,14 +29,15 @@ export default function AiAssistantModal({
       // no submit button — it’s an interactive panel
       hideFooter
     >
-      <div className="space-y-3">
+      {/* Make the modal body a flex column with a height cap */}
+      <div className="flex max-h-[70vh] flex-col space-y-3">
         <p className="text-xs text-neutral-400">
           Ask TechAssistant for diagnostics, test plans, or repair procedures.
           It stays scoped to this job and vehicle where possible.
         </p>
 
         {/* scrollable inner panel */}
-        <div className="max-h-[65vh] overflow-y-auto rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.85)]">
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.85)]">
           <TechAssistant
             defaultVehicle={defaultVehicle}
             workOrderLineId={workOrderLineId}
