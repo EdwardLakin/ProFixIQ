@@ -65,21 +65,21 @@ export default function TechAssistant({
     const text = inputRef.current?.value?.trim();
     if (!text) return;
 
-    // Bundle vehicle & notes so the model stays scoped to the job
+    // Bundle vehicle & notes so the model stays scoped to this job
     const v = vehicle ?? {};
-    const lines: string[] = [];
+    const pieces: string[] = [];
 
     const vehicleLine = `Vehicle: ${[v.year, v.make, v.model]
       .filter(Boolean)
       .join(" ")}`.trim();
-    if (vehicleLine !== "Vehicle:") lines.push(vehicleLine);
+    if (vehicleLine !== "Vehicle:") pieces.push(vehicleLine);
 
     if (context.trim()) {
-      lines.push(`Shop notes / complaint: ${context.trim()}`);
+      pieces.push(`Shop notes / complaint: ${context.trim()}`);
     }
 
-    lines.push(`Question: ${text}`);
-    const payload = lines.join("\n\n");
+    pieces.push(`Question: ${text}`);
+    const payload = pieces.join("\n\n");
 
     sendChat(payload);
 
@@ -141,7 +141,7 @@ export default function TechAssistant({
           <div className="mb-2 text-xs font-header tracking-wide text-orange-400">
             Notes
           </div>
-          {/* Shorter notes box to leave headroom for replies */}
+          {/* Shorter notes box */}
           <textarea
             className={`${inputBase} h-20`}
             placeholder="Shop notes / context (symptoms, readings, conditions, DTCs). The assistant will use this."
@@ -200,12 +200,12 @@ export default function TechAssistant({
         </div>
       </div>
 
-      {/* CARD: Conversation – fixed height, only this scrolls */}
-      <div className="flex h-[50vh] flex-col rounded-lg border border-white/10 bg-black/40 backdrop-blur">
+      {/* CARD: Conversation – ONLY the reply list scrolls */}
+      <div className="flex flex-col rounded-lg border border-white/10 bg-black/40 backdrop-blur">
         {/* Scrollable messages area */}
         <div
           ref={scrollRef}
-          className="flex-1 space-y-3 overflow-y-auto p-4"
+          className="space-y-3 overflow-y-auto p-4 max-h-[40vh]"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {messages.map((m, i) => {
