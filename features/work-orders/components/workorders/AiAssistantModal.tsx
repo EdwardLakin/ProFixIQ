@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import TechAssistant from "@/features/shared/components/TechAssistant";
 
 type AiAssistantModalProps = {
@@ -13,12 +14,6 @@ type AiAssistantModalProps = {
   };
 };
 
-/**
- * Compact AI / Tech Assistant modal
- * - Own overlay (z-[140]) so it sits above FocusedJobModal
- * - Same approximate footprint as the DTC modal
- * - Inner TechAssistant content scrolls, modal shell does not
- */
 export default function AiAssistantModal({
   isOpen,
   onClose,
@@ -28,46 +23,47 @@ export default function AiAssistantModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[140] flex items-center justify-center">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-[200] flex items-center justify-center">
+      {/* Backdrop – sits above FocusedJobModal backdrop */}
       <div
         className="absolute inset-0 bg-black/75 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Centered card */}
-      <div className="relative z-[150] w-full max-w-2xl px-4">
-        <div className="metal-card flex max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-slate-950/95 to-black/95 shadow-[0_22px_60px_rgba(0,0,0,0.95)]">
+      {/* Panel wrapper */}
+      <div className="relative z-[210] mx-4 w-full max-w-3xl">
+        <div className="overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)] shadow-[0_32px_80px_rgba(0,0,0,0.95)]">
           {/* Header */}
-          <div className="flex items-start justify-between gap-3 px-4 pt-4">
+          <div className="flex items-start justify-between border-b border-white/10 px-5 py-3">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-neutral-400">
-                AI / TECH ASSISTANT
-              </p>
-              <p className="mt-1 text-xs text-neutral-400">
+              <h2
+                className="text-xs font-semibold uppercase tracking-[0.24em] text-neutral-300"
+                style={{ fontFamily: "var(--font-blackops), system-ui" }}
+              >
+                AI / Tech Assistant
+              </h2>
+              <p className="mt-1 text-[11px] text-neutral-400">
                 Scoped to this job and vehicle where possible.
               </p>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1 text-xs text-neutral-300 hover:bg-white/5"
+              className="ml-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-black/60 text-xs text-neutral-200 hover:bg-white/10"
+              aria-label="Close AI assistant"
             >
               ✕
             </button>
           </div>
 
-          {/* Body */}
-          <div className="mt-3 flex-1 min-h-0 px-4 pb-4">
-            <div className="flex h-full flex-col rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/75 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
-              {/* This wrapper is the ONLY scroll container */}
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <TechAssistant
-                  defaultVehicle={defaultVehicle}
-                  workOrderLineId={workOrderLineId}
-                />
-              </div>
+          {/* Body – medium height, scroll inside */}
+          <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+            <div className="rounded-2xl border border-white/12 bg-black/70 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
+              <TechAssistant
+                defaultVehicle={defaultVehicle}
+                workOrderLineId={workOrderLineId}
+              />
             </div>
           </div>
         </div>

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
+//import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
 
 // existing modals
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
@@ -119,7 +119,7 @@ export default function FocusedJobModal(props: {
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
   const [openAi, setOpenAi] = useState(false);
-  const [openDtc, setOpenDtc] = useState(false);
+  const [_openDtc, setOpenDtc] = useState(false);
 
   // prefill
   const [prefillCause, setPrefillCause] = useState("");
@@ -142,7 +142,7 @@ export default function FocusedJobModal(props: {
     setOpenChat(false);
     setOpenAddJob(false);
     setOpenAi(false);
-    setOpenDtc(false); // 🔹 ensure DTC modal also closes
+    //setOpenDtc(false); // 🔹 ensure DTC modal also closes
   };
 
   useEffect(() => {
@@ -713,6 +713,7 @@ export default function FocusedJobModal(props: {
                       </button>
 
                       {/* 🔹 DTC Assist button lives with the other controls */}
+                      {/*
                       <button
                         type="button"
                         className={btnInfo}
@@ -724,6 +725,7 @@ export default function FocusedJobModal(props: {
                       >
                         DTC Assist (AI)
                       </button>
+                      */}
                     </>
                   ) : (
                     <>
@@ -733,8 +735,9 @@ export default function FocusedJobModal(props: {
                         onClick={() => {
                           closeAllSubModals();
                           setOpenChat(true);
-                        }}
+                        }}                       
                       >
+                      
                         Chat
                       </button>
                       <button
@@ -958,6 +961,8 @@ export default function FocusedJobModal(props: {
         />
       )}
 
+
+      {/* DTC Suggest modal disabled for now
       {openDtc && line && (
         <DtcSuggestionModal
           isOpen={openDtc}
@@ -978,6 +983,7 @@ export default function FocusedJobModal(props: {
           }
         />
       )}
+        */}
 
       {openAddJob && workOrder?.id && (
         <AddJobModal
