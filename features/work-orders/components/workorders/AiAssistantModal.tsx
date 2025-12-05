@@ -27,7 +27,6 @@ export default function AiAssistantModal({
       title="AI / Tech Assistant"
       size="lg"
       hideFooter
-      bodyScrollable={false}
     >
       <div className="space-y-3">
         <p className="text-xs text-neutral-400">
@@ -35,7 +34,7 @@ export default function AiAssistantModal({
           It stays scoped to this job and vehicle where possible.
         </p>
 
-        {/* Single scroll region lives inside TechAssistant, not here */}
+        {/* Simple card – no extra scroll, TechAssistant handles its own list */}
         <div className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.85)]">
           <TechAssistant
             defaultVehicle={defaultVehicle}

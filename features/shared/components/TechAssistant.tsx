@@ -48,11 +48,11 @@ export default function TechAssistant({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicle]);
 
-  // Auto-scroll to latest inside the conversation area
+  // Auto-scroll the reply list only
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    el.scrollTop = el.scrollHeight;
   }, [messages, partial, sending]);
 
   const canSend = useMemo(
@@ -65,7 +65,7 @@ export default function TechAssistant({
     const text = inputRef.current?.value?.trim();
     if (!text) return;
 
-    // Bundle structured context so the model stays on the right track
+    // Bundle vehicle + notes so the model stays automotive
     const v = vehicle ?? {};
     const lines: string[] = [];
 
@@ -141,8 +141,9 @@ export default function TechAssistant({
           <div className="mb-2 text-xs font-header tracking-wide text-orange-400">
             Notes
           </div>
+          {/* Shorter notes box to give more room to replies */}
           <textarea
-            className={`${inputBase} h-28`}
+            className={`${inputBase} h-20`}
             placeholder="Shop notes / context (symptoms, readings, conditions, DTCs). The assistant will use this."
             value={context}
             onChange={(e) => setContext(e.target.value)}
@@ -199,12 +200,12 @@ export default function TechAssistant({
         </div>
       </div>
 
-      {/* CARD: Conversation – fixed-height scroll area so iPad can scroll */}
+      {/* CARD: Conversation – ONLY this list scrolls */}
       <div className="flex flex-col rounded-lg border border-white/10 bg-black/40 backdrop-blur">
-        {/* Scrollable messages */}
+        {/* Scrollable messages area */}
         <div
           ref={scrollRef}
-          className="h-[50vh] space-y-3 overflow-y-auto p-4"
+          className="max-h-[40vh] space-y-3 overflow-y-auto p-4"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {messages.map((m, i) => {
@@ -273,7 +274,7 @@ export default function TechAssistant({
           )}
         </div>
 
-        {/* Composer pinned at bottom of the card */}
+        {/* Composer stays pinned under the scroll area */}
         <form
           onSubmit={onSubmit}
           className="flex gap-2 border-t border-white/10 p-3"
