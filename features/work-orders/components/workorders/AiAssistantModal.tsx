@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import { Dialog } from "@headlessui/react";
 import TechAssistant from "@/features/shared/components/TechAssistant";
 
 type AiAssistantModalProps = {
@@ -20,67 +20,62 @@ export default function AiAssistantModal({
   workOrderLineId,
   defaultVehicle,
 }: AiAssistantModalProps) {
-  // ❗ No headlessui Dialog / ModalShell at all – just a plain overlay.
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-[250] flex items-center justify-center">
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      className="fixed inset-0 z-[130] flex items-center justify-center"
+    >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-xl"
-        onClick={onClose}
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
       />
 
-      {/* Panel */}
-      <div
-        className="relative mx-3 my-6 w-full max-w-4xl rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] 
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)] 
-        text-neutral-100 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 px-4 py-3 sm:px-5">
-          <div>
-            <h2
-              className="text-sm font-semibold uppercase tracking-[0.22em] text-neutral-200"
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              AI / TECH ASSISTANT
-            </h2>
-            <p className="mt-1 text-[11px] text-neutral-400">
-              Ask for diagnostics, test plans, or repair procedures. Scoped to
-              this job and vehicle where possible.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 
-            bg-black/70 text-xs text-neutral-200 hover:bg-white/10 hover:text-white active:scale-95"
-            aria-label="Close"
-            title="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Body – NO overflow rules here; TechAssistant owns scroll */}
-        <div className="px-4 py-4 sm:px-5 sm:py-5">
-          <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/70 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--accent-copper-soft)] 
-              bg-[rgba(15,23,42,0.95)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] 
-              text-[var(--accent-copper-light)]"
-            >
-              Tech Assistant
+      {/* Panel wrapper */}
+      <div className="relative z-[140] mx-4 w-full max-w-2xl">
+        <Dialog.Panel className="relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)] shadow-[0_28px_80px_rgba(0,0,0,0.95)]">
+          {/* Header */}
+          <div className="flex items-start justify-between border-b border-white/10 px-5 py-4">
+            <div>
+              <Dialog.Title
+                as="h2"
+                className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300"
+              >
+                AI / Tech Assistant
+              </Dialog.Title>
+              <p className="mt-1 text-xs text-neutral-400">
+                Scoped to the current job and vehicle where possible.
+              </p>
             </div>
 
-            <TechAssistant
-              defaultVehicle={defaultVehicle}
-              workOrderLineId={workOrderLineId}
-            />
-          </section>
-        </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="ml-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-black/70 text-xs text-neutral-300 hover:bg-white/5"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="px-5 pb-5 pt-3">
+            <div className="rounded-2xl border border-neutral-800/90 bg-black/75 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
+              {/* 
+                TechAssistant manages its own internal scroll area.
+                This wrapper just constrains overall height so the
+                modal stays similar in size to the DTC Assist modal.
+              */}
+              <div className="max-h-[60vh] overflow-y-auto">
+                <TechAssistant
+                  defaultVehicle={defaultVehicle}
+                  workOrderLineId={workOrderLineId}
+                />
+              </div>
+            </div>
+          </div>
+        </Dialog.Panel>
       </div>
-    </div>
+    </Dialog>
   );
 }
