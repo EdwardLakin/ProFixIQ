@@ -172,7 +172,9 @@ export default function AuthPage() {
     }
 
     if (!data.session) {
-      setNotice("Check your inbox to confirm your email. We’ll continue after that.");
+      setNotice(
+        "Check your inbox to confirm your email. We’ll continue after that.",
+      );
       setLoading(false);
       return;
     }
@@ -184,18 +186,53 @@ export default function AuthPage() {
   const isSignIn = mode === "sign-in";
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-neutral-950 to-black px-4 text-white">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center">
-        <div className="w-full rounded-2xl border border-neutral-800 bg-neutral-950/90 p-6 shadow-xl shadow-black/40 sm:p-8">
+    <div
+      className="
+        min-h-screen px-4 text-foreground
+        bg-background
+        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+      "
+    >
+      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center py-8">
+        <div
+          className="
+            w-full rounded-3xl border
+            border-[color:var(--metal-border-soft,#1f2937)]
+            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.2),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
+            shadow-[0_32px_80px_rgba(0,0,0,0.95)]
+            px-6 py-7 sm:px-8 sm:py-9
+          "
+        >
           {/* Brand / title */}
           <div className="mb-6 space-y-2 text-center">
-            <div className="inline-flex items-center rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-neutral-400">
-              ProFixIQ Portal{isMobileMode ? " • Mobile" : ""}
+            <div
+              className="
+                inline-flex items-center gap-1 rounded-full border
+                border-[color:var(--metal-border-soft,#1f2937)]
+                bg-black/70
+                px-3 py-1 text-[11px]
+                uppercase tracking-[0.22em]
+                text-neutral-300
+              "
+            >
+              <span
+                className="text-[10px] font-semibold text-[var(--accent-copper-light)]"
+                style={{ fontFamily: "var(--font-blackops), system-ui" }}
+              >
+                ProFixIQ
+              </span>
+              <span className="h-1 w-1 rounded-full bg-[var(--accent-copper-light)]" />
+              <span>Portal{isMobileMode ? " • Mobile" : ""}</span>
             </div>
-            <h1 className="mt-2 text-3xl font-blackops text-orange-500 sm:text-4xl">
+
+            <h1
+              className="mt-2 text-3xl sm:text-4xl font-semibold text-white"
+              style={{ fontFamily: "var(--font-blackops), system-ui" }}
+            >
               {isSignIn ? "Sign in" : "Create your account"}
             </h1>
-            <p className="text-xs text-neutral-400 sm:text-sm">
+
+            <p className="text-xs text-muted-foreground sm:text-sm">
               {isSignIn
                 ? "Use your shop username or email to access your dashboard."
                 : "Create an account with your email to get started."}
@@ -203,13 +240,20 @@ export default function AuthPage() {
           </div>
 
           {/* Mode switch */}
-          <div className="mb-4 flex items-center justify-center">
-            <div className="inline-flex rounded-full border border-neutral-800 bg-neutral-900 p-1 text-xs">
+          <div className="mb-5 flex items-center justify-center">
+            <div
+              className="
+                inline-flex rounded-full border
+                border-[color:var(--metal-border-soft,#1f2937)]
+                bg-black/70 p-1 text-xs
+                shadow-[0_0_18px_rgba(15,23,42,0.8)]
+              "
+            >
               <button
                 type="button"
-                className={`px-3 py-1 rounded-full transition ${
+                className={`px-3 py-1 rounded-full transition-all ${
                   isSignIn
-                    ? "bg-orange-500 text-black shadow-sm"
+                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black font-semibold shadow-[0_0_18px_rgba(212,118,49,0.7)]"
                     : "text-neutral-300 hover:text-white"
                 }`}
                 onClick={() => setMode("sign-in")}
@@ -219,9 +263,9 @@ export default function AuthPage() {
               </button>
               <button
                 type="button"
-                className={`px-3 py-1 rounded-full transition ${
+                className={`px-3 py-1 rounded-full transition-all ${
                   !isSignIn
-                    ? "bg-orange-500 text-black shadow-sm"
+                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black font-semibold shadow-[0_0_18px_rgba(212,118,49,0.7)]"
                     : "text-neutral-300 hover:text-white"
                 }`}
                 onClick={() => setMode("sign-up")}
@@ -234,12 +278,12 @@ export default function AuthPage() {
 
           {/* Error / notice */}
           {error && (
-            <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/60 px-3 py-2 text-xs text-red-100">
+            <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
               {error}
             </div>
           )}
           {notice && (
-            <div className="mb-3 rounded-lg border border-emerald-500/60 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100">
+            <div className="mb-3 rounded-lg border border-emerald-500/60 bg-emerald-950/70 px-3 py-2 text-xs text-emerald-100 shadow-[0_0_18px_rgba(6,95,70,0.5)]">
               {notice}
             </div>
           )}
@@ -250,7 +294,7 @@ export default function AuthPage() {
             className="space-y-4"
           >
             <div className="space-y-1 text-sm">
-              <label className="block text-xs font-medium text-neutral-300">
+              <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
                 {isSignIn ? "Email or username" : "Email"}
               </label>
               <input
@@ -261,18 +305,27 @@ export default function AuthPage() {
                 autoComplete={isSignIn ? "username" : "email"}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                className="
+                  w-full rounded-lg border
+                  border-[color:var(--metal-border-soft,#1f2937)]
+                  bg-black/70 px-3 py-2 text-sm text-white
+                  placeholder:text-neutral-500
+                  focus:outline-none focus:ring-2
+                  focus:ring-[var(--accent-copper-soft)]
+                  focus:border-[var(--accent-copper-soft)]
+                "
                 required
               />
               {isSignIn && (
-                <p className="text-[11px] text-neutral-500">
-                  Shop accounts can sign in using the username provided by your admin.
+                <p className="text-[11px] text-muted-foreground">
+                  Shop accounts can sign in using the username provided by your
+                  admin.
                 </p>
               )}
             </div>
 
             <div className="space-y-1 text-sm">
-              <label className="block text-xs font-medium text-neutral-300">
+              <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
                 Password
               </label>
               <input
@@ -281,7 +334,15 @@ export default function AuthPage() {
                 autoComplete={isSignIn ? "current-password" : "new-password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                className="
+                  w-full rounded-lg border
+                  border-[color:var(--metal-border-soft,#1f2937)]
+                  bg-black/70 px-3 py-2 text-sm text-white
+                  placeholder:text-neutral-500
+                  focus:outline-none focus:ring-2
+                  focus:ring-[var(--accent-copper-soft)]
+                  focus:border-[var(--accent-copper-soft)]
+                "
                 required
                 minLength={6}
               />
@@ -289,7 +350,16 @@ export default function AuthPage() {
 
             <button
               type="submit"
-              className="mt-2 w-full rounded-md bg-orange-500 py-2.5 text-center text-sm font-blackops text-black tracking-wide transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="
+                mt-3 w-full rounded-full
+                bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))]
+                py-2.5 text-center text-sm
+                font-semibold uppercase tracking-[0.22em] text-black
+                shadow-[0_0_26px_rgba(212,118,49,0.9)]
+                hover:brightness-110
+                disabled:cursor-not-allowed disabled:opacity-60
+              "
+              style={{ fontFamily: "var(--font-blackops), system-ui" }}
               disabled={loading}
             >
               {loading
@@ -308,30 +378,35 @@ export default function AuthPage() {
               <button
                 type="button"
                 onClick={() => router.push("/sign-in?mode=mobile")}
-                className="text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline underline-offset-2"
+                className="
+                  text-[11px] font-medium
+                  text-[var(--accent-copper-light)]
+                  hover:text-[var(--accent-copper)]
+                  hover:underline underline-offset-2
+                "
                 disabled={loading}
               >
                 Sign in to mobile companion
               </button>
-              <p className="mt-1 text-[10px] text-neutral-500">
+              <p className="mt-1 text-[10px] text-muted-foreground">
                 Opens the tech-friendly mobile layout for phones and tablets.
               </p>
             </div>
           )}
 
-          <div className="mt-6 text-center text-[11px] text-neutral-500">
+          <div className="mt-6 text-center text-[11px] text-muted-foreground">
             <p>
               By continuing you agree to our{" "}
               <a
                 href="/terms"
-                className="font-medium text-orange-400 hover:text-orange-300 hover:underline"
+                className="font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline"
               >
                 Terms
               </a>{" "}
               and{" "}
               <a
                 href="/privacy"
-                className="font-medium text-orange-400 hover:text-orange-300 hover:underline"
+                className="font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline"
               >
                 Privacy Policy
               </a>
