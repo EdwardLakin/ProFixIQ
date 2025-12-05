@@ -828,28 +828,46 @@ export default function FocusedJobModal(props: {
 
       {/* sub-modals */}
       {openComplete && line && (
-        <CauseCorrectionModal
-          isOpen={openComplete}
-          onClose={() => setOpenComplete(false)}
-          jobId={line.id}
-          initialCause={prefillCause}
-          initialCorrection={prefillCorrection}
-          onSubmit={async (cause: string, correction: string) => {
-            const { error } = await supabase
-              .from("work_order_lines")
-              .update({
-                cause,
-                correction,
-                punched_out_at: new Date().toISOString(),
-                status: "completed",
-              } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-              .eq("id", line.id);
-            if (error) return showErr("Complete job failed", error);
-            toast.success("Job completed");
-            setOpenComplete(false);
-            await refresh();
-          }}
-        />
+  <CauseCorrectionModal
+    isOpen={openComplete}
+    onClose={() => setOpenComplete(false)}
+    jobId={line.id}
+    initialCause={prefillCause}
+    initialCorrection={prefillCorrection}
+    // ✅ COMPLETE job – sets status + punched_out_at
+    onSubmit={async (cause: string, correction: string) => {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          cause,
+          correction,
+          punched_out_at: new Date().toISOString(),
+          status: "completed",
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", line.id);
+
+      if (error) return showErr("Complete job failed", error);
+      toast.success("Job completed");
+      setOpenComplete(false);
+      await refresh();
+    }}
+    // ✅ SAVE STORY ONLY – no status change, no finish
+    onSaveDraft={async (cause: string, correction: string) => {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          cause,
+          correction,
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", line.id);
+
+      if (error) return showErr("Save story failed", error);
+      toast.success("Story saved");
+      await refresh();
+      // modal stays open so tech can keep editing or complete later
+    }}
+  />
+
       )}
 
       <button

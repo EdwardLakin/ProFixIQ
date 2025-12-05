@@ -155,7 +155,7 @@ export default function CauseCorrectionModal({
                 disabled={busy}
                 className="inline-flex flex-1 items-center justify-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-black/50 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper-soft)] shadow-[0_0_12px_rgba(212,118,49,0.35)] hover:bg-[var(--accent-copper-faint)] disabled:opacity-60 sm:flex-none sm:px-5"
               >
-                {savingDraft ? "Saving…" : "Save notes"}
+                {savingDraft ? "Saving…" : "Save story only"}
               </button>
             )}
 
