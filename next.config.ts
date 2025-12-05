@@ -1,9 +1,15 @@
+// next.config.ts
 import path from "path";
-import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   reactStrictMode: true,
-  webpack: (config) => {
+
+  // 👇 Turn OFF Turbopack so we can keep using this webpack config
+  experimental: {
+    turbo: false,
+  },
+
+  webpack(config: any) {
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
       "@": path.resolve(__dirname, "src"),
