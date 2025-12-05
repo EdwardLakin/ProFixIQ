@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import TechAssistant from "@/features/shared/components/TechAssistant";
 
 type AiAssistantModalProps = {
@@ -20,16 +21,18 @@ export default function AiAssistantModal({
   workOrderLineId,
   defaultVehicle,
 }: AiAssistantModalProps) {
-  if (!isOpen) return null;
+  // Ensure we only portal once we're mounted in the browser
+  const [mounted, setMounted] = useState(false);
 
-  return (
-    /**
-     * 🔹 Top-level overlay is now scrollable (overflow-y-auto)
-     * and aligned to the top with padding, so tall content
-     * can move on iPad.
-     */
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isOpen || !mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto pt-10 pb-10">
-      {/* Backdrop – still closes on click */}
+      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/75 backdrop-blur-sm"
         onClick={onClose}
@@ -62,7 +65,7 @@ export default function AiAssistantModal({
             </button>
           </div>
 
-          {/* Body – no extra max-h/overflow here; TechAssistant handles its own scrolling */}
+          {/* Body – TechAssistant handles its own inner scroll for messages */}
           <div className="px-5 py-4">
             <div className="rounded-2xl border border-white/12 bg-black/70 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
               <TechAssistant
@@ -73,6 +76,7 @@ export default function AiAssistantModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
