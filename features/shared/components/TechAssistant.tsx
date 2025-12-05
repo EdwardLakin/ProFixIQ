@@ -86,17 +86,19 @@ export default function TechAssistant({
   };
 
   const inputBase =
-    "w-full rounded bg-neutral-900 border border-neutral-700 text-white " +
-    "placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-orange-500";
+    "w-full rounded-md bg-black/70 border border-[var(--metal-border-soft)] text-white " +
+    "placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]";
 
   return (
-    <div className="space-y-6 text-sm text-white">
-      <h1 className="font-header text-xl text-orange-400">Tech Assistant</h1>
-
+    <div className="space-y-5 text-sm text-white">
       {/* CARD: Vehicle + Notes + Attach */}
-      <div className="space-y-4 rounded-lg border border-white/10 bg-black/40 p-4 backdrop-blur">
-        <div>
-          <div className="mb-2 text-xs font-header tracking-wide text-orange-400">
+      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/65 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
+        <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          Vehicle &amp; Context
+        </div>
+
+        <div className="mb-3">
+          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
             Vehicle
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -136,24 +138,24 @@ export default function TechAssistant({
           </div>
         </div>
 
-        <div>
-          <div className="mb-2 text-xs font-header tracking-wide text-orange-400">
+        <div className="mb-3">
+          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
             Notes
           </div>
           <textarea
             className={`${inputBase} h-20`}
-            placeholder="Shop notes / context (symptoms, readings, conditions, DTCs). The assistant will use this."
+            placeholder="Shop notes / context (symptoms, readings, conditions, DTCs)."
             value={context}
             onChange={(e) => setContext(e.target.value)}
           />
         </div>
 
         <div>
-          <div className="mb-2 text-xs font-header tracking-wide text-orange-400">
+          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
             Attach
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="cursor-pointer rounded bg-neutral-800 px-3 py-2 text-sm font-header hover:bg-neutral-700 disabled:opacity-60">
+            <label className="cursor-pointer rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-white/5 disabled:opacity-60">
               <input
                 ref={fileRef}
                 type="file"
@@ -172,14 +174,14 @@ export default function TechAssistant({
               Attach Photo
             </label>
             <input
-              className={`${inputBase} min-w-48 flex-1`}
+              className={`${inputBase} min-w-44 flex-1 py-1.5 text-xs`}
               placeholder="Optional note for this photo"
               value={noteForPhoto}
               onChange={(e) => setNoteForPhoto(e.target.value)}
               disabled={sending}
             />
             <button
-              className="rounded bg-neutral-800 px-3 py-2 text-sm font-header hover:bg-neutral-700 disabled:opacity-60"
+              className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-white/5 disabled:opacity-60"
               onClick={resetConversation}
               type="button"
               disabled={sending}
@@ -187,7 +189,7 @@ export default function TechAssistant({
               Reset
             </button>
             <button
-              className="rounded bg-red-600/80 px-3 py-2 text-sm font-header text-white hover:bg-red-600 disabled:opacity-60"
+              className="rounded-full border border-red-600/80 bg-red-900/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-red-100 hover:bg-red-900/60 disabled:opacity-60"
               onClick={cancel}
               type="button"
               disabled={!sending}
@@ -198,28 +200,29 @@ export default function TechAssistant({
         </div>
       </div>
 
-      {/* CARD: Conversation – only this list scrolls */}
-      <div className="flex flex-col rounded-lg border border-white/10 bg-black/40 backdrop-blur">
+      {/* CARD: Conversation */}
+      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/70 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
+        {/* Scrollable messages */}
         <div
           ref={scrollRef}
-          className="min-h-[160px] max-h-[50vh] flex-1 space-y-3 overflow-y-auto p-4"
+          className="flex-1 min-h-[140px] max-h-[50vh] overflow-y-auto p-4 space-y-3"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {messages.map((m, i) => {
             const mine = m.role === "user";
             const bubble =
-              "max-w-[95%] rounded px-3 py-2 text-sm whitespace-pre-wrap break-words";
+              "max-w-[95%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap break-words";
             return mine ? (
               <div key={i} className="flex justify-end">
                 <div
-                  className={`${bubble} bg-orange-600 text-black font-header`}
+                  className={`${bubble} bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black font-semibold`}
                 >
                   {m.content}
                 </div>
               </div>
             ) : (
               <div key={i} className="flex justify-start">
-                <div className={`${bubble} bg-neutral-900 text-neutral-200`}>
+                <div className={`${bubble} bg-neutral-950/90 text-neutral-200`}>
                   <div className="prose prose-invert prose-sm !text-neutral-200">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
@@ -236,7 +239,7 @@ export default function TechAssistant({
                           </ol>
                         ),
                         h3: ({ children }) => (
-                          <h3 className="mt-2 mb-1 text-sm font-header text-white">
+                          <h3 className="mt-2 mb-1 text-sm font-semibold text-white">
                             {children}
                           </h3>
                         ),
@@ -258,36 +261,28 @@ export default function TechAssistant({
 
           {(sending || partial.length > 0) && (
             <div className="flex justify-start">
-              <div className="max-w-[95%] rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-300 opacity-90">
+              <div className="max-w-[95%] rounded-xl bg-neutral-950/90 px-3 py-2 text-sm text-neutral-300 opacity-90">
                 {partial.length > 0 ? partial : "Assistant is thinking…"}
               </div>
             </div>
           )}
-
-          {messages.length === 0 && !sending && partial.length === 0 && (
-            <div className="text-xs text-neutral-400">
-              Enter vehicle + notes, then ask a question or attach a photo.
-            </div>
-          )}
         </div>
 
-        {/* Composer pinned to bottom */}
+        {/* Composer */}
         <form
           onSubmit={onSubmit}
-          className="flex gap-2 border-t border-white/10 p-3"
+          className="flex gap-2 border-t border-[var(--metal-border-soft)] bg-black/70 p-3"
         >
           <input
             ref={inputRef}
-            className={`${inputBase} flex-1 py-3`}
+            className={`${inputBase} flex-1 py-2.5 text-sm`}
             placeholder={
-              canSend
-                ? "Ask the assistant…"
-                : "Enter year, make, model first"
+              canSend ? "Ask the assistant…" : "Enter year, make, model first"
             }
             disabled={sending}
           />
           <button
-            className="rounded bg-orange-600 px-4 py-3 text-sm font-header text-black hover:bg-orange-700 disabled:opacity-60"
+            className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_20px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60"
             disabled={sending || !canSend}
             type="submit"
           >
@@ -298,9 +293,9 @@ export default function TechAssistant({
 
       {/* Export to Work Order (optional) */}
       {workOrderLineId && (
-        <div>
+        <div className="pt-1">
           <button
-            className="rounded bg-purple-600 px-3 py-2 text-sm font-header hover:bg-purple-700 disabled:opacity-60"
+            className="rounded-full bg-purple-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-[0_0_18px_rgba(147,51,234,0.7)] hover:bg-purple-500 disabled:opacity-60"
             disabled={sending}
             onClick={async () => {
               try {
@@ -315,13 +310,14 @@ export default function TechAssistant({
               }
             }}
           >
-            Summarize & Export to Work Order
+            Summarize &amp; Export to Work Order
           </button>
         </div>
       )}
 
+      {/* Error */}
       {error && (
-        <div className="rounded border border-red-600 bg-red-950/40 px-3 py-2 text-red-200">
+        <div className="rounded-lg border border-red-600 bg-red-950/60 px-3 py-2 text-xs text-red-100">
           {error}
         </div>
       )}
