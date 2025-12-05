@@ -7335,6 +7335,10 @@ export type Database = {
         Args: { target_profile_id: string }
         Returns: boolean
       }
+      can_view_work_order: {
+        Args: { p_work_order_id: string }
+        Returns: boolean
+      }
       chat_participants_key: {
         Args: { _recipients: string[]; _sender: string }
         Returns: string
@@ -7351,6 +7355,15 @@ export type Database = {
       }
       current_shop_id: { Args: never; Returns: string }
       first_segment_uuid: { Args: { p: string }; Returns: string }
+      get_work_order_assignments: {
+        Args: { p_work_order_id: string }
+        Returns: {
+          full_name: string
+          has_active: boolean
+          role: string
+          technician_id: string
+        }[]
+      }
       has_column: { Args: { col: string; tab: unknown }; Returns: boolean }
       increment_user_limit: {
         Args: { increment_by?: number; input_shop_id: string }

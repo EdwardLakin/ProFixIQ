@@ -6,24 +6,23 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
-type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type LineTech =
-  DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
-type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type Props = {
   workOrderId: string;
+};
+
+type AssignmentRow = {
+  technician_id: string | null;
+  full_name: string | null;
+  role: string | null;
+  has_active: boolean | null;
 };
 
 export function WorkOrderAssignedSummary({ workOrderId }: Props) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [loading, setLoading] = useState(true);
-  const [assignedIds, setAssignedIds] = useState<string[]>([]);
-  const [profilesById, setProfilesById] = useState<
-    Record<string, Pick<Profile, "id" | "full_name" | "role">>
-  >({});
-  const [hasActive, setHasActive] = useState(false);
+  const [rows, setRows] = useState<AssignmentRow[]>([]);
 
   useEffect(() => {
     if (!workOrderId) return;
@@ -32,124 +31,28 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
 
     const load = async () => {
       setLoading(true);
-      setHasActive(false);
-      setAssignedIds([]);
-      setProfilesById({});
-
       try {
-        // 1) Lines for this work order
-        const { data: linesData, error: linesErr } = await supabase
-          .from("work_order_lines")
-          .select(
-            "id, assigned_tech_id, punched_in_at, punched_out_at",
-          )
-          .eq("work_order_id", workOrderId);
-
-        if (linesErr) {
-          // eslint-disable-next-line no-console
-          console.error("[WorkOrderAssignedSummary] lines error:", linesErr);
-          if (!cancelled) setLoading(false);
-          return;
-        }
-
-        const lines = (linesData ?? []) as Pick<
-          Line,
-          "id" | "assigned_tech_id" | "punched_in_at" | "punched_out_at"
-        >[];
-
-        if (cancelled) return;
-
-        // active = any punched in and not punched out
-        const active = lines.some(
-          (l) => l.punched_in_at && !l.punched_out_at,
+        const { data, error } = await supabase.rpc(
+          "get_work_order_assignments",
+          { p_work_order_id: workOrderId },
         );
-        setHasActive(active);
 
-        if (lines.length === 0) {
-          if (!cancelled) setLoading(false);
-          return;
-        }
-
-        const lineIds = lines.map((l) => l.id);
-
-        // 2) Collect tech ids from lines + line_technicians
-        const techIdSet = new Set<string>();
-
-        // from assigned_tech_id on the line
-        lines.forEach((l) => {
-          const t = l.assigned_tech_id as string | null;
-          if (t) techIdSet.add(t);
-        });
-
-        // from junction table
-        const { data: ltData, error: ltErr } = await supabase
-          .from("work_order_line_technicians")
-          .select("work_order_line_id, technician_id")
-          .in("work_order_line_id", lineIds);
-
-        if (ltErr) {
+        if (error) {
           // eslint-disable-next-line no-console
-          console.error(
-            "[WorkOrderAssignedSummary] line_technicians error:",
-            ltErr,
-          );
-        } else {
-          (ltData as LineTech[] | null)?.forEach((lt) => {
-            const tid = lt.technician_id as string;
-            if (tid) techIdSet.add(tid);
-          });
-        }
-
-        const techIds = Array.from(techIdSet);
-
-        if (cancelled) return;
-
-        if (techIds.length === 0) {
-          setAssignedIds([]);
-          setProfilesById({});
-          setLoading(false);
-          return;
-        }
-
-        // 3) Resolve profiles
-        const { data: profs, error: profErr } = await supabase
-          .from("profiles")
-          .select("id, full_name, role")
-          .in("id", techIds);
-
-        if (profErr) {
-          // eslint-disable-next-line no-console
-          console.error("[WorkOrderAssignedSummary] profiles error:", profErr);
+          console.error("[WorkOrderAssignedSummary] rpc error:", error);
           if (!cancelled) {
-            setAssignedIds([]);
-            setProfilesById({});
-            setLoading(false);
+            setRows([]);
           }
           return;
         }
 
-        if (cancelled) return;
-
-        const map: Record<
-          string,
-          Pick<Profile, "id" | "full_name" | "role">
-        > = {};
-        (profs ?? []).forEach((p) => {
-          map[p.id] = {
-            id: p.id,
-            full_name: p.full_name,
-            role: p.role,
-          };
-        });
-
-        setProfilesById(map);
-
-        // preserve original order where possible
-        const ordered = techIds.filter((id) => map[id]);
-        setAssignedIds(ordered);
+        if (!cancelled) {
+          setRows((data as AssignmentRow[] | null) ?? []);
+        }
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error("[WorkOrderAssignedSummary] unexpected error:", e);
+        if (!cancelled) setRows([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -162,15 +65,22 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
     };
   }, [supabase, workOrderId]);
 
+  // ---------- derived values ----------
+
+  const hasActive = useMemo(
+    () => rows.some((r) => !!r.has_active),
+    [rows],
+  );
+
   const firstTechLabel = useMemo(() => {
-    if (!assignedIds.length) return null;
-    const first = profilesById[assignedIds[0]];
-    const full = first?.full_name ?? "Assigned tech";
+    if (!rows.length) return null;
+    const first = rows[0];
+    const full = first.full_name || "Assigned tech";
     const firstName = full.split(" ")[0] || full;
     return firstName;
-  }, [assignedIds, profilesById]);
+  }, [rows]);
 
-  const extraCount = assignedIds.length > 1 ? assignedIds.length - 1 : 0;
+  const extraCount = rows.length > 1 ? rows.length - 1 : 0;
 
   // ---------- Render states ----------
 
@@ -182,7 +92,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
     );
   }
 
-  if (!assignedIds.length || !firstTechLabel) {
+  if (!rows.length || !firstTechLabel) {
     return (
       <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-950/80 px-2.5 py-0.5 text-[0.7rem] text-neutral-400">
         Unassigned
@@ -203,7 +113,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
       title={
         hasActive
           ? "At least one job line is currently punched in."
-          : "Jobs assigned to this technician."
+          : "Jobs assigned to technician(s) on this work order."
       }
     >
       {hasActive && (
