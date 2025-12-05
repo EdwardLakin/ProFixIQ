@@ -9,7 +9,12 @@ import type { Database } from "@shared/types/types/supabase";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-type Vehicle = { year: string; make: string; model: string };
+type Vehicle = {
+  year?: string | null;
+  make?: string | null;
+  model?: string | null;
+};
+
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 function getEnv(name: string): string {
@@ -38,19 +43,25 @@ export async function POST(req: Request) {
     };
 
     if (!vehicle?.year || !vehicle?.make || !vehicle?.model) {
-      return NextResponse.json({ error: "Missing vehicle info." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing vehicle info." },
+        { status: 400 },
+      );
     }
     if (!workOrderLineId) {
-      return NextResponse.json({ error: "Missing work order line id." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing work order line id." },
+        { status: 400 },
+      );
     }
 
     const prompt = [
       `Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
       `You are preparing a concise work-order entry for a shop management system.`,
       `From the conversation below, produce:`,
-      `- Cause: one or two sentences`,
-      `- Correction: short bullet list (1–5 bullets)`,
-      `- EstimatedLaborTime: a decimal number in hours when appropriate, else null`,
+      `- Cause: one or two sentences.`,
+      `- Correction: short bullet list (1–5 bullets).`,
+      `- EstimatedLaborTime: a decimal number in hours when appropriate, else null.`,
       ``,
       `Conversation (latest last):`,
       ...(messages ?? []).map((m) => `${m.role.toUpperCase()}: ${m.content}`),
@@ -59,7 +70,7 @@ export async function POST(req: Request) {
     ].join("\n");
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: process.env.OPENAI_MODEL?.trim() || "gpt-4o",
       temperature: 0.3,
       stream: false,
       messages: [{ role: "user", content: prompt }],
@@ -73,26 +84,75 @@ export async function POST(req: Request) {
       estimatedLaborTime?: number | null;
     };
 
-    // Optional: persist to DB (example upsert)
+    const cause = normalizeMarkdown(parsed.cause ?? "");
+    const correction = normalizeMarkdown(parsed.correction ?? "");
+    const estimatedLaborTime =
+      typeof parsed.estimatedLaborTime === "number"
+        ? parsed.estimatedLaborTime
+        : null;
+
+    if (!cause || !correction) {
+      return NextResponse.json(
+        { error: "Model did not return cause and correction." },
+        { status: 500 },
+      );
+    }
+
+    // 🔐 Supabase service client
     const supabase = createClient<Database>(
       getEnv("NEXT_PUBLIC_SUPABASE_URL"),
       getEnv("SUPABASE_SERVICE_ROLE_KEY"),
     );
 
-    await supabase
-      .from("work_order_line_summaries")
-      .upsert({
-        work_order_line_id: workOrderLineId,
-        cause: normalizeMarkdown(parsed.cause ?? ""),
-        correction: normalizeMarkdown(parsed.correction ?? ""),
-        estimated_labor_time: parsed.estimatedLaborTime ?? null,
-        updated_at: new Date().toISOString(),
-      });
+    // Optional: ensure line exists (gives nicer error than silent update)
+    const { data: line, error: lineErr } = await supabase
+      .from("work_order_lines")
+      .select("id")
+      .eq("id", workOrderLineId)
+      .maybeSingle();
+
+    if (lineErr) {
+      return NextResponse.json(
+        { error: "Failed to load work order line." },
+        { status: 500 },
+      );
+    }
+    if (!line) {
+      return NextResponse.json(
+        { error: "Work order line not found." },
+        { status: 404 },
+      );
+    }
+
+    // ✅ Write directly onto the work_order_lines row
+    const updates: Database["public"]["Tables"]["work_order_lines"]["Update"] =
+      {
+        cause,
+        correction,
+        labor_time: estimatedLaborTime,
+      };
+
+    const { data: updated, error: updateErr } = await supabase
+      .from("work_order_lines")
+      .update(updates)
+      .eq("id", workOrderLineId)
+      .select("cause, correction, labor_time")
+      .maybeSingle();
+
+    if (updateErr) {
+      return NextResponse.json(
+        { error: "Failed to save story to work order line." },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({
-      cause: normalizeMarkdown(parsed.cause ?? ""),
-      correction: normalizeMarkdown(parsed.correction ?? ""),
-      estimatedLaborTime: parsed.estimatedLaborTime ?? null,
+      cause: updated?.cause ?? cause,
+      correction: updated?.correction ?? correction,
+      estimatedLaborTime:
+        typeof updated?.labor_time === "number"
+          ? (updated.labor_time as number)
+          : estimatedLaborTime,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unexpected error.";
