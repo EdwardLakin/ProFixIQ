@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       `Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
       `You are preparing a concise work-order entry for a shop management system.`,
       `From the conversation below, produce:`,
-      `- Cause: one or two sentences.`,
+      `- Cause: one or two sentences (this is the diagnosis / story of what you found).`,
       `- Correction: short bullet list (1–5 bullets).`,
       `- EstimatedLaborTime: a decimal number in hours when appropriate, else null.`,
       ``,
@@ -91,9 +91,10 @@ export async function POST(req: Request) {
         ? parsed.estimatedLaborTime
         : null;
 
-    if (!cause || !correction) {
+    // We only *require* cause now; correction can be empty
+    if (!cause) {
       return NextResponse.json(
-        { error: "Model did not return cause and correction." },
+        { error: "Model did not return a valid cause." },
         { status: 500 },
       );
     }
@@ -104,7 +105,7 @@ export async function POST(req: Request) {
       getEnv("SUPABASE_SERVICE_ROLE_KEY"),
     );
 
-    // Optional: ensure line exists (gives nicer error than silent update)
+    // Optional: ensure line exists (nicer error)
     const { data: line, error: lineErr } = await supabase
       .from("work_order_lines")
       .select("id")
@@ -124,11 +125,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Write directly onto the work_order_lines row
+    // ✅ Only write cause + labor_time.
+    //    We DO NOT touch correction here, so tech keeps full control of that story.
     const updates: Database["public"]["Tables"]["work_order_lines"]["Update"] =
       {
         cause,
-        correction,
         labor_time: estimatedLaborTime,
       };
 
@@ -148,6 +149,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       cause: updated?.cause ?? cause,
+      // Return whatever correction is currently on the line (or the AI suggestion),
+      // but we never overwrite it in this route.
       correction: updated?.correction ?? correction,
       estimatedLaborTime:
         typeof updated?.labor_time === "number"
