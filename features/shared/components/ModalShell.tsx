@@ -1,3 +1,4 @@
+// src/features/shared/components/ModalShell.tsx
 "use client";
 
 import { Dialog } from "@headlessui/react";
@@ -15,8 +16,8 @@ type ModalShellProps = {
   size?: "sm" | "md" | "lg" | "xl";
   /** hide the footer completely (for interactive panels like AI) */
   hideFooter?: boolean;
-  /** allow the body to scroll (default true). For nested scroll UIs like AI, set false */
-  scrollBody?: boolean;
+  /** when false, body is NOT a scroll container (useful when a child manages its own scroll) */
+  bodyScrollable?: boolean;
 };
 
 export default function ModalShell({
@@ -29,7 +30,7 @@ export default function ModalShell({
   footerLeft,
   size = "md",
   hideFooter = false,
-  scrollBody = true,
+  bodyScrollable = true,
 }: ModalShellProps) {
   const width =
     size === "sm"
@@ -39,10 +40,6 @@ export default function ModalShell({
       : size === "lg"
       ? "max-w-4xl"
       : "max-w-6xl"; // xl
-
-  const bodyClasses =
-    (scrollBody ? "max-h-[calc(100vh-8rem)] overflow-y-auto " : "") +
-    "px-4 py-4 sm:px-5 sm:py-5";
 
   return (
     <Dialog
@@ -79,8 +76,16 @@ export default function ModalShell({
             </button>
           </div>
 
-          {/* Body */}
-          <div className={bodyClasses}>{children}</div>
+          {/* Body – optionally scrollable */}
+          <div
+            className={`px-4 py-4 sm:px-5 sm:py-5 ${
+              bodyScrollable
+                ? "max-h-[calc(100vh-8rem)] overflow-y-auto"
+                : ""
+            }`}
+          >
+            {children}
+          </div>
 
           {/* Footer */}
           {!hideFooter && (onSubmit || footerLeft) && (

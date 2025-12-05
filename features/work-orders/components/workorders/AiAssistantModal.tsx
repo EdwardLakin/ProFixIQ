@@ -1,3 +1,4 @@
+// src/features/work-orders/components/workorders/AiAssistantModal.tsx
 "use client";
 
 import ModalShell from "@/features/shared/components/ModalShell";
@@ -27,7 +28,7 @@ export default function AiAssistantModal({
       title="AI / Tech Assistant"
       size="lg"
       hideFooter
-      scrollBody={false} // 🔒 inner TechAssistant manages its own scroll
+      bodyScrollable={false} // 🔹 let TechAssistant own the scroll
     >
       <div className="space-y-3">
         <p className="text-xs text-neutral-400">
@@ -35,6 +36,7 @@ export default function AiAssistantModal({
           It stays scoped to this job and vehicle where possible.
         </p>
 
+        {/* TechAssistant manages its own scroll area */}
         <div className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.85)]">
           <TechAssistant
             defaultVehicle={defaultVehicle}
