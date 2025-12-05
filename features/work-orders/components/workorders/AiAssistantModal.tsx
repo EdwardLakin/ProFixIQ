@@ -23,8 +23,13 @@ export default function AiAssistantModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center">
-      {/* Backdrop – sits above FocusedJobModal backdrop */}
+    /**
+     * 🔹 Top-level overlay is now scrollable (overflow-y-auto)
+     * and aligned to the top with padding, so tall content
+     * can move on iPad.
+     */
+    <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto pt-10 pb-10">
+      {/* Backdrop – still closes on click */}
       <div
         className="absolute inset-0 bg-black/75 backdrop-blur-sm"
         onClick={onClose}
@@ -57,8 +62,8 @@ export default function AiAssistantModal({
             </button>
           </div>
 
-          {/* Body – medium height, scroll inside */}
-          <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+          {/* Body – no extra max-h/overflow here; TechAssistant handles its own scrolling */}
+          <div className="px-5 py-4">
             <div className="rounded-2xl border border-white/12 bg-black/70 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
               <TechAssistant
                 defaultVehicle={defaultVehicle}
