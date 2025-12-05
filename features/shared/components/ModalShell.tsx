@@ -15,6 +15,8 @@ type ModalShellProps = {
   size?: "sm" | "md" | "lg" | "xl";
   /** hide the footer completely (for interactive panels like AI) */
   hideFooter?: boolean;
+  /** allow turning off scrolling on the body (for nested scroll UIs like TechAssistant) */
+  bodyScrollable?: boolean;
 };
 
 export default function ModalShell({
@@ -27,6 +29,7 @@ export default function ModalShell({
   footerLeft,
   size = "md",
   hideFooter = false,
+  bodyScrollable = true,
 }: ModalShellProps) {
   const width =
     size === "sm"
@@ -36,6 +39,10 @@ export default function ModalShell({
       : size === "lg"
       ? "max-w-4xl"
       : "max-w-6xl"; // xl
+
+  const bodyBase = "px-4 py-4 sm:px-5 sm:py-5";
+  const bodyScroll = "max-h-[calc(100vh-8rem)] overflow-y-auto";
+  const bodyNoScroll = "max-h-none overflow-visible";
 
   return (
     <Dialog
@@ -51,7 +58,7 @@ export default function ModalShell({
 
       {/* Panel wrapper */}
       <div className={`relative z-[510] w-full ${width}`}>
-        <Dialog.Panel className="w-full overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_#050910,_#020308_60%,_#000)] text-neutral-100 shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
+        <Dialog.Panel className="flex w-full max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_#050910,_#020308_60%,_#000)] text-neutral-100 shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-[var(--metal-border-soft)] bg-black/40 px-4 py-3">
             {title ? (
@@ -72,8 +79,20 @@ export default function ModalShell({
             </button>
           </div>
 
-          {/* Body – make inner content scrollable */}
-          <div className="max-h-[calc(100vh-8rem)] overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
+          {/* Body – can be scrollable or not depending on use-case */}
+          <div
+            className={`${bodyBase} ${
+              bodyScrollable ? bodyScroll : bodyNoScroll
+            } flex-1`}
+            style={
+              bodyScrollable
+                ? {
+                    WebkitOverflowScrolling: "touch",
+                    overscrollBehavior: "contain",
+                  }
+                : undefined
+            }
+          >
             {children}
           </div>
 

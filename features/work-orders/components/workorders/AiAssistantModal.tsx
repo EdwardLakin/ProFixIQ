@@ -27,25 +27,16 @@ export default function AiAssistantModal({
       title="AI / Tech Assistant"
       size="lg"
       hideFooter
+      bodyScrollable={false}
     >
-      {/* The FIX → enforce flex + min-h-0 container */}
-      <div className="flex flex-col max-h-[70vh] min-h-0 space-y-3">
-
+      <div className="space-y-3">
         <p className="text-xs text-neutral-400">
           Ask TechAssistant for diagnostics, test plans, or repair procedures.
           It stays scoped to this job and vehicle where possible.
         </p>
 
-        {/* TRUE SCROLL WRAPPER — Safari compatible */}
-        <div
-          className="
-            flex-1 min-h-0 overflow-y-auto
-            rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3
-            shadow-[0_12px_30px_rgba(0,0,0,0.85)]
-            overscroll-contain
-          "
-          style={{ WebkitOverflowScrolling: "touch" }}
-        >
+        {/* Single scroll region lives inside TechAssistant, not here */}
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.85)]">
           <TechAssistant
             defaultVehicle={defaultVehicle}
             workOrderLineId={workOrderLineId}

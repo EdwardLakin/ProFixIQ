@@ -1,7 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useTechAssistant, type Vehicle } from "@/features/ai/hooks/useTechAssistant";
+import {
+  useTechAssistant,
+  type Vehicle,
+} from "@/features/ai/hooks/useTechAssistant";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -92,7 +95,7 @@ export default function TechAssistant({
       <h1 className="font-header text-xl text-orange-400">Tech Assistant</h1>
 
       {/* CARD: Vehicle + Notes + Attach */}
-      <div className="rounded-lg border border-white/10 bg-black/40 backdrop-blur p-4 space-y-4">
+      <div className="space-y-4 rounded-lg border border-white/10 bg-black/40 p-4 backdrop-blur">
         <div>
           <div className="mb-2 text-xs font-header tracking-wide text-orange-400">
             Vehicle
@@ -201,7 +204,7 @@ export default function TechAssistant({
         {/* Scrollable messages */}
         <div
           ref={scrollRef}
-          className="flex-1 min-h-[160px] max-h-[50vh] overflow-y-auto p-4 space-y-3"
+          className="flex-1 min-h-[160px] max-h-[50vh] space-y-3 overflow-y-auto p-4"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {messages.map((m, i) => {
