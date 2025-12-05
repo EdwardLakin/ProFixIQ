@@ -1,4 +1,3 @@
-// app/api/parts/requests/create/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -125,14 +124,39 @@ export async function POST(req: Request) {
 
   // 6) optionally put the line on hold / approval pending
   if (jobId) {
+    // When a parts request is created for a job:
+    // - move the line to on_hold
+    // - mark approval_state pending
+    // - record that this is an "Awaiting parts" hold
+    // - clear punch timestamps so the job is no longer active OR finished
     const updatePayload: WOLUpdate = {
       status: "on_hold",
       approval_state: "pending",
+      hold_reason: "Awaiting parts",
+      punched_in_at: null,
+      punched_out_at: null,
     };
-    await supabase
+
+    const { error: lineErr } = await supabase
       .from("work_order_lines")
       .update(updatePayload)
       .eq("id", jobId);
+
+    if (lineErr) {
+      // If we fail here, the parts request exists but the job state didn't update;
+      // surface the error to the caller so they know something is off.
+      return NextResponse.json(
+        { error: lineErr.message ?? "Failed to update job for parts hold" },
+        { status: 500 },
+      );
+    }
+
+    // Make sure the parent work order no longer shows as "in_progress"
+    // when we've parked a job for parts.
+    await supabase
+      .from("work_orders")
+      .update({ status: "awaiting_approval" })
+      .eq("id", workOrderId);
   }
 
   return NextResponse.json({ requestId: pr.id });

@@ -701,18 +701,57 @@ export default function WorkOrderIdClient(): JSX.Element {
   const approveLine = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
-      const { error } = await supabase
+
+      // When approving a line that was on parts hold:
+      // - mark approval_state approved
+      // - move status to queued (ready to start)
+      // - clear hold + punch timestamps so tech gets a fresh Start button
+      const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
+        approval_state: "approved",
+        status: "queued",
+        hold_reason: null,
+        punched_in_at: null,
+        punched_out_at: null,
+      };
+
+      const { data, error } = await supabase
         .from("work_order_lines")
-        .update({
-          approval_state: "approved",
-          status: "queued",
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", lineId);
-      if (error) return toast.error(error.message);
+        .update(update)
+        .eq("id", lineId)
+        .select("work_order_id")
+        .maybeSingle();
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      const workOrderId =
+        (data as Pick<WorkOrderLine, "work_order_id"> | null)?.work_order_id ??
+        wo?.id ??
+        null;
+
+      if (workOrderId) {
+        // If the work order was previously marked in_progress while waiting for parts,
+        // move it back to queued to match the fact that no line is currently running.
+        const { error: woErr } = await supabase
+          .from("work_orders")
+          .update({ status: "queued" } as DB["public"]["Tables"]["work_orders"]["Update"])
+          .eq("id", workOrderId);
+
+        if (woErr) {
+          // eslint-disable-next-line no-console
+          console.error(
+            "[approveLine] failed to update work order status",
+            woErr,
+          );
+        }
+      }
+
       toast.success("Line approved");
       void fetchAll();
     },
-    [fetchAll],
+    [fetchAll, wo?.id],
   );
 
   const declineLine = useCallback(
@@ -966,7 +1005,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             {/* Vehicle & Customer */}
             <div className="rounded-xl border border-border bg-card/95 p-4">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-white sm:text-base">
+                <h2 className="text-sm font-semibold text_white sm:text-base">
                   Vehicle &amp; Customer
                 </h2>
                 <button
@@ -1067,7 +1106,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </h2>
               </div>
 
-            {!hasAnyApprovalItems ? (
+              {!hasAnyApprovalItems ? (
                 <p className="text-xs text-neutral-400">
                   No lines waiting for approval.
                 </p>
