@@ -65,7 +65,7 @@ export default function TechAssistant({
     const text = inputRef.current?.value?.trim();
     if (!text) return;
 
-    // 🔒 Always bundle structured context so the model stays on the right system
+    // Bundle structured context so the model stays on the right track
     const v = vehicle ?? {};
     const lines: string[] = [];
 
@@ -91,7 +91,7 @@ export default function TechAssistant({
     "placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-orange-500";
 
   return (
-    <div className="space-y-6 text-white text-sm">
+    <div className="space-y-6 text-sm text-white">
       <h1 className="font-header text-xl text-orange-400">Tech Assistant</h1>
 
       {/* CARD: Vehicle + Notes + Attach */}
@@ -199,12 +199,12 @@ export default function TechAssistant({
         </div>
       </div>
 
-      {/* CARD: Conversation – flex column so the list scrolls, composer stays pinned */}
+      {/* CARD: Conversation – fixed-height scroll area so iPad can scroll */}
       <div className="flex flex-col rounded-lg border border-white/10 bg-black/40 backdrop-blur">
         {/* Scrollable messages */}
         <div
           ref={scrollRef}
-          className="flex-1 min-h-[160px] max-h-[50vh] space-y-3 overflow-y-auto p-4"
+          className="h-[50vh] space-y-3 overflow-y-auto p-4"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {messages.map((m, i) => {
@@ -273,7 +273,7 @@ export default function TechAssistant({
           )}
         </div>
 
-        {/* Composer pinned to bottom */}
+        {/* Composer pinned at bottom of the card */}
         <form
           onSubmit={onSubmit}
           className="flex gap-2 border-t border-white/10 p-3"
