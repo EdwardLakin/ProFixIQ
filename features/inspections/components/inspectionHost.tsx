@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense } from "react";
+import { Suspense } from "react";
 import dynamic from "next/dynamic";
 
 /** Props our screens accept (now includes params for modal renders). */

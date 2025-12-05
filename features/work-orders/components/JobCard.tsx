@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
 import { UsePartButton } from "@work-orders/components/UsePartButton";
 import { PartsUsedList } from "@work-orders/components/PartsUsedList";

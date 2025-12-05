@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+
 import Link from "next/link";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
 

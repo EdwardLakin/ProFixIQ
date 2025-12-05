@@ -1325,7 +1325,7 @@ function AddAxlePicker({
 }// shared/components/Section.tsx
 "use client";
 
-import React from "react";
+
 import { cn } from "@shared/lib/utils";
 
 interface SectionProps {
@@ -1568,7 +1568,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     </div>
   );
 }// components/inspection/SectionWrapper.tsx
-import React, { useState } from "react";
+import { useState } from "react";
 
 interface SectionWrapperProps {
   title: string;
@@ -1600,7 +1600,7 @@ const SectionWrapper: React.FC<SectionWrapperProps> = ({
 export default SectionWrapper;
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
@@ -2992,7 +2992,7 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
   };
 }"use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@headlessui/react";
 import InspectionHost from "@/features/inspections/components/inspectionHost";
 

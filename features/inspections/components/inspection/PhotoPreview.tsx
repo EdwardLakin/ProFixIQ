@@ -1,6 +1,6 @@
 // components/inspection/PhotoPreview.tsx
 
-import React from "react";
+
 
 interface PhotoPreviewProps {
   photoUrls?: string[];

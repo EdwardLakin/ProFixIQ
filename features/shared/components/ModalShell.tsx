@@ -2,7 +2,7 @@
 "use client";
 
 import { Dialog } from "@headlessui/react";
-import React from "react";
+
 
 type ModalShellProps = {
   isOpen: boolean;

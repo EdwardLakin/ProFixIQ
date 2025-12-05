@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+
 import useVehicleInfo from "@shared/hooks/useVehicleInfo";
 
 export default function VehicleSelector() {

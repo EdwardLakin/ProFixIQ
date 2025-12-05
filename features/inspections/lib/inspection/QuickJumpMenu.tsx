@@ -1,5 +1,5 @@
 // src/components/inspection/QuickJumpMenu.tsx
-import React from "react";
+
 import { InspectionSession } from "@inspections/lib/inspection/types";
 
 interface QuickJumpMenuProps {

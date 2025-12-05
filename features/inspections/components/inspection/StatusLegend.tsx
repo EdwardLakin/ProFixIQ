@@ -1,5 +1,5 @@
 // src/components/inspection/StatusLegend.tsx
-import React from "react";
+
 
 const StatusLegend: React.FC = () => {
   return (

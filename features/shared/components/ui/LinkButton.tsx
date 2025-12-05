@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import clsx from "clsx";
-import React from "react";
+
 
 type Variant = "default" | "secondary" | "destructive" | "ghost" | "outline";
 type Size = "sm" | "md" | "lg";

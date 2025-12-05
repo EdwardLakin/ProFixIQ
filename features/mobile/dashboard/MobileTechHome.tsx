@@ -1,7 +1,7 @@
 // features/mobile/dashboard/MobileTechHome.tsx
 "use client";
 
-import React, {
+import { 
   useEffect,
   useMemo,
   useState,

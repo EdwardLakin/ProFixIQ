@@ -1,7 +1,7 @@
 // features/ai/components/chat/NewChatModal.tsx
 "use client";
 
-import React, {
+import { 
   useEffect,
   useMemo,
   useState,

@@ -1,7 +1,7 @@
 // features/mobile/components/MobileRoleHub.tsx
 "use client";
 
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import {
   MOBILE_TILES,

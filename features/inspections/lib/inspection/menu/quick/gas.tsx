@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useContext } from "react";
+import { memo, useContext } from "react";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type {
   InspectionItem,

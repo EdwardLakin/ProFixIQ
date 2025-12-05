@@ -3401,7 +3401,7 @@ export default function PartsRequestsPage() {
 
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -3785,7 +3785,7 @@ export default function QuotingQueuePage(): JSX.Element {
 
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
@@ -6136,7 +6136,7 @@ export async function POST(req: Request) {
 
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { format } from "date-fns";
@@ -8583,7 +8583,7 @@ export { default } from "@/features/work-orders/app/work-orders/quote-review/pag
 "use client";
 
 import Link from "next/link";
-import React from "react";
+
 import { FaCheck, FaTimes } from "react-icons/fa";
 
 export default function ComparePlansPage() {
@@ -11123,7 +11123,7 @@ export async function POST(req: NextRequest) {
 
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
@@ -11868,7 +11868,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
 
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
@@ -12799,7 +12799,7 @@ export default function GenericInspectionScreen(): JSX.Element {
 
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
@@ -14113,7 +14113,7 @@ export default function SummaryPage() {
 // features/inspections/app/inspection/maintenance50/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 
@@ -14897,7 +14897,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
 
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
@@ -15752,7 +15752,7 @@ export default function Maintenance50AirPage(): JSX.Element {
 // features/inspections/components/inspection/FinishInspectionButton.tsx
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/Button";
 
@@ -16909,7 +16909,7 @@ export default function WhySection() {
 
 "use client";
 
-import React from "react";
+
 
 interface QuoteLine {
   description: string;
@@ -25386,7 +25386,7 @@ export function MobileWorkOrderLines({
 
 "use client";
 
-import React, {
+import { 
   useCallback,
   useEffect,
   useMemo,

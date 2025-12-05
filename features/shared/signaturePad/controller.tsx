@@ -1,7 +1,7 @@
 // features/shared/signaturePad/controller.tsx
 "use client";
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 type SigCanvasInstance = {
   clear: () => void;

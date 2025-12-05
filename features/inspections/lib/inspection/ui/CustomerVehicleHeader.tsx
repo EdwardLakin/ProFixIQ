@@ -1,7 +1,7 @@
 // features/inspections/lib/inspection/ui/CustomerVehicleHeader.tsx
 "use client";
 
-import React from "react";
+
 
 type Customer = {
   first_name?: string | null;

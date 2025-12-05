@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;

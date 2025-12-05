@@ -384,7 +384,7 @@ export default function useUnifiedInspection(initial: InspectionSession) {
 // features/inspections/unified/ui/SectionDisplay.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   InspectionSection,
   InspectionItemStatus,
@@ -656,7 +656,7 @@ export default function SectionDisplay({
 
 "use client";
 
-import React from "react";
+
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
 type GridUnitMode = "metric" | "imperial";
@@ -1107,7 +1107,7 @@ export default AxleGrid;
 
 "use client";
 
-import React from "react";
+
 
 export interface BatteryMeasurement {
   label: string;
@@ -1260,7 +1260,7 @@ export default BatteryGrid;
 
 "use client";
 
-import React from "react";
+
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
 type GridUnitMode = "metric" | "imperial";
@@ -1656,7 +1656,7 @@ export default CornerGrid;
 
 "use client";
 
-import React from "react";
+
 
 type Props = {
   onSave?: () => void;
@@ -1718,7 +1718,7 @@ export default function InspectionActionBar({
 
 "use client";
 
-import React from "react";
+
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 type Props = {
@@ -1747,7 +1747,7 @@ export default function InspectionHeader({ session }: Props) {
 
 "use client";
 
-import React from "react";
+
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 type Props = {
@@ -1778,7 +1778,7 @@ export default function InspectionSummary({ session }: Props) {
 
 "use client";
 
-import React from "react";
+
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import SectionRenderer from "./SectionRenderer";
 
@@ -1816,7 +1816,7 @@ export default function InspectionUnifiedScreen({ session, onUpdateSession }: Pr
 
 "use client";
 
-import React from "react";
+
 import type {
   InspectionSection,
   InspectionItem,
@@ -1969,7 +1969,7 @@ export async function interpretTranscript(
 
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import { interpretTranscript } from "./interpretTranscript";
 import { applyVoiceCommands } from "./commandMapper";

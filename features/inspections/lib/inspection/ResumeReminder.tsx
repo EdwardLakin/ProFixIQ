@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+
 import useInspectionSession from "@inspections/hooks/useInspectionSession";
 
 const ResumeReminder = () => {

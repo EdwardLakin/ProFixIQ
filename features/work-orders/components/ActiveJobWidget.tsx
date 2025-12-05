@@ -1,7 +1,7 @@
 // features/work-orders/components/ActiveJobWidget.tsx
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";

@@ -1,6 +1,6 @@
 // lib/inspection/ProgressTracker.tsx
 
-import React from "react";
+
 
 interface ProgressTrackerProps {
   currentItem: number;

@@ -25,7 +25,7 @@ mkdir -p "app/mobile/work-orders/[id]/inspection/unified"
 cat > features/inspections/unified/ui/InspectionUnifiedScreen.tsx <<'TSX'
 "use client";
 
-import React from "react";
+
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import SectionRenderer from "./SectionRenderer";
 
@@ -62,7 +62,7 @@ TSX
 cat > features/inspections/unified/ui/SectionRenderer.tsx <<'TSX'
 "use client";
 
-import React from "react";
+
 import type {
   InspectionSection,
   InspectionItem,
@@ -163,7 +163,7 @@ TSX
 cat > features/inspections/unified/ui/CornerGrid.tsx <<'TSX'
 "use client";
 
-import React from "react";
+
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
 type Props = {
@@ -198,7 +198,7 @@ TSX
 cat > features/inspections/unified/ui/AxleGrid.tsx <<'TSX'
 "use client";
 
-import React from "react";
+
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
 type Props = {
@@ -233,7 +233,7 @@ TSX
 cat > features/inspections/unified/ui/InspectionActionBar.tsx <<'TSX'
 "use client";
 
-import React from "react";
+
 
 type Props = {
   onSave?: () => void;
@@ -294,7 +294,7 @@ TSX
 cat > features/inspections/unified/ui/InspectionHeader.tsx <<'TSX'
 "use client";
 
-import React from "react";
+
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 type Props = {
@@ -322,7 +322,7 @@ TSX
 cat > features/inspections/unified/ui/InspectionSummary.tsx <<'TSX'
 "use client";
 
-import React from "react";
+
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 type Props = {
@@ -410,7 +410,7 @@ TS
 cat > features/inspections/unified/voice/VoiceInspectionController.tsx <<'TSX'
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import { interpretTranscript } from "./interpretTranscript";
 import { applyVoiceCommands } from "./commandMapper";
@@ -627,7 +627,7 @@ TS
 #######################################
 
 cat > "app/work-orders/[id]/inspection/unified/page.tsx" <<'TSX'
-import React from "react";
+
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import InspectionUnifiedScreen from "@/features/inspections/unified/ui/InspectionUnifiedScreen";
 
@@ -687,7 +687,7 @@ export default function UnifiedInspectionPage() {
 TSX
 
 cat > "app/mobile/work-orders/[id]/inspection/unified/page.tsx" <<'TSX'
-import React from "react";
+
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import InspectionUnifiedScreen from "@/features/inspections/unified/ui/InspectionUnifiedScreen";
 

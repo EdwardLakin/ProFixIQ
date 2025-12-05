@@ -6,7 +6,7 @@
  * Integrated with VIN scanner + draft store.
  */
 
-import React, {
+import { 
   useCallback,
   useEffect,
   useMemo,

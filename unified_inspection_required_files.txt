@@ -1025,7 +1025,7 @@ export default PauseResumeButton;
 ===== FILE: ./features/inspections/lib/inspection/StartListeningButton.tsx =====
 "use client";
 
-import React from "react";
+
 
 interface StartListeningButtonProps {
   isListening: boolean;
@@ -1056,7 +1056,7 @@ export default function StartListeningButton(props: any) {
 ===== FILE: ./features/inspections/lib/inspection/ProgressTracker.tsx =====
 // lib/inspection/ProgressTracker.tsx
 
-import React from "react";
+
 
 interface ProgressTrackerProps {
   currentItem: number;

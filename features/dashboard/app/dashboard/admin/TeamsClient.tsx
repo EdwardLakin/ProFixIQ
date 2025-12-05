@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+
 
 type Team = { name: string; members: number; lead?: string | null };
 

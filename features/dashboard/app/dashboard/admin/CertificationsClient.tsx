@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+
 // import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 // import type { Database } from "@shared/types/types/supabase";
 

@@ -1,5 +1,5 @@
 // components/inspection/SectionWrapper.tsx
-import React, { useState } from "react";
+import { useState } from "react";
 
 interface SectionWrapperProps {
   title: string;

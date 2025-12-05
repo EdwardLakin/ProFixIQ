@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+
 
 export default function BillingClient() {
   // TODO: wire to your billing provider or Supabase tables (subscriptions, invoices)
