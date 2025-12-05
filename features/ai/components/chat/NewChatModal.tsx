@@ -1,7 +1,7 @@
 // features/ai/components/chat/NewChatModal.tsx
 "use client";
 
-import { 
+import {
   useEffect,
   useMemo,
   useState,
@@ -402,7 +402,7 @@ export default function NewChatModal({
   }, [pickerOpen, roleOpen]);
 
   // filtered users (by search + role)
-  const filtered = React.useMemo(() => {
+  const filtered = useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
       if (role !== "all" && (u.role ?? "") !== role) return false;
@@ -415,7 +415,7 @@ export default function NewChatModal({
     });
   }, [users, search, role]);
 
-  const selectedUsers = React.useMemo(
+  const selectedUsers = useMemo(
     () => users.filter((u) => selectedIds.includes(u.id)),
     [users, selectedIds],
   );
