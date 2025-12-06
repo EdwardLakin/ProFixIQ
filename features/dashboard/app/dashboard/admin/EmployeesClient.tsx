@@ -1,7 +1,7 @@
 // features/dashboard/app/dashboard/admin/EmployeesClient.tsx
 "use client";
 
-
+import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -10,10 +10,10 @@ type EmpRow = Pick<Profile, "id" | "full_name" | "email" | "role">;
 
 export default function AdminEmployeesClient() {
   const supabase = createClientComponentClient<Database>();
-  const [rows, setRows] = React.useState<EmpRow[] | null>(null);
-  const [err, setErr] = React.useState<string | null>(null);
+  const [rows, setRows] = useState<EmpRow[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     (async () => {
       const { data, error } = await supabase
         .from("profiles")
