@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
-import Image from "next/image";
 import { Dialog } from "@headlessui/react";
 import {
   PencilIcon,
@@ -111,13 +109,13 @@ export default function VehiclePhotoGallery({
                   className="block w-full focus:outline-none"
                   onClick={() => setFullscreenPhoto(photo)}
                 >
-                  <div className="relative aspect-video w-full">
-                    <Image
+                  <div className="relative aspect-video w-full bg-black/40">
+                    {/* plain <img> instead of next/image */}
+                    <img
                       src={photo.url}
                       alt={photo.caption || "Vehicle photo"}
-                      fill
-                      sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
-                      className="object-cover"
+                      className="h-full w-full object-cover"
+                      loading="lazy"
                     />
                   </div>
                 </button>
@@ -207,11 +205,9 @@ export default function VehiclePhotoGallery({
             <div className="flex flex-col gap-3 pt-2">
               <div className="relative mx-auto max-h-[70vh] w-full">
                 {fullscreenPhoto && (
-                  <Image
+                  <img
                     src={fullscreenPhoto.url}
                     alt={fullscreenPhoto.caption || "Vehicle photo"}
-                    width={1600}
-                    height={900}
                     className="mx-auto max-h-[70vh] w-auto rounded-xl object-contain"
                   />
                 )}
