@@ -90,7 +90,7 @@ type CreateAgentRequestBody = {
   attachmentIds?: string[];
 };
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const cookieStore = cookies();
   const supabase = createRouteHandlerClient<Database>({
     cookies: () => cookieStore,
