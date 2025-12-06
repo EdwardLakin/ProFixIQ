@@ -4,39 +4,41 @@ import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-function isAssetPath(p: string) {
+/** Detect static assets (skip middleware for these). */
+function isAsset(pathname: string) {
   return (
-    p.startsWith("/_next") ||
-    p.startsWith("/fonts") ||
-    p.endsWith("/favicon.ico") ||
-    p.endsWith(".svg") ||
-    /\.(png|jpg|jpeg|gif|webp|ico|css|js|map)$/i.test(p)
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/fonts") ||
+    pathname.endsWith("/favicon.ico") ||
+    /\.(png|jpg|jpeg|gif|webp|ico|css|js|svg|map)$/i.test(pathname)
   );
 }
 
-// Don’t split multi-cookie header; copy as-is
-function withSupabaseCookies(from: NextResponse, to: NextResponse) {
-  const setCookie = from.headers.get("set-cookie");
-  if (setCookie) to.headers.set("set-cookie", setCookie);
-  return to;
+/** Ensures Supabase auth cookies are passed through correctly. */
+function forwardAuthCookies(res: NextResponse, supaRes: NextResponse) {
+  const setCookie = supaRes.headers.get("set-cookie");
+  if (setCookie) res.headers.set("set-cookie", setCookie);
+  return res;
 }
 
 export async function middleware(req: NextRequest) {
-  // Base response that Supabase will attach cookies to
+  // Must be created BEFORE any early returns
   const res = NextResponse.next();
-
   const supabase = createMiddlewareClient<Database>({ req, res });
+
   const { pathname, search } = req.nextUrl;
 
-  // Skip static assets + API routes entirely
-  if (isAssetPath(pathname) || pathname.startsWith("/api")) {
+  // Skip static + API
+  if (isAsset(pathname) || pathname.startsWith("/api")) {
     return res;
   }
 
+  // Get session
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
+  // Public routes
   const isPublic =
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
@@ -45,99 +47,91 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/portal") ||
-    pathname.startsWith("/mobile/sign-in"); // mobile companion sign-in is public
+    pathname.startsWith("/mobile/sign-in");
 
-  // completed_onboarding = true OR shop_id IS NOT NULL → allowed into app
+  // Additional gating info
   let completed = false;
+
   if (session?.user) {
-    try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("completed_onboarding, shop_id")
-        .eq("id", session.user.id)
-        .limit(1)
-        .maybeSingle();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("completed_onboarding, shop_id")
+      .eq("id", session.user.id)
+      .maybeSingle();
 
-      const hasShop = !!profile?.shop_id;
-      const didOnboarding = !!profile?.completed_onboarding;
-
-      completed = didOnboarding || hasShop;
-    } catch {
-      completed = false;
-    }
+    const hasShop = !!profile?.shop_id;
+    const didOnboarding = !!profile?.completed_onboarding;
+    completed = hasShop || didOnboarding;
   }
 
-  // Signed-in user hits landing → redirect to dashboard or onboarding
+  // Signed-in user hits "/" → redirect to dashboard or onboarding
   if (pathname === "/" && session?.user) {
-    return withSupabaseCookies(
-      res,
+    return forwardAuthCookies(
       NextResponse.redirect(
-        new URL(completed ? "/dashboard" : "/onboarding", req.url),
+        new URL(completed ? "/dashboard" : "/onboarding", req.url)
       ),
+      res
     );
   }
 
-  // ---------------------- PUBLIC ROUTES ----------------------
+  // PUBLIC ROUTES HANDLING
   if (isPublic) {
     const isMainSignIn =
       pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
 
-    // If you're signed in and try to hit any sign-in route → bounce
+    // Already signed-in users should NOT view sign-in pages
     if (session?.user && (isMainSignIn || isMobileSignIn)) {
       const redirectParam = req.nextUrl.searchParams.get("redirect");
 
-      let to: string;
-      if (redirectParam) {
-        to = redirectParam;
-      } else if (isMobileSignIn) {
-        // mobile companion goes to mobile dashboard once onboarded
-        to = completed ? "/mobile" : "/onboarding";
-      } else {
-        // normal sign-in keeps existing behavior
-        to = completed ? "/dashboard" : "/onboarding";
-      }
+      const target = redirectParam
+        ? redirectParam
+        : isMobileSignIn
+        ? completed
+          ? "/mobile"
+          : "/onboarding"
+        : completed
+        ? "/dashboard"
+        : "/onboarding";
 
-      return withSupabaseCookies(
-        res,
-        NextResponse.redirect(new URL(to, req.url)),
+      return forwardAuthCookies(
+        NextResponse.redirect(new URL(target, req.url)),
+        res
       );
     }
 
-    // Don't let already-complete users sit on /onboarding
+    // Signed-in AND completed → don’t let them remain on onboarding
     if (pathname.startsWith("/onboarding") && session?.user && completed) {
-      return withSupabaseCookies(
-        res,
+      return forwardAuthCookies(
         NextResponse.redirect(new URL("/dashboard", req.url)),
+        res
       );
     }
 
     return res;
   }
 
-  // ---------------------------------------------------------------------------
-  // Protected routes from here (dashboard, work orders, inspections, mobile…)
-  // ---------------------------------------------------------------------------
+  // PROTECTED ROUTES BELOW
 
-  // Not signed in → send to correct sign-in with redirect
+  // 1) Not signed in?
   if (!session?.user) {
-    const isMobileRoute = pathname.startsWith("/mobile");
-    const loginPath = isMobileRoute ? "/mobile/sign-in" : "/sign-in";
-    const login = new URL(loginPath, req.url);
+    const isMobile = pathname.startsWith("/mobile");
+    const login = new URL(isMobile ? "/mobile/sign-in" : "/sign-in", req.url);
+
     login.searchParams.set("redirect", pathname + search);
 
-    return withSupabaseCookies(res, NextResponse.redirect(login));
+    return forwardAuthCookies(NextResponse.redirect(login), res);
   }
 
-  // Force onboarding if they are NOT completed and have no shop_id
-  if (completed === false && !pathname.startsWith("/onboarding")) {
-    return withSupabaseCookies(
-      res,
+  // 2) Force onboarding if incomplete
+  if (!completed && !pathname.startsWith("/onboarding")) {
+    return forwardAuthCookies(
       NextResponse.redirect(new URL("/onboarding", req.url)),
+      res
     );
   }
 
-  // Normal case: authed + completed → continue
+  // Default → continue
   return res;
 }
 
@@ -149,12 +143,12 @@ export const config = {
     "/confirm",
     "/signup",
     "/sign-in",
-    "/portal",
-    "/mobile/sign-in", // explicitly run middleware here too
+    "/portal/:path*",
+    "/mobile/sign-in",
     "/onboarding/:path*",
     "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
-    "/mobile/:path*", // protected mobile companion routes
+    "/mobile/:path*",
   ],
 };
