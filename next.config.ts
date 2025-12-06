@@ -9,6 +9,16 @@ const nextConfig = {
     turbo: false,
   },
 
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "scjjkmuwadwkaaqjoigx.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
+  },
+
   webpack(config: any) {
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
