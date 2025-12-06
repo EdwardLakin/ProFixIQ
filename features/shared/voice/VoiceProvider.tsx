@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 type PlannerKind = "openai" | "simple";
@@ -55,12 +63,19 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   }, [sp]);
 
   const [planner, setPlanner] = useState<PlannerKind>("openai");
-  const [context, setContextState] = useState<VoiceAgentContext>({ route: pathname, query });
+  const [context, setContextState] = useState<VoiceAgentContext>({
+    route: pathname,
+    query,
+  });
   const setContext = useCallback(
-    (patch: Partial<VoiceAgentContext>) => setContextState((c) => ({ ...c, ...patch })),
-    []
+    (patch: Partial<VoiceAgentContext>) =>
+      setContextState((c) => ({ ...c, ...patch })),
+    [],
   );
-  const clearContext = useCallback(() => setContextState({ route: pathname, query }), [pathname, query]);
+  const clearContext = useCallback(
+    () => setContextState({ route: pathname, query }),
+    [pathname, query],
+  );
 
   const [state, setState] = useState<VoiceState>({
     isListening: false,
@@ -74,7 +89,9 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   // Ensure native or webkit SpeechRecognition
   function ensureRecognizer(): SpeechRecognition | null {
     if (typeof window === "undefined") return null;
-    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR: any =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
     if (!SR) return null;
     if (recRef.current) return recRef.current;
     const rec: SpeechRecognition = new SR();
@@ -91,7 +108,11 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     };
 
     rec.onerror = (e: any) => {
-      setState((s) => ({ ...s, error: String(e?.error || "speech error"), isListening: false }));
+      setState((s) => ({
+        ...s,
+        error: String(e?.error || "speech error"),
+        isListening: false,
+      }));
     };
 
     rec.onend = () => {
@@ -105,10 +126,18 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const startListening = useCallback(() => {
     const rec = ensureRecognizer();
     if (!rec) {
-      setState((s) => ({ ...s, error: "Speech recognition not supported in this browser." }));
+      setState((s) => ({
+        ...s,
+        error: "Speech recognition not supported in this browser.",
+      }));
       return;
     }
-    setState((s) => ({ ...s, isListening: true, transcript: "", error: null }));
+    setState((s) => ({
+      ...s,
+      isListening: true,
+      transcript: "",
+      error: null,
+    }));
     rec.start();
   }, []);
 
@@ -118,17 +147,17 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
 
   // Very small intent helper: enriches the raw transcript with the current page context
   function buildGoal(raw: string, c: VoiceAgentContext): string {
-    // If you're on a WO page and user says "add line oil change", turn that into a structured goal.
     const lower = raw.trim().toLowerCase();
 
-    // Examples (add more rules anytime)
-    if (c.workOrderId && (lower.startsWith("add line") || lower.startsWith("add a line"))) {
+    if (
+      c.workOrderId &&
+      (lower.startsWith("add line") || lower.startsWith("add a line"))
+    ) {
       const desc = raw.replace(/^add (a )?line\s*/i, "");
       return `On work order ${c.workOrderId}, add a line: "${desc}".`;
     }
 
     if (lower.startsWith("create work order for")) {
-      // e.g. "create work order for John Smith plate 8abc123"
       return raw;
     }
 
@@ -161,14 +190,17 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           }),
         });
 
-        const j = (await res.json().catch(() => ({}))) as { runId?: string; error?: string };
+        const j = (await res.json().catch(() => ({}))) as {
+          runId?: string;
+          error?: string;
+        };
         if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`);
         setState((s) => ({ ...s, lastRunId: j.runId ?? null }));
       } catch (e: any) {
         setState((s) => ({ ...s, error: e?.message || "Agent error" }));
       }
     },
-    [state.transcript, context, planner]
+    [state.transcript, context, planner],
   );
 
   const api: VoiceAPI = {
@@ -184,7 +216,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Keep route/query fresh in context automatically
-  React.useEffect(() => {
+  useEffect(() => {
     setContextState((c) => ({ ...c, route: pathname, query }));
   }, [pathname, query]);
 
