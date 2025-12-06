@@ -1,6 +1,8 @@
 // middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 function isAssetPath(p: string) {
   return (
@@ -12,27 +14,32 @@ function isAssetPath(p: string) {
   );
 }
 
-/**
- * Very lightweight auth check:
- * We *only* look for Supabase auth cookies.
- * Supabase itself (in your pages / API routes) still enforces RLS and
- * real auth – middleware just decides where to send the user.
- */
-function isSignedIn(req: NextRequest): boolean {
-  const access = req.cookies.get("sb-access-token")?.value;
-  const refresh = req.cookies.get("sb-refresh-token")?.value;
-  return Boolean(access || refresh);
+// Don’t split multi-cookie header; copy as-is
+function withSupabaseCookies(from: NextResponse, to: NextResponse) {
+  const setCookie = from.headers.get("set-cookie");
+  if (setCookie) {
+    to.headers.set("set-cookie", setCookie);
+  }
+  return to;
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  // Let static assets and API routes through untouched
+  // 🔹 Skip static assets + API routes completely (no Supabase call)
   if (isAssetPath(pathname) || pathname.startsWith("/api")) {
     return NextResponse.next();
   }
 
-  const authed = isSignedIn(req);
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient<Database>({ req, res });
+
+  // ---------------------------------------------------------------------------
+  // Session + onboarding state
+  // ---------------------------------------------------------------------------
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
   const isPublic =
     pathname === "/" ||
@@ -42,57 +49,100 @@ export function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/portal") ||
-    pathname.startsWith("/mobile/sign-in"); // mobile companion sign-in is public
+    pathname.startsWith("/mobile/sign-in"); // ✅ mobile companion sign-in is public
 
-  // ---------------------- PUBLIC ROUTES ----------------------
+  // Treat EITHER completed_onboarding = true OR shop_id IS NOT NULL
+  // as "this user is allowed into the app"
+  let completed = false;
+  if (session?.user) {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("completed_onboarding, shop_id")
+        .eq("id", session.user.id)
+        .limit(1)
+        .maybeSingle();
+
+      const hasShop = !!profile?.shop_id;
+      const didOnboarding = !!profile?.completed_onboarding;
+
+      completed = didOnboarding || hasShop;
+    } catch {
+      completed = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Landing page → redirect into app/onboarding when already signed in
+  // ---------------------------------------------------------------------------
+  if (pathname === "/" && session?.user) {
+    const target = new URL(completed ? "/dashboard" : "/onboarding", req.url);
+    return withSupabaseCookies(res, NextResponse.redirect(target));
+  }
+
+  // ---------------------------------------------------------------------------
+  // PUBLIC ROUTES (marketing, sign-in, portal, mobile sign-in)
+  // ---------------------------------------------------------------------------
   if (isPublic) {
     const isMainSignIn =
       pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
 
-    // If you're already signed in and hit any sign-in route → bounce
-    if (authed && (isMainSignIn || isMobileSignIn)) {
+    // If you're signed in and hit ANY sign-in route → bounce to app
+    if (session?.user && (isMainSignIn || isMobileSignIn)) {
       const redirectParam = req.nextUrl.searchParams.get("redirect");
 
       let to: string;
       if (redirectParam) {
         to = redirectParam;
       } else if (isMobileSignIn) {
-        // mobile companion default landing
-        to = "/mobile";
+        // mobile companion goes to mobile dashboard once onboarded
+        to = completed ? "/mobile" : "/onboarding";
       } else {
-        // desktop default landing
-        to = "/dashboard";
+        // normal sign-in keeps existing behavior
+        to = completed ? "/dashboard" : "/onboarding";
       }
 
-      return NextResponse.redirect(new URL(to, req.url));
+      const target = new URL(to, req.url);
+      return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // Landing page: if already signed in, send to dashboard
-    if (pathname === "/" && authed) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
+    // Don’t let already-complete users sit on /onboarding
+    if (pathname.startsWith("/onboarding") && session?.user && completed) {
+      const target = new URL("/dashboard", req.url);
+      return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // Public page, not a special case → allow
-    return NextResponse.next();
+    // Public route, no special handling
+    return res;
   }
 
   // ---------------------------------------------------------------------------
-  // Protected routes from here (dashboard, work orders, inspections, mobile…)
+  // PROTECTED ROUTES (dashboard, work orders, inspections, mobile, etc.)
   // ---------------------------------------------------------------------------
 
-  if (!authed) {
+  // Not signed in → send to correct sign-in with redirect
+  if (!session?.user) {
     const isMobileRoute = pathname.startsWith("/mobile");
+
     const loginPath = isMobileRoute ? "/mobile/sign-in" : "/sign-in";
-    const loginUrl = new URL(loginPath, req.url);
-    loginUrl.searchParams.set("redirect", pathname + search);
-    return NextResponse.redirect(loginUrl);
+    const login = new URL(loginPath, req.url);
+    login.searchParams.set("redirect", pathname + search);
+
+    return withSupabaseCookies(res, NextResponse.redirect(login));
   }
 
-  // Authed + protected path → let it through
-  return NextResponse.next();
+  // Signed in but NOT completed onboarding → force onboarding
+  if (!completed && !pathname.startsWith("/onboarding")) {
+    const target = new URL("/onboarding", req.url);
+    return withSupabaseCookies(res, NextResponse.redirect(target));
+  }
+
+  // Normal case: authed + completed → continue
+  return res;
 }
 
+// Paths that run through middleware
 export const config = {
   matcher: [
     "/",
@@ -101,16 +151,14 @@ export const config = {
     "/confirm",
     "/signup",
     "/sign-in",
-    "/portal",
-    "/mobile/sign-in", // explicitly run middleware here too
+    "/portal/:path*",
+    "/mobile/sign-in",
     "/onboarding/:path*",
     "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
-    "/mobile/:path*", // protected mobile companion routes
+    "/mobile/:path*",
     "/parts/:path*",
-    "/tech/:path*",
-    "/menu",
-    "/billing",
+    "/tech/queue"
   ],
 };
