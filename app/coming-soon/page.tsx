@@ -1,6 +1,8 @@
 // app/coming-soon/page.tsx
-export const dynamic = "force-static";
 
+// Let Next treat this as a normal (dynamic) page so it can safely use cookies
+// or other dynamic features in the shared layout. If you want, you can
+// explicitly say `force-dynamic`, but omitting `dynamic` is enough.
 export default function ComingSoonPage() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-black text-white">
