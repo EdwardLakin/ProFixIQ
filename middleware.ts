@@ -22,13 +22,16 @@ function withSupabaseCookies(from: NextResponse, to: NextResponse) {
 }
 
 export async function middleware(req: NextRequest) {
+  // Base response that Supabase will attach cookies to
   const res = NextResponse.next();
-  const supabase = createMiddlewareClient<Database>({ req, res });
 
+  const supabase = createMiddlewareClient<Database>({ req, res });
   const { pathname, search } = req.nextUrl;
 
-  // Skip static assets + API routes
-  if (isAssetPath(pathname) || pathname.startsWith("/api")) return res;
+  // Skip static assets + API routes entirely
+  if (isAssetPath(pathname) || pathname.startsWith("/api")) {
+    return res;
+  }
 
   const {
     data: { session },
@@ -42,10 +45,9 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/portal") ||
-    pathname.startsWith("/mobile/sign-in"); // ✅ mobile companion sign-in is public
+    pathname.startsWith("/mobile/sign-in"); // mobile companion sign-in is public
 
-  // treat EITHER completed_onboarding = true OR shop_id IS NOT NULL
-  // as "this user is allowed into the app"
+  // completed_onboarding = true OR shop_id IS NOT NULL → allowed into app
   let completed = false;
   if (session?.user) {
     try {
@@ -120,8 +122,6 @@ export async function middleware(req: NextRequest) {
   // Not signed in → send to correct sign-in with redirect
   if (!session?.user) {
     const isMobileRoute = pathname.startsWith("/mobile");
-
-    // Use mobile sign-in for mobile companion routes, desktop sign-in for everything else
     const loginPath = isMobileRoute ? "/mobile/sign-in" : "/sign-in";
     const login = new URL(loginPath, req.url);
     login.searchParams.set("redirect", pathname + search);
@@ -150,11 +150,11 @@ export const config = {
     "/signup",
     "/sign-in",
     "/portal",
-    "/mobile/sign-in",     // ✅ explicitly run middleware here too
+    "/mobile/sign-in", // explicitly run middleware here too
     "/onboarding/:path*",
     "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
-    "/mobile/:path*",      // protected mobile companion routes
+    "/mobile/:path*", // protected mobile companion routes
   ],
 };
