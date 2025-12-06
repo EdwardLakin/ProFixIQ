@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -27,14 +26,18 @@ export default function TechPanel({
     : "—";
 
   const customerText = customer
-    ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() || "—"
+    ? [customer.first_name ?? "", customer.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || "—"
     : "—";
 
   return (
     <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
       <div className="mb-2 font-semibold text-orange-400">Tech Panel</div>
       <p className="text-sm text-neutral-300">
-        Work on <strong>{workOrder.custom_id || workOrder.id.slice(0, 8)}</strong>.{" "}
+        Work on{" "}
+        <strong>{workOrder.custom_id || workOrder.id.slice(0, 8)}</strong>.{" "}
         Vehicle: {vehicleText} · Customer: {customerText}.
       </p>
       <p className="mt-2 text-sm text-neutral-400">Jobs: {lines.length}</p>
@@ -49,7 +52,8 @@ export default function TechPanel({
       </div>
 
       <div className="mt-4 text-xs text-neutral-500">
-        Placeholder: wire your existing tech UI (punch, cause/correction, add job/quote, AI suggestions, photos) here.
+        Placeholder: wire your existing tech UI (punch, cause/correction, add
+        job/quote, AI suggestions, photos) here.
       </div>
     </div>
   );

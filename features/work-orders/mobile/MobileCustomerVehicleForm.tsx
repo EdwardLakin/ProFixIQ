@@ -1,7 +1,7 @@
 // features/work-orders/mobile/MobileCustomerVehicleForm.tsx
 "use client";
 
-import type React from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import type { MobileCustomer, MobileVehicle } from "./types";
@@ -13,8 +13,8 @@ type Props = {
   wo: WorkOrderRow | null;
   customer: MobileCustomer;
   vehicle: MobileVehicle;
-  onCustomerChange: React.Dispatch<React.SetStateAction<MobileCustomer>>;
-  onVehicleChange: React.Dispatch<React.SetStateAction<MobileVehicle>>;
+  onCustomerChange: Dispatch<SetStateAction<MobileCustomer>>;
+  onVehicleChange: Dispatch<SetStateAction<MobileVehicle>>;
   supabase: SupabaseClient<DB>; // kept for future lookups
 };
 
