@@ -1,8 +1,7 @@
 // features/dashboard/app/dashboard/admin/UsersPageClient.tsx
 "use client";
 
-
-
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -20,10 +19,11 @@ type RowWithShop = {
 
 export default function UsersPageClient() {
   const supabase = createClientComponentClient<DB>();
-  const [rows, setRows] = React.useState<RowWithShop[]>([]);
-  const [loading, setLoading] = React.useState(true);
 
-  React.useEffect(() => {
+  const [rows, setRows] = useState<RowWithShop[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
     (async () => {
       setLoading(true);
       const { data, error } = await supabase
@@ -35,7 +35,7 @@ export default function UsersPageClient() {
           role,
           shop_id,
           shops:shop_id ( name )
-        `
+        `,
         )
         .order("full_name", { ascending: true });
 
@@ -46,7 +46,7 @@ export default function UsersPageClient() {
 
   return (
     <div className="p-6 text-white">
-      <h1 className="text-2xl font-semibold mb-4">Employees</h1>
+      <h1 className="mb-4 text-2xl font-semibold">Employees</h1>
 
       {loading ? (
         <p className="opacity-70">Loading…</p>
@@ -70,7 +70,10 @@ export default function UsersPageClient() {
                   <td className="px-3 py-2">{r.role ?? "—"}</td>
                   <td className="px-3 py-2">{r.shops?.name ?? "—"}</td>
                   <td className="px-3 py-2">
-                    <Link href={`/dashboard/admin/employees/${r.id}`} className="text-orange-400 hover:underline">
+                    <Link
+                      href={`/dashboard/admin/employees/${r.id}`}
+                      className="text-orange-400 hover:underline"
+                    >
                       View
                     </Link>
                   </td>
