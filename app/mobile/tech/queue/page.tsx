@@ -18,45 +18,16 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
   completed: "Completed",
 };
 
-// Filter-chip styling (top of page)
+// summary chip styles (unchanged)
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    "border-slate-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-slate-400 data-[active=true]:bg-slate-500/15",
+    "border-slate-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
   in_progress:
-    "border-emerald-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-400 data-[active=true]:bg-emerald-500/15",
+    "border-amber-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
   on_hold:
-    "border-amber-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-amber-400 data-[active=true]:bg-amber-500/15",
+    "border-purple-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
   completed:
-    "border-sky-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-sky-400 data-[active=true]:bg-sky-500/15",
-};
-
-// Job card outline/background per status
-const JOB_CARD_STYLES: Record<RollupStatus, string> = {
-  awaiting:
-    "border-slate-800 bg-neutral-950/90",
-  in_progress:
-    "border-emerald-500 bg-neutral-950/95 shadow-[0_0_24px_rgba(16,185,129,0.7)]",
-  on_hold:
-    "border-amber-500 bg-neutral-950/95 shadow-[0_0_20px_rgba(251,191,36,0.4)]",
-  completed:
-    "border-sky-500 bg-neutral-950/95 shadow-[0_0_20px_rgba(56,189,248,0.45)]",
-};
-
-const JOB_STATUS_PILL_BASE =
-  "inline-flex items-center justify-center rounded-full border font-medium";
-
-// Status pill styling on the right side of each job card
-const JOB_STATUS_PILL_STYLES: Record<RollupStatus, string> = {
-  awaiting:
-    `${JOB_STATUS_PILL_BASE} px-2.5 py-0.5 text-[0.7rem] border-slate-500 bg-slate-900/70 text-slate-200`,
-  in_progress:
-    // bigger, green, glowing
-    `${JOB_STATUS_PILL_BASE} px-3 py-1 text-[0.75rem] border-emerald-400 bg-emerald-500/20 text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.85)]`,
-  on_hold:
-    `${JOB_STATUS_PILL_BASE} px-2.5 py-0.5 text-[0.7rem] border-amber-400 bg-amber-500/20 text-amber-100`,
-  completed:
-    // cool sky/teal instead of green
-    `${JOB_STATUS_PILL_BASE} px-2.5 py-0.5 text-[0.7rem] border-sky-400 bg-sky-500/20 text-sky-100`,
+    "border-emerald-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
 };
 
 function toBucket(status: string | null | undefined): RollupStatus {
@@ -67,6 +38,14 @@ function toBucket(status: string | null | undefined): RollupStatus {
   return "awaiting";
 }
 
+// queue sort priority: in-progress first, then on-hold, awaiting, completed
+const STATUS_RANK: Record<RollupStatus, number> = {
+  in_progress: 0,
+  on_hold: 1,
+  awaiting: 2,
+  completed: 3,
+};
+
 export default function MobileTechQueuePage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
@@ -76,7 +55,7 @@ export default function MobileTechQueuePage() {
     Record<string, { id: string; custom_id: string | null }>
   >({});
 
-  // map line.id -> 1-based line number inside its work order
+  // line.id -> 1-based “client view” line number
   const [lineNumberMap, setLineNumberMap] = useState<Record<string, number>>(
     {},
   );
@@ -101,7 +80,7 @@ export default function MobileTechQueuePage() {
         return;
       }
 
-      // 2) profile (to confirm they’re wired to a shop)
+      // 2) profile (shop linkage)
       const { data: prof, error: profErr } = await supabase
         .from("profiles")
         .select("*")
@@ -119,12 +98,11 @@ export default function MobileTechQueuePage() {
         return;
       }
 
-      // 3) work-order lines assigned to this tech
+      // 3) lines assigned to this tech
       const { data: techLines, error: linesErr } = await supabase
         .from("work_order_lines")
         .select("*")
-        .eq("assigned_to", user.id)
-        .order("created_at", { ascending: false });
+        .eq("assigned_to", user.id);
 
       if (linesErr) {
         setErr(linesErr.message);
@@ -135,7 +113,7 @@ export default function MobileTechQueuePage() {
       const assignedLines = techLines ?? [];
       setLines(assignedLines);
 
-      // 4) fetch WOs + line numbers for those WOs
+      // 4) fetch WOs + all lines for those WOs, to compute “client” line numbers
       const woIds = Array.from(
         new Set(
           assignedLines
@@ -152,9 +130,10 @@ export default function MobileTechQueuePage() {
             .in("id", woIds),
           supabase
             .from("work_order_lines")
-            .select("id, work_order_id, created_at")
-            .in("work_order_id", woIds)
-            .order("created_at", { ascending: true }),
+            .select(
+              "id, work_order_id, created_at, job_type, approval_state",
+            )
+            .in("work_order_id", woIds),
         ]);
 
         const mapWO: Record<string, { id: string; custom_id: string | null }> =
@@ -164,23 +143,50 @@ export default function MobileTechQueuePage() {
         });
         setWorkOrderMap(mapWO);
 
-        // build lineNumberMap: line.id -> 1-based index inside its WO
+        // Build lineNumberMap using the SAME sort as MobileWorkOrderClient
         const lnMap: Record<string, number> = {};
         const allLines = allLinesRes.data ?? [];
 
         const grouped: Record<
           string,
-          { id: string; work_order_id: string | null }[]
+          {
+            id: string;
+            work_order_id: string | null;
+            created_at: string | null;
+            job_type: string | null;
+            approval_state: string | null;
+          }[]
         > = {};
+
         allLines.forEach((ln) => {
           if (!ln.work_order_id) return;
+          if ((ln.approval_state ?? "").toLowerCase() === "pending") return;
           if (!grouped[ln.work_order_id]) grouped[ln.work_order_id] = [];
           grouped[ln.work_order_id].push(ln);
         });
 
+        const jobTypePriority: Record<string, number> = {
+          diagnosis: 1,
+          inspection: 2,
+          maintenance: 3,
+          repair: 4,
+        };
+
         Object.values(grouped).forEach((arr) => {
+          arr.sort((a, b) => {
+            const pa =
+              jobTypePriority[String(a.job_type ?? "repair")] ?? 999;
+            const pb =
+              jobTypePriority[String(b.job_type ?? "repair")] ?? 999;
+            if (pa !== pb) return pa - pb;
+
+            const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return ta - tb;
+          });
+
           arr.forEach((ln, idx) => {
-            lnMap[ln.id] = idx + 1; // 1-based
+            lnMap[ln.id] = idx + 1; // 1-based line numbers
           });
         });
 
@@ -208,11 +214,33 @@ export default function MobileTechQueuePage() {
     return base;
   }, [lines]);
 
-  // filtered list
+  // sort queue: in-progress first, then by line number, then newest
+  const sortedLines = useMemo(() => {
+    const copy = [...lines];
+    copy.sort((a, b) => {
+      const ba = toBucket(a.status);
+      const bb = toBucket(b.status);
+
+      const ra = STATUS_RANK[ba];
+      const rb = STATUS_RANK[bb];
+      if (ra !== rb) return ra - rb;
+
+      const na = lineNumberMap[a.id] ?? 9999;
+      const nb = lineNumberMap[b.id] ?? 9999;
+      if (na !== nb) return na - nb;
+
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+    return copy;
+  }, [lines, lineNumberMap]);
+
+  // apply filter on top of that sort
   const filteredLines = useMemo(() => {
-    if (activeFilter == null) return lines;
-    return lines.filter((l) => toBucket(l.status) === activeFilter);
-  }, [lines, activeFilter]);
+    if (activeFilter == null) return sortedLines;
+    return sortedLines.filter((l) => toBucket(l.status) === activeFilter);
+  }, [sortedLines, activeFilter]);
 
   if (loading) {
     return (
@@ -329,7 +357,7 @@ export default function MobileTechQueuePage() {
                   if (!slug) return;
                   router.push(`/mobile/work-orders/${slug}?mode=tech`);
                 }}
-                className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99] ${JOB_CARD_STYLES[bucket]}`}
+                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99]"
               >
                 <div className="min-w-0">
                   <div className="truncate text-[0.85rem] font-medium text-neutral-50">
@@ -342,12 +370,10 @@ export default function MobileTechQueuePage() {
                   <div className="mt-0.5 text-[0.7rem] text-neutral-400">
                     {lineNumber
                       ? `Line #${lineNumber}`
-                      : `Line #${line.id.slice(0, 8)}`}
+                      : `Line id ${line.id.slice(0, 8)}`}
                   </div>
                 </div>
-
-                {/* Status pill on the right */}
-                <span className={JOB_STATUS_PILL_STYLES[bucket]}>
+                <span className="shrink-0 rounded-full border border-neutral-700 px-2 py-0.5 text-[0.7rem] text-neutral-200">
                   {STATUS_LABELS[bucket]}
                 </span>
               </button>

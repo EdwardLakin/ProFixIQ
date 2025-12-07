@@ -33,8 +33,7 @@ export default function JobPunchButton({
   const normalizedStatus = (status ?? "").toLowerCase();
   const isOnHold = normalizedStatus === "on_hold";
 
-  // 🔹 While on hold we treat it as *not started* (timer is stopped),
-  // but we will disable the button so techs must release the hold first.
+  // started = we have an open punch (in + no out) and not on hold
   const isStarted = !!punchedInAt && !punchedOutAt && !isOnHold;
 
   const effectiveDisabled = disabled || isOnHold;
@@ -59,7 +58,6 @@ export default function JobPunchButton({
 
       if (punchErr) {
         if (punchErr.code === "23505") {
-          // partial unique index hit
           toast.error("You already have another active job. Finish it first.");
         } else if (punchErr.code === "28000") {
           toast.error("Job is not assigned to you.");
@@ -71,10 +69,12 @@ export default function JobPunchButton({
 
       // 2) Make sure the work_order_lines row reflects this:
       //    - status -> in_progress
-      //    - punched_in_at set if it was previously null
+      //    - punched_out_at cleared so the timer is "running"
+      //    - punched_in_at set the first time we ever start this job
       const nowIso = new Date().toISOString();
       const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
         status: "in_progress",
+        punched_out_at: null, // 👈 reopen the punch segment
       };
 
       if (!punchedInAt) {
@@ -87,7 +87,6 @@ export default function JobPunchButton({
         .eq("id", lineId);
 
       if (lineErr) {
-        // Not fatal for the shift, but important for UI consistency
         toast.error(lineErr.message ?? "Failed to update job status");
         return;
       }
@@ -95,7 +94,6 @@ export default function JobPunchButton({
       toast.success("Started job");
       showFlash("started");
 
-      // Notify listeners (FocusedJobModal, MobileFocusedJob, WO page)
       window.dispatchEvent(new CustomEvent("wol:refresh"));
       await onUpdated?.();
     } catch (e: any) {
@@ -105,13 +103,11 @@ export default function JobPunchButton({
     }
   };
 
-  // NOTE: finishing still goes through the Cause / Correction modal.
-  // That modal will set status=completed + punched_out_at.
+  // Finishing still goes through the Cause / Correction modal.
   const handlePrimary = () => {
     if (busy || effectiveDisabled) return;
 
     if (isStarted) {
-      // Let the parent open Complete modal; when that saves it will punch_out.
       onFinishRequested?.();
       showFlash("finished");
       return;
@@ -150,7 +146,6 @@ export default function JobPunchButton({
           : "Start job"}
       </button>
 
-      {/* Flash overlay */}
       {flash && (
         <div
           className={`pointer-events-none absolute inset-x-0 -top-3 mx-auto w-fit rounded px-2 py-1 text-xs font-semibold shadow-md

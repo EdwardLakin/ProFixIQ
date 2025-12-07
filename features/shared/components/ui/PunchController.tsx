@@ -6,14 +6,21 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import PunchInOutButton from "@shared/components/PunchInOutButton";
 
-type TechShift = Database["public"]["Tables"]["tech_shifts"]["Row"];
-type PunchEventInsert = Database["public"]["Tables"]["punch_events"]["Insert"];
+type DB = Database;
+type TechShift = DB["public"]["Tables"]["tech_shifts"]["Row"];
+type PunchEventInsert = DB["public"]["Tables"]["punch_events"]["Insert"];
+type WorkOrderLineUpdate =
+  DB["public"]["Tables"]["work_order_lines"]["Update"];
 
 export default function PunchController() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = useClient();
   const [userId, setUserId] = useState<string | null>(null);
   const [activeShift, setActiveShift] = useState<TechShift | null>(null);
   const [loading, setLoading] = useState(false);
+
+  function useClient() {
+    return useMemo(() => createClientComponentClient<DB>(), []);
+  }
 
   // Optional: affects global colors while punched in
   useEffect(() => {
@@ -28,7 +35,9 @@ export default function PunchController() {
   // get session + current open shift
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       const uid = session?.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
@@ -51,6 +60,31 @@ export default function PunchController() {
     setActiveShift(data ?? null);
   }
 
+  // helper: when ending a shift, stop timers on any active jobs
+  async function punchOutOfActiveJobsForTech(uid: string) {
+    const nowIso = new Date().toISOString();
+
+    const update: WorkOrderLineUpdate = {
+      // we ONLY close the current punch segment here.
+      punched_out_at: nowIso,
+      // if you decide you want jobs to move back to "queued"
+      // when the tech leaves, you can also set:
+      // status: "queued",
+    };
+
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update(update)
+      .eq("assigned_to", uid)
+      .eq("status", "in_progress")
+      .is("punched_out_at", null);
+
+    if (error) {
+      // log but don't block the shift punch-out
+      console.error("[PunchController] failed to punch out active jobs:", error);
+    }
+  }
+
   async function onPunchIn() {
     if (!userId) return;
     setLoading(true);
@@ -61,7 +95,7 @@ export default function PunchController() {
         tech_id: userId,
         start_time: new Date().toISOString(),
         status: "open",
-        type: "work", // or whatever your enum/string is
+        type: "work",
       })
       .select("*")
       .single();
@@ -83,7 +117,10 @@ export default function PunchController() {
     if (!userId || !activeShift) return;
     setLoading(true);
 
-    // close current shift
+    // first, close any active job punches for this tech
+    await punchOutOfActiveJobsForTech(userId);
+
+    // then close current shift
     const { error: updErr } = await supabase
       .from("tech_shifts")
       .update({
@@ -105,8 +142,7 @@ export default function PunchController() {
     setLoading(false);
   }
 
-  // Optional: show the job you’re currently working (if you track it).
-  // For now, we just display a generic label while punched in.
+  // Optional: show the shift as the “job” on the global punch button
   const activeJob = useMemo(
     () =>
       activeShift
