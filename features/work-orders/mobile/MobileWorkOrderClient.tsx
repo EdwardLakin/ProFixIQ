@@ -1,6 +1,6 @@
 "use client";
 
-import { 
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -41,7 +41,7 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
   return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
 }
 
-/* ---------------------------- Badges ---------------------------- */
+/* ---------------------------- Badges (WO header) ---------------------------- */
 
 type KnownStatus =
   | "awaiting_approval"
@@ -87,6 +87,49 @@ const chip = (s: string | null | undefined): string => {
     .replaceAll(" ", "_") as KnownStatus;
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
+
+/* ------------------------ Line status → card styles ------------------------ */
+
+type LineRollupStatus = "awaiting" | "in_progress" | "on_hold" | "completed";
+
+const LINE_STATUS_LABELS: Record<LineRollupStatus, string> = {
+  awaiting: "Awaiting",
+  in_progress: "In progress",
+  on_hold: "On hold",
+  completed: "Completed",
+};
+
+const LINE_CARD_STYLES: Record<LineRollupStatus, string> = {
+  awaiting:
+    "border-slate-700 bg-neutral-950/80 hover:border-orange-400/70",
+  in_progress:
+    "border-emerald-500 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),rgba(15,23,42,0.96))] shadow-[0_0_26px_rgba(16,185,129,0.70)]",
+  on_hold:
+    "border-amber-500 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.16),rgba(15,23,42,0.98))]",
+  completed:
+    "border-sky-500 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),rgba(15,23,42,0.97))]",
+};
+
+const LINE_PILL_STYLES: Record<LineRollupStatus, string> = {
+  awaiting:
+    "border-slate-500 bg-slate-900/80 text-slate-200",
+  in_progress:
+    "border-emerald-400 bg-emerald-500/20 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.9)]",
+  on_hold:
+    "border-amber-400 bg-amber-500/15 text-amber-100",
+  completed:
+    "border-sky-400 bg-sky-500/15 text-sky-100",
+};
+
+function toLineBucket(status: string | null | undefined): LineRollupStatus {
+  const s = (status ?? "").toLowerCase();
+  if (s === "in_progress") return "in_progress";
+  if (s === "on_hold") return "on_hold";
+  if (s === "completed" || s === "ready_to_invoice" || s === "invoiced") {
+    return "completed";
+  }
+  return "awaiting";
+}
 
 // roles allowed to approve / decline
 const APPROVAL_ROLES = new Set([
@@ -207,7 +250,7 @@ export default function MobileWorkOrderClient({
     };
   }, [routeId, setCurrentUserId, setUserId]);
 
-    /* ---------------------- FETCH ---------------------- */
+  /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
     async (retry = 0) => {
       if (!routeId) return;
@@ -320,7 +363,7 @@ export default function MobileWorkOrderClient({
         const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
         setLines(lineRows);
 
-        // 🔹 NEW: populate tech names from assigned_to
+        // 🔹 populate tech names from assigned_to
         const techIds = Array.from(
           new Set(
             lineRows
@@ -478,10 +521,9 @@ export default function MobileWorkOrderClient({
     };
   }, [fetchAll]);
 
-
   /* ----------------------- Derived data ----------------------- */
 
-    // simple map of active quote-lines per work_order_line
+  // simple map of active quote-lines per work_order_line
   const activeQuotesByLine = useMemo(() => {
     const m: Record<string, WorkOrderQuoteLine[]> = {};
 
@@ -546,7 +588,7 @@ export default function MobileWorkOrderClient({
     ? APPROVAL_ROLES.has(currentUserRole)
     : false;
 
-    type WorkOrderWaiterFlags = {
+  type WorkOrderWaiterFlags = {
     is_waiter?: boolean | null;
     waiter?: boolean | null;
     customer_waiting?: boolean | null;
@@ -634,9 +676,12 @@ export default function MobileWorkOrderClient({
     async (quoteId: string) => {
       if (!quoteId) return;
       try {
-        const res = await fetch(`/api/work-orders/quotes/${quoteId}/authorize`, {
-          method: "POST",
-        });
+        const res = await fetch(
+          `/api/work-orders/quotes/${quoteId}/authorize`,
+          {
+            method: "POST",
+          },
+        );
         const j = await res.json().catch(() => null);
         if (!res.ok) {
           throw new Error(j?.error || "Failed to authorize quote line");
@@ -696,10 +741,10 @@ export default function MobileWorkOrderClient({
 
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
 
-    // 🔹 Open mobile inspection run page for a given line
+  // 🔹 Open mobile inspection run page for a given line
   const openInspection = (lineId: string) => {
     if (!lineId) return;
-    // mobile inspections run route: /app/mobile/inspections/[id]/run
+    // mobile inspections run route: /mobile/inspections/[id]/run
     window.location.href = `/mobile/inspections/${lineId}/run`;
   };
 
@@ -1153,27 +1198,59 @@ export default function MobileWorkOrderClient({
                     ? techNamesById[ln.assigned_to] ?? "Assigned tech"
                     : null;
 
+                  const bucket = toLineBucket(ln.status);
+                  const cardColor = LINE_CARD_STYLES[bucket];
+                  const pillColor = LINE_PILL_STYLES[bucket];
+                  const statusLabel = LINE_STATUS_LABELS[bucket];
+
                   return (
                     <div
                       key={ln.id}
-                      className="space-y-1 rounded-xl border border-white/10 bg-black/40 p-2"
+                      className={[
+                        "space-y-1 rounded-xl border p-2 transition-shadow",
+                        cardColor,
+                        punchedIn
+                          ? "ring-2 ring-emerald-500/80"
+                          : "ring-0",
+                      ].join(" ")}
                     >
-                      <JobCard
-                        index={idx}
-                        line={ln}
-                        parts={[]} // stripped-down: no parts list on main mobile view
-                        technicians={[]} // assignment handled in focused view / desktop
-                        canAssign={canAssign}
-                        isPunchedIn={punchedIn}
-                        onOpen={openFocused}
-                        onAssign={undefined}
-                        // 🔹 new: go straight to mobile inspection run
-                        onOpenInspection={() => openInspection(ln.id)}
-                        onAddPart={undefined}
-                      />
+                      {/* header row with status pill on the right */}
+                      <div className="mb-1 flex items-center justify-between gap-2 px-1">
+                        <div className="text-[11px] text-neutral-400">
+                          {idx + 1}.{" "}
+                          {String(ln.job_type ?? "job").replaceAll(
+                            "_",
+                            " ",
+                          )}
+                        </div>
+                        <span
+                          className={[
+                            "inline-flex items-center rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em]",
+                            pillColor,
+                          ].join(" ")}
+                        >
+                          {statusLabel}
+                        </span>
+                      </div>
+
+                      <div className="rounded-lg border border-white/10 bg-black/40">
+                        <JobCard
+                          index={idx}
+                          line={ln}
+                          parts={[]} // stripped-down: no parts list on main mobile view
+                          technicians={[]} // assignment handled in focused view / desktop
+                          canAssign={canAssign}
+                          isPunchedIn={punchedIn}
+                          onOpen={openFocused}
+                          onAssign={undefined}
+                          // 🔹 new: go straight to mobile inspection run
+                          onOpenInspection={() => openInspection(ln.id)}
+                          onAddPart={undefined}
+                        />
+                      </div>
 
                       {/* Assigned tech pill */}
-                      <div className="pl-2 text-[11px] text-neutral-400">
+                      <div className="pl-2 pt-1 text-[11px] text-neutral-400">
                         Assigned to:{" "}
                         <span className="font-medium text-neutral-200">
                           {assignedTechName ?? "Unassigned"}
