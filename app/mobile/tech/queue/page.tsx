@@ -18,16 +18,45 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
   completed: "Completed",
 };
 
-// reuse the existing “queue” look, but this is mobile sized
+// Filter-chip styling (top of page)
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    "border-slate-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
+    "border-slate-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-slate-400 data-[active=true]:bg-slate-500/15",
   in_progress:
-    "border-amber-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
+    "border-emerald-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-400 data-[active=true]:bg-emerald-500/15",
   on_hold:
-    "border-purple-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
+    "border-amber-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-amber-400 data-[active=true]:bg-amber-500/15",
   completed:
-    "border-emerald-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
+    "border-sky-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-sky-400 data-[active=true]:bg-sky-500/15",
+};
+
+// Job card outline/background per status
+const JOB_CARD_STYLES: Record<RollupStatus, string> = {
+  awaiting:
+    "border-slate-800 bg-neutral-950/90",
+  in_progress:
+    "border-emerald-500 bg-neutral-950/95 shadow-[0_0_24px_rgba(16,185,129,0.7)]",
+  on_hold:
+    "border-amber-500 bg-neutral-950/95 shadow-[0_0_20px_rgba(251,191,36,0.4)]",
+  completed:
+    "border-sky-500 bg-neutral-950/95 shadow-[0_0_20px_rgba(56,189,248,0.45)]",
+};
+
+const JOB_STATUS_PILL_BASE =
+  "inline-flex items-center justify-center rounded-full border font-medium";
+
+// Status pill styling on the right side of each job card
+const JOB_STATUS_PILL_STYLES: Record<RollupStatus, string> = {
+  awaiting:
+    `${JOB_STATUS_PILL_BASE} px-2.5 py-0.5 text-[0.7rem] border-slate-500 bg-slate-900/70 text-slate-200`,
+  in_progress:
+    // bigger, green, glowing
+    `${JOB_STATUS_PILL_BASE} px-3 py-1 text-[0.75rem] border-emerald-400 bg-emerald-500/20 text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.85)]`,
+  on_hold:
+    `${JOB_STATUS_PILL_BASE} px-2.5 py-0.5 text-[0.7rem] border-amber-400 bg-amber-500/20 text-amber-100`,
+  completed:
+    // cool sky/teal instead of green
+    `${JOB_STATUS_PILL_BASE} px-2.5 py-0.5 text-[0.7rem] border-sky-400 bg-sky-500/20 text-sky-100`,
 };
 
 function toBucket(status: string | null | undefined): RollupStatus {
@@ -47,7 +76,7 @@ export default function MobileTechQueuePage() {
     Record<string, { id: string; custom_id: string | null }>
   >({});
 
-  // 🔹 NEW: map line.id -> 1-based line number inside its work order
+  // map line.id -> 1-based line number inside its work order
   const [lineNumberMap, setLineNumberMap] = useState<Record<string, number>>(
     {},
   );
@@ -135,12 +164,14 @@ export default function MobileTechQueuePage() {
         });
         setWorkOrderMap(mapWO);
 
-        // 🔹 build lineNumberMap: line.id -> 1-based index inside its WO
+        // build lineNumberMap: line.id -> 1-based index inside its WO
         const lnMap: Record<string, number> = {};
         const allLines = allLinesRes.data ?? [];
 
-        const grouped: Record<string, { id: string; work_order_id: string | null }[]> =
-          {};
+        const grouped: Record<
+          string,
+          { id: string; work_order_id: string | null }[]
+        > = {};
         allLines.forEach((ln) => {
           if (!ln.work_order_id) return;
           if (!grouped[ln.work_order_id]) grouped[ln.work_order_id] = [];
@@ -298,7 +329,7 @@ export default function MobileTechQueuePage() {
                   if (!slug) return;
                   router.push(`/mobile/work-orders/${slug}?mode=tech`);
                 }}
-                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99]"
+                className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99] ${JOB_CARD_STYLES[bucket]}`}
               >
                 <div className="min-w-0">
                   <div className="truncate text-[0.85rem] font-medium text-neutral-50">
@@ -309,13 +340,14 @@ export default function MobileTechQueuePage() {
                       : "Work order line"}
                   </div>
                   <div className="mt-0.5 text-[0.7rem] text-neutral-400">
-                    {/* 🔹 show human “line #” from WO if we have it */}
                     {lineNumber
                       ? `Line #${lineNumber}`
                       : `Line #${line.id.slice(0, 8)}`}
                   </div>
                 </div>
-                <span className="shrink-0 rounded-full border border-neutral-700 px-2 py-0.5 text-[0.7rem] text-neutral-200">
+
+                {/* Status pill on the right */}
+                <span className={JOB_STATUS_PILL_STYLES[bucket]}>
                   {STATUS_LABELS[bucket]}
                 </span>
               </button>
