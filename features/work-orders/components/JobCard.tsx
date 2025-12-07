@@ -57,43 +57,15 @@ type KnownStatus =
   | "ready_to_invoice"
   | "invoiced";
 
-const BASE_BADGE =
-  "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide";
 
-const BADGE: Record<KnownStatus, string> = {
-  awaiting_approval:
-    "bg-sky-900/30 border-sky-400/60 text-sky-200 shadow-[0_0_14px_rgba(56,189,248,0.35)]",
-  awaiting:
-    "bg-slate-900/40 border-slate-400/60 text-slate-200 shadow-[0_0_14px_rgba(148,163,184,0.28)]",
-  queued:
-    "bg-indigo-900/30 border-indigo-400/70 text-indigo-200 shadow-[0_0_16px_rgba(129,140,248,0.40)]",
-  in_progress:
-    "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.32),rgba(15,23,42,0.95))] border-[color:var(--accent-copper-soft)] text-[color:var(--accent-copper-light)] shadow-[0_0_20px_rgba(248,113,22,0.55)]",
-  on_hold:
-    "bg-amber-950/40 border-amber-400/70 text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.45)]",
-  planned:
-    "bg-purple-950/40 border-purple-400/70 text-purple-200 shadow-[0_0_18px_rgba(147,51,234,0.40)]",
-  new:
-    "bg-neutral-900/80 border-neutral-500/70 text-neutral-200 shadow-[0_0_14px_rgba(148,163,184,0.28)]",
-  completed:
-    "bg-teal-950/50 border-teal-400/80 text-teal-200 shadow-[0_0_20px_rgba(45,212,191,0.60)]",
-  ready_to_invoice:
-    "bg-emerald-950/40 border-emerald-400/80 text-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.55)]",
-  invoiced:
-    "bg-teal-950/40 border-teal-400/80 text-teal-200 shadow-[0_0_20px_rgba(45,212,191,0.60)]",
-};
-
-function statusChip(status: string | null | undefined): string {
-  const key = (status ?? "awaiting")
-    .toLowerCase()
-    .replaceAll(" ", "_") as KnownStatus;
-  return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
-}
 
 /**
  * Card border / background styles – kept in sync with the mobile WO client
  */
-const CARD_SURFACE: Record<KnownStatus, { border: string; surface: string; ring: string }> = {
+const CARD_SURFACE: Record<
+  KnownStatus,
+  { border: string; surface: string; ring: string }
+> = {
   awaiting_approval: {
     border: "border-sky-500/50",
     surface:
@@ -176,14 +148,18 @@ export function JobCard({
 
   const [partsOpen, setPartsOpen] = useState(false);
 
-  // Completed jobs start collapsed; others are fully open
-  const [collapsed, setCollapsed] = useState<boolean>(
-    (line.status ?? "").toLowerCase() === "completed",
-  );
+  const isCompletedLike = () => {
+    const s = (line.status ?? "").toLowerCase();
+    return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
+  };
+
+  // Completed / invoiced jobs start collapsed
+  const [collapsed, setCollapsed] = useState<boolean>(isCompletedLike());
 
   // If status changes (e.g. job finished), update collapsed state
   useEffect(() => {
-    setCollapsed((line.status ?? "").toLowerCase() === "completed");
+    setCollapsed(isCompletedLike());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line.status]);
 
   const jobLabel =
@@ -227,8 +203,8 @@ export function JobCard({
       : `${partsCount} part${partsCount === 1 ? "" : "s"}`;
 
   const handleCardClick = () => {
-    // Always open job, but let completed jobs also toggle collapse
-    if ((line.status ?? "").toLowerCase() === "completed") {
+    // Always open job, but allow completed jobs to toggle collapse
+    if (isCompletedLike()) {
       setCollapsed((c) => !c);
     }
     onOpen();
@@ -277,19 +253,19 @@ export function JobCard({
                     onOpenInspection?.();
                   }}
                   className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
-                    line.status === "completed"
+                    isCompletedLike()
                       ? "border-teal-400 text-teal-200"
                       : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
                   }`}
                 >
-                  {line.status === "completed"
+                  {isCompletedLike()
                     ? "View inspection"
                     : "Open inspection"}
                 </button>
               )}
             </div>
 
-            {/* Right side: add part button + status pill (always right-aligned) */}
+            {/* Right side: add-part button (no extra status pill here) */}
             <div className="ml-auto flex items-center gap-2">
               {/* Desktop add-part button */}
               <button
@@ -316,10 +292,6 @@ export function JobCard({
                   label="Add part"
                 />
               </div>
-
-              <span className={statusChip(line.status)}>
-                {statusText}
-              </span>
             </div>
           </div>
 
@@ -329,7 +301,7 @@ export function JobCard({
           </div>
 
           {/* Completed jobs: small “tap to expand” hint */}
-          {(line.status ?? "").toLowerCase() === "completed" && (
+          {isCompletedLike() && (
             <div className="text-[10px] text-teal-200/80">
               {collapsed
                 ? "Completed job – tap to view details."
@@ -337,7 +309,7 @@ export function JobCard({
             </div>
           )}
 
-          {/* Everything below here can be collapsed for completed lines */}
+          {/* Everything below here can be collapsed for completed / invoiced lines */}
           {!collapsed && (
             <>
               {/* Technician chips */}
