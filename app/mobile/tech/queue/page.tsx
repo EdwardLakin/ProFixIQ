@@ -47,6 +47,11 @@ export default function MobileTechQueuePage() {
     Record<string, { id: string; custom_id: string | null }>
   >({});
 
+  // 🔹 NEW: map line.id -> 1-based line number inside its work order
+  const [lineNumberMap, setLineNumberMap] = useState<Record<string, number>>(
+    {},
+  );
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<RollupStatus | null>(null);
@@ -66,7 +71,6 @@ export default function MobileTechQueuePage() {
         setLoading(false);
         return;
       }
-      
 
       // 2) profile (to confirm they’re wired to a shop)
       const { data: prof, error: profErr } = await supabase
@@ -85,7 +89,6 @@ export default function MobileTechQueuePage() {
         setLoading(false);
         return;
       }
-    
 
       // 3) work-order lines assigned to this tech
       const { data: techLines, error: linesErr } = await supabase
@@ -103,7 +106,7 @@ export default function MobileTechQueuePage() {
       const assignedLines = techLines ?? [];
       setLines(assignedLines);
 
-      // 4) fetch WOs for those lines so we can show custom_id / link
+      // 4) fetch WOs + line numbers for those WOs
       const woIds = Array.from(
         new Set(
           assignedLines
@@ -113,18 +116,47 @@ export default function MobileTechQueuePage() {
       );
 
       if (woIds.length > 0) {
-        const { data: wos } = await supabase
-          .from("work_orders")
-          .select("id, custom_id")
-          .in("id", woIds);
+        const [wosRes, allLinesRes] = await Promise.all([
+          supabase
+            .from("work_orders")
+            .select("id, custom_id")
+            .in("id", woIds),
+          supabase
+            .from("work_order_lines")
+            .select("id, work_order_id, created_at")
+            .in("work_order_id", woIds)
+            .order("created_at", { ascending: true }),
+        ]);
 
-        const map: Record<string, { id: string; custom_id: string | null }> = {};
-        (wos ?? []).forEach((wo) => {
-          map[wo.id] = { id: wo.id, custom_id: wo.custom_id };
+        const mapWO: Record<string, { id: string; custom_id: string | null }> =
+          {};
+        (wosRes.data ?? []).forEach((wo) => {
+          mapWO[wo.id] = { id: wo.id, custom_id: wo.custom_id };
         });
-        setWorkOrderMap(map);
+        setWorkOrderMap(mapWO);
+
+        // 🔹 build lineNumberMap: line.id -> 1-based index inside its WO
+        const lnMap: Record<string, number> = {};
+        const allLines = allLinesRes.data ?? [];
+
+        const grouped: Record<string, { id: string; work_order_id: string | null }[]> =
+          {};
+        allLines.forEach((ln) => {
+          if (!ln.work_order_id) return;
+          if (!grouped[ln.work_order_id]) grouped[ln.work_order_id] = [];
+          grouped[ln.work_order_id].push(ln);
+        });
+
+        Object.values(grouped).forEach((arr) => {
+          arr.forEach((ln, idx) => {
+            lnMap[ln.id] = idx + 1; // 1-based
+          });
+        });
+
+        setLineNumberMap(lnMap);
       } else {
         setWorkOrderMap({});
+        setLineNumberMap({});
       }
 
       setLoading(false);
@@ -184,8 +216,8 @@ export default function MobileTechQueuePage() {
               My jobs
             </h1>
             <p className="text-[0.75rem] text-neutral-300">
-              Jobs currently assigned to you. Tap a job to open the work
-              order in tech mode.
+              Jobs currently assigned to you. Tap a job to open the work order
+              in tech mode.
             </p>
           </div>
 
@@ -256,32 +288,37 @@ export default function MobileTechQueuePage() {
               : null;
             const slug = wo?.custom_id ?? wo?.id ?? line.work_order_id ?? "";
 
+            const lineNumber = lineNumberMap[line.id];
+
             return (
               <button
-  key={line.id}
-  type="button"
-  onClick={() => {
-    if (!slug) return;
-    router.push(`/mobile/work-orders/${slug}?mode=tech`);
-  }}
-  className="flex w-full items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99]"
->
-  <div className="min-w-0">
-    <div className="truncate text-[0.85rem] font-medium text-neutral-50">
-      {wo?.custom_id
-        ? wo.custom_id
-        : line.work_order_id
-        ? `WO #${line.work_order_id.slice(0, 8)}`
-        : "Work order line"}
-    </div>
-    <div className="mt-0.5 text-[0.7rem] text-neutral-400">
-      Line #{line.id.slice(0, 8)}
-    </div>
-  </div>
-  <span className="shrink-0 rounded-full border border-neutral-700 px-2 py-0.5 text-[0.7rem] text-neutral-200">
-    {STATUS_LABELS[bucket]}
-  </span>
-</button>
+                key={line.id}
+                type="button"
+                onClick={() => {
+                  if (!slug) return;
+                  router.push(`/mobile/work-orders/${slug}?mode=tech`);
+                }}
+                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99]"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-[0.85rem] font-medium text-neutral-50">
+                    {wo?.custom_id
+                      ? wo.custom_id
+                      : line.work_order_id
+                      ? `WO #${line.work_order_id.slice(0, 8)}`
+                      : "Work order line"}
+                  </div>
+                  <div className="mt-0.5 text-[0.7rem] text-neutral-400">
+                    {/* 🔹 show human “line #” from WO if we have it */}
+                    {lineNumber
+                      ? `Line #${lineNumber}`
+                      : `Line #${line.id.slice(0, 8)}`}
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-full border border-neutral-700 px-2 py-0.5 text-[0.7rem] text-neutral-200">
+                  {STATUS_LABELS[bucket]}
+                </span>
+              </button>
             );
           })}
 
