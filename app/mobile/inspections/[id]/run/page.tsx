@@ -1,16 +1,26 @@
+// app/mobile/inspections/[id]/run/page.tsx
 "use client";
 
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
+import type { JSX } from "react";
 
-export default function MobileInspectionRunnerPage() {
+export default function MobileInspectionRunnerPage(): JSX.Element {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params.id;
 
-  // Re-use the existing desktop inspection route.
-  // `view=mobile` can still be used by that page to tweak its layout.
-  const src = `/inspections/${id}?view=mobile`;
+  if (!id) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-black text-red-300">
+        <p className="text-sm">Missing inspection id.</p>
+      </main>
+    );
+  }
+
+  // We re-use the existing inspection page, but in "mobile view" + embed mode.
+  // The navigation *into* this route is always via /mobile/inspections/[id]/run.
+  const src = `/inspections/${id}?view=mobile&embed=1`;
 
   return (
     <div className="flex min-h-screen flex-col bg-neutral-950 text-foreground">
@@ -32,7 +42,7 @@ export default function MobileInspectionRunnerPage() {
 
         <Link
           href={`/inspections/${id}`}
-          className="rounded-full border border-orange-500/70 bg-orange-500 px-3 py-1 text-[0.7rem] font-semibold text-black hover:bg-orange-400"
+          className="rounded-full border border-[color:var(--accent-copper-soft)] bg-[color:var(--accent-copper-soft)] px-3 py-1 text-[0.7rem] font-semibold text-black hover:bg-[color:var(--accent-copper-light)]"
         >
           Desktop
         </Link>
