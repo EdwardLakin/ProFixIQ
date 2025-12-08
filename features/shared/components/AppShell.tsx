@@ -177,7 +177,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <div className="flex min-h-screen bg-transparent text-foreground">
+      <div className="flex min-h-screen text-foreground">
         {/* Sidebar – collapsible on desktop */}
         <aside
           className={cn(
@@ -312,7 +312,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
 
           {/* content */}
-          <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20">
+          <main className="flex w-full flex-1 flex-col px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
             {children}
           </main>
 
