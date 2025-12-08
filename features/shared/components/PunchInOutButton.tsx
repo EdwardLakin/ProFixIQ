@@ -1,6 +1,4 @@
-// features/shared/components/PunchInOutButton.tsx
 "use client";
-
 
 import { Button } from "@shared/components/ui/Button";
 
@@ -25,12 +23,12 @@ const PunchInOutButton: React.FC<PunchInOutButtonProps> = ({
   const isPunchedIn = !!activeJob;
 
   return (
-    <div className="w-full mt-4">
+    <div className="mt-4 w-full">
       <Button
         type="button"
         size="lg"
-        variant={isPunchedIn ? "outline" : "orange"}
-        className="w-full text-sm justify-center"
+        variant={isPunchedIn ? "outline" : "copper"}
+        className="flex w-full justify-center text-sm tracking-[0.16em] uppercase"
         onClick={isPunchedIn ? onPunchOut : onPunchIn}
         isLoading={isLoading}
       >

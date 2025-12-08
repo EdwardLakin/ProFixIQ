@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@shared/components/ui/Button";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -74,7 +75,7 @@ export default function JobPunchButton({
       const nowIso = new Date().toISOString();
       const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
         status: "in_progress",
-        punched_out_at: null, // 👈 reopen the punch segment
+        punched_out_at: null,
       };
 
       if (!punchedInAt) {
@@ -116,35 +117,29 @@ export default function JobPunchButton({
     void start();
   };
 
+  const label = busy
+    ? "Saving…"
+    : isStarted
+    ? "Finish job"
+    : isOnHold
+    ? "On hold"
+    : "Start job";
+
   return (
     <div className="relative w-full">
-      <button
+      <Button
         type="button"
         onClick={handlePrimary}
         disabled={busy || effectiveDisabled}
-        className={`font-header inline-flex w-full items-center justify-center rounded-md border px-4 py-3 text-center text-sm tracking-[0.16em] uppercase transition
-          ${
-            isStarted
-              ? "border-neutral-600 bg-black/40 text-neutral-100 hover:bg-black/70"
-              : "border-[var(--accent-copper-soft)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)] hover:text-black shadow-[0_0_18px_rgba(212,118,49,0.55)]"
-          }
-          ${
-            busy || effectiveDisabled
-              ? "cursor-not-allowed opacity-60 shadow-none"
-              : ""
-          }
-        `}
+        isLoading={busy}
+        variant={isStarted ? "outline" : "copper"}
+        size="md"
+        className="inline-flex w-full items-center justify-center text-center text-sm font-blackops tracking-[0.16em] uppercase"
         aria-pressed={isStarted}
         aria-busy={busy}
       >
-        {busy
-          ? "Saving…"
-          : isStarted
-          ? "Finish job"
-          : isOnHold
-          ? "On hold"
-          : "Start job"}
-      </button>
+        {label}
+      </Button>
 
       {flash && (
         <div
@@ -152,7 +147,7 @@ export default function JobPunchButton({
             ${
               flash === "started"
                 ? "bg-emerald-700/80 text-emerald-100"
-                : "bg-[var(--accent-copper-soft)]/90 text-black"
+                : "bg-[rgba(184,115,51,0.9)] text-black shadow-[0_0_15px_rgba(184,115,51,0.9)]"
             }`}
         >
           {flash === "started" ? "✓ Started" : "✓ Finish requested"}
