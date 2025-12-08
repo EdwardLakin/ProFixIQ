@@ -10,7 +10,7 @@ import type {
 } from "@inspections/lib/inspection/types";
 import { computeDefaultLaborHours } from "@inspections/lib/inspection/computeLabor";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
 
@@ -83,7 +83,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
     }
     const bucket = byTitle.get(title)!;
     const seen = new Set(
-      (bucket.items ?? []).map((x) => (x.item ?? "").toLowerCase())
+      (bucket.items ?? []).map((x) => (x.item ?? "").toLowerCase()),
     );
 
     for (const it of items) {
@@ -96,7 +96,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
   }
 
   return Array.from(byTitle.values()).filter(
-    (s) => (s.items?.length ?? 0) > 0
+    (s) => (s.items?.length ?? 0) > 0,
   );
 }
 
@@ -125,16 +125,14 @@ export default function CustomDraftPage() {
 
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [vehicleType, setVehicleType] = useState<VehicleType | null>(
-    (sp.get("vehicleType") as VehicleType | null) || null
+    (sp.get("vehicleType") as VehicleType | null) || null,
   );
-  // keep both value and setter to satisfy TS AND to react to session/template loads
   const [dutyClass, setDutyClass] = useState<DutyClass | null>(
-    (sp.get("dutyClass") as DutyClass | null) || null
+    (sp.get("dutyClass") as DutyClass | null) || null,
   );
 
   const [sections, setSections] = useState<InspectionSection[]>([]);
   const [laborHours, setLaborHours] = useState<number>(0);
-  const [, setUserEditedLabor] = useState(false);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
 
@@ -178,7 +176,6 @@ export default function CustomDraftPage() {
 
       if (t && t.trim()) setTitle(t.trim());
       if (storedDuty) {
-        // ✅ use the setter so TS sees it being used
         setDutyClass(storedDuty as DutyClass);
       }
 
@@ -399,7 +396,7 @@ export default function CustomDraftPage() {
       sessionStorage.setItem("inspection:sections", JSON.stringify(cleaned));
       sessionStorage.setItem(
         "inspection:title",
-        (title || "").trim() || "Inspection"
+        (title || "").trim() || "Inspection",
       );
 
       const qs = new URLSearchParams();
@@ -446,7 +443,9 @@ export default function CustomDraftPage() {
         </div>
 
         <label className="flex flex-col gap-1">
-          <span className="text-sm text-neutral-300">Labor hours (editable)</span>
+          <span className="text-sm text-neutral-300">
+            Labor hours (inspection total)
+          </span>
           <input
             type="number"
             min={0}
@@ -455,8 +454,8 @@ export default function CustomDraftPage() {
             className="w-40 rounded bg-neutral-800 px-3 py-2"
             value={Number.isFinite(laborHours) ? laborHours : 0}
             onChange={(e) => {
-              setLaborHours(Number(e.target.value));
-              setUserEditedLabor(true);
+              const next = Number(e.target.value);
+              setLaborHours(Number.isFinite(next) ? next : 0);
             }}
           />
         </label>
@@ -540,7 +539,9 @@ export default function CustomDraftPage() {
                         <input
                           className="rounded bg-neutral-800 px-3 py-1.5 text-sm"
                           value={it.item}
-                          onChange={(e) => updateItemLabel(i, j, e.target.value)}
+                          onChange={(e) =>
+                            updateItemLabel(i, j, e.target.value)
+                          }
                           placeholder="Item label"
                         />
                       )}
