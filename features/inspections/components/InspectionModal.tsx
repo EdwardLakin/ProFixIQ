@@ -58,13 +58,20 @@ export default function InspectionModal({
         embedParam === "yes" ||
         embedParam === "embed";
 
+      // any key we use in WO context to point at a line
       const hasWOLine =
         !!url.searchParams.get("workOrderLineId") ||
         !!url.searchParams.get("work_order_line_id") ||
         !!url.searchParams.get("lineId");
 
-      // ✅ Only warn when we're in embedded mode AND truly missing a line id
-      const missingWOLine = isEmbed && !hasWOLine;
+      // only treat it as "work-order mode" if the URL clearly refers to a WO
+      const isWorkOrderContext =
+        parts.includes("work-orders") ||
+        !!url.searchParams.get("workOrderId") ||
+        !!url.searchParams.get("work_order_id");
+
+      // ✅ only warn when embedded *and* we're really in a WO context
+      const missingWOLine = isEmbed && isWorkOrderContext && !hasWOLine;
 
       return { template, params, missingWOLine };
     } catch {
@@ -83,7 +90,7 @@ export default function InspectionModal({
     }
   };
 
-  // 💡 wheel/touch guard: keep scroll inside THIS box
+  // wheel/touch guard
   useEffect(() => {
     if (!open) return;
     const el = scrollRef.current;
@@ -95,15 +102,9 @@ export default function InspectionModal({
       const atTop = scrollTop <= 0;
       const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
 
-      if (e.deltaY > 0 && atBottom) {
+      if ((e.deltaY > 0 && atBottom) || (e.deltaY < 0 && atTop)) {
         e.preventDefault();
         e.stopPropagation();
-        return;
-      }
-      if (e.deltaY < 0 && atTop) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
       }
     };
 
@@ -147,13 +148,11 @@ export default function InspectionModal({
       onClose={close}
       className="fixed inset-0 z-[300] flex items-center justify-center px-2 py-6 sm:px-4"
     >
-      {/* Backdrop */}
       <div
         className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm"
         aria-hidden="true"
       />
 
-      {/* Panel */}
       <Dialog.Panel
         className={`relative z-[310] mx-auto w-full ${panelWidth}`}
         onClick={(e) => e.stopPropagation()}
@@ -191,7 +190,7 @@ export default function InspectionModal({
           </div>
         </div>
 
-        {/* Scrollable body */}
+        {/* Body */}
         <div
           ref={scrollRef}
           className={`${bodyHeight} overflow-y-auto overscroll-contain rounded-b-lg border border-orange-500 bg-neutral-950 p-4 text-white shadow-xl`}
@@ -224,7 +223,7 @@ export default function InspectionModal({
             </div>
           )}
 
-          {/* Footer actions */}
+          {/* Footer */}
           <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
