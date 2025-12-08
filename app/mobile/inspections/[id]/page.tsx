@@ -1,4 +1,4 @@
-// app/mobile/inspections/[id]/run/page.tsx
+// app/mobile/inspections/[id]/page.tsx
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
@@ -14,9 +14,7 @@ import type { JSX } from "react";
 function MobileInspectionPlaceholder({ id }: { id: string }): JSX.Element {
   return (
     <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-200 shadow-[0_18px_45px_rgba(0,0,0,0.85)]">
-      <p className="mb-2 font-semibold">
-        Mobile inspection runner placeholder
-      </p>
+      <p className="mb-2 font-semibold">Mobile inspection runner</p>
       <p className="text-xs text-neutral-400">
         This route is ready for the mobile inspection modal for session/job:
         <span className="font-mono text-neutral-100"> {id}</span>.

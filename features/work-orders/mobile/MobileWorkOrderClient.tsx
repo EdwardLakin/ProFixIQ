@@ -8,6 +8,7 @@ import {
   type JSX,
 } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -149,6 +150,8 @@ export default function MobileWorkOrderClient({
 }: {
   routeId: string;
 }): JSX.Element {
+  const router = useRouter();
+
   const [wo, setWo] = useTabState<WorkOrder | null>("m:wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>(
     "m:wo:id:lines",
@@ -741,11 +744,11 @@ export default function MobileWorkOrderClient({
 
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
 
-  // 🔹 Open mobile inspection run page for a given line
+  // 🔹 Open mobile inspection page for a given line
   const openInspection = (lineId: string) => {
     if (!lineId) return;
-    // mobile inspections run route: /mobile/inspections/[id]/run
-    window.location.href = `/mobile/inspections/${lineId}/run`;
+    // mobile inspections route: /mobile/inspections/[id]
+    router.push(`/mobile/inspections/${lineId}`);
   };
 
   return (
@@ -1243,7 +1246,7 @@ export default function MobileWorkOrderClient({
                           isPunchedIn={punchedIn}
                           onOpen={openFocused}
                           onAssign={undefined}
-                          // 🔹 new: go straight to mobile inspection run
+                          // 🔹 go straight to mobile inspection screen
                           onOpenInspection={() => openInspection(ln.id)}
                           onAddPart={undefined}
                         />
