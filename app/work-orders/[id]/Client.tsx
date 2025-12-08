@@ -93,6 +93,122 @@ function extractInspectionTemplateId(
   );
 }
 
+// ----------------- Inspection template helpers -----------------
+
+type TemplateSectionItem = { item: string; unit?: string | null };
+type TemplateSection = { title: string; items: TemplateSectionItem[] };
+
+const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
+const AIR_ITEM_RE =
+  /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
+
+function looksLikeCornerTitle(title: string | undefined | null): boolean {
+  if (!title) return false;
+  const t = title.toLowerCase();
+  return (
+    t.includes("corner grid") ||
+    t.includes("tires & brakes") ||
+    t.includes("tires and brakes") ||
+    t.includes("air brake") ||
+    t.includes("hydraulic brake")
+  );
+}
+
+function stripExistingCornerGrids(sections: TemplateSection[]): TemplateSection[] {
+  return sections.filter((s) => {
+    if (looksLikeCornerTitle(s.title)) return false;
+
+    const items = s.items ?? [];
+    const looksHyd = items.some((it) => HYD_ITEM_RE.test(it.item || ""));
+    const looksAir = items.some((it) => AIR_ITEM_RE.test(it.item || ""));
+    return !(looksHyd || looksAir);
+  });
+}
+
+function buildHydraulicCornerSection(): TemplateSection {
+  const metrics: Array<{ label: string; unit: string | null }> = [
+    { label: "Tire Pressure", unit: "psi" },
+    { label: "Tire Tread", unit: "mm" },
+    { label: "Brake Pad", unit: "mm" },
+    { label: "Rotor", unit: "mm" },
+    { label: "Rotor Condition", unit: null },
+    { label: "Rotor Thickness", unit: "mm" },
+    { label: "Wheel Torque", unit: "ft·lb" },
+  ];
+  const corners = ["LF", "RF", "LR", "RR"];
+  const items: TemplateSectionItem[] = [];
+  for (const c of corners) {
+    for (const m of metrics) {
+      items.push({ item: `${c} ${m.label}`, unit: m.unit });
+    }
+  }
+  return { title: "Corner Grid (Hydraulic)", items };
+}
+
+function buildAirCornerSection(): TemplateSection {
+  const steer: TemplateSectionItem[] = [
+    { item: "Steer 1 Left Tire Pressure", unit: "psi" },
+    { item: "Steer 1 Right Tire Pressure", unit: "psi" },
+    { item: "Steer 1 Left Tread Depth", unit: "mm" },
+    { item: "Steer 1 Right Tread Depth", unit: "mm" },
+    { item: "Steer 1 Left Lining/Shoe", unit: "mm" },
+    { item: "Steer 1 Right Lining/Shoe", unit: "mm" },
+    { item: "Steer 1 Left Drum/Rotor", unit: "mm" },
+    { item: "Steer 1 Right Drum/Rotor", unit: "mm" },
+    { item: "Steer 1 Left Push Rod Travel", unit: "in" },
+    { item: "Steer 1 Right Push Rod Travel", unit: "in" },
+  ];
+
+  const drive: TemplateSectionItem[] = [
+    { item: "Drive 1 Left Tire Pressure", unit: "psi" },
+    { item: "Drive 1 Right Tire Pressure", unit: "psi" },
+    { item: "Drive 1 Left Tread Depth (Outer)", unit: "mm" },
+    { item: "Drive 1 Left Tread Depth (Inner)", unit: "mm" },
+    { item: "Drive 1 Right Tread Depth (Outer)", unit: "mm" },
+    { item: "Drive 1 Right Tread Depth (Inner)", unit: "mm" },
+    { item: "Drive 1 Left Lining/Shoe", unit: "mm" },
+    { item: "Drive 1 Right Lining/Shoe", unit: "mm" },
+    { item: "Drive 1 Left Drum/Rotor", unit: "mm" },
+    { item: "Drive 1 Right Drum/Rotor", unit: "mm" },
+    { item: "Drive 1 Left Push Rod Travel", unit: "in" },
+    { item: "Drive 1 Right Push Rod Travel", unit: "in" },
+  ];
+
+  return { title: "Corner Grid (Air)", items: [...steer, ...drive] };
+}
+
+function prepareSectionsWithCornerGrid(
+  sections: TemplateSection[],
+  vehicleType: string | null | undefined,
+  gridParam: string | null,
+): TemplateSection[] {
+  const s = Array.isArray(sections) ? sections : [];
+
+  const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
+  if (hasCornerByTitle) {
+    return s;
+  }
+
+  const withoutGrids = stripExistingCornerGrids(s);
+  const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
+
+  if (gridMode === "none") return withoutGrids;
+
+  let injectAir: boolean;
+  if (gridMode === "air" || gridMode === "hyd") {
+    injectAir = gridMode === "air";
+  } else {
+    const vt = (vehicleType || "").toLowerCase();
+    injectAir = vt === "truck" || vt === "bus" || vt === "trailer";
+  }
+
+  const injected = injectAir
+    ? buildAirCornerSection()
+    : buildHydraulicCornerSection();
+
+  return [injected, ...withoutGrids];
+}
+
 /* ---------------------------- Badges ---------------------------- */
 
 type KnownStatus =
@@ -816,43 +932,118 @@ export default function WorkOrderIdClient(): JSX.Element {
     [fetchAll],
   );
 
-  // 🔍 open inspection – reuse legacy generic runner (fill + corner grid)
-  const openInspectionForLine = useCallback(
-    async (ln: WorkOrderLine) => {
-      if (!ln?.id) return;
+  // 🔍 open inspection – fetch template, inject corner grid, stage to session, then open generic fill screen
+const openInspectionForLine = useCallback(
+  async (ln: WorkOrderLine) => {
+    if (!ln?.id) return;
 
-      const anyLine = ln as WorkOrderLineWithInspectionMeta;
+    const anyLine = ln as WorkOrderLineWithInspectionMeta;
+    const templateId = extractInspectionTemplateId(anyLine);
 
-      // Treat this as the *templateId* for inspection_templates
-      const templateId = extractInspectionTemplateId(anyLine);
+    if (!templateId) {
+      toast.error(
+        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+      );
+      return;
+    }
 
-      if (!templateId) {
-        toast.error(
-          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
-        );
-        return;
+    // 1) Load the inspection template for this line
+    const { data, error } = await supabase
+      .from("inspection_templates")
+      .select("template_name, sections, vehicle_type")
+      .eq("id", templateId)
+      .maybeSingle();
+
+    if (error || !data) {
+      toast.error("Unable to load inspection template.");
+      return;
+    }
+
+    const rawSections = (data.sections ?? []) as TemplateSection[];
+    const vehicleType = String(data.vehicle_type ?? "");
+    const sections = prepareSectionsWithCornerGrid(
+      rawSections,
+      vehicleType,
+      null, // no explicit ?grid override from here
+    );
+
+    const title = data.template_name ?? "Inspection";
+
+    // 2) Stage into sessionStorage so GenericInspectionScreen can boot in the modal
+    if (typeof window !== "undefined") {
+      const paramsObj: Record<string, string> = {};
+
+      if (wo?.id) paramsObj.workOrderId = wo.id;
+      paramsObj.workOrderLineId = ln.id;
+      paramsObj.view = "mobile";
+      paramsObj.embed = "1";
+      if (ln.description) paramsObj.seed = String(ln.description);
+
+      // prefill customer / vehicle into params if available
+      if (customer) {
+        if (customer.first_name) paramsObj.first_name = customer.first_name;
+        if (customer.last_name) paramsObj.last_name = customer.last_name;
+        if (customer.phone) paramsObj.phone = customer.phone;
+        if (customer.email) paramsObj.email = customer.email;
+        if (customer.address) paramsObj.address = customer.address;
+        if (customer.city) paramsObj.city = customer.city;
+        if (customer.province) paramsObj.province = customer.province;
+        if (customer.postal_code)
+          paramsObj.postal_code = customer.postal_code;
       }
 
-      const sp = new URLSearchParams();
-
-      if (wo?.id) sp.set("workOrderId", wo.id);
-      sp.set("workOrderLineId", ln.id);
-      sp.set("templateId", templateId);
-      sp.set("embed", "1"); // so GenericInspectionScreen knows it's in a modal
-      sp.set("view", "mobile"); // optional: enables the mobile-only voice controls
-
-      if (ln.description) {
-        sp.set("seed", String(ln.description));
+      if (vehicle) {
+        if (vehicle.year != null)
+          paramsObj.year = String(vehicle.year as string | number);
+        if (vehicle.make) paramsObj.make = vehicle.make;
+        if (vehicle.model) paramsObj.model = vehicle.model;
+        if (vehicle.vin) paramsObj.vin = vehicle.vin;
+        if (vehicle.license_plate)
+          paramsObj.license_plate = vehicle.license_plate;
+        if (vehicle.mileage != null)
+          paramsObj.mileage = String(vehicle.mileage);
+        if (vehicle.color) paramsObj.color = vehicle.color;
+        if (vehicle.unit_number)
+          paramsObj.unit_number = vehicle.unit_number;
+        if (vehicle.engine_hours != null)
+          paramsObj.engine_hours = String(vehicle.engine_hours);
       }
 
-      const url = `/inspections/run?${sp.toString()}`;
+      sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
+      sessionStorage.setItem("inspection:title", title);
+      sessionStorage.setItem("inspection:vehicleType", vehicleType);
+      sessionStorage.setItem("inspection:template", "generic");
+      sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
 
-      setInspectionSrc(url);
-      setInspectionOpen(true);
-      toast.success("Inspection opened");
-    },
-    [wo?.id],
-  );
+      // Legacy keys for older flows
+      sessionStorage.setItem(
+        "customInspection:sections",
+        JSON.stringify(sections),
+      );
+      sessionStorage.setItem("customInspection:title", title);
+      sessionStorage.setItem(
+        "customInspection:includeOil",
+        JSON.stringify(false),
+      );
+    }
+
+    // 3) Set src for the modal (mainly for debugging / template label)
+    const sp = new URLSearchParams();
+    sp.set("template", "generic");
+    if (wo?.id) sp.set("workOrderId", wo.id);
+    sp.set("workOrderLineId", ln.id);
+    sp.set("embed", "1");
+    sp.set("view", "mobile");
+    if (ln.description) sp.set("seed", String(ln.description));
+
+    const url = `/inspections/fill?${sp.toString()}`;
+
+    setInspectionSrc(url);
+    setInspectionOpen(true);
+    toast.success("Inspection opened");
+  },
+  [wo?.id, customer, vehicle],
+);
 
   // parts drawer close / bulk
   useEffect(() => {

@@ -1,3 +1,4 @@
+// features/work-orders/app/work-orders/create/page.tsx
 "use client";
 
 /**
@@ -6,7 +7,7 @@
  * Integrated with VIN scanner + draft store.
  */
 
-import { 
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -18,6 +19,7 @@ import { v4 as uuidv4 } from "uuid";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useTabState } from "@/features/shared/hooks/useTabState";
+import { toast } from "sonner";
 
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
@@ -51,6 +53,7 @@ type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderInsert = DB["public"]["Tables"]["work_orders"]["Insert"];
 type LineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrderLine = LineRow;
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 
@@ -102,6 +105,22 @@ const numOrNull = (v: string | number | null | undefined) => {
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 };
+
+/** Normalize “where is the inspection template id stored for this line?” */
+function extractInspectionTemplateId(
+  ln: WorkOrderLineWithInspectionMeta,
+): string | null {
+  return (
+    ln.inspection_template_id ??
+    ln.inspection_template ??
+    ln.inspectionTemplate ??
+    ln.template ??
+    getMetaString(ln.metadata, "inspection_template_id") ??
+    getMetaString(ln.metadata, "inspection_template") ??
+    getMetaString(ln.metadata, "template") ??
+    null
+  );
+}
 
 export default function CreateWorkOrderPage() {
   const router = useRouter();
@@ -845,52 +864,40 @@ export default function CreateWorkOrderPage() {
     [supabase, wo?.id, wo?.shop_id, fetchLines, setLines],
   );
 
-  // ✅ open inspection for a given line – unified stack
+  // 🔍 open inspection – reuse generic /inspections/run loader so corner grids & sections match Templates page
   const openInspectionForLine = useCallback(
-    (line: LineRow) => {
-      if (!wo?.id || !line?.id) return;
+    async (ln: WorkOrderLine) => {
+      if (!ln?.id) return;
 
-      const ln = line as WorkOrderLineWithInspectionMeta;
+      const anyLine = ln as WorkOrderLineWithInspectionMeta;
+      const templateId = extractInspectionTemplateId(anyLine);
 
-      // Prefer FK → inspection_templates.id
-      const templateId: string | null =
-        ln.inspection_template_id ??
-        getMetaString(ln.metadata, "inspection_template_id");
-
-      // Optional human-readable slug / name (for legacy routes / context)
-      const templateSlug: string | null =
-        ln.inspection_template ??
-        ln.inspectionTemplate ??
-        ln.template ??
-        getMetaString(ln.metadata, "inspection_template") ??
-        getMetaString(ln.metadata, "template");
-
-      if (!templateId && !templateSlug) {
-        alert(
+      if (!templateId) {
+        toast.error(
           "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
         );
         return;
       }
 
-      const params = new URLSearchParams({
-        workOrderId: wo.id,
-        workOrderLineId: line.id,
-      });
+      const sp = new URLSearchParams();
 
-      if (vehicleId) params.set("vehicleId", vehicleId);
-      if (customerId) params.set("customerId", customerId);
-      if (templateId) params.set("templateId", templateId);
-      if (templateSlug) params.set("template", templateSlug);
-      params.set("embed", "1");
+      if (wo?.id) sp.set("workOrderId", wo.id);
+      sp.set("workOrderLineId", ln.id);
+      sp.set("templateId", templateId);
+      sp.set("embed", "1"); // so GenericInspectionScreen knows it's in a modal
+      sp.set("view", "mobile"); // mobile voice controls
 
-      const url = `/inspections/unified/session/${encodeURIComponent(
-        line.id,
-      )}?${params.toString()}`;
+      if (ln.description) {
+        sp.set("seed", String(ln.description));
+      }
+
+      const url = `/inspections/run?${sp.toString()}`;
 
       setInspectionSrc(url);
       setInspectionOpen(true);
+      toast.success("Inspection opened");
     },
-    [wo?.id, vehicleId, customerId],
+    [wo?.id],
   );
 
   // Submit → Review & Sign
@@ -1048,7 +1055,7 @@ export default function CreateWorkOrderPage() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-200 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:bg-white/5"
+            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-200 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:bg:white/5"
           >
             Back to list
           </button>
