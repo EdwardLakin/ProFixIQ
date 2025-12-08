@@ -1,5 +1,5 @@
+// features/shared/components/PunchInOutButton.tsx
 "use client";
-
 
 import { Button } from "@shared/components/ui/Button";
 
@@ -38,7 +38,7 @@ const PunchInOutButton: React.FC<PunchInOutButtonProps> = ({
       <Button
         type="button"
         size="lg"
-        variant={isPunchedIn ? "outline" : "orange"}
+        variant={isPunchedIn ? "outline" : "copper"}
         onClick={handleClick}
         isLoading={isLoading}
         className={[
