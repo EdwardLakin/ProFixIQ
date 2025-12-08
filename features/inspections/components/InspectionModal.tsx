@@ -14,9 +14,7 @@ type Props = {
 
 function paramsToObject(sp: URLSearchParams) {
   const out: Record<string, string> = {};
-  sp.forEach((v, k) => {
-    out[k] = v;
-  });
+  sp.forEach((v, k) => (out[k] = v));
   return out;
 }
 
@@ -37,6 +35,7 @@ export default function InspectionModal({
         missingWOLine: false,
       };
     }
+
     try {
       const base =
         typeof window !== "undefined"
@@ -44,18 +43,34 @@ export default function InspectionModal({
           : "http://localhost";
       const url = new URL(src, base);
       const parts = url.pathname.split("/").filter(Boolean);
+
       const idx = parts.findIndex(
         (p) => p === "inspection" || p === "inspections",
       );
-      const template =
-        idx >= 0 ? parts[idx + 1] : parts[parts.length - 1] || null;
+      const template = idx >= 0 ? parts[idx + 1] : parts[parts.length - 1];
+
       const params = paramsToObject(url.searchParams);
-      const missingWOLine = !url.searchParams.get("workOrderLineId");
+
+      const embedParam = url.searchParams.get("embed");
+      const isEmbed =
+        embedParam === "1" ||
+        embedParam === "true" ||
+        embedParam === "yes" ||
+        embedParam === "embed";
+
+      const hasWOLine =
+        !!url.searchParams.get("workOrderLineId") ||
+        !!url.searchParams.get("work_order_line_id") ||
+        !!url.searchParams.get("lineId");
+
+      // ✅ Only warn when we're in embedded mode AND truly missing a line id
+      const missingWOLine = isEmbed && !hasWOLine;
+
       return { template, params, missingWOLine };
     } catch {
       return {
         template: src.replace(/^\//, ""),
-        params: {} as Record<string, string>,
+        params: {},
         missingWOLine: false,
       };
     }
@@ -124,7 +139,7 @@ export default function InspectionModal({
   }, [open]);
 
   const panelWidth = compact ? "max-w-4xl" : "max-w-6xl";
-  const bodyHeight = compact ? "max-h-[78vh]" : "max-h-[90vh]";
+  const bodyHeight = compact ? "max-h-[80vh]" : "max-h-[92vh]";
 
   return (
     <Dialog
@@ -134,127 +149,109 @@ export default function InspectionModal({
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-[295] bg-black/75 backdrop-blur-md"
+        className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm"
         aria-hidden="true"
       />
 
-      {/* Centered panel wrapper with radial wash behind card */}
-      <div className="relative z-[300] flex w-full items-center justify-center">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
-        />
-
-        <Dialog.Panel
-          className={`relative z-[310] mx-auto w-full ${panelWidth}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/80 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-            {/* subtle top copper line */}
-            <div className="h-[3px] w-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#b45309),var(--accent-copper,#f97316))]" />
-
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3 px-4 py-3 sm:px-5">
-              <div className="space-y-1">
-                <Dialog.Title
-                  className="text-base sm:text-lg font-semibold text-white"
-                  style={{ fontFamily: "var(--font-blackops), system-ui" }}
-                >
-                  {title}
-                </Dialog.Title>
-                {derived.template && (
-                  <p className="text-[11px] text-neutral-400">
-                    Template:{" "}
-                    <span className="font-mono text-xs text-orange-300">
-                      {derived.template}
-                    </span>
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCompact((v) => !v)}
-                  className="hidden rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:border-orange-500 hover:bg-black/80 sm:inline-flex"
-                >
-                  {compact ? "Expand" : "Shrink"}
-                </button>
-                <button
-                  type="button"
-                  onClick={close}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/80 text-sm text-neutral-200 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:border-red-500 hover:bg-red-900/30"
-                  aria-label="Close inspection"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable body */}
-            <div
-              ref={scrollRef}
-              className={`${bodyHeight} overflow-y-auto overscroll-contain border-t border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-slate-950/95 via-black/90 to-slate-950/95 px-4 pb-4 pt-3 text-white sm:px-5`}
-              style={{
-                WebkitOverflowScrolling: "touch",
-                scrollbarGutter: "stable both-edges",
-              }}
+      {/* Panel */}
+      <Dialog.Panel
+        className={`relative z-[310] mx-auto w-full ${panelWidth}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="mb-2 flex items-start justify-between gap-3 rounded-t-lg border border-b-0 border-orange-500 bg-neutral-950/90 px-4 py-3">
+          <div className="space-y-1">
+            <Dialog.Title className="text-base font-blackops tracking-wide text-orange-400 sm:text-lg">
+              {title}
+            </Dialog.Title>
+            {derived.template && (
+              <p className="text-[11px] text-neutral-400">
+                Template:{" "}
+                <span className="font-mono text-neutral-200">
+                  {derived.template}
+                </span>
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCompact((v) => !v)}
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-[11px] text-neutral-100 hover:border-orange-500 hover:bg-neutral-800"
             >
-              {derived.missingWOLine && (
-                <div className="mb-3 rounded-xl border border-yellow-700/80 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-100 shadow-[0_0_18px_rgba(250,204,21,0.25)]">
-                  <strong className="font-semibold">Heads up:</strong>{" "}
-                  <code className="font-mono text-yellow-100">
-                    workOrderLineId
-                  </code>{" "}
-                  is missing; Save/Finish in the inspection flow may be blocked.
-                </div>
-              )}
+              {compact ? "Expand" : "Shrink"}
+            </button>
+            <button
+              type="button"
+              onClick={close}
+              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
 
-              {!derived.template ? (
-                <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-6 text-center text-sm text-neutral-400 shadow-[0_18px_45px_rgba(0,0,0,0.8)]">
-                  No inspection selected.
-                </div>
-              ) : (
-                <div className="mx-auto w-full max-w-5xl">
-                  <InspectionHost
-                    template={derived.template}
-                    embed
-                    params={derived.params}
-                  />
-                </div>
-              )}
+        {/* Scrollable body */}
+        <div
+          ref={scrollRef}
+          className={`${bodyHeight} overflow-y-auto overscroll-contain rounded-b-lg border border-orange-500 bg-neutral-950 p-4 text-white shadow-xl`}
+          style={{
+            WebkitOverflowScrolling: "touch",
+            scrollbarGutter: "stable both-edges",
+          }}
+        >
+          {derived.missingWOLine && (
+            <div className="mb-3 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
+              <strong>Heads up:</strong>{" "}
+              <code className="font-mono text-yellow-100">
+                workOrderLineId
+              </code>{" "}
+              is missing; save/finish will be blocked.
+            </div>
+          )}
 
-              {/* Footer actions */}
-              <div className="mt-5 flex flex-col gap-2 border-t border-[color:var(--metal-border-soft,#1f2937)] pt-3 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  type="button"
-                  onClick={() => setCompact((v) => !v)}
-                  className="inline-flex items-center justify-center rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.8)] hover:border-orange-500 hover:bg-black/80"
-                >
-                  {compact ? "Expand View" : "Shrink View"}
-                </button>
+          {!derived.template ? (
+            <div className="rounded border border-neutral-800 bg-neutral-900 px-4 py-6 text-center text-sm text-neutral-400">
+              No inspection selected.
+            </div>
+          ) : (
+            <div className="mx-auto w-full max-w-5xl">
+              <InspectionHost
+                template={derived.template}
+                embed
+                params={derived.params}
+              />
+            </div>
+          )}
 
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={close}
-                    className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-4 py-1.5 text-xs sm:text-sm font-medium uppercase tracking-[0.16em] text-neutral-200 shadow-[0_10px_24px_rgba(0,0,0,0.8)] hover:bg-white/5"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={close}
-                    className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#b45309),var(--accent-copper,#f97316))] px-5 py-1.5 text-xs sm:text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_24px_rgba(212,118,49,0.7)] hover:brightness-110"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
+          {/* Footer actions */}
+          <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={() => setCompact((v) => !v)}
+              className="inline-flex items-center justify-center rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:border-orange-500 hover:bg-neutral-800 sm:text-[11px]"
+            >
+              {compact ? "Expand View" : "Shrink View"}
+            </button>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={close}
+                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-1.5 text-xs sm:text-sm text-neutral-200 hover:bg-neutral-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={close}
+                className="rounded border border-orange-500 bg-orange-500/10 px-4 py-1.5 text-xs sm:text-sm font-medium text-orange-100 hover:bg-orange-500/20"
+              >
+                Close
+              </button>
             </div>
           </div>
-        </Dialog.Panel>
-      </div>
+        </div>
+      </Dialog.Panel>
     </Dialog>
   );
 }
