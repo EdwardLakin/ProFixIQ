@@ -1874,6 +1874,7 @@ export type Database = {
           is_public: boolean | null
           labor_hours: number | null
           sections: Json
+          shop_id: string | null
           tags: string[] | null
           template_name: string
           updated_at: string | null
@@ -1887,6 +1888,7 @@ export type Database = {
           is_public?: boolean | null
           labor_hours?: number | null
           sections: Json
+          shop_id?: string | null
           tags?: string[] | null
           template_name: string
           updated_at?: string | null
@@ -1900,13 +1902,29 @@ export type Database = {
           is_public?: boolean | null
           labor_hours?: number | null
           sections?: Json
+          shop_id?: string | null
           tags?: string[] | null
           template_name?: string
           updated_at?: string | null
           user_id?: string | null
           vehicle_type?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "inspection_templates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_templates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inspections: {
         Row: {

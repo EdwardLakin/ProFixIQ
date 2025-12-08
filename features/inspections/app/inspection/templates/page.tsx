@@ -20,28 +20,70 @@ export default function InspectionTemplatesPage() {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [, setShopId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
 
+      // get current user
       const { data: auth } = await supabase.auth.getUser();
       const uid = auth?.user?.id ?? null;
       setUserId(uid);
 
-      const minePromise = uid
-        ? supabase
-            .from("inspection_templates")
-            .select("*")
-            .eq("user_id", uid)
-            .order("created_at", { ascending: false })
-        : Promise.resolve({ data: [] as Template[], error: null });
+      // resolve shop_id for this user (if any)
+      let resolvedShopId: string | null = null;
+      if (uid) {
+        const byUser = await supabase
+          .from("profiles")
+          .select("shop_id")
+          .eq("user_id", uid)
+          .maybeSingle();
 
-      const sharedPromise = supabase
-        .from("inspection_templates")
-        .select("*")
-        .eq("is_public", true)
-        .order("created_at", { ascending: false });
+        if (byUser.data?.shop_id) {
+          resolvedShopId = byUser.data.shop_id;
+        } else {
+          const byId = await supabase
+            .from("profiles")
+            .select("shop_id")
+            .eq("id", uid)
+            .maybeSingle();
+          if (byId.data?.shop_id) {
+            resolvedShopId = byId.data.shop_id;
+          }
+        }
+      }
+      setShopId(resolvedShopId);
+
+      // build queries
+      const minePromise = uid
+        ? (() => {
+            let q = supabase
+              .from("inspection_templates")
+              .select("*")
+              .eq("user_id", uid)
+              .order("created_at", { ascending: false });
+            if (resolvedShopId) {
+              q = q.eq("shop_id", resolvedShopId);
+            }
+            return q;
+          })()
+        : Promise.resolve({
+            data: [] as Template[],
+            error: null,
+          });
+
+      const sharedPromise = (() => {
+        let q = supabase
+          .from("inspection_templates")
+          .select("*")
+          .eq("is_public", true)
+          .order("created_at", { ascending: false });
+        if (resolvedShopId) {
+          q = q.eq("shop_id", resolvedShopId);
+        }
+        return q;
+      })();
 
       const [{ data: mineRaw }, { data: sharedRaw }] = await Promise.all([
         minePromise,
@@ -124,7 +166,9 @@ export default function InspectionTemplatesPage() {
       </div>
 
       {loading ? (
-        <div className="rounded border border-zinc-800 bg-zinc-900 p-4">Loading…</div>
+        <div className="rounded border border-zinc-800 bg-zinc-900 p-4">
+          Loading…
+        </div>
       ) : rows.length === 0 ? (
         <div className="rounded border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
           No templates found.
@@ -133,9 +177,14 @@ export default function InspectionTemplatesPage() {
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {rows.map((t) => {
             const mineOwned = canEditOrDelete(t);
-            const encodedName = encodeURIComponent(t.template_name ?? "Custom Inspection");
+            const encodedName = encodeURIComponent(
+              t.template_name ?? "Custom Inspection",
+            );
             return (
-              <li key={t.id} className="rounded border border-zinc-800 bg-zinc-900 p-4">
+              <li
+                key={t.id}
+                className="rounded border border-zinc-800 bg-zinc-900 p-4"
+              >
                 <div className="mb-1 text-lg font-semibold text-orange-400">
                   {t.template_name ?? "Untitled Template"}
                 </div>

@@ -19,10 +19,11 @@ type StatusButtonsProps = {
 };
 
 /**
- * Glassy, metallic status pills:
- * - thin borders
- * - burnt copper accent
- * - border + text color change on select
+ * Glassy, metallic status pills with clear status colors:
+ * - OK        → green
+ * - FAIL      → red
+ * - RECOMMEND → yellow
+ * - N/A       → blue
  */
 export default function StatusButtons(_props: any) {
   const {
@@ -40,53 +41,53 @@ export default function StatusButtons(_props: any) {
     "text-[11px] font-semibold tracking-[0.16em] uppercase mr-2 mb-2 " +
     "border border-white/15 bg-black/30 text-neutral-200 " +
     "backdrop-blur-sm transition-colors duration-150 " +
-    "focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.55)] " +
+    "focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.55)] " + // copper focus ring
     "focus:ring-offset-2 focus:ring-offset-black";
 
   const cls = (key: InspectionItemStatus) => {
     const isSel = selected === key;
 
-    const copperBorder = "border-[rgba(184,115,51,0.85)]";
-    const copperText = "text-[rgb(255,248,240)]";
-    const copperGlow = "shadow-[0_0_0_1px_rgba(184,115,51,0.75)]";
-
     switch (key) {
-      case "ok":
-        return (
-          base +
-          " hover:border-[rgba(184,115,51,0.75)] hover:text-[rgb(255,252,245)]" +
-          (isSel
-            ? ` ${copperBorder} ${copperText} ${copperGlow} bg-[rgba(184,115,51,0.10)]`
-            : "")
-        );
+      case "ok": {
+        // ✅ green
+        const selectedClasses =
+          " border-emerald-400/90 text-emerald-50 " +
+          "bg-emerald-900/40 shadow-[0_0_0_1px_rgba(52,211,153,0.7)]";
+        const hover =
+          " hover:border-emerald-400/80 hover:text-emerald-100 hover:bg-emerald-900/30";
+        return base + hover + (isSel ? " " + selectedClasses : "");
+      }
 
-      case "fail":
-        return (
-          base +
-          " hover:border-red-500/80 hover:text-red-200" +
-          (isSel
-            ? " border-red-500/80 text-red-100 bg-red-950/40 shadow-[0_0_0_1px_rgba(248,113,113,0.7)]"
-            : "")
-        );
+      case "fail": {
+        // ❌ red
+        const selectedClasses =
+          " border-red-500/90 text-red-50 " +
+          "bg-red-950/50 shadow-[0_0_0_1px_rgba(248,113,113,0.8)]";
+        const hover =
+          " hover:border-red-500/80 hover:text-red-100 hover:bg-red-950/40";
+        return base + hover + (isSel ? " " + selectedClasses : "");
+      }
 
-      case "recommend":
-        return (
-          base +
-          " hover:border-amber-400/80 hover:text-amber-100" +
-          (isSel
-            ? " border-amber-400/80 text-amber-50 bg-amber-950/30 shadow-[0_0_0_1px_rgba(251,191,36,0.7)]"
-            : "")
-        );
+      case "recommend": {
+        // ⚠️ yellow / amber
+        const selectedClasses =
+          " border-amber-400/90 text-amber-50 " +
+          "bg-amber-950/40 shadow-[0_0_0_1px_rgba(251,191,36,0.85)]";
+        const hover =
+          " hover:border-amber-400/80 hover:text-amber-100 hover:bg-amber-950/30";
+        return base + hover + (isSel ? " " + selectedClasses : "");
+      }
 
       case "na":
-      default:
-        return (
-          base +
-          " hover:border-neutral-400/70 hover:text-neutral-100" +
-          (isSel
-            ? " border-neutral-400/80 text-neutral-50 bg-neutral-900/60 shadow-[0_0_0_1px_rgba(163,163,163,0.7)]"
-            : "")
-        );
+      default: {
+        // 🔵 blue
+        const selectedClasses =
+          " border-sky-400/90 text-sky-50 " +
+          "bg-sky-950/40 shadow-[0_0_0_1px_rgba(56,189,248,0.8)]";
+        const hover =
+          " hover:border-sky-400/80 hover:text-sky-100 hover:bg-sky-950/30";
+        return base + hover + (isSel ? " " + selectedClasses : "");
+      }
     }
   };
 

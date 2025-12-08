@@ -136,6 +136,9 @@ export default function CustomDraftPage() {
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
 
+  // 🔐 current user's shop (for shop-scoped templates)
+  const [shopId, setShopId] = useState<string | null>(null);
+
   // build a quick lookup: normalized title -> master items (used for the add-item dropdown)
   const masterByTitle = useMemo(() => {
     const out = new Map<string, { item: string; unit?: string | null }[]>();
@@ -149,6 +152,38 @@ export default function CustomDraftPage() {
     const key = (title || "").trim().toLowerCase();
     return masterByTitle.get(key) ?? [];
   }
+
+  // 0) load current user's shop_id so new templates are shop-scoped
+  useEffect(() => {
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id;
+      if (!uid) return;
+
+      // try profiles.user_id first
+      const byUser = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("user_id", uid)
+        .maybeSingle();
+
+      if (byUser.data?.shop_id) {
+        setShopId(byUser.data.shop_id);
+        return;
+      }
+
+      // fallback: profiles.id == auth uid
+      const byId = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", uid)
+        .maybeSingle();
+
+      if (byId.data?.shop_id) {
+        setShopId(byId.data.shop_id);
+      }
+    })();
+  }, [supabase]);
 
   // 1) try to load from sessionStorage (what custom builder wrote)
   useEffect(() => {
@@ -207,7 +242,7 @@ export default function CustomDraftPage() {
     (async () => {
       const { data, error } = await supabase
         .from("inspection_templates")
-        .select("template_name, sections, vehicle_type, labor_hours")
+        .select("template_name, sections, vehicle_type, labor_hours, shop_id")
         .eq("id", templateId)
         .maybeSingle();
 
@@ -221,24 +256,26 @@ export default function CustomDraftPage() {
       setSections(normalized);
       setTitle(data.template_name || "Custom Inspection");
 
-      // update vehicle/duty from template if present
       if (data.vehicle_type) {
         setVehicleType(data.vehicle_type as VehicleType);
       }
-      // if you add a duty_class column later, set it here
-      // setDutyClass(data.duty_class as DutyClass | null ?? null);
 
       if (typeof data.labor_hours === "number") {
         setLaborHours(data.labor_hours);
       } else {
-        // recompute if not in DB
         const hours = computeDefaultLaborHours({
           vehicleType: (data.vehicle_type as VehicleType) ?? "truck",
           sections: normalized,
         });
         setLaborHours(hours);
       }
+
+      // If existing template already has a shop_id, keep it
+      if (data.shop_id && !shopId) {
+        setShopId(data.shop_id);
+      }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId, supabase]);
 
   /* ----------------------------- editing helpers ----------------------------- */
@@ -355,16 +392,16 @@ export default function CustomDraftPage() {
       }
 
       const payload: InsertTemplate = {
-        user_id: u.user.id,
-        template_name: (title || "").trim() || "Custom Template",
-        sections:
-          cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
-        description: "Created from Custom Draft",
-        vehicle_type: vehicleType || undefined,
-        tags: ["custom", "draft"],
-        is_public: false,
-        labor_hours: Number.isFinite(laborHours) ? laborHours : null,
-      };
+  template_name: (title || "").trim() || "Custom Template",
+  sections:
+    cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
+  description: "Created from Custom Draft",
+  vehicle_type: vehicleType || undefined,
+  tags: ["custom", "draft"],
+  is_public: false,
+  labor_hours: Number.isFinite(laborHours) ? laborHours : null,
+  // user_id + shop_id are now injected by the trigger
+};
 
       const { error, data } = await supabase
         .from("inspection_templates")
