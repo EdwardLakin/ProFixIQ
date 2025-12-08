@@ -1,5 +1,4 @@
-//features/inspections/screens/GenericInspectionScreen.tsx
-
+// features/inspections/screens/GenericInspectionScreen.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -226,6 +225,9 @@ export default function GenericInspectionScreen(): JSX.Element {
 
   const workOrderId = sp.get("workOrderId") || null;
   const workOrderLineId = sp.get("workOrderLineId") || "";
+  // 🔹 Only complain about a missing line id when we *know* we're in an embedded WO-line flow
+  const showMissingLineWarning = isEmbed && !workOrderLineId;
+
   const templateName =
     (typeof window !== "undefined"
       ? sessionStorage.getItem("inspection:title")
@@ -942,7 +944,7 @@ export default function GenericInspectionScreen(): JSX.Element {
             const itemsWithHints = section.items.map((it) => ({
               ...it,
               unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-            }));
+           }));
 
             const batterySection = isBatterySection(
               section.title,
@@ -1038,7 +1040,7 @@ export default function GenericInspectionScreen(): JSX.Element {
             session={session}
             workOrderLineId={workOrderLineId}
           />
-          {!workOrderLineId && (
+          {showMissingLineWarning && (
             <div className="text-xs text-red-400">
               Missing <code>workOrderLineId</code> — save/finish will be
               blocked.
