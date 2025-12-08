@@ -57,22 +57,31 @@ type KnownStatus =
   | "ready_to_invoice"
   | "invoiced";
 
-/** Status pill styling (matches WO header pills) */
+/** Status pill styling (matches WO header pills, but beefed up + glow) */
 const BASE_BADGE =
-  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide";
+  "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] sm:text-xs font-semibold tracking-wide shadow-[0_0_16px_rgba(251,191,36,0.35)]";
 
 const BADGE: Record<KnownStatus, string> = {
-  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
-  awaiting: "bg-sky-900/20 border-sky-500/40 text-sky-300",
-  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
-  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
-  on_hold: "bg-amber-900/20 border-amber-500/40 text-amber-300",
-  planned: "bg-purple-900/20 border-purple-500/40 text-purple-300",
-  new: "bg-neutral-800 border-neutral-600 text-neutral-200",
-  completed: "bg-green-900/20 border-green-500/40 text-green-300",
+  awaiting_approval:
+    "bg-blue-900/40 border-blue-400/70 text-blue-100",
+  awaiting:
+    "bg-sky-900/40 border-sky-400/70 text-sky-100",
+  queued:
+    "bg-indigo-900/40 border-indigo-400/70 text-indigo-100",
+  in_progress:
+    "bg-orange-900/40 border-orange-400/80 text-orange-100",
+  on_hold:
+    "bg-amber-900/40 border-amber-400/80 text-amber-100",
+  planned:
+    "bg-purple-900/40 border-purple-400/80 text-purple-100",
+  new:
+    "bg-neutral-900/70 border-neutral-500/80 text-neutral-100",
+  completed:
+    "bg-emerald-900/40 border-emerald-400/80 text-emerald-100",
   ready_to_invoice:
-    "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
-  invoiced: "bg-teal-900/20 border-teal-500/40 text-teal-300",
+    "bg-emerald-900/40 border-emerald-400/80 text-emerald-100",
+  invoiced:
+    "bg-teal-900/40 border-teal-400/80 text-teal-100",
 };
 
 const statusChip = (s: string | null | undefined): string => {
@@ -226,11 +235,13 @@ export function JobCard({
       : `${partsCount} part${partsCount === 1 ? "" : "s"}`;
 
   const handleCardClick = () => {
-    // Always open job, but allow completed jobs to toggle collapse
-    if (isCompletedLike()) {
-      setCollapsed((c) => !c);
-    }
+    // Only open the focused modal; do NOT toggle collapsed here
     onOpen();
+  };
+
+  const toggleCollapsed = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    setCollapsed((c) => !c);
   };
 
   return (
@@ -288,8 +299,25 @@ export function JobCard({
               )}
             </div>
 
-            {/* Right side: status pill + add-part button */}
+            {/* Right side: expand icon + status pill + add-part button */}
             <div className="ml-auto flex items-center gap-2">
+              {/* Expand / collapse icon */}
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-700/80 bg-black/50 text-[11px] text-neutral-200 shadow-[0_0_14px_rgba(15,23,42,0.9)] hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
+                title={collapsed ? "Expand job details" : "Collapse job details"}
+              >
+                <span
+                  className={`inline-block transform text-[11px] transition-transform ${
+                    collapsed ? "" : "rotate-90"
+                  }`}
+                >
+                  ▶
+                </span>
+              </button>
+
+              {/* Status pill */}
               <span className={statusChip(line.status)}>
                 {statusText}
               </span>
@@ -331,12 +359,12 @@ export function JobCard({
           {isCompletedLike() && (
             <div className="text-[10px] text-teal-200/80">
               {collapsed
-                ? "Completed job – tap to view details."
-                : "Completed job – tap header to collapse."}
+                ? "Completed job – use the chevron to view details."
+                : "Completed job – use the chevron to collapse details."}
             </div>
           )}
 
-          {/* Everything below here can be collapsed for completed / invoiced lines */}
+          {/* Everything below here can be collapsed */}
           {!collapsed && (
             <>
               {/* Technician chips */}

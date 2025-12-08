@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
-import { UsePartButton } from "@work-orders/components/UsePartButton";
-import { PartsUsedList } from "@work-orders/components/PartsUsedList";
 
 type DB = Database;
 
@@ -38,7 +36,7 @@ export type JobCardProps = {
   onOpen: () => void;
   onAssign?: () => void;
   onOpenInspection?: () => void;
-  onAddPart?: () => void;
+  onAddPart?: () => void; // kept for compatibility, not used in this mobile card
   /** Optional pricing info – we’ll wire this from the page later */
   pricing?: JobCardPricing;
 };
@@ -57,7 +55,30 @@ type KnownStatus =
   | "ready_to_invoice"
   | "invoiced";
 
+/** Status pill styling (matches WO header pills) */
+const BASE_BADGE =
+  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide";
 
+const BADGE: Record<KnownStatus, string> = {
+  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
+  awaiting: "bg-sky-900/20 border-sky-500/40 text-sky-300",
+  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
+  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
+  on_hold: "bg-amber-900/20 border-amber-500/40 text-amber-300",
+  planned: "bg-purple-900/20 border-purple-500/40 text-purple-300",
+  new: "bg-neutral-800 border-neutral-600 text-neutral-200",
+  completed: "bg-green-900/20 border-green-500/40 text-green-300",
+  ready_to_invoice:
+    "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
+  invoiced: "bg-teal-900/20 border-teal-500/40 text-teal-300",
+};
+
+const statusChip = (s: string | null | undefined): string => {
+  const key = (s ?? "awaiting")
+    .toLowerCase()
+    .replaceAll(" ", "_") as KnownStatus;
+  return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
+};
 
 /**
  * Card border / background styles – kept in sync with the mobile WO client
@@ -130,14 +151,12 @@ const CARD_SURFACE: Record<
 export function JobCard({
   index,
   line,
-  parts,
   technicians,
   canAssign,
   isPunchedIn,
   onOpen,
   onAssign,
   onOpenInspection,
-  onAddPart,
   pricing,
 }: JobCardProps): JSX.Element {
   const statusKey = (line.status ?? "awaiting")
@@ -145,8 +164,6 @@ export function JobCard({
     .replaceAll(" ", "_") as KnownStatus;
 
   const surfaceCfg = CARD_SURFACE[statusKey] ?? CARD_SURFACE.awaiting;
-
-  const [partsOpen, setPartsOpen] = useState(false);
 
   const isCompletedLike = () => {
     const s = (line.status ?? "").toLowerCase();
@@ -196,16 +213,10 @@ export function JobCard({
     return `${currency ?? "$"}${n.toFixed(2)}`;
   };
 
-  const partsCount = parts.length;
-  const partsSummary =
-    partsCount === 0
-      ? "No parts yet"
-      : `${partsCount} part${partsCount === 1 ? "" : "s"}`;
-
   const handleCardClick = () => {
-    // Always open job, but allow completed jobs to toggle collapse
+    // Always open job; completed jobs will show details in modal anyway
     if (isCompletedLike()) {
-      setCollapsed((c) => !c);
+      setCollapsed(false);
     }
     onOpen();
   };
@@ -265,33 +276,11 @@ export function JobCard({
               )}
             </div>
 
-            {/* Right side: add-part button (no extra status pill here) */}
+            {/* Right side: status pill only (no parts UI on mobile) */}
             <div className="ml-auto flex items-center gap-2">
-              {/* Desktop add-part button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAddPart?.();
-                }}
-                className="hidden rounded-md border border-neutral-600 px-2 py-1 text-[11px] font-medium text-neutral-100 hover:border-orange-500 hover:text-orange-100 sm:inline-flex"
-                title="Add / use part on this job"
-              >
-                Add part
-              </button>
-
-              {/* keep existing UsePartButton behavior for safety (esp. mobile) */}
-              <div className="sm:hidden">
-                <UsePartButton
-                  workOrderLineId={line.id}
-                  onApplied={() =>
-                    window.dispatchEvent(
-                      new CustomEvent("wo:parts-used"),
-                    )
-                  }
-                  label="Add part"
-                />
-              </div>
+              <span className={statusChip(line.status)}>
+                {statusText}
+              </span>
             </div>
           </div>
 
@@ -337,58 +326,6 @@ export function JobCard({
                   )}
                 </div>
               )}
-
-              {/* Parts accordion */}
-              <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950/80">
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPartsOpen((open) => !open);
-                  }}
-                >
-                  <div className="flex flex-col">
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-300">
-                      Parts used
-                    </span>
-                    <span className="text-[10px] text-neutral-500">
-                      {partsSummary}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {/* small inline add-part on mobile + tablet */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAddPart?.();
-                      }}
-                      className="inline-flex items-center rounded-md border border-neutral-700 px-2 py-0.5 text-[11px] font-medium text-neutral-200 hover:border-orange-500 hover:text-orange-100 sm:hidden"
-                    >
-                      Add part
-                    </button>
-
-                    <span
-                      className={`text-[10px] text-neutral-400 transition-transform ${
-                        partsOpen ? "rotate-90" : ""
-                      }`}
-                    >
-                      ▶
-                    </span>
-                  </div>
-                </button>
-
-                {partsOpen && (
-                  <div
-                    className="border-t border-neutral-800 px-2 pb-2 pt-1.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <PartsUsedList allocations={parts} />
-                  </div>
-                )}
-              </div>
 
               {/* Pricing summary row (optional, only if provided) */}
               {showPricingRow && (
