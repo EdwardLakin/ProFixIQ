@@ -1,6 +1,6 @@
-// features/inspections/components/inspection/SaveInspectionButton.tsx
 "use client";
 
+import { toast } from "sonner";
 import { saveInspectionSession } from "@inspections/lib/inspection/save";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import { Button } from "@shared/components/ui/Button";
@@ -13,13 +13,15 @@ type Props = {
 export function SaveInspectionButton({ session, workOrderLineId }: Props) {
   const handleSave = async () => {
     try {
-      if (!workOrderLineId) throw new Error("Missing workOrderLineId");
+      if (!workOrderLineId) {
+        throw new Error("Missing workOrderLineId");
+      }
       await saveInspectionSession(session, workOrderLineId);
-      // you can swap this to a toast later if you prefer
-      alert("Inspection saved");
+      toast.success("Inspection saved.");
     } catch (error: any) {
+      // eslint-disable-next-line no-console
       console.error("Save error:", error);
-      alert(error?.message || "Failed to save inspection.");
+      toast.error(error?.message || "Failed to save inspection.");
     }
   };
 
@@ -28,10 +30,10 @@ export function SaveInspectionButton({ session, workOrderLineId }: Props) {
       onClick={handleSave}
       type="button"
       variant="outline"
-      size="md"
-      className="font-medium"
+      size="sm"
+      className="font-medium border-[rgba(184,115,51,0.75)] text-[11px] tracking-[0.16em] uppercase"
     >
-      Save progress
+      Save draft
     </Button>
   );
 }

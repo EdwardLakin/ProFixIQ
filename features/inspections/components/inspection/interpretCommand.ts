@@ -1,4 +1,4 @@
-// src/lib/inspection/interpretCommand.ts
+//features/inspections/components/inspection/interpretCommand.ts
 
 import { ParsedCommand } from "@inspections/lib/inspection/types";
 

@@ -1,6 +1,7 @@
+// features/inspections/lib/inspection/PhotoUploadButton.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 
 // NOTE: Using `any` on the exported component props avoids Next's TS(71007)
@@ -13,6 +14,11 @@ export default function PhotoUploadButton(props: any) {
   };
 
   const [urls, setUrls] = useState<string[]>(photoUrls ?? []);
+
+  // 🔄 keep local state in sync if parent changes photoUrls (e.g. rehydrate)
+  useEffect(() => {
+    setUrls(photoUrls ?? []);
+  }, [photoUrls]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -32,11 +38,17 @@ export default function PhotoUploadButton(props: any) {
 
   return (
     <div className="mt-2">
-      <label className="text-xs text-white font-bold block mb-1">Upload Photos</label>
+      <label className="mb-1 block text-xs font-bold text-white">
+        Upload Photos
+      </label>
 
       <div className="flex flex-wrap">
         {urls.map((url, i) => (
-          <PhotoThumbnail key={url + i} url={url} onRemove={() => handleRemove(i)} />
+          <PhotoThumbnail
+            key={url + i}
+            url={url}
+            onRemove={() => handleRemove(i)}
+          />
         ))}
       </div>
 
@@ -45,8 +57,8 @@ export default function PhotoUploadButton(props: any) {
         multiple
         accept="image/*"
         onChange={handleFileChange}
-        className="block mt-2 text-sm text-gray-300 file:rounded-full file:border-0
-        file:text-sm file:font-semibold file:bg-orange-700 file:text-white
+        className="mt-2 block text-sm text-gray-300 file:rounded-full file:border-0
+        file:bg-orange-700 file:text-sm file:font-semibold file:text-white
         hover:file:bg-orange-600"
       />
     </div>

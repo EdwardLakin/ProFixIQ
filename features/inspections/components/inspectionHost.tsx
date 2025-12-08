@@ -1,3 +1,5 @@
+//features/inspections/components/inspectionHost.tsx
+
 "use client";
 
 import { Suspense } from "react";

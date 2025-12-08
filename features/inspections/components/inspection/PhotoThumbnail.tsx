@@ -1,6 +1,6 @@
+//features/inspections/components/inspection/PhotoThumbnail.tsx
+
 "use client";
-
-
 
 interface PhotoThumbnailProps {
   url: string;

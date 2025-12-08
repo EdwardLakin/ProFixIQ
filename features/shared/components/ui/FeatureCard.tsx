@@ -7,7 +7,7 @@ import { cn } from "@shared/lib/utils";
 type BaseProps = {
   title: string;
   className?: string;
-  available?: boolean; // optional now
+  available?: boolean;
 };
 
 type WithDescription = BaseProps & {
@@ -31,7 +31,7 @@ export default function FeatureCard(props: FeatureCardProps) {
 
   const palette =
     available === undefined
-      ? "border-white/10 bg-black/30 hover:border-accent/70 hover:shadow-glow"
+      ? "border-white/10 bg-black/30 hover:border-accent/80 hover:shadow-[0_0_18px_rgba(192,132,70,0.55)]"
       : available
       ? "border-emerald-500/70 bg-emerald-900/20 hover:shadow-[0_0_12px_rgba(16,185,129,0.6)]"
       : "border-red-500/70 bg-red-900/20 hover:shadow-[0_0_12px_rgba(248,113,113,0.6)]";
@@ -62,7 +62,7 @@ export default function FeatureCard(props: FeatureCardProps) {
       </div>
 
       {hasSubtitle ? (
-        <p className="text-[11px] uppercase tracking-wide text-orange-300/80 -mt-1">
+        <p className="text-[11px] uppercase tracking-wide text-accent/80 -mt-1">
           {(props as any).subtitle}
         </p>
       ) : null}

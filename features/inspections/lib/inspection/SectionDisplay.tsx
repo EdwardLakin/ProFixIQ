@@ -1,3 +1,4 @@
+// features/inspections/lib/inspection/ui/SectionDisplay.tsx
 "use client";
 
 import { useState, useMemo } from "react";
@@ -30,21 +31,16 @@ interface SectionDisplayProps {
     itemIndex: number,
   ) => void;
 
-  /** require a note and show a Submit button for AI */
   requireNoteForAI?: boolean;
-  /** handler to run AI + persist, invoked per item */
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
-  /** let parent indicate a submit is in-flight for this item */
   isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
 
-  /** 🔹 new: update technician-entered parts for an item */
   onUpdateParts?: (
     sectionIndex: number,
     itemIndex: number,
     parts: { description: string; qty: number }[],
   ) => void;
 
-  /** 🔹 new: update labor hours for an item */
   onUpdateLaborHours?: (
     sectionIndex: number,
     itemIndex: number,
@@ -87,13 +83,13 @@ export default function SectionDisplay(props: SectionDisplayProps) {
   };
 
   return (
-    <div className="mb-6 rounded-2xl border border-white/8 bg-black/30 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
+    <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
         {/* Title still toggles open/closed */}
         <button
           onClick={() => setOpen((v) => !v)}
-          className="text-left text-lg font-semibold tracking-wide text-orange-400"
+          className="text-left text-lg font-semibold tracking-wide text-accent hover:text-accent/80 transition-colors"
           style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
           aria-expanded={open}
         >
@@ -190,7 +186,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
             return (
               <div
                 key={key}
-                className="rounded-xl border border-white/5 bg-black/40 p-3 md:p-3.5"
+                className="rounded-xl border border-white/10 bg-black/50 p-3 shadow-sm md:p-3.5"
               >
                 <InspectionItemCard
                   item={item}
@@ -268,10 +264,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         {currentParts.map((p, pIdx) => (
                           <div
                             key={pIdx}
-                            className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2 py-2"
+                            className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-black/50 px-2 py-2"
                           >
                             <input
-                              className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/60"
+                              className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/70"
                               placeholder="Part description"
                               value={p.description}
                               onChange={(e) =>
@@ -281,7 +277,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                               }
                             />
                             <input
-                              className="w-16 rounded-md border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/60"
+                              className="w-16 rounded-md border border-neutral-700 bg-neutral-950/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/70"
                               placeholder="Qty"
                               type="number"
                               min={1}
@@ -305,7 +301,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         <button
                           type="button"
                           onClick={addEmptyPart}
-                          className="mt-1 inline-flex items-center rounded-full border border-white/20 bg-black/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:text-orange-200"
+                          className="mt-1 inline-flex items-center rounded-full border border-white/30 bg-black/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-accent/80 hover:text-accent"
                         >
                           + Add Part
                         </button>
@@ -317,7 +313,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                           Labor hours
                         </span>
                         <input
-                          className="w-20 rounded-md border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/60"
+                          className="w-20 rounded-md border border-neutral-700 bg-neutral-950/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/70"
                           placeholder="0.0"
                           type="number"
                           min={0}

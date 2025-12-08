@@ -1,3 +1,5 @@
+//features/shared/components/ui/FeatureSection.tsx
+
 "use client";
 
 import FeatureCard from "@shared/components/ui/FeatureCard";

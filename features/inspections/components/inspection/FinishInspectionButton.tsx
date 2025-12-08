@@ -1,4 +1,3 @@
-// features/inspections/components/inspection/FinishInspectionButton.tsx
 "use client";
 
 import { useState } from "react";
@@ -111,10 +110,11 @@ export default function FinishInspectionButton({
     <Button
       onClick={handleFinish}
       disabled={busy}
-      variant="orange"
-      size="md"
+      variant="copper"
+      size="sm"
       type="button"
-      className="font-semibold"
+      className="font-semibold tracking-[0.18em] uppercase text-[11px]"
+      isLoading={busy}
     >
       {busy ? "Finishing…" : "Finish inspection"}
     </Button>

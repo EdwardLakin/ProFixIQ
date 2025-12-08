@@ -15,7 +15,7 @@ type Props = {
 type BatteryCell = {
   idx: number;
   battery: string; // e.g. "Battery 1"
-  metric: string;  // e.g. "Voltage"
+  metric: string; // e.g. "Voltage"
   unit: string;
   fullLabel: string;
   initial: string;
@@ -51,7 +51,6 @@ const metricCompare = (a: string, b: string) => {
 };
 
 const batteryIndex = (battery: string): number => {
-  // "Battery 1" → 1, "Battery 2" → 2, etc.
   const m = battery.match(/battery\s*(\d+)/i);
   if (m?.[1]) {
     const n = Number(m[1]);
@@ -62,7 +61,6 @@ const batteryIndex = (battery: string): number => {
 
 export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
-
   const [open, setOpen] = useState(true);
 
   const [, setFilledMap] = useState<Record<number, boolean>>(() => {
@@ -94,8 +92,8 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
       const m = label.match(BATTERY_RE);
       if (!m?.groups) return;
 
-      const battery = m.groups.battery.trim(); // e.g. "Battery 1"
-      const metric = m.groups.metric.trim();   // e.g. "Voltage"
+      const battery = m.groups.battery.trim();
+      const metric = m.groups.metric.trim();
 
       const unit =
         (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
@@ -140,16 +138,31 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
     return { batteries, rows };
   }, [items, unitHint]);
 
+  /**
+   * Single input cell with arrow-key navigation.
+   * We identify cells by data-row / data-col / data-section attributes and
+   * move focus using document.querySelector within this section.
+   */
   const InputCell = ({
     idx,
     unit,
     defaultValue,
+    rowIndex,
+    colIndex,
   }: {
     idx: number;
     unit: string;
     defaultValue: string;
+    rowIndex: number;
+    colIndex: number;
   }) => {
     const spanRef = useRef<HTMLSpanElement | null>(null);
+
+    const moveFocus = (targetRow: number, targetCol: number) => {
+      const selector = `input[data-battery-section="${sectionIndex}"][data-row="${targetRow}"][data-col="${targetCol}"]`;
+      const el = document.querySelector<HTMLInputElement>(selector);
+      if (el) el.focus();
+    };
 
     return (
       <div className="relative w-full max-w-[9rem]">
@@ -160,9 +173,32 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
+          data-battery-section={sectionIndex}
+          data-row={rowIndex}
+          data-col={colIndex}
           onBlur={(e) => commit(idx, e.currentTarget)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+            const key = e.key;
+
+            if (key === "Enter") {
+              (e.currentTarget as HTMLInputElement).blur();
+              return;
+            }
+
+            // Arrow navigation stays inside this section/grid.
+            if (key === "ArrowRight") {
+              e.preventDefault();
+              moveFocus(rowIndex, colIndex + 1);
+            } else if (key === "ArrowLeft") {
+              e.preventDefault();
+              moveFocus(rowIndex, colIndex - 1);
+            } else if (key === "ArrowDown") {
+              e.preventDefault();
+              moveFocus(rowIndex + 1, colIndex);
+            } else if (key === "ArrowUp") {
+              e.preventDefault();
+              moveFocus(rowIndex - 1, colIndex);
+            }
           }}
         />
         <span
@@ -225,7 +261,7 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
                       <td className="px-3 py-2 text-sm font-semibold text-white">
                         {row.metric}
                       </td>
-                      {grid.batteries.map((batt) => {
+                      {grid.batteries.map((batt, colIdx) => {
                         const cell = row.cells.find(
                           (c) => c.battery === batt,
                         );
@@ -242,6 +278,8 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
                               idx={cell.idx}
                               unit={cell.unit}
                               defaultValue={cell.initial}
+                              rowIndex={rowIdx}
+                              colIndex={colIdx}
                             />
                           </td>
                         );

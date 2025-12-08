@@ -1,3 +1,5 @@
+//features/inspections/lib/inspection/addWorkOrderLine.ts
+
 export type AISuggestion = {
   parts: { name: string; qty?: number; cost?: number; notes?: string }[];
   laborHours: number;

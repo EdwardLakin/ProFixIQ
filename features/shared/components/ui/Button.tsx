@@ -1,8 +1,17 @@
-// @shared/components/ui/Button.tsx
 "use client";
 
-
 import clsx from "clsx";
+
+/* -------------------------------------------------------------------------- */
+/*  THEME TOKENS — adjust these in one place if you tweak color later         */
+/* -------------------------------------------------------------------------- */
+
+const COPPER = "rgb(184 115 51)"; // burnt copper hex: #B87333
+const COPPER_SOFT = "rgba(184, 115, 51, 0.55)";
+const COPPER_FAINT = "rgba(184, 115, 51, 0.28)";
+const METAL_BORDER = "rgba(255,255,255,0.10)";
+const METAL_BORDER_STRONG = "rgba(255,255,255,0.18)";
+const GLASS_BG = "rgba(0,0,0,0.30)"; // dark glass background
 
 type Variant =
   | "default"
@@ -10,7 +19,8 @@ type Variant =
   | "destructive"
   | "ghost"
   | "outline"
-  | "orange";
+  | "copper"; // new instead of "orange"
+
 type Size = "xs" | "sm" | "md" | "lg";
 
 interface ButtonProps
@@ -24,26 +34,85 @@ interface ButtonProps
   iconRight?: React.ReactNode;
 }
 
-const base =
-  "inline-flex items-center justify-center rounded font-semibold transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 backdrop-blur-sm";
+/* -------------------------------------------------------------------------- */
+/*  Base styling                                                              */
+/* -------------------------------------------------------------------------- */
 
-// glassy variants – all white text, orange-ish borders
-const variantClasses: Record<Exclude<Variant, "orange">, string> = {
-  default:
-    "bg-black/30 border border-orange-400/80 text-white hover:bg-orange-500/10",
-  secondary:
-    "bg-black/20 border border-orange-400/60 text-white hover:bg-orange-500/10",
-  destructive:
-    "bg-red-700/80 border border-red-400 text-white hover:bg-red-600",
-  ghost:
-    "bg-transparent border border-orange-400/50 text-white hover:bg-orange-500/10",
-  outline:
-    "bg-transparent border border-orange-400 text-white hover:bg-orange-500/10",
+const base =
+  "inline-flex items-center justify-center rounded-md font-semibold transition duration-150 " +
+  "ease-in-out backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-offset-2 " +
+  "focus:ring-[rgba(184,115,51,0.45)] focus:ring-offset-black";
+
+/* -------------------------------------------------------------------------- */
+/*  Metallic / Glass Variants                                                 */
+/* -------------------------------------------------------------------------- */
+
+const variantClasses: Record<Exclude<Variant, "copper">, string> = {
+  /** Glass default */
+  default: clsx(
+    "text-white",
+    "border",
+    "border-[--metal-border]", // resolved via CSS var
+    "bg-[--glass-bg]",
+    "hover:bg-[rgba(255,255,255,0.05)]"
+  ),
+
+  /** Slightly dimmer glass */
+  secondary: clsx(
+    "text-neutral-200",
+    "border border-[--metal-border-strong]",
+    "bg-[rgba(0,0,0,0.22)]",
+    "hover:bg-[rgba(255,255,255,0.06)]"
+  ),
+
+  /** Strong red destructive */
+  destructive: clsx(
+    "text-white",
+    "border border-red-500/50",
+    "bg-red-700/60",
+    "hover:bg-red-600/70"
+  ),
+
+  /** Transparent ghost */
+  ghost: clsx(
+    "text-neutral-200",
+    "border border-[--metal-border]",
+    "bg-transparent",
+    "hover:bg-[rgba(255,255,255,0.05)]"
+  ),
+
+  /** Outline-only metallic border */
+  outline: clsx(
+    "text-white",
+    "border border-[--metal-border-strong]",
+    "bg-transparent",
+    "hover:bg-[rgba(255,255,255,0.06)]"
+  ),
 };
 
-// optional filled orange accent if you still want it elsewhere
-const orangeClass =
-  "bg-orange-500/90 hover:bg-orange-500 text-black border border-orange-400/80";
+/* -------------------------------------------------------------------------- */
+/*  COPPER ACCENT VARIANT                                                     */
+/* -------------------------------------------------------------------------- */
+
+const copperClass = clsx(
+  "text-black",
+  `bg-[${COPPER}]`,
+  "hover:bg-[rgb(168,105,45)]",
+  // use the soft/faint tokens via CSS vars so TS stops complaining
+  "border border-[--copper-soft]",
+  "shadow-[0_0_0_1px_var(--copper-faint),0_0_12px_var(--copper-faint)]"
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Sizing                                                                    */
+/* -------------------------------------------------------------------------- */
+
+const sizeClasses: Record<Size, string> = {
+  xs: "text-xs px-2 py-1",
+  sm: "text-sm px-3 py-1.5",
+  md: "text-sm px-4 py-2",
+  lg: "text-base px-5 py-3",
+};
 
 export function buttonClasses({
   variant = "default",
@@ -58,19 +127,20 @@ export function buttonClasses({
   disabled?: boolean;
   isLoading?: boolean;
 }) {
-  const sizeClasses: Record<Size, string> = {
-    xs: "text-xs px-2 py-1",
-    sm: "text-sm px-3 py-1.5",
-    md: "text-sm px-4 py-2",
-    lg: "text-base px-5 py-3",
-  };
-
   const applied =
-    variant === "orange"
-      ? orangeClass
-      : variantClasses[variant as Exclude<Variant, "orange">];
+    variant === "copper"
+      ? copperClass
+      : variantClasses[variant as Exclude<Variant, "copper">];
 
   return clsx(
+    // theme variables (now also include copper-soft/faint)
+    {
+      "--metal-border": METAL_BORDER,
+      "--metal-border-strong": METAL_BORDER_STRONG,
+      "--glass-bg": GLASS_BG,
+      "--copper-soft": COPPER_SOFT,
+      "--copper-faint": COPPER_FAINT,
+    },
     base,
     applied,
     sizeClasses[size],
@@ -78,6 +148,10 @@ export function buttonClasses({
     className
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Component                                                                 */
+/* -------------------------------------------------------------------------- */
 
 export const Button = ({
   children,
@@ -124,6 +198,7 @@ export const Button = ({
           />
         </svg>
       )}
+
       {!isLoading && icon && <span className="mr-2">{icon}</span>}
       <span>{children}</span>
       {!isLoading && iconRight && <span className="ml-2">{iconRight}</span>}

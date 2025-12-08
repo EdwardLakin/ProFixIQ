@@ -1,4 +1,3 @@
-// shared/components/ui/AirCornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -163,18 +162,29 @@ export default function AirCornerGrid({
     );
   };
 
+  // 🔁 Focus helper – moves between inputs within this grid only.
+  const moveFocus = (rowIndex: number, colIndex: number) => {
+    const selector = `input[data-air-section="${sectionIndex}"][data-air-row="${rowIndex}"][data-air-col="${colIndex}"]`;
+    const el = document.querySelector<HTMLInputElement>(selector);
+    if (el) el.focus();
+  };
+
   const InputWithInlineUnit = ({
     idx,
     isPressure,
     unit,
     defaultValue,
     showKpaHint,
+    rowIndex,
+    colIndex,
   }: {
     idx: number;
     isPressure: boolean;
     unit: string;
     defaultValue: string;
     showKpaHint: boolean;
+    rowIndex: number;
+    colIndex: number;
   }) => {
     const spanRef = useRef<HTMLSpanElement | null>(null);
 
@@ -207,12 +217,35 @@ export default function AirCornerGrid({
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
+          data-air-section={sectionIndex}
+          data-air-row={rowIndex}
+          data-air-col={colIndex}
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
-          onKeyDown={(e) =>
-            e.key === "Enter" &&
-            (e.currentTarget as HTMLInputElement).blur()
-          }
+          onKeyDown={(e) => {
+            const key = e.key;
+
+            if (key === "Enter") {
+              (e.currentTarget as HTMLInputElement).blur();
+              return;
+            }
+
+            // 🔁 Arrows = move within this Air grid.
+            if (key === "ArrowRight") {
+              e.preventDefault();
+              moveFocus(rowIndex, colIndex + 1);
+            } else if (key === "ArrowLeft") {
+              e.preventDefault();
+              moveFocus(rowIndex, colIndex - 1);
+            } else if (key === "ArrowDown") {
+              e.preventDefault();
+              moveFocus(rowIndex + 1, colIndex);
+            } else if (key === "ArrowUp") {
+              e.preventDefault();
+              moveFocus(rowIndex - 1, colIndex);
+            }
+            // ❗ Tab is NOT intercepted – browser + outer focus trap handle it.
+          }}
         />
         <span
           ref={spanRef}
@@ -265,6 +298,8 @@ export default function AirCornerGrid({
                         unit={leftUnit}
                         defaultValue={row.left.initial}
                         showKpaHint={showKpa}
+                        rowIndex={i}
+                        colIndex={0}
                       />
                     ) : (
                       <div className="h-[34px]" />
@@ -287,6 +322,8 @@ export default function AirCornerGrid({
                         unit={rightUnit}
                         defaultValue={row.right.initial}
                         showKpaHint={showKpa}
+                        rowIndex={i}
+                        colIndex={1}
                       />
                     ) : (
                       <div className="h-[34px]" />

@@ -1,6 +1,10 @@
 "use client";
 
-import type { InspectionItem, InspectionItemStatus } from "@inspections/lib/inspection/types";
+import type React from "react";
+import type {
+  InspectionItem,
+  InspectionItemStatus,
+} from "@inspections/lib/inspection/types";
 
 type StatusButtonsProps = {
   item: InspectionItem;
@@ -14,6 +18,12 @@ type StatusButtonsProps = {
   onStatusChange: (status: InspectionItemStatus) => void;
 };
 
+/**
+ * Glassy, metallic status pills:
+ * - thin borders
+ * - burnt copper accent
+ * - border + text color change on select
+ */
 export default function StatusButtons(_props: any) {
   const {
     item,
@@ -23,47 +33,59 @@ export default function StatusButtons(_props: any) {
     onStatusChange,
   } = _props as StatusButtonsProps;
 
-  // Base: neutral until selected; strong focus ring for keyboard nav
-  const base =
-    "px-3 py-1 rounded text-xs font-bold mr-2 mb-2 transition-colors duration-150 " +
-    "bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:outline-none " +
-    // focus ring that matches selected ring sizing/offset so it feels consistent
-    "focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-900";
-
   const selected = item.status;
 
-  // Persistent ring + offset color per status
+  const base =
+    "inline-flex items-center justify-center px-3 py-1 rounded-md " +
+    "text-[11px] font-semibold tracking-[0.16em] uppercase mr-2 mb-2 " +
+    "border border-white/15 bg-black/30 text-neutral-200 " +
+    "backdrop-blur-sm transition-colors duration-150 " +
+    "focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.55)] " +
+    "focus:ring-offset-2 focus:ring-offset-black";
+
   const cls = (key: InspectionItemStatus) => {
     const isSel = selected === key;
+
+    const copperBorder = "border-[rgba(184,115,51,0.85)]";
+    const copperText = "text-[rgb(255,248,240)]";
+    const copperGlow = "shadow-[0_0_0_1px_rgba(184,115,51,0.75)]";
+
     switch (key) {
       case "ok":
         return (
           base +
+          " hover:border-[rgba(184,115,51,0.75)] hover:text-[rgb(255,252,245)]" +
           (isSel
-            ? " bg-green-600 text-white ring-2 ring-green-400 ring-offset-2 ring-offset-zinc-900"
-            : " focus:ring-green-300")
+            ? ` ${copperBorder} ${copperText} ${copperGlow} bg-[rgba(184,115,51,0.10)]`
+            : "")
         );
+
       case "fail":
         return (
           base +
+          " hover:border-red-500/80 hover:text-red-200" +
           (isSel
-            ? " bg-red-600 text-white ring-2 ring-red-400 ring-offset-2 ring-offset-zinc-900"
-            : " focus:ring-red-300")
+            ? " border-red-500/80 text-red-100 bg-red-950/40 shadow-[0_0_0_1px_rgba(248,113,113,0.7)]"
+            : "")
         );
+
       case "recommend":
         return (
           base +
+          " hover:border-amber-400/80 hover:text-amber-100" +
           (isSel
-            ? " bg-yellow-400 text-black ring-2 ring-yellow-300 ring-offset-2 ring-offset-zinc-900"
-            : " focus:ring-yellow-300")
+            ? " border-amber-400/80 text-amber-50 bg-amber-950/30 shadow-[0_0_0_1px_rgba(251,191,36,0.7)]"
+            : "")
         );
+
       case "na":
       default:
         return (
           base +
+          " hover:border-neutral-400/70 hover:text-neutral-100" +
           (isSel
-            ? " bg-blue-600 text-white ring-2 ring-blue-400 ring-offset-2 ring-offset-zinc-900"
-            : " focus:ring-blue-300")
+            ? " border-neutral-400/80 text-neutral-50 bg-neutral-900/60 shadow-[0_0_0_1px_rgba(163,163,163,0.7)]"
+            : "")
         );
     }
   };
@@ -105,7 +127,7 @@ export default function StatusButtons(_props: any) {
         aria-pressed={selected === "fail"}
         title="Mark FAIL"
       >
-        FAIL
+        Fail
       </button>
       <button
         type="button"

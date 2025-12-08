@@ -1,3 +1,4 @@
+// shared/components/HomeButton.tsx (path as in your code)
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -15,12 +16,12 @@ export default function HomeButton({ className }: HomeButtonProps) {
     <button
       onClick={() => router.push("/")}
       className={cn(
-        "text-orange-400 hover:text-orange-300 transition-all duration-200",
-        "flex items-center gap-2 font-semibold hover:scale-105",
+        "flex items-center gap-2 font-semibold transition-all duration-200",
+        "text-accent hover:text-accent/80 hover:scale-105",
         className,
       )}
     >
-      <ArrowLeftIcon className="w-5 h-5" />
+      <ArrowLeftIcon className="h-5 w-5" />
       <span>Home</span>
     </button>
   );
