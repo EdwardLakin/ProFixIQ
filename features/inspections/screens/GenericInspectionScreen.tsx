@@ -858,18 +858,20 @@ export default function GenericInspectionScreen(): JSX.Element {
   }
 
   const shell = isEmbed
-    ? "mx-auto max-w-[1100px] px-3 pb-8"
-    : "max-w-5xl mx-auto px-3 md:px-6 pb-16";
+    ? "relative mx-auto max-w-[1100px] px-3 py-6 pb-10"
+    : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-16";
 
   const cardBase =
-    "rounded-2xl border border-white/10 bg-black/30 backdrop-blur-md shadow-card";
+    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
+    "bg-black/65 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+
   const headerCard = `${cardBase} px-4 py-4 md:px-6 md:py-5 mb-6`;
   const sectionCard = `${cardBase} px-4 py-4 md:px-5 md:py-5 mb-6`;
 
   const sectionTitle =
-    "text-lg md:text-xl font-semibold text-accent text-center tracking-wide";
+    "text-lg md:text-xl font-semibold text-orange-300 text-center tracking-[0.16em] uppercase";
   const hint =
-    "mt-1 block text-center text-[11px] uppercase tracking-[0.12em] text-neutral-500";
+    "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
 
   const body = (
     <div
@@ -885,196 +887,204 @@ export default function GenericInspectionScreen(): JSX.Element {
         `}</style>
       )}
 
-      {/* Header card */}
-      <div className={headerCard}>
-        <div className="mb-2 text-center">
-          <div className="text-xs font-blackops uppercase tracking-[0.18em] text-neutral-400">
-            Inspection
-          </div>
-          <div className="mt-1 text-xl font-blackops text-white">
-            {session?.templateitem || templateName || "Inspection"}
-          </div>
-        </div>
+      {/* metallic / burnt-copper wash */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+      />
 
-        <CustomerVehicleHeader
-          templateName=""
-          customer={toHeaderCustomer(session.customer ?? null)}
-          vehicle={toHeaderVehicle(session.vehicle ?? null)}
-        />
-      </div>
-
-      {/* Controls row */}
-      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {/* Voice only in mobile companion */}
-        {isMobileView && (
-          <StartListeningButton
-            isListening={isListening}
-            setIsListening={setIsListening}
-            onStart={startListening}
-          />
-        )}
-
-        {isMobileView && (
-          <PauseResumeButton
-            isPaused={isPaused}
-            isListening={isListening}
-            setIsListening={setIsListening}
-            onPause={(): void => {
-              setIsPaused(true);
-              pauseSession();
-              stopListening();
-            }}
-            onResume={(): void => {
-              setIsPaused(false);
-              resumeSession();
-              void startListening();
-            }}
-            recognitionInstance={null}
-            onTranscript={handleTranscript}
-            setRecognitionRef={(): void => {
-              /* noop – using OpenAI now */
-            }}
-          />
-        )}
-
-        {/* Unit toggle stays on both desktop + mobile */}
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-center"
-          onClick={(): void =>
-            setUnit(unit === "metric" ? "imperial" : "metric")
-          }
-        >
-          Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
-        </Button>
-      </div>
-
-      {/* Progress */}
-      <div className="mb-6 rounded-2xl border border-white/5 bg-black/20 px-4 py-3 backdrop-blur">
-        <ProgressTracker
-          currentItem={session.currentItemIndex}
-          currentSection={session.currentSectionIndex}
-          totalSections={session.sections.length}
-          totalItems={
-            session.sections[session.currentSectionIndex]?.items.length || 0
-          }
-        />
-      </div>
-
-      <InspectionFormCtx.Provider value={{ updateItem }}>
-        {session.sections.map(
-          (section: InspectionSection, sectionIndex: number) => {
-            const itemsWithHints = section.items.map((it) => ({
-              ...it,
-              unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-           }));
-
-            const batterySection = isBatterySection(
-              section.title,
-              itemsWithHints,
-            );
-            const useGrid =
-              batterySection ||
-              shouldRenderCornerGrid(section.title, itemsWithHints);
-
-            return (
-              <div
-                key={`${section.title}-${sectionIndex}`}
-                className={sectionCard}
-              >
-                <h2 className={sectionTitle}>{section.title}</h2>
-                {useGrid && (
-                  <span className={hint}>
-                    {unit === "metric"
-                      ? "Enter mm / kPa / N·m"
-                      : "Enter in / psi / ft·lb"}
-                  </span>
-                )}
-
-                <div className="mt-4">
-                  {useGrid ? (
-                    batterySection ? (
-                      <BatteryGrid
-                        sectionIndex={sectionIndex}
-                        items={itemsWithHints}
-                        unitHint={(label) => unitHintGeneric(label, unit)}
-                      />
-                    ) : (
-                      <AxlesCornerGrid
-                        sectionIndex={sectionIndex}
-                        items={itemsWithHints}
-                        unitHint={(label) => unitHintGeneric(label, unit)}
-                      />
-                    )
-                  ) : (
-                    <SectionDisplay
-                      title=""
-                      section={{ ...section, items: itemsWithHints }}
-                      sectionIndex={sectionIndex}
-                      showNotes
-                      showPhotos
-                      onUpdateStatus={(
-                        secIdx: number,
-                        itemIdx: number,
-                        status: InspectionItemStatus,
-                      ) => {
-                        updateItem(secIdx, itemIdx, { status });
-                      }}
-                      onUpdateNote={(secIdx, itemIdx, note) => {
-                        updateItem(secIdx, itemIdx, { notes: note });
-                      }}
-                      onUpload={(photoUrl, secIdx, itemIdx) => {
-                        const prev =
-                          session.sections[secIdx].items[itemIdx].photoUrls ??
-                          [];
-                        updateItem(secIdx, itemIdx, {
-                          photoUrls: [...prev, photoUrl],
-                        });
-                      }}
-                      /** 🔹 persist tech-entered parts + labor inside the session item */
-                      onUpdateParts={(secIdx, itemIdx, parts) => {
-                        updateItem(secIdx, itemIdx, { parts });
-                      }}
-                      onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-                        updateItem(secIdx, itemIdx, { laborHours: hours });
-                      }}
-                      requireNoteForAI
-                      onSubmitAI={(secIdx, itemIdx) => {
-                        void submitAIForItem(secIdx, itemIdx);
-                      }}
-                      isSubmittingAI={isSubmittingAI}
-                    />
-                  )}
-                </div>
-              </div>
-            );
-          },
-        )}
-      </InspectionFormCtx.Provider>
-
-      {/* Footer actions */}
-      <div className="mt-8 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <SaveInspectionButton
-            session={session}
-            workOrderLineId={workOrderLineId}
-          />
-          <FinishInspectionButton
-            session={session}
-            workOrderLineId={workOrderLineId}
-          />
-          {showMissingLineWarning && (
-            <div className="text-xs text-red-400">
-              Missing <code>workOrderLineId</code> — save/finish will be
-              blocked.
+      <div className="relative space-y-4">
+        {/* Header card */}
+        <div className={headerCard}>
+          <div className="mb-3 border-b border-orange-500/40 pb-3 text-center">
+            <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
+              Inspection
             </div>
-          )}
+            <div className="mt-1 text-xl font-blackops text-neutral-50">
+              {session?.templateitem || templateName || "Inspection"}
+            </div>
+          </div>
+
+          <CustomerVehicleHeader
+            templateName=""
+            customer={toHeaderCustomer(session.customer ?? null)}
+            vehicle={toHeaderVehicle(session.vehicle ?? null)}
+          />
         </div>
 
-        <div className="text-xs text-neutral-400 md:text-right">
-          <span className="font-semibold text-neutral-200">Legend:</span>{" "}
-          P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+        {/* Controls row */}
+        <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {/* Voice only in mobile companion */}
+          {isMobileView && (
+            <StartListeningButton
+              isListening={isListening}
+              setIsListening={setIsListening}
+              onStart={startListening}
+            />
+          )}
+
+          {isMobileView && (
+            <PauseResumeButton
+              isPaused={isPaused}
+              isListening={isListening}
+              setIsListening={setIsListening}
+              onPause={(): void => {
+                setIsPaused(true);
+                pauseSession();
+                stopListening();
+              }}
+              onResume={(): void => {
+                setIsPaused(false);
+                resumeSession();
+                void startListening();
+              }}
+              recognitionInstance={null}
+              onTranscript={handleTranscript}
+              setRecognitionRef={(): void => {
+                /* noop – using OpenAI now */
+              }}
+            />
+          )}
+
+          {/* Unit toggle stays on both desktop + mobile */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-center border-orange-500/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+            onClick={(): void =>
+              setUnit(unit === "metric" ? "imperial" : "metric")
+            }
+          >
+            Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+          </Button>
+        </div>
+
+        {/* Progress */}
+        <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-4 py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+          <ProgressTracker
+            currentItem={session.currentItemIndex}
+            currentSection={session.currentSectionIndex}
+            totalSections={session.sections.length}
+            totalItems={
+              session.sections[session.currentSectionIndex]?.items.length || 0
+            }
+          />
+        </div>
+
+        <InspectionFormCtx.Provider value={{ updateItem }}>
+          {session.sections.map(
+            (section: InspectionSection, sectionIndex: number) => {
+              const itemsWithHints = section.items.map((it) => ({
+                ...it,
+                unit: it.unit || unitHintGeneric(it.item ?? "", unit),
+              }));
+
+              const batterySection = isBatterySection(
+                section.title,
+                itemsWithHints,
+              );
+              const useGrid =
+                batterySection ||
+                shouldRenderCornerGrid(section.title, itemsWithHints);
+
+              return (
+                <div
+                  key={`${section.title}-${sectionIndex}`}
+                  className={sectionCard}
+                >
+                  <h2 className={sectionTitle}>{section.title}</h2>
+                  {useGrid && (
+                    <span className={hint}>
+                      {unit === "metric"
+                        ? "Enter mm / kPa / N·m"
+                        : "Enter in / psi / ft·lb"}
+                    </span>
+                  )}
+
+                  <div className="mt-4">
+                    {useGrid ? (
+                      batterySection ? (
+                        <BatteryGrid
+                          sectionIndex={sectionIndex}
+                          items={itemsWithHints}
+                          unitHint={(label) => unitHintGeneric(label, unit)}
+                        />
+                      ) : (
+                        <AxlesCornerGrid
+                          sectionIndex={sectionIndex}
+                          items={itemsWithHints}
+                          unitHint={(label) => unitHintGeneric(label, unit)}
+                        />
+                      )
+                    ) : (
+                      <SectionDisplay
+                        title=""
+                        section={{ ...section, items: itemsWithHints }}
+                        sectionIndex={sectionIndex}
+                        showNotes
+                        showPhotos
+                        onUpdateStatus={(
+                          secIdx: number,
+                          itemIdx: number,
+                          status: InspectionItemStatus,
+                        ) => {
+                          updateItem(secIdx, itemIdx, { status });
+                        }}
+                        onUpdateNote={(secIdx, itemIdx, note) => {
+                          updateItem(secIdx, itemIdx, { notes: note });
+                        }}
+                        onUpload={(photoUrl, secIdx, itemIdx) => {
+                          const prev =
+                            session.sections[secIdx].items[itemIdx].photoUrls ??
+                            [];
+                          updateItem(secIdx, itemIdx, {
+                            photoUrls: [...prev, photoUrl],
+                          });
+                        }}
+                        /** 🔹 persist tech-entered parts + labor inside the session item */
+                        onUpdateParts={(secIdx, itemIdx, parts) => {
+                          updateItem(secIdx, itemIdx, { parts });
+                        }}
+                        onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                          updateItem(secIdx, itemIdx, { laborHours: hours });
+                        }}
+                        requireNoteForAI
+                        onSubmitAI={(secIdx, itemIdx) => {
+                          void submitAIForItem(secIdx, itemIdx);
+                        }}
+                        isSubmittingAI={isSubmittingAI}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            },
+          )}
+        </InspectionFormCtx.Provider>
+
+        {/* Footer actions */}
+        <div className="mt-6 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <SaveInspectionButton
+              session={session}
+              workOrderLineId={workOrderLineId}
+            />
+            <FinishInspectionButton
+              session={session}
+              workOrderLineId={workOrderLineId}
+            />
+            {showMissingLineWarning && (
+              <div className="text-xs text-red-400">
+                Missing <code>workOrderLineId</code> — save/finish will be
+                blocked.
+              </div>
+            )}
+          </div>
+
+          <div className="text-xs text-neutral-400 md:text-right">
+            <span className="font-semibold text-neutral-200">Legend:</span>{" "}
+            P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+          </div>
         </div>
       </div>
     </div>
