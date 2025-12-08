@@ -18,7 +18,7 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
-import { JobCard } from "@/features/work-orders/components/JobCard";
+import { JobCard } from "@/features/work-orders/mobile/MobileJobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 
 type DB = Database;

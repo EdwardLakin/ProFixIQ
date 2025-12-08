@@ -57,30 +57,7 @@ type KnownStatus =
   | "ready_to_invoice"
   | "invoiced";
 
-/** Status pill styling (matches WO header pills) */
-const BASE_BADGE =
-  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide";
 
-const BADGE: Record<KnownStatus, string> = {
-  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
-  awaiting: "bg-sky-900/20 border-sky-500/40 text-sky-300",
-  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
-  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
-  on_hold: "bg-amber-900/20 border-amber-500/40 text-amber-300",
-  planned: "bg-purple-900/20 border-purple-500/40 text-purple-300",
-  new: "bg-neutral-800 border-neutral-600 text-neutral-200",
-  completed: "bg-green-900/20 border-green-500/40 text-green-300",
-  ready_to_invoice:
-    "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
-  invoiced: "bg-teal-900/20 border-teal-500/40 text-teal-300",
-};
-
-const statusChip = (s: string | null | undefined): string => {
-  const key = (s ?? "awaiting")
-    .toLowerCase()
-    .replaceAll(" ", "_") as KnownStatus;
-  return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
-};
 
 /**
  * Card border / background styles – kept in sync with the mobile WO client
@@ -288,12 +265,8 @@ export function JobCard({
               )}
             </div>
 
-            {/* Right side: status pill + add-part button */}
+            {/* Right side: add-part button (no extra status pill here) */}
             <div className="ml-auto flex items-center gap-2">
-              <span className={statusChip(line.status)}>
-                {statusText}
-              </span>
-
               {/* Desktop add-part button */}
               <button
                 type="button"
