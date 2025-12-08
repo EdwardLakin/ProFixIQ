@@ -274,53 +274,53 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }, [supabase, shopId, vehicle]);
 
-  // load inspection templates (mine + public)
+  // load inspection templates (owner + public + same-shop via RLS)
   const loadTemplates = useCallback(async () => {
+    if (!shopId) return;
+
     setTemplatesLoading(true);
     try {
-      const { data: me } = await supabase.auth.getUser();
-      const uid = me?.user?.id ?? null;
+      // Make sure current_shop_id is set so shop-wide RLS kicks in
+      await ensureShopContext(shopId);
 
-      const minePromise = uid
-        ? supabase
-            .from("inspection_templates")
-            .select("*")
-            .eq("user_id", uid)
-            .order("created_at", { ascending: false })
-        : Promise.resolve({ data: [] as TemplateRow[], error: null });
-
-      const sharedPromise = supabase
-        .from("inspection_templates")
-        .select("*")
-        .eq("is_public", true)
-        .order("created_at", { ascending: false });
-
-      const [{ data: mineRaw }, { data: sharedRaw }] = await Promise.all([
-        minePromise,
-        sharedPromise,
+      const [{ data: auth }, { data, error }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase
+          .from("inspection_templates")
+          .select("*")
+          .order("created_at", { ascending: false }),
       ]);
 
-      setTemplates([
-        ...(Array.isArray(mineRaw) ? mineRaw : []),
-        ...(Array.isArray(sharedRaw) ? sharedRaw : []),
-      ]);
+      if (error) throw error;
+
+      const uid = auth?.user?.id ?? null;
+      const rows = (data ?? []) as TemplateRow[];
+
+      // Sort: mine → same-shop → public → rest
+      const score = (t: TemplateRow): number => {
+        if (uid && t.user_id === uid) return 0;
+        if (t.shop_id && t.shop_id === shopId) return 1;
+        if (t.is_public) return 2;
+        return 3;
+      };
+
+      rows.sort((a, b) => score(a) - score(b));
+      setTemplates(rows);
     } catch {
-      // ignore
+      // ignore; soft fail – user just sees "No templates yet"
+      setTemplates([]);
     } finally {
       setTemplatesLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, shopId]);
 
   // initial loads
   useEffect(() => {
-    void loadTemplates();
-  }, [loadTemplates]);
-
-  useEffect(() => {
     if (shopId) {
       void loadMenuItems();
+      void loadTemplates();
     }
-  }, [shopId, loadMenuItems]);
+  }, [shopId, loadMenuItems, loadTemplates]);
 
   // ============================================================
   // add line (menu or template)
@@ -614,8 +614,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         typeof mi.labor_time === "number"
           ? mi.labor_time
           : // fallback in case you add labor_hours to menu_items later
-            typeof mi.labor_hours === "number"
-          ? mi.labor_hours
+          typeof (mi as any).labor_hours === "number"
+          ? (mi as any).labor_hours
           : null,
       notes: mi.description ?? null,
       source: "menu_item",
@@ -792,7 +792,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
           <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
             From My Menu
           </h4>
-          <p className="text-[10px] text-neutral-500">
+        <p className="text-[10px] text-neutral-500">
             Saved services — best matches for this vehicle are shown first.
           </p>
         </div>
@@ -819,8 +819,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   <div className="mt-1 text-xs text-neutral-400">
                     {typeof mi.labor_time === "number"
                       ? `${mi.labor_time.toFixed(1)}h`
-                      : typeof mi.labor_hours === "number"
-                      ? `${mi.labor_hours.toFixed(1)}h`
+                      : typeof (mi as any).labor_hours === "number"
+                      ? `${(mi as any).labor_hours.toFixed(1)}h`
                       : "Labor TBD"}{" "}
                     •{" "}
                     {typeof mi.total_price === "number"
@@ -869,3 +869,5 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     </div>
   );
 }
+
+export default MenuQuickAdd;
