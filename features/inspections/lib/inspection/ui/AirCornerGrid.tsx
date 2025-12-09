@@ -208,20 +208,21 @@ export default function AirCornerGrid({
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
-          data-grid-section={sectionIndex}
+          // mark this as part of the Air grid so we only cycle within this component
+          data-air-grid="true"
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
           onKeyDown={(e) => {
             if (e.key !== "Tab") return;
 
-            const selector = `input[data-grid-section="${sectionIndex}"]`;
             const all = Array.from(
-              document.querySelectorAll<HTMLInputElement>(selector),
+              document.querySelectorAll<HTMLInputElement>(
+                'input[data-air-grid="true"]',
+              ),
             );
-
             const current = e.currentTarget as HTMLInputElement;
             const index = all.indexOf(current);
-            if (index === -1) return; // let default behavior happen
+            if (index === -1) return; // fall back to default
 
             const delta = e.shiftKey ? -1 : 1;
             const nextIndex = index + delta;
@@ -231,7 +232,7 @@ export default function AirCornerGrid({
               e.stopPropagation();
               all[nextIndex].focus();
             }
-            // At the edges, we let Tab bubble out to the global focus trap.
+            // at edges, let Tab bubble to the outer modal focus trap
           }}
         />
         <span
