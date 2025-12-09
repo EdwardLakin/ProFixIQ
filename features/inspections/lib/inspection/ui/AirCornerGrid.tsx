@@ -1,4 +1,3 @@
-// features/inspections/lib/inspection/ui/AirCornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -163,33 +162,22 @@ export default function AirCornerGrid({
     );
   };
 
-  // 🔁 Focus helper – moves between inputs within this grid only.
-  const moveFocus = (rowIndex: number, colIndex: number) => {
-    const selector = `input[data-air-section="${sectionIndex}"][data-air-row="${rowIndex}"][data-air-col="${colIndex}"]`;
-    const el = document.querySelector<HTMLInputElement>(selector);
-    if (el) el.focus();
-  };
-
   const InputWithInlineUnit = ({
     idx,
     isPressure,
     unit,
     defaultValue,
     showKpaHint,
-    rowIndex,
-    colIndex,
   }: {
     idx: number;
     isPressure: boolean;
     unit: string;
     defaultValue: string;
     showKpaHint: boolean;
-    rowIndex: number;
-    colIndex: number;
   }) => {
     const spanRef = useRef<HTMLSpanElement | null>(null);
 
-    const kSeed = () => {
+    const seedText = () => {
       if (!isPressure) return unit;
       const k = kpaFromPsi(defaultValue);
       if (!showKpaHint) return "psi";
@@ -213,74 +201,18 @@ export default function AirCornerGrid({
         <input
           name={`air-${idx}`}
           defaultValue={defaultValue}
-          tabIndex={0}
           className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
-          data-grid-section={sectionIndex}
-          data-air-section={sectionIndex}
-          data-air-row={rowIndex}
-          data-air-col={colIndex}
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
-          onKeyDown={(e) => {
-            const key = e.key;
-
-            if (key === "Enter") {
-              (e.currentTarget as HTMLInputElement).blur();
-              return;
-            }
-
-            // Arrows = move within this Air grid.
-            if (key === "ArrowRight") {
-              e.preventDefault();
-              moveFocus(rowIndex, colIndex + 1);
-              return;
-            }
-            if (key === "ArrowLeft") {
-              e.preventDefault();
-              moveFocus(rowIndex, colIndex - 1);
-              return;
-            }
-            if (key === "ArrowDown") {
-              e.preventDefault();
-              moveFocus(rowIndex + 1, colIndex);
-              return;
-            }
-            if (key === "ArrowUp") {
-              e.preventDefault();
-              moveFocus(rowIndex - 1, colIndex);
-              return;
-            }
-
-            // Tab: walk in DOM order within this grid
-            if (key === "Tab") {
-              const selector = `input[data-grid-section="${sectionIndex}"]`;
-              const all = Array.from(
-                document.querySelectorAll<HTMLInputElement>(selector),
-              );
-              const current = e.currentTarget as HTMLInputElement;
-              const index = all.indexOf(current);
-              if (index === -1) return; // let it bubble
-
-              const delta = e.shiftKey ? -1 : 1;
-              const nextIndex = index + delta;
-
-              if (nextIndex >= 0 && nextIndex < all.length) {
-                e.preventDefault();
-                e.stopPropagation();
-                all[nextIndex].focus();
-              }
-              // At the edges we let Tab escape into the outer focus trap.
-            }
-          }}
         />
         <span
           ref={spanRef}
           className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400"
         >
-          {kSeed()}
+          {seedText()}
         </span>
       </div>
     );
@@ -327,8 +259,6 @@ export default function AirCornerGrid({
                         unit={leftUnit}
                         defaultValue={row.left.initial}
                         showKpaHint={showKpa}
-                        rowIndex={i}
-                        colIndex={0}
                       />
                     ) : (
                       <div className="h-[34px]" />
@@ -353,8 +283,6 @@ export default function AirCornerGrid({
                         unit={rightUnit}
                         defaultValue={row.right.initial}
                         showKpaHint={showKpa}
-                        rowIndex={i}
-                        colIndex={1}
                       />
                     ) : (
                       <div className="h-[34px]" />

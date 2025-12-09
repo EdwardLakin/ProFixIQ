@@ -1,4 +1,3 @@
-// features/inspections/lib/inspection/ui/AxlesCornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -312,20 +311,6 @@ export default function AxlesCornerGrid({
     );
   };
 
-  /* ---------------- focus helpers (per-mode) ---------------- */
-
-  const moveHydFocus = (region: Region, rowIndex: number, colIndex: number) => {
-    const selector = `input[data-hyd-section="${sectionIndex}"][data-hyd-region="${region}"][data-hyd-row="${rowIndex}"][data-hyd-col="${colIndex}"]`;
-    const el = document.querySelector<HTMLInputElement>(selector);
-    if (el) el.focus();
-  };
-
-  const moveAirFocus = (axle: string, rowIndex: number, colIndex: number) => {
-    const selector = `input[data-air-section="${sectionIndex}"][data-air-axle="${axle}"][data-air-row="${rowIndex}"][data-air-col="${colIndex}"]`;
-    const el = document.querySelector<HTMLInputElement>(selector);
-    if (el) el.focus();
-  };
-
   /* ------------------- shared input used by both modes ------------------ */
 
   const InputWithInlineUnit = ({
@@ -333,19 +318,11 @@ export default function AxlesCornerGrid({
     isPressureRow,
     unit,
     defaultValue,
-    region,
-    axle,
-    rowIndex,
-    colIndex,
   }: {
     idx: number;
     isPressureRow: boolean;
     unit: string;
     defaultValue: string;
-    region?: Region;
-    axle?: string;
-    rowIndex?: number;
-    colIndex?: number;
   }) => {
     const spanRef = useRef<HTMLSpanElement | null>(null);
 
@@ -368,9 +345,6 @@ export default function AxlesCornerGrid({
       }
     };
 
-    const rIdx = rowIndex ?? 0;
-    const cIdx = colIndex ?? 0;
-
     return (
       <div className="relative w-full max-w-[11rem]">
         <input
@@ -379,88 +353,8 @@ export default function AxlesCornerGrid({
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
-          tabIndex={0}
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
-          // 🔢 datasets for in-grid navigation
-          data-grid-section={sectionIndex}
-          data-hyd-section={mode === "hyd" && region ? sectionIndex : undefined}
-          data-hyd-region={mode === "hyd" && region ? region : undefined}
-          data-hyd-row={mode === "hyd" && region ? rIdx : undefined}
-          data-hyd-col={mode === "hyd" && region ? cIdx : undefined}
-          data-air-section={mode === "air" && axle ? sectionIndex : undefined}
-          data-air-axle={mode === "air" && axle ? axle : undefined}
-          data-air-row={mode === "air" && axle ? rIdx : undefined}
-          data-air-col={mode === "air" && axle ? cIdx : undefined}
-          onKeyDown={(e) => {
-            const key = e.key;
-
-            if (key === "Enter") {
-              (e.currentTarget as HTMLInputElement).blur();
-              return;
-            }
-
-            // ⬅️➡️⬆️⬇️ Arrow keys: stay inside HYD / AIR subgrid
-            if (key === "ArrowRight") {
-              e.preventDefault();
-              if (mode === "hyd" && region) {
-                moveHydFocus(region, rIdx, cIdx + 1);
-              } else if (mode === "air" && axle) {
-                moveAirFocus(axle, rIdx, cIdx + 1);
-              }
-              return;
-            }
-            if (key === "ArrowLeft") {
-              e.preventDefault();
-              if (mode === "hyd" && region) {
-                moveHydFocus(region, rIdx, cIdx - 1);
-              } else if (mode === "air" && axle) {
-                moveAirFocus(axle, rIdx, cIdx - 1);
-              }
-              return;
-            }
-            if (key === "ArrowDown") {
-              e.preventDefault();
-              if (mode === "hyd" && region) {
-                moveHydFocus(region, rIdx + 1, cIdx);
-              } else if (mode === "air" && axle) {
-                moveAirFocus(axle, rIdx + 1, cIdx);
-              }
-              return;
-            }
-            if (key === "ArrowUp") {
-              e.preventDefault();
-              if (mode === "hyd" && region) {
-                moveHydFocus(region, rIdx - 1, cIdx);
-              } else if (mode === "air" && axle) {
-                moveAirFocus(axle, rIdx - 1, cIdx);
-              }
-              return;
-            }
-
-            // ↹ Tab: walk within the grid in DOM order, so the modal focus trap
-            // doesn't yank focus out of the corner grid.
-            if (key === "Tab") {
-              const selector = `input[data-grid-section="${sectionIndex}"]`;
-              const all = Array.from(
-                document.querySelectorAll<HTMLInputElement>(selector),
-              );
-              const current = e.currentTarget as HTMLInputElement;
-              const index = all.indexOf(current);
-              if (index === -1) return; // fall back to default
-
-              const delta = e.shiftKey ? -1 : 1;
-              const nextIndex = index + delta;
-
-              if (nextIndex >= 0 && nextIndex < all.length) {
-                e.preventDefault();
-                e.stopPropagation();
-                all[nextIndex].focus();
-              }
-              // If we're at the edges, we let Tab bubble so the global
-              // inspection focus trap can move to the next block as usual.
-            }
-          }}
         />
         <span
           ref={spanRef}
@@ -509,9 +403,6 @@ export default function AxlesCornerGrid({
                     isPressureRow={row.left.isPressure}
                     unit={row.left.unit}
                     defaultValue={row.left.initial}
-                    region={region}
-                    rowIndex={i}
-                    colIndex={0}
                   />
                 ) : (
                   <div className="h-[34px]" />
@@ -533,9 +424,6 @@ export default function AxlesCornerGrid({
                     isPressureRow={row.right.isPressure}
                     unit={row.right.unit}
                     defaultValue={row.right.initial}
-                    region={region}
-                    rowIndex={i}
-                    colIndex={1}
                   />
                 ) : (
                   <div className="h-[34px]" />
@@ -585,9 +473,6 @@ export default function AxlesCornerGrid({
                     isPressureRow={row.left.isPressure}
                     unit={row.left.unit}
                     defaultValue={row.left.initial}
-                    axle={axle}
-                    rowIndex={i}
-                    colIndex={0}
                   />
                 ) : (
                   <div className="h-[34px]" />
@@ -609,9 +494,6 @@ export default function AxlesCornerGrid({
                     isPressureRow={row.right.isPressure}
                     unit={row.right.unit}
                     defaultValue={row.right.initial}
-                    axle={axle}
-                    rowIndex={i}
-                    colIndex={1}
                   />
                 ) : (
                   <div className="h-[34px]" />
@@ -685,18 +567,18 @@ export default function AxlesCornerGrid({
       )}
 
       {mode === "hyd" ? (
-  <div className="grid grid-cols-1 gap-4">
-    {hydGroups.map((g) => (
-      <HydRegionCard key={g.region} region={g.region} rows={g.rows} />
-    ))}
-  </div>
-) : (
-  <>
-    {airRowsPerAxle.map(({ axle, rows }) => (
-      <AirAxleCard key={axle} axle={axle} rows={rows} />
-    ))}
-  </>
-)}
+        <div className="grid grid-cols-1 gap-4">
+          {hydGroups.map((g) => (
+            <HydRegionCard key={g.region} region={g.region} rows={g.rows} />
+          ))}
+        </div>
+      ) : (
+        <>
+          {airRowsPerAxle.map(({ axle, rows }) => (
+            <AirAxleCard key={axle} axle={axle} rows={rows} />
+          ))}
+        </>
+      )}
     </div>
   );
 }
