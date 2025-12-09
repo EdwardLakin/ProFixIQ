@@ -208,21 +208,23 @@ export default function AirCornerGrid({
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
-          // mark this as part of the Air grid so we only cycle within this component
           data-air-grid="true"
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
-          onKeyDown={(e) => {
+          // ⬇️ capture phase so we "win" before any outer keydown traps
+          onKeyDownCapture={(e) => {
             if (e.key !== "Tab") return;
 
-            const all = Array.from(
-              document.querySelectorAll<HTMLInputElement>(
-                'input[data-air-grid="true"]',
-              ),
-            );
             const current = e.currentTarget as HTMLInputElement;
+            const root = current.closest<HTMLElement>("[data-air-grid-root='true']");
+            if (!root) return;
+
+            const all = Array.from(
+              root.querySelectorAll<HTMLInputElement>("input[data-air-grid='true']"),
+            );
+
             const index = all.indexOf(current);
-            if (index === -1) return; // fall back to default
+            if (index === -1) return;
 
             const delta = e.shiftKey ? -1 : 1;
             const nextIndex = index + delta;
@@ -232,7 +234,7 @@ export default function AirCornerGrid({
               e.stopPropagation();
               all[nextIndex].focus();
             }
-            // at edges, let Tab bubble to the outer modal focus trap
+            // at edges, let Tab fall through to the outer shell
           }}
         />
         <span
@@ -325,7 +327,7 @@ export default function AirCornerGrid({
   };
 
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-3" data-air-grid-root="true">
       <div className="flex items-center justify-between gap-3 px-1">
         <div
           className="hidden text-[11px] uppercase tracking-[0.14em] text-neutral-500 md:block"

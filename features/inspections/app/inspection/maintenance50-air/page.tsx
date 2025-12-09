@@ -1,3 +1,4 @@
+// features/inspections/app/inspection/maintenance50-air/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -5,18 +6,13 @@ import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
 
-import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
-import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
 import ProgressTracker from "@inspections/lib/inspection/ProgressTracker";
 import useInspectionSession from "@inspections/hooks/useInspectionSession";
 
-import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
-import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 
 import type {
-  ParsedCommand,
   InspectionItemStatus,
   InspectionStatus,
   InspectionSection,
@@ -34,7 +30,6 @@ import FinishInspectionButton from "@inspections/components/inspection/FinishIns
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 
 import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleHelpers";
-import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 
@@ -222,14 +217,10 @@ export default function Maintenance50AirPage(): JSX.Element {
   const searchParams = useSearchParams();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  // 🔸 voice only on mobile companion
-  const isMobileView =
-    (searchParams.get("view") || "").toLowerCase() === "mobile";
-
   const isEmbed = useMemo(() => {
     const flag =
       ["1", "true", "yes"].includes(
-        (searchParams.get("embed") || searchParams.get("compact") || "").toLowerCase()
+        (searchParams.get("embed") || searchParams.get("compact") || "").toLowerCase(),
       );
     const inIframe =
       typeof window !== "undefined" && window.self !== window.top;
@@ -241,13 +232,10 @@ export default function Maintenance50AirPage(): JSX.Element {
 
   const inspectionId = useMemo<string>(
     () => searchParams.get("inspectionId") || uuidv4(),
-    [searchParams]
+    [searchParams],
   );
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
-  const [isListening, setIsListening] = useState<boolean>(false);
-  const [isPaused, setIsPaused] = useState<boolean>(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const templateName: string =
     searchParams.get("template") || "Maintenance 50 (Air Brake CVIP)";
@@ -288,7 +276,7 @@ export default function Maintenance50AirPage(): JSX.Element {
       vehicle,
       sections: [],
     }),
-    [inspectionId, templateName, customer, vehicle]
+    [inspectionId, templateName, customer, vehicle],
   );
 
   const {
@@ -297,9 +285,6 @@ export default function Maintenance50AirPage(): JSX.Element {
     updateItem,
     updateSection,
     startSession,
-    finishSession,
-    resumeSession,
-    pauseSession,
     addQuoteLine,
     updateQuoteLine,
   } = useInspectionSession(initialSession);
@@ -476,44 +461,6 @@ export default function Maintenance50AirPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  /* ---------- speech → commands ---------- */
-  const handleTranscript = async (text: string): Promise<void> => {
-    const commands: ParsedCommand[] = await interpretCommand(text);
-    const sess: InspectionSession | undefined = session ?? undefined;
-    if (!sess) return;
-
-    for (const command of commands) {
-      await handleTranscriptFn({
-        command,
-        session: sess,
-        updateInspection,
-        updateItem,
-        updateSection,
-        finishSession,
-      });
-    }
-  };
-
-  const startListening = (): void => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
-    }
-    recognitionRef.current = startVoiceRecognition(async (text) => {
-      await handleTranscript(text);
-    });
-    setIsListening(true);
-  };
-
-  useEffect(() => {
-    return () => {
-      try {
-        recognitionRef.current?.stop();
-      } catch {}
-    };
-  }, []);
-
   /* 🧹 embed-safe scrubber */
   useEffect(() => {
     if (!isEmbed) return;
@@ -556,7 +503,7 @@ export default function Maintenance50AirPage(): JSX.Element {
             if (n instanceof HTMLElement) {
               scrub(n);
               n.querySelectorAll?.("*")?.forEach((child) => {
-                if (child instanceof HTMLElement) scrub(child);
+                if (child instanceof HTMLElement) scrub(child as HTMLElement);
               });
             }
           });
@@ -574,7 +521,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     return () => obs.disconnect();
   }, [isEmbed]);
 
-  /* 🔐 focus trap when embedded */
+  /* 🔐 focus trap when embedded – now ignores AirCornerGrid */
   useEffect(() => {
     if (!isEmbed) return;
     const root = rootRef.current;
@@ -586,13 +533,19 @@ export default function Maintenance50AirPage(): JSX.Element {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Tab") return;
 
+      const target = e.target as HTMLElement | null;
+      // Let the AirCornerGrid own Tab navigation inside its root
+      if (target && target.closest("[data-air-grid-root='true']")) {
+        return;
+      }
+
       const focusables = Array.from(
-        root.querySelectorAll<HTMLElement>(selector)
+        root.querySelectorAll<HTMLElement>(selector),
       ).filter(
         (el) =>
           !el.hasAttribute("disabled") &&
           el.tabIndex !== -1 &&
-          el.getAttribute("aria-hidden") !== "true"
+          el.getAttribute("aria-hidden") !== "true",
       );
 
       if (!focusables.length) return;
@@ -677,49 +630,11 @@ export default function Maintenance50AirPage(): JSX.Element {
       </div>
 
       {/* Controls */}
-      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {isMobileView && (
-          <StartListeningButton
-            isListening={isListening}
-            setIsListening={setIsListening}
-            onStart={startListening}
-          />
-        )}
-
-        {isMobileView && (
-          <PauseResumeButton
-            isPaused={isPaused}
-            isListening={isListening}
-            setIsListening={setIsListening}
-            onPause={(): void => {
-              setIsPaused(true);
-              pauseSession();
-              try {
-                recognitionRef.current?.stop();
-              } catch {}
-            }}
-            onResume={(): void => {
-              setIsPaused(false);
-              resumeSession();
-              recognitionRef.current = startVoiceRecognition(handleTranscript);
-            }}
-            recognitionInstance={
-              recognitionRef.current as unknown as SpeechRecognition | null
-            }
-            onTranscript={handleTranscript}
-            setRecognitionRef={(instance: SpeechRecognition | null): void => {
-              (
-                recognitionRef as React.MutableRefObject<SpeechRecognition | null>
-              ).current = instance ?? null;
-            }}
-          />
-        )}
-
-        {/* Unit toggle always available */}
+      <div className="mb-4 flex justify-end">
         <Button
           type="button"
           variant="outline"
-          className="w-full justify-center"
+          className="min-w-[220px] justify-center"
           onClick={(): void =>
             setUnit(unit === "metric" ? "imperial" : "metric")
           }
@@ -776,21 +691,21 @@ export default function Maintenance50AirPage(): JSX.Element {
                   onUpdateStatus={(
                     secIdx: number,
                     itemIdx: number,
-                    status: InspectionItemStatus
+                    status: InspectionItemStatus,
                   ): void => {
                     updateItem(secIdx, itemIdx, { status });
                   }}
                   onUpdateNote={(
                     secIdx: number,
                     itemIdx: number,
-                    note: string
+                    note: string,
                   ): void => {
                     updateItem(secIdx, itemIdx, { notes: note });
                   }}
                   onUpload={(
                     photoUrl: string,
                     secIdx: number,
-                    itemIdx: number
+                    itemIdx: number,
                   ): void => {
                     const prev =
                       session.sections[secIdx].items[itemIdx].photoUrls ?? [];
