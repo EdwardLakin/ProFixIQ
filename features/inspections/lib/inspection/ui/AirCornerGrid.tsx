@@ -1,3 +1,4 @@
+// features/inspections/lib/inspection/ui/AirCornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -143,7 +144,7 @@ export default function AirCornerGrid({
 
   const kpaFromPsi = (psiStr: string) => {
     const n = Number(psiStr);
-    return isFinite(n) ? Math.round(n * 6.894757) : null;
+    return Number.isFinite(n) ? Math.round(n * 6.894757) : null;
   };
 
   type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
@@ -213,10 +214,11 @@ export default function AirCornerGrid({
           name={`air-${idx}`}
           defaultValue={defaultValue}
           tabIndex={0}
-          className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+          className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
+          data-grid-section={sectionIndex}
           data-air-section={sectionIndex}
           data-air-row={rowIndex}
           data-air-col={colIndex}
@@ -230,21 +232,48 @@ export default function AirCornerGrid({
               return;
             }
 
-            // 🔁 Arrows = move within this Air grid.
+            // Arrows = move within this Air grid.
             if (key === "ArrowRight") {
               e.preventDefault();
               moveFocus(rowIndex, colIndex + 1);
-            } else if (key === "ArrowLeft") {
+              return;
+            }
+            if (key === "ArrowLeft") {
               e.preventDefault();
               moveFocus(rowIndex, colIndex - 1);
-            } else if (key === "ArrowDown") {
+              return;
+            }
+            if (key === "ArrowDown") {
               e.preventDefault();
               moveFocus(rowIndex + 1, colIndex);
-            } else if (key === "ArrowUp") {
+              return;
+            }
+            if (key === "ArrowUp") {
               e.preventDefault();
               moveFocus(rowIndex - 1, colIndex);
+              return;
             }
-            // ❗ Tab is NOT intercepted – browser + outer focus trap handle it.
+
+            // Tab: walk in DOM order within this grid
+            if (key === "Tab") {
+              const selector = `input[data-grid-section="${sectionIndex}"]`;
+              const all = Array.from(
+                document.querySelectorAll<HTMLInputElement>(selector),
+              );
+              const current = e.currentTarget as HTMLInputElement;
+              const index = all.indexOf(current);
+              if (index === -1) return; // let it bubble
+
+              const delta = e.shiftKey ? -1 : 1;
+              const nextIndex = index + delta;
+
+              if (nextIndex >= 0 && nextIndex < all.length) {
+                e.preventDefault();
+                e.stopPropagation();
+                all[nextIndex].focus();
+              }
+              // At the edges we let Tab escape into the outer focus trap.
+            }
           }}
         />
         <span
@@ -260,15 +289,15 @@ export default function AirCornerGrid({
   const AxleCard = ({ g }: { g: AxleGroup }) => {
     const rows = buildTriplets(g);
     return (
-      <div className="rounded-2xl border border-white/8 bg-black/40 p-4 shadow-card backdrop-blur-md">
+      <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
         <div
-          className="mb-3 text-lg font-semibold text-accent"
-          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          className="mb-3 text-lg font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+          style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
         >
           {g.axle}
         </div>
 
-        <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
+        <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
           <div>Left</div>
           <div className="text-center">Item</div>
           <div className="text-right">Right</div>
@@ -288,7 +317,7 @@ export default function AirCornerGrid({
               return (
                 <div
                   key={`${row.metric}-${i}`}
-                  className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-neutral-950/70 p-3"
+                  className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl border border-slate-800/80 bg-neutral-950/80 p-3 shadow-[0_14px_35px_rgba(0,0,0,0.9)]"
                 >
                   <div>
                     {row.left ? (
@@ -307,8 +336,10 @@ export default function AirCornerGrid({
                   </div>
 
                   <div
-                    className="min-w-0 truncate text-center text-sm font-semibold text-white"
-                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                    className="min-w-0 truncate text-center text-sm font-semibold text-neutral-100"
+                    style={{
+                      fontFamily: "var(--font-blackops), system-ui, sans-serif",
+                    }}
                     title={row.metric}
                   >
                     {row.metric}
@@ -342,7 +373,7 @@ export default function AirCornerGrid({
     <div className="grid gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
         <div
-          className="hidden text-xs text-neutral-400 md:block"
+          className="hidden text-[11px] uppercase tracking-[0.14em] text-neutral-500 md:block"
           style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
         >
           {groups.map((g, i) => {
@@ -361,7 +392,7 @@ export default function AirCornerGrid({
           <label className="flex select-none items-center gap-2 text-xs text-neutral-300">
             <input
               type="checkbox"
-              className="h-3 w-3 accent-orange-500"
+              className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 accent-orange-500"
               checked={showKpa}
               onChange={(e) => setShowKpa(e.target.checked)}
               tabIndex={-1}
@@ -371,7 +402,7 @@ export default function AirCornerGrid({
 
           <button
             onClick={() => setOpen((v) => !v)}
-            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white hover:border-accent hover:bg-white/10"
+            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:border-orange-500 hover:bg-black/80"
             tabIndex={-1}
           >
             {open ? "Collapse" : "Expand"}
@@ -381,14 +412,16 @@ export default function AirCornerGrid({
 
       {onAddAxle && <AddAxlePicker groups={groups} onAddAxle={onAddAxle} />}
 
-      {groups.map((g) => (
-        <AxleCard key={g.axle} g={g} />
-      ))}
+      <div className="grid gap-4 md:grid-cols-2">
+        {groups.map((g) => (
+          <AxleCard key={g.axle} g={g} />
+        ))}
+      </div>
     </div>
   );
 }
 
-/** Inline axle picker (same, but glassy) */
+/** Inline axle picker with glassy styling */
 function AddAxlePicker({
   groups,
   onAddAxle,
@@ -410,7 +443,7 @@ function AddAxlePicker({
   return (
     <div className="flex items-center gap-2 px-1">
       <select
-        className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-sm text-white"
+        className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-xs text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
         value={pending}
         onChange={(e) => setPending(e.target.value)}
       >
@@ -422,7 +455,7 @@ function AddAxlePicker({
         ))}
       </select>
       <button
-        className="rounded-lg bg-accent px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
+        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
         onClick={() => pending && onAddAxle(pending)}
         disabled={!pending}
       >

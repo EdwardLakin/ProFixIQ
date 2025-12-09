@@ -1,3 +1,4 @@
+// features/inspections/lib/inspection/ui/AxlesCornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -17,7 +18,8 @@ type Props = {
 
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
-const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const HYD_FULL_RE =
+  /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
 type Side = "Left" | "Right";
 type Region = "Front" | "Rear";
@@ -42,7 +44,7 @@ const normalizeCorner = (raw: string): CornerKey | null => {
 const isPressureMetric = (label: string) => /pressure/i.test(label);
 const kpaFromPsi = (psiStr: string) => {
   const n = Number(psiStr);
-  return isFinite(n) ? Math.round(n * 6.894757) : null;
+  return Number.isFinite(n) ? Math.round(n * 6.894757) : null;
 };
 
 /* --------------------- strict ordering for AIR --------------------- */
@@ -267,26 +269,29 @@ export default function AxlesCornerGrid({
   }, [items, unitHint, mode]);
 
   // build rows for AIR like AirCornerGrid (merge left/right by metric)
-  const airRowsPerAxle: Array<{ axle: string; rows: AirRow[] }> = useMemo(() => {
-    if (mode !== "air") return [];
-    const rows: Array<{ axle: string; rows: AirRow[] }> = [];
+  const airRowsPerAxle: Array<{ axle: string; rows: AirRow[] }> = useMemo(
+    () => {
+      if (mode !== "air") return [];
+      const rows: Array<{ axle: string; rows: AirRow[] }> = [];
 
-    for (const g of airGroups) {
-      const map = new Map<string, AirRow>();
-      const add = (c: AirCell, which: "left" | "right") => {
-        const k = c.metric.toLowerCase();
-        const existing = map.get(k) || { metric: c.metric };
-        map.set(k, { ...existing, metric: c.metric, [which]: c } as AirRow);
-      };
-      g.left.forEach((c) => add(c, "left"));
-      g.right.forEach((c) => add(c, "right"));
-      const merged = Array.from(map.values()).sort((a, b) =>
-        airCompare(a.metric, b.metric),
-      );
-      rows.push({ axle: g.axle, rows: merged });
-    }
-    return rows;
-  }, [airGroups, mode]);
+      for (const g of airGroups) {
+        const map = new Map<string, AirRow>();
+        const add = (c: AirCell, which: "left" | "right") => {
+          const k = c.metric.toLowerCase();
+          const existing = map.get(k) || { metric: c.metric };
+          map.set(k, { ...existing, metric: c.metric, [which]: c } as AirRow);
+        };
+        g.left.forEach((c) => add(c, "left"));
+        g.right.forEach((c) => add(c, "right"));
+        const merged = Array.from(map.values()).sort((a, b) =>
+          airCompare(a.metric, b.metric),
+        );
+        rows.push({ axle: g.axle, rows: merged });
+      }
+      return rows;
+    },
+    [airGroups, mode],
+  );
 
   /* ---------------------------- UI state ---------------------------- */
 
@@ -297,6 +302,7 @@ export default function AxlesCornerGrid({
     items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
     return m;
   });
+
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
     const value = el.value;
@@ -308,21 +314,13 @@ export default function AxlesCornerGrid({
 
   /* ---------------- focus helpers (per-mode) ---------------- */
 
-  const moveHydFocus = (
-    region: Region,
-    rowIndex: number,
-    colIndex: number,
-  ) => {
+  const moveHydFocus = (region: Region, rowIndex: number, colIndex: number) => {
     const selector = `input[data-hyd-section="${sectionIndex}"][data-hyd-region="${region}"][data-hyd-row="${rowIndex}"][data-hyd-col="${colIndex}"]`;
     const el = document.querySelector<HTMLInputElement>(selector);
     if (el) el.focus();
   };
 
-  const moveAirFocus = (
-    axle: string,
-    rowIndex: number,
-    colIndex: number,
-  ) => {
+  const moveAirFocus = (axle: string, rowIndex: number, colIndex: number) => {
     const selector = `input[data-air-section="${sectionIndex}"][data-air-axle="${axle}"][data-air-row="${rowIndex}"][data-air-col="${colIndex}"]`;
     const el = document.querySelector<HTMLInputElement>(selector);
     if (el) el.focus();
@@ -377,38 +375,23 @@ export default function AxlesCornerGrid({
       <div className="relative w-full max-w-[11rem]">
         <input
           defaultValue={defaultValue}
-          tabIndex={0}
-          className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+          className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
+          tabIndex={0}
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
           // 🔢 datasets for in-grid navigation
-          data-hyd-section={
-            mode === "hyd" && region ? sectionIndex : undefined
-          }
-          data-hyd-region={
-            mode === "hyd" && region ? region : undefined
-          }
-          data-hyd-row={
-            mode === "hyd" && region ? rIdx : undefined
-          }
-          data-hyd-col={
-            mode === "hyd" && region ? cIdx : undefined
-          }
-          data-air-section={
-            mode === "air" && axle ? sectionIndex : undefined
-          }
-          data-air-axle={
-            mode === "air" && axle ? axle : undefined
-          }
-          data-air-row={
-            mode === "air" && axle ? rIdx : undefined
-          }
-          data-air-col={
-            mode === "air" && axle ? cIdx : undefined
-          }
+          data-grid-section={sectionIndex}
+          data-hyd-section={mode === "hyd" && region ? sectionIndex : undefined}
+          data-hyd-region={mode === "hyd" && region ? region : undefined}
+          data-hyd-row={mode === "hyd" && region ? rIdx : undefined}
+          data-hyd-col={mode === "hyd" && region ? cIdx : undefined}
+          data-air-section={mode === "air" && axle ? sectionIndex : undefined}
+          data-air-axle={mode === "air" && axle ? axle : undefined}
+          data-air-row={mode === "air" && axle ? rIdx : undefined}
+          data-air-col={mode === "air" && axle ? cIdx : undefined}
           onKeyDown={(e) => {
             const key = e.key;
 
@@ -417,7 +400,7 @@ export default function AxlesCornerGrid({
               return;
             }
 
-            // 🔁 Arrows move inside HYD / AIR subgrid. Tab is left alone.
+            // ⬅️➡️⬆️⬇️ Arrow keys: stay inside HYD / AIR subgrid
             if (key === "ArrowRight") {
               e.preventDefault();
               if (mode === "hyd" && region) {
@@ -425,27 +408,57 @@ export default function AxlesCornerGrid({
               } else if (mode === "air" && axle) {
                 moveAirFocus(axle, rIdx, cIdx + 1);
               }
-            } else if (key === "ArrowLeft") {
+              return;
+            }
+            if (key === "ArrowLeft") {
               e.preventDefault();
               if (mode === "hyd" && region) {
                 moveHydFocus(region, rIdx, cIdx - 1);
               } else if (mode === "air" && axle) {
                 moveAirFocus(axle, rIdx, cIdx - 1);
               }
-            } else if (key === "ArrowDown") {
+              return;
+            }
+            if (key === "ArrowDown") {
               e.preventDefault();
               if (mode === "hyd" && region) {
                 moveHydFocus(region, rIdx + 1, cIdx);
               } else if (mode === "air" && axle) {
                 moveAirFocus(axle, rIdx + 1, cIdx);
               }
-            } else if (key === "ArrowUp") {
+              return;
+            }
+            if (key === "ArrowUp") {
               e.preventDefault();
               if (mode === "hyd" && region) {
                 moveHydFocus(region, rIdx - 1, cIdx);
               } else if (mode === "air" && axle) {
                 moveAirFocus(axle, rIdx - 1, cIdx);
               }
+              return;
+            }
+
+            // ↹ Tab: walk within the grid in DOM order, so the modal focus trap
+            // doesn't yank focus out of the corner grid.
+            if (key === "Tab") {
+              const selector = `input[data-grid-section="${sectionIndex}"]`;
+              const all = Array.from(
+                document.querySelectorAll<HTMLInputElement>(selector),
+              );
+              const current = e.currentTarget as HTMLInputElement;
+              const index = all.indexOf(current);
+              if (index === -1) return; // fall back to default
+
+              const delta = e.shiftKey ? -1 : 1;
+              const nextIndex = index + delta;
+
+              if (nextIndex >= 0 && nextIndex < all.length) {
+                e.preventDefault();
+                e.stopPropagation();
+                all[nextIndex].focus();
+              }
+              // If we're at the edges, we let Tab bubble so the global
+              // inspection focus trap can move to the next block as usual.
             }
           }}
         />
@@ -461,16 +474,22 @@ export default function AxlesCornerGrid({
 
   /* ---------------------------- HYD UI ---------------------------- */
 
-  const HydRegionCard = ({ region, rows }: { region: Region; rows: HydRow[] }) => (
-    <div className="rounded-2xl border border-white/8 bg-black/40 p-4 shadow-card backdrop-blur-md">
+  const HydRegionCard = ({
+    region,
+    rows,
+  }: {
+    region: Region;
+    rows: HydRow[];
+  }) => (
+    <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
       <div
-        className="mb-3 text-lg font-semibold text-accent"
-        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+        className="mb-3 text-lg font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+        style={{ fontFamily: "var(--font-blackops), system-ui" }}
       >
         {region}
       </div>
 
-      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
+      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
         <div>Left</div>
         <div className="text-center">Item</div>
         <div className="text-right">Right</div>
@@ -481,7 +500,7 @@ export default function AxlesCornerGrid({
           {rows.map((row, i) => (
             <div
               key={`${region}-${row.metric}-${i}`}
-              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-neutral-950/70 p-3"
+              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl border border-slate-800/80 bg-neutral-950/80 p-3 shadow-[0_14px_35px_rgba(0,0,0,0.9)]"
             >
               <div>
                 {row.left ? (
@@ -500,8 +519,8 @@ export default function AxlesCornerGrid({
               </div>
 
               <div
-                className="min-w-0 truncate text-center text-sm font-semibold text-white"
-                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                className="min-w-0 truncate text-center text-sm font-semibold text-neutral-100"
+                style={{ fontFamily: "var(--font-blackops), system-ui" }}
                 title={row.metric}
               >
                 {row.metric}
@@ -531,16 +550,22 @@ export default function AxlesCornerGrid({
 
   /* ----------------------------- AIR UI ----------------------------- */
 
-  const AirAxleCard = ({ axle, rows }: { axle: string; rows: AirRow[] }) => (
-    <div className="rounded-2xl border border-white/8 bg-black/40 p-4 shadow-card backdrop-blur-md">
+  const AirAxleCard = ({
+    axle,
+    rows,
+  }: {
+    axle: string;
+    rows: AirRow[];
+  }) => (
+    <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
       <div
-        className="mb-3 text-lg font-semibold text-accent"
-        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+        className="mb-3 text-lg font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+        style={{ fontFamily: "var(--font-blackops), system-ui" }}
       >
         {axle}
       </div>
 
-      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
+      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
         <div>Left</div>
         <div className="text-center">Item</div>
         <div className="text-right">Right</div>
@@ -551,7 +576,7 @@ export default function AxlesCornerGrid({
           {rows.map((row, i) => (
             <div
               key={`${axle}-${row.metric}-${i}`}
-              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-neutral-950/70 p-3"
+              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl border border-slate-800/80 bg-neutral-950/80 p-3 shadow-[0_14px_35px_rgba(0,0,0,0.9)]"
             >
               <div>
                 {row.left ? (
@@ -570,8 +595,8 @@ export default function AxlesCornerGrid({
               </div>
 
               <div
-                className="min-w-0 truncate text-center text-sm font-semibold text-white"
-                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                className="min-w-0 truncate text-center text-sm font-semibold text-neutral-100"
+                style={{ fontFamily: "var(--font-blackops), system-ui" }}
                 title={row.metric}
               >
                 {row.metric}
@@ -605,12 +630,12 @@ export default function AxlesCornerGrid({
   /* ------------------------------- render ------------------------------ */
 
   return (
-    <div className="grid gap-3">
+    <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 px-1">
         {/* progress strip for AIR mode */}
         {mode === "air" ? (
           <div
-            className="hidden text-xs text-neutral-400 md:block"
+            className="hidden text-[11px] uppercase tracking-[0.14em] text-neutral-500 md:block"
             style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
           >
             {airGroups.map((g, i) => {
@@ -632,7 +657,7 @@ export default function AxlesCornerGrid({
           <label className="flex select-none items-center gap-2 text-xs text-neutral-300">
             <input
               type="checkbox"
-              className="h-3 w-3 accent-orange-500"
+              className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 accent-orange-500"
               checked={showKpa}
               onChange={(e) => setShowKpa(e.target.checked)}
               tabIndex={-1}
@@ -642,7 +667,7 @@ export default function AxlesCornerGrid({
 
           <button
             onClick={() => setOpen((v) => !v)}
-            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white hover:border-accent hover:bg-white/10"
+            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:border-orange-500 hover:bg-black/80"
             title={open ? "Collapse" : "Expand"}
             tabIndex={-1}
           >
@@ -660,17 +685,17 @@ export default function AxlesCornerGrid({
       )}
 
       {mode === "hyd" ? (
-        <div className="grid gap-4">
+        <div className="grid gap-4 md:grid-cols-2">
           {hydGroups.map((g) => (
             <HydRegionCard key={g.region} region={g.region} rows={g.rows} />
           ))}
         </div>
       ) : (
-        <>
+        <div className="grid gap-4 md:grid-cols-2">
           {airRowsPerAxle.map(({ axle, rows }) => (
             <AirAxleCard key={axle} axle={axle} rows={rows} />
           ))}
-        </>
+        </div>
       )}
     </div>
   );
@@ -698,7 +723,7 @@ function AddAxlePicker({
   return (
     <div className="flex items-center gap-2 px-1">
       <select
-        className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-sm text-white"
+        className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-xs text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
         value={pending}
         onChange={(e) => setPending(e.target.value)}
       >
@@ -710,7 +735,7 @@ function AddAxlePicker({
         ))}
       </select>
       <button
-        className="rounded-lg bg-accent px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
+        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
         onClick={() => pending && onAddAxle(pending)}
         disabled={!pending}
       >
