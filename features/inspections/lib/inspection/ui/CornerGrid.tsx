@@ -31,11 +31,11 @@ const CORNER_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 
 const cornerOrder: Corner[] = ["LF", "RF", "LR", "RR"];
 
+// 🔧 Order is now: pressure → tread → pad → rotor thickness → torque
 const metricOrder = [
   "Tire Pressure",
   "Tire Tread",
   "Brake Pad",
-  "Rotor Condition",
   "Rotor Thickness",
   "Wheel Torque",
 ];
@@ -168,7 +168,8 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
                       key={corner}
                       className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300"
                       style={{
-                        fontFamily: "var(--font-blackops), system-ui, sans-serif",
+                        fontFamily:
+                          "var(--font-blackops), system-ui, sans-serif",
                       }}
                     >
                       {corner}
@@ -252,7 +253,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
                                     const current =
                                       e.currentTarget as HTMLInputElement;
                                     const index = all.indexOf(current);
-                                    if (index === -1) return; // let it bubble
+                                    if (index === -1) return;
 
                                     const delta = e.shiftKey ? -1 : 1;
                                     const nextIndex = index + delta;
@@ -265,8 +266,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
                                       e.stopPropagation();
                                       all[nextIndex].focus();
                                     }
-                                    // At edges we let Tab escape so the global
-                                    // inspection focus trap can move to other blocks.
+                                    // At edges Tab escapes to the outer focus trap.
                                   }
                                 }}
                               />
