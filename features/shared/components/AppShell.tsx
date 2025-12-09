@@ -156,32 +156,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   };
 
-  // who can see the Agent Console button
   const canSeeAgentConsole =
     !!userRole &&
     ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
 
   if (!isAppRoute) {
     return (
-      <div className="min-h-screen bg-black text-foreground">
+      <div className="min-h-screen bg-neutral-950 text-foreground">
         {children}
-        <Toaster
-          closeButton
-          richColors
-          position="top-right"
-          theme="dark"
-        />
+        <Toaster closeButton richColors position="top-right" theme="dark" />
       </div>
     );
   }
 
   return (
     <>
-      <div className="flex min-h-screen text-foreground">
-        {/* Sidebar – collapsible on desktop */}
+      <div className="flex min-h-screen bg-neutral-950 text-foreground">
+        {/* Sidebar */}
         <aside
           className={cn(
-            "hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/90 via-slate-950/95 to-black/90 backdrop-blur-xl transition-all duration-300",
+            "hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
             sidebarOpen
               ? "md:w-64 translate-x-0"
               : "md:w-0 -translate-x-full pointer-events-none",
@@ -190,7 +184,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
             <Link
               href="/dashboard"
-              className="text-lg font-semibold tracking-tight text-neutral-100 hover:text-[color:var(--accent-copper,#f97316)] transition-colors"
+              className="text-lg font-semibold tracking-tight text-neutral-100 transition-colors hover:text-[color:var(--accent-copper,#f97316)]"
               style={{
                 fontFamily: "Black Ops One, var(--font-blackops), system-ui",
               }}
@@ -207,7 +201,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Main */}
         <div className="flex min-h-screen flex-1 flex-col">
           {/* Top bar */}
-          <header className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/90 via-slate-950/90 to-black/90 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex">
+          <header className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex">
             <div className="flex items-center gap-3">
               {/* Sidebar toggle */}
               <button
@@ -312,7 +306,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
 
           {/* content */}
-          <main className="flex w-full flex-1 flex-col px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
+          <main className="flex w-full flex-1 flex-col bg-neutral-950 px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
             {children}
           </main>
 
@@ -361,7 +355,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Global toaster for the entire app shell */}
       <Toaster closeButton richColors position="top-right" theme="dark" />
     </>
   );
