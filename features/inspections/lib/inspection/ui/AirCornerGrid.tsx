@@ -1,3 +1,4 @@
+// features/inspections/lib/inspection/ui/AirCornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -48,6 +49,7 @@ export default function AirCornerGrid({
     if (/wheel\s*torque/i.test(m)) return [5, /inner/i.test(m) ? 1 : 0];
     return [99, 0];
   };
+
   const orderCompare = (a: string, b: string) => {
     const [pa, sa] = airPriority(a);
     const [pb, sb] = airPriority(b);
@@ -130,6 +132,7 @@ export default function AirCornerGrid({
     items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
     return m;
   });
+
   const count = (cells: MetricCell[]) =>
     cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
 
@@ -205,8 +208,31 @@ export default function AirCornerGrid({
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
+          data-grid-section={sectionIndex}
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
+          onKeyDown={(e) => {
+            if (e.key !== "Tab") return;
+
+            const selector = `input[data-grid-section="${sectionIndex}"]`;
+            const all = Array.from(
+              document.querySelectorAll<HTMLInputElement>(selector),
+            );
+
+            const current = e.currentTarget as HTMLInputElement;
+            const index = all.indexOf(current);
+            if (index === -1) return; // let default behavior happen
+
+            const delta = e.shiftKey ? -1 : 1;
+            const nextIndex = index + delta;
+
+            if (nextIndex >= 0 && nextIndex < all.length) {
+              e.preventDefault();
+              e.stopPropagation();
+              all[nextIndex].focus();
+            }
+            // At the edges, we let Tab bubble out to the global focus trap.
+          }}
         />
         <span
           ref={spanRef}
