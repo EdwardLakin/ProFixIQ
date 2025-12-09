@@ -1,5 +1,4 @@
-//features/inspections/screens/Maintenance50Screen.tsx
-
+// features/inspections/screens/Maintenance50Screen.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -43,32 +42,67 @@ type ScreenProps = {
 };
 
 /* ---------- Sections ---------- */
+/**
+ * Measurements (Hydraulic)
+ * Matches the corner grid layout you showed:
+ *  - Tire Pressure
+ *  - Tire Tread
+ *  - Tire Tread (Inner)
+ *  - Tire Tread (Outer)
+ *  - Brake Pad Thickness
+ *  - Rotor Condition / Thickness
+ *  - Wheel Torque (after road test)
+ * Each metric has LF / RF / LR / RR.
+ */
 function buildHydraulicMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Hydraulic)",
     items: [
+      // Tire Pressure
       { item: "LF Tire Pressure", unit: "psi", value: "" },
       { item: "RF Tire Pressure", unit: "psi", value: "" },
       { item: "LR Tire Pressure", unit: "psi", value: "" },
       { item: "RR Tire Pressure", unit: "psi", value: "" },
+
+      // Tire Tread (overall)
       { item: "LF Tire Tread", unit: "mm", value: "" },
       { item: "RF Tire Tread", unit: "mm", value: "" },
-      { item: "LR Tire Tread (Outer)", unit: "mm", value: "" },
+      { item: "LR Tire Tread", unit: "mm", value: "" },
+      { item: "RR Tire Tread", unit: "mm", value: "" },
+
+      // Tire Tread (Inner)
+      { item: "LF Tire Tread (Inner)", unit: "mm", value: "" },
+      { item: "RF Tire Tread (Inner)", unit: "mm", value: "" },
       { item: "LR Tire Tread (Inner)", unit: "mm", value: "" },
-      { item: "RR Tire Tread (Outer)", unit: "mm", value: "" },
       { item: "RR Tire Tread (Inner)", unit: "mm", value: "" },
+
+      // Tire Tread (Outer)
+      { item: "LF Tire Tread (Outer)", unit: "mm", value: "" },
+      { item: "RF Tire Tread (Outer)", unit: "mm", value: "" },
+      { item: "LR Tire Tread (Outer)", unit: "mm", value: "" },
+      { item: "RR Tire Tread (Outer)", unit: "mm", value: "" },
+
+      // Brake pad thickness
       { item: "LF Brake Pad Thickness", unit: "mm", value: "" },
       { item: "RF Brake Pad Thickness", unit: "mm", value: "" },
       { item: "LR Brake Pad Thickness", unit: "mm", value: "" },
       { item: "RR Brake Pad Thickness", unit: "mm", value: "" },
+
+      // Rotor condition / thickness
       { item: "LF Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "RF Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "LR Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "RR Rotor Condition / Thickness", unit: "mm", value: "" },
-      { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "" },
+
+      // Wheel torque (all four corners so grid is full)
+      { item: "LF Wheel Torque (after road test)", unit: "ft·lb", value: "" },
+      { item: "RF Wheel Torque (after road test)", unit: "ft·lb", value: "" },
+      { item: "LR Wheel Torque (after road test)", unit: "ft·lb", value: "" },
+      { item: "RR Wheel Torque (after road test)", unit: "ft·lb", value: "" },
     ],
   };
 }
+
 function buildLightsSection(): InspectionSection {
   return {
     title: "Lighting & Reflectors",
@@ -85,6 +119,7 @@ function buildLightsSection(): InspectionSection {
     ],
   };
 }
+
 function buildBrakesSection(): InspectionSection {
   return {
     title: "Brakes",
@@ -98,6 +133,7 @@ function buildBrakesSection(): InspectionSection {
     ],
   };
 }
+
 function buildSuspensionSection(): InspectionSection {
   return {
     title: "Suspension",
@@ -110,6 +146,7 @@ function buildSuspensionSection(): InspectionSection {
     ],
   };
 }
+
 function buildDrivelineSection(): InspectionSection {
   return {
     title: "Driveline",
@@ -133,12 +170,13 @@ function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   if (l.includes("tire tread")) return mode === "metric" ? "mm" : "in";
   if (l.includes("pad thickness")) return mode === "metric" ? "mm" : "in";
   if (l.includes("rotor")) return mode === "metric" ? "mm" : "in";
-  if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
+  if (l.includes("torque")) return mode === "metric" ? "n·m" : "ft·lb";
   return "";
 }
+
 function applyUnitsHydraulic(
   sections: InspectionSection[],
-  mode: "metric" | "imperial"
+  mode: "metric" | "imperial",
 ): InspectionSection[] {
   return sections.map((s) => {
     if ((s.title || "").toLowerCase().includes("measurements")) {
@@ -165,13 +203,12 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   };
 
   // 🔸 only mobile companion gets voice
-  const isMobileView =
-    (get("view") || "").toLowerCase() === "mobile";
+  const isMobileView = (get("view") || "").toLowerCase() === "mobile";
 
   const isEmbed =
     !!props.embed ||
     ["1", "true", "yes"].includes(
-      (get("embed") || get("compact")).toLowerCase()
+      (get("embed") || get("compact")).toLowerCase(),
     );
 
   const workOrderLineId = get("workOrderLineId") || null;
@@ -179,7 +216,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const inspectionId = useMemo<string>(
     () => get("inspectionId") || uuidv4(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [searchParams]
+    [searchParams],
   );
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
@@ -187,7 +224,8 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const templateName: string = props.template || get("template") || "Maintenance 50";
+  const templateName: string =
+    props.template || get("template") || "Maintenance 50";
 
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
@@ -200,7 +238,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       quote: [],
       sections: [],
     }),
-    [inspectionId, templateName]
+    [inspectionId, templateName],
   );
 
   const {
@@ -221,7 +259,10 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
+  const submitAIForItem = async (
+    secIdx: number,
+    itemIdx: number,
+  ): Promise<void> => {
     if (!session) return;
     const key = `${secIdx}:${itemIdx}`;
     if (inFlightRef.current.has(key)) return;
@@ -317,7 +358,8 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   // ---- boot/restore ----
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
-    const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
+    const saved =
+      typeof window !== "undefined" ? localStorage.getItem(key) : null;
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as InspectionSession;
@@ -376,11 +418,14 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     });
   }, [session, updateInspection, unit]);
 
-  // re-apply units
+  // re-apply units when toggle changes
   useEffect(() => {
     if (!session?.sections?.length) return;
     updateInspection({
-      sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections,
+      sections: applyUnitsHydraulic(
+        session.sections,
+        unit,
+      ) as typeof session.sections,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
@@ -414,6 +459,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     });
     setIsListening(true);
   };
+
   useEffect(() => {
     return () => {
       try {
@@ -495,12 +541,12 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       if (e.key !== "Tab") return;
 
       const focusables = Array.from(
-        root.querySelectorAll<HTMLElement>(selector)
+        root.querySelectorAll<HTMLElement>(selector),
       ).filter(
         (el) =>
           !el.hasAttribute("disabled") &&
           el.tabIndex !== -1 &&
-          el.getAttribute("aria-hidden") !== "true"
+          el.getAttribute("aria-hidden") !== "true",
       );
 
       if (!focusables.length) return;
@@ -529,11 +575,16 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     };
 
     root.addEventListener("keydown", handleKeyDown);
-    return () => root.removeEventListener("keydown", handleKeyDown);
+    return () =>
+      root.removeEventListener("keydown", handleKeyDown);
   }, [isEmbed]);
 
   if (!session || !session.sections || session.sections.length === 0) {
-    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
+    return (
+      <div className="p-4 text-sm text-neutral-300">
+        Loading inspection…
+      </div>
+    );
   }
 
   const isMeasurements = (t?: string): boolean =>
@@ -604,13 +655,16 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
             onResume={(): void => {
               setIsPaused(false);
               resumeSession();
-              recognitionRef.current = startVoiceRecognition(handleTranscript);
+              recognitionRef.current =
+                startVoiceRecognition(handleTranscript);
             }}
             recognitionInstance={
               recognitionRef.current as unknown as SpeechRecognition | null
             }
             onTranscript={handleTranscript}
-            setRecognitionRef={(instance: SpeechRecognition | null): void => {
+            setRecognitionRef={(
+              instance: SpeechRecognition | null,
+            ): void => {
               (
                 recognitionRef as React.MutableRefObject<SpeechRecognition | null>
               ).current = instance ?? null;
@@ -627,7 +681,8 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
             setUnit(unit === "metric" ? "imperial" : "metric")
           }
         >
-          Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+          Unit:{" "}
+          {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
         </Button>
       </div>
 
@@ -645,62 +700,71 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
 
       {/* Sections */}
       <InspectionFormCtx.Provider value={{ updateItem }}>
-        {session.sections.map((section: InspectionSection, sectionIndex: number) => (
-          <div key={`${section.title}-${sectionIndex}`} className={sectionCard}>
-            <h2 className={sectionTitle}>{section.title}</h2>
-            {isMeasurements(section.title) && (
-              <span className={hint}>
-                {unit === "metric"
-                  ? "Enter mm / kPa / N·m"
-                  : "Enter in / psi / ft·lb"}
-              </span>
-            )}
-
-            <div className="mt-4">
-              {isMeasurements(section.title) ? (
-                <CornerGrid sectionIndex={sectionIndex} items={section.items} />
-              ) : (
-                <SectionDisplay
-                  title=""
-                  section={section}
-                  sectionIndex={sectionIndex}
-                  showNotes
-                  showPhotos
-                  onUpdateStatus={(
-                    secIdx: number,
-                    itemIdx: number,
-                    status: InspectionItemStatus
-                  ): void => {
-                    updateItem(secIdx, itemIdx, { status });
-                  }}
-                  onUpdateNote={(
-                    secIdx: number,
-                    itemIdx: number,
-                    note: string
-                  ): void => {
-                    updateItem(secIdx, itemIdx, { notes: note });
-                  }}
-                  onUpload={(
-                    photoUrl: string,
-                    secIdx: number,
-                    itemIdx: number
-                  ): void => {
-                    const prev =
-                      session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                    updateItem(secIdx, itemIdx, {
-                      photoUrls: [...prev, photoUrl],
-                    });
-                  }}
-                  requireNoteForAI
-                  onSubmitAI={(secIdx, itemIdx) =>
-                    void submitAIForItem(secIdx, itemIdx)
-                  }
-                  isSubmittingAI={isSubmittingAI}
-                />
+        {session.sections.map(
+          (section: InspectionSection, sectionIndex: number) => (
+            <div
+              key={`${section.title}-${sectionIndex}`}
+              className={sectionCard}
+            >
+              <h2 className={sectionTitle}>{section.title}</h2>
+              {isMeasurements(section.title) && (
+                <span className={hint}>
+                  {unit === "metric"
+                    ? "Enter mm / kPa / N·m"
+                    : "Enter in / psi / ft·lb"}
+                </span>
               )}
+
+              <div className="mt-4">
+                {isMeasurements(section.title) ? (
+                  <CornerGrid
+                    sectionIndex={sectionIndex}
+                    items={section.items}
+                  />
+                ) : (
+                  <SectionDisplay
+                    title=""
+                    section={section}
+                    sectionIndex={sectionIndex}
+                    showNotes
+                    showPhotos
+                    onUpdateStatus={(
+                      secIdx: number,
+                      itemIdx: number,
+                      status: InspectionItemStatus,
+                    ): void => {
+                      updateItem(secIdx, itemIdx, { status });
+                    }}
+                    onUpdateNote={(
+                      secIdx: number,
+                      itemIdx: number,
+                      note: string,
+                    ): void => {
+                      updateItem(secIdx, itemIdx, { notes: note });
+                    }}
+                    onUpload={(
+                      photoUrl: string,
+                      secIdx: number,
+                      itemIdx: number,
+                    ): void => {
+                      const prev =
+                        session.sections[secIdx].items[itemIdx]
+                          .photoUrls ?? [];
+                      updateItem(secIdx, itemIdx, {
+                        photoUrls: [...prev, photoUrl],
+                      });
+                    }}
+                    requireNoteForAI
+                    onSubmitAI={(secIdx, itemIdx) =>
+                      void submitAIForItem(secIdx, itemIdx)
+                    }
+                    isSubmittingAI={isSubmittingAI}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ),
+        )}
       </InspectionFormCtx.Provider>
 
       {/* Footer */}
@@ -716,7 +780,8 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
           />
           {!workOrderLineId && (
             <div className="text-xs text-red-400">
-              Missing <code>workOrderLineId</code> — save/finish will be blocked.
+              Missing <code>workOrderLineId</code> — save/finish will be
+              blocked.
             </div>
           )}
         </div>

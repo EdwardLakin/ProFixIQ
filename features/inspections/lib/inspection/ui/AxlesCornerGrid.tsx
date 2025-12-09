@@ -685,18 +685,18 @@ export default function AxlesCornerGrid({
       )}
 
       {mode === "hyd" ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          {hydGroups.map((g) => (
-            <HydRegionCard key={g.region} region={g.region} rows={g.rows} />
-          ))}
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {airRowsPerAxle.map(({ axle, rows }) => (
-            <AirAxleCard key={axle} axle={axle} rows={rows} />
-          ))}
-        </div>
-      )}
+  <div className="grid grid-cols-1 gap-4">
+    {hydGroups.map((g) => (
+      <HydRegionCard key={g.region} region={g.region} rows={g.rows} />
+    ))}
+  </div>
+) : (
+  <>
+    {airRowsPerAxle.map(({ axle, rows }) => (
+      <AirAxleCard key={axle} axle={axle} rows={rows} />
+    ))}
+  </>
+)}
     </div>
   );
 }
