@@ -165,6 +165,9 @@ export default function AirCornerGrid({
     );
   };
 
+  // 🔁 Focus management scoped to THIS grid
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
   const InputWithInlineUnit = ({
     idx,
     isPressure,
@@ -199,8 +202,36 @@ export default function AirCornerGrid({
       }
     };
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== "Tab") return;
+
+      const root = rootRef.current;
+      const all = Array.from(
+        (root ?? document).querySelectorAll<HTMLInputElement>(
+          'input[data-air-grid="true"]',
+        ),
+      );
+
+      if (!all.length) return;
+
+      const current = e.currentTarget;
+      const index = all.indexOf(current);
+      if (index === -1) return;
+
+      const delta = e.shiftKey ? -1 : 1;
+      let nextIndex = index + delta;
+
+      // wrap inside grid
+      if (nextIndex < 0) nextIndex = all.length - 1;
+      if (nextIndex >= all.length) nextIndex = 0;
+
+      e.preventDefault();
+      e.stopPropagation();
+      all[nextIndex].focus();
+    };
+
     return (
-      <div className="relative w-full max-w-[11rem]">
+      <div className="relative w-full">
         <input
           name={`air-${idx}`}
           defaultValue={defaultValue}
@@ -211,31 +242,7 @@ export default function AirCornerGrid({
           data-air-grid="true"
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
-          // ⬇️ capture phase so we "win" before any outer keydown traps
-          onKeyDownCapture={(e) => {
-            if (e.key !== "Tab") return;
-
-            const current = e.currentTarget as HTMLInputElement;
-            const root = current.closest<HTMLElement>("[data-air-grid-root='true']");
-            if (!root) return;
-
-            const all = Array.from(
-              root.querySelectorAll<HTMLInputElement>("input[data-air-grid='true']"),
-            );
-
-            const index = all.indexOf(current);
-            if (index === -1) return;
-
-            const delta = e.shiftKey ? -1 : 1;
-            const nextIndex = index + delta;
-
-            if (nextIndex >= 0 && nextIndex < all.length) {
-              e.preventDefault();
-              e.stopPropagation();
-              all[nextIndex].focus();
-            }
-            // at edges, let Tab fall through to the outer shell
-          }}
+          onKeyDown={handleKeyDown}
         />
         <span
           ref={spanRef}
@@ -250,7 +257,7 @@ export default function AirCornerGrid({
   const AxleCard = ({ g }: { g: AxleGroup }) => {
     const rows = buildTriplets(g);
     return (
-      <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+      <div className="w-full rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
         <div
           className="mb-3 text-lg font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
           style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
@@ -327,7 +334,11 @@ export default function AirCornerGrid({
   };
 
   return (
-    <div className="grid gap-3" data-air-grid-root="true">
+    <div
+      ref={rootRef}
+      data-air-grid-root="true"
+      className="grid w-full gap-3"
+    >
       <div className="flex items-center justify-between gap-3 px-1">
         <div
           className="hidden text-[11px] uppercase tracking-[0.14em] text-neutral-500 md:block"
@@ -369,7 +380,8 @@ export default function AirCornerGrid({
 
       {onAddAxle && <AddAxlePicker groups={groups} onAddAxle={onAddAxle} />}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* full-width cards */}
+      <div className="grid w-full gap-4">
         {groups.map((g) => (
           <AxleCard key={g.axle} g={g} />
         ))}
