@@ -24,8 +24,25 @@ type SlimProfile = {
   shop_id: string | null;
 };
 
-type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
-type TimecardRow = DB["public"]["Tables"]["payroll_timecards"]["Row"];
+// Narrow row shapes that match the select() projections
+type InvoiceSlim = {
+  id: string;
+  tech_id: string | null;
+  shop_id: string | null;
+  total: number | null;
+  labor_cost: number | null;
+  created_at: string | null;
+};
+
+type TimecardSlim = {
+  id: string;
+  user_id: string | null;
+  shop_id: string | null;
+  clock_in: string | null;
+  clock_out: string | null;
+  hours_worked: number | null;
+  created_at: string | null;
+};
 
 export type TechLeaderboardRow = {
   techId: string;
@@ -90,15 +107,9 @@ export async function getTechLeaderboard(
   const endIso = end.toISOString();
 
   // 1) Tech profiles in this shop
-  const TECH_ROLES: string[] = [
-    "tech",
-    "technician",
-    "mechanic",      // 👈 added
-    "lead_hand",
-    "lead",
-    "shop_foreman",
-    "apprentice",
-  ];
+  // Use only roles that actually exist in profiles.role
+  type ProfileRole = DB["public"]["Tables"]["profiles"]["Row"]["role"];
+  const TECH_ROLES: ProfileRole[] = ["tech", "mechanic"];
 
   const { data: profiles, error: profErr } = await supabase
     .from("profiles")
@@ -109,7 +120,9 @@ export async function getTechLeaderboard(
 
   const techProfiles: SlimProfile[] =
     (profiles ?? [])
-      .filter((p) => (p.role ? TECH_ROLES.includes(p.role) : false))
+      .filter((p) =>
+        p.role ? TECH_ROLES.includes(p.role as ProfileRole) : false,
+      )
       .map((p) => ({
         id: p.id,
         full_name: p.full_name ?? null,
@@ -128,18 +141,18 @@ export async function getTechLeaderboard(
     };
   }
 
-  // 2) Invoices in range, for this shop + these techs
+  // 2) Invoices + timecards in range, for this shop + these techs
   const [invoicesRes, timecardsRes] = await Promise.all([
     supabase
       .from("invoices")
-      .select("*")
+      .select("id, tech_id, shop_id, total, labor_cost, created_at")
       .eq("shop_id", shopId)
       .in("tech_id", techIds)
       .gte("created_at", startIso)
       .lte("created_at", endIso),
     supabase
       .from("payroll_timecards")
-      .select("*")
+      .select("id, user_id, shop_id, clock_in, clock_out, hours_worked, created_at")
       .eq("shop_id", shopId)
       .in("user_id", techIds)
       .gte("clock_in", startIso)
@@ -149,9 +162,12 @@ export async function getTechLeaderboard(
   if (invoicesRes.error) throw invoicesRes.error;
   if (timecardsRes.error) throw timecardsRes.error;
 
-  const invoices: InvoiceRow[] = invoicesRes.data ?? [];
-  const timecards: TimecardRow[] = timecardsRes.data ?? [];
+  const invoices: InvoiceSlim[] =
+    (invoicesRes.data as InvoiceSlim[]) ?? [];
+  const timecards: TimecardSlim[] =
+    (timecardsRes.data as TimecardSlim[]) ?? [];
 
+  // 3) Aggregate per tech
   const byTech = new Map<string, TechLeaderboardRow>();
 
   // Seed with zero rows for each tech so they always show
