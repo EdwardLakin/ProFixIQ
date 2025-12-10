@@ -1,7 +1,7 @@
 // features/mobile/dashboard/MobileTechHome.tsx
 "use client";
 
-import { 
+import {
   useEffect,
   useMemo,
   useState,
@@ -88,6 +88,15 @@ export function MobileTechHome({
   const openJobs = stats?.openJobs ?? 0;
   const assignedJobs = stats?.assignedJobs ?? 0;
   const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
+
+  // derived pill labels for efficiency / billed hours
+  const todayEffText =
+    today.efficiencyPct === null
+      ? "–"
+      : `${today.efficiencyPct.toFixed(0)}%`;
+  const weekEffText =
+    week.efficiencyPct === null ? "–" : `${week.efficiencyPct.toFixed(0)}%`;
+  const billedTodayText = `${today.billedHours.toFixed(1)}h`;
 
   /* ---------------------------------------------------------------------- */
   /* Load / refresh shift state (aligned with MobileShiftTracker)           */
@@ -368,7 +377,7 @@ export function MobileTechHome({
         <SummaryCard label="This week" stats={week} loading={loadingStats} />
       </section>
 
-      {/* stat chips */}
+      {/* stat chips – jobs overview */}
       <section className="grid grid-cols-3 gap-3">
         <StatCard
           label="Open jobs"
@@ -379,6 +388,22 @@ export function MobileTechHome({
         <StatCard
           label="Jobs done"
           value={loadingStats ? "…" : jobsCompletedToday}
+        />
+      </section>
+
+      {/* stat chips – efficiency + billed hours */}
+      <section className="grid grid-cols-3 gap-3">
+        <StatCard
+          label="Today eff."
+          value={loadingStats ? "…" : todayEffText}
+        />
+        <StatCard
+          label="Week eff."
+          value={loadingStats ? "…" : weekEffText}
+        />
+        <StatCard
+          label="Billed today"
+          value={loadingStats ? "…" : billedTodayText}
         />
       </section>
 
@@ -425,6 +450,11 @@ export function MobileTechHome({
           Quick actions for your bench.
         </p>
         <div className="space-y-2">
+          <ToolCard
+            href="/mobile/tech/performance"
+            label="My performance"
+            description="Revenue, hours & efficiency"
+          />
           <ToolCard
             href="/mobile/tech/queue"
             label="My jobs"

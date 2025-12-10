@@ -244,4 +244,13 @@ export const TILES: Tile[] = [
     scopes: ["tech", "all"],
     section: "Tech",
   },
+  {
+    href: "/tech/performance",
+    title: "My Performance",
+    subtitle: "Jobs, hours & efficiency",
+    // Tech can see their own numbers; management can review.
+    roles: ["mechanic", "manager", "owner", "admin"],
+    scopes: ["tech", "all"],
+    section: "Tech",
+  },
 ];

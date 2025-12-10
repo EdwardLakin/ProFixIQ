@@ -89,4 +89,12 @@ export const MOBILE_TILES: MobileTile[] = [
     roles: ["owner", "admin", "manager"],
     scopes: ["home", "jobs", "work_orders", "all"],
   },
+  // features/mobile/config/mobile-tiles.ts
+{
+  href: "/mobile/tech/performance",
+  title: "My Performance",
+  subtitle: "Jobs, hours & efficiency",
+  roles: ["mechanic", "manager", "owner", "admin"],
+  scopes: ["home", "jobs", "all"],
+},
 ];
