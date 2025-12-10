@@ -1,22 +1,35 @@
+// features/shared/components/tabs/TabsBar.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useTabs } from "./TabsProvider";
 import { usePathname } from "next/navigation";
+import { useTabs } from "./TabsProvider";
+
+const AUTH_ROUTES = new Set([
+  "/sign-in",
+  "/sign-up",
+  "/forgot-password",
+  "/reset-password",
+]);
 
 export default function TabsBar() {
   const { tabs, activeHref, activateTab, closeTab, closeOthers, closeAll } =
     useTabs();
-  const pathname = usePathname();
+  const pathname = usePathname() || "/";
 
-  // Simple divider when no tabs or on dashboard
-  if (pathname === "/dashboard" || !tabs.length) {
-    return <div className="border-b border-border bg-background/80" />;
+  // No full tab UI on dashboard or auth pages – just a subtle divider line
+  if (pathname === "/dashboard" || AUTH_ROUTES.has(pathname)) {
+    return <div className="border-b border-neutral-800" />;
+  }
+
+  if (!tabs.length) {
+    return <div className="border-b border-neutral-800" />;
   }
 
   return (
-    <div className="border-b border-border bg-card/80 px-2 backdrop-blur-sm">
+    <div className="border-b border-neutral-800 bg-neutral-950/60 px-2 backdrop-blur-sm">
       <div className="flex items-center gap-2 overflow-x-auto py-1.5">
+
         <AnimatePresence initial={false}>
           {tabs.map((t) => {
             const active = t.href === activeHref;
@@ -27,13 +40,13 @@ export default function TabsBar() {
                 key={t.href}
                 layout
                 className={`
-                  group relative inline-flex items-center gap-2
-                  rounded-full px-3 py-1 text-xs sm:text-sm
-                  border transition-all
+                  group relative inline-flex items-center gap-2 
+                  rounded-md px-3 py-1 text-sm transition 
+                  border border-neutral-700 
                   ${
                     active
-                      ? "border-[var(--accent-copper-light)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.2),transparent_55%),rgba(15,23,42,0.95)] text-white shadow-[0_0_20px_rgba(248,113,22,0.45)]"
-                      : "border-border/70 bg-neutral-950/70 text-neutral-300 hover:bg-neutral-900/90 hover:text-white"
+                      ? "bg-neutral-800 border-orange-500"
+                      : "hover:bg-neutral-900"
                   }
                 `}
                 initial={{ opacity: 0, scale: 0.96 }}
@@ -43,32 +56,19 @@ export default function TabsBar() {
                 <button
                   type="button"
                   onClick={() => activateTab(t.href)}
-                  className={`
-                    flex items-center gap-1 outline-none
-                    focus-visible:ring-2 focus-visible:ring-[var(--accent-copper-soft)]
-                    focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950
-                  `}
+                  className="flex items-center gap-1"
                 >
-                  <span className="max-w-[180px] truncate sm:max-w-[220px]">
+                  <span className="max-w-[200px] truncate">
                     {t.title}
                   </span>
-                  {pinned && (
-                    <span className="text-[10px] opacity-80" aria-label="Pinned">
-                      📌
-                    </span>
-                  )}
+                  {pinned && <span>📌</span>}
                 </button>
 
                 {!pinned && (
                   <button
                     type="button"
                     onClick={() => closeTab(t.href)}
-                    className={`
-                      text-[10px] rounded-full px-1.5
-                      text-neutral-500 hover:text-white
-                      hover:bg-neutral-800/80
-                    `}
-                    aria-label={`Close ${t.title}`}
+                    className="rounded px-1 text-xs text-neutral-400 hover:text-white"
                   >
                     ✕
                   </button>
@@ -82,34 +82,25 @@ export default function TabsBar() {
           <button
             type="button"
             onClick={() => closeOthers(activeHref)}
-            className={`
-              rounded-full border border-border/80 px-2.5 py-1
-              text-[11px] text-neutral-300
-              bg-neutral-950/60
-              hover:bg-neutral-900 hover:text-white
-              focus-visible:outline-none
-              focus-visible:ring-2 focus-visible:ring-[var(--accent-copper-soft)]
-              focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950
-            `}
+            className="
+              rounded-md border border-neutral-700 px-2 py-1 
+              text-xs text-neutral-400 hover:bg-neutral-900 hover:text-white
+            "
           >
             Close others
           </button>
           <button
             type="button"
             onClick={closeAll}
-            className={`
-              rounded-full border border-border/80 px-2.5 py-1
-              text-[11px] text-neutral-300
-              bg-neutral-950/60
-              hover:bg-red-900/30 hover:text-red-100 hover:border-red-500/70
-              focus-visible:outline-none
-              focus-visible:ring-2 focus-visible:ring-red-500/70
-              focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950
-            `}
+            className="
+              rounded-md border border-neutral-700 px-2 py-1 
+              text-xs text-neutral-400 hover:bg-neutral-900 hover:text-white
+            "
           >
             Close all
           </button>
         </div>
+
       </div>
     </div>
   );
