@@ -1,4 +1,3 @@
-// app/dashboard/owner/reports/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -154,7 +153,7 @@ export default function ReportsPage() {
 
         // AI summary – don’t block main stats
         try {
-          const res = await fetch("/api/ai/summarize-stats", {
+          const res = await fetch("/api/stats/summarize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ stats: fetchedStats, timeRange: range }),
@@ -162,7 +161,7 @@ export default function ReportsPage() {
           if (!res.ok) {
             throw new Error(`AI summary failed (${res.status})`);
           }
-          const json = await res.json();
+          const json = (await res.json()) as { summary?: string };
           if (json?.summary) setAiSummary(json.summary);
         } catch (e) {
           // eslint-disable-next-line no-console
@@ -287,128 +286,145 @@ export default function ReportsPage() {
     >
       <div className="mx-auto max-w-6xl space-y-6 text-foreground">
         {/* Top controls ---------------------------------------------------- */}
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/80 px-4 py-3">
-          <div className="space-y-1">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-              Time range
+        <div className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-slate-950/80 via-slate-900/70 to-slate-950/80 px-4 py-4 shadow-[0_0_0_1px_rgba(15,23,42,0.9)] shadow-black/60">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-300/80">
+                Dashboard · Reports
+              </div>
+              <h1 className="mt-1 text-xl font-blackops text-orange-400">
+                Financial & Technician Performance
+              </h1>
+              <p className="text-xs text-neutral-400">
+                Revenue, profit, expenses and per-tech efficiency for the
+                selected period.
+              </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {(["weekly", "monthly", "quarterly", "yearly"] as Range[]).map(
-                (r) => {
-                  const isActive = range === r;
-                  return (
-                    <Button
-                      key={r}
-                      type="button"
-                      size="sm"
-                      variant={isActive ? "default" : "outline"}
-                      className={
-                        isActive
-                          ? "border-orange-500 bg-orange-500 text-black"
-                          : "border-border bg-background/60 text-sm"
-                      }
-                      onClick={() => setRange(r)}
-                    >
-                      {r.charAt(0).toUpperCase() + r.slice(1)}
-                    </Button>
-                  );
-                },
-              )}
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              {dateRangeLabel}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!stats || exporting}
+                onClick={handleExportPDF}
+                className="border-orange-500/60 bg-black/40 text-xs font-medium text-orange-100 hover:bg-orange-500 hover:text-black"
+              >
+                {exporting ? "Generating…" : "🧾 Export PDF"}
+              </Button>
             </div>
           </div>
 
-          {/* Filters */}
-          <div className="ml-auto grid gap-2 text-xs sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                Filter by tech ID
-              </label>
-              <input
-                type="text"
-                className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                value={filters.technicianId ?? ""}
-                onChange={(e) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    technicianId: e.target.value,
-                  }))
-                }
-                placeholder="Optional"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                Filter by invoice #
-              </label>
-              <input
-                type="text"
-                className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                value={filters.invoiceId ?? ""}
-                onChange={(e) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    invoiceId: e.target.value,
-                  }))
-                }
-                placeholder="Optional"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                Revenue goal (per period)
-              </label>
-              <div className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1">
-                <span className="text-[11px] text-muted-foreground">$</span>
-                <input
-                  type="number"
-                  className="w-full bg-transparent text-xs text-foreground focus:outline-none"
-                  value={goalRevenue}
-                  onChange={(e) =>
-                    setGoalRevenue(
-                      Number.isFinite(Number(e.target.value))
-                        ? Number(e.target.value)
-                        : 0,
-                    )
-                  }
-                  min={0}
-                />
+          <div className="flex flex-wrap items-start gap-4 border-t border-orange-500/20 pt-4">
+            {/* Time range + label */}
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                Time range
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(["weekly", "monthly", "quarterly", "yearly"] as Range[]).map(
+                  (r) => {
+                    const isActive = range === r;
+                    return (
+                      <Button
+                        key={r}
+                        type="button"
+                        size="sm"
+                        variant={isActive ? "default" : "outline"}
+                        className={
+                          isActive
+                            ? "border-orange-500 bg-gradient-to-b from-orange-500 to-amber-400 text-black shadow-[0_0_18px_rgba(248,150,69,0.6)]"
+                            : "border-zinc-700 bg-black/40 text-xs text-neutral-200 hover:border-orange-500/70 hover:text-orange-100"
+                        }
+                        onClick={() => setRange(r)}
+                      >
+                        {r.charAt(0).toUpperCase() + r.slice(1)}
+                      </Button>
+                    );
+                  },
+                )}
+              </div>
+              <div className="text-[11px] text-neutral-400">
+                {dateRangeLabel}
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={!stats || exporting}
-              onClick={handleExportPDF}
-              className="ml-0 sm:ml-2"
-            >
-              {exporting ? "Generating…" : "🧾 Export PDF"}
-            </Button>
+            {/* Filters */}
+            <div className="ml-auto grid gap-3 text-xs sm:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                  Filter by tech ID
+                </label>
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-zinc-700 bg-black/40 px-2 py-1 text-xs text-foreground placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500/70"
+                  value={filters.technicianId ?? ""}
+                  onChange={(e) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      technicianId: e.target.value,
+                    }))
+                  }
+                  placeholder="Optional"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                  Filter by invoice #
+                </label>
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-zinc-700 bg-black/40 px-2 py-1 text-xs text-foreground placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500/70"
+                  value={filters.invoiceId ?? ""}
+                  onChange={(e) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      invoiceId: e.target.value,
+                    }))
+                  }
+                  placeholder="Optional"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                  Revenue goal (per period)
+                </label>
+                <div className="flex items-center gap-1 rounded-md border border-emerald-500/50 bg-emerald-500/5 px-2 py-1">
+                  <span className="text-[11px] text-emerald-200">$</span>
+                  <input
+                    type="number"
+                    className="w-full bg-transparent text-xs text-foreground focus:outline-none"
+                    value={goalRevenue}
+                    onChange={(e) =>
+                      setGoalRevenue(
+                        Number.isFinite(Number(e.target.value))
+                          ? Number(e.target.value)
+                          : 0,
+                      )
+                    }
+                    min={0}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Error / loading states ----------------------------------------- */}
         {error && (
-          <div className="rounded-lg border border-red-500/40 bg-red-900/20 px-4 py-3 text-sm text-red-100">
+          <div className="rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-100 shadow-md shadow-red-900/40">
             {error}
           </div>
         )}
 
         {loading && (
-          <div className="rounded-xl border border-border bg-card/60 px-4 py-6 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-zinc-800 bg-slate-950/60 px-4 py-6 text-sm text-neutral-400 shadow-inner shadow-black/60">
             Loading stats for your shop…
           </div>
         )}
 
         {/* Financial content ---------------------------------------------- */}
         {!loading && !error && !hasData && (
-          <div className="rounded-xl border border-border bg-card/60 px-4 py-6 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-zinc-800 bg-slate-950/60 px-4 py-6 text-sm text-neutral-400 shadow-inner shadow-black/60">
             No data found for this range and filter. Try widening the date
             range or clearing filters.
           </div>
@@ -431,7 +447,7 @@ export default function ReportsPage() {
               <SummaryCard
                 label="Labor cost"
                 value={`$${stats.total.labor.toFixed(2)}`}
-                accent="text-red-400"
+                accent="text-rose-400"
               />
               <SummaryCard
                 label="Expenses"
@@ -453,19 +469,19 @@ export default function ReportsPage() {
             {/* Chart card */}
             <div
               ref={chartRef}
-              className="rounded-xl border border-border bg-card/80 p-4"
+              className="rounded-2xl border border-zinc-800/80 bg-slate-950/70 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.9)] backdrop-blur"
             >
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text-foreground">
+                  <h2 className="text-sm font-semibold text-orange-200">
                     Revenue, Profit, Labor & Expenses Over Time
                   </h2>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-neutral-400">
                     Compare revenue, profit, labor cost, and expenses per
                     period.
                   </p>
                 </div>
-                <div className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
+                <div className="rounded-full border border-emerald-400/70 bg-gradient-to-r from-emerald-500/15 to-lime-400/10 px-3 py-1 text-xs text-emerald-100 shadow-[0_0_16px_rgba(16,185,129,0.6)]">
                   <span className="font-medium">Revenue goal:</span>{" "}
                   ${goalRevenue.toLocaleString()}
                 </div>
@@ -489,12 +505,12 @@ export default function ReportsPage() {
                     <Tooltip
                       contentStyle={{
                         backgroundColor: "#020617",
-                        border: "1px solid #27272a",
-                        borderRadius: "0.5rem",
+                        border: "1px solid #3f3f46",
+                        borderRadius: "0.75rem",
                         fontSize: "11px",
                       }}
                       labelStyle={{ color: "#e5e5e5" }}
-                      formatter={(value: unknown, name: string) => {
+                      formatter={(value: unknown, name: unknown) => {
                         if (
                           (name === "Revenue" ||
                             name === "Profit" ||
@@ -518,12 +534,12 @@ export default function ReportsPage() {
                     />
                     <ReferenceLine
                       y={goalRevenue}
-                      stroke="#10b981"
+                      stroke="#22c55e"
                       strokeDasharray="5 5"
                       label={{
                         value: "Revenue goal",
                         position: "right",
-                        fill: "#6ee7b7",
+                        fill: "#bbf7d0",
                         fontSize: 11,
                       }}
                     />
@@ -546,7 +562,7 @@ export default function ReportsPage() {
                     <Line
                       type="monotone"
                       dataKey="expenses"
-                      stroke="#ef4444"
+                      stroke="#e11d48"
                       strokeWidth={2}
                       dot={false}
                       name="Expenses"
@@ -566,14 +582,14 @@ export default function ReportsPage() {
 
             {/* AI summary */}
             {aiSummary && (
-              <div className="rounded-xl border border-border bg-card/80 px-4 py-4">
+              <div className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-slate-950/80 via-slate-950/60 to-slate-950/80 px-4 py-4 shadow-[0_14px_35px_rgba(0,0,0,0.85)]">
                 <h2 className="mb-1 text-sm font-semibold text-orange-300">
                   AI summary
                 </h2>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-neutral-400">
                   Generated from your financial stats and time range.
                 </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
+                <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-100">
                   {aiSummary}
                 </p>
               </div>
@@ -582,15 +598,15 @@ export default function ReportsPage() {
         )}
 
         {/* ------------------ Technician Leaderboard ----------------------- */}
-        <div className="rounded-2xl border border-border bg-card/80 p-4">
+        <div className="rounded-2xl border border-zinc-800/80 bg-slate-950/70 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.9)] backdrop-blur">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">
+              <h2 className="text-sm font-semibold text-orange-200">
                 Technician Leaderboard
               </h2>
-              <p className="text-[11px] text-muted-foreground">
-                Earnings per tech, billed vs clocked hours, and efficiency
-                for this time range.
+              <p className="text-[11px] text-neutral-400">
+                Earnings per tech, billed vs clocked hours, and efficiency for
+                this time range.
               </p>
             </div>
           </div>
@@ -602,13 +618,13 @@ export default function ReportsPage() {
           )}
 
           {techLoading && !techError && (
-            <div className="rounded-md border border-border bg-card/60 px-3 py-3 text-xs text-muted-foreground">
+            <div className="rounded-md border border-zinc-800 bg-slate-950/70 px-3 py-3 text-xs text-neutral-400">
               Loading technician performance…
             </div>
           )}
 
           {!techLoading && !techError && techRows.length === 0 && (
-            <div className="rounded-md border border-border bg-card/60 px-3 py-3 text-xs text-muted-foreground">
+            <div className="rounded-md border border-zinc-800 bg-slate-950/70 px-3 py-3 text-xs text-neutral-400">
               No technician activity found for this range.
             </div>
           )}
@@ -617,7 +633,7 @@ export default function ReportsPage() {
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse text-xs sm:text-sm">
                 <thead>
-                  <tr className="border-b border-border text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  <tr className="border-b border-zinc-700 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                     <th className="px-2 py-2 text-left">Tech</th>
                     <th className="px-2 py-2 text-right">Jobs</th>
                     <th className="px-2 py-2 text-right">Revenue</th>
@@ -640,7 +656,7 @@ export default function ReportsPage() {
                     return (
                       <tr
                         key={row.techId}
-                        className="border-b border-border/60 last:border-0"
+                        className="border-b border-zinc-800 last:border-0"
                       >
                         <td className="px-2 py-2">
                           <div className="flex flex-col">
@@ -648,7 +664,7 @@ export default function ReportsPage() {
                               {row.name}
                             </span>
                             {row.role && (
-                              <span className="text-[11px] text-muted-foreground">
+                              <span className="text-[11px] text-neutral-500">
                                 {row.role}
                               </span>
                             )}
@@ -669,10 +685,8 @@ export default function ReportsPage() {
                         <td className="px-2 py-2 text-right">
                           {row.clockedHours.toFixed(1)}
                           {row.clockedHours > 0 && (
-                            <span className="ml-1 text-[11px] text-muted-foreground">
-                              (
-                              {billedVsClockedPct.toFixed(0)}
-                              % billed)
+                            <span className="ml-1 text-[11px] text-neutral-500">
+                              ({billedVsClockedPct.toFixed(0)}% billed)
                             </span>
                           )}
                         </td>
@@ -719,8 +733,8 @@ function SummaryCard({
   accent?: string;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card/80 px-4 py-3 text-sm">
-      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+    <div className="rounded-2xl border border-zinc-800/80 bg-slate-950/70 px-4 py-3 text-sm shadow-[0_16px_32px_rgba(0,0,0,0.9)] backdrop-blur">
+      <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">
         {label}
       </div>
       <div className={`mt-1 text-xl font-semibold ${accent ?? ""}`}>

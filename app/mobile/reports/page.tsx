@@ -6,11 +6,14 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
-import { getShopStats } from "@shared/lib/stats/getShopStats";
+import {
+  getShopStats,
+  type TimeRange,
+} from "@shared/lib/stats/getShopStats";
 import { Button } from "@shared/components/ui/Button";
 
 type DB = Database;
-type Range = "weekly" | "monthly" | "quarterly" | "yearly";
+type Range = TimeRange;
 
 type StatsTotals = {
   revenue: number;
@@ -47,7 +50,6 @@ const RANGE_LABELS: Record<Range, string> = {
 };
 
 type ProfileRole = DB["public"]["Tables"]["profiles"]["Row"]["role"];
-
 const OWNER_ROLES: ProfileRole[] = ["owner", "admin", "manager"];
 
 export default function MobileReportsPage() {
@@ -56,13 +58,18 @@ export default function MobileReportsPage() {
   const [shopId, setShopId] = useState<string | null>(null);
   const [role, setRole] = useState<ProfileRole | null>(null);
   const [range, setRange] = useState<Range>("monthly");
+
   const [stats, setStats] = useState<ShopStats | null>(null);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load profile + shop for current user
+  /* ---------------------------------------------------------------------- */
+  /* Load profile + shop for current user                                   */
+  /* ---------------------------------------------------------------------- */
+
   useEffect(() => {
     (async () => {
       try {
@@ -102,7 +109,10 @@ export default function MobileReportsPage() {
     })();
   }, [supabase]);
 
-  // Load stats whenever shop or range changes
+  /* ---------------------------------------------------------------------- */
+  /* Load stats whenever shop or range changes                              */
+  /* ---------------------------------------------------------------------- */
+
   useEffect(() => {
     if (!shopId) return;
 
@@ -112,11 +122,14 @@ export default function MobileReportsPage() {
       setAiSummary(null);
 
       try {
-        const fetched = (await getShopStats(shopId, range)) as ShopStats;
+        const fetched = (await getShopStats(
+          shopId,
+          range,
+        )) as ShopStats;
 
         setStats(fetched);
 
-        // Fire AI summary in the background
+        // Fire AI summary in the background (mobile-friendly)
         try {
           setAiLoading(true);
           const res = await fetch("/api/ai/summarize-stats", {
@@ -132,6 +145,7 @@ export default function MobileReportsPage() {
           const json = (await res.json()) as { summary?: string };
           if (json?.summary) setAiSummary(json.summary);
         } catch (e) {
+          // eslint-disable-next-line no-console
           console.error(e);
           toast.error("AI summary could not be generated.");
         } finally {
@@ -158,11 +172,22 @@ export default function MobileReportsPage() {
         ).toLocaleDateString()}`
       : RANGE_LABELS[range];
 
+  /* ---------------------------------------------------------------------- */
+  /* Role gate: only owners/admins/managers                                 */
+  /* ---------------------------------------------------------------------- */
+
   if (!hasAccess && role) {
     return (
-      <main className="min-h-screen bg-black text-white">
+      <main className="min-h-screen bg-gradient-to-b from-black via-slate-950 to-black text-white">
         <div className="mx-auto flex max-w-md flex-col gap-3 px-4 pb-8 pt-6">
-          <h1 className="text-lg font-semibold">Reports</h1>
+          <header className="space-y-1">
+            <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+              ProFixIQ • Mobile
+            </div>
+            <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-orange-400">
+              Reports
+            </h1>
+          </header>
           <p className="text-sm text-neutral-400">
             Mobile reports are available for owners, admins, and managers.
           </p>
@@ -171,8 +196,12 @@ export default function MobileReportsPage() {
     );
   }
 
+  /* ---------------------------------------------------------------------- */
+  /* Main mobile reports UI                                                 */
+  /* ---------------------------------------------------------------------- */
+
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-gradient-to-b from-black via-slate-950 to-black text-white">
       <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-6">
         {/* Header */}
         <header className="space-y-1">
@@ -187,8 +216,8 @@ export default function MobileReportsPage() {
           </p>
         </header>
 
-        {/* Range selector */}
-        <section className="space-y-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-3 shadow-card">
+        {/* Time range selector */}
+        <section className="space-y-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
               Time range
@@ -197,7 +226,7 @@ export default function MobileReportsPage() {
               {dateRangeLabel}
             </span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="mt-1 flex flex-wrap gap-1.5">
             {(["weekly", "monthly", "quarterly", "yearly"] as Range[]).map(
               (r) => {
                 const active = range === r;
@@ -222,15 +251,15 @@ export default function MobileReportsPage() {
           </div>
         </section>
 
-        {/* Error / loading */}
+        {/* Error / loading states */}
         {error && (
-          <div className="rounded-xl border border-red-500/40 bg-red-900/30 px-3 py-3 text-[0.8rem] text-red-100">
+          <div className="rounded-2xl border border-red-500/40 bg-red-900/30 px-3 py-3 text-[0.8rem] text-red-100">
             {error}
           </div>
         )}
 
         {loading && (
-          <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-4 text-[0.8rem] text-neutral-400">
+          <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-4 text-[0.8rem] text-neutral-400">
             Loading stats…
           </div>
         )}
@@ -271,8 +300,8 @@ export default function MobileReportsPage() {
               />
             </section>
 
-            {/* Optional compact AI summary */}
-            <section className="space-y-1 rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-xs text-neutral-200">
+            {/* AI summary */}
+            <section className="space-y-1 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-3 text-xs text-neutral-200 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[0.65rem] uppercase tracking-[0.18em] text-orange-300">
                   AI summary
@@ -295,7 +324,7 @@ export default function MobileReportsPage() {
         )}
 
         {!loading && !error && !hasData && (
-          <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-4 text-[0.8rem] text-neutral-400">
+          <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-4 text-[0.8rem] text-neutral-400">
             No stats found for this range. Try a different time range.
           </div>
         )}
@@ -318,7 +347,7 @@ function SummaryCard({
   accent?: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 shadow-card">
+    <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-white/[0.03] px-3 py-3 shadow-[0_16px_32px_rgba(0,0,0,0.75)]">
       <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
         {label}
       </div>

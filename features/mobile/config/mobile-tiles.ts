@@ -1,4 +1,5 @@
 // features/mobile/config/mobile-tiles.ts
+
 export type MobileRole =
   | "owner"
   | "admin"
@@ -12,7 +13,7 @@ export type MobileScope =
   | "jobs"
   | "inspect"
   | "messages"
-  | "planner"      // keep in case something else still references it
+  | "planner" // keep in case something else still references it
   | "settings"
   // extra scopes so mobile dashboards can align with desktop views
   | "work_orders"
@@ -46,13 +47,7 @@ export const MOBILE_TILES: MobileTile[] = [
     title: "Inspections",
     subtitle: "Run checklists on vehicles",
     roles: ["mechanic", "advisor", "manager"],
-    scopes: [
-      "home",
-      "inspect",
-      "inspections",
-      "work_orders",
-      "all",
-    ],
+    scopes: ["home", "inspect", "inspections", "work_orders", "all"],
   },
   // 🔁 Planner → Appointments (mobile day planner)
   {
@@ -60,34 +55,21 @@ export const MOBILE_TILES: MobileTile[] = [
     title: "Appointments",
     subtitle: "Today’s schedule",
     roles: ["mechanic", "manager", "owner", "admin"],
-    scopes: [
-      "home",
-      "appointments",
-      "work_orders",
-      "all",
-    ],
+    scopes: ["home", "appointments", "work_orders", "all"],
   },
   {
     href: "/mobile/messages",
     title: "Team Chat",
     subtitle: "Stay in sync",
     roles: ["mechanic", "advisor", "manager", "owner", "admin", "parts"],
-    scopes: [
-      "home",
-      "messages",
-      "all",
-    ],
+    scopes: ["home", "messages", "all"],
   },
   {
     href: "/mobile/settings",
     title: "Settings",
     subtitle: "Account & mobile options",
     roles: ["mechanic", "advisor", "manager", "owner", "admin", "parts"],
-    scopes: [
-      "home",
-      "settings",
-      "all",
-    ],
+    scopes: ["home", "settings", "all"],
   },
 
   // 🔶 Mobile owner/manager reports
@@ -96,10 +78,15 @@ export const MOBILE_TILES: MobileTile[] = [
     title: "Reports",
     subtitle: "Revenue & tech efficiency",
     roles: ["owner", "admin", "manager"],
-    scopes: [
-      "home",
-      "work_orders",
-      "all",
-    ],
+    scopes: ["home", "work_orders", "all"],
+  },
+
+  // 🔧 Mobile technicians / leaderboard
+  {
+    href: "/mobile/technicians",
+    title: "Technicians",
+    subtitle: "Roster & performance",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["home", "jobs", "work_orders", "all"],
   },
 ];
