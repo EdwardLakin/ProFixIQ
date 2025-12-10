@@ -37,7 +37,7 @@ export type TechLeaderboardRow = {
   laborCost: number; // invoices.labor_cost
   profit: number; // revenue - laborCost
 
-  billedHours: number, 
+  billedHours: number;
   clockedHours: number; // payroll_timecards.hours_worked
   revenuePerHour: number; // revenue / clockedHours
   efficiencyPct: number; // revenue / laborCost * 100 (if laborCost > 0)
@@ -93,6 +93,7 @@ export async function getTechLeaderboard(
   const TECH_ROLES: string[] = [
     "tech",
     "technician",
+    "mechanic",      // 👈 added
     "lead_hand",
     "lead",
     "shop_foreman",
@@ -106,7 +107,6 @@ export async function getTechLeaderboard(
 
   if (profErr) throw profErr;
 
-  // Map to a narrow type matching only the selected columns
   const techProfiles: SlimProfile[] =
     (profiles ?? [])
       .filter((p) => (p.role ? TECH_ROLES.includes(p.role) : false))
@@ -152,7 +152,6 @@ export async function getTechLeaderboard(
   const invoices: InvoiceRow[] = invoicesRes.data ?? [];
   const timecards: TimecardRow[] = timecardsRes.data ?? [];
 
-  // 3) Aggregate per tech
   const byTech = new Map<string, TechLeaderboardRow>();
 
   // Seed with zero rows for each tech so they always show
