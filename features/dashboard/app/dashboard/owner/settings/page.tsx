@@ -12,6 +12,12 @@ import OwnerPinBadge from "@shared/components/OwnerPinBadge";
 import ShopPublicProfileSection from "@/features/shops/components/ShopPublicProfileSection";
 import ReviewsList from "@shared/components/reviews/ReviewsList";
 
+type FileInputChangeEvent = {
+  target: {
+    files: FileList | null;
+  };
+};
+
 type HourRow = {
   weekday: number;
   open_time: string;
@@ -268,26 +274,24 @@ export default function OwnerSettingsPage() {
     toast.success("Settings saved.");
   };
 
-  const handleLogoUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleLogoUpload = async (e: FileInputChangeEvent) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const filePath = `logos/${crypto.randomUUID()}-${file.name}`;
-    const { error } = await supabase.storage
-      .from("logos")
-      .upload(filePath, file, { upsert: true });
+  const filePath = `logos/${crypto.randomUUID()}-${file.name}`;
+  const { error } = await supabase.storage
+    .from("logos")
+    .upload(filePath, file, { upsert: true });
 
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
+  if (error) {
+    toast.error(error.message);
+    return;
+  }
 
-    const { data } = supabase.storage.from("logos").getPublicUrl(filePath);
-    setLogoUrl(data.publicUrl);
-    toast.success("Logo uploaded.");
-  };
+  const { data } = supabase.storage.from("logos").getPublicUrl(filePath);
+  setLogoUrl(data.publicUrl);
+  toast.success("Logo uploaded.");
+};
 
   const handleGenerateLogo = () => {
     toast.info("AI Logo generation coming soon…");
