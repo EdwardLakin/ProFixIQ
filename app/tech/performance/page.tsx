@@ -1,4 +1,3 @@
-// app/tech/performance/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -60,6 +59,17 @@ function badgeForEfficiency(efficiencyPct: number): Badge {
   };
 }
 
+/* ------------------------------------------------------------------------- */
+/* Sparkline                                                                 */
+/* ------------------------------------------------------------------------- */
+
+type SparkPoint = {
+  label: string;
+  value: number;
+};
+
+const TREND_RANGES: Range[] = ["weekly", "monthly", "quarterly", "yearly"];
+
 export default function TechPerformancePage() {
   const supabase = useMemo(
     () => createClientComponentClient<DB>(),
@@ -75,6 +85,13 @@ export default function TechPerformancePage() {
   const [row, setRow] = useState<TechLeaderboardRow | null>(null);
   const [rank, setRank] = useState<number | null>(null);
   const [totalTechs, setTotalTechs] = useState<number | null>(null);
+
+  const [shopAverage, setShopAverage] = useState<TechLeaderboardRow | null>(
+    null,
+  );
+
+  const [trendPoints, setTrendPoints] = useState<SparkPoint[] | null>(null);
+  const [trendLoading, setTrendLoading] = useState(false);
 
   const [start, setStart] = useState<string | null>(null);
   const [end, setEnd] = useState<string | null>(null);
@@ -137,7 +154,7 @@ export default function TechPerformancePage() {
   }, [supabase]);
 
   /* ---------------------------------------------------------------------- */
-  /* Load leaderboard row for this tech                                     */
+  /* Load leaderboard row for this tech + shop average                      */
   /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
@@ -176,6 +193,13 @@ export default function TechPerformancePage() {
           setRow(allRows[idx]);
           setRank(idx + 1); // 1-based rank
         }
+
+        // Shop average across all tech rows
+        if (allRows.length > 0) {
+          setShopAverage(averageRow(allRows));
+        } else {
+          setShopAverage(null);
+        }
       } catch (e) {
         const msg =
           e instanceof Error ? e.message : "Failed to load tech stats.";
@@ -183,11 +207,46 @@ export default function TechPerformancePage() {
         setRow(null);
         setRank(null);
         setTotalTechs(null);
+        setShopAverage(null);
       } finally {
         setLoadingStats(false);
       }
     })();
   }, [shopId, techId, profile?.full_name, profile?.role, range]);
+
+  /* ---------------------------------------------------------------------- */
+  /* Efficiency trend sparkline                                             */
+  /* ---------------------------------------------------------------------- */
+
+  useEffect(() => {
+    if (!shopId || !techId) return;
+
+    (async () => {
+      setTrendLoading(true);
+      try {
+        const results = await Promise.all(
+          TREND_RANGES.map((r) => getTechLeaderboard(shopId, r)),
+        );
+
+        const points: SparkPoint[] = results.map((result, idx) => {
+          const rows = result.rows ?? [];
+          const my = rows.find((r) => r.techId === techId) ?? null;
+          return {
+            label: TREND_RANGES[idx][0].toUpperCase(), // W / M / Q / Y
+            value: my ? my.efficiencyPct : 0,
+          };
+        });
+
+        setTrendPoints(points);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[TechPerformance] trend load failed", e);
+        setTrendPoints(null);
+      } finally {
+        setTrendLoading(false);
+      }
+    })();
+  }, [shopId, techId]);
 
   const dateRangeLabel =
     start && end
@@ -200,8 +259,12 @@ export default function TechPerformancePage() {
   const roleLabel = profile?.role ?? "mechanic";
 
   const hasData = !!row;
-
   const badge = badgeForEfficiency(row?.efficiencyPct ?? 0);
+
+  const efficiencyDelta =
+    row && shopAverage
+      ? row.efficiencyPct - shopAverage.efficiencyPct
+      : null;
 
   return (
     <PageShell
@@ -306,8 +369,7 @@ export default function TechPerformancePage() {
                       <span className="text-lg">{badge.emoji}</span>
                       <div className="flex flex-col">
                         <span className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-orange-300">
-                          {badge.label} •{" "}
-                          {row.efficiencyPct.toFixed(1)}%
+                          {badge.label} • {row.efficiencyPct.toFixed(1)}%
                         </span>
                         <span className="text-[0.7rem] text-neutral-300">
                           {badge.description}
@@ -371,6 +433,76 @@ export default function TechPerformancePage() {
               />
             </section>
 
+            {/* Shop average comparison */}
+            {shopAverage && (
+              <section className="space-y-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+                    Shop average (this range)
+                  </div>
+                  {efficiencyDelta !== null && (
+                    <div className="text-[0.7rem] text-neutral-300">
+                      You are{" "}
+                      <span
+                        className={
+                          efficiencyDelta >= 0
+                            ? "text-emerald-300"
+                            : "text-red-300"
+                        }
+                      >
+                        {efficiencyDelta >= 0 ? "+" : ""}
+                        {efficiencyDelta.toFixed(1)} pts
+                      </span>{" "}
+                      {efficiencyDelta >= 0 ? "above" : "below"} shop
+                      efficiency.
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[0.75rem] text-neutral-300">
+                  <Row
+                    label="Jobs"
+                    value={shopAverage.jobs.toFixed(1)}
+                  />
+                  <Row
+                    label="Revenue"
+                    value={formatCurrency(shopAverage.revenue)}
+                  />
+                  <Row
+                    label="Clocked hours"
+                    value={`${shopAverage.clockedHours.toFixed(1)} h`}
+                  />
+                  <Row
+                    label="Billed hours"
+                    value={`${shopAverage.billedHours.toFixed(1)} h`}
+                  />
+                  <Row
+                    label="Rev / hour"
+                    value={formatCurrency(shopAverage.revenuePerHour)}
+                  />
+                  <Row
+                    label="Efficiency"
+                    value={`${shopAverage.efficiencyPct.toFixed(1)}%`}
+                  />
+                </div>
+              </section>
+            )}
+
+            {/* Efficiency trend sparkline */}
+            {trendPoints && trendPoints.length > 0 && (
+              <section className="space-y-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+                    Efficiency trend
+                  </div>
+                  <div className="text-[0.7rem] text-neutral-500">
+                    Weekly → Monthly → Quarterly → Yearly
+                  </div>
+                </div>
+                <Sparkline points={trendPoints} loading={trendLoading} />
+              </section>
+            )}
+
             {/* Ratio strip */}
             <section className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-slate-950/90 via-black/90 to-slate-950/90 px-4 py-4 text-sm text-neutral-100 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -425,8 +557,69 @@ export default function TechPerformancePage() {
 }
 
 /* ------------------------------------------------------------------------- */
-/* UI subcomponents                                                          */
+/* Helpers & subcomponents                                                   */
 /* ------------------------------------------------------------------------- */
+
+function averageRow(rows: TechLeaderboardRow[]): TechLeaderboardRow {
+  if (rows.length === 0) {
+    return {
+      techId: "shop-avg",
+      name: "Shop average",
+      role: null,
+      jobs: 0,
+      revenue: 0,
+      laborCost: 0,
+      profit: 0,
+      billedHours: 0,
+      clockedHours: 0,
+      revenuePerHour: 0,
+      efficiencyPct: 0,
+    };
+  }
+
+  const sum = rows.reduce(
+    (acc, r) => {
+      acc.jobs += r.jobs;
+      acc.revenue += r.revenue;
+      acc.laborCost += r.laborCost;
+      acc.profit += r.profit;
+      acc.billedHours += r.billedHours;
+      acc.clockedHours += r.clockedHours;
+      acc.revenuePerHour += r.revenuePerHour;
+      acc.efficiencyPct += r.efficiencyPct;
+      return acc;
+    },
+    {
+      techId: "sum",
+      name: "sum",
+      role: null as string | null,
+      jobs: 0,
+      revenue: 0,
+      laborCost: 0,
+      profit: 0,
+      billedHours: 0,
+      clockedHours: 0,
+      revenuePerHour: 0,
+      efficiencyPct: 0,
+    },
+  );
+
+  const n = rows.length;
+
+  return {
+    techId: "shop-avg",
+    name: "Shop average",
+    role: null,
+    jobs: sum.jobs / n,
+    revenue: sum.revenue / n,
+    laborCost: sum.laborCost / n,
+    profit: sum.profit / n,
+    billedHours: sum.billedHours / n,
+    clockedHours: sum.clockedHours / n,
+    revenuePerHour: sum.revenuePerHour / n,
+    efficiencyPct: sum.efficiencyPct / n,
+  };
+}
 
 function StatCard({
   label,
@@ -486,5 +679,76 @@ function QuickLinkCard({
         </span>
       </div>
     </a>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <div className="text-neutral-400">{label}</div>
+      <div className="text-right text-neutral-100">{value}</div>
+    </>
+  );
+}
+
+function Sparkline({
+  points,
+  loading,
+}: {
+  points: SparkPoint[];
+  loading?: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="h-10 w-full animate-pulse rounded-md bg-gradient-to-r from-slate-700/40 to-slate-900/80" />
+    );
+  }
+
+  if (!points.length) {
+    return (
+      <div className="text-[0.7rem] text-neutral-500">
+        Not enough data to show a trend yet.
+      </div>
+    );
+  }
+
+  const values = points.map((p) => p.value);
+  const max = Math.max(...values, 0);
+  const min = Math.min(...values, 0);
+  const span = max - min || 1;
+
+  const coords = values.map((v, idx) => {
+    const x =
+      points.length === 1 ? 50 : (idx / (points.length - 1)) * 100;
+    const y = 100 - ((v - min) / span) * 100;
+    return { x, y };
+  });
+
+  const pathD = coords
+    .map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x},${p.y}`)
+    .join(" ");
+
+  return (
+    <div className="space-y-1">
+      <svg
+        viewBox="0 0 100 100"
+        className="h-10 w-full text-[var(--accent-copper-soft,#fdba74)]"
+        preserveAspectRatio="none"
+      >
+        <path
+          d={pathD}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <div className="flex justify-between text-[0.6rem] text-neutral-500">
+        {points.map((p) => (
+          <span key={p.label}>{p.label}</span>
+        ))}
+      </div>
+    </div>
   );
 }
