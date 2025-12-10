@@ -1,5 +1,5 @@
+// features/mobile/dashboard/MobileAdvisorHome.tsx
 "use client";
-
 
 import Link from "next/link";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
@@ -66,7 +66,7 @@ export default function MobileAdvisorHome({
         <FocusCard
           title="Work order view"
           body="Open the mobile work order board to manage jobs and assign techs."
-          href="/mobile/work-orders/view"
+          href="/mobile/work-orders"
           cta="Open work orders"
         />
         <FocusCard
