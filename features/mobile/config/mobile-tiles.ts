@@ -83,7 +83,7 @@ export const MOBILE_TILES: MobileTile[] = [
 
   // 🔧 Mobile technicians / leaderboard
   {
-    href: "/dashboard/owner/reports/technicians",
+    href: "/mobile/technicians",
     title: "Technicians",
     subtitle: "Roster & performance",
     roles: ["owner", "admin", "manager"],
