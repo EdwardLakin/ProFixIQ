@@ -33,6 +33,22 @@ type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
 };
 
+// 🔹 Extra metadata shape for inspection template ids (mirrors desktop logic)
+type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
+  inspection_template_id?: string | null;
+  inspection_template?: string | null;
+  inspectionTemplate?: string | null;
+  template?: string | null;
+  metadata?: {
+    inspection_template?: string | null;
+    template?: string | null;
+  } | null;
+  metadata2?: {
+    inspection_template?: string | null;
+    template?: string | null;
+  } | null;
+};
+
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
 function splitCustomId(raw: string): { prefix: string; n: number | null } {
@@ -40,6 +56,23 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
   if (!m) return { prefix: raw.toUpperCase(), n: null };
   const n = m[2] ? parseInt(m[2], 10) : null;
   return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
+}
+
+// 🔹 Desktop-style helper for finding the inspection template id on a line
+function extractInspectionTemplateId(
+  ln: WorkOrderLineWithInspectionMeta,
+): string | null {
+  return (
+    ln.inspection_template_id ??
+    ln.inspection_template ??
+    ln.inspectionTemplate ??
+    ln.template ??
+    ln.metadata?.inspection_template ??
+    ln.metadata?.template ??
+    ln.metadata2?.inspection_template ??
+    ln.metadata2?.template ??
+    null
+  );
 }
 
 /* ---------------------------- Badges (WO header) ---------------------------- */
@@ -745,10 +778,25 @@ export default function MobileWorkOrderClient({
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
 
   // 🔹 Open mobile inspection page for a given line
-  const openInspection = (lineId: string) => {
-    if (!lineId) return;
-    // mobile inspections route: /mobile/inspections/[id]
-    router.push(`/mobile/inspections/${lineId}`);
+  const openInspection = (ln: WorkOrderLine) => {
+    if (!ln?.id || !wo?.id) return;
+
+    const anyLine = ln as WorkOrderLineWithInspectionMeta;
+    const templateId = extractInspectionTemplateId(anyLine);
+
+    if (!templateId) {
+      toast.error(
+        "This job line doesn't have an inspection template attached yet. Attach or build a template first.",
+      );
+      return;
+    }
+
+    const sp = new URLSearchParams();
+    sp.set("workOrderId", wo.id);
+    sp.set("workOrderLineId", ln.id);
+    sp.set("templateId", templateId);
+
+    router.push(`/mobile/inspections/${ln.id}?${sp.toString()}`);
   };
 
   return (
@@ -895,7 +943,7 @@ export default function MobileWorkOrderClient({
                   </h3>
                   {vehicle ? (
                     <>
-                      <p className="text-sm font-medium text-white">
+                      <p className="text-sm font-medium text.white">
                         {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
                         {vehicle.model ?? ""}
                       </p>
@@ -1247,7 +1295,7 @@ export default function MobileWorkOrderClient({
                           onOpen={openFocused}
                           onAssign={undefined}
                           // 🔹 go straight to mobile inspection screen
-                          onOpenInspection={() => openInspection(ln.id)}
+                          onOpenInspection={() => openInspection(ln)}
                           onAddPart={undefined}
                         />
                       </div>

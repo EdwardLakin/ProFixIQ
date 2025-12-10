@@ -2,17 +2,30 @@
 "use client";
 
 import { useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import type { JSX } from "react";
 
-function MobileInspectionFrame({ lineId }: { lineId: string }): JSX.Element {
+function MobileInspectionFrame(props: {
+  lineId: string;
+  workOrderId?: string | null;
+  templateId?: string | null;
+}): JSX.Element {
+  const { lineId, workOrderId, templateId } = props;
+
   const src = useMemo(() => {
     const sp = new URLSearchParams();
+
+    // required for the runner
     sp.set("workOrderLineId", lineId);
-    sp.set("view", "mobile");
     sp.set("embed", "1");
+    sp.set("view", "mobile");
+
+    // extra context (how desktop does it)
+    if (workOrderId) sp.set("workOrderId", workOrderId);
+    if (templateId) sp.set("templateId", templateId);
+
     return `/inspections/run?${sp.toString()}`;
-  }, [lineId]);
+  }, [lineId, workOrderId, templateId]);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/40 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-md">
@@ -49,9 +62,13 @@ function MobileInspectionFrame({ lineId }: { lineId: string }): JSX.Element {
 
 export default function MobileInspectionRunnerPage(): JSX.Element {
   const params = useParams<{ id: string }>();
-  const id = params?.id;
+  const search = useSearchParams();
 
-  if (!id) {
+  const lineId = params?.id;
+  const workOrderId = search.get("workOrderId");
+  const templateId = search.get("templateId");
+
+  if (!lineId) {
     return (
       <main className="flex min-h-[calc(100vh-3rem)] items-center justify-center px-3 py-4 text-sm text-red-300">
         Missing inspection id.
@@ -62,7 +79,11 @@ export default function MobileInspectionRunnerPage(): JSX.Element {
   return (
     <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
       <div className="space-y-4">
-        <MobileInspectionFrame lineId={String(id)} />
+        <MobileInspectionFrame
+          lineId={String(lineId)}
+          workOrderId={workOrderId}
+          templateId={templateId}
+        />
       </div>
     </main>
   );
