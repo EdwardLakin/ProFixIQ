@@ -1260,6 +1260,76 @@ export type Database = {
           },
         ]
       }
+      expenses: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          description: string | null
+          expense_date: string
+          id: string
+          invoice_ref: string | null
+          metadata: Json
+          shop_id: string
+          tax_amount: number
+          updated_at: string
+          vendor_name: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          amount?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          expense_date?: string
+          id?: string
+          invoice_ref?: string | null
+          metadata?: Json
+          shop_id: string
+          tax_amount?: number
+          updated_at?: string
+          vendor_name?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          expense_date?: string
+          id?: string
+          invoice_ref?: string | null
+          metadata?: Json
+          shop_id?: string
+          tax_amount?: number
+          updated_at?: string
+          vendor_name?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feature_reads: {
         Row: {
           feature_slug: string
@@ -2123,6 +2193,114 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          created_at: string
+          currency: string
+          customer_id: string | null
+          discount_total: number
+          due_date: string | null
+          id: string
+          invoice_number: string | null
+          issued_at: string | null
+          labor_cost: number
+          metadata: Json
+          notes: string | null
+          paid_at: string | null
+          parts_cost: number
+          shop_id: string
+          status: string
+          subtotal: number
+          tax_total: number
+          tech_id: string | null
+          total: number
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          discount_total?: number
+          due_date?: string | null
+          id?: string
+          invoice_number?: string | null
+          issued_at?: string | null
+          labor_cost?: number
+          metadata?: Json
+          notes?: string | null
+          paid_at?: string | null
+          parts_cost?: number
+          shop_id: string
+          status?: string
+          subtotal?: number
+          tax_total?: number
+          tech_id?: string | null
+          total?: number
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          discount_total?: number
+          due_date?: string | null
+          id?: string
+          invoice_number?: string | null
+          issued_at?: string | null
+          labor_cost?: number
+          metadata?: Json
+          notes?: string | null
+          paid_at?: string | null
+          parts_cost?: number
+          shop_id?: string
+          status?: string
+          subtotal?: number
+          tax_total?: number
+          tech_id?: string | null
+          total?: number
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_tech_id_fkey"
+            columns: ["tech_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]

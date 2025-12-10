@@ -1,3 +1,5 @@
+// @shared/lib/stats/getShopStats.ts
+
 import {
   startOfMonth,
   endOfMonth,
@@ -15,18 +17,58 @@ import {
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-type TimeRange = "weekly" | "monthly" | "quarterly" | "yearly";
+export type TimeRange = "weekly" | "monthly" | "quarterly" | "yearly";
 
-interface Filters {
+export interface ShopStatsFilters {
   technicianId?: string;
   invoiceId?: string;
 }
 
+type DB = Database;
+type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
+type ExpenseRow = DB["public"]["Tables"]["expenses"]["Row"];
+
+export type StatsTotals = {
+  revenue: number;
+  profit: number;
+  labor: number;
+  expenses: number;
+  jobs: number;
+  techEfficiency: number;
+};
+
+export type PeriodStats = {
+  label: string;
+  revenue: number;
+  labor: number;
+  expenses: number;
+  profit: number;
+  jobs: number;
+};
+
+export type ShopStats = {
+  shop_id: string;
+  range: TimeRange;
+  start: string;
+  end: string;
+  total: StatsTotals;
+  periods: PeriodStats[];
+};
+
+/**
+ * Financial shop stats:
+ * - revenue      → from invoices.total
+ * - labor        → from invoices.labor_cost
+ * - expenses     → from expenses.amount
+ * - profit       → revenue - labor - expenses
+ * - jobs         → count of invoices
+ * - techEfficiency → revenue / labor * 100 (approx)
+ */
 export async function getShopStats(
   shopId: string,
   timeRange: TimeRange,
-  filters: Filters = {},
-) {
+  filters: ShopStatsFilters = {},
+): Promise<ShopStats> {
   const supabase = createClientComponentClient<Database>();
 
   const now = new Date();
@@ -62,18 +104,23 @@ export async function getShopStats(
     }
   }
 
+  const startIso = start.toISOString();
+  const endIso = end.toISOString();
+
   // Base invoice query
   let invoiceQuery = supabase
     .from("invoices")
     .select("*")
     .eq("shop_id", shopId)
-    .gte("created_at", start.toISOString())
-    .lte("created_at", end.toISOString());
+    .gte("created_at", startIso)
+    .lte("created_at", endIso);
 
   if (filters.invoiceId) {
     invoiceQuery = invoiceQuery.eq("id", filters.invoiceId);
   }
+
   if (filters.technicianId) {
+    // if invoices.tech_id exists
     invoiceQuery = invoiceQuery.eq("tech_id", filters.technicianId);
   }
 
@@ -83,14 +130,17 @@ export async function getShopStats(
       .from("expenses")
       .select("*")
       .eq("shop_id", shopId)
-      .gte("created_at", start.toISOString())
-      .lte("created_at", end.toISOString()),
+      .gte("created_at", startIso)
+      .lte("created_at", endIso),
   ]);
 
-  const invoices = invoicesRes.data || [];
-  const expenses = expensesRes.data || [];
+  if (invoicesRes.error) throw invoicesRes.error;
+  if (expensesRes.error) throw expensesRes.error;
 
-  const total = {
+  const invoices = (invoicesRes.data ?? []) as InvoiceRow[];
+  const expenses = (expensesRes.data ?? []) as ExpenseRow[];
+
+  const total: StatsTotals = {
     revenue: 0,
     profit: 0,
     labor: 0,
@@ -99,52 +149,53 @@ export async function getShopStats(
     techEfficiency: 0,
   };
 
-  invoices.forEach((inv) => {
-    total.revenue += inv.total || 0;
-    total.labor += inv.labor_cost || 0;
-  });
+  for (const inv of invoices) {
+    const revenue = Number(inv.total ?? 0);
+    const labor = Number(inv.labor_cost ?? 0);
 
-  expenses.forEach((exp) => {
-    total.expenses += exp.amount || 0;
-  });
+    total.revenue += Number.isFinite(revenue) ? revenue : 0;
+    total.labor += Number.isFinite(labor) ? labor : 0;
+  }
+
+  for (const exp of expenses) {
+    const amount = Number(exp.amount ?? 0);
+    total.expenses += Number.isFinite(amount) ? amount : 0;
+  }
 
   total.profit = total.revenue - total.labor - total.expenses;
   total.techEfficiency =
     total.labor > 0 ? (total.revenue / total.labor) * 100 : 0;
 
-  // Helper: figure out the "bucket key" for a given date based on the timeRange
+  // Helper: "bucket" key by time range
   const bucketKeyFor = (d: Date): string => {
     switch (timeRange) {
       case "weekly":
       case "monthly":
-        // Group by day
-        return format(d, "yyyy-MM-dd");
+        return format(d, "yyyy-MM-dd"); // by day
       case "quarterly":
-        // Group by month within the quarter
-        return format(d, "yyyy-MM");
+        return format(d, "yyyy-MM"); // by month
       case "yearly":
-        // Group by quarter in the year, e.g. "2025-Q1"
-        return `${format(d, "yyyy")}-Q${format(d, "Q")}`;
+        return `${format(d, "yyyy")}-Q${format(d, "Q")}`; // by quarter
       default:
         return format(d, "yyyy-MM-dd");
     }
   };
 
-  const periods = intervals.map((date) => {
+  const periods: PeriodStats[] = intervals.map((date) => {
     let label: string;
 
     switch (timeRange) {
       case "weekly":
-        label = format(date, "EEE"); // Mon, Tue
+        label = format(date, "EEE");
         break;
       case "monthly":
-        label = format(date, "d"); // 1, 2, ..., 31
+        label = format(date, "d");
         break;
       case "quarterly":
-        label = format(date, "MMM"); // Jan, Feb, ...
+        label = format(date, "MMM");
         break;
       case "yearly":
-        label = `Q${format(date, "Q")}`; // Q1, Q2, ...
+        label = `Q${format(date, "Q")}`;
         break;
       default:
         label = format(date, "d");
@@ -154,32 +205,31 @@ export async function getShopStats(
     const bucketKey = bucketKeyFor(date);
 
     const periodInvoices = invoices.filter((inv) => {
-      const created = new Date(inv.created_at);
+      const created = new Date(inv.created_at as string);
       return bucketKeyFor(created) === bucketKey;
     });
 
     const periodExpenses = expenses.filter((exp) => {
-      const created = new Date(exp.created_at);
+      const created = new Date(exp.created_at as string);
       return bucketKeyFor(created) === bucketKey;
     });
 
-    const periodRevenue = periodInvoices.reduce(
-      (sum, inv) => sum + (inv.total || 0),
+    const periodRevenue = periodInvoices.reduce<number>(
+      (sum, inv) => sum + Number(inv.total ?? 0),
       0,
     );
-    const periodLabor = periodInvoices.reduce(
-      (sum, inv) => sum + (inv.labor_cost || 0),
+    const periodLabor = periodInvoices.reduce<number>(
+      (sum, inv) => sum + Number(inv.labor_cost ?? 0),
       0,
     );
-    const periodJobs = periodInvoices.length;
-
-    const periodExpensesTotal = periodExpenses.reduce(
-      (sum, exp) => sum + (exp.amount || 0),
+    const periodExpensesTotal = periodExpenses.reduce<number>(
+      (sum, exp) => sum + Number(exp.amount ?? 0),
       0,
     );
-
     const periodProfit =
       periodRevenue - periodLabor - periodExpensesTotal;
+
+    const periodJobs = periodInvoices.length;
 
     return {
       label,
@@ -194,8 +244,8 @@ export async function getShopStats(
   return {
     shop_id: shopId,
     range: timeRange,
-    start: start.toISOString(),
-    end: end.toISOString(),
+    start: startIso,
+    end: endIso,
     total,
     periods,
   };

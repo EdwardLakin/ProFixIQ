@@ -1,3 +1,4 @@
+// app/dashboard/owner/reports/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -16,12 +17,21 @@ import {
 import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
-import { getShopStats } from "@shared/lib/stats/getShopStats";
+import {
+  getShopStats,
+  type TimeRange,
+  type ShopStatsFilters,
+} from "@shared/lib/stats/getShopStats";
+import {
+  getTechLeaderboard,
+  type TechLeaderboardResult,
+  type TechLeaderboardRow,
+} from "@shared/lib/stats/getTechLeaderboard";
 import { generateStatsPDF } from "@shared/lib/pdf/generateStatsPDF";
 import { Button } from "@shared/components/ui/Button";
 import PageShell from "@/features/shared/components/PageShell";
 
-type Range = "weekly" | "monthly" | "quarterly" | "yearly";
+type Range = TimeRange;
 
 type StatsTotals = {
   revenue: number;
@@ -38,6 +48,7 @@ type PeriodStats = {
   profit: number;
   labor: number;
   expenses: number;
+  jobs: number;
 };
 
 type ShopStats = {
@@ -58,7 +69,7 @@ const RANGE_LABELS: Record<Range, string> = {
 export default function ReportsPage() {
   const supabase = useMemo(
     () => createClientComponentClient<Database>(),
-    []
+    [],
   );
 
   const chartRef = useRef<HTMLDivElement>(null);
@@ -69,9 +80,21 @@ export default function ReportsPage() {
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  // Financial filters & goal
   const [goalRevenue, setGoalRevenue] = useState<number>(10000);
-  const [filters, setFilters] = useState({ techId: "", invoiceId: "" });
+  const [filters, setFilters] = useState<ShopStatsFilters>({
+    technicianId: "",
+    invoiceId: "",
+  });
   const [error, setError] = useState<string | null>(null);
+
+  // Tech leaderboard state
+  const [techBoard, setTechBoard] = useState<TechLeaderboardResult | null>(
+    null,
+  );
+  const [techLoading, setTechLoading] = useState(false);
+  const [techError, setTechError] = useState<string | null>(null);
 
   // Resolve shop_id for current user
   useEffect(() => {
@@ -112,7 +135,7 @@ export default function ReportsPage() {
     })();
   }, [supabase]);
 
-  // Load stats whenever shop / range / filters change
+  // Load financial stats whenever shop / range / filters change
   useEffect(() => {
     if (!shopId) return;
 
@@ -122,15 +145,14 @@ export default function ReportsPage() {
       setAiSummary(null);
 
       try {
-        // 🔧 Map local filters { techId, invoiceId } → getShopStats Filters
         const fetchedStats = await getShopStats(shopId, range, {
-          technicianId: filters.techId || undefined,
+          technicianId: filters.technicianId || undefined,
           invoiceId: filters.invoiceId || undefined,
         });
 
-        setStats(fetchedStats);
+        setStats(fetchedStats as ShopStats);
 
-        // Kick AI summary – don’t block main stats on this
+        // AI summary – don’t block main stats
         try {
           const res = await fetch("/api/ai/summarize-stats", {
             method: "POST",
@@ -143,6 +165,7 @@ export default function ReportsPage() {
           const json = await res.json();
           if (json?.summary) setAiSummary(json.summary);
         } catch (e) {
+          // eslint-disable-next-line no-console
           console.error(e);
           toast.error("AI summary could not be generated.");
         }
@@ -157,6 +180,29 @@ export default function ReportsPage() {
     })();
   }, [shopId, range, filters]);
 
+  // Load tech leaderboard whenever shop / range change
+  useEffect(() => {
+    if (!shopId) return;
+
+    (async () => {
+      setTechLoading(true);
+      setTechError(null);
+      try {
+        const result = await getTechLeaderboard(shopId, range);
+        setTechBoard(result);
+      } catch (e) {
+        const msg =
+          e instanceof Error
+            ? e.message
+            : "Failed to load technician leaderboard.";
+        setTechError(msg);
+        setTechBoard(null);
+      } finally {
+        setTechLoading(false);
+      }
+    })();
+  }, [shopId, range]);
+
   const handleExportPDF = async () => {
     if (!stats || !chartRef.current) return;
     setExporting(true);
@@ -167,7 +213,7 @@ export default function ReportsPage() {
         stats,
         aiSummary || "",
         range,
-        imgData
+        imgData,
       );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -191,6 +237,7 @@ export default function ReportsPage() {
       profit: p.profit,
       labor: p.labor,
       expenses: p.expenses,
+      jobs: p.jobs,
     })) ?? [];
 
   const hasData = stats && chartData.length > 0;
@@ -198,14 +245,45 @@ export default function ReportsPage() {
   const dateRangeLabel =
     stats?.start && stats?.end
       ? `${new Date(stats.start).toLocaleDateString()} – ${new Date(
-          stats.end
+          stats.end,
         ).toLocaleDateString()}`
       : RANGE_LABELS[range];
 
+  const techRows: TechLeaderboardRow[] = techBoard?.rows ?? [];
+
+  const efficiencyBadge = (
+    efficiencyPct: number,
+  ):
+    | { label: string; className: string; emoji: string }
+    | null => {
+    if (efficiencyPct >= 180) {
+      return {
+        label: "Gold",
+        className: "bg-yellow-500/15 border-yellow-400 text-yellow-200",
+        emoji: "🥇",
+      };
+    }
+    if (efficiencyPct >= 130) {
+      return {
+        label: "Silver",
+        className: "bg-slate-200/10 border-slate-200 text-slate-100",
+        emoji: "🥈",
+      };
+    }
+    if (efficiencyPct >= 90) {
+      return {
+        label: "Bronze",
+        className: "bg-amber-800/30 border-amber-500 text-amber-200",
+        emoji: "🥉",
+      };
+    }
+    return null;
+  };
+
   return (
     <PageShell
-      title="Shop Performance Reports"
-      description="Track revenue, profit, technician efficiency, and expenses over time. Use this to compare real performance against your targets."
+      title="Financial & Technician Performance"
+      description="Track revenue, profit, expenses, and technician performance over time."
     >
       <div className="mx-auto max-w-6xl space-y-6 text-foreground">
         {/* Top controls ---------------------------------------------------- */}
@@ -234,7 +312,7 @@ export default function ReportsPage() {
                       {r.charAt(0).toUpperCase() + r.slice(1)}
                     </Button>
                   );
-                }
+                },
               )}
             </div>
             <div className="text-[11px] text-muted-foreground">
@@ -251,11 +329,11 @@ export default function ReportsPage() {
               <input
                 type="text"
                 className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                value={filters.techId}
+                value={filters.technicianId ?? ""}
                 onChange={(e) =>
                   setFilters((prev) => ({
                     ...prev,
-                    techId: e.target.value,
+                    technicianId: e.target.value,
                   }))
                 }
                 placeholder="Optional"
@@ -268,7 +346,7 @@ export default function ReportsPage() {
               <input
                 type="text"
                 className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                value={filters.invoiceId}
+                value={filters.invoiceId ?? ""}
                 onChange={(e) =>
                   setFilters((prev) => ({
                     ...prev,
@@ -280,7 +358,7 @@ export default function ReportsPage() {
             </div>
             <div>
               <label className="mb-1 block text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                Revenue goal
+                Revenue goal (per period)
               </label>
               <div className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1">
                 <span className="text-[11px] text-muted-foreground">$</span>
@@ -292,7 +370,7 @@ export default function ReportsPage() {
                     setGoalRevenue(
                       Number.isFinite(Number(e.target.value))
                         ? Number(e.target.value)
-                        : 0
+                        : 0,
                     )
                   }
                   min={0}
@@ -328,7 +406,7 @@ export default function ReportsPage() {
           </div>
         )}
 
-        {/* Content --------------------------------------------------------- */}
+        {/* Financial content ---------------------------------------------- */}
         {!loading && !error && !hasData && (
           <div className="rounded-xl border border-border bg-card/60 px-4 py-6 text-sm text-muted-foreground">
             No data found for this range and filter. Try widening the date
@@ -380,14 +458,15 @@ export default function ReportsPage() {
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-foreground">
-                    Revenue & Cost Over Time
+                    Revenue, Profit, Labor & Expenses Over Time
                   </h2>
                   <p className="text-[11px] text-muted-foreground">
-                    Compare revenue, profit, labor, and expenses per period.
+                    Compare revenue, profit, labor cost, and expenses per
+                    period.
                   </p>
                 </div>
                 <div className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
-                  <span className="font-medium">Goal:</span>{" "}
+                  <span className="font-medium">Revenue goal:</span>{" "}
                   ${goalRevenue.toLocaleString()}
                 </div>
               </div>
@@ -403,7 +482,9 @@ export default function ReportsPage() {
                     <YAxis
                       stroke="#a3a3a3"
                       tick={{ fontSize: 11 }}
-                      tickFormatter={(v) => `$${v.toLocaleString()}`}
+                      tickFormatter={(v: number) =>
+                        `$${v.toLocaleString()}`
+                      }
                     />
                     <Tooltip
                       contentStyle={{
@@ -413,11 +494,21 @@ export default function ReportsPage() {
                         fontSize: "11px",
                       }}
                       labelStyle={{ color: "#e5e5e5" }}
-                      formatter={(value: any) =>
-                        typeof value === "number"
-                          ? `$${value.toLocaleString()}`
-                          : value
-                      }
+                      formatter={(value: unknown, name: string) => {
+                        if (
+                          (name === "Revenue" ||
+                            name === "Profit" ||
+                            name === "Labor cost" ||
+                            name === "Expenses") &&
+                          typeof value === "number"
+                        ) {
+                          return `$${value.toLocaleString()}`;
+                        }
+                        if (typeof value === "number") {
+                          return value.toFixed(2);
+                        }
+                        return String(value);
+                      }}
                     />
                     <Legend
                       wrapperStyle={{ fontSize: 11 }}
@@ -430,7 +521,7 @@ export default function ReportsPage() {
                       stroke="#10b981"
                       strokeDasharray="5 5"
                       label={{
-                        value: "Goal",
+                        value: "Revenue goal",
                         position: "right",
                         fill: "#6ee7b7",
                         fontSize: 11,
@@ -442,6 +533,7 @@ export default function ReportsPage() {
                       stroke="#22c55e"
                       strokeWidth={2}
                       dot={false}
+                      name="Revenue"
                     />
                     <Line
                       type="monotone"
@@ -449,6 +541,7 @@ export default function ReportsPage() {
                       stroke="#f59e0b"
                       strokeWidth={2}
                       dot={false}
+                      name="Profit"
                     />
                     <Line
                       type="monotone"
@@ -456,6 +549,7 @@ export default function ReportsPage() {
                       stroke="#ef4444"
                       strokeWidth={2}
                       dot={false}
+                      name="Expenses"
                     />
                     <Line
                       type="monotone"
@@ -463,6 +557,7 @@ export default function ReportsPage() {
                       stroke="#3b82f6"
                       strokeWidth={2}
                       dot={false}
+                      name="Labor cost"
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -476,7 +571,7 @@ export default function ReportsPage() {
                   AI summary
                 </h2>
                 <p className="text-xs text-muted-foreground">
-                  Generated from your current stats and time range.
+                  Generated from your financial stats and time range.
                 </p>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
                   {aiSummary}
@@ -485,6 +580,126 @@ export default function ReportsPage() {
             )}
           </>
         )}
+
+        {/* ------------------ Technician Leaderboard ----------------------- */}
+        <div className="rounded-2xl border border-border bg-card/80 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">
+                Technician Leaderboard
+              </h2>
+              <p className="text-[11px] text-muted-foreground">
+                Earnings per tech, billed vs clocked hours, and efficiency
+                for this time range.
+              </p>
+            </div>
+          </div>
+
+          {techError && (
+            <div className="rounded-md border border-red-500/40 bg-red-900/30 px-3 py-2 text-xs text-red-100">
+              {techError}
+            </div>
+          )}
+
+          {techLoading && !techError && (
+            <div className="rounded-md border border-border bg-card/60 px-3 py-3 text-xs text-muted-foreground">
+              Loading technician performance…
+            </div>
+          )}
+
+          {!techLoading && !techError && techRows.length === 0 && (
+            <div className="rounded-md border border-border bg-card/60 px-3 py-3 text-xs text-muted-foreground">
+              No technician activity found for this range.
+            </div>
+          )}
+
+          {!techLoading && !techError && techRows.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-border text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    <th className="px-2 py-2 text-left">Tech</th>
+                    <th className="px-2 py-2 text-right">Jobs</th>
+                    <th className="px-2 py-2 text-right">Revenue</th>
+                    <th className="px-2 py-2 text-right">Profit</th>
+                    <th className="px-2 py-2 text-right">Billed hrs</th>
+                    <th className="px-2 py-2 text-right">Clocked hrs</th>
+                    <th className="px-2 py-2 text-right">Rev / hr</th>
+                    <th className="px-2 py-2 text-right">Efficiency</th>
+                    <th className="px-2 py-2 text-center">Badge</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {techRows.map((row) => {
+                    const badge = efficiencyBadge(row.efficiencyPct);
+                    const billedVsClockedPct =
+                      row.clockedHours > 0
+                        ? (row.billedHours / row.clockedHours) * 100
+                        : 0;
+
+                    return (
+                      <tr
+                        key={row.techId}
+                        className="border-b border-border/60 last:border-0"
+                      >
+                        <td className="px-2 py-2">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">
+                              {row.name}
+                            </span>
+                            {row.role && (
+                              <span className="text-[11px] text-muted-foreground">
+                                {row.role}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          {row.jobs}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          ${row.revenue.toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          ${row.profit.toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          {row.billedHours.toFixed(1)}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          {row.clockedHours.toFixed(1)}
+                          {row.clockedHours > 0 && (
+                            <span className="ml-1 text-[11px] text-muted-foreground">
+                              (
+                              {billedVsClockedPct.toFixed(0)}
+                              % billed)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          ${row.revenuePerHour.toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          {row.efficiencyPct.toFixed(0)}%
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          {badge && (
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}
+                            >
+                              <span className="mr-1">{badge.emoji}</span>
+                              {badge.label}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </PageShell>
   );
