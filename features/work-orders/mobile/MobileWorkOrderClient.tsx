@@ -778,7 +778,8 @@ export default function MobileWorkOrderClient({
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
 
   // 🔹 Open mobile inspection page for a given line
-  const openInspection = (ln: WorkOrderLine) => {
+  // inside MobileWorkOrderClient, in openInspection()
+const openInspection = (ln: WorkOrderLine) => {
   if (!ln?.id || !wo?.id) return;
 
   const anyLine = ln as WorkOrderLineWithInspectionMeta;
@@ -795,6 +796,7 @@ export default function MobileWorkOrderClient({
   sp.set("workOrderId", wo.id);
   sp.set("workOrderLineId", ln.id);
   sp.set("templateId", templateId);
+  sp.set("view", "mobile"); // 👈 NEW
 
   router.push(`/mobile/inspections/${ln.id}?${sp.toString()}`);
 };

@@ -1090,14 +1090,20 @@ export default function GenericInspectionScreen(): JSX.Element {
     </div>
   );
 
-  if (isEmbed) return body;
+  // keep existing logic above…
 
-  return (
-    <PageShell
-      title={session?.templateitem || templateName || "Inspection"}
-      description="Run guided inspections, capture notes, and push items into work orders."
-    >
-      {body}
-    </PageShell>
-  );
+// If we're embedded (desktop modal) *or* running in the dedicated
+// mobile inspection route, don't wrap with the desktop PageShell.
+if (isEmbed || isMobileView) {
+  return body;
+}
+
+return (
+  <PageShell
+    title={session?.templateitem || templateName || "Inspection"}
+    description="Run guided inspections, capture notes, and push items into work orders."
+  >
+    {body}
+  </PageShell>
+);
 }

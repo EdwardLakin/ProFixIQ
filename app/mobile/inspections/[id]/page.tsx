@@ -1,64 +1,11 @@
 // app/mobile/inspections/[id]/page.tsx
 "use client";
 
-import { useMemo } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import type { JSX } from "react";
 
-function MobileInspectionFrame(props: {
-  lineId: string;
-  workOrderId?: string | null;
-  templateId?: string | null;
-}): JSX.Element {
-  const { lineId, workOrderId, templateId } = props;
-
-  const src = useMemo(() => {
-    const sp = new URLSearchParams();
-
-    // required for the runner
-    sp.set("workOrderLineId", lineId);
-    sp.set("embed", "1");
-    sp.set("view", "mobile");
-
-    // extra context (how desktop does it)
-    if (workOrderId) sp.set("workOrderId", workOrderId);
-    if (templateId) sp.set("templateId", templateId);
-
-    return `/inspections/run?${sp.toString()}`;
-  }, [lineId, workOrderId, templateId]);
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/40 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-md">
-      {/* Card header */}
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-            Mobile inspection
-          </p>
-          <p className="mt-0.5 text-[11px] text-neutral-400">
-            Line{" "}
-            <span className="font-mono text-[10px] text-neutral-200">
-              {lineId}
-            </span>
-          </p>
-        </div>
-
-        <span className="inline-flex items-center rounded-full border border-[color:var(--accent-copper-soft)]/70 bg-black/40 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper-light)] shadow-[0_0_16px_rgba(248,113,22,0.55)]">
-          Live
-        </span>
-      </div>
-
-      {/* Runner frame */}
-      <div className="mt-2 h-[calc(100vh-9rem)] overflow-hidden rounded-xl border border-white/8 bg-black/90">
-        <iframe
-          src={src}
-          title="Mobile inspection runner"
-          className="h-full w-full border-0"
-        />
-      </div>
-    </div>
-  );
-}
+import GenericInspectionScreen from "@/features/inspections/screens/GenericInspectionScreen";
+import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 
 export default function MobileInspectionRunnerPage(): JSX.Element {
   const params = useParams<{ id: string }>();
@@ -78,12 +25,39 @@ export default function MobileInspectionRunnerPage(): JSX.Element {
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
-      <div className="space-y-4">
-        <MobileInspectionFrame
-          lineId={String(lineId)}
-          workOrderId={workOrderId}
-          templateId={templateId}
-        />
+      {/* Simple mobile header */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <PreviousPageButton />
+        <div className="text-right">
+          <p className="text-[0.65rem] uppercase tracking-[0.22em] text-neutral-500">
+            Mobile inspection
+          </p>
+          <p className="mt-0.5 text-[0.7rem] text-neutral-400">
+            Line{" "}
+            <span className="font-mono text-[10px] text-neutral-200">
+              {lineId}
+            </span>
+          </p>
+          {workOrderId && (
+            <p className="text-[0.65rem] text-neutral-500">
+              WO:{" "}
+              <span className="font-mono">
+                {workOrderId.slice(0, 8)}
+              </span>
+            </p>
+          )}
+          {templateId && (
+            <p className="text-[0.65rem] text-neutral-500">
+              Template:{" "}
+              <span className="font-mono">{templateId}</span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Dedicated mobile inspection layout, powered by GenericInspectionScreen */}
+      <div className="rounded-2xl border border-white/10 bg-black/40 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-md">
+        <GenericInspectionScreen />
       </div>
     </main>
   );
