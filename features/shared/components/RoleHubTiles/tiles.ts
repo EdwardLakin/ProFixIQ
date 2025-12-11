@@ -101,6 +101,13 @@ export const TILES: Tile[] = [
     scopes: ["inspections", "all"],
   },
   {
+  href: "/inspections/fleet/import",
+  title: "Fleet Form Import",
+  subtitle: "Scan & convert fleet inspection sheets",
+  roles: ["advisor", "manager", "owner", "admin"],
+  scopes: ["inspections", "all"],
+},
+  {
     href: "/inspections/saved",
     title: "Saved Inspections",
     subtitle: "Recent & drafts",
