@@ -52,7 +52,7 @@ function stripExistingCornerGrids(sections: Section[]): Section[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Canonical corner grid builders (labels match AxlesCornerGrid)       */
+/* Canonical corner grid builders (labels match AxlesCornerGrid)      */
 /* ------------------------------------------------------------------ */
 
 function buildHydraulicCornerSection(): Section {
@@ -75,7 +75,7 @@ function buildHydraulicCornerSection(): Section {
   return { title: "Corner Grid (Hydraulic)", items };
 }
 
-/** Default air corner grid: Steer 1 + Drive 1 */
+/** Default air corner grid: Steer 1 + Drive 1 (explicit Inner/Outer where needed) */
 function buildAirCornerSection(): Section {
   const steer: SectionItem[] = [
     { item: "Steer 1 Left Tire Pressure", unit: "psi" },
@@ -109,7 +109,7 @@ function buildAirCornerSection(): Section {
 }
 
 /* ------------------------------------------------------------------ */
-/* Deterministic grid selection (same as /inspection/run)             */
+/* Deterministic grid selection (same rules as /inspection/run)       */
 /* ------------------------------------------------------------------ */
 
 function prepareSectionsWithCornerGrid(
@@ -119,20 +119,35 @@ function prepareSectionsWithCornerGrid(
 ): Section[] {
   const s = Array.isArray(sections) ? sections : [];
 
+  // 1) If there is already a corner-style title, trust the template
   const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
   if (hasCornerByTitle) return s;
 
+  // 2) Otherwise, strip out any corner-looking item patterns
   const withoutGrids = stripExistingCornerGrids(s);
   const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
 
   if (gridMode === "none") return withoutGrids;
 
+  // 3) Decide air vs hyd
   let injectAir: boolean;
   if (gridMode === "air" || gridMode === "hyd") {
+    // URL override wins on mobile too
     injectAir = gridMode === "air";
   } else {
     const vt = (vehicleType || "").toLowerCase();
-    injectAir = vt === "truck" || vt === "bus" || vt === "trailer";
+
+    // Anything clearly heavy / commercial => air brakes
+    const isAirByVehicle =
+      vt.includes("truck") ||
+      vt.includes("bus") ||
+      vt.includes("coach") ||
+      vt.includes("trailer") ||
+      vt.includes("heavy") || // matches your custom builder "heavy"
+      vt.includes("medium-heavy") ||
+      vt.includes("air");
+
+    injectAir = isAirByVehicle;
   }
 
   const injected = injectAir
