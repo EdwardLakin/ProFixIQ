@@ -40,7 +40,9 @@ const openai = new OpenAI({
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = cookies();
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient<Database>({
+      cookies: () => cookieStore,
+    });
     const admin = createAdminSupabase();
 
     const {
@@ -114,7 +116,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const uploadId: string = rpcData as string;
+    const uploadId = rpcData as string;
 
     // 3) Mark row as processing (service-role)
     await admin
@@ -135,36 +137,35 @@ export async function POST(req: NextRequest) {
         "You are an expert OCR and form parser for vehicle/fleet inspection forms. " +
         "You always respond with STRICT JSON and nothing else.";
 
-      const userPrompt =
-        [
-          "You are given a photo or PDF of a FLEET VEHICLE INSPECTION FORM.",
-          "",
-          "1. Perform OCR on the entire page(s).",
-          "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section.",
-          "3. For each line item, capture the label text as `item`.",
-          "4. If the label clearly implies a measurement unit (e.g. 'Tread Depth (mm)', 'Tire Pressure (psi)', 'Push Rod Travel (in)'),",
-          "   set `unit` accordingly (mm, in, psi, kPa, ft·lb, etc.). Otherwise, unit may be null.",
-          "",
-          "Return STRICT JSON with this shape:",
-          "",
-          "{",
-          '  "extracted_text": "full OCR text of the form",',
-          '  "sections": [',
-          "    {",
-          '      "title": "Section title as it appears on the form",',
-          '      "items": [',
-          '        { "item": "LF Tread Depth", "unit": "mm" },',
-          '        { "item": "RF Tire Pressure", "unit": "psi" }',
-          "      ]",
-          "    }",
-          "  ]",
-          "}",
-          "",
-          "Important:",
-          "- Keep `sections` and `items` in the same order as the original form where possible.",
-          "- Do not invent extra fields that are not clearly present.",
-          "- DO NOT wrap the JSON in markdown. Return raw JSON only.",
-        ].join("\n");
+      const userPrompt = [
+        "You are given a photo or PDF of a FLEET VEHICLE INSPECTION FORM.",
+        "",
+        "1. Perform OCR on the entire page(s).",
+        "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section.",
+        "3. For each line item, capture the label text as `item`.",
+        "4. If the label clearly implies a measurement unit (e.g. 'Tread Depth (mm)', 'Tire Pressure (psi)', 'Push Rod Travel (in)'),",
+        "   set `unit` accordingly (mm, in, psi, kPa, ft·lb, etc.). Otherwise, unit may be null.",
+        "",
+        "Return STRICT JSON with this shape:",
+        "",
+        "{",
+        '  "extracted_text": "full OCR text of the form",',
+        '  "sections": [',
+        "    {",
+        '      "title": "Section title as it appears on the form",',
+        '      "items": [',
+        '        { "item": "LF Tread Depth", "unit": "mm" },',
+        '        { "item": "RF Tire Pressure", "unit": "psi" }',
+        "      ]",
+        "    }",
+        "  ]",
+        "}",
+        "",
+        "Important:",
+        "- Keep `sections` and `items` in the same order as the original form where possible.",
+        "- Do not invent extra fields that are not clearly present.",
+        "- DO NOT wrap the JSON in markdown. Return raw JSON only.",
+      ].join("\n");
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4.1-mini",
@@ -194,7 +195,7 @@ export async function POST(req: NextRequest) {
       let obj: FleetParseResult;
       try {
         obj = JSON.parse(content) as FleetParseResult;
-      } catch (e) {
+      } catch {
         // if the model ever returns non-JSON despite response_format,
         // we could try a second pass here; for now mark as failed.
         throw new Error("Failed to parse OpenAI JSON response");
@@ -202,17 +203,20 @@ export async function POST(req: NextRequest) {
 
       parsed = obj;
       extractedText = (obj.extracted_text ?? "").toString();
-    } catch (scanError: any) {
+    } catch (scanError: unknown) {
       // eslint-disable-next-line no-console
       console.error("fleet form scan error:", scanError);
+
+      const errorMessage =
+        scanError instanceof Error
+          ? scanError.message
+          : String(scanError ?? "Fleet form OCR/parse failed");
 
       await admin
         .from("fleet_form_uploads")
         .update({
           status: "failed",
-          error_message:
-            scanError?.message?.toString?.() ??
-            "Fleet form OCR/parse failed",
+          error_message: errorMessage,
         })
         .eq("id", uploadId);
 
@@ -227,8 +231,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 5) Persist parsed result
-    const safeSections = Array.isArray(parsed?.sections)
-      ? parsed!.sections
+    const safeSections: FleetParseSection[] = Array.isArray(parsed?.sections)
+      ? parsed.sections ?? []
       : [];
 
     await admin
@@ -248,7 +252,7 @@ export async function POST(req: NextRequest) {
       },
       { status: 200 },
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     // eslint-disable-next-line no-console
     console.error("fleet forms upload route fatal error:", err);
     return NextResponse.json(
