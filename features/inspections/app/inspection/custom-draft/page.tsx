@@ -113,6 +113,18 @@ function buildOilChangeSection(): InspectionSection {
   };
 }
 
+/** Detect if the sections already include a Battery grid (for summary chip) */
+function hasBatterySection(sections: InspectionSection[] | unknown): boolean {
+  const s = Array.isArray(sections) ? (sections as InspectionSection[]) : [];
+  return s.some((sec) => {
+    const title = (sec.title || "").toLowerCase();
+    if (title.includes("battery")) return true;
+    return (sec.items ?? []).some((it) =>
+      (it.item ?? "").toLowerCase().includes("battery"),
+    );
+  });
+}
+
 /* -------------------------------- component -------------------------------- */
 
 export default function CustomDraftPage() {
@@ -138,6 +150,43 @@ export default function CustomDraftPage() {
 
   // 🔐 current user's shop (for shop-scoped templates)
   const [shopId, setShopId] = useState<string | null>(null);
+
+  // Derived summary values
+  const totalSections = sections.length;
+  const totalItems = useMemo(
+    () =>
+      sections.reduce(
+        (sum, s) => sum + (s.items?.length ?? 0),
+        0,
+      ),
+    [sections],
+  );
+
+  const dutyLabel =
+    dutyClass === "light"
+      ? "Light duty"
+      : dutyClass === "medium"
+        ? "Medium duty"
+        : dutyClass === "heavy"
+          ? "Heavy duty"
+          : "—";
+
+  const gridMode =
+    dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
+
+  const gridModeLabel =
+    gridMode === "air"
+      ? "Air brake corner grid (Steer + Drive)"
+      : gridMode === "hyd"
+        ? "Hydraulic brake grid (LF / RF / LR / RR)"
+        : "Not specified";
+
+  const vehicleLabel = vehicleType ? vehicleType : "—";
+
+  const batteryPresent = useMemo(
+    () => hasBatterySection(sections),
+    [sections],
+  );
 
   // build a quick lookup: normalized title -> master items (used for the add-item dropdown)
   const masterByTitle = useMemo(() => {
@@ -217,9 +266,16 @@ export default function CustomDraftPage() {
       if (raw) {
         const parsedUnknown = JSON.parse(raw) as unknown;
         const parsed = normalizeSections(parsedUnknown);
-        const withOil = includeOil
-          ? normalizeSections([...parsed, buildOilChangeSection()])
-          : parsed;
+
+        // ✅ builder already injects oil; only add here if missing
+        const hasOil = parsed.some(
+          (s) => (s.title || "").trim().toLowerCase() === "oil change",
+        );
+
+        const withOil =
+          includeOil && !hasOil
+            ? normalizeSections([...parsed, buildOilChangeSection()])
+            : parsed;
 
         setSections(withOil);
 
@@ -392,16 +448,16 @@ export default function CustomDraftPage() {
       }
 
       const payload: InsertTemplate = {
-  template_name: (title || "").trim() || "Custom Template",
-  sections:
-    cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
-  description: "Created from Custom Draft",
-  vehicle_type: vehicleType || undefined,
-  tags: ["custom", "draft"],
-  is_public: false,
-  labor_hours: Number.isFinite(laborHours) ? laborHours : null,
-  // user_id + shop_id are now injected by the trigger
-};
+        template_name: (title || "").trim() || "Custom Template",
+        sections:
+          cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
+        description: "Created from Custom Draft",
+        vehicle_type: vehicleType || undefined,
+        tags: ["custom", "draft"],
+        is_public: false,
+        labor_hours: Number.isFinite(laborHours) ? laborHours : null,
+        // user_id + shop_id are now injected by the trigger
+      };
 
       const { error, data } = await supabase
         .from("inspection_templates")
@@ -450,224 +506,340 @@ export default function CustomDraftPage() {
 
   return (
     <div className="px-4 py-6 text-white">
-      <h1 className="mb-3 text-center text-2xl font-bold">
-        Template Draft (Editable)
-      </h1>
+      <div className="mx-auto w-full max-w-6xl rounded-2xl border border-white/10 bg-black/75 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-6">
+        {/* Header */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h1
+            className="text-xl font-bold tracking-[0.18em] text-orange-400 sm:text-2xl"
+            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          >
+            Template Draft (Editable)
+          </h1>
 
-      {/* Header controls */}
-      <div className="mb-4 grid gap-3 md:grid-cols-[1fr,auto,auto,auto] md:items-end">
-        <label className="flex flex-col gap-1">
-          <span className="text-sm text-neutral-300">Template name</span>
-          <input
-            className="rounded bg-neutral-800 px-3 py-2"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </label>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-full border border-neutral-600 bg-black/60 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+          >
+            ← Back
+          </button>
+        </div>
 
-        <div className="flex flex-col gap-1">
-          <span className="text-sm text-neutral-300">Vehicle type</span>
-          <div className="rounded bg-neutral-800 px-3 py-2 text-sm text-neutral-200">
-            {vehicleType ?? "—"}
+        {/* Summary strip */}
+        <div className="mb-5 rounded-2xl border border-white/10 bg-black/70 px-3 py-3 text-xs text-neutral-200 md:flex md:items-center md:justify-between md:px-4">
+          <div className="space-y-1 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-1">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Vehicle
+              </span>
+              <span className="rounded-full bg-zinc-800 px-2 py-1 text-[11px] font-semibold text-zinc-100">
+                {vehicleLabel}
+              </span>
+            </span>
+
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Duty
+              </span>
+              <span className="rounded-full bg-orange-500/10 px-2 py-1 text-[11px] font-semibold text-orange-300">
+                {dutyLabel}
+              </span>
+            </span>
+
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Corner Grid
+              </span>
+              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">
+                {gridModeLabel}
+              </span>
+            </span>
+
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Batteries
+              </span>
+              <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-300">
+                {batteryPresent ? "Battery grid present" : "No battery grid"}
+              </span>
+            </span>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-neutral-400 md:mt-0">
+            <span>
+              Sections:{" "}
+              <span className="font-semibold text-neutral-100">
+                {totalSections}
+              </span>
+            </span>
+            <span>
+              Items:{" "}
+              <span className="font-semibold text-neutral-100">
+                {totalItems}
+              </span>
+            </span>
+            <span>
+              Labor:{" "}
+              <span className="font-semibold text-neutral-100">
+                {Number.isFinite(laborHours) ? laborHours.toFixed(2) : "0.00"}
+              </span>{" "}
+              hrs
+            </span>
           </div>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <span className="text-sm text-neutral-300">Duty class</span>
-          <div className="rounded bg-neutral-800 px-3 py-2 text-sm text-neutral-200">
-            {dutyClass ?? "—"}
-          </div>
-        </div>
+        {/* Header controls */}
+        <div className="mb-5 grid gap-3 md:grid-cols-[minmax(0,1.8fr),minmax(0,1fr),minmax(0,1fr),auto] md:items-end">
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-neutral-300">Template name</span>
+            <input
+              className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-sm text-neutral-300">
-            Labor hours (inspection total)
-          </span>
-          <input
-            type="number"
-            min={0}
-            step={0.25}
-            inputMode="decimal"
-            className="w-40 rounded bg-neutral-800 px-3 py-2"
-            value={Number.isFinite(laborHours) ? laborHours : 0}
-            onChange={(e) => {
-              const next = Number(e.target.value);
-              setLaborHours(Number.isFinite(next) ? next : 0);
-            }}
-          />
-        </label>
-      </div>
-
-      {/* Sections editor */}
-      <div className="space-y-4">
-        {sections.map((sec, i) => {
-          const masterItemsForThisSection = getMasterItemsForSection(sec.title);
-          return (
-            <div
-              key={`${sec.title}-${i}`}
-              className="rounded-lg border border-neutral-800 bg-neutral-900 p-3"
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-neutral-300">Vehicle type</span>
+            <select
+              className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+              value={vehicleType ?? ""}
+              onChange={(e) =>
+                setVehicleType(
+                  e.target.value
+                    ? (e.target.value as VehicleType)
+                    : null,
+                )
+              }
             >
-              {/* Section header */}
-              <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-neutral-300">Section</span>
-                  <input
-                    className="min-w-[220px] rounded bg-neutral-800 px-3 py-1.5 text-white"
-                    value={sec.title}
-                    onChange={(e) => updateSectionTitle(i, e.target.value)}
-                  />
-                </div>
+              <option value="">— Not specified —</option>
+              <option value="car">Car / SUV</option>
+              <option value="truck">Truck</option>
+              <option value="bus">Bus / Coach</option>
+              <option value="trailer">Trailer</option>
+            </select>
+          </label>
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => moveSection(i, -1)}
-                    className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800 disabled:opacity-50"
-                    disabled={i === 0}
-                    title="Move up"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    onClick={() => moveSection(i, +1)}
-                    className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800 disabled:opacity-50"
-                    disabled={i === sections.length - 1}
-                    title="Move down"
-                  >
-                    ↓
-                  </button>
-                  <button
-                    onClick={() => removeSection(i)}
-                    className="rounded border border-red-600 px-2 py-1 text-sm text-red-300 hover:bg-red-900/40"
-                    title="Remove section"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-neutral-300">Duty class</span>
+            <select
+              className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+              value={dutyClass ?? ""}
+              onChange={(e) =>
+                setDutyClass(
+                  e.target.value ? (e.target.value as DutyClass) : null,
+                )
+              }
+            >
+              <option value="">— Not specified —</option>
+              <option value="light">Light</option>
+              <option value="medium">Medium</option>
+              <option value="heavy">Heavy</option>
+            </select>
+          </label>
 
-              {/* Items list */}
-              <div className="space-y-2">
-                {(sec.items ?? []).map((it, j) => {
-                  const isPlaceholder = it.item === "New Item";
-                  const hasMaster = masterItemsForThisSection.length > 0;
-                  return (
-                    <div
-                      key={`${i}-${j}-${it.item}-${j}`}
-                      className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,140px,auto,auto] sm:items-center"
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-neutral-300">
+              Labor hours (inspection total)
+            </span>
+            <input
+              type="number"
+              min={0}
+              step={0.25}
+              inputMode="decimal"
+              className="w-40 rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+              value={Number.isFinite(laborHours) ? laborHours : 0}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setLaborHours(Number.isFinite(next) ? next : 0);
+              }}
+            />
+          </label>
+        </div>
+
+        {/* Sections editor */}
+        <div className="space-y-4">
+          {sections.map((sec, i) => {
+            const masterItemsForThisSection = getMasterItemsForSection(
+              sec.title,
+            );
+            return (
+              <div
+                key={`${sec.title}-${i}`}
+                className="rounded-2xl border border-neutral-800 bg-neutral-950/85 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)]"
+              >
+                {/* Section header */}
+                <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-orange-500/15 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-300">
+                      Section {i + 1}
+                    </span>
+                    <input
+                      className="min-w-[220px] max-w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                      value={sec.title}
+                      onChange={(e) => updateSectionTitle(i, e.target.value)}
+                      placeholder="Section title"
+                    />
+                    <span className="text-[11px] text-neutral-400">
+                      {(sec.items?.length ?? 0)} items
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => moveSection(i, -1)}
+                      className="rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800 disabled:opacity-40"
+                      disabled={i === 0}
+                      title="Move up"
                     >
-                      {/* label or dropdown */}
-                      {isPlaceholder && hasMaster ? (
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => moveSection(i, +1)}
+                      className="rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800 disabled:opacity-40"
+                      disabled={i === sections.length - 1}
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      onClick={() => removeSection(i)}
+                      className="rounded-full border border-red-600 bg-red-900/30 px-3 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-900/60"
+                      title="Remove section"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+
+                {/* Items list */}
+                <div className="space-y-2">
+                  {(sec.items ?? []).map((it, j) => {
+                    const isPlaceholder = it.item === "New Item";
+                    const hasMaster = masterItemsForThisSection.length > 0;
+                    return (
+                      <div
+                        key={`${i}-${j}-${it.item}-${j}`}
+                        className="grid grid-cols-1 gap-2 rounded-xl bg-black/55 p-2 sm:grid-cols-[minmax(0,1.4fr),140px,auto,auto] sm:items-center"
+                      >
+                        {/* label or dropdown */}
+                        {isPlaceholder && hasMaster ? (
+                          <select
+                            className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white"
+                            value=""
+                            onChange={(e) =>
+                              updateItemLabel(
+                                i,
+                                j,
+                                e.target.value || "New Item",
+                              )
+                            }
+                          >
+                            <option value="">— pick an item —</option>
+                            {masterItemsForThisSection.map((mi) => (
+                              <option key={mi.item} value={mi.item}>
+                                {mi.item}
+                              </option>
+                            ))}
+                            <option value="Custom item…">Custom item…</option>
+                          </select>
+                        ) : (
+                          <input
+                            className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500"
+                            value={it.item}
+                            onChange={(e) =>
+                              updateItemLabel(i, j, e.target.value)
+                            }
+                            placeholder="Item label"
+                          />
+                        )}
+
+                        {/* unit */}
                         <select
-                          className="rounded bg-neutral-800 px-3 py-1.5 text-sm"
-                          value=""
-                          onChange={(e) =>
-                            updateItemLabel(i, j, e.target.value || "New Item")
-                          }
+                          className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white"
+                          value={it.unit ?? ""}
+                          onChange={(e) => updateItemUnit(i, j, e.target.value)}
+                          title="Measurement unit"
                         >
-                          <option value="">— pick an item —</option>
-                          {masterItemsForThisSection.map((mi) => (
-                            <option key={mi.item} value={mi.item}>
-                              {mi.item}
+                          {UNIT_OPTIONS.map((u) => (
+                            <option key={u || "blank"} value={u}>
+                              {u || "— unit —"}
                             </option>
                           ))}
-                          <option value="Custom item…">Custom item…</option>
                         </select>
-                      ) : (
-                        <input
-                          className="rounded bg-neutral-800 px-3 py-1.5 text-sm"
-                          value={it.item}
-                          onChange={(e) =>
-                            updateItemLabel(i, j, e.target.value)
-                          }
-                          placeholder="Item label"
-                        />
-                      )}
 
-                      {/* unit */}
-                      <select
-                        className="rounded bg-neutral-800 px-2 py-1.5 text-sm"
-                        value={it.unit ?? ""}
-                        onChange={(e) => updateItemUnit(i, j, e.target.value)}
-                        title="Measurement unit"
-                      >
-                        {UNIT_OPTIONS.map((u) => (
-                          <option key={u || "blank"} value={u}>
-                            {u || "— unit —"}
-                          </option>
-                        ))}
-                      </select>
+                        {/* reorder */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => moveItem(i, j, -1)}
+                            className="rounded-full border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-neutral-100 hover:bg-neutral-800 disabled:opacity-40"
+                            disabled={j === 0}
+                            title="Move up"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            onClick={() => moveItem(i, j, +1)}
+                            className="rounded-full border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-neutral-100 hover:bg-neutral-800 disabled:opacity-40"
+                            disabled={j === (sec.items?.length ?? 0) - 1}
+                            title="Move down"
+                          >
+                            ↓
+                          </button>
+                        </div>
 
-                      {/* reorder */}
-                      <div className="flex gap-2">
+                        {/* remove */}
                         <button
-                          onClick={() => moveItem(i, j, -1)}
-                          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-50"
-                          disabled={j === 0}
-                          title="Move up"
+                          onClick={() => removeItem(i, j)}
+                          className="justify-self-start rounded-full border border-red-600 bg-red-900/30 px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-900/60 sm:justify-self-end"
+                          title="Remove item"
                         >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => moveItem(i, j, +1)}
-                          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-50"
-                          disabled={j === (sec.items?.length ?? 0) - 1}
-                          title="Move down"
-                        >
-                          ↓
+                          Remove
                         </button>
                       </div>
+                    );
+                  })}
 
-                      {/* remove */}
-                      <button
-                        onClick={() => removeItem(i, j)}
-                        className="justify-self-start rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/40 sm:justify-self-end"
-                        title="Remove item"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  );
-                })}
-
-                <div>
-                  <button
-                    onClick={() => addItem(i)}
-                    className="mt-2 rounded bg-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-600"
-                  >
-                    + Add Item
-                  </button>
+                  <div>
+                    <button
+                      onClick={() => addItem(i)}
+                      className="mt-2 rounded-full bg-neutral-800 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-neutral-700"
+                    >
+                      + Add Item
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      {/* Footer actions */}
-      <div className="mt-6 flex flex-wrap gap-3">
-        <button
-          onClick={addSection}
-          className="rounded bg-neutral-700 px-4 py-2 text-sm hover:bg-neutral-600"
-        >
-          + Add Section
-        </button>
+        {/* Footer actions */}
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            onClick={addSection}
+            className="rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white hover:bg-neutral-700"
+          >
+            + Add Section
+          </button>
 
-        <button
-          onClick={saveTemplate}
-          disabled={saving}
-          className="rounded bg-amber-600 px-4 py-2 font-semibold text-black hover:bg-amber-500 disabled:opacity-60"
-        >
-          {saving ? "Saving…" : "Save as Template"}
-        </button>
+          <button
+            onClick={saveTemplate}
+            disabled={saving}
+            className="rounded-full bg-amber-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-amber-400 disabled:opacity-60"
+          >
+            {saving ? "Saving…" : "Save as Template"}
+          </button>
 
-        <button
-          onClick={saveAndRun}
-          disabled={running}
-          className="rounded bg-green-600 px-4 py-2 font-semibold text-black hover:bg-green-500 disabled:opacity-60"
-          title="Stage this draft and open the Run page"
-        >
-          {running ? "Opening…" : "Save & Run"}
-        </button>
+          <button
+            onClick={saveAndRun}
+            disabled={running}
+            className="rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-emerald-400 disabled:opacity-60"
+            title="Stage this draft and open the Run page"
+          >
+            {running ? "Opening…" : "Save & Run"}
+          </button>
+        </div>
       </div>
     </div>
   );
