@@ -329,6 +329,9 @@ export default function GenericInspectionScreen(): JSX.Element {
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
+  // section collapse state
+  const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
+
   // 🔴 wake-word state
   const [wakeActive, setWakeActive] = useState(false);
   const wakeTimeoutRef = useRef<number | null>(null);
@@ -557,7 +560,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // AI submit flow
+  // AI submit flow (kept EXACT, to preserve quote/fail/recommend logic)
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
@@ -857,19 +860,101 @@ export default function GenericInspectionScreen(): JSX.Element {
     return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
-  const shell = isEmbed
-    ? "relative mx-auto max-w-[1100px] px-3 py-6 pb-10"
-    : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-16";
+  // 🔹 helpers that depend on a live session
+
+  const currentSectionIndex =
+    typeof session.currentSectionIndex === "number"
+      ? session.currentSectionIndex
+      : 0;
+  const safeSectionIndex =
+    currentSectionIndex >= 0 && currentSectionIndex < session.sections.length
+      ? currentSectionIndex
+      : 0;
+  const currentSection = session.sections[safeSectionIndex];
+
+  function autoAdvanceFrom(secIdx: number, itemIdx: number): void {
+    const sections = session.sections;
+    if (!sections || sections.length === 0) return;
+
+    let sIdx = secIdx;
+    let iIdx = itemIdx + 1;
+
+    // walk forward to the next valid item
+    while (sIdx < sections.length) {
+      const itemsLen = sections[sIdx].items?.length ?? 0;
+      if (iIdx < itemsLen) break;
+      sIdx += 1;
+      iIdx = 0;
+    }
+
+    if (sIdx >= sections.length) {
+      // at the end – park on the last item
+      const lastSectionIndex = sections.length - 1;
+      const lastItems = sections[lastSectionIndex].items ?? [];
+      const lastItemIndex = Math.max(0, lastItems.length - 1);
+      updateInspection({
+        currentSectionIndex: lastSectionIndex,
+        currentItemIndex: lastItemIndex,
+      });
+      return;
+    }
+
+    updateInspection({
+      currentSectionIndex: sIdx,
+      currentItemIndex: iIdx,
+    });
+  }
+
+  function applyStatusToSection(
+    sectionIndex: number,
+    status: InspectionItemStatus,
+  ): void {
+    const section = session.sections[sectionIndex];
+    if (!section) return;
+    const nextItems = (section.items ?? []).map((it) => ({
+      ...it,
+      status,
+    }));
+    updateSection(sectionIndex, { ...section, items: nextItems });
+    updateInspection({
+      currentSectionIndex: sectionIndex,
+      currentItemIndex: 0,
+    });
+  }
+
+  function toggleSectionCollapsed(sectionIndex: number): void {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [sectionIndex]: !prev[sectionIndex],
+    }));
+  }
+
+  const handleStartMobile = (): void => {
+    setIsPaused(false);
+    resumeSession();
+    void startListening();
+  };
+
+  const handlePauseMobile = (): void => {
+    setIsPaused(true);
+    pauseSession();
+    stopListening();
+  };
+
+  const shell =
+    isEmbed || isMobileView
+      ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-28"
+      : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-16";
 
   const cardBase =
     "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
     "bg-black/65 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
-  const headerCard = `${cardBase} px-4 py-4 md:px-6 md:py-5 mb-6`;
-  const sectionCard = `${cardBase} px-4 py-4 md:px-5 md:py-5 mb-6`;
+  const headerCard = `${cardBase} px-3 py-3 md:px-6 md:py-5 mb-4 md:mb-6`;
+  const sectionCard = `${cardBase} px-3 py-3 md:px-5 md:py-5 mb-4 md:mb-6`;
 
   const sectionTitle =
-    "text-lg md:text-xl font-semibold text-orange-300 text-center tracking-[0.16em] uppercase";
+    "text-base md:text-xl font-semibold text-orange-300 text-center tracking-[0.16em] uppercase";
   const hint =
     "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
 
@@ -893,6 +978,60 @@ export default function GenericInspectionScreen(): JSX.Element {
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
 
+      {/* 🔹 Sticky section header (mobile-first) */}
+      <div className="sticky top-0 z-20 -mx-3 mb-3 border-b border-white/10 bg-black/85 px-3 py-2 backdrop-blur md:mx-0 md:mb-4 md:rounded-2xl md:border md:bg-black/70 md:px-4 md:py-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+              Section {safeSectionIndex + 1} of {session.sections.length}
+            </div>
+            <div className="mt-0.5 line-clamp-1 text-sm font-semibold text-orange-300">
+              {currentSection?.title || "Current section"}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
+            <button
+              type="button"
+              className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20"
+              onClick={() => applyStatusToSection(safeSectionIndex, "ok")}
+            >
+              All OK
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20"
+              onClick={() => applyStatusToSection(safeSectionIndex, "fail")}
+            >
+              All Fail
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20"
+              onClick={() => applyStatusToSection(safeSectionIndex, "na")}
+            >
+              All NA
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20"
+              onClick={() =>
+                applyStatusToSection(safeSectionIndex, "recommend")
+              }
+            >
+              All REC
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
+              onClick={() => toggleSectionCollapsed(safeSectionIndex)}
+            >
+              {collapsedSections[safeSectionIndex] ? "Expand" : "Collapse"}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="relative space-y-4">
         {/* Header card */}
         <div className={headerCard}>
@@ -900,7 +1039,7 @@ export default function GenericInspectionScreen(): JSX.Element {
             <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
               Inspection
             </div>
-            <div className="mt-1 text-xl font-blackops text-neutral-50">
+            <div className="mt-1 text-lg md:text-xl font-blackops text-neutral-50">
               {session?.templateitem || templateName || "Inspection"}
             </div>
           </div>
@@ -914,7 +1053,7 @@ export default function GenericInspectionScreen(): JSX.Element {
 
         {/* Controls row */}
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {/* Voice only in mobile companion */}
+          {/* Voice only in mobile companion (top buttons) */}
           {isMobileView && (
             <StartListeningButton
               isListening={isListening}
@@ -960,7 +1099,7 @@ export default function GenericInspectionScreen(): JSX.Element {
         </div>
 
         {/* Progress */}
-        <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-4 py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+        <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2.5 md:px-4 md:py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
           <ProgressTracker
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
@@ -986,76 +1125,98 @@ export default function GenericInspectionScreen(): JSX.Element {
               const useGrid =
                 batterySection ||
                 shouldRenderCornerGrid(section.title, itemsWithHints);
+              const collapsed = collapsedSections[sectionIndex] ?? false;
 
               return (
                 <div
                   key={`${section.title}-${sectionIndex}`}
                   className={sectionCard}
                 >
-                  <h2 className={sectionTitle}>{section.title}</h2>
-                  {useGrid && (
-                    <span className={hint}>
-                      {unit === "metric"
-                        ? "Enter mm / kPa / N·m"
-                        : "Enter in / psi / ft·lb"}
-                    </span>
-                  )}
-
-                  <div className="mt-4">
-                    {useGrid ? (
-                      batterySection ? (
-                        <BatteryGrid
-                          sectionIndex={sectionIndex}
-                          items={itemsWithHints}
-                          unitHint={(label) => unitHintGeneric(label, unit)}
-                        />
-                      ) : (
-                        <AxlesCornerGrid
-                          sectionIndex={sectionIndex}
-                          items={itemsWithHints}
-                          unitHint={(label) => unitHintGeneric(label, unit)}
-                        />
-                      )
-                    ) : (
-                      <SectionDisplay
-                        title=""
-                        section={{ ...section, items: itemsWithHints }}
-                        sectionIndex={sectionIndex}
-                        showNotes
-                        showPhotos
-                        onUpdateStatus={(
-                          secIdx: number,
-                          itemIdx: number,
-                          status: InspectionItemStatus,
-                        ) => {
-                          updateItem(secIdx, itemIdx, { status });
-                        }}
-                        onUpdateNote={(secIdx, itemIdx, note) => {
-                          updateItem(secIdx, itemIdx, { notes: note });
-                        }}
-                        onUpload={(photoUrl, secIdx, itemIdx) => {
-                          const prev =
-                            session.sections[secIdx].items[itemIdx].photoUrls ??
-                            [];
-                          updateItem(secIdx, itemIdx, {
-                            photoUrls: [...prev, photoUrl],
-                          });
-                        }}
-                        /** 🔹 persist tech-entered parts + labor inside the session item */
-                        onUpdateParts={(secIdx, itemIdx, parts) => {
-                          updateItem(secIdx, itemIdx, { parts });
-                        }}
-                        onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-                          updateItem(secIdx, itemIdx, { laborHours: hours });
-                        }}
-                        requireNoteForAI
-                        onSubmitAI={(secIdx, itemIdx) => {
-                          void submitAIForItem(secIdx, itemIdx);
-                        }}
-                        isSubmittingAI={isSubmittingAI}
-                      />
-                    )}
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className={sectionTitle}>{section.title}</h2>
+                    <button
+                      type="button"
+                      className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+                      onClick={() => toggleSectionCollapsed(sectionIndex)}
+                    >
+                      {collapsed ? "Expand" : "Collapse"}
+                    </button>
                   </div>
+
+                  {collapsed ? (
+                    <p className="mt-2 text-center text-[11px] text-neutral-400">
+                      Section collapsed. Tap <span className="font-semibold">Expand</span> or
+                      use the sticky header to reopen.
+                    </p>
+                  ) : (
+                    <>
+                      {useGrid && (
+                        <span className={hint}>
+                          {unit === "metric"
+                            ? "Enter mm / kPa / N·m"
+                            : "Enter in / psi / ft·lb"}
+                        </span>
+                      )}
+
+                      <div className="mt-3 md:mt-4">
+                        {useGrid ? (
+                          batterySection ? (
+                            <BatteryGrid
+                              sectionIndex={sectionIndex}
+                              items={itemsWithHints}
+                              unitHint={(label) => unitHintGeneric(label, unit)}
+                            />
+                          ) : (
+                            <AxlesCornerGrid
+                              sectionIndex={sectionIndex}
+                              items={itemsWithHints}
+                              unitHint={(label) => unitHintGeneric(label, unit)}
+                            />
+                          )
+                        ) : (
+                          <SectionDisplay
+                            title=""
+                            section={{ ...section, items: itemsWithHints }}
+                            sectionIndex={sectionIndex}
+                            showNotes
+                            showPhotos
+                            onUpdateStatus={(
+                              secIdx: number,
+                              itemIdx: number,
+                              status: InspectionItemStatus,
+                            ) => {
+                              updateItem(secIdx, itemIdx, { status });
+                              // 🔹 Auto-advance index so progress + sticky header follow
+                              autoAdvanceFrom(secIdx, itemIdx);
+                            }}
+                            onUpdateNote={(secIdx, itemIdx, note) => {
+                              updateItem(secIdx, itemIdx, { notes: note });
+                            }}
+                            onUpload={(photoUrl, secIdx, itemIdx) => {
+                              const prev =
+                                session.sections[secIdx].items[itemIdx]
+                                  .photoUrls ?? [];
+                              updateItem(secIdx, itemIdx, {
+                                photoUrls: [...prev, photoUrl],
+                              });
+                            }}
+                            /** 🔹 persist tech-entered parts + labor inside the session item */
+                            onUpdateParts={(secIdx, itemIdx, parts) => {
+                              updateItem(secIdx, itemIdx, { parts });
+                            }}
+                            onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                              updateItem(secIdx, itemIdx, { laborHours: hours });
+                            }}
+                            requireNoteForAI
+                            onSubmitAI={(secIdx, itemIdx) => {
+                              void submitAIForItem(secIdx, itemIdx);
+                            }}
+                            isSubmittingAI={isSubmittingAI}
+                          />
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             },
@@ -1063,7 +1224,7 @@ export default function GenericInspectionScreen(): JSX.Element {
         </InspectionFormCtx.Provider>
 
         {/* Footer actions */}
-        <div className="mt-6 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
+        <div className="mt-4 md:mt-6 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-3">
             <SaveInspectionButton
               session={session}
@@ -1087,23 +1248,62 @@ export default function GenericInspectionScreen(): JSX.Element {
           </div>
         </div>
       </div>
+
+      {/* 🔹 Floating mobile bottom bar */}
+      {isMobileView && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-black/95 px-3 py-2 backdrop-blur md:hidden">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                className="px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
+                onClick={handleStartMobile}
+              >
+                Start
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
+                onClick={handlePauseMobile}
+              >
+                {isPaused ? "Resume" : "Pause"}
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <div className="scale-90">
+                <SaveInspectionButton
+                  session={session}
+                  workOrderLineId={workOrderLineId}
+                />
+              </div>
+              <div className="scale-90">
+                <FinishInspectionButton
+                  session={session}
+                  workOrderLineId={workOrderLineId}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
   // keep existing logic above…
 
-// If we're embedded (desktop modal) *or* running in the dedicated
-// mobile inspection route, don't wrap with the desktop PageShell.
-if (isEmbed || isMobileView) {
-  return body;
-}
+  // If we're embedded (desktop modal) *or* running in the dedicated
+  // mobile inspection route, don't wrap with the desktop PageShell.
+  if (isEmbed || isMobileView) {
+    return body;
+  }
 
-return (
-  <PageShell
-    title={session?.templateitem || templateName || "Inspection"}
-    description="Run guided inspections, capture notes, and push items into work orders."
-  >
-    {body}
-  </PageShell>
-);
+  return (
+    <PageShell
+      title={session?.templateitem || templateName || "Inspection"}
+      description="Run guided inspections, capture notes, and push items into work orders."
+    >
+      {body}
+    </PageShell>
+  );
 }
