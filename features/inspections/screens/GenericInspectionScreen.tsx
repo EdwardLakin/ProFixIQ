@@ -145,6 +145,13 @@ function shouldRenderCornerGrid(
 ): boolean {
   const t = (title || "").toLowerCase();
 
+  // 🔒 Never treat "Tires & Wheels" as a corner grid – it should stay
+  // a visual/condition checklist (measurements live in the corner grid).
+  if (t.includes("tires & wheels") || t.includes("tires and wheels")) {
+    return false;
+  }
+
+  // Titles that really *are* grids
   if (
     t.includes("corner grid") ||
     t.includes("tires & brakes — truck") ||
@@ -156,38 +163,13 @@ function shouldRenderCornerGrid(
 
   if (!items || items.length < 4) return false;
 
+  // Only treat as grid when labels clearly match our LF/RF or Steer/Drive patterns.
   const hasStrongPattern = items.some((it) => {
     const label = it.item ?? "";
     return AIR_RE.test(label) || HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
   });
 
-  const measurementKeywords = [
-    "tread",
-    "pressure",
-    "lining",
-    "shoe",
-    "drum",
-    "rotor",
-    "push rod",
-    "pad",
-    "torque",
-  ];
-  const measurementLikeCount = items.reduce((count, it) => {
-    const label = (it.item || "").toLowerCase();
-    const isMeasurement = measurementKeywords.some((kw) => label.includes(kw));
-    return count + (isMeasurement ? 1 : 0);
-  }, 0);
-
-  const enoughMeasurements = measurementLikeCount >= Math.floor(items.length / 2);
-
-  const titleSuggestsMeasurement =
-    t.includes("tire") ||
-    t.includes("tires") ||
-    t.includes("brake") ||
-    t.includes("measurement") ||
-    t.includes("axle");
-
-  return hasStrongPattern || (titleSuggestsMeasurement && enoughMeasurements);
+  return hasStrongPattern;
 }
 
 /** battery-specific detector */
@@ -1289,8 +1271,6 @@ export default function GenericInspectionScreen(): JSX.Element {
       )}
     </div>
   );
-
-  // keep existing logic above…
 
   // If we're embedded (desktop modal) *or* running in the dedicated
   // mobile inspection route, don't wrap with the desktop PageShell.
