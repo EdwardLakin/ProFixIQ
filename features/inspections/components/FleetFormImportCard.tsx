@@ -1,5 +1,3 @@
-//features/inspections/components/FleetFormImportCard.tsx
-
 "use client";
 
 import React, { useState } from "react";
@@ -8,10 +6,13 @@ import { Button } from "@shared/components/ui/Button";
 
 type DutyClass = "light" | "medium" | "heavy";
 
+type UploadStatus = "parsed" | "failed" | "processing" | string;
+
 type UploadResponse = {
   id: string;
-  status: string;
+  status: UploadStatus;
   storage_path?: string | null;
+  error?: string | null;
 };
 
 export default function FleetFormImportCard() {
@@ -51,36 +52,59 @@ export default function FleetFormImportCard() {
         body: formData,
       });
 
+      const data = (await res.json().catch(() => null)) as
+        | UploadResponse
+        | { error?: string }
+        | null;
+
+      // Network / server error?
       if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        const err = j?.error || `Upload failed (${res.status})`;
+        const err =
+          (data && "error" in data && typeof data.error === "string"
+            ? data.error
+            : null) || `Upload failed (${res.status})`;
         setErrorMsg(err);
         return;
       }
 
-      const data = (await res.json()) as UploadResponse;
+      if (!data || !("id" in data)) {
+        setErrorMsg("Upload succeeded but response was incomplete.");
+        return;
+      }
 
-      if (!data?.id) {
+      const uploadData = data as UploadResponse;
+
+      if (!uploadData.id) {
         setErrorMsg("Upload succeeded but no upload id was returned.");
         return;
       }
 
-      if (data.status !== "parsed") {
-        setErrorMsg(
-          `Form uploaded but scan did not complete successfully (status: ${data.status}).`,
-        );
+      // If the scan failed, show the *actual* error from the route.
+      if (uploadData.status !== "parsed") {
+        const detailedError =
+          (uploadData.error && uploadData.error.trim().length > 0
+            ? uploadData.error
+            : null) ??
+          `Form uploaded but scan did not complete successfully (status: ${uploadData.status}).`;
+
+        // Also log for debugging in dev tools
+        // eslint-disable-next-line no-console
+        console.error("Fleet form scan failed:", uploadData);
+
+        setErrorMsg(detailedError);
         return;
       }
 
       // Forward user into the Review & Map screen
       const qs = new URLSearchParams();
-      qs.set("uploadId", data.id);
+      qs.set("uploadId", uploadData.id);
       if (vehicleType) qs.set("vehicleType", vehicleType);
       if (dutyClass) qs.set("dutyClass", dutyClass);
       if (titleHint) qs.set("titleHint", titleHint);
 
       router.push(`/inspections/fleet/review?${qs.toString()}`);
-    } catch (err: any) {
+    } catch (err) {
+      // eslint-disable-next-line no-console
       console.error("Fleet import error:", err);
       setErrorMsg("Unexpected error uploading fleet form.");
     } finally {
@@ -108,7 +132,8 @@ export default function FleetFormImportCard() {
             Fleet Form Import
           </div>
           <p className="mt-1 text-xs text-neutral-300">
-            Convert any fleet’s current inspection sheet into a ProFixIQ template.
+            Convert any fleet’s current inspection sheet into a ProFixIQ
+            template.
           </p>
         </div>
 
@@ -220,7 +245,8 @@ export default function FleetFormImportCard() {
 
       {!errorMsg && (
         <p className="mt-2 text-[10px] text-neutral-500">
-          Upload → AI reads the layout → Review & map sections → Save as template.
+          Upload → AI reads the layout → Review & map sections → Save as
+          template.
         </p>
       )}
     </form>
