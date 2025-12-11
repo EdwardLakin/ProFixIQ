@@ -23,6 +23,11 @@ type InsertTemplate =
     labor_hours?: number | null;
   };
 
+type UpdateTemplate =
+  Database["public"]["Tables"]["inspection_templates"]["Update"] & {
+    labor_hours?: number | null;
+  };
+
 /* ---------------------------- safe type helpers ---------------------------- */
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -145,7 +150,8 @@ export default function CustomDraftPage() {
 
   const [sections, setSections] = useState<InspectionSection[]>([]);
   const [laborHours, setLaborHours] = useState<number>(0);
-  const [saving, setSaving] = useState(false);
+  const [savingNew, setSavingNew] = useState(false);
+  const [savingExisting, setSavingExisting] = useState(false);
   const [running, setRunning] = useState(false);
 
   // 🔐 current user's shop (for shop-scoped templates)
@@ -432,9 +438,10 @@ export default function CustomDraftPage() {
 
   /* --------------------------------- actions --------------------------------- */
 
+  // INSERT: Save as new template
   const saveTemplate = async () => {
     try {
-      setSaving(true);
+      setSavingNew(true);
       const { data: u } = await supabase.auth.getUser();
       if (!u?.user) {
         toast.error("Please sign in.");
@@ -471,10 +478,59 @@ export default function CustomDraftPage() {
         return;
       }
 
-      toast.success("Template saved.");
+      toast.success("Template saved as new.");
       router.replace(`/inspections/templates`);
     } finally {
-      setSaving(false);
+      setSavingNew(false);
+    }
+  };
+
+  // UPDATE: Save changes to existing template (only if templateId present)
+  const saveChanges = async () => {
+    if (!templateId) {
+      toast.error("No template to update.");
+      return;
+    }
+
+    try {
+      setSavingExisting(true);
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user) {
+        toast.error("Please sign in.");
+        return;
+      }
+
+      const cleaned = normalizeSections(sections);
+      if (cleaned.length === 0) {
+        toast.error("Add at least one section with items.");
+        return;
+      }
+
+      const payload: UpdateTemplate = {
+        template_name: (title || "").trim() || "Custom Template",
+        sections:
+          cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Update"]["sections"],
+        vehicle_type: vehicleType || undefined,
+        labor_hours: Number.isFinite(laborHours) ? laborHours : null,
+        // we deliberately do NOT override user_id / shop_id / tags / is_public here
+      };
+
+      const { error, data } = await supabase
+        .from("inspection_templates")
+        .update(payload)
+        .eq("id", templateId)
+        .select("id")
+        .maybeSingle();
+
+      if (error || !data?.id) {
+        console.error(error);
+        toast.error("Failed to update template.");
+        return;
+      }
+
+      toast.success("Template changes saved.");
+    } finally {
+      setSavingExisting(false);
     }
   };
 
@@ -823,12 +879,22 @@ export default function CustomDraftPage() {
             + Add Section
           </button>
 
+          {templateId && (
+            <button
+              onClick={saveChanges}
+              disabled={savingExisting}
+              className="rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-sky-400 disabled:opacity-60"
+            >
+              {savingExisting ? "Saving…" : "Save Changes"}
+            </button>
+          )}
+
           <button
             onClick={saveTemplate}
-            disabled={saving}
+            disabled={savingNew}
             className="rounded-full bg-amber-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-amber-400 disabled:opacity-60"
           >
-            {saving ? "Saving…" : "Save as Template"}
+            {savingNew ? "Saving…" : "Save as New Template"}
           </button>
 
           <button

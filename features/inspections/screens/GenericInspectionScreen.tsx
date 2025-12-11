@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
@@ -133,6 +135,25 @@ function normalizeSections(input: unknown): InspectionSection[] {
   }
 }
 
+/** Strip statuses/notes/photos/etc and keep only shape needed for templates */
+function toTemplateSections(sections: InspectionSection[]): InspectionSection[] {
+  return sections
+    .map((sec) => ({
+      title: sec.title,
+      items: (sec.items ?? [])
+        .map((it) => {
+          const label = (it.item ?? "").trim();
+          if (!label) return null;
+          return {
+            item: label,
+            unit: it.unit ?? null,
+          };
+        })
+        .filter((x): x is { item: string; unit: string | null } => !!x),
+    }))
+    .filter((sec) => sec.items.length > 0);
+}
+
 /* -------- smarter corner-grid detector -------- */
 
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
@@ -185,6 +206,15 @@ function isBatterySection(
   );
 }
 
+/* --------------------------------- types --------------------------------- */
+
+type VehicleTypeParam = "car" | "truck" | "bus" | "trailer";
+
+type InsertTemplate =
+  Database["public"]["Tables"]["inspection_templates"]["Insert"] & {
+    labor_hours?: number | null;
+  };
+
 /* -------------------------------------------------------------------- */
 /* Component                                                            */
 /* -------------------------------------------------------------------- */
@@ -192,6 +222,10 @@ function isBatterySection(
 export default function GenericInspectionScreen(): JSX.Element {
   const routeSp = useSearchParams();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const supabase = useMemo(
+    () => createClientComponentClient<Database>(),
+    [],
+  );
 
   // 🔹 Prefer staged params (set by run loader or WO modal) and merge with real URL params
   const sp = useMemo(() => {
@@ -231,6 +265,13 @@ export default function GenericInspectionScreen(): JSX.Element {
 
   const workOrderId = sp.get("workOrderId") || null;
   const workOrderLineId = sp.get("workOrderLineId") || "";
+
+  const rawVehicleType = sp.get("vehicleType") as VehicleTypeParam | null;
+  const templateVehicleType: VehicleTypeParam | undefined =
+    rawVehicleType && ["car", "truck", "bus", "trailer"].includes(rawVehicleType)
+      ? rawVehicleType
+      : undefined;
+
   // 🔹 Only complain about a missing line id when we *know* we're in an embedded WO-line flow
   const showMissingLineWarning = isEmbed && !workOrderLineId;
 
@@ -310,6 +351,7 @@ export default function GenericInspectionScreen(): JSX.Element {
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   // section collapse state
   const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
@@ -923,6 +965,68 @@ export default function GenericInspectionScreen(): JSX.Element {
     stopListening();
   };
 
+  // 🔸 Save current layout as a *new* template
+  const saveCurrentAsTemplate = async (): Promise<void> => {
+    if (!session) return;
+    if (savingTemplate) return;
+
+    const cleanedSections = toTemplateSections(session.sections);
+    if (cleanedSections.length === 0) {
+      toast.error("Nothing to save — no sections with items.");
+      return;
+    }
+
+    try {
+      setSavingTemplate(true);
+
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth?.user) {
+        toast.error("Please sign in to save this as a template.");
+        return;
+      }
+
+      const baseName =
+        session.templateitem || templateName || "Inspection Template";
+      const template_name = `${baseName} (from run)`;
+
+      // super simple labor-hours approximation: 0.1h per item
+      const totalItems = cleanedSections.reduce(
+        (sum, s) => sum + s.items.length,
+        0,
+      );
+      const labor_hours =
+        totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
+
+      const payload: InsertTemplate = {
+        template_name,
+        sections:
+          cleanedSections as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
+        description: "Saved from an in-progress inspection run.",
+        vehicle_type: templateVehicleType,
+        tags: ["run_saved", "custom"],
+        is_public: false,
+        labor_hours,
+        // user_id / shop_id handled by trigger
+      };
+
+      const { error, data } = await supabase
+        .from("inspection_templates")
+        .insert(payload)
+        .select("id")
+        .maybeSingle();
+
+      if (error || !data?.id) {
+        console.error(error);
+        toast.error("Failed to save template from inspection.");
+        return;
+      }
+
+      toast.success("Template saved from this inspection. You can reuse it under Templates.");
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   const shell =
     isEmbed || isMobileView
       ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-28"
@@ -1216,6 +1320,15 @@ export default function GenericInspectionScreen(): JSX.Element {
               session={session}
               workOrderLineId={workOrderLineId}
             />
+            <Button
+              type="button"
+              variant="outline"
+              className="border-sky-500/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-sky-100 hover:border-sky-400 hover:bg-black/80"
+              onClick={saveCurrentAsTemplate}
+              disabled={savingTemplate}
+            >
+              {savingTemplate ? "Saving Template…" : "Save as Template"}
+            </Button>
             {showMissingLineWarning && (
               <div className="text-xs text-red-400">
                 Missing <code>workOrderLineId</code> — save/finish will be
