@@ -828,14 +828,7 @@ export const masterInspectionList: InspectionCategory[] = [
     title: "Tires & Wheels",
     items: [
       // from your original
-      {
-        item: "Tread depth",
-        unit: "mm",
-        vehicleTypes: ["car", "truck", "bus", "trailer"],
-        dutyClasses: ["light", "medium", "heavy"],
-        required: true,
-        priority: 95,
-      },
+      
       {
         item: "Sidewall damage/bulges",
         vehicleTypes: ["car", "truck", "bus", "trailer"],
@@ -880,13 +873,6 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
-      },
-      {
-        item: "Tire inflation pressure",
-        unit: "psi",
-        vehicleTypes: ["car", "truck", "bus", "trailer"],
-        dutyClasses: ["light", "medium", "heavy"],
-        priority: 85,
       },
       {
         item: "Wheel hub (condition/leaks)",
