@@ -206,7 +206,7 @@ function isBatterySection(
   );
 }
 
-/* --------------------------------- types --------------------------------- */
+/* --------------------------------- types / constants --------------------------------- */
 
 type VehicleTypeParam = "car" | "truck" | "bus" | "trailer";
 
@@ -214,6 +214,8 @@ type InsertTemplate =
   Database["public"]["Tables"]["inspection_templates"]["Insert"] & {
     labor_hours?: number | null;
   };
+
+const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
 
 /* -------------------------------------------------------------------- */
 /* Component                                                            */
@@ -352,6 +354,10 @@ export default function GenericInspectionScreen(): JSX.Element {
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
+
+  // 🔹 per-section "add item" state
+  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>({});
+  const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
 
   // section collapse state
   const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
@@ -1027,6 +1033,39 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
   };
 
+  // 🔸 Add new item inline to a section (non-grid)
+  const handleAddCustomItem = (sectionIndex: number): void => {
+    if (!session) return;
+    const label = (newItemLabels[sectionIndex] || "").trim();
+    if (!label) {
+      toast.error("Enter a label for the new item.");
+      return;
+    }
+
+    const unitRaw = newItemUnits[sectionIndex] ?? "";
+    const unit = unitRaw || null;
+
+    const section = session.sections[sectionIndex];
+    if (!section) return;
+
+    const nextItems = [
+      ...(section.items ?? []),
+      {
+        item: label,
+        unit,
+        status: "na" as InspectionItemStatus,
+      },
+    ];
+
+    updateSection(sectionIndex, {
+      ...section,
+      items: nextItems,
+    });
+
+    setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
+    // keep unit selection as-is, so they can add multiple with same unit
+  };
+
   const shell =
     isEmbed || isMobileView
       ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-28"
@@ -1213,6 +1252,9 @@ export default function GenericInspectionScreen(): JSX.Element {
                 shouldRenderCornerGrid(section.title, itemsWithHints);
               const collapsed = collapsedSections[sectionIndex] ?? false;
 
+              const newLabel = newItemLabels[sectionIndex] ?? "";
+              const newUnit = newItemUnits[sectionIndex] ?? "";
+
               return (
                 <div
                   key={`${section.title}-${sectionIndex}`}
@@ -1260,45 +1302,93 @@ export default function GenericInspectionScreen(): JSX.Element {
                             />
                           )
                         ) : (
-                          <SectionDisplay
-                            title=""
-                            section={{ ...section, items: itemsWithHints }}
-                            sectionIndex={sectionIndex}
-                            showNotes
-                            showPhotos
-                            onUpdateStatus={(
-                              secIdx: number,
-                              itemIdx: number,
-                              status: InspectionItemStatus,
-                            ) => {
-                              updateItem(secIdx, itemIdx, { status });
-                              // 🔹 Auto-advance index so progress + sticky header follow
-                              autoAdvanceFrom(secIdx, itemIdx);
-                            }}
-                            onUpdateNote={(secIdx, itemIdx, note) => {
-                              updateItem(secIdx, itemIdx, { notes: note });
-                            }}
-                            onUpload={(photoUrl, secIdx, itemIdx) => {
-                              const prev =
-                                session.sections[secIdx].items[itemIdx]
-                                  .photoUrls ?? [];
-                              updateItem(secIdx, itemIdx, {
-                                photoUrls: [...prev, photoUrl],
-                              });
-                            }}
-                            /** 🔹 persist tech-entered parts + labor inside the session item */
-                            onUpdateParts={(secIdx, itemIdx, parts) => {
-                              updateItem(secIdx, itemIdx, { parts });
-                            }}
-                            onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-                              updateItem(secIdx, itemIdx, { laborHours: hours });
-                            }}
-                            requireNoteForAI
-                            onSubmitAI={(secIdx, itemIdx) => {
-                              void submitAIForItem(secIdx, itemIdx);
-                            }}
-                            isSubmittingAI={isSubmittingAI}
-                          />
+                          <>
+                            <SectionDisplay
+                              title=""
+                              section={{ ...section, items: itemsWithHints }}
+                              sectionIndex={sectionIndex}
+                              showNotes
+                              showPhotos
+                              onUpdateStatus={(
+                                secIdx: number,
+                                itemIdx: number,
+                                status: InspectionItemStatus,
+                              ) => {
+                                updateItem(secIdx, itemIdx, { status });
+                                // 🔹 Auto-advance index so progress + sticky header follow
+                                autoAdvanceFrom(secIdx, itemIdx);
+                              }}
+                              onUpdateNote={(secIdx, itemIdx, note) => {
+                                updateItem(secIdx, itemIdx, { notes: note });
+                              }}
+                              onUpload={(photoUrl, secIdx, itemIdx) => {
+                                const prev =
+                                  session.sections[secIdx].items[itemIdx]
+                                    .photoUrls ?? [];
+                                updateItem(secIdx, itemIdx, {
+                                  photoUrls: [...prev, photoUrl],
+                                });
+                              }}
+                              /** 🔹 persist tech-entered parts + labor inside the session item */
+                              onUpdateParts={(secIdx, itemIdx, parts) => {
+                                updateItem(secIdx, itemIdx, { parts });
+                              }}
+                              onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                                updateItem(secIdx, itemIdx, { laborHours: hours });
+                              }}
+                              requireNoteForAI
+                              onSubmitAI={(secIdx, itemIdx) => {
+                                void submitAIForItem(secIdx, itemIdx);
+                              }}
+                              isSubmittingAI={isSubmittingAI}
+                            />
+
+                            {/* 🔹 Inline add-item row for this section */}
+                            <div className="mt-4 border-t border-white/10 pt-3">
+                              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                                Add custom item
+                              </div>
+                              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                                <input
+                                  className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                  placeholder="Item label (e.g. Rear frame inspection)"
+                                  value={newLabel}
+                                  onChange={(e) =>
+                                    setNewItemLabels((prev) => ({
+                                      ...prev,
+                                      [sectionIndex]: e.target.value,
+                                    }))
+                                  }
+                                />
+                                <div className="flex items-center gap-2 md:w-auto">
+                                  <select
+                                    className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                    value={newUnit}
+                                    onChange={(e) =>
+                                      setNewItemUnits((prev) => ({
+                                        ...prev,
+                                        [sectionIndex]: e.target.value,
+                                      }))
+                                    }
+                                    title="Measurement unit"
+                                  >
+                                    {UNIT_OPTIONS.map((u) => (
+                                      <option key={u || "blank"} value={u}>
+                                        {u || "— unit —"}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <Button
+                                    type="button"
+                                    className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
+                                    onClick={() => handleAddCustomItem(sectionIndex)}
+                                  >
+                                    + Add Item
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </>
                         )}
                       </div>
                     </>
