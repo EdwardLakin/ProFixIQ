@@ -1351,6 +1351,45 @@ export type Database = {
         }
         Relationships: []
       }
+      fleet_form_uploads: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          error: string | null
+          extracted_text: string | null
+          id: string
+          original_filename: string | null
+          parsed_sections: Json | null
+          status: string
+          storage_path: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          error?: string | null
+          extracted_text?: string | null
+          id?: string
+          original_filename?: string | null
+          parsed_sections?: Json | null
+          status?: string
+          storage_path: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          error?: string | null
+          extracted_text?: string | null
+          id?: string
+          original_filename?: string | null
+          parsed_sections?: Json | null
+          status?: string
+          storage_path?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       fleet_program_tasks: {
         Row: {
           created_at: string
@@ -7548,6 +7587,10 @@ export type Database = {
       }
       check_plan_limit: { Args: { _feature: string }; Returns: boolean }
       clear_auth: { Args: never; Returns: undefined }
+      create_fleet_form_upload: {
+        Args: { _filename: string; _path: string }
+        Returns: string
+      }
       create_part_request: {
         Args: { p_items: Json; p_notes: string; p_work_order: string }
         Returns: string
