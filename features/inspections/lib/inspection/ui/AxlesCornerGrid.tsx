@@ -11,6 +11,10 @@ type Props = {
   unitHint?: (label: string) => string;
   /** Only shown (and used) for AIR mode */
   onAddAxle?: (axleLabel: string) => void;
+
+  /** Optional external collapse control (for sticky header) */
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 };
 
 /* ---------------------------- shared helpers ---------------------------- */
@@ -97,6 +101,8 @@ export default function AxlesCornerGrid({
   items,
   unitHint,
   onAddAxle,
+  collapsed,
+  onToggleCollapse,
 }: Props) {
   const { updateItem } = useInspectionForm();
 
@@ -109,6 +115,18 @@ export default function AxlesCornerGrid({
     }
     return "hyd"; // safe default
   }, [items]);
+
+  // Local vs controlled collapse
+  const [internalOpen, setInternalOpen] = useState(true);
+  const isControlled = typeof collapsed === "boolean";
+  const open = isControlled ? !collapsed : internalOpen;
+
+  const toggleOpen = () => {
+    onToggleCollapse?.();
+    if (!isControlled) {
+      setInternalOpen((v) => !v);
+    }
+  };
 
   /* ------------------------------------------------------------------ */
   /* HYDRAULIC (LF/RF/LR/RR)                                           */
@@ -294,7 +312,6 @@ export default function AxlesCornerGrid({
 
   /* ---------------------------- UI state ---------------------------- */
 
-  const [open, setOpen] = useState(true);
   const [showKpa, setShowKpa] = useState(true);
   const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
     const m: Record<number, boolean> = {};
@@ -548,7 +565,7 @@ export default function AxlesCornerGrid({
           </label>
 
           <button
-            onClick={() => setOpen((v) => !v)}
+            onClick={toggleOpen}
             className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:border-orange-500 hover:bg-black/80"
             title={open ? "Collapse" : "Expand"}
             tabIndex={-1}

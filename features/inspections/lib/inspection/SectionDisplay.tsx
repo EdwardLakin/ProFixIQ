@@ -1,4 +1,3 @@
-// features/inspections/lib/inspection/ui/SectionDisplay.tsx
 "use client";
 
 import { useState, useMemo } from "react";
@@ -46,6 +45,10 @@ interface SectionDisplayProps {
     itemIndex: number,
     hours: number | null,
   ) => void;
+
+  /** Optional external collapse control (used by sticky header). */
+  isCollapsed?: boolean;
+  onToggleCollapse?: (sectionIndex: number) => void;
 }
 
 export default function SectionDisplay(props: SectionDisplayProps) {
@@ -61,9 +64,23 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     requireNoteForAI,
     onSubmitAI,
     isSubmittingAI,
+    onUpdateParts,
+    onUpdateLaborHours,
+    isCollapsed,
+    onToggleCollapse,
   } = props;
 
-  const [open, setOpen] = useState(true);
+  // If parent passes isCollapsed, we become "controlled".
+  const [internalOpen, setInternalOpen] = useState(true);
+  const isControlled = typeof isCollapsed === "boolean";
+  const open = isControlled ? !isCollapsed : internalOpen;
+
+  const toggleOpen = () => {
+    onToggleCollapse?.(sectionIndex);
+    if (!isControlled) {
+      setInternalOpen((v) => !v);
+    }
+  };
 
   const stats = useMemo(() => {
     const total = section.items.length || 0;
@@ -88,8 +105,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
         {/* Title still toggles open/closed */}
         <button
-          onClick={() => setOpen((v) => !v)}
-          className="text-left text-lg font-semibold tracking-wide text-accent hover:text-accent/80 transition-colors"
+          onClick={toggleOpen}
+          className="text-left text-lg font-semibold tracking-wide text-accent transition-colors hover:text-accent/80"
           style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
           aria-expanded={open}
         >
@@ -152,7 +169,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               variant="ghost"
               size="sm"
               className="ml-1 h-7 px-2 text-[11px]"
-              onClick={() => setOpen((v) => !v)}
+              onClick={toggleOpen}
               aria-expanded={open}
               title={open ? "Collapse section" : "Expand section"}
               type="button"
@@ -212,15 +229,11 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   const handlePartsChange = (
                     parts: { description: string; qty: number }[],
                   ) => {
-                    props.onUpdateParts?.(sectionIndex, itemIndex, parts);
+                    onUpdateParts?.(sectionIndex, itemIndex, parts);
                   };
 
                   const handleLaborChange = (hours: number | null) => {
-                    props.onUpdateLaborHours?.(
-                      sectionIndex,
-                      itemIndex,
-                      hours,
-                    );
+                    onUpdateLaborHours?.(sectionIndex, itemIndex, hours);
                   };
 
                   const addEmptyPart = () => {
