@@ -13,6 +13,149 @@ type Section = {
   items: Array<{ item?: string; name?: string; unit?: string | null }>;
 };
 
+/* ------------------------------------------------------------------ */
+/* Corner-grid detection + builders (aligned with run/mobile)         */
+/* ------------------------------------------------------------------ */
+
+// LF/RF/LR/RR ...
+const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
+
+// Steer/Drive/Tag/Trailer <N> Left|Right ...
+const AIR_ITEM_RE =
+  /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
+
+function looksLikeCornerTitle(title: string | undefined | null): boolean {
+  if (!title) return false;
+  const t = title.toLowerCase();
+  return (
+    t.includes("corner grid") ||
+    t.includes("tires & brakes") ||
+    t.includes("tires and brakes") ||
+    t.includes("air brake") ||
+    t.includes("hydraulic brake")
+  );
+}
+
+/** Remove any section that appears to be a corner grid to prevent duplicates. */
+function stripExistingCornerGrids(sections: Section[]): Section[] {
+  return sections.filter((s) => {
+    if (looksLikeCornerTitle(s.title)) return false;
+
+    const items = s.items ?? [];
+    const looksHyd = items.some((it) => HYD_ITEM_RE.test(it.item || ""));
+    const looksAir = items.some((it) => AIR_ITEM_RE.test(it.item || ""));
+    return !(looksHyd || looksAir);
+  });
+}
+
+/** Canonical HYD corner grid (LF/RF/LR/RR) */
+function buildHydraulicCornerSection(): Section {
+  const metrics: Array<{ label: string; unit: string | null }> = [
+    { label: "Tire Pressure", unit: "psi" },
+    { label: "Tire Tread", unit: "mm" },
+    { label: "Brake Pad", unit: "mm" },
+    { label: "Rotor", unit: "mm" },
+    { label: "Rotor Condition", unit: null },
+    { label: "Rotor Thickness", unit: "mm" },
+    { label: "Wheel Torque", unit: "ft·lb" },
+  ];
+  const corners = ["LF", "RF", "LR", "RR"];
+  const items: { item: string; unit: string | null }[] = [];
+  for (const c of corners) {
+    for (const m of metrics) {
+      items.push({ item: `${c} ${m.label}`, unit: m.unit });
+    }
+  }
+  return { title: "Corner Grid (Hydraulic)", items };
+}
+
+/** Canonical AIR corner grid: Steer 1 + Drive 1 with explicit Inner/Outer where needed */
+function buildAirCornerSection(): Section {
+  const steer: { item: string; unit: string | null }[] = [
+    { item: "Steer 1 Left Tire Pressure", unit: "psi" },
+    { item: "Steer 1 Right Tire Pressure", unit: "psi" },
+    { item: "Steer 1 Left Tread Depth", unit: "mm" },
+    { item: "Steer 1 Right Tread Depth", unit: "mm" },
+    { item: "Steer 1 Left Lining/Shoe", unit: "mm" },
+    { item: "Steer 1 Right Lining/Shoe", unit: "mm" },
+    { item: "Steer 1 Left Drum/Rotor", unit: "mm" },
+    { item: "Steer 1 Right Drum/Rotor", unit: "mm" },
+    { item: "Steer 1 Left Push Rod Travel", unit: "in" },
+    { item: "Steer 1 Right Push Rod Travel", unit: "in" },
+  ];
+
+  const drive: { item: string; unit: string | null }[] = [
+    { item: "Drive 1 Left Tire Pressure", unit: "psi" },
+    { item: "Drive 1 Right Tire Pressure", unit: "psi" },
+    { item: "Drive 1 Left Tread Depth (Outer)", unit: "mm" },
+    { item: "Drive 1 Left Tread Depth (Inner)", unit: "mm" },
+    { item: "Drive 1 Right Tread Depth (Outer)", unit: "mm" },
+    { item: "Drive 1 Right Tread Depth (Inner)", unit: "mm" },
+    { item: "Drive 1 Left Lining/Shoe", unit: "mm" },
+    { item: "Drive 1 Right Lining/Shoe", unit: "mm" },
+    { item: "Drive 1 Left Drum/Rotor", unit: "mm" },
+    { item: "Drive 1 Right Drum/Rotor", unit: "mm" },
+    { item: "Drive 1 Left Push Rod Travel", unit: "in" },
+    { item: "Drive 1 Right Push Rod Travel", unit: "in" },
+  ];
+
+  return { title: "Corner Grid (Air)", items: [...steer, ...drive] };
+}
+
+/**
+ * Deterministic corner-grid injector:
+ * - If user/template already has a corner-grid-like title -> leave sections as-is.
+ * - Else strip pattern-based corner grids, then inject:
+ *   - gridParam = "air" | "hyd" | "none"
+ *   - If no gridParam, infer from vehicleType string.
+ */
+function prepareSectionsWithCornerGrid(
+  sections: Section[] | unknown,
+  vehicleType: string | null | undefined,
+  gridParam: string | null,
+): Section[] {
+  const s = Array.isArray(sections) ? (sections as Section[]) : [];
+
+  // 1) If there is already a corner-style title, trust the template
+  const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
+  if (hasCornerByTitle) return s;
+
+  // 2) Otherwise, strip out any corner-looking item patterns
+  const withoutGrids = stripExistingCornerGrids(s);
+  const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
+
+  if (gridMode === "none") return withoutGrids;
+
+  // 3) Decide air vs hyd
+  let injectAir: boolean;
+  if (gridMode === "air" || gridMode === "hyd") {
+    // Explicit override wins
+    injectAir = gridMode === "air";
+  } else {
+    const vt = (vehicleType || "").toLowerCase();
+
+    // Anything clearly heavy / commercial => air brakes
+    const isAirByVehicle =
+      vt.includes("truck") ||
+      vt.includes("bus") ||
+      vt.includes("coach") ||
+      vt.includes("trailer") ||
+      vt.includes("heavy") ||
+      vt.includes("medium-heavy") ||
+      vt.includes("air");
+
+    injectAir = isAirByVehicle;
+  }
+
+  const injected = injectAir
+    ? buildAirCornerSection()
+    : buildHydraulicCornerSection();
+
+  return [injected, ...withoutGrids];
+}
+
+/* ------------------------------------------------------------------ */
+
 export default function CustomBuilderPage() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -57,14 +200,37 @@ export default function CustomBuilderPage() {
   }
 
   function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
-    sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
+    // Map duty class -> grid mode
+    const gridMode: "air" | "hyd" =
+      dutyClass === "heavy" ? "air" : "hyd";
+
+    // Inject the appropriate corner grid now, so the runtime just renders it.
+    const withGrid = prepareSectionsWithCornerGrid(
+      sections,
+      dutyClass, // treat as "vehicle type" string for the helper
+      gridMode,
+    );
+
+    // Persist for downstream loaders/runtime
+    sessionStorage.setItem(
+      "customInspection:sections",
+      JSON.stringify(withGrid),
+    );
     sessionStorage.setItem("customInspection:title", tplTitle);
-    sessionStorage.setItem("customInspection:includeOil", JSON.stringify(includeOil));
-    sessionStorage.setItem("customInspection:dutyClass", dutyClass);
+    sessionStorage.setItem(
+      "customInspection:includeOil",
+      JSON.stringify(includeOil),
+    );
+    sessionStorage.setItem(
+      "customInspection:dutyClass",
+      dutyClass,
+    );
 
     const qs = new URLSearchParams(sp.toString());
     qs.set("template", tplTitle);
     qs.set("dutyClass", dutyClass);
+    qs.set("grid", gridMode); // hint for any downstream grid-aware logic
+
     router.push(`/inspections/custom-draft?${qs.toString()}`);
   }
 
@@ -183,7 +349,7 @@ export default function CustomBuilderPage() {
 
       // final safety: drop any empty sections so the runtime doesn’t render blank blocks
       const cleaned = merged.filter(
-        (s) => Array.isArray(s.items) && s.items.length > 0
+        (s) => Array.isArray(s.items) && s.items.length > 0,
       );
 
       goToRunWithSections(cleaned, title || "AI Inspection");
@@ -268,7 +434,9 @@ export default function CustomBuilderPage() {
             >
               {aiLoading ? "Generating…" : "Build from AI Prompt"}
             </button>
-            {aiError ? <span className="text-sm text-red-400">{aiError}</span> : null}
+            {aiError ? (
+              <span className="text-sm text-red-400">{aiError}</span>
+            ) : null}
           </div>
         </div>
 
@@ -294,7 +462,7 @@ export default function CustomBuilderPage() {
         {/* Manual pick list */}
         <div className="mb-8 space-y-4">
           {masterInspectionList.map((sec) => {
-            const selectedCount = (selections[sec.title]?.length ?? 0);
+            const selectedCount = selections[sec.title]?.length ?? 0;
             return (
               <div
                 key={sec.title}
@@ -329,7 +497,10 @@ export default function CustomBuilderPage() {
                   {sec.items.map((i) => {
                     const checked = (selections[sec.title] ?? []).includes(i.item);
                     return (
-                      <label key={i.item} className="flex items-center gap-2 text-sm">
+                      <label
+                        key={i.item}
+                        className="flex items-center gap-2 text-sm"
+                      >
                         <input
                           type="checkbox"
                           checked={checked}
