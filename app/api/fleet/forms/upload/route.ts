@@ -8,9 +8,7 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const BUCKET = "fleet-forms";
 
-// If you ever want to run this on the Edge runtime, you'll need to
-// swap the Buffer usage for a web-safe base64 helper and ensure the
-// OpenAI client is configured for edge. For now we assume Node.
+// Node runtime so we can use Buffer, etc.
 export const runtime = "nodejs";
 
 type FleetParseSection = {
@@ -124,7 +122,7 @@ export async function POST(req: NextRequest) {
       .update({ status: "processing" })
       .eq("id", uploadId);
 
-    // 4) Run OCR + parsing with OpenAI
+    // 4) Run OCR + parsing with OpenAI (supports multi-page PDFs)
     let parsed: FleetParseResult | null = null;
     let extractedText = "";
 
@@ -138,10 +136,11 @@ export async function POST(req: NextRequest) {
         "You always respond with STRICT JSON and nothing else.";
 
       const userPrompt = [
-        "You are given a photo or PDF of a FLEET VEHICLE INSPECTION FORM.",
+        "You are given a PHOTO or MULTI-PAGE PDF of a FLEET VEHICLE INSPECTION FORM.",
         "",
-        "1. Perform OCR on the entire page(s).",
-        "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section.",
+        "The file may contain multiple pages. You must:",
+        "1. Perform OCR on ALL pages of the document (not just the first).",
+        "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section across every page.",
         "3. For each line item, capture the label text as `item`.",
         "4. If the label clearly implies a measurement unit (e.g. 'Tread Depth (mm)', 'Tire Pressure (psi)', 'Push Rod Travel (in)'),",
         "   set `unit` accordingly (mm, in, psi, kPa, ft·lb, etc.). Otherwise, unit may be null.",
@@ -149,26 +148,29 @@ export async function POST(req: NextRequest) {
         "Return STRICT JSON with this shape:",
         "",
         "{",
-        '  "extracted_text": "full OCR text of the form",',
-        '  "sections": [',
+        '  \"extracted_text\": \"full OCR text of the form (all pages)\",',
+        '  \"sections\": [',
         "    {",
-        '      "title": "Section title as it appears on the form",',
-        '      "items": [',
-        '        { "item": "LF Tread Depth", "unit": "mm" },',
-        '        { "item": "RF Tire Pressure", "unit": "psi" }',
+        '      \"title\": \"Section title as it appears on the form\",',
+        '      \"items\": [',
+        '        { \"item\": \"LF Tread Depth\", \"unit\": \"mm\" },',
+        '        { \"item\": \"RF Tire Pressure\", \"unit\": \"psi\" }',
         "      ]",
         "    }",
         "  ]",
         "}",
         "",
         "Important:",
+        "- Include content from ALL pages in `extracted_text`.",
+        "- Include sections/items even if they appear on later pages.",
         "- Keep `sections` and `items` in the same order as the original form where possible.",
         "- Do not invent extra fields that are not clearly present.",
         "- DO NOT wrap the JSON in markdown. Return raw JSON only.",
       ].join("\n");
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        // Vision-capable model that can handle multi-page PDFs
+        model: "gpt-4.1",
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
@@ -179,6 +181,7 @@ export async function POST(req: NextRequest) {
               {
                 type: "image_url",
                 image_url: {
+                  // Vision models will read all pages of the PDF from this data URL
                   url: `data:${mime};base64,${base64}`,
                 },
               },
@@ -196,8 +199,6 @@ export async function POST(req: NextRequest) {
       try {
         obj = JSON.parse(content) as FleetParseResult;
       } catch {
-        // if the model ever returns non-JSON despite response_format,
-        // we could try a second pass here; for now mark as failed.
         throw new Error("Failed to parse OpenAI JSON response");
       }
 
