@@ -8,7 +8,6 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const BUCKET = "fleet-forms";
 
-// Node runtime (we use Buffer + standard OpenAI client)
 export const runtime = "nodejs";
 
 type FleetParseSection = {
@@ -25,16 +24,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-/**
- * POST /api/fleet/forms/upload
- *
- * Expects multipart/form-data:
- *   - file: PDF or image of a fleet inspection form
- *
- * Returns:
- *   200 { id, status, storage_path, error? }
- *   4xx/5xx on error
- */
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = cookies();
@@ -62,7 +51,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Basic type/size guardrails
     const maxSizeBytes = 25 * 1024 * 1024; // 25 MB
     if (file.size === 0) {
       return NextResponse.json({ error: "Empty file" }, { status: 400 });
@@ -79,24 +67,27 @@ export async function POST(req: NextRequest) {
     const timestamp = Date.now();
     const storagePath = `${user.id}/${timestamp}-${safeName}`;
 
-    // 1) Upload to fleet-forms bucket (RLS ensures user can only write to their folder)
+    // 1) Upload to fleet-forms bucket
+    //    👉 Let Supabase sniff the content type; don't pass contentType at all.
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
-      .upload(storagePath, file, {
-        upsert: false,
-        contentType: file.type || undefined,
-      });
+      .upload(storagePath, file);
 
     if (uploadError) {
+      // Log full error for Vercel logs
       // eslint-disable-next-line no-console
       console.error("fleet-form upload error:", uploadError);
+
       return NextResponse.json(
-        { error: "Upload failed" },
-        { status: 500 },
+        {
+          error: `Storage upload failed: ${uploadError.message ?? "unknown error"}`,
+          details: uploadError,
+        },
+        { status: 400 },
       );
     }
 
-    // 2) Create DB row via RPC (uses user auth, so created_by := auth.uid())
+    // 2) Register DB row
     const { data: rpcData, error: rpcError } = await supabase.rpc(
       "create_fleet_form_upload",
       {
@@ -109,7 +100,7 @@ export async function POST(req: NextRequest) {
       // eslint-disable-next-line no-console
       console.error("create_fleet_form_upload error:", rpcError);
       return NextResponse.json(
-        { error: "Failed to register fleet form upload" },
+        { error: "Failed to register fleet form upload", details: rpcError },
         { status: 500 },
       );
     }
@@ -117,12 +108,17 @@ export async function POST(req: NextRequest) {
     const uploadId = rpcData as string;
 
     // 3) Mark row as processing (service-role)
-    await admin
+    const { error: statusErr } = await admin
       .from("fleet_form_uploads")
       .update({ status: "processing" })
       .eq("id", uploadId);
 
-    // 4) Run OCR + parsing with OpenAI (PDF = multi-page is fine)
+    if (statusErr) {
+      // eslint-disable-next-line no-console
+      console.error("fleet_form_uploads status update error:", statusErr);
+    }
+
+    // 4) Run OCR + parsing with OpenAI
     let parsed: FleetParseResult | null = null;
     let extractedText = "";
 
@@ -136,9 +132,9 @@ export async function POST(req: NextRequest) {
         "You always respond with STRICT JSON and nothing else.";
 
       const userPrompt = [
-        "You are given a photo or PDF of a FLEET VEHICLE INSPECTION FORM. The PDF may contain MULTIPLE PAGES.",
+        "You are given a photo or PDF of a FLEET VEHICLE INSPECTION FORM.",
         "",
-        "1. Perform OCR on the entire page or all pages in the PDF.",
+        "1. Perform OCR on the entire page(s).",
         "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section.",
         "3. For each line item, capture the label text as `item`.",
         "4. If the label clearly implies a measurement unit (e.g. 'Tread Depth (mm)', 'Tire Pressure (psi)', 'Push Rod Travel (in)'),",
@@ -147,13 +143,13 @@ export async function POST(req: NextRequest) {
         "Return STRICT JSON with this shape:",
         "",
         "{",
-        '  \"extracted_text\": \"full OCR text of the form across ALL pages\",',
-        '  \"sections\": [',
+        '  "extracted_text": "full OCR text of the form",',
+        '  "sections": [',
         "    {",
-        '      \"title\": \"Section title as it appears on the form\",',
-        '      \"items\": [',
-        '        { \"item\": \"LF Tread Depth\", \"unit\": \"mm\" },',
-        '        { \"item\": \"RF Tire Pressure\", \"unit\": \"psi\" }',
+        '      "title": "Section title as it appears on the form",',
+        '      "items": [',
+        '        { "item": "LF Tread Depth", "unit": "mm" },',
+        '        { "item": "RF Tire Pressure", "unit": "psi" }',
         "      ]",
         "    }",
         "  ]",
@@ -208,12 +204,11 @@ export async function POST(req: NextRequest) {
           ? scanError.message
           : String(scanError ?? "Fleet form OCR/parse failed");
 
-      // 👇 IMPORTANT: column is `error`, not `error_message`
       await admin
         .from("fleet_form_uploads")
         .update({
           status: "failed",
-          error: errorMessage,
+          error_message: errorMessage,
         })
         .eq("id", uploadId);
 
@@ -228,7 +223,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5) Persist parsed result
     const safeSections: FleetParseSection[] = Array.isArray(parsed?.sections)
       ? parsed.sections ?? []
       : [];
@@ -239,7 +233,6 @@ export async function POST(req: NextRequest) {
         status: "parsed",
         extracted_text: extractedText || null,
         parsed_sections: safeSections.length ? safeSections : null,
-        error: null,
       })
       .eq("id", uploadId);
 
@@ -261,9 +254,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/**
- * Tiny MIME guesser fallback when file.type is missing.
- */
 function guessMimeFromName(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith(".pdf")) return "application/pdf";
