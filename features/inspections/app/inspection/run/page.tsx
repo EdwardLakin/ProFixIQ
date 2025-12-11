@@ -1,5 +1,4 @@
-//features/inspections/app/inspection/run/page.tsx
-
+// features/inspections/app/inspection/run/page.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -53,7 +52,7 @@ function stripExistingCornerGrids(sections: Section[]): Section[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Canonical corner grid builders (labels match AxlesCornerGrid)       */
+/* Canonical corner grid builders (labels match AxlesCornerGrid)      */
 /* ------------------------------------------------------------------ */
 
 function buildHydraulicCornerSection(): Section {
@@ -110,15 +109,15 @@ function buildAirCornerSection(): Section {
 }
 
 /* ------------------------------------------------------------------ */
-/* Deterministic grid selection (URL override > vehicle_type)          */
+/* Deterministic grid selection (URL override > vehicle_type)         */
 /* ------------------------------------------------------------------ */
 
 /**
- * New behavior:
+ * Behavior:
  * 1. If template already has a "corner-y" title -> return sections untouched.
  * 2. Else strip real corner-grid-looking sections, then inject based on:
  *    - ?grid=air|hyd|none
- *    - else vehicleType
+ *    - else vehicleType (heavy/commercial => air)
  */
 function prepareSectionsWithCornerGrid(
   sections: Section[],
@@ -143,17 +142,33 @@ function prepareSectionsWithCornerGrid(
 
   let injectAir: boolean;
   if (gridMode === "air" || gridMode === "hyd") {
+    // URL override wins: ?grid=air or ?grid=hyd
     injectAir = gridMode === "air";
   } else {
     const vt = (vehicleType || "").toLowerCase();
-    injectAir = vt === "truck" || vt === "bus" || vt === "trailer";
+
+    // Anything clearly heavy / commercial => air brakes
+    const isAirByVehicle =
+      vt.includes("truck") ||
+      vt.includes("bus") ||
+      vt.includes("coach") ||
+      vt.includes("trailer") ||
+      vt.includes("heavy") || // your custom builder "heavy"
+      vt.includes("medium-heavy") ||
+      vt.includes("air");
+
+    injectAir = isAirByVehicle;
   }
 
-  const injected = injectAir
+  const cornerSection = injectAir
     ? buildAirCornerSection()
     : buildHydraulicCornerSection();
 
-  return [injected, ...withoutGrids];
+  // Put the corner grid first, then the rest of the sections
+  if (!withoutGrids.length) {
+    return [cornerSection];
+  }
+  return [cornerSection, ...withoutGrids];
 }
 
 /* ------------------------------------------------------------------ */
@@ -209,9 +224,15 @@ export default function RunTemplateLoader() {
       );
 
       // Legacy keys
-      sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
+      sessionStorage.setItem(
+        "customInspection:sections",
+        JSON.stringify(sections),
+      );
       sessionStorage.setItem("customInspection:title", title);
-      sessionStorage.setItem("customInspection:includeOil", JSON.stringify(false));
+      sessionStorage.setItem(
+        "customInspection:includeOil",
+        JSON.stringify(false),
+      );
 
       // Forward to fill and *force* template=generic
       const next = new URLSearchParams(sp.toString());
