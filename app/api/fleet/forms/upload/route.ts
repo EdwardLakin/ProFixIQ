@@ -8,7 +8,7 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const BUCKET = "fleet-forms";
 
-// Node runtime so we can use Buffer, etc.
+// Node runtime (we use Buffer + standard OpenAI client)
 export const runtime = "nodejs";
 
 type FleetParseSection = {
@@ -32,7 +32,7 @@ const openai = new OpenAI({
  *   - file: PDF or image of a fleet inspection form
  *
  * Returns:
- *   200 { id, status, storage_path }
+ *   200 { id, status, storage_path, error? }
  *   4xx/5xx on error
  */
 export async function POST(req: NextRequest) {
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
       .update({ status: "processing" })
       .eq("id", uploadId);
 
-    // 4) Run OCR + parsing with OpenAI (supports multi-page PDFs)
+    // 4) Run OCR + parsing with OpenAI (PDF = multi-page is fine)
     let parsed: FleetParseResult | null = null;
     let extractedText = "";
 
@@ -136,11 +136,10 @@ export async function POST(req: NextRequest) {
         "You always respond with STRICT JSON and nothing else.";
 
       const userPrompt = [
-        "You are given a PHOTO or MULTI-PAGE PDF of a FLEET VEHICLE INSPECTION FORM.",
+        "You are given a photo or PDF of a FLEET VEHICLE INSPECTION FORM. The PDF may contain MULTIPLE PAGES.",
         "",
-        "The file may contain multiple pages. You must:",
-        "1. Perform OCR on ALL pages of the document (not just the first).",
-        "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section across every page.",
+        "1. Perform OCR on the entire page or all pages in the PDF.",
+        "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section.",
         "3. For each line item, capture the label text as `item`.",
         "4. If the label clearly implies a measurement unit (e.g. 'Tread Depth (mm)', 'Tire Pressure (psi)', 'Push Rod Travel (in)'),",
         "   set `unit` accordingly (mm, in, psi, kPa, ft·lb, etc.). Otherwise, unit may be null.",
@@ -148,7 +147,7 @@ export async function POST(req: NextRequest) {
         "Return STRICT JSON with this shape:",
         "",
         "{",
-        '  \"extracted_text\": \"full OCR text of the form (all pages)\",',
+        '  \"extracted_text\": \"full OCR text of the form across ALL pages\",',
         '  \"sections\": [',
         "    {",
         '      \"title\": \"Section title as it appears on the form\",',
@@ -161,16 +160,13 @@ export async function POST(req: NextRequest) {
         "}",
         "",
         "Important:",
-        "- Include content from ALL pages in `extracted_text`.",
-        "- Include sections/items even if they appear on later pages.",
         "- Keep `sections` and `items` in the same order as the original form where possible.",
         "- Do not invent extra fields that are not clearly present.",
         "- DO NOT wrap the JSON in markdown. Return raw JSON only.",
       ].join("\n");
 
       const completion = await openai.chat.completions.create({
-        // Vision-capable model that can handle multi-page PDFs
-        model: "gpt-4.1",
+        model: "gpt-4.1-mini",
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
@@ -181,7 +177,6 @@ export async function POST(req: NextRequest) {
               {
                 type: "image_url",
                 image_url: {
-                  // Vision models will read all pages of the PDF from this data URL
                   url: `data:${mime};base64,${base64}`,
                 },
               },
@@ -213,11 +208,12 @@ export async function POST(req: NextRequest) {
           ? scanError.message
           : String(scanError ?? "Fleet form OCR/parse failed");
 
+      // 👇 IMPORTANT: column is `error`, not `error_message`
       await admin
         .from("fleet_form_uploads")
         .update({
           status: "failed",
-          error_message: errorMessage,
+          error: errorMessage,
         })
         .eq("id", uploadId);
 
@@ -226,6 +222,7 @@ export async function POST(req: NextRequest) {
           id: uploadId,
           status: "failed",
           storage_path: storagePath,
+          error: errorMessage,
         },
         { status: 200 },
       );
@@ -242,6 +239,7 @@ export async function POST(req: NextRequest) {
         status: "parsed",
         extracted_text: extractedText || null,
         parsed_sections: safeSections.length ? safeSections : null,
+        error: null,
       })
       .eq("id", uploadId);
 
