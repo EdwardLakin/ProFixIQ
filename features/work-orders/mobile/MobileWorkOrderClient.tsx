@@ -779,25 +779,25 @@ export default function MobileWorkOrderClient({
 
   // 🔹 Open mobile inspection page for a given line
   const openInspection = (ln: WorkOrderLine) => {
-    if (!ln?.id || !wo?.id) return;
+  if (!ln?.id || !wo?.id) return;
 
-    const anyLine = ln as WorkOrderLineWithInspectionMeta;
-    const templateId = extractInspectionTemplateId(anyLine);
+  const anyLine = ln as WorkOrderLineWithInspectionMeta;
+  const templateId = extractInspectionTemplateId(anyLine);
 
-    if (!templateId) {
-      toast.error(
-        "This job line doesn't have an inspection template attached yet. Attach or build a template first.",
-      );
-      return;
-    }
+  if (!templateId) {
+    toast.error(
+      "This job line doesn't have an inspection template attached yet. Attach or build a template first.",
+    );
+    return;
+  }
 
-    const sp = new URLSearchParams();
-    sp.set("workOrderId", wo.id);
-    sp.set("workOrderLineId", ln.id);
-    sp.set("templateId", templateId);
+  const sp = new URLSearchParams();
+  sp.set("workOrderId", wo.id);
+  sp.set("workOrderLineId", ln.id);
+  sp.set("templateId", templateId);
 
-    router.push(`/mobile/inspections/${ln.id}?${sp.toString()}`);
-  };
+  router.push(`/mobile/inspections/${ln.id}?${sp.toString()}`);
+};
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
