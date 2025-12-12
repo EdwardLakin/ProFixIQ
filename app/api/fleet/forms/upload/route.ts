@@ -51,6 +51,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 🔍 LOG RAW MIME + NAME AS SEEN BY NEXT
+    // eslint-disable-next-line no-console
+    console.log("Fleet form upload – raw file:", {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    });
+
     const maxSizeBytes = 25 * 1024 * 1024; // 25 MB
     if (file.size === 0) {
       return NextResponse.json({ error: "Empty file" }, { status: 400 });
@@ -66,6 +74,10 @@ export async function POST(req: NextRequest) {
     const safeName = originalName.replace(/[^\w.\-]+/g, "-").toLowerCase();
     const timestamp = Date.now();
     const storagePath = `${user.id}/${timestamp}-${safeName}`;
+
+    // 🔍 Log the final storage path too
+    // eslint-disable-next-line no-console
+    console.log("Fleet form upload – storage path:", storagePath);
 
     // 1) Upload to fleet-forms bucket
     //    👉 Let Supabase sniff the content type; don't pass contentType at all.
@@ -126,6 +138,14 @@ export async function POST(req: NextRequest) {
       const arrayBuffer = await file.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString("base64");
       const mime = file.type || guessMimeFromName(originalName);
+
+      // 🔍 Log the MIME we actually send into OpenAI
+      // eslint-disable-next-line no-console
+      console.log("Fleet form upload – OpenAI MIME used:", {
+        detectedMime: file.type,
+        guessedMime: guessMimeFromName(originalName),
+        finalMime: mime,
+      });
 
       const systemPrompt =
         "You are an expert OCR and form parser for vehicle/fleet inspection forms. " +
@@ -260,5 +280,8 @@ function guessMimeFromName(name: string): string {
   if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
   if (lower.endsWith(".png")) return "image/png";
   if (lower.endsWith(".heic")) return "image/heic";
+  if (lower.endsWith(".heif")) return "image/heif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".tif") || lower.endsWith(".tiff")) return "image/tiff";
   return "application/octet-stream";
 }
