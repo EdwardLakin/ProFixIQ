@@ -84,6 +84,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           setUserRole(profile.role as string);
         }
       } catch (err) {
+        // eslint-disable-next-line no-console
         console.error("Failed to load profile role for AppShell", err);
       }
 
@@ -106,11 +107,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             if (msg.sender_id === uid) return;
 
             // if a recipients array exists, make sure i'm in it
-            if (Array.isArray((msg as any).recipients)) {
-              const recips = (msg as any).recipients as string[];
-              if (!recips.includes(uid)) {
-                return;
-              }
+            if (Array.isArray((msg as unknown as { recipients?: unknown }).recipients)) {
+              const recips = (msg as unknown as { recipients: string[] }).recipients;
+              if (!recips.includes(uid)) return;
             }
 
             // ok, this is for me – open modal on top
@@ -171,11 +170,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <div className="flex min-h-screen bg-neutral-950 text-foreground">
+      {/* ✅ stacking fix: ensure the main column cannot sit above the sidebar */}
+      <div className="relative z-0 flex min-h-screen bg-neutral-950 text-foreground">
         {/* Sidebar */}
         <aside
           className={cn(
-            "hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
+            // ✅ key fixes: relative + high z-index so it can't get buried by page stacking contexts
+            "relative z-[70] hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
             sidebarOpen
               ? "md:w-64 translate-x-0"
               : "md:w-0 -translate-x-full pointer-events-none",
@@ -199,7 +200,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* Main */}
-        <div className="flex min-h-screen flex-1 flex-col">
+        <div className="relative z-0 flex min-h-screen flex-1 flex-col">
           {/* Top bar */}
           <header className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex">
             <div className="flex items-center gap-3">
