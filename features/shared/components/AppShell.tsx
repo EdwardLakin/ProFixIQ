@@ -252,15 +252,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <Link href="/dashboard" className="hover:text-neutral-100">
                   Dashboard
                 </Link>
-                <Link href="/work-orders" className="hover:text-neutral-100">
-                  Work Orders
-                </Link>
-                <Link href="/inspections" className="hover:text-neutral-100">
-                  Inspections
-                </Link>
-                <Link href="/parts" className="hover:text-neutral-100">
-                  Parts
-                </Link>
               </nav>
             </div>
 
