@@ -23,8 +23,6 @@ const NON_APP_ROUTES = [
   "/mobile",
 ];
 
-const HEADER_H = 56; // 14 * 4
-
 const ActionButton = ({
   onClick,
   children,
@@ -86,7 +84,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           setUserRole(profile.role as string);
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error("Failed to load profile role for AppShell", err);
       }
 
@@ -109,14 +106,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             if (msg.sender_id === uid) return;
 
             // if a recipients array exists, make sure i'm in it
-            if (
-              Array.isArray(
-                (msg as unknown as { recipients?: unknown }).recipients,
-              )
-            ) {
-              const recips = (msg as unknown as { recipients: string[] })
-                .recipients;
-              if (!recips.includes(uid)) return;
+            if (Array.isArray((msg as any).recipients)) {
+              const recips = (msg as any).recipients as string[];
+              if (!recips.includes(uid)) {
+                return;
+              }
             }
 
             // ok, this is for me – open modal on top
@@ -175,36 +169,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Shared layout vars (safe-area + header total height)
-  const layoutVars = {
-    ["--pfq-safe-top" as any]: "env(safe-area-inset-top, 0px)",
-    ["--pfq-header-h" as any]: `${HEADER_H}px`,
-    ["--pfq-header-total" as any]:
-      "calc(var(--pfq-header-h) + var(--pfq-safe-top))",
-  } as React.CSSProperties;
-
   return (
     <>
-      <div
-        className="relative z-0 flex min-h-screen bg-neutral-950 text-foreground"
-        style={layoutVars}
-      >
+      <div className="flex min-h-screen bg-neutral-950 text-foreground">
         {/* Sidebar */}
         <aside
           className={cn(
-            // ✅ Sidebar sits BELOW fixed header so it can never visually cover the header
-            "relative z-[50] hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
+            "hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
             sidebarOpen
               ? "md:w-64 translate-x-0"
               : "md:w-0 -translate-x-full pointer-events-none",
           )}
-          style={{
-            // ✅ Reserve the fixed header height so the logo/menu area never overlaps
-            paddingTop: "var(--pfq-header-total)",
-          }}
         >
-          {/* Sidebar header (normal height, no safe-area math here) */}
-          <div className="flex h-14 items-center border-b border-white/10 px-4">
+          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
             <Link
               href="/dashboard"
               className="text-lg font-semibold tracking-tight text-neutral-100 transition-colors hover:text-[color:var(--accent-copper,#f97316)]"
@@ -222,15 +199,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* Main */}
-        <div className="relative z-0 flex min-h-screen flex-1 flex-col">
-          {/* Top bar (desktop): SAFE AREA + header height */}
-          <header
-            className="fixed inset-x-0 top-0 z-40 hidden items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex"
-            style={{
-              paddingTop: "var(--pfq-safe-top)",
-              height: "var(--pfq-header-total)",
-            }}
-          >
+        <div className="flex min-h-screen flex-1 flex-col">
+          {/* Top bar */}
+          <header className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex">
             <div className="flex items-center gap-3">
               {/* Sidebar toggle */}
               <button
@@ -246,10 +217,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               </button>
 
-              {/* ✅ You asked where to remove Work Orders / Inspections / Parts — it's right here. */}
               <nav className="flex gap-4 text-sm text-neutral-400">
                 <Link href="/dashboard" className="hover:text-neutral-100">
                   Dashboard
+                </Link>
+                <Link href="/work-orders" className="hover:text-neutral-100">
+                  Work Orders
+                </Link>
+                <Link href="/inspections" className="hover:text-neutral-100">
+                  Inspections
+                </Link>
+                <Link href="/parts" className="hover:text-neutral-100">
+                  Parts
                 </Link>
               </nav>
             </div>
@@ -317,8 +296,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {punchOpen && userId ? (
             <div
               ref={punchRef}
-              className="fixed right-6 z-50 hidden w-72 rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/90 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:block"
-              style={{ top: "calc(var(--pfq-header-total) + 12px)" }}
+              className="fixed right-6 top-20 z-50 hidden w-72 rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/90 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:block"
             >
               <h2 className="mb-2 text-sm font-medium text-neutral-100">
                 Shift Tracker
@@ -328,12 +306,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
 
           {/* content */}
-          <main
-            className="flex w-full flex-1 flex-col bg-neutral-950 px-3 pb-14 md:px-6 md:pb-6 lg:px-10 xl:px-16"
-            style={{
-              paddingTop: "calc(var(--pfq-header-total) + 16px)",
-            }}
-          >
+          <main className="flex w-full flex-1 flex-col bg-neutral-950 px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
             {children}
           </main>
 
