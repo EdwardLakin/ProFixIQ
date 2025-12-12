@@ -23,9 +23,6 @@ importers:
       '@heroicons/react':
         specifier: ^2.2.0
         version: 2.2.0(react@18.2.0)
-      '@napi-rs/canvas':
-        specifier: ^0.1.84
-        version: 0.1.84
       '@radix-ui/react-dialog':
         specifier: 1.1.15
         version: 1.1.15(@types/react-dom@18.3.7(@types/react@18.3.24))(@types/react@18.3.24)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
@@ -4954,6 +4951,7 @@ snapshots:
       '@napi-rs/canvas-linux-x64-gnu': 0.1.84
       '@napi-rs/canvas-linux-x64-musl': 0.1.84
       '@napi-rs/canvas-win32-x64-msvc': 0.1.84
+    optional: true
 
   '@napi-rs/wasm-runtime@0.2.12':
     dependencies:

@@ -29,7 +29,6 @@
     "@ericblade/quagga2": "1.8.4",
     "@headlessui/react": "^2.2.4",
     "@heroicons/react": "^2.2.0",
-    "@napi-rs/canvas": "^0.1.84",
     "@radix-ui/react-dialog": "1.1.15",
     "@react-pdf/renderer": "^3.4.5",
     "@sendgrid/mail": "^8.1.5",
