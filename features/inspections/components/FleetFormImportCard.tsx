@@ -203,7 +203,8 @@ export default function FleetFormImportCard() {
             "
           />
           <span className="mt-1 text-[10px] text-neutral-500">
-            Clear PDFs or phone photos work best.
+            Upload a clear photo or scan of the form.
+            (JPEG, PNG, HEIC, WEBP, or TIFF)
           </span>
         </label>
 
