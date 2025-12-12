@@ -15,6 +15,16 @@ type UploadResponse = {
   error?: string | null;
 };
 
+const ALLOWED_MIME_TYPES = new Set<string>([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/heic",
+  "image/heif",
+  "image/webp",
+  "image/tiff",
+]);
+
 export default function FleetFormImportCard() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -26,6 +36,38 @@ export default function FleetFormImportCard() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
+
+    if (!f) {
+      setFile(null);
+      setErrorMsg(null);
+      return;
+    }
+
+    // Log for debugging
+    // eslint-disable-next-line no-console
+    console.log("[fleet forms] selected file:", {
+      name: f.name,
+      type: f.type,
+      size: f.size,
+    });
+
+    if (f.size === 0) {
+      setFile(null);
+      setErrorMsg("Selected file is empty. Please choose another file.");
+      return;
+    }
+
+    if (!ALLOWED_MIME_TYPES.has(f.type)) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet forms] unsupported MIME type:", f.type);
+
+      setFile(null);
+      setErrorMsg(
+        "Unsupported file type. Use a PDF or clear image (JPEG, PNG, HEIC, HEIF, WEBP, or TIFF).",
+      );
+      return;
+    }
+
     setFile(f);
     setErrorMsg(null);
   };
@@ -224,7 +266,7 @@ export default function FleetFormImportCard() {
         <div className="flex flex-col justify-end">
           <Button
             type="submit"
-            disabled={loading}
+            disabled={loading || !file}
             className="
               w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)]
               bg-black/70 px-4 py-2 text-[11px] uppercase tracking-[0.16em]

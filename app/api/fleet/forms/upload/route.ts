@@ -8,6 +8,7 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const BUCKET = "fleet-forms";
 
+// Force Node runtime so Buffer + pdf-parse are safe
 export const runtime = "nodejs";
 
 type FleetParseSection = {
@@ -24,6 +25,38 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Minimal typing for pdf-parse
+type PdfParseFn = (data: Buffer) => Promise<{ text?: string }>;
+
+/**
+ * Dynamically import pdf-parse in an ESM-safe way and extract text
+ * from a multi-page PDF.
+ */
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  // pdf-parse is CommonJS (export = pdfParse)
+  // so at runtime the module may be a function OR { default: fn }
+  const mod = (await import("pdf-parse")) as unknown as
+    | PdfParseFn
+    | { default: PdfParseFn };
+
+  const pdfParse: PdfParseFn =
+    typeof mod === "function" ? mod : (mod as { default: PdfParseFn }).default;
+
+  const data = await pdfParse(buffer);
+  const text = (data.text ?? "").trim();
+  return text;
+}
+
+/**
+ * POST /api/fleet/forms/upload
+ *
+ * Expects multipart/form-data:
+ *   - file: PDF or image of a fleet inspection form
+ *
+ * Returns:
+ *   200 { id, status, storage_path, error? }
+ *   4xx/5xx on error
+ */
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = cookies();
@@ -51,14 +84,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 🔍 LOG RAW MIME + NAME AS SEEN BY NEXT
-    // eslint-disable-next-line no-console
-    console.log("Fleet form upload – raw file:", {
-      name: file.name,
-      type: file.type,
-      size: file.size,
-    });
-
+    // Basic type/size guardrails
     const maxSizeBytes = 25 * 1024 * 1024; // 25 MB
     if (file.size === 0) {
       return NextResponse.json({ error: "Empty file" }, { status: 400 });
@@ -73,20 +99,25 @@ export async function POST(req: NextRequest) {
     const originalName = file.name || "fleet-form";
     const safeName = originalName.replace(/[^\w.\-]+/g, "-").toLowerCase();
     const timestamp = Date.now();
+    const mime = file.type || guessMimeFromName(originalName);
     const storagePath = `${user.id}/${timestamp}-${safeName}`;
 
-    // 🔍 Log the final storage path too
+    // 🔍 Debug: log what we’re seeing
     // eslint-disable-next-line no-console
-    console.log("Fleet form upload – storage path:", storagePath);
+    console.log("[fleet forms] upload:", {
+      originalName,
+      safeName,
+      mime,
+      size: file.size,
+      storagePath,
+    });
 
-    // 1) Upload to fleet-forms bucket
-    //    👉 Let Supabase sniff the content type; don't pass contentType at all.
+    // 1) Upload to fleet-forms bucket (let Supabase sniff mime)
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
       .upload(storagePath, file);
 
     if (uploadError) {
-      // Log full error for Vercel logs
       // eslint-disable-next-line no-console
       console.error("fleet-form upload error:", uploadError);
 
@@ -99,7 +130,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2) Register DB row
+    // 2) Create DB row via RPC (user-scoped)
     const { data: rpcData, error: rpcError } = await supabase.rpc(
       "create_fleet_form_upload",
       {
@@ -136,85 +167,156 @@ export async function POST(req: NextRequest) {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const base64 = Buffer.from(arrayBuffer).toString("base64");
-      const mime = file.type || guessMimeFromName(originalName);
+      const buffer = Buffer.from(arrayBuffer);
 
-      // 🔍 Log the MIME we actually send into OpenAI
+      // Branch: PDF vs image
+      const isPdf = mime === "application/pdf";
+
       // eslint-disable-next-line no-console
-      console.log("Fleet form upload – OpenAI MIME used:", {
-        detectedMime: file.type,
-        guessedMime: guessMimeFromName(originalName),
-        finalMime: mime,
-      });
+      console.log("[fleet forms] OCR branch:", isPdf ? "PDF" : "image", mime);
 
-      const systemPrompt =
-        "You are an expert OCR and form parser for vehicle/fleet inspection forms. " +
-        "You always respond with STRICT JSON and nothing else.";
+      if (isPdf) {
+        // ---------- PDF branch: pdf-parse → text → text-only LLM ----------
+        const pdfText = await extractPdfText(buffer);
+        if (!pdfText) {
+          throw new Error("PDF parsed but contained no extractable text");
+        }
 
-      const userPrompt = [
-        "You are given a photo or PDF of a FLEET VEHICLE INSPECTION FORM.",
-        "",
-        "1. Perform OCR on the entire page(s).",
-        "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section.",
-        "3. For each line item, capture the label text as `item`.",
-        "4. If the label clearly implies a measurement unit (e.g. 'Tread Depth (mm)', 'Tire Pressure (psi)', 'Push Rod Travel (in)'),",
-        "   set `unit` accordingly (mm, in, psi, kPa, ft·lb, etc.). Otherwise, unit may be null.",
-        "",
-        "Return STRICT JSON with this shape:",
-        "",
-        "{",
-        '  "extracted_text": "full OCR text of the form",',
-        '  "sections": [',
-        "    {",
-        '      "title": "Section title as it appears on the form",',
-        '      "items": [',
-        '        { "item": "LF Tread Depth", "unit": "mm" },',
-        '        { "item": "RF Tire Pressure", "unit": "psi" }',
-        "      ]",
-        "    }",
-        "  ]",
-        "}",
-        "",
-        "Important:",
-        "- Keep `sections` and `items` in the same order as the original form where possible.",
-        "- Do not invent extra fields that are not clearly present.",
-        "- DO NOT wrap the JSON in markdown. Return raw JSON only.",
-      ].join("\n");
+        const systemPromptBase =
+          "You are an expert parser for vehicle/fleet inspection forms.\n" +
+          "You always respond with STRICT JSON and nothing else.";
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: userPrompt },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mime};base64,${base64}`,
+        const userPrompt = [
+          "You are given extracted text from a multi-page FLEET VEHICLE INSPECTION PDF.",
+          "",
+          "The text preserves section headers and line items, but layout may be flattened.",
+          "",
+          "1. Detect the inspection SECTIONS and the individual LINE ITEMS under each section.",
+          "2. For each line item, capture the label text as `item`.",
+          "3. If the label clearly implies a measurement unit (e.g. 'Tread Depth (mm)', 'Tire Pressure (psi)', 'Push Rod Travel (in)'),",
+          "   set `unit` accordingly (mm, in, psi, kPa, ft·lb, etc.). Otherwise, unit may be null.",
+          "",
+          "Return STRICT JSON with this shape:",
+          "",
+          "{",
+          '  "extracted_text": "full OCR text of the form (you may reuse the input text)",',
+          '  "sections": [',
+          "    {",
+          '      "title": "Section title as it appears in the text",',
+          '      "items": [',
+          '        { "item": "LF Tread Depth", "unit": "mm" },',
+          '        { "item": "RF Tire Pressure", "unit": "psi" }',
+          "      ]",
+          "    }",
+          "  ]",
+          "}",
+          "",
+          "Important:",
+          "- Keep `sections` and `items` in roughly the same order as the original form.",
+          "- Do not invent extra fields that are not clearly present.",
+          "- DO NOT wrap the JSON in markdown. Return raw JSON only.",
+          "",
+          "Here is the extracted text:",
+          "",
+          pdfText.slice(0, 24000), // guardrail
+        ].join("\n");
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4.1-mini",
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPromptBase },
+            { role: "user", content: userPrompt },
+          ],
+        });
+
+        const content = completion.choices[0]?.message?.content;
+        if (!content) {
+          throw new Error("No content from OpenAI (PDF branch)");
+        }
+
+        let obj: FleetParseResult;
+        try {
+          obj = JSON.parse(content) as FleetParseResult;
+        } catch {
+          throw new Error("Failed to parse OpenAI JSON response (PDF branch)");
+        }
+
+        parsed = obj;
+        extractedText = (obj.extracted_text ?? pdfText).toString();
+      } else {
+        // ---------- IMAGE branch: send as data URL to Vision ----------
+        const base64 = buffer.toString("base64");
+
+        const systemPrompt =
+          "You are an expert OCR and form parser for vehicle/fleet inspection forms. " +
+          "You always respond with STRICT JSON and nothing else.";
+
+        const userPrompt = [
+          "You are given a photo of a FLEET VEHICLE INSPECTION FORM.",
+          "",
+          "1. Perform OCR on the entire page(s).",
+          "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section.",
+          "3. For each line item, capture the label text as `item`.",
+          "4. If the label clearly implies a measurement unit (e.g. 'Tread Depth (mm)', 'Tire Pressure (psi)', 'Push Rod Travel (in)'),",
+          "   set `unit` accordingly (mm, in, psi, kPa, ft·lb, etc.). Otherwise, unit may be null.",
+          "",
+          "Return STRICT JSON with this shape:",
+          "",
+          "{",
+          '  "extracted_text": "full OCR text of the form",',
+          '  "sections": [',
+          "    {",
+          '      "title": "Section title as it appears on the form",',
+          '      "items": [',
+          '        { "item": "LF Tread Depth", "unit": "mm" },',
+          '        { "item": "RF Tire Pressure", "unit": "psi" }',
+          "      ]",
+          "    }",
+          "  ]",
+          "}",
+          "",
+          "Important:",
+          "- Keep `sections` and `items` in the same order as the original form where possible.",
+          "- Do not invent extra fields that are not clearly present.",
+          "- DO NOT wrap the JSON in markdown. Return raw JSON only.",
+        ].join("\n");
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4.1-mini",
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: userPrompt },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:${mime};base64,${base64}`,
+                  },
                 },
-              },
-            ],
-          },
-        ],
-      });
+              ],
+            },
+          ],
+        });
 
-      const content = completion.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error("No content from OpenAI");
+        const content = completion.choices[0]?.message?.content;
+        if (!content) {
+          throw new Error("No content from OpenAI (image branch)");
+        }
+
+        let obj: FleetParseResult;
+        try {
+          obj = JSON.parse(content) as FleetParseResult;
+        } catch {
+          throw new Error("Failed to parse OpenAI JSON response (image branch)");
+        }
+
+        parsed = obj;
+        extractedText = (obj.extracted_text ?? "").toString();
       }
-
-      let obj: FleetParseResult;
-      try {
-        obj = JSON.parse(content) as FleetParseResult;
-      } catch {
-        throw new Error("Failed to parse OpenAI JSON response");
-      }
-
-      parsed = obj;
-      extractedText = (obj.extracted_text ?? "").toString();
     } catch (scanError: unknown) {
       // eslint-disable-next-line no-console
       console.error("fleet form scan error:", scanError);
@@ -243,6 +345,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 5) Persist parsed result
     const safeSections: FleetParseSection[] = Array.isArray(parsed?.sections)
       ? parsed.sections ?? []
       : [];
@@ -274,6 +377,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/**
+ * Tiny MIME guesser fallback when file.type is missing.
+ */
 function guessMimeFromName(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith(".pdf")) return "application/pdf";
