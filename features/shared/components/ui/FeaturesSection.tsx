@@ -1,5 +1,3 @@
-//features/shared/components/ui/FeatureSection.tsx
-
 "use client";
 
 import FeatureCard from "@shared/components/ui/FeatureCard";
@@ -8,16 +6,30 @@ type FeaturesSectionProps = {
   showHeading?: boolean;
 };
 
-export default function FeaturesSection({ showHeading = false }: FeaturesSectionProps) {
+export default function FeaturesSection({
+  showHeading = false,
+}: FeaturesSectionProps) {
   return (
     <div>
       {showHeading && (
-        <h2
-          className="text-center text-4xl md:text-5xl text-orange-400 mb-10"
-          style={{ fontFamily: "var(--font-blackops)" }}
-        >
-          Powerful Features
-        </h2>
+        <div className="mb-10 text-center">
+          <div
+            className="text-xs font-semibold uppercase tracking-[0.22em]"
+            style={{ color: "var(--accent-copper)" }}
+          >
+            Feature set
+          </div>
+          <h2
+            className="mt-2 text-4xl md:text-5xl text-white"
+            style={{ fontFamily: "var(--font-blackops)" }}
+          >
+            Built for real shop flow
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-neutral-400">
+            Everything you need to run the floor — plus automation that removes
+            the drag.
+          </p>
+        </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -47,8 +59,8 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
           available
         />
         <FeatureCard
-          title="Priority Support"
-          description="Pro+ adds priority help and optional extra seats as your shop grows."
+          title="Agent Requests + Live Updates"
+          description="Submit QA/feature requests with context + screenshots. Track what’s happening while the agent runs."
           available
         />
       </div>
