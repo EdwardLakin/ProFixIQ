@@ -23,6 +23,8 @@ const NON_APP_ROUTES = [
   "/mobile",
 ];
 
+const HEADER_H = 56; // 14 * 4
+
 const ActionButton = ({
   onClick,
   children,
@@ -107,8 +109,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             if (msg.sender_id === uid) return;
 
             // if a recipients array exists, make sure i'm in it
-            if (Array.isArray((msg as unknown as { recipients?: unknown }).recipients)) {
-              const recips = (msg as unknown as { recipients: string[] }).recipients;
+            if (
+              Array.isArray(
+                (msg as unknown as { recipients?: unknown }).recipients,
+              )
+            ) {
+              const recips = (msg as unknown as { recipients: string[] })
+                .recipients;
               if (!recips.includes(uid)) return;
             }
 
@@ -168,21 +175,39 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Shared layout vars (safe-area + header total height)
+  const layoutVars = {
+    ["--pfq-safe-top" as any]: "env(safe-area-inset-top, 0px)",
+    ["--pfq-header-h" as any]: `${HEADER_H}px`,
+    ["--pfq-header-total" as any]:
+      `calc(var(--pfq-header-h) + var(--pfq-safe-top))`,
+  } as React.CSSProperties;
+
   return (
     <>
-      {/* ✅ stacking fix: ensure the main column cannot sit above the sidebar */}
-      <div className="relative z-0 flex min-h-screen bg-neutral-950 text-foreground">
+      <div
+        className="relative z-0 flex min-h-screen bg-neutral-950 text-foreground"
+        style={layoutVars}
+      >
         {/* Sidebar */}
         <aside
           className={cn(
-            // ✅ key fixes: relative + high z-index so it can't get buried by page stacking contexts
             "relative z-[70] hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
             sidebarOpen
               ? "md:w-64 translate-x-0"
               : "md:w-0 -translate-x-full pointer-events-none",
           )}
         >
-          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
+          {/* Sidebar top bar: SAFE AREA + header height */}
+          <div
+            className="border-b border-white/10 px-4"
+            style={{
+              paddingTop: "var(--pfq-safe-top)",
+              height: "var(--pfq-header-total)",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
             <Link
               href="/dashboard"
               className="text-lg font-semibold tracking-tight text-neutral-100 transition-colors hover:text-[color:var(--accent-copper,#f97316)]"
@@ -201,10 +226,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Main */}
         <div className="relative z-0 flex min-h-screen flex-1 flex-col">
-          {/* Top bar */}
-          <header className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex">
+          {/* Top bar (desktop): SAFE AREA + header height */}
+          <header
+            className="fixed inset-x-0 top-0 z-40 hidden items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex"
+            style={{
+              paddingTop: "var(--pfq-safe-top)",
+              height: "var(--pfq-header-total)",
+            }}
+          >
             <div className="flex items-center gap-3">
-              {/* Sidebar toggle */}
               <button
                 type="button"
                 onClick={() => setSidebarOpen((v) => !v)}
@@ -297,7 +327,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {punchOpen && userId ? (
             <div
               ref={punchRef}
-              className="fixed right-6 top-20 z-50 hidden w-72 rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/90 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:block"
+              className="fixed right-6 z-50 hidden w-72 rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/90 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:block"
+              style={{ top: "calc(var(--pfq-header-total) + 12px)" }}
             >
               <h2 className="mb-2 text-sm font-medium text-neutral-100">
                 Shift Tracker
@@ -307,7 +338,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
 
           {/* content */}
-          <main className="flex w-full flex-1 flex-col bg-neutral-950 px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
+          <main
+            className="flex w-full flex-1 flex-col bg-neutral-950 px-3 pb-14 md:px-6 md:pb-6 lg:px-10 xl:px-16"
+            style={{
+              paddingTop: "calc(var(--pfq-header-total) + 16px)",
+            }}
+          >
             {children}
           </main>
 
@@ -335,7 +371,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {/* Global chat modal */}
       <NewChatModal
         isOpen={chatOpen}
         onClose={() => {
@@ -348,7 +383,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         activeConversationId={incomingConvoId}
       />
 
-      {/* Global Agent Request modal */}
       {userId && (
         <AgentRequestModal
           open={agentDialogOpen}
