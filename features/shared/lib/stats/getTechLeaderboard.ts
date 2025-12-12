@@ -67,6 +67,10 @@ export type TechLeaderboardResult = {
   rows: TechLeaderboardRow[];
 };
 
+function toIso(d: Date): string {
+  return d.toISOString();
+}
+
 /**
  * Per-tech leaderboard for a shop over a time window.
  * Pulls from:
@@ -103,34 +107,37 @@ export async function getTechLeaderboard(
       break;
   }
 
-  const startIso = start.toISOString();
-  const endIso = end.toISOString();
+  // Use an exclusive end bound to avoid timestamp edge cases.
+  // (e.g., rows at 23:59:59.999Z)
+  const endExclusive = new Date(end.getTime() + 1);
+
+  const startIso = toIso(start);
+  const endIso = toIso(end);
+  const endExclusiveIso = toIso(endExclusive);
 
   // 1) Tech profiles in this shop
-  // Use only roles that actually exist in profiles.role
   type ProfileRole = DB["public"]["Tables"]["profiles"]["Row"]["role"];
-  const TECH_ROLES: ProfileRole[] = ["tech", "mechanic"];
+
+  // ✅ Include all tech variants used in the app
+  // (you used "technician" elsewhere)
+  const TECH_ROLES = ["tech", "mechanic", "technician"] as const;
 
   const { data: profiles, error: profErr } = await supabase
     .from("profiles")
     .select("id, full_name, role, shop_id")
-    .eq("shop_id", shopId);
+    .eq("shop_id", shopId)
+    .in("role", TECH_ROLES as unknown as ProfileRole[]);
 
   if (profErr) throw profErr;
 
-  const techProfiles: SlimProfile[] =
-    (profiles ?? [])
-      .filter((p) =>
-        p.role ? TECH_ROLES.includes(p.role as ProfileRole) : false,
-      )
-      .map((p) => ({
-        id: p.id,
-        full_name: p.full_name ?? null,
-        role: p.role ?? null,
-        shop_id: p.shop_id ?? null,
-      }));
+  const techProfiles: SlimProfile[] = (profiles ?? []).map((p) => ({
+    id: p.id,
+    full_name: p.full_name ?? null,
+    role: p.role ?? null,
+    shop_id: p.shop_id ?? null,
+  }));
 
-  const techIds = techProfiles.map((p) => p.id);
+  const techIds = techProfiles.map((p) => p.id).filter(Boolean);
 
   if (techIds.length === 0) {
     return {
@@ -149,21 +156,23 @@ export async function getTechLeaderboard(
       .eq("shop_id", shopId)
       .in("tech_id", techIds)
       .gte("created_at", startIso)
-      .lte("created_at", endIso),
+      .lt("created_at", endExclusiveIso),
+
     supabase
       .from("payroll_timecards")
-      .select("id, user_id, shop_id, clock_in, clock_out, hours_worked, created_at")
+      .select(
+        "id, user_id, shop_id, clock_in, clock_out, hours_worked, created_at",
+      )
       .eq("shop_id", shopId)
       .in("user_id", techIds)
       .gte("clock_in", startIso)
-      .lte("clock_in", endIso),
+      .lt("clock_in", endExclusiveIso),
   ]);
 
   if (invoicesRes.error) throw invoicesRes.error;
   if (timecardsRes.error) throw timecardsRes.error;
 
-  const invoices: InvoiceSlim[] =
-    (invoicesRes.data as InvoiceSlim[]) ?? [];
+  const invoices: InvoiceSlim[] = (invoicesRes.data as InvoiceSlim[]) ?? [];
   const timecards: TimecardSlim[] =
     (timecardsRes.data as TimecardSlim[]) ?? [];
 
@@ -181,7 +190,7 @@ export async function getTechLeaderboard(
       revenue: 0,
       laborCost: 0,
       profit: 0,
-      billedHours: 0,
+      billedHours: 0, // TODO: wire if you add invoice labor hours later
       clockedHours: 0,
       revenuePerHour: 0,
       efficiencyPct: 0,
@@ -191,9 +200,11 @@ export async function getTechLeaderboard(
   // Aggregate invoices
   for (const inv of invoices) {
     const techId = inv.tech_id;
-    if (!techId || !byTech.has(techId)) continue;
+    if (!techId) continue;
 
-    const row = byTech.get(techId)!;
+    const row = byTech.get(techId);
+    if (!row) continue;
+
     const total = Number(inv.total ?? 0);
     const laborCost = Number(inv.labor_cost ?? 0);
 
@@ -205,11 +216,12 @@ export async function getTechLeaderboard(
   // Aggregate timecards
   for (const tc of timecards) {
     const techId = tc.user_id;
-    if (!techId || !byTech.has(techId)) continue;
+    if (!techId) continue;
 
-    const row = byTech.get(techId)!;
+    const row = byTech.get(techId);
+    if (!row) continue;
+
     const hours = Number(tc.hours_worked ?? 0);
-
     row.clockedHours += Number.isFinite(hours) ? hours : 0;
   }
 
@@ -217,17 +229,11 @@ export async function getTechLeaderboard(
   for (const row of byTech.values()) {
     row.profit = row.revenue - row.laborCost;
 
-    if (row.laborCost > 0) {
-      row.efficiencyPct = (row.revenue / row.laborCost) * 100;
-    } else {
-      row.efficiencyPct = 0;
-    }
+    row.efficiencyPct =
+      row.laborCost > 0 ? (row.revenue / row.laborCost) * 100 : 0;
 
-    if (row.clockedHours > 0) {
-      row.revenuePerHour = row.revenue / row.clockedHours;
-    } else {
-      row.revenuePerHour = 0;
-    }
+    row.revenuePerHour =
+      row.clockedHours > 0 ? row.revenue / row.clockedHours : 0;
   }
 
   const rows = Array.from(byTech.values()).sort(
