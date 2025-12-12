@@ -1,4 +1,4 @@
-//app/inspections/fleet/review/page.tsx
+//app/inspections/fleet-review/page.tsx
 
 "use client";
 
