@@ -180,7 +180,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     ["--pfq-safe-top" as any]: "env(safe-area-inset-top, 0px)",
     ["--pfq-header-h" as any]: `${HEADER_H}px`,
     ["--pfq-header-total" as any]:
-      `calc(var(--pfq-header-h) + var(--pfq-safe-top))`,
+      "calc(var(--pfq-header-h) + var(--pfq-safe-top))",
   } as React.CSSProperties;
 
   return (
@@ -192,22 +192,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Sidebar */}
         <aside
           className={cn(
+            // ✅ Keep sidebar above content, but below header
             "relative z-[70] hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
+            // ✅ Push the sidebar content below the fixed header area
+            "md:pt-14",
             sidebarOpen
               ? "md:w-64 translate-x-0"
               : "md:w-0 -translate-x-full pointer-events-none",
           )}
         >
-          {/* Sidebar top bar: SAFE AREA + header height */}
-          <div
-            className="border-b border-white/10 px-4"
-            style={{
-              paddingTop: "var(--pfq-safe-top)",
-              height: "var(--pfq-header-total)",
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
+          {/* Sidebar top bar */}
+          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
             <Link
               href="/dashboard"
               className="text-lg font-semibold tracking-tight text-neutral-100 transition-colors hover:text-[color:var(--accent-copper,#f97316)]"
@@ -226,9 +221,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Main */}
         <div className="relative z-0 flex min-h-screen flex-1 flex-col">
-          {/* Top bar (desktop): SAFE AREA + header height */}
+          {/* Top bar (desktop) */}
           <header
-            className="fixed inset-x-0 top-0 z-40 hidden items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex"
+            // ✅ Raise header above sidebar so hamburger is never blocked
+            className="fixed inset-x-0 top-0 z-[80] hidden items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex"
             style={{
               paddingTop: "var(--pfq-safe-top)",
               height: "var(--pfq-header-total)",
@@ -251,6 +247,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <nav className="flex gap-4 text-sm text-neutral-400">
                 <Link href="/dashboard" className="hover:text-neutral-100">
                   Dashboard
+                </Link>
+                <Link href="/work-orders" className="hover:text-neutral-100">
+                  Work Orders
+                </Link>
+                <Link href="/inspections" className="hover:text-neutral-100">
+                  Inspections
+                </Link>
+                <Link href="/parts" className="hover:text-neutral-100">
+                  Parts
                 </Link>
               </nav>
             </div>
