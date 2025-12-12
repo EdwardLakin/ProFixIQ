@@ -23,7 +23,7 @@ const NON_APP_ROUTES = [
   "/mobile",
 ];
 
-const HEADER_OFFSET_DESKTOP = "pt-14"; // push sidebar below fixed desktop header
+const HEADER_OFFSET_DESKTOP = "pt-14"; // keeps sidebar content below fixed desktop header
 
 const ActionButton = ({
   onClick,
@@ -110,9 +110,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             // if a recipients array exists, make sure i'm in it
             if (Array.isArray((msg as any).recipients)) {
               const recips = (msg as any).recipients as string[];
-              if (!recips.includes(uid)) {
-                return;
-              }
+              if (!recips.includes(uid)) return;
             }
 
             // ok, this is for me – open modal on top
@@ -177,29 +175,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Sidebar */}
         <aside
           className={cn(
-            "hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
-            HEADER_OFFSET_DESKTOP, // ✅ ensures ProFixIQ shows below the fixed header
+            // ✅ overflow-hidden prevents “ProFixIQ” / sidebar content from visually leaking when md:w-0
+            "hidden overflow-hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
+            HEADER_OFFSET_DESKTOP,
             sidebarOpen
               ? "md:w-64 translate-x-0"
               : "md:w-0 -translate-x-full pointer-events-none",
           )}
         >
-          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
-            <Link
-              href="/dashboard"
-              className="text-lg font-semibold tracking-tight transition-colors hover:opacity-95"
-              style={{
-                fontFamily: "Black Ops One, var(--font-blackops), system-ui",
-                color: "#c1663b", // ✅ burnt copper
-              }}
-            >
-              ProFixIQ
-            </Link>
+          {/* Sidebar contents (fade out when closed so nothing lingers) */}
+          <div
+            className={cn(
+              "flex h-full flex-col transition-opacity duration-200",
+              sidebarOpen ? "opacity-100" : "opacity-0",
+            )}
+          >
+            <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
+              <Link
+                href="/dashboard"
+                className="text-lg font-semibold tracking-tight transition-colors hover:opacity-95"
+                style={{
+                  fontFamily: "Black Ops One, var(--font-blackops), system-ui",
+                  color: "#c1663b", // burnt copper
+                }}
+              >
+                ProFixIQ
+              </Link>
+            </div>
+
+            <RoleSidebar />
+
+            <div className="mt-auto h-12 border-t border-white/10" />
           </div>
-
-          <RoleSidebar />
-
-          <div className="mt-auto h-12 border-t border-white/10" />
         </aside>
 
         {/* Main */}
@@ -221,7 +228,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               </button>
 
-              {/* ✅ only keep Dashboard */}
+              {/* ✅ only Dashboard */}
               <nav className="flex gap-4 text-sm text-neutral-400">
                 <Link href="/dashboard" className="hover:text-neutral-100">
                   Dashboard
