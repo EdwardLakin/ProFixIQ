@@ -181,12 +181,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               : "md:w-0 -translate-x-full pointer-events-none",
           )}
         >
-          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
+          {/* ⬇️ move logo down a bit so it shows when sidebar is open */}
+          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4 pt-2">
             <Link
               href="/dashboard"
-              className="text-lg font-semibold tracking-tight text-neutral-100 transition-colors hover:text-[color:var(--accent-copper,#f97316)]"
+              className="text-lg font-semibold tracking-tight transition-colors"
               style={{
                 fontFamily: "Black Ops One, var(--font-blackops), system-ui",
+                color: "var(--accent-copper)", // ✅ burnt copper
               }}
             >
               ProFixIQ
@@ -217,18 +219,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               </button>
 
+              {/* ✅ remove Work Orders / Inspections / Parts from header */}
               <nav className="flex gap-4 text-sm text-neutral-400">
                 <Link href="/dashboard" className="hover:text-neutral-100">
                   Dashboard
-                </Link>
-                <Link href="/work-orders" className="hover:text-neutral-100">
-                  Work Orders
-                </Link>
-                <Link href="/inspections" className="hover:text-neutral-100">
-                  Inspections
-                </Link>
-                <Link href="/parts" className="hover:text-neutral-100">
-                  Parts
                 </Link>
               </nav>
             </div>
