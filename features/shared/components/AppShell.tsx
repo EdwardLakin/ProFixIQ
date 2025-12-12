@@ -23,6 +23,8 @@ const NON_APP_ROUTES = [
   "/mobile",
 ];
 
+const HEADER_OFFSET_DESKTOP = "pt-14"; // push sidebar below fixed desktop header
+
 const ActionButton = ({
   onClick,
   children,
@@ -176,19 +178,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <aside
           className={cn(
             "hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
+            HEADER_OFFSET_DESKTOP, // ✅ ensures ProFixIQ shows below the fixed header
             sidebarOpen
               ? "md:w-64 translate-x-0"
               : "md:w-0 -translate-x-full pointer-events-none",
           )}
         >
-          {/* ⬇️ move logo down a bit so it shows when sidebar is open */}
-          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4 pt-2">
+          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
             <Link
               href="/dashboard"
-              className="text-lg font-semibold tracking-tight transition-colors"
+              className="text-lg font-semibold tracking-tight transition-colors hover:opacity-95"
               style={{
                 fontFamily: "Black Ops One, var(--font-blackops), system-ui",
-                color: "var(--accent-copper)", // ✅ burnt copper
+                color: "#c1663b", // ✅ burnt copper
               }}
             >
               ProFixIQ
@@ -219,7 +221,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               </button>
 
-              {/* ✅ remove Work Orders / Inspections / Parts from header */}
+              {/* ✅ only keep Dashboard */}
               <nav className="flex gap-4 text-sm text-neutral-400">
                 <Link href="/dashboard" className="hover:text-neutral-100">
                   Dashboard
