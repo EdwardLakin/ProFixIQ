@@ -1356,6 +1356,7 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           error: string | null
+          error_message: string | null
           extracted_text: string | null
           id: string
           original_filename: string | null
@@ -1368,6 +1369,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           error?: string | null
+          error_message?: string | null
           extracted_text?: string | null
           id?: string
           original_filename?: string | null
@@ -1380,6 +1382,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           error?: string | null
+          error_message?: string | null
           extracted_text?: string | null
           id?: string
           original_filename?: string | null
@@ -5440,32 +5443,73 @@ export type Database = {
           ended_at: string | null
           id: string
           inspection_id: string | null
+          shop_id: string | null
           started_at: string | null
           user_id: string | null
           work_order_id: string | null
+          work_order_line_id: string | null
         }
         Insert: {
           ended_at?: string | null
           id?: string
           inspection_id?: string | null
+          shop_id?: string | null
           started_at?: string | null
           user_id?: string | null
           work_order_id?: string | null
+          work_order_line_id?: string | null
         }
         Update: {
           ended_at?: string | null
           id?: string
           inspection_id?: string | null
+          shop_id?: string | null
           started_at?: string | null
           user_id?: string | null
           work_order_id?: string | null
+          work_order_line_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tech_sessions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tech_sessions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tech_sessions_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tech_sessions_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tech_sessions_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "tech_sessions_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
         ]
@@ -5475,6 +5519,7 @@ export type Database = {
           created_at: string | null
           end_time: string | null
           id: string
+          shop_id: string | null
           start_time: string
           status: string
           type: string
@@ -5484,6 +5529,7 @@ export type Database = {
           created_at?: string | null
           end_time?: string | null
           id?: string
+          shop_id?: string | null
           start_time?: string
           status?: string
           type?: string
@@ -5493,12 +5539,27 @@ export type Database = {
           created_at?: string | null
           end_time?: string | null
           id?: string
+          shop_id?: string | null
           start_time?: string
           status?: string
           type?: string
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tech_shifts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tech_shifts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tech_shifts_user_id_fkey"
             columns: ["user_id"]
