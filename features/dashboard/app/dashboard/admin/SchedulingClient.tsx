@@ -38,6 +38,8 @@ const PUNCH_TYPES: PunchType[] = [
 
 type TabKey = "shifts" | "sessions";
 
+// Admins can view/edit all staff in shop.
+// Everyone else can still view their own shifts/sessions.
 const ADMIN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 /* ---------------------------------------------------------------------- */
@@ -53,8 +55,7 @@ const T = {
     "bg-[radial-gradient(900px_520px_at_18%_0%,rgba(197,106,47,0.12),transparent_55%),linear-gradient(180deg,rgba(0,0,0,0.62),rgba(0,0,0,0.42))] backdrop-blur-md",
   shadow: "shadow-[0_18px_40px_rgba(0,0,0,0.85)]",
   panel: "rounded-2xl border",
-  label:
-    "block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400",
+  label: "block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400",
   sublabel: "text-xs uppercase tracking-[0.12em] text-neutral-400",
   input:
     "mt-1 rounded-md border bg-black/50 px-2 py-1 text-sm text-neutral-100 outline-none transition " +
@@ -131,6 +132,7 @@ function isoToLocalInput(iso: string | null): string {
 }
 
 function localInputToIso(v: string): string {
+  // datetime-local returns local time; new Date(...) treats it as local.
   return new Date(v).toISOString();
 }
 
@@ -138,6 +140,33 @@ function hoursMinutesLabel(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return `${h}h ${m}m`;
+}
+
+type SchedulingContext = {
+  me: UserLite;
+  shopId: string;
+  users: UserLite[];
+};
+
+async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+  const res = await fetch(input, init);
+
+  let parsed: unknown = null;
+  try {
+    parsed = await res.json();
+  } catch {
+    parsed = null;
+  }
+
+  if (!res.ok) {
+    const maybeObj =
+      parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    const msg =
+      typeof maybeObj?.error === "string" ? maybeObj.error : `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+
+  return parsed as T;
 }
 
 export default function SchedulingClient(): JSX.Element {
@@ -152,30 +181,22 @@ export default function SchedulingClient(): JSX.Element {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [userId, setUserId] = useState<string>("");
 
-  const [from, setFrom] = useState<string>(() =>
-    format(new Date(), "yyyy-MM-dd"),
-  );
-  const [to, setTo] = useState<string>(() =>
-    format(new Date(), "yyyy-MM-dd"),
-  );
+  const [from, setFrom] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  const [to, setTo] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
 
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
 
   // Shifts + punches
   const [shifts, setShifts] = useState<ShiftRow[]>([]);
-  const [punchesByShift, setPunchesByShift] = useState<
-    Record<string, PunchRow[]>
-  >({});
+  const [punchesByShift, setPunchesByShift] = useState<Record<string, PunchRow[]>>({});
 
   // Billable summary (work_order_lines)
   const [billableMinutes, setBillableMinutes] = useState<number | null>(null);
 
   // Sessions (job time)
   const [sessions, setSessions] = useState<SessionRow[]>([]);
-  const [linesByWorkOrder, setLinesByWorkOrder] = useState<
-    Record<string, WorkOrderLineRow[]>
-  >({});
+  const [linesByWorkOrder, setLinesByWorkOrder] = useState<Record<string, WorkOrderLineRow[]>>({});
 
   // Create Shift form
   const [newShiftUserId, setNewShiftUserId] = useState<string>("");
@@ -189,8 +210,7 @@ export default function SchedulingClient(): JSX.Element {
 
   // Create Session form
   const [newSessionUserId, setNewSessionUserId] = useState<string>("");
-  const [newSessionWorkOrderId, setNewSessionWorkOrderId] =
-    useState<string>("");
+  const [newSessionWorkOrderId, setNewSessionWorkOrderId] = useState<string>("");
   const [newSessionLineId, setNewSessionLineId] = useState<string>("");
   const [newSessionStart, setNewSessionStart] = useState<string>(() =>
     format(new Date(), "yyyy-MM-dd'T'09:00"),
@@ -205,20 +225,38 @@ export default function SchedulingClient(): JSX.Element {
     return ADMIN_ROLES.has(r);
   }, [me?.role]);
 
-  const fromISO = useMemo(
-    () => new Date(from + "T00:00:00Z").toISOString(),
-    [from],
-  );
+  const canEditAll = isAdmin;
+
+  const fromISO = useMemo(() => new Date(from + "T00:00:00Z").toISOString(), [from]);
   const toEndISO = useMemo(
     () => addMinutes(new Date(to + "T00:00:00Z"), 1439).toISOString(),
     [to],
   );
 
-  // Bootstrap: load current user + shop + staff list
+  // -----------------------------------
+  // Bootstrap: context (me + shop + staff)
+  // -----------------------------------
   useEffect(() => {
     (async () => {
       setErr(null);
+      setLoading(true);
       try {
+        // Prefer: server context endpoint (works even with tight profiles RLS)
+        // If you already added it: GET /api/scheduling/context
+        try {
+          const ctx = await fetchJson<SchedulingContext>("/api/scheduling/context");
+          setMe(ctx.me);
+          setCurrentShopId(ctx.shopId);
+          setUsers(ctx.users ?? []);
+          // If not admin, force selection to self.
+          const admin = ADMIN_ROLES.has((ctx.me.role ?? "").toLowerCase());
+          if (!admin) setUserId(ctx.me.id);
+          setLoading(false);
+          return;
+        } catch {
+          // fall through to client-based bootstrap
+        }
+
         const {
           data: { user },
           error: userErr,
@@ -226,6 +264,7 @@ export default function SchedulingClient(): JSX.Element {
 
         if (userErr || !user) {
           setErr("You must be signed in to view scheduling.");
+          setLoading(false);
           return;
         }
 
@@ -237,34 +276,55 @@ export default function SchedulingClient(): JSX.Element {
 
         if (profErr) {
           setErr(profErr.message);
+          setLoading(false);
           return;
         }
         if (!prof) {
           setErr("Profile not found.");
+          setLoading(false);
           return;
         }
         if (!prof.shop_id) {
           setErr("No shop linked to your profile.");
+          setLoading(false);
           return;
         }
 
         setMe(prof);
         setCurrentShopId(prof.shop_id);
 
-        const { data: staff, error: staffErr } = await supabase
-          .from("profiles")
-          .select("id, full_name, role, shop_id")
-          .eq("shop_id", prof.shop_id)
-          .order("full_name", { ascending: true });
-
-        if (staffErr) {
-          setErr(staffErr.message);
+        const admin = ADMIN_ROLES.has((prof.role ?? "").toLowerCase());
+        if (!admin) {
+          setUsers([prof]);
+          setUserId(prof.id);
+          setLoading(false);
           return;
         }
 
-        setUsers((staff ?? []) as UserLite[]);
+        // Admin fallback: staff list via existing admin route
+        const res = await fetch("/api/admin/users");
+        if (!res.ok) {
+          setUsers([prof]); // still usable for self view
+          setUserId(prof.id);
+          setErr(`Failed to load staff (${res.status}) — showing only your data.`);
+          setLoading(false);
+          return;
+        }
+        const json = (await res.json().catch(() => ({}))) as {
+          users?: Array<{
+            id: string;
+            full_name: string | null;
+            role: string | null;
+            shop_id: string | null;
+          }>;
+        };
+
+        const staff = (json.users ?? []).filter((u) => u.shop_id === prof.shop_id);
+        setUsers(staff as UserLite[]);
+        setLoading(false);
       } catch (e) {
         setErr(safeMsg(e, "Failed to load scheduling context."));
+        setLoading(false);
       }
     })();
   }, [supabase]);
@@ -290,9 +350,20 @@ export default function SchedulingClient(): JSX.Element {
     if (!exists) setUserId("");
   }, [filteredUsers, userId]);
 
-  // -------------------------
+  // Lock non-admin to their own user id (view-only mode)
+  useEffect(() => {
+    if (!me) return;
+    if (!isAdmin && userId !== me.id) setUserId(me.id);
+  }, [isAdmin, me, userId]);
+
+  function userName(id: string | null): string {
+    const u = users.find((x) => x.id === id);
+    return u?.full_name ?? (id ? id.slice(0, 8) : "—");
+  }
+
+  // -----------------------------------
   // Load: Shifts + Punches + Billable
-  // -------------------------
+  // -----------------------------------
   const loadShifts = useCallback(async () => {
     if (!currentShopId) return;
 
@@ -300,6 +371,53 @@ export default function SchedulingClient(): JSX.Element {
     setErr(null);
 
     try {
+      // Prefer server endpoint (admin can view across staff even if RLS is strict)
+      // If you added it: GET /api/scheduling/shifts?from=...&to=...&user_id=...&role=...
+      try {
+        const qs = new URLSearchParams();
+        qs.set("from", fromISO);
+        qs.set("to", toEndISO);
+        qs.set("shop_id", currentShopId);
+        if (userId) qs.set("user_id", userId);
+        if (roleFilter && roleFilter !== "all") qs.set("role", roleFilter);
+
+        const data = await fetchJson<{
+          shifts: ShiftRow[];
+          punches?: PunchRow[];
+          billableMinutes?: number | null;
+        }>(`/api/scheduling/shifts?${qs.toString()}`);
+
+        const shiftList = (data.shifts ?? []) as ShiftRow[];
+        setShifts(shiftList);
+
+        const punchRows = (data.punches ?? []) as PunchRow[];
+        const map: Record<string, PunchRow[]> = {};
+        for (const p of punchRows) {
+          if (!p.shift_id) continue;
+          if (!map[p.shift_id]) map[p.shift_id] = [];
+          map[p.shift_id].push(p);
+        }
+        // ensure punch order
+        for (const k of Object.keys(map)) {
+          map[k].sort(
+            (a, b) =>
+              (a.timestamp ? +new Date(a.timestamp) : 0) -
+              (b.timestamp ? +new Date(b.timestamp) : 0),
+          );
+        }
+        setPunchesByShift(map);
+
+        setBillableMinutes(
+          typeof data.billableMinutes === "number" ? data.billableMinutes : null,
+        );
+
+        setLoading(false);
+        return;
+      } catch {
+        // fall through to direct Supabase select (self-view works with your RLS)
+      }
+
+      // Direct (self) fallback
       let q = supabase
         .from("tech_shifts")
         .select("*")
@@ -367,11 +485,11 @@ export default function SchedulingClient(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [currentShopId, fromISO, toEndISO, userId, supabase]);
+  }, [currentShopId, fromISO, toEndISO, userId, roleFilter, supabase]);
 
-  // -------------------------
+  // -----------------------------------
   // Load: Sessions (job time)
-  // -------------------------
+  // -----------------------------------
   const loadSessions = useCallback(async () => {
     if (!currentShopId) return;
 
@@ -379,6 +497,39 @@ export default function SchedulingClient(): JSX.Element {
     setErr(null);
 
     try {
+      // Prefer server endpoint (admin view)
+      // If you added it: GET /api/scheduling/sessions?from=...&to=...&user_id=...&role=...
+      try {
+        const qs = new URLSearchParams();
+        qs.set("from", fromISO);
+        qs.set("to", toEndISO);
+        qs.set("shop_id", currentShopId);
+        if (userId) qs.set("user_id", userId);
+        if (roleFilter && roleFilter !== "all") qs.set("role", roleFilter);
+
+        const data = await fetchJson<{
+          sessions: SessionRow[];
+          lines?: WorkOrderLineRow[];
+        }>(`/api/scheduling/sessions?${qs.toString()}`);
+
+        const sesList = (data.sessions ?? []) as SessionRow[];
+        setSessions(sesList);
+
+        const map: Record<string, WorkOrderLineRow[]> = {};
+        for (const l of (data.lines ?? []) as WorkOrderLineRow[]) {
+          const wo = l.work_order_id;
+          if (!wo) continue;
+          if (!map[wo]) map[wo] = [];
+          map[wo].push(l);
+        }
+        setLinesByWorkOrder(map);
+
+        setLoading(false);
+        return;
+      } catch {
+        // fall through
+      }
+
       let q = supabase
         .from("tech_sessions")
         .select("*")
@@ -427,7 +578,7 @@ export default function SchedulingClient(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [currentShopId, fromISO, toEndISO, userId, supabase]);
+  }, [currentShopId, fromISO, toEndISO, userId, roleFilter, supabase]);
 
   // initial + whenever filters change
   useEffect(() => {
@@ -447,15 +598,9 @@ export default function SchedulingClient(): JSX.Element {
     return Math.round((billableMinutes / totalWorkedMinutes) * 100);
   }, [totalWorkedMinutes, billableMinutes]);
 
-  function userName(id: string | null): string {
-    const u = users.find((x) => x.id === id);
-    return u?.full_name ?? (id ? id.slice(0, 8) : "—");
-  }
-
-
-  // -------------------------
-  // Mutations: shifts
-  // -------------------------
+  // -----------------------------------
+  // Mutations: shifts (via routes; fallback to Supabase when needed)
+  // -----------------------------------
   async function createShift(): Promise<void> {
     if (!currentShopId) return;
 
@@ -467,14 +612,30 @@ export default function SchedulingClient(): JSX.Element {
 
     setCreatingShift(true);
     setErr(null);
-    try {
-      const payload: Partial<ShiftRow> = {
-        user_id: uid,
-        shop_id: currentShopId,
-        start_time: localInputToIso(newShiftStart),
-        end_time: localInputToIso(newShiftEnd),
-      };
 
+    const payload: Partial<ShiftRow> = {
+      user_id: uid,
+      shop_id: currentShopId,
+      start_time: localInputToIso(newShiftStart),
+      end_time: localInputToIso(newShiftEnd),
+      // leave status/type to defaults unless you explicitly set them
+    };
+
+    try {
+      // Prefer: POST /api/scheduling/shifts (if you created it)
+      try {
+        await fetchJson<{ ok: true }>("/api/scheduling/shifts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        await loadShifts();
+        return;
+      } catch {
+        // fallback
+      }
+
+      // fallback: direct insert (will obey RLS, so mostly works for non-admin self inserts)
       const { error } = await supabase.from("tech_shifts").insert(payload);
       if (error) throw error;
 
@@ -491,181 +652,183 @@ export default function SchedulingClient(): JSX.Element {
     field: "start_time" | "end_time",
     value: string,
   ): Promise<void> {
-    const iso = localInputToIso(value);
-    const { error } = await supabase
-      .from("tech_shifts")
-      .update({ [field]: iso } as Partial<ShiftRow>)
-      .eq("id", shiftId);
-
-    if (error) {
-      setErr(error.message);
-      return;
+    setErr(null);
+    try {
+      await fetchJson<{ ok: true }>(`/api/scheduling/shifts/${shiftId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: localInputToIso(value) }),
+      });
+      await loadShifts();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to update shift."));
     }
-    await loadShifts();
   }
 
   async function deleteShift(shiftId: string): Promise<void> {
-    const { error } = await supabase
-      .from("tech_shifts")
-      .delete()
-      .eq("id", shiftId);
-
-    if (error) {
-      setErr(error.message);
-      return;
+    setErr(null);
+    try {
+      await fetchJson<{ ok: true }>(`/api/scheduling/shifts/${shiftId}`, {
+        method: "DELETE",
+      });
+      await loadShifts();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to delete shift."));
     }
-    await loadShifts();
   }
 
   async function duplicateShift(shift: ShiftRow): Promise<void> {
     if (!currentShopId) return;
     if (!shift.user_id || !shift.start_time) return;
 
-    const payload: Partial<ShiftRow> = {
-      user_id: shift.user_id,
-      shop_id: currentShopId,
-      start_time: shift.start_time,
-      end_time: shift.end_time ?? null,
-      type: shift.type ?? null,
-      status: shift.status ?? null,
-    };
+    setErr(null);
+    setCreatingShift(true);
+    try {
+      const payload: Partial<ShiftRow> = {
+        user_id: shift.user_id,
+        shop_id: currentShopId,
+        start_time: shift.start_time,
+        end_time: shift.end_time ?? null,
+        type: shift.type ?? null,
+        status: shift.status ?? null,
+      };
 
-    const { error } = await supabase.from("tech_shifts").insert(payload);
-    if (error) {
-      setErr(error.message);
-      return;
+      // Prefer server create endpoint if present
+      try {
+        await fetchJson<{ ok: true }>("/api/scheduling/shifts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        await loadShifts();
+        return;
+      } catch {
+        // fallback
+      }
+
+      const { error } = await supabase.from("tech_shifts").insert(payload);
+      if (error) throw error;
+
+      await loadShifts();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to duplicate shift."));
+    } finally {
+      setCreatingShift(false);
     }
-    await loadShifts();
   }
 
-  // -------------------------
-  // Mutations: punches (Rule A)
-  // -------------------------
-  async function addPunch(
-  shiftId: string,
-  event_type: PunchType,
-  when: string,
-): Promise<void> {
-  setErr(null);
-
-  const { error } = await supabase.from("punch_events").insert({
-    shift_id: shiftId,
-    event_type,
-    timestamp: localInputToIso(when),
-  });
-
-  if (error) {
-    setErr(error.message);
-    return;
+  // -----------------------------------
+  // Mutations: punches (Rule A trigger sets user_id from shift)
+  // -----------------------------------
+  async function addPunch(shiftId: string, event_type: PunchType, when: string): Promise<void> {
+    setErr(null);
+    try {
+      await fetchJson<{ ok: true }>("/api/scheduling/punches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shift_id: shiftId,
+          event_type,
+          timestamp: localInputToIso(when),
+        }),
+      });
+      await loadShifts();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to add punch."));
+    }
   }
-
-  await loadShifts();
-}
 
   async function updatePunch(
     punchId: string,
     when: string,
     event_type?: PunchType,
   ): Promise<void> {
-    const payload: Partial<PunchRow> = {
-      timestamp: localInputToIso(when),
-    };
-    if (event_type) payload.event_type = event_type;
-
-    const { error } = await supabase
-      .from("punch_events")
-      .update(payload)
-      .eq("id", punchId);
-
-    if (error) {
-      setErr(error.message);
-      return;
+    setErr(null);
+    try {
+      await fetchJson<{ ok: true }>(`/api/scheduling/punches/${punchId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          timestamp: localInputToIso(when),
+          ...(event_type ? { event_type } : {}),
+        }),
+      });
+      await loadShifts();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to update punch."));
     }
-    await loadShifts();
   }
 
   async function deletePunch(punchId: string): Promise<void> {
-    const { error } = await supabase
-      .from("punch_events")
-      .delete()
-      .eq("id", punchId);
-
-    if (error) {
-      setErr(error.message);
-      return;
+    setErr(null);
+    try {
+      await fetchJson<{ ok: true }>(`/api/scheduling/punches/${punchId}`, {
+        method: "DELETE",
+      });
+      await loadShifts();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to delete punch."));
     }
-    await loadShifts();
   }
 
-  async function shiftPunchesByMinutes(
-    shiftId: string,
-    deltaMinutes: number,
-  ): Promise<void> {
+  async function shiftPunchesByMinutes(shiftId: string, deltaMinutes: number): Promise<void> {
     const punches = punchesByShift[shiftId] ?? [];
     if (punches.length === 0) return;
 
     setErr(null);
+    try {
+      for (const p of punches) {
+        if (!p.id || !p.timestamp) continue;
+        const dt = new Date(p.timestamp);
+        if (!isValid(dt)) continue;
 
-    for (const p of punches) {
-      if (!p.id || !p.timestamp) continue;
-      const dt = new Date(p.timestamp);
-      if (!isValid(dt)) continue;
+        const newIso = new Date(dt.getTime() + deltaMinutes * 60000).toISOString();
 
-      const newIso = new Date(
-        dt.getTime() + deltaMinutes * 60000,
-      ).toISOString();
-
-      const { error } = await supabase
-        .from("punch_events")
-        .update({ timestamp: newIso } as Partial<PunchRow>)
-        .eq("id", p.id);
-
-      if (error) {
-        setErr(error.message);
-        return;
+        await fetchJson<{ ok: true }>(`/api/scheduling/punches/${p.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ timestamp: newIso }),
+        });
       }
+      await loadShifts();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to shift punches."));
     }
-
-    await loadShifts();
   }
 
-  async function roundPunchesToNearest(
-    shiftId: string,
-    stepMinutes: number,
-  ): Promise<void> {
+  async function roundPunchesToNearest(shiftId: string, stepMinutes: number): Promise<void> {
     const punches = punchesByShift[shiftId] ?? [];
     if (punches.length === 0) return;
 
     setErr(null);
+    try {
+      const stepMs = stepMinutes * 60_000;
 
-    const stepMs = stepMinutes * 60_000;
+      for (const p of punches) {
+        if (!p.id || !p.timestamp) continue;
+        const dt = new Date(p.timestamp);
+        if (!isValid(dt)) continue;
 
-    for (const p of punches) {
-      if (!p.id || !p.timestamp) continue;
-      const dt = new Date(p.timestamp);
-      if (!isValid(dt)) continue;
+        const t = dt.getTime();
+        const rounded = Math.round(t / stepMs) * stepMs;
+        const newIso = new Date(rounded).toISOString();
 
-      const t = dt.getTime();
-      const rounded = Math.round(t / stepMs) * stepMs;
-      const newIso = new Date(rounded).toISOString();
-
-      const { error } = await supabase
-        .from("punch_events")
-        .update({ timestamp: newIso } as Partial<PunchRow>)
-        .eq("id", p.id);
-
-      if (error) {
-        setErr(error.message);
-        return;
+        await fetchJson<{ ok: true }>(`/api/scheduling/punches/${p.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ timestamp: newIso }),
+        });
       }
-    }
 
-    await loadShifts();
+      await loadShifts();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to round punches."));
+    }
   }
 
-  // -------------------------
+  // -----------------------------------
   // Mutations: sessions (job time)
-  // -------------------------
+  // -----------------------------------
   async function createSession(): Promise<void> {
     if (!currentShopId) return;
 
@@ -683,17 +846,18 @@ export default function SchedulingClient(): JSX.Element {
     setErr(null);
 
     try {
-      const payload: Partial<SessionRow> = {
-        shop_id: currentShopId,
-        user_id: uid,
-        work_order_id: newSessionWorkOrderId,
-        work_order_line_id: newSessionLineId || null,
-        started_at: localInputToIso(newSessionStart),
-        ended_at: localInputToIso(newSessionEnd),
-      };
-
-      const { error } = await supabase.from("tech_sessions").insert(payload);
-      if (error) throw error;
+      await fetchJson<{ ok: true }>("/api/scheduling/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shop_id: currentShopId,
+          user_id: uid,
+          work_order_id: newSessionWorkOrderId,
+          work_order_line_id: newSessionLineId || null,
+          started_at: localInputToIso(newSessionStart),
+          ended_at: localInputToIso(newSessionEnd),
+        } satisfies Partial<SessionRow>),
+      });
 
       await loadSessions();
     } catch (e) {
@@ -708,62 +872,56 @@ export default function SchedulingClient(): JSX.Element {
     field: "started_at" | "ended_at",
     value: string,
   ): Promise<void> {
-    const iso = localInputToIso(value);
-    const { error } = await supabase
-      .from("tech_sessions")
-      .update({ [field]: iso } as Partial<SessionRow>)
-      .eq("id", sessionId);
-
-    if (error) {
-      setErr(error.message);
-      return;
+    setErr(null);
+    try {
+      await fetchJson<{ ok: true }>(`/api/scheduling/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: localInputToIso(value) }),
+      });
+      await loadSessions();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to update session time."));
     }
-    await loadSessions();
   }
 
-  async function updateSessionLine(
-    sessionId: string,
-    lineId: string,
-  ): Promise<void> {
-    const payload: Partial<SessionRow> = {
-      work_order_line_id: lineId || null,
-    };
-
-    const { error } = await supabase
-      .from("tech_sessions")
-      .update(payload)
-      .eq("id", sessionId);
-
-    if (error) {
-      setErr(error.message);
-      return;
+  async function updateSessionLine(sessionId: string, lineId: string): Promise<void> {
+    setErr(null);
+    try {
+      await fetchJson<{ ok: true }>(`/api/scheduling/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          work_order_line_id: lineId || null,
+        }),
+      });
+      await loadSessions();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to update session line."));
     }
-    await loadSessions();
   }
 
   async function deleteSession(sessionId: string): Promise<void> {
-    const { error } = await supabase
-      .from("tech_sessions")
-      .delete()
-      .eq("id", sessionId);
-
-    if (error) {
-      setErr(error.message);
-      return;
+    setErr(null);
+    try {
+      await fetchJson<{ ok: true }>(`/api/scheduling/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      await loadSessions();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to delete session."));
     }
-    await loadSessions();
   }
 
-  // -------------------------
+  // -----------------------------------
   // UI
-  // -------------------------
+  // -----------------------------------
   const headerCard = [T.panel, T.border, T.glass, T.shadow, "p-4"].join(" ");
-  const canEditAll = isAdmin;
 
   return (
     <PageShell
-      title="Scheduling & Time Admin"
-      description="Set schedules, correct punch events, and adjust job-time sessions. (All roles in the shop.)"
+      title="Scheduling & Time"
+      description="Shifts, punches, and job-time sessions for your shop (all roles)."
     >
       <div className="space-y-5">
         {/* Top controls */}
@@ -801,12 +959,8 @@ export default function SchedulingClient(): JSX.Element {
 
             <div className="ml-auto flex items-center gap-2 text-xs text-neutral-400">
               <span className="uppercase tracking-[0.14em]">Access</span>
-              <span
-                className={
-                  canEditAll ? "text-emerald-300" : "text-neutral-300"
-                }
-              >
-                {canEditAll ? "Admin" : "Limited"}
+              <span className={canEditAll ? "text-emerald-300" : "text-neutral-300"}>
+                {canEditAll ? "Admin" : "Self"}
               </span>
             </div>
           </div>
@@ -838,6 +992,8 @@ export default function SchedulingClient(): JSX.Element {
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
                 className={[T.select, T.border, "min-w-[180px]"].join(" ")}
+                disabled={!isAdmin}
+                title={!isAdmin ? "Non-admins can only view their own data." : ""}
               >
                 <option value="all">All roles</option>
                 {rolesInShop.map((r) => (
@@ -854,12 +1010,13 @@ export default function SchedulingClient(): JSX.Element {
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 className={[T.select, T.border, "min-w-[240px]"].join(" ")}
+                disabled={!isAdmin}
+                title={!isAdmin ? "Non-admins can only view their own data." : ""}
               >
-                <option value="">All staff</option>
+                <option value="">{isAdmin ? "All staff" : "Me"}</option>
                 {filteredUsers.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.full_name ?? u.id.slice(0, 8)}{" "}
-                    {u.role ? `(${u.role})` : ""}
+                    {u.full_name ?? u.id.slice(0, 8)} {u.role ? `(${u.role})` : ""}
                   </option>
                 ))}
               </select>
@@ -887,11 +1044,7 @@ export default function SchedulingClient(): JSX.Element {
                   {utilization != null && (
                     <div>
                       <span className={T.sublabel}>Utilization</span>
-                      <div
-                        className={["font-semibold", T.copperSoftText].join(
-                          " ",
-                        )}
-                      >
+                      <div className={["font-semibold", T.copperSoftText].join(" ")}>
                         {utilization}%
                       </div>
                     </div>
@@ -903,9 +1056,7 @@ export default function SchedulingClient(): JSX.Element {
                 type="button"
                 variant="default"
                 className="font-semibold"
-                onClick={() =>
-                  void (tab === "sessions" ? loadSessions() : loadShifts())
-                }
+                onClick={() => void (tab === "sessions" ? loadSessions() : loadShifts())}
               >
                 Refresh
               </Button>
@@ -921,11 +1072,7 @@ export default function SchedulingClient(): JSX.Element {
 
         {/* Create forms */}
         {tab === "shifts" && (
-          <div
-            className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(
-              " ",
-            )}
-          >
+          <div className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(" ")}>
             <div>
               <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
                 Scheduling
@@ -934,8 +1081,7 @@ export default function SchedulingClient(): JSX.Element {
                 Create a shift
               </div>
               <div className="mt-1 text-xs text-neutral-400">
-                Shifts are shop-scoped. Punches belong to the shift owner (Rule
-                A).
+                Shifts are shop-scoped. Punches belong to the shift owner (Rule A).
               </div>
             </div>
 
@@ -953,8 +1099,7 @@ export default function SchedulingClient(): JSX.Element {
                   </option>
                   {filteredUsers.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.full_name ?? u.id.slice(0, 8)}{" "}
-                      {u.role ? `(${u.role})` : ""}
+                      {u.full_name ?? u.id.slice(0, 8)} {u.role ? `(${u.role})` : ""}
                     </option>
                   ))}
                 </select>
@@ -992,15 +1137,17 @@ export default function SchedulingClient(): JSX.Element {
                 {creatingShift ? "Creating…" : "Create shift"}
               </Button>
             </div>
+
+            {!canEditAll && (
+              <div className="mt-3 text-xs text-neutral-500">
+                You can view your own shifts here. Managers/Admins can create schedules for all staff.
+              </div>
+            )}
           </div>
         )}
 
         {tab === "sessions" && (
-          <div
-            className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(
-              " ",
-            )}
-          >
+          <div className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(" ")}>
             <div>
               <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
                 Job time
@@ -1009,8 +1156,7 @@ export default function SchedulingClient(): JSX.Element {
                 Create a job session
               </div>
               <div className="mt-1 text-xs text-neutral-400">
-                Use this to correct time on a work order (and optionally a work
-                order line).
+                Use this to correct time on a work order (and optionally a work order line).
               </div>
             </div>
 
@@ -1028,8 +1174,7 @@ export default function SchedulingClient(): JSX.Element {
                   </option>
                   {filteredUsers.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.full_name ?? u.id.slice(0, 8)}{" "}
-                      {u.role ? `(${u.role})` : ""}
+                      {u.full_name ?? u.id.slice(0, 8)} {u.role ? `(${u.role})` : ""}
                     </option>
                   ))}
                 </select>
@@ -1040,9 +1185,7 @@ export default function SchedulingClient(): JSX.Element {
                 <input
                   type="text"
                   value={newSessionWorkOrderId}
-                  onChange={(e) =>
-                    setNewSessionWorkOrderId(e.target.value.trim())
-                  }
+                  onChange={(e) => setNewSessionWorkOrderId(e.target.value.trim())}
                   className={[T.input, T.border, "w-full"].join(" ")}
                   placeholder="UUID…"
                   disabled={!canEditAll}
@@ -1093,6 +1236,12 @@ export default function SchedulingClient(): JSX.Element {
                 {creatingSession ? "Creating…" : "Create session"}
               </Button>
             </div>
+
+            {!canEditAll && (
+              <div className="mt-3 text-xs text-neutral-500">
+                Only managers/admins can create or edit sessions.
+              </div>
+            )}
           </div>
         )}
 
@@ -1150,11 +1299,7 @@ function ShiftsView(props: {
   onDuplicateShift: (shift: ShiftRow) => Promise<void>;
 
   onAddPunch: (shiftId: string, type: PunchType, when: string) => Promise<void>;
-  onUpdatePunch: (
-    punchId: string,
-    when: string,
-    type?: PunchType,
-  ) => Promise<void>;
+  onUpdatePunch: (punchId: string, when: string, type?: PunchType) => Promise<void>;
   onDeletePunch: (punchId: string) => Promise<void>;
 
   onShiftPunches: (shiftId: string, deltaMinutes: number) => Promise<void>;
@@ -1178,15 +1323,7 @@ function ShiftsView(props: {
 
   if (loading) {
     return (
-      <div
-        className={[
-          T.panel,
-          T.border,
-          T.glass,
-          T.shadow,
-          "px-4 py-6 text-sm text-neutral-300",
-        ].join(" ")}
-      >
+      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-300"].join(" ")}>
         Loading shifts…
       </div>
     );
@@ -1194,15 +1331,7 @@ function ShiftsView(props: {
 
   if (shifts.length === 0) {
     return (
-      <div
-        className={[
-          T.panel,
-          T.border,
-          T.glass,
-          T.shadow,
-          "px-4 py-6 text-sm text-neutral-400",
-        ].join(" ")}
-      >
+      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-400"].join(" ")}>
         No shifts in this range.
       </div>
     );
@@ -1215,12 +1344,7 @@ function ShiftsView(props: {
         const minutes = computeWorkedMinutes(s, punches);
 
         return (
-          <div
-            key={s.id}
-            className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-4"].join(
-              " ",
-            )}
-          >
+          <div key={s.id} className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-4"].join(" ")}>
             {/* Shift header */}
             <div className="flex flex-wrap items-start gap-4">
               <div className="min-w-[220px]">
@@ -1240,9 +1364,7 @@ function ShiftsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.start_time)}
-                  onChange={(e) =>
-                    void onUpdateShiftTime(s.id, "start_time", e.target.value)
-                  }
+                  onChange={(e) => void onUpdateShiftTime(s.id, "start_time", e.target.value)}
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1253,9 +1375,7 @@ function ShiftsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.end_time ?? null)}
-                  onChange={(e) =>
-                    void onUpdateShiftTime(s.id, "end_time", e.target.value)
-                  }
+                  onChange={(e) => void onUpdateShiftTime(s.id, "end_time", e.target.value)}
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1306,8 +1426,7 @@ function ShiftsView(props: {
                     Punch events
                   </div>
                   <div className="mt-1 text-xs text-neutral-500">
-                    Add/edit punches to correct day totals (break/lunch
-                    subtracted).
+                    Add/edit punches to correct day totals (break/lunch subtracted).
                   </div>
                 </div>
 
@@ -1361,9 +1480,7 @@ function ShiftsView(props: {
                       key={p.id}
                       punch={p}
                       disabled={!canEditAll}
-                      onUpdate={(when, type) =>
-                        void onUpdatePunch(p.id, when, type)
-                      }
+                      onUpdate={(when, type) => void onUpdatePunch(p.id, when, type)}
                       onDelete={() => void onDeletePunch(p.id)}
                     />
                   ))}
@@ -1408,15 +1525,7 @@ function SessionsView(props: {
 
   if (loading) {
     return (
-      <div
-        className={[
-          T.panel,
-          T.border,
-          T.glass,
-          T.shadow,
-          "px-4 py-6 text-sm text-neutral-300",
-        ].join(" ")}
-      >
+      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-300"].join(" ")}>
         Loading job sessions…
       </div>
     );
@@ -1424,15 +1533,7 @@ function SessionsView(props: {
 
   if (sessions.length === 0) {
     return (
-      <div
-        className={[
-          T.panel,
-          T.border,
-          T.glass,
-          T.shadow,
-          "px-4 py-6 text-sm text-neutral-400",
-        ].join(" ")}
-      >
+      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-400"].join(" ")}>
         No job sessions in this range.
       </div>
     );
@@ -1445,17 +1546,10 @@ function SessionsView(props: {
         const lineOptions = woId ? linesByWorkOrder[woId] ?? [] : [];
 
         const durationMins =
-          s.started_at && s.ended_at
-            ? minutesBetween(s.started_at, s.ended_at)
-            : 0;
+          s.started_at && s.ended_at ? minutesBetween(s.started_at, s.ended_at) : 0;
 
         return (
-          <div
-            key={s.id}
-            className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-4"].join(
-              " ",
-            )}
-          >
+          <div key={s.id} className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-4"].join(" ")}>
             <div className="flex flex-wrap items-start gap-4">
               <div className="min-w-[220px]">
                 <div className="text-[0.65rem] uppercase tracking-[0.16em] text-neutral-400">
@@ -1498,9 +1592,7 @@ function SessionsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.started_at)}
-                  onChange={(e) =>
-                    void onUpdateTime(s.id, "started_at", e.target.value)
-                  }
+                  onChange={(e) => void onUpdateTime(s.id, "started_at", e.target.value)}
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1511,9 +1603,7 @@ function SessionsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.ended_at ?? null)}
-                  onChange={(e) =>
-                    void onUpdateTime(s.id, "ended_at", e.target.value)
-                  }
+                  onChange={(e) => void onUpdateTime(s.id, "ended_at", e.target.value)}
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1556,9 +1646,7 @@ function AddPunchInline(props: {
   const { disabled, onAdd } = props;
 
   const [type, setType] = useState<PunchType>("start");
-  const [when, setWhen] = useState<string>(() =>
-    format(new Date(), "yyyy-MM-dd'T'HH:mm"),
-  );
+  const [when, setWhen] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
   const control =
     "rounded-md border border-[color:var(--metal-border-soft,#1f2937)] " +
@@ -1610,12 +1698,8 @@ function PunchRowEditor(props: {
 }) {
   const { punch, disabled, onUpdate, onDelete } = props;
 
-  const [when, setWhen] = useState<string>(() =>
-    isoToLocalInput(punch.timestamp ?? null),
-  );
-  const [type, setType] = useState<PunchType>(
-    ((punch.event_type as PunchType) ?? "start") as PunchType,
-  );
+  const [when, setWhen] = useState<string>(() => isoToLocalInput(punch.timestamp ?? null));
+  const [type, setType] = useState<PunchType>(((punch.event_type as PunchType) ?? "start") as PunchType);
   const [dirty, setDirty] = useState<boolean>(false);
 
   const control =

@@ -1,75 +1,131 @@
-// features/shared/components/PunchController.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 import PunchInOutButton from "@shared/components/PunchInOutButton";
 
 type DB = Database;
-type TechShift = DB["public"]["Tables"]["tech_shifts"]["Row"];
+
+type TechShiftRow = DB["public"]["Tables"]["tech_shifts"]["Row"];
+type TechShiftInsert = DB["public"]["Tables"]["tech_shifts"]["Insert"];
+
 type PunchEventInsert = DB["public"]["Tables"]["punch_events"]["Insert"];
-type WorkOrderLineUpdate =
-  DB["public"]["Tables"]["work_order_lines"]["Update"];
+type WorkOrderLineUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
 
-export default function PunchController() {
-  const supabase = useClient();
+type ProfileShop = Pick<
+  DB["public"]["Tables"]["profiles"]["Row"],
+  "id" | "shop_id"
+>;
+
+type ShiftStatus = "open" | "closed";
+type ShiftType = "work";
+
+type PunchType =
+  | "start"
+  | "break_start"
+  | "break_end"
+  | "lunch_start"
+  | "lunch_end"
+  | "end";
+
+function safeMsg(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : fallback;
+}
+
+export default function PunchController(): JSX.Element {
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [userId, setUserId] = useState<string | null>(null);
-  const [activeShift, setActiveShift] = useState<TechShift | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [shopId, setShopId] = useState<string | null>(null);
 
-  function useClient() {
-    return useMemo(() => createClientComponentClient<DB>(), []);
-  }
+  const [activeShift, setActiveShift] = useState<TechShiftRow | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
   // Optional: affects global colors while punched in
   useEffect(() => {
-    if (activeShift) {
-      document.body.classList.add("on-shift");
-    } else {
-      document.body.classList.remove("on-shift");
-    }
+    if (activeShift) document.body.classList.add("on-shift");
+    else document.body.classList.remove("on-shift");
+
     return () => document.body.classList.remove("on-shift");
   }, [activeShift]);
 
-  // get session + current open shift
+  // bootstrap: auth + profile (shop_id) + current open shift
   useEffect(() => {
     (async () => {
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const uid = session?.user?.id ?? null;
-      setUserId(uid);
-      if (!uid) return;
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
 
-      await refreshShift(uid);
+      if (error || !user) return;
+
+      setUserId(user.id);
+
+      const { data: prof, error: profErr } = await supabase
+        .from("profiles")
+        .select("id, shop_id")
+        .eq("id", user.id)
+        .maybeSingle<ProfileShop>();
+
+      if (profErr) {
+        console.error("[PunchController] profile load failed:", profErr);
+        return;
+      }
+
+      const sId = prof?.shop_id ?? null;
+      setShopId(sId);
+
+      await refreshShift(user.id, sId);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function refreshShift(uid: string) {
-    const { data } = await supabase
+  async function refreshShift(uid: string, sid: string | null): Promise<void> {
+    // Prefer: "open" status if you use it; fallback to end_time IS NULL.
+    // We keep it simple and rely on status first.
+    let q = supabase
       .from("tech_shifts")
       .select("*")
-      .eq("tech_id", uid)
-      .eq("status", "open")
+      .eq("user_id", uid)
+      .order("start_time", { ascending: false })
+      .limit(1);
+
+    if (sid) q = q.eq("shop_id", sid);
+
+    // If your data uses status, this will find the current one.
+    const { data, error } = await q.eq("status", "open" as ShiftStatus).maybeSingle();
+
+    if (!error && data) {
+      setActiveShift(data);
+      return;
+    }
+
+    // Fallback: "open" is end_time null
+    const { data: fallback, error: fbErr } = await supabase
+      .from("tech_shifts")
+      .select("*")
+      .eq("user_id", uid)
+      .is("end_time", null)
       .order("start_time", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    setActiveShift(data ?? null);
+    if (fbErr) {
+      console.error("[PunchController] refreshShift fallback failed:", fbErr);
+      setActiveShift(null);
+      return;
+    }
+
+    setActiveShift(fallback ?? null);
   }
 
-  // helper: when ending a shift, stop timers on any active jobs
-  async function punchOutOfActiveJobsForTech(uid: string) {
+  async function punchOutOfActiveJobsForTech(uid: string): Promise<void> {
     const nowIso = new Date().toISOString();
 
     const update: WorkOrderLineUpdate = {
-      // we ONLY close the current punch segment here.
       punched_out_at: nowIso,
-      // if you decide you want jobs to move back to "queued"
-      // when the tech leaves, you can also set:
-      // status: "queued",
     };
 
     const { error } = await supabase
@@ -85,71 +141,104 @@ export default function PunchController() {
     }
   }
 
-  async function onPunchIn() {
-    if (!userId) return;
-    setLoading(true);
-    // create a shift + punch_event
-    const { data: shift, error: shiftErr } = await supabase
-      .from("tech_shifts")
-      .insert({
-        tech_id: userId,
-        start_time: new Date().toISOString(),
-        status: "open",
-        type: "work",
-      })
-      .select("*")
-      .single();
+  async function insertPunch(
+    shiftId: string,
+    type: PunchType,
+    tsIso: string,
+  ): Promise<void> {
+    // Rule A triggers will ensure punch_events.user_id matches shift.user_id
+    // We can omit user_id and let triggers populate it.
+    const ev: PunchEventInsert = {
+      shift_id: shiftId,
+      event_type: type as PunchEventInsert["event_type"],
+      timestamp: tsIso,
+      // keep legacy in sync if your table still has profile_id:
+      profile_id: userId ?? undefined,
+    };
 
-    if (!shiftErr && shift) {
-      const ev: PunchEventInsert = {
-        event_type: "in",
-        profile_id: userId,
-        shift_id: shift.id,
-        timestamp: new Date().toISOString(),
-      };
-      await supabase.from("punch_events").insert(ev);
-      await refreshShift(userId);
+    const { error } = await supabase.from("punch_events").insert(ev);
+    if (error) {
+      console.error("[PunchController] insertPunch failed:", error);
     }
-    setLoading(false);
   }
 
-  async function onPunchOut() {
-    if (!userId || !activeShift) return;
+  async function onPunchIn(): Promise<void> {
+    if (!userId) return;
+
     setLoading(true);
+    try {
+      // Ensure we know shop_id for the shift (better RLS + filtering)
+      const sid = shopId;
+      if (!sid) {
+        throw new Error("No shop linked to your profile.");
+      }
 
-    // first, close any active job punches for this tech
-    await punchOutOfActiveJobsForTech(userId);
+      const nowIso = new Date().toISOString();
 
-    // then close current shift
-    const { error: updErr } = await supabase
-      .from("tech_shifts")
-      .update({
-        end_time: new Date().toISOString(),
-        status: "closed",
-      })
-      .eq("id", activeShift.id);
-
-    if (!updErr) {
-      const ev: PunchEventInsert = {
-        event_type: "out",
-        profile_id: userId,
-        shift_id: activeShift.id,
-        timestamp: new Date().toISOString(),
+      const shiftPayload: TechShiftInsert = {
+        user_id: userId,
+        shop_id: sid,
+        start_time: nowIso,
+        end_time: null,
+        status: "open" as ShiftStatus,
+        type: "work" as ShiftType,
       };
-      await supabase.from("punch_events").insert(ev);
-      await refreshShift(userId);
+
+      const { data: shift, error: shiftErr } = await supabase
+        .from("tech_shifts")
+        .insert(shiftPayload)
+        .select("*")
+        .single();
+
+      if (shiftErr || !shift) {
+        throw new Error(shiftErr?.message ?? "Failed to start shift.");
+      }
+
+      await insertPunch(shift.id, "start", nowIso);
+      await refreshShift(userId, sid);
+    } catch (e) {
+      console.error("[PunchController] onPunchIn:", safeMsg(e, "Failed to punch in."));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  }
+
+  async function onPunchOut(): Promise<void> {
+    if (!userId || !activeShift) return;
+
+    setLoading(true);
+    try {
+      const nowIso = new Date().toISOString();
+
+      // close any active job punches
+      await punchOutOfActiveJobsForTech(userId);
+
+      // close shift
+      const { error: updErr } = await supabase
+        .from("tech_shifts")
+        .update({
+          end_time: nowIso,
+          status: "closed" as ShiftStatus,
+        })
+        .eq("id", activeShift.id);
+
+      if (updErr) {
+        throw new Error(updErr.message);
+      }
+
+      await insertPunch(activeShift.id, "end", nowIso);
+      await refreshShift(userId, shopId ?? null);
+    } catch (e) {
+      console.error("[PunchController] onPunchOut:", safeMsg(e, "Failed to punch out."));
+    } finally {
+      setLoading(false);
+    }
   }
 
   // Optional: show the shift as the “job” on the global punch button
-  const activeJob = useMemo(
-    () =>
-      activeShift
-        ? { id: activeShift.id, vehicle: "On Shift" }
-        : null,
-    [activeShift],
-  );
+  const activeJob = useMemo(() => {
+    return activeShift ? { id: activeShift.id, vehicle: "On Shift" } : null;
+  }, [activeShift]);
 
   return (
     <PunchInOutButton

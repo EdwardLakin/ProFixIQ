@@ -4035,10 +4035,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "punch_events_shift_fk"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "tech_shifts"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "punch_events_shift_id_fkey"
             columns: ["shift_id"]
             isOneToOne: false
             referencedRelation: "tech_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "punch_events_user_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -5443,6 +5457,7 @@ export type Database = {
           ended_at: string | null
           id: string
           inspection_id: string | null
+          shift_id: string | null
           shop_id: string | null
           started_at: string | null
           user_id: string | null
@@ -5453,6 +5468,7 @@ export type Database = {
           ended_at?: string | null
           id?: string
           inspection_id?: string | null
+          shift_id?: string | null
           shop_id?: string | null
           started_at?: string | null
           user_id?: string | null
@@ -5463,6 +5479,7 @@ export type Database = {
           ended_at?: string | null
           id?: string
           inspection_id?: string | null
+          shift_id?: string | null
           shop_id?: string | null
           started_at?: string | null
           user_id?: string | null
@@ -5471,17 +5488,52 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "tech_sessions_shop_id_fkey"
+            foreignKeyName: "tech_sessions_shift_fk"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "tech_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tech_sessions_shop_fk"
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shop_public_profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "tech_sessions_shop_id_fkey"
+            foreignKeyName: "tech_sessions_shop_fk"
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tech_sessions_user_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tech_sessions_wol_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tech_sessions_wol_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "tech_sessions_wol_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
           {
@@ -5489,27 +5541,6 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "tech_sessions_work_order_line_id_fkey"
-            columns: ["work_order_line_id"]
-            isOneToOne: false
-            referencedRelation: "v_quote_queue"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "tech_sessions_work_order_line_id_fkey"
-            columns: ["work_order_line_id"]
-            isOneToOne: false
-            referencedRelation: "v_vehicle_service_history"
-            referencedColumns: ["work_order_line_id"]
-          },
-          {
-            foreignKeyName: "tech_sessions_work_order_line_id_fkey"
-            columns: ["work_order_line_id"]
-            isOneToOne: false
-            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
         ]
@@ -5547,17 +5578,24 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "tech_shifts_shop_id_fkey"
+            foreignKeyName: "tech_shifts_shop_fk"
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shop_public_profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "tech_shifts_shop_id_fkey"
+            foreignKeyName: "tech_shifts_shop_fk"
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tech_shifts_user_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -7531,10 +7569,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "punch_events_shift_fk"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "tech_shifts"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "punch_events_shift_id_fkey"
             columns: ["shift_id"]
             isOneToOne: false
             referencedRelation: "tech_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "punch_events_user_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
