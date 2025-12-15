@@ -4,15 +4,16 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 
 type DB = Database;
 
+type PunchUpdate = Pick<
+  DB["public"]["Tables"]["punch_events"]["Update"],
+  "timestamp" | "event_type"
+>;
+
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const punchId = params?.id;
-
-  if (!punchId) {
-    return NextResponse.json({ error: "Missing punch id" }, { status: 400 });
-  }
+  const punchId = params.id;
 
   const supabase = createServerSupabaseRoute();
 
@@ -34,23 +35,13 @@ export async function DELETE(
   return NextResponse.json({ ok: true });
 }
 
-export async function PUT(
+export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const punchId = params?.id;
+  const punchId = params.id;
 
-  if (!punchId) {
-    return NextResponse.json({ error: "Missing punch id" }, { status: 400 });
-  }
-
-  const body = (await req.json().catch(() => null)) as
-    | {
-        timestamp?: string;
-        event_type?: DB["public"]["Tables"]["punch_events"]["Row"]["event_type"];
-      }
-    | null;
-
+  const body = (await req.json().catch(() => null)) as PunchUpdate | null;
   if (!body) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -70,7 +61,7 @@ export async function PUT(
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const update: Partial<DB["public"]["Tables"]["punch_events"]["Update"]> = {
+  const update: PunchUpdate = {
     ...(body.timestamp !== undefined ? { timestamp: body.timestamp } : {}),
     ...(body.event_type !== undefined ? { event_type: body.event_type } : {}),
   };
