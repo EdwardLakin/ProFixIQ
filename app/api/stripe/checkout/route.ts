@@ -1,8 +1,10 @@
 // app/api/stripe/checkout/route.ts
+
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
-export const runtime = "nodejs";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
   apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
