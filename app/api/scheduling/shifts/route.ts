@@ -1,4 +1,4 @@
-// app/api/scheduling/shifts/route.ts
+// app/api/scheduling/shifts/[id]/route.ts
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -14,6 +14,10 @@ type Caller = {
   id: string;
   role: string | null;
   shop_id: string | null;
+};
+
+type RouteContext = {
+  params: Record<string, string>;
 };
 
 function safeRole(v: unknown): string {
@@ -52,99 +56,103 @@ async function authz() {
   return { ok: true as const, me, isAdmin };
 }
 
-type ShiftInsert = Pick<
-  DB["public"]["Tables"]["tech_shifts"]["Insert"],
-  "user_id" | "shop_id" | "start_time" | "end_time" | "type" | "status"
+type ShiftUpdate = Pick<
+  DB["public"]["Tables"]["tech_shifts"]["Update"],
+  "start_time" | "end_time" | "type" | "status"
 >;
 
-export async function GET(req: NextRequest) {
-  const a = await authz();
-  if (!a.ok) return a.res;
-
-  const { searchParams } = new URL(req.url);
-
-  // Expect ISO strings (you’re passing ISO from client)
-  const from = searchParams.get("from") ?? "";
-  const to = searchParams.get("to") ?? "";
-  const userId = searchParams.get("userId") ?? "";
-
-  const admin = createAdminSupabase();
-
-  let q = admin
-    .from("tech_shifts")
-    .select("*")
-    .eq("shop_id", a.me.shop_id)
-    .order("start_time", { ascending: false });
-
-  if (from) q = q.gte("start_time", from);
-  if (to) q = q.lte("start_time", to);
-
-  // Non-admins can only read their own shifts
-  if (a.isAdmin) {
-    if (userId) q = q.eq("user_id", userId);
-  } else {
-    q = q.eq("user_id", a.me.id);
-  }
-
-  const { data, error } = await q;
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ shifts: data ?? [] });
-}
-
-export async function POST(req: NextRequest) {
+export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const a = await authz();
   if (!a.ok) return a.res;
   if (!a.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const id = ctx.params["id"] ?? "";
+  if (!id) {
+    return NextResponse.json({ error: "Missing shift id" }, { status: 400 });
+  }
+
   const body = (await req.json().catch(() => null)) as
-    | {
-        user_id?: string;
-        start_time?: string;
-        end_time?: string | null;
-        type?: string | null;
-        status?: string | null;
-      }
+    | Partial<ShiftUpdate>
     | null;
 
-  if (!body?.user_id || !body?.start_time) {
-    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  if (!body) {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  // Only allow specific fields
+  const update: Partial<ShiftUpdate> = {
+    ...(body.start_time !== undefined ? { start_time: body.start_time } : {}),
+    ...(body.end_time !== undefined ? { end_time: body.end_time } : {}),
+    ...(body.type !== undefined ? { type: body.type } : {}),
+    ...(body.status !== undefined ? { status: body.status } : {}),
+  };
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
 
   const admin = createAdminSupabase();
 
-  // Ensure target is in same shop
-  const { data: target, error: tErr } = await admin
-    .from("profiles")
+  // Enforce same-shop on the shift row itself
+  const { data: shift, error: sErr } = await admin
+    .from("tech_shifts")
     .select("id, shop_id")
-    .eq("id", body.user_id)
+    .eq("id", id)
     .maybeSingle<{ id: string; shop_id: string | null }>();
 
-  if (tErr) {
-    return NextResponse.json({ error: tErr.message }, { status: 500 });
+  if (sErr) {
+    return NextResponse.json({ error: sErr.message }, { status: 500 });
+  }
+  if (!shift) {
+    return NextResponse.json({ error: "Shift not found" }, { status: 404 });
+  }
+  if (shift.shop_id !== a.me.shop_id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  if (!target || target.shop_id !== a.me.shop_id) {
-    return NextResponse.json(
-      { error: "Target not in your shop" },
-      { status: 403 },
-    );
+  const { error } = await admin.from("tech_shifts").update(update).eq("id", id);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const payload: ShiftInsert = {
-    user_id: body.user_id,
-    shop_id: a.me.shop_id,
-    start_time: body.start_time,
-    end_time: body.end_time ?? null,
-    type: (body.type ?? null) as ShiftInsert["type"],
-    status: (body.status ?? null) as ShiftInsert["status"],
-  };
+  return NextResponse.json({ ok: true });
+}
 
-  const { error } = await admin.from("tech_shifts").insert(payload);
+export async function DELETE(_req: NextRequest, ctx: RouteContext) {
+  const a = await authz();
+  if (!a.ok) return a.res;
+  if (!a.isAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const id = ctx.params["id"] ?? "";
+  if (!id) {
+    return NextResponse.json({ error: "Missing shift id" }, { status: 400 });
+  }
+
+  const admin = createAdminSupabase();
+
+  // Enforce same-shop
+  const { data: shift, error: sErr } = await admin
+    .from("tech_shifts")
+    .select("id, shop_id")
+    .eq("id", id)
+    .maybeSingle<{ id: string; shop_id: string | null }>();
+
+  if (sErr) {
+    return NextResponse.json({ error: sErr.message }, { status: 500 });
+  }
+  if (!shift) {
+    return NextResponse.json({ error: "Shift not found" }, { status: 404 });
+  }
+  if (shift.shop_id !== a.me.shop_id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { error } = await admin.from("tech_shifts").delete().eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
