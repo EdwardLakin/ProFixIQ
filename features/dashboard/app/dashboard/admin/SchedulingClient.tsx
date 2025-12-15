@@ -160,9 +160,13 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 
   if (!res.ok) {
     const maybeObj =
-      parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+      parsed && typeof parsed === "object"
+        ? (parsed as Record<string, unknown>)
+        : null;
     const msg =
-      typeof maybeObj?.error === "string" ? maybeObj.error : `Request failed (${res.status})`;
+      typeof maybeObj?.error === "string"
+        ? maybeObj.error
+        : `Request failed (${res.status})`;
     throw new Error(msg);
   }
 
@@ -181,7 +185,9 @@ export default function SchedulingClient(): JSX.Element {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [userId, setUserId] = useState<string>("");
 
-  const [from, setFrom] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  const [from, setFrom] = useState<string>(() =>
+    format(new Date(), "yyyy-MM-dd"),
+  );
   const [to, setTo] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
 
   const [loading, setLoading] = useState<boolean>(true);
@@ -189,14 +195,18 @@ export default function SchedulingClient(): JSX.Element {
 
   // Shifts + punches
   const [shifts, setShifts] = useState<ShiftRow[]>([]);
-  const [punchesByShift, setPunchesByShift] = useState<Record<string, PunchRow[]>>({});
+  const [punchesByShift, setPunchesByShift] = useState<
+    Record<string, PunchRow[]>
+  >({});
 
   // Billable summary (work_order_lines)
   const [billableMinutes, setBillableMinutes] = useState<number | null>(null);
 
   // Sessions (job time)
   const [sessions, setSessions] = useState<SessionRow[]>([]);
-  const [linesByWorkOrder, setLinesByWorkOrder] = useState<Record<string, WorkOrderLineRow[]>>({});
+  const [linesByWorkOrder, setLinesByWorkOrder] = useState<
+    Record<string, WorkOrderLineRow[]>
+  >({});
 
   // Create Shift form
   const [newShiftUserId, setNewShiftUserId] = useState<string>("");
@@ -210,7 +220,8 @@ export default function SchedulingClient(): JSX.Element {
 
   // Create Session form
   const [newSessionUserId, setNewSessionUserId] = useState<string>("");
-  const [newSessionWorkOrderId, setNewSessionWorkOrderId] = useState<string>("");
+  const [newSessionWorkOrderId, setNewSessionWorkOrderId] =
+    useState<string>("");
   const [newSessionLineId, setNewSessionLineId] = useState<string>("");
   const [newSessionStart, setNewSessionStart] = useState<string>(() =>
     format(new Date(), "yyyy-MM-dd'T'09:00"),
@@ -227,7 +238,10 @@ export default function SchedulingClient(): JSX.Element {
 
   const canEditAll = isAdmin;
 
-  const fromISO = useMemo(() => new Date(from + "T00:00:00Z").toISOString(), [from]);
+  const fromISO = useMemo(
+    () => new Date(from + "T00:00:00Z").toISOString(),
+    [from],
+  );
   const toEndISO = useMemo(
     () => addMinutes(new Date(to + "T00:00:00Z"), 1439).toISOString(),
     [to],
@@ -244,7 +258,9 @@ export default function SchedulingClient(): JSX.Element {
         // Prefer: server context endpoint (works even with tight profiles RLS)
         // If you already added it: GET /api/scheduling/context
         try {
-          const ctx = await fetchJson<SchedulingContext>("/api/scheduling/context");
+          const ctx = await fetchJson<SchedulingContext>(
+            "/api/scheduling/context",
+          );
           setMe(ctx.me);
           setCurrentShopId(ctx.shopId);
           setUsers(ctx.users ?? []);
@@ -306,7 +322,9 @@ export default function SchedulingClient(): JSX.Element {
         if (!res.ok) {
           setUsers([prof]); // still usable for self view
           setUserId(prof.id);
-          setErr(`Failed to load staff (${res.status}) — showing only your data.`);
+          setErr(
+            `Failed to load staff (${res.status}) — showing only your data.`,
+          );
           setLoading(false);
           return;
         }
@@ -319,7 +337,9 @@ export default function SchedulingClient(): JSX.Element {
           }>;
         };
 
-        const staff = (json.users ?? []).filter((u) => u.shop_id === prof.shop_id);
+        const staff = (json.users ?? []).filter(
+          (u) => u.shop_id === prof.shop_id,
+        );
         setUsers(staff as UserLite[]);
         setLoading(false);
       } catch (e) {
@@ -599,10 +619,16 @@ export default function SchedulingClient(): JSX.Element {
   }, [totalWorkedMinutes, billableMinutes]);
 
   // -----------------------------------
-  // Mutations: shifts (via routes; fallback to Supabase when needed)
+  // Mutations: shifts (API-only; no browser inserts)
   // -----------------------------------
   async function createShift(): Promise<void> {
     if (!currentShopId) return;
+
+    // hard-lock: shifts are admin-created only
+    if (!canEditAll) {
+      setErr("Forbidden");
+      return;
+    }
 
     const uid = newShiftUserId || userId;
     if (!uid) {
@@ -622,23 +648,11 @@ export default function SchedulingClient(): JSX.Element {
     };
 
     try {
-      // Prefer: POST /api/scheduling/shifts (if you created it)
-      try {
-        await fetchJson<{ ok: true }>("/api/scheduling/shifts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        await loadShifts();
-        return;
-      } catch {
-        // fallback
-      }
-
-      // fallback: direct insert (will obey RLS, so mostly works for non-admin self inserts)
-      const { error } = await supabase.from("tech_shifts").insert(payload);
-      if (error) throw error;
-
+      await fetchJson<{ ok: true }>("/api/scheduling/shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       await loadShifts();
     } catch (e) {
       setErr(safeMsg(e, "Failed to create shift."));
@@ -681,6 +695,12 @@ export default function SchedulingClient(): JSX.Element {
     if (!currentShopId) return;
     if (!shift.user_id || !shift.start_time) return;
 
+    // hard-lock: shifts are admin-created only
+    if (!canEditAll) {
+      setErr("Forbidden");
+      return;
+    }
+
     setErr(null);
     setCreatingShift(true);
     try {
@@ -693,21 +713,11 @@ export default function SchedulingClient(): JSX.Element {
         status: shift.status ?? null,
       };
 
-      // Prefer server create endpoint if present
-      try {
-        await fetchJson<{ ok: true }>("/api/scheduling/shifts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        await loadShifts();
-        return;
-      } catch {
-        // fallback
-      }
-
-      const { error } = await supabase.from("tech_shifts").insert(payload);
-      if (error) throw error;
+      await fetchJson<{ ok: true }>("/api/scheduling/shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
       await loadShifts();
     } catch (e) {
@@ -720,7 +730,11 @@ export default function SchedulingClient(): JSX.Element {
   // -----------------------------------
   // Mutations: punches (Rule A trigger sets user_id from shift)
   // -----------------------------------
-  async function addPunch(shiftId: string, event_type: PunchType, when: string): Promise<void> {
+  async function addPunch(
+    shiftId: string,
+    event_type: PunchType,
+    when: string,
+  ): Promise<void> {
     setErr(null);
     try {
       await fetchJson<{ ok: true }>("/api/scheduling/punches", {
@@ -771,7 +785,10 @@ export default function SchedulingClient(): JSX.Element {
     }
   }
 
-  async function shiftPunchesByMinutes(shiftId: string, deltaMinutes: number): Promise<void> {
+  async function shiftPunchesByMinutes(
+    shiftId: string,
+    deltaMinutes: number,
+  ): Promise<void> {
     const punches = punchesByShift[shiftId] ?? [];
     if (punches.length === 0) return;
 
@@ -782,7 +799,9 @@ export default function SchedulingClient(): JSX.Element {
         const dt = new Date(p.timestamp);
         if (!isValid(dt)) continue;
 
-        const newIso = new Date(dt.getTime() + deltaMinutes * 60000).toISOString();
+        const newIso = new Date(
+          dt.getTime() + deltaMinutes * 60000,
+        ).toISOString();
 
         await fetchJson<{ ok: true }>(`/api/scheduling/punches/${p.id}`, {
           method: "PATCH",
@@ -796,7 +815,10 @@ export default function SchedulingClient(): JSX.Element {
     }
   }
 
-  async function roundPunchesToNearest(shiftId: string, stepMinutes: number): Promise<void> {
+  async function roundPunchesToNearest(
+    shiftId: string,
+    stepMinutes: number,
+  ): Promise<void> {
     const punches = punchesByShift[shiftId] ?? [];
     if (punches.length === 0) return;
 
@@ -885,7 +907,10 @@ export default function SchedulingClient(): JSX.Element {
     }
   }
 
-  async function updateSessionLine(sessionId: string, lineId: string): Promise<void> {
+  async function updateSessionLine(
+    sessionId: string,
+    lineId: string,
+  ): Promise<void> {
     setErr(null);
     try {
       await fetchJson<{ ok: true }>(`/api/scheduling/sessions/${sessionId}`, {
@@ -959,7 +984,9 @@ export default function SchedulingClient(): JSX.Element {
 
             <div className="ml-auto flex items-center gap-2 text-xs text-neutral-400">
               <span className="uppercase tracking-[0.14em]">Access</span>
-              <span className={canEditAll ? "text-emerald-300" : "text-neutral-300"}>
+              <span
+                className={canEditAll ? "text-emerald-300" : "text-neutral-300"}
+              >
                 {canEditAll ? "Admin" : "Self"}
               </span>
             </div>
@@ -1016,7 +1043,8 @@ export default function SchedulingClient(): JSX.Element {
                 <option value="">{isAdmin ? "All staff" : "Me"}</option>
                 {filteredUsers.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.full_name ?? u.id.slice(0, 8)} {u.role ? `(${u.role})` : ""}
+                    {u.full_name ?? u.id.slice(0, 8)}{" "}
+                    {u.role ? `(${u.role})` : ""}
                   </option>
                 ))}
               </select>
@@ -1044,7 +1072,11 @@ export default function SchedulingClient(): JSX.Element {
                   {utilization != null && (
                     <div>
                       <span className={T.sublabel}>Utilization</span>
-                      <div className={["font-semibold", T.copperSoftText].join(" ")}>
+                      <div
+                        className={["font-semibold", T.copperSoftText].join(
+                          " ",
+                        )}
+                      >
                         {utilization}%
                       </div>
                     </div>
@@ -1056,7 +1088,9 @@ export default function SchedulingClient(): JSX.Element {
                 type="button"
                 variant="default"
                 className="font-semibold"
-                onClick={() => void (tab === "sessions" ? loadSessions() : loadShifts())}
+                onClick={() =>
+                  void (tab === "sessions" ? loadSessions() : loadShifts())
+                }
               >
                 Refresh
               </Button>
@@ -1072,7 +1106,11 @@ export default function SchedulingClient(): JSX.Element {
 
         {/* Create forms */}
         {tab === "shifts" && (
-          <div className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(" ")}>
+          <div
+            className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(
+              " ",
+            )}
+          >
             <div>
               <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
                 Scheduling
@@ -1081,7 +1119,8 @@ export default function SchedulingClient(): JSX.Element {
                 Create a shift
               </div>
               <div className="mt-1 text-xs text-neutral-400">
-                Shifts are shop-scoped. Punches belong to the shift owner (Rule A).
+                Shifts are shop-scoped. Punches belong to the shift owner (Rule
+                A).
               </div>
             </div>
 
@@ -1099,7 +1138,8 @@ export default function SchedulingClient(): JSX.Element {
                   </option>
                   {filteredUsers.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.full_name ?? u.id.slice(0, 8)} {u.role ? `(${u.role})` : ""}
+                      {u.full_name ?? u.id.slice(0, 8)}{" "}
+                      {u.role ? `(${u.role})` : ""}
                     </option>
                   ))}
                 </select>
@@ -1140,14 +1180,19 @@ export default function SchedulingClient(): JSX.Element {
 
             {!canEditAll && (
               <div className="mt-3 text-xs text-neutral-500">
-                You can view your own shifts here. Managers/Admins can create schedules for all staff.
+                You can view your own shifts here. Managers/Admins can create
+                schedules for all staff.
               </div>
             )}
           </div>
         )}
 
         {tab === "sessions" && (
-          <div className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(" ")}>
+          <div
+            className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(
+              " ",
+            )}
+          >
             <div>
               <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
                 Job time
@@ -1156,7 +1201,8 @@ export default function SchedulingClient(): JSX.Element {
                 Create a job session
               </div>
               <div className="mt-1 text-xs text-neutral-400">
-                Use this to correct time on a work order (and optionally a work order line).
+                Use this to correct time on a work order (and optionally a work
+                order line).
               </div>
             </div>
 
@@ -1174,7 +1220,8 @@ export default function SchedulingClient(): JSX.Element {
                   </option>
                   {filteredUsers.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.full_name ?? u.id.slice(0, 8)} {u.role ? `(${u.role})` : ""}
+                      {u.full_name ?? u.id.slice(0, 8)}{" "}
+                      {u.role ? `(${u.role})` : ""}
                     </option>
                   ))}
                 </select>
@@ -1185,7 +1232,9 @@ export default function SchedulingClient(): JSX.Element {
                 <input
                   type="text"
                   value={newSessionWorkOrderId}
-                  onChange={(e) => setNewSessionWorkOrderId(e.target.value.trim())}
+                  onChange={(e) =>
+                    setNewSessionWorkOrderId(e.target.value.trim())
+                  }
                   className={[T.input, T.border, "w-full"].join(" ")}
                   placeholder="UUID…"
                   disabled={!canEditAll}
@@ -1299,7 +1348,11 @@ function ShiftsView(props: {
   onDuplicateShift: (shift: ShiftRow) => Promise<void>;
 
   onAddPunch: (shiftId: string, type: PunchType, when: string) => Promise<void>;
-  onUpdatePunch: (punchId: string, when: string, type?: PunchType) => Promise<void>;
+  onUpdatePunch: (
+    punchId: string,
+    when: string,
+    type?: PunchType,
+  ) => Promise<void>;
   onDeletePunch: (punchId: string) => Promise<void>;
 
   onShiftPunches: (shiftId: string, deltaMinutes: number) => Promise<void>;
@@ -1323,7 +1376,15 @@ function ShiftsView(props: {
 
   if (loading) {
     return (
-      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-300"].join(" ")}>
+      <div
+        className={[
+          T.panel,
+          T.border,
+          T.glass,
+          T.shadow,
+          "px-4 py-6 text-sm text-neutral-300",
+        ].join(" ")}
+      >
         Loading shifts…
       </div>
     );
@@ -1331,7 +1392,15 @@ function ShiftsView(props: {
 
   if (shifts.length === 0) {
     return (
-      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-400"].join(" ")}>
+      <div
+        className={[
+          T.panel,
+          T.border,
+          T.glass,
+          T.shadow,
+          "px-4 py-6 text-sm text-neutral-400",
+        ].join(" ")}
+      >
         No shifts in this range.
       </div>
     );
@@ -1344,7 +1413,16 @@ function ShiftsView(props: {
         const minutes = computeWorkedMinutes(s, punches);
 
         return (
-          <div key={s.id} className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-4"].join(" ")}>
+          <div
+            key={s.id}
+            className={[
+              T.panel,
+              T.border,
+              T.glass,
+              T.shadow,
+              "px-4 py-4",
+            ].join(" ")}
+          >
             {/* Shift header */}
             <div className="flex flex-wrap items-start gap-4">
               <div className="min-w-[220px]">
@@ -1364,7 +1442,9 @@ function ShiftsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.start_time)}
-                  onChange={(e) => void onUpdateShiftTime(s.id, "start_time", e.target.value)}
+                  onChange={(e) =>
+                    void onUpdateShiftTime(s.id, "start_time", e.target.value)
+                  }
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1375,7 +1455,9 @@ function ShiftsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.end_time ?? null)}
-                  onChange={(e) => void onUpdateShiftTime(s.id, "end_time", e.target.value)}
+                  onChange={(e) =>
+                    void onUpdateShiftTime(s.id, "end_time", e.target.value)
+                  }
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1426,7 +1508,8 @@ function ShiftsView(props: {
                     Punch events
                   </div>
                   <div className="mt-1 text-xs text-neutral-500">
-                    Add/edit punches to correct day totals (break/lunch subtracted).
+                    Add/edit punches to correct day totals (break/lunch
+                    subtracted).
                   </div>
                 </div>
 
@@ -1480,7 +1563,9 @@ function ShiftsView(props: {
                       key={p.id}
                       punch={p}
                       disabled={!canEditAll}
-                      onUpdate={(when, type) => void onUpdatePunch(p.id, when, type)}
+                      onUpdate={(when, type) =>
+                        void onUpdatePunch(p.id, when, type)
+                      }
                       onDelete={() => void onDeletePunch(p.id)}
                     />
                   ))}
@@ -1525,7 +1610,15 @@ function SessionsView(props: {
 
   if (loading) {
     return (
-      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-300"].join(" ")}>
+      <div
+        className={[
+          T.panel,
+          T.border,
+          T.glass,
+          T.shadow,
+          "px-4 py-6 text-sm text-neutral-300",
+        ].join(" ")}
+      >
         Loading job sessions…
       </div>
     );
@@ -1533,7 +1626,15 @@ function SessionsView(props: {
 
   if (sessions.length === 0) {
     return (
-      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-400"].join(" ")}>
+      <div
+        className={[
+          T.panel,
+          T.border,
+          T.glass,
+          T.shadow,
+          "px-4 py-6 text-sm text-neutral-400",
+        ].join(" ")}
+      >
         No job sessions in this range.
       </div>
     );
@@ -1546,10 +1647,21 @@ function SessionsView(props: {
         const lineOptions = woId ? linesByWorkOrder[woId] ?? [] : [];
 
         const durationMins =
-          s.started_at && s.ended_at ? minutesBetween(s.started_at, s.ended_at) : 0;
+          s.started_at && s.ended_at
+            ? minutesBetween(s.started_at, s.ended_at)
+            : 0;
 
         return (
-          <div key={s.id} className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-4"].join(" ")}>
+          <div
+            key={s.id}
+            className={[
+              T.panel,
+              T.border,
+              T.glass,
+              T.shadow,
+              "px-4 py-4",
+            ].join(" ")}
+          >
             <div className="flex flex-wrap items-start gap-4">
               <div className="min-w-[220px]">
                 <div className="text-[0.65rem] uppercase tracking-[0.16em] text-neutral-400">
@@ -1592,7 +1704,9 @@ function SessionsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.started_at)}
-                  onChange={(e) => void onUpdateTime(s.id, "started_at", e.target.value)}
+                  onChange={(e) =>
+                    void onUpdateTime(s.id, "started_at", e.target.value)
+                  }
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1603,7 +1717,9 @@ function SessionsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.ended_at ?? null)}
-                  onChange={(e) => void onUpdateTime(s.id, "ended_at", e.target.value)}
+                  onChange={(e) =>
+                    void onUpdateTime(s.id, "ended_at", e.target.value)
+                  }
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1646,7 +1762,9 @@ function AddPunchInline(props: {
   const { disabled, onAdd } = props;
 
   const [type, setType] = useState<PunchType>("start");
-  const [when, setWhen] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+  const [when, setWhen] = useState<string>(() =>
+    format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+  );
 
   const control =
     "rounded-md border border-[color:var(--metal-border-soft,#1f2937)] " +
@@ -1698,8 +1816,12 @@ function PunchRowEditor(props: {
 }) {
   const { punch, disabled, onUpdate, onDelete } = props;
 
-  const [when, setWhen] = useState<string>(() => isoToLocalInput(punch.timestamp ?? null));
-  const [type, setType] = useState<PunchType>(((punch.event_type as PunchType) ?? "start") as PunchType);
+  const [when, setWhen] = useState<string>(() =>
+    isoToLocalInput(punch.timestamp ?? null),
+  );
+  const [type, setType] = useState<PunchType>(
+    ((punch.event_type as PunchType) ?? "start") as PunchType,
+  );
   const [dirty, setDirty] = useState<boolean>(false);
 
   const control =
