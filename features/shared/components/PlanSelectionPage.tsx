@@ -1,210 +1,205 @@
 "use client";
 
-import { useState} from "react";
-import { PRICE_IDS } from "@stripe/lib/stripe/constants";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
+import { PLAN_LOOKUP_KEYS, type PlanKey } from "@/features/stripe/lib/stripe/constants";
 
-type PlanKey = "free" | "diy" | "pro" | "pro_plus";
+type DB = Database;
+
+type UiPlan = {
+  key: PlanKey;
+  name: string;
+  description: string;
+  priceLabel: string;
+  features: string[];
+};
 
 export default function PlanSelectionPage() {
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [selectedPlan, setSelectedPlan] = useState<PlanKey | null>(null);
-  const [isYearly, setIsYearly] = useState(false);
   const [loading, setLoading] = useState(false);
-    const supabase = createClientComponentClient<Database>();
 
-  const router = useRouter();
+  const PLANS: UiPlan[] = useMemo(
+    () => [
+      {
+        key: "pro30",
+        name: "Pro",
+        description: "Full system for shops up to 30 users",
+        priceLabel: "$300 / month",
+        features: [
+          "Work orders + invoicing",
+          "Inspections + templates",
+          "Parts + inventory",
+          "AI assistant + diagnostics",
+          "Up to 30 team users",
+        ],
+      },
+      {
+        key: "unlimited",
+        name: "Unlimited",
+        description: "For larger teams (no user cap)",
+        priceLabel: "$500 / month",
+        features: [
+          "Everything in Pro",
+          "Unlimited team users",
+          "Best for multi-tech shops",
+          "Priority feature access (as released)",
+        ],
+      },
+    ],
+    [],
+  );
 
-  const handleCheckout = async (plan: PlanKey) => {
+  async function handleCheckout(plan: PlanKey) {
+    if (loading) return;
+
     setSelectedPlan(plan);
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      alert("You must be signed in");
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("You must be signed in");
+        return;
+      }
+
+      // You store plan on shop; user limits are enforced by DB triggers now.
+      const { data: profile, error: profErr } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profErr) {
+        alert(profErr.message);
+        return;
+      }
+
+      const shopId = profile?.shop_id ?? null;
+      if (!shopId) {
+        alert("No shop found for this user.");
+        return;
+      }
+
+      // Your /api/stripe/checkout route expects: { planKey: "price_*", shopId, userId? }
+      // We resolve the correct Stripe price server-side via lookup key.
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lookupKey: PLAN_LOOKUP_KEYS[plan],
+          shopId,
+          userId: user.id,
+        }),
+      });
+
+      const j = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+
+      if (!res.ok || !j.url) {
+        alert(j.error || "Checkout failed");
+        return;
+      }
+
+      window.location.href = j.url;
+    } finally {
       setLoading(false);
-      return;
     }
+  }
 
-    if (plan === "free") {
-      await supabase.from("profiles").update({ plan }).eq("id", user.id);
-      router.push("/onboarding/profile");
-      return;
-    }
-
-    const priceId = isYearly
-      ? PRICE_IDS[plan]?.yearly
-      : PRICE_IDS[plan]?.monthly;
-    if (!priceId) {
-      alert("Invalid plan selected");
-      setLoading(false);
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .single();
-
-    const res = await fetch("/api/stripe/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        planKey: priceId,
-        interval: isYearly ? "yearly" : "monthly",
-        isAddon: false,
-        shopId: profile?.shop_id || null,
-        userId: user.id,
-      }),
-    });
-
-    const { id } = await res.json();
-    if (id) {
-      window.location.href = `https://checkout.stripe.com/c/pay/${id}`;
-    } else {
-      alert("Failed to redirect to Stripe");
-    }
-
-    setLoading(false);
-  };
   return (
-    <div className="min-h-screen bg-black text-white px-6 py-16">
-      <div className="max-w-6xl mx-auto text-center">
-        <h1 className="text-4xl font-blackops text-orange-500 mb-6">
-          Choose Your Plan
+    <div className="min-h-screen px-4 py-14 text-neutral-100 bg-[radial-gradient(circle_at_top,_#050910,_#020308_60%,_#000)]">
+      <div className="mx-auto w-full max-w-6xl text-center">
+        <div className="font-blackops text-[0.75rem] tracking-[0.28em] text-neutral-300">
+          PROFIXIQ BILLING
+        </div>
+        <h1 className="mt-2 text-3xl sm:text-4xl font-semibold text-neutral-50">
+          Choose your plan
         </h1>
-        <p className="text-gray-400 mb-10">
-          Unlock AI diagnostics, smart inspections, and streamlined workflows.
+        <p className="mt-2 text-sm text-neutral-300">
+          Burnt copper • glass cards • monthly plans • upgrade anytime.
         </p>
 
-        <div className="flex justify-center gap-4 mb-10">
-          <button
-            className={`px-4 py-2 rounded font-blackops ${
-              !isYearly
-                ? "bg-orange-500 text-black"
-                : "bg-neutral-800 text-white"
-            }`}
-            onClick={() => setIsYearly(false)}
-          >
-            Monthly
-          </button>
-          <button
-            className={`px-4 py-2 rounded font-blackops ${
-              isYearly
-                ? "bg-orange-500 text-black"
-                : "bg-neutral-800 text-white"
-            }`}
-            onClick={() => setIsYearly(true)}
-          >
-            Yearly
-          </button>
+        <div className="mt-10 grid gap-6 md:grid-cols-2">
+          {PLANS.map((plan) => {
+            const active = selectedPlan === plan.key;
+            const primary = plan.key === "unlimited";
+
+            return (
+              <button
+                key={plan.key}
+                onClick={() => void handleCheckout(plan.key)}
+                disabled={loading}
+                className={[
+                  "text-left rounded-2xl border p-6 transition",
+                  "border-[var(--metal-border-soft)] bg-black/35 backdrop-blur",
+                  "shadow-[0_24px_80px_rgba(0,0,0,0.75)]",
+                  "hover:bg-black/45 hover:border-[color:var(--accent-copper-soft)]",
+                  active
+                    ? "ring-1 ring-[color:var(--accent-copper)]/40 border-[color:var(--accent-copper)]/70 shadow-[0_0_30px_rgba(212,118,49,0.22)]"
+                    : "",
+                  primary ? "md:translate-y-[-2px]" : "",
+                ].join(" ")}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-blackops text-[0.7rem] tracking-[0.24em] text-[var(--accent-copper-light)]">
+                      {plan.name.toUpperCase()}
+                    </div>
+                    <div className="mt-1 text-sm text-neutral-200">{plan.description}</div>
+                  </div>
+
+                  {primary ? (
+                    <div className="rounded-full border border-[var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-neutral-200">
+                      Recommended
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-5 flex items-end gap-2">
+                  <div className="text-3xl font-semibold text-neutral-50">{plan.priceLabel}</div>
+                </div>
+
+                <ul className="mt-5 space-y-2 text-sm text-neutral-200">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2">
+                      <span className="mt-[0.2rem] inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--accent-copper)] shadow-[0_0_14px_rgba(212,118,49,0.55)]" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-6 flex items-center gap-2">
+                  <span
+                    className={[
+                      "inline-flex rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em]",
+                      "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black",
+                      "shadow-[0_0_20px_rgba(212,118,49,0.55)]",
+                      loading && active ? "opacity-70" : "hover:brightness-110",
+                    ].join(" ")}
+                  >
+                    {loading && active ? "Starting…" : "Choose plan"}
+                  </span>
+
+                  <span className="text-[11px] text-neutral-400">
+                    Limits enforced automatically.
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-          {(
-            [
-              {
-                key: "free",
-                name: "Free",
-                description: "Try the basics",
-                price: "$0",
-                features: [
-                  "5 AI uses",
-                  "No inspections",
-                  "1 vehicle",
-                  "No support",
-                ],
-              },
-              {
-                key: "diy",
-                name: "DIY",
-                description: "For home users",
-                price: isYearly ? "$90/year" : "$9/month",
-                features: [
-                  "Basic AI",
-                  "Limited inspections",
-                  "Photo upload",
-                  "Email support",
-                ],
-              },
-              {
-                key: "pro",
-                name: "Pro",
-                description: "For solo pros",
-                price: isYearly ? "$490/year" : "$49/month",
-                features: [
-                  "Unlimited AI",
-                  "Voice & photo",
-                  "PDF export",
-                  "1 user",
-                ],
-              },
-              {
-                key: "pro_plus",
-                name: "Pro+",
-                description: "For teams",
-                price: isYearly ? "$990/year" : "$99/month",
-                features: [
-                  "All features",
-                  "5 users",
-                  "Admin/Tech roles",
-                  "+$49/user addon",
-                ],
-              },
-            ] as {
-              key: PlanKey;
-              name: string;
-              description: string;
-              price: string;
-              features: string[];
-            }[]
-          ).map((plan) => (
-            <button
-              key={plan.key}
-              onClick={() => handleCheckout(plan.key)}
-              disabled={loading}
-              className={`p-6 border rounded-xl text-left transition-all hover:bg-neutral-800 ${
-                selectedPlan === plan.key
-                  ? "border-orange-500 ring-2 ring-orange-500"
-                  : "border-neutral-700"
-              }`}
-            >
-              <h2 className="text-xl font-blackops text-orange-400">
-                {plan.name}
-              </h2>
-              <p className="text-sm text-gray-400 mb-2">{plan.description}</p>
-              <p className="text-lg text-orange-500 font-bold mb-4">
-                {plan.price}
-              </p>
-              <ul className="text-sm text-gray-300 space-y-1">
-                {plan.features.map((feature, i) => (
-                  <li key={i}>✓ {feature}</li>
-                ))}
-              </ul>
-            </button>
-          ))}
-        </div>
-        <p className="mt-10 text-sm text-gray-500">
-          You can upgrade, downgrade, or cancel anytime. Free plan always
-          available.
+        <p className="mt-10 text-xs text-neutral-500">
+          You can change plans anytime. Payments are handled securely by Stripe.
         </p>
       </div>
-
-      {/* Optional floating Ask AI button */}
-      <button
-        onClick={() => {
-          const chatbot = document.getElementById("chatbot-button");
-          if (chatbot) chatbot.click();
-        }}
-        className="fixed bottom-6 right-6 z-50 bg-orange-500 hover:bg-orange-600 text-black font-blackops px-4 py-3 rounded-full shadow-lg transition-all duration-300"
-      >
-        Ask AI
-      </button>
     </div>
   );
 }
