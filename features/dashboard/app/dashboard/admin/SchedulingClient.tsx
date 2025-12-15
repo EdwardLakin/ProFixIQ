@@ -148,6 +148,20 @@ type SchedulingContext = {
   users: UserLite[];
 };
 
+type AssignedWorkOrder = {
+  id: string;
+  custom_id: string | null;
+  status: string | null;
+  vehicle_id?: string | null;
+};
+
+type AssignedLine = {
+  id: string;
+  description: string | null;
+  complaint: string | null;
+  job_type: string | null;
+};
+
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const res = await fetch(input, init);
 
@@ -171,6 +185,15 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   }
 
   return parsed as T;
+}
+
+
+function keepEndSameDay(startLocal: string, endLocal: string): string {
+  // If start date changes, force end date to match start date (keep time part from endLocal)
+  const [startDate] = startLocal.split("T");
+  const parts = endLocal.split("T");
+  const endTime = parts[1] ?? "17:00";
+  return `${startDate}T${endTime}`;
 }
 
 export default function SchedulingClient(): JSX.Element {
@@ -211,7 +234,7 @@ export default function SchedulingClient(): JSX.Element {
   // Create Shift form
   const [newShiftUserId, setNewShiftUserId] = useState<string>("");
   const [newShiftStart, setNewShiftStart] = useState<string>(() =>
-    format(new Date(), "yyyy-MM-dd'T'09:00"),
+    format(new Date(), "yyyy-MM-dd'T'08:00"),
   );
   const [newShiftEnd, setNewShiftEnd] = useState<string>(() =>
     format(new Date(), "yyyy-MM-dd'T'17:00"),
@@ -230,6 +253,15 @@ export default function SchedulingClient(): JSX.Element {
     format(new Date(), "yyyy-MM-dd'T'10:00"),
   );
   const [creatingSession, setCreatingSession] = useState<boolean>(false);
+
+  // Assigned WO/lines (for create session)
+  const [assignedWorkOrders, setAssignedWorkOrders] = useState<
+    AssignedWorkOrder[]
+  >([]);
+  const [assignedLines, setAssignedLines] = useState<AssignedLine[]>([]);
+  const [loadingAssignedWos, setLoadingAssignedWos] = useState<boolean>(false);
+  const [loadingAssignedLines, setLoadingAssignedLines] =
+    useState<boolean>(false);
 
   const isAdmin = useMemo(() => {
     const r = (me?.role ?? "").toLowerCase();
@@ -380,6 +412,77 @@ export default function SchedulingClient(): JSX.Element {
     const u = users.find((x) => x.id === id);
     return u?.full_name ?? (id ? id.slice(0, 8) : "—");
   }
+
+  // -----------------------------------
+  // Assigned WOs/Lines helpers (create session UX)
+  // -----------------------------------
+  const loadAssignedWorkOrders = useCallback(
+    async (uid: string) => {
+      if (!currentShopId) return;
+      setLoadingAssignedWos(true);
+      try {
+        const qs = new URLSearchParams();
+        qs.set("shop_id", currentShopId);
+        qs.set("user_id", uid);
+        qs.set("status", "open"); // change to "all" if you want everything
+
+        const data = await fetchJson<{ workOrders: AssignedWorkOrder[] }>(
+          `/api/scheduling/assigned-work-orders?${qs.toString()}`,
+        );
+        setAssignedWorkOrders(data.workOrders ?? []);
+      } catch {
+        setAssignedWorkOrders([]);
+      } finally {
+        setLoadingAssignedWos(false);
+      }
+    },
+    [currentShopId],
+  );
+
+  const loadAssignedLines = useCallback(
+    async (uid: string, workOrderId: string) => {
+      if (!currentShopId || !workOrderId) return;
+      setLoadingAssignedLines(true);
+      try {
+        const qs = new URLSearchParams();
+        qs.set("shop_id", currentShopId);
+        qs.set("user_id", uid);
+        qs.set("work_order_id", workOrderId);
+
+        const data = await fetchJson<{ lines: AssignedLine[] }>(
+          `/api/scheduling/assigned-work-order-lines?${qs.toString()}`,
+        );
+        setAssignedLines(data.lines ?? []);
+      } catch {
+        setAssignedLines([]);
+      } finally {
+        setLoadingAssignedLines(false);
+      }
+    },
+    [currentShopId],
+  );
+
+  // When session employee changes: refresh WO list, clear selections
+  useEffect(() => {
+    const uid = (newSessionUserId || userId).trim();
+    if (!uid || !canEditAll) return;
+
+    setNewSessionWorkOrderId("");
+    setNewSessionLineId("");
+    setAssignedLines([]);
+
+    void loadAssignedWorkOrders(uid);
+  }, [newSessionUserId, userId, canEditAll, loadAssignedWorkOrders]);
+
+  // When WO changes: refresh line list, clear line selection
+  useEffect(() => {
+    const uid = (newSessionUserId || userId).trim();
+    const wo = newSessionWorkOrderId.trim();
+    if (!uid || !wo || !canEditAll) return;
+
+    setNewSessionLineId("");
+    void loadAssignedLines(uid, wo);
+  }, [newSessionUserId, userId, newSessionWorkOrderId, canEditAll, loadAssignedLines]);
 
   // -----------------------------------
   // Load: Shifts + Punches + Billable
@@ -644,7 +747,9 @@ export default function SchedulingClient(): JSX.Element {
       shop_id: currentShopId,
       start_time: localInputToIso(newShiftStart),
       end_time: localInputToIso(newShiftEnd),
-      // leave status/type to defaults unless you explicitly set them
+      // IMPORTANT: satisfy tech_shifts CHECK constraints
+      type: "shift",
+      status: "open",
     };
 
     try {
@@ -709,8 +814,8 @@ export default function SchedulingClient(): JSX.Element {
         shop_id: currentShopId,
         start_time: shift.start_time,
         end_time: shift.end_time ?? null,
-        type: shift.type ?? null,
-        status: shift.status ?? null,
+        type: (shift.type ?? "shift") as ShiftRow["type"],
+        status: (shift.status ?? "open") as ShiftRow["status"],
       };
 
       await fetchJson<{ ok: true }>("/api/scheduling/shifts", {
@@ -860,7 +965,7 @@ export default function SchedulingClient(): JSX.Element {
       return;
     }
     if (!newSessionWorkOrderId) {
-      setErr("Enter a Work Order ID for the session.");
+      setErr("Select a Work Order for the session.");
       return;
     }
 
@@ -1150,10 +1255,17 @@ export default function SchedulingClient(): JSX.Element {
                 <input
                   type="datetime-local"
                   value={newShiftStart}
-                  onChange={(e) => setNewShiftStart(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setNewShiftStart(v);
+                    setNewShiftEnd((prev) => keepEndSameDay(v, prev));
+                  }}
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
+                <div className="mt-1 text-[0.7rem] text-neutral-500">
+                  Default 8:00 AM
+                </div>
               </div>
 
               <div>
@@ -1227,30 +1339,56 @@ export default function SchedulingClient(): JSX.Element {
                 </select>
               </div>
 
-              <div className="min-w-[240px]">
-                <label className={T.label}>Work order ID</label>
-                <input
-                  type="text"
+              <div className="min-w-[260px]">
+                <label className={T.label}>Work order</label>
+                <select
                   value={newSessionWorkOrderId}
-                  onChange={(e) =>
-                    setNewSessionWorkOrderId(e.target.value.trim())
-                  }
-                  className={[T.input, T.border, "w-full"].join(" ")}
-                  placeholder="UUID…"
-                  disabled={!canEditAll}
-                />
+                  onChange={(e) => setNewSessionWorkOrderId(e.target.value)}
+                  className={[T.select, T.border, "w-full"].join(" ")}
+                  disabled={!canEditAll || loadingAssignedWos}
+                >
+                  <option value="">
+                    {loadingAssignedWos ? "Loading work orders…" : "Select work order"}
+                  </option>
+                  {assignedWorkOrders.map((wo) => (
+                    <option key={wo.id} value={wo.id}>
+                      {(wo.custom_id ? `WO ${wo.custom_id}` : wo.id.slice(0, 8)) +
+                        (wo.status ? ` (${wo.status})` : "")}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-1 text-[0.7rem] text-neutral-500">
+                  Shows only work orders assigned to the selected employee.
+                </div>
               </div>
 
-              <div className="min-w-[240px]">
-                <label className={T.label}>Work order line ID (optional)</label>
-                <input
-                  type="text"
+              <div className="min-w-[320px]">
+                <label className={T.label}>Line (optional)</label>
+                <select
                   value={newSessionLineId}
-                  onChange={(e) => setNewSessionLineId(e.target.value.trim())}
-                  className={[T.input, T.border, "w-full"].join(" ")}
-                  placeholder="UUID…"
-                  disabled={!canEditAll}
-                />
+                  onChange={(e) => setNewSessionLineId(e.target.value)}
+                  className={[T.select, T.border, "w-full"].join(" ")}
+                  disabled={
+                    !canEditAll ||
+                    !newSessionWorkOrderId ||
+                    loadingAssignedLines
+                  }
+                >
+                  <option value="">
+                    {loadingAssignedLines ? "Loading lines…" : "— None —"}
+                  </option>
+                  {assignedLines.map((l) => {
+                    const label =
+                      l.description ||
+                      l.complaint ||
+                      (l.job_type ? String(l.job_type) : l.id.slice(0, 8));
+                    return (
+                      <option key={l.id} value={l.id}>
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
 
               <div>
@@ -1823,6 +1961,13 @@ function PunchRowEditor(props: {
     ((punch.event_type as PunchType) ?? "start") as PunchType,
   );
   const [dirty, setDirty] = useState<boolean>(false);
+
+  useEffect(() => {
+    // keep in sync if parent reloads punches
+    setWhen(isoToLocalInput(punch.timestamp ?? null));
+    setType(((punch.event_type as PunchType) ?? "start") as PunchType);
+    setDirty(false);
+  }, [punch.id, punch.timestamp, punch.event_type]);
 
   const control =
     "rounded-md border border-[color:var(--metal-border-soft,#1f2937)] " +

@@ -1,3 +1,4 @@
+// shared/components/JobPunchButton.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -34,9 +35,7 @@ export default function JobPunchButton({
   const normalizedStatus = (status ?? "").toLowerCase();
   const isOnHold = normalizedStatus === "on_hold";
 
-  // started = we have an open punch (in + no out) and not on hold
   const isStarted = !!punchedInAt && !punchedOutAt && !isOnHold;
-
   const effectiveDisabled = disabled || isOnHold;
 
   const showFlash = (kind: typeof flash) => {
@@ -44,15 +43,11 @@ export default function JobPunchButton({
     window.setTimeout(() => setFlash(null), 1200);
   };
 
-  /* ------------------------------------------------------------------ */
-  /* Core punch actions – RPC, plus explicit line status/time update    */
-  /* ------------------------------------------------------------------ */
-
   const start = async () => {
     if (busy || effectiveDisabled) return;
     setBusy(true);
     try {
-      // 1) Core punch RPC (enforces single active job, assignment, etc.)
+      // Uses your RPC (enforces one active job, assignment, etc.)
       const { error: punchErr } = await supabase.rpc("punch_in", {
         line_id: lineId,
       });
@@ -68,19 +63,14 @@ export default function JobPunchButton({
         return;
       }
 
-      // 2) Make sure the work_order_lines row reflects this:
-      //    - status -> in_progress
-      //    - punched_out_at cleared so the timer is "running"
-      //    - punched_in_at set the first time we ever start this job
       const nowIso = new Date().toISOString();
+
       const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
         status: "in_progress",
         punched_out_at: null,
       };
 
-      if (!punchedInAt) {
-        update.punched_in_at = nowIso;
-      }
+      if (!punchedInAt) update.punched_in_at = nowIso;
 
       const { error: lineErr } = await supabase
         .from("work_order_lines")
@@ -97,14 +87,13 @@ export default function JobPunchButton({
 
       window.dispatchEvent(new CustomEvent("wol:refresh"));
       await onUpdated?.();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Start failed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Start failed");
     } finally {
       setBusy(false);
     }
   };
 
-  // Finishing still goes through the Cause / Correction modal.
   const handlePrimary = () => {
     if (busy || effectiveDisabled) return;
 
