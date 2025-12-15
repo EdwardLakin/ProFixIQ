@@ -100,11 +100,7 @@ export default function RoleSidebar() {
   }, [pathname, sortedGroups]);
 
   if (!role) {
-    return (
-      <div className="p-4 text-xs text-neutral-400">
-        Loading navigation…
-      </div>
-    );
+    return <div className="p-4 text-xs text-neutral-400">Loading navigation…</div>;
   }
 
   const toggleSection = (key: string) => {
@@ -134,16 +130,16 @@ export default function RoleSidebar() {
               className={cn(
                 "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left",
                 "text-[0.65rem] uppercase tracking-[0.16em]",
-                "border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40",
-                "hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-white/5",
+                "border border-[var(--metal-border-soft)] bg-black/40",
+                "hover:border-[var(--accent-copper-soft)] hover:bg-white/5",
                 "text-neutral-400 hover:text-white transition-colors",
                 hasActive &&
-                  "border-[color:var(--accent-copper,#f97316)]/80 text-white shadow-[0_0_18px_rgba(249,115,22,0.55)]",
+                  "border-[var(--accent-copper)]/80 text-white shadow-[0_0_18px_rgba(212,118,49,0.45)]",
               )}
             >
               <span className="flex items-center gap-2">
                 {hasActive && (
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--accent-copper,#f97316)] shadow-[0_0_14px_rgba(249,115,22,0.9)]" />
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent-copper)] shadow-[0_0_14px_rgba(212,118,49,0.75)]" />
                 )}
                 <span>{labelForGroup(group)}</span>
               </span>
@@ -168,8 +164,8 @@ export default function RoleSidebar() {
                         "group flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[0.8rem] transition-colors",
                         "border bg-gradient-to-r from-slate-950/70 via-black/70 to-slate-950/70",
                         active
-                          ? "border-[color:var(--accent-copper,#f97316)]/75 text-white shadow-[0_0_25px_rgba(249,115,22,0.55)]"
-                          : "border-white/5 text-neutral-400 hover:text-white hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/80",
+                          ? "border-[var(--accent-copper)]/75 text-white shadow-[0_0_25px_rgba(212,118,49,0.45)]"
+                          : "border-white/5 text-neutral-400 hover:text-white hover:border-[var(--accent-copper-soft)] hover:bg-black/80",
                       )}
                     >
                       <span className="truncate">{t.title}</span>

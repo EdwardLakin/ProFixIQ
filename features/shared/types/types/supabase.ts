@@ -3699,6 +3699,97 @@ export type Database = {
           },
         ]
       }
+      payments: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          customer_id: string | null
+          description: string | null
+          id: string
+          metadata: Json
+          paid_at: string | null
+          platform_fee_cents: number
+          shop_id: string
+          status: string
+          stripe_charge_id: string | null
+          stripe_checkout_session_id: string | null
+          stripe_connected_account_id: string | null
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string
+          updated_at: string | null
+          work_order_id: string | null
+          work_order_line_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          customer_id?: string | null
+          description?: string | null
+          id?: string
+          metadata?: Json
+          paid_at?: string | null
+          platform_fee_cents?: number
+          shop_id: string
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_connected_account_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_session_id: string
+          updated_at?: string | null
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_id?: string | null
+          description?: string | null
+          id?: string
+          metadata?: Json
+          paid_at?: string | null
+          platform_fee_cents?: number
+          shop_id?: string
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_connected_account_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string
+          updated_at?: string | null
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_deductions: {
         Row: {
           amount: number
@@ -4878,6 +4969,7 @@ export type Database = {
           labor_rate: number | null
           logo_url: string | null
           max_lead_days: number | null
+          max_users: number | null
           min_notice_minutes: number | null
           name: string | null
           owner_id: string
@@ -4894,6 +4986,13 @@ export type Database = {
           shop_name: string | null
           slug: string | null
           street: string | null
+          stripe_account_id: string | null
+          stripe_charges_enabled: boolean
+          stripe_default_currency: string
+          stripe_details_submitted: boolean
+          stripe_onboarding_completed: boolean
+          stripe_payouts_enabled: boolean
+          stripe_platform_fee_bps: number
           supplies_percent: number | null
           tax_rate: number | null
           timezone: string | null
@@ -4924,6 +5023,7 @@ export type Database = {
           labor_rate?: number | null
           logo_url?: string | null
           max_lead_days?: number | null
+          max_users?: number | null
           min_notice_minutes?: number | null
           name?: string | null
           owner_id: string
@@ -4940,6 +5040,13 @@ export type Database = {
           shop_name?: string | null
           slug?: string | null
           street?: string | null
+          stripe_account_id?: string | null
+          stripe_charges_enabled?: boolean
+          stripe_default_currency?: string
+          stripe_details_submitted?: boolean
+          stripe_onboarding_completed?: boolean
+          stripe_payouts_enabled?: boolean
+          stripe_platform_fee_bps?: number
           supplies_percent?: number | null
           tax_rate?: number | null
           timezone?: string | null
@@ -4970,6 +5077,7 @@ export type Database = {
           labor_rate?: number | null
           logo_url?: string | null
           max_lead_days?: number | null
+          max_users?: number | null
           min_notice_minutes?: number | null
           name?: string | null
           owner_id?: string
@@ -4986,6 +5094,13 @@ export type Database = {
           shop_name?: string | null
           slug?: string | null
           street?: string | null
+          stripe_account_id?: string | null
+          stripe_charges_enabled?: boolean
+          stripe_default_currency?: string
+          stripe_details_submitted?: boolean
+          stripe_onboarding_completed?: boolean
+          stripe_payouts_enabled?: boolean
+          stripe_platform_fee_bps?: number
           supplies_percent?: number | null
           tax_rate?: number | null
           timezone?: string | null
@@ -7734,6 +7849,10 @@ export type Database = {
       mark_active: { Args: never; Returns: undefined }
       punch_in: { Args: { line_id: string }; Returns: undefined }
       punch_out: { Args: { line_id: string }; Returns: undefined }
+      recalc_shop_active_user_count: {
+        Args: { p_shop_id: string }
+        Returns: undefined
+      }
       recompute_work_order_status: {
         Args: { p_wo: string }
         Returns: undefined

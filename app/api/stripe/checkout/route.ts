@@ -14,28 +14,26 @@ function getBaseUrl() {
   return "http://localhost:3000";
 }
 
-type Interval = "monthly" | "yearly";
-interface CheckoutPayload {
-  planKey: string;            // Stripe price_ id
-  interval?: Interval;
-  isAddon?: boolean;
-  shopId?: string | null;
+type CheckoutPayload = {
+  planKey: string; // price_*
+  shopId: string;
   userId?: string | null;
-}
+};
 
+/**
+ * ProFixIQ SaaS subscription checkout (shop pays ProFixIQ).
+ * NOTE: This should NOT use Connect transfer_data (that’s for customer payments).
+ */
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as CheckoutPayload;
-    const {
-      planKey,
-      interval = "monthly",
-      isAddon = false,
-      shopId = null,
-      userId = null,
-    } = body ?? {};
+    const { planKey, shopId, userId } = body;
 
     if (!planKey || !planKey.startsWith("price_")) {
-      return NextResponse.json({ error: "Invalid or missing planKey" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid planKey" }, { status: 400 });
+    }
+    if (!shopId) {
+      return NextResponse.json({ error: "Missing shopId" }, { status: 400 });
     }
 
     const base = getBaseUrl();
@@ -44,29 +42,22 @@ export async function POST(req: Request) {
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: planKey, quantity: 1 }],
-      // ✅ Send new users straight to Sign Up (not /confirm)
       success_url: `${base}/signup?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${base}/subscribe`,
-      client_reference_id: userId ?? undefined, // optional; handy for later
       metadata: {
-        plan_key: planKey,
-        interval,
-        is_addon: isAddon ? "true" : "false",
-        ...(shopId ? { shop_id: shopId } : {}),
-        ...(userId ? { supabaseUserId: userId } : {}),
+        shop_id: shopId,
+        supabaseUserId: userId ?? "",
+        purpose: "profixiq_subscription",
       },
     });
-
-    // Optional tiny debug (remove if you want)
-    console.log("[stripe] created checkout", { url: session.url, base });
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[stripe] checkout error:", message, err);
+    console.error("[stripe checkout]", message);
     return NextResponse.json(
-      { error: "Checkout creation failed", details: message },
-      { status: 500 }
+      { error: "Checkout failed", details: message },
+      { status: 500 },
     );
   }
 }

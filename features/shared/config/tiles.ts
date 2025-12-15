@@ -25,7 +25,7 @@ export type Tile = {
   cta?: string;
   roles: Role[];
   scopes: Scope[];
-  section?: string; // for sidebar grouping, e.g. "Operations"
+  section?: string; // optional grouping hint
 };
 
 export const TILES: Tile[] = [
@@ -51,7 +51,6 @@ export const TILES: Tile[] = [
     href: "/work-orders/queue",
     title: "Job Queue",
     subtitle: "Active & in-progress",
-    // 🧠 Shop-level overview: advisors + management, NOT mechanics
     roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["work_orders", "tech", "all"],
     section: "Operations",
@@ -76,7 +75,6 @@ export const TILES: Tile[] = [
     href: "/work-orders/history",
     title: "History",
     subtitle: "Completed work",
-    // 👇 Mechanics can see history read-only
     roles: ["owner", "admin", "manager", "advisor", "mechanic"],
     scopes: ["work_orders", "all"],
     section: "Operations",
@@ -118,13 +116,13 @@ export const TILES: Tile[] = [
     section: "Inspections",
   },
   {
-  href: "/inspections/fleet-import",
-  title: "Fleet Form Import",
-  subtitle: "Scan & convert fleet inspection sheets",
-  roles: ["advisor", "manager", "owner"],
-  scopes: ["inspections", "all"],
-  section: "Inspections",
-},
+    href: "/inspections/fleet-import",
+    title: "Fleet Form Import",
+    subtitle: "Scan & convert fleet inspection sheets",
+    roles: ["advisor", "manager", "owner"],
+    scopes: ["inspections", "all"],
+    section: "Inspections",
+  },
   {
     href: "/inspections/saved",
     title: "Saved Inspections",
@@ -218,6 +216,16 @@ export const TILES: Tile[] = [
     section: "Admin",
   },
 
+  // ✅ NEW: Payments audit
+  {
+    href: "/dashboard/owner/payments",
+    title: "Payments",
+    subtitle: "Customer payments & fees",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["settings", "work_orders", "all"],
+    section: "Admin",
+  },
+
   // --- AI & Tech ---
   {
     href: "/ai/assistant",
@@ -231,7 +239,6 @@ export const TILES: Tile[] = [
     href: "/tech/queue",
     title: "Tech Job Queue",
     subtitle: "My assigned work",
-    // 🔧 Tech-facing queue: mechanics + management
     roles: ["mechanic", "manager", "owner", "admin"],
     scopes: ["tech", "all"],
     section: "Tech",
@@ -240,7 +247,6 @@ export const TILES: Tile[] = [
     href: "/tech/performance",
     title: "My Performance",
     subtitle: "Jobs, hours & efficiency",
-    // Tech can see their own numbers; management can review.
     roles: ["mechanic", "manager", "owner", "admin"],
     scopes: ["tech", "all"],
     section: "Tech",

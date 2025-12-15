@@ -1,36 +1,48 @@
+// features/stripe/lib/stripe/getPlans.ts
+"use server";
+
 import Stripe from "stripe";
+import {
+  PLAN_LOOKUP_KEYS,
+  PLAN_LIMITS,
+  PLAN_PRICING,
+  type PlanKey,
+} from "./constants";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
 });
 
-export async function getPlans() {
-  try {
-    console.log("📦 Fetching active Stripe plans...");
+export type StripePlan = {
+  key: PlanKey;
+  priceId: string;
+  amount: number;
+  userLimit: number;
+};
 
-    const prices = await stripe.prices.list({
-      active: true,
-      expand: ["data.product"],
-    });
+export async function getStripePlans(): Promise<StripePlan[]> {
+  const prices = await stripe.prices.list({
+    lookup_keys: Object.values(PLAN_LOOKUP_KEYS),
+    active: true,
+    expand: ["data.product"],
+    limit: 10,
+  });
 
-    const plans = prices.data
-      .filter((price) => price.recurring)
-      .map((price) => {
-        const product = price.product as Stripe.Product;
+  return (Object.keys(PLAN_LOOKUP_KEYS) as PlanKey[]).map((key) => {
+    const lookupKey = PLAN_LOOKUP_KEYS[key];
+    const price = prices.data.find(
+      (p) => p.lookup_key === lookupKey && p.type === "recurring",
+    );
 
-        return {
-          id: price.id,
-          productName: product?.name || "Unnamed Product",
-          price: (price.unit_amount ?? 0) / 100,
-          interval: price.recurring?.interval,
-        };
-      });
+    if (!price?.id) {
+      throw new Error(`Stripe price not found for ${key}`);
+    }
 
-    console.log(`✅ Retrieved ${plans.length} plans`);
-    return plans;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("❌ Error fetching Stripe plans:", message);
-    throw new Error(`Failed to fetch plans: ${message}`);
-  }
+    return {
+      key,
+      priceId: price.id,
+      amount: PLAN_PRICING[key],
+      userLimit: PLAN_LIMITS[key],
+    };
+  });
 }
