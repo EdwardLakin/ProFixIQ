@@ -5,6 +5,18 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
+/* ------------------------------------------------------------------ */
+/* 🔍 ENV + STRIPE DIAGNOSTICS (SAFE)                                  */
+/* ------------------------------------------------------------------ */
+console.log("[stripe checkout] env check", {
+  hasKey: Boolean(process.env.STRIPE_SECRET_KEY),
+  keyPrefix: process.env.STRIPE_SECRET_KEY?.slice(0, 3), // sk_ vs pk_
+  keyLength: process.env.STRIPE_SECRET_KEY?.length,
+  vercelEnv: process.env.VERCEL_ENV,
+  nodeEnv: process.env.NODE_ENV,
+});
+
+/* ------------------------------------------------------------------ */
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
   apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
@@ -19,22 +31,20 @@ function getBaseUrl() {
 }
 
 type CheckoutPayload = {
-  // Support both shapes (old + new callers)
-  planKey?: string; // price_*
-  priceId?: string; // price_*
-
-  // optional at pre-signup time
+  planKey?: string;
+  priceId?: string;
   shopId?: string | null;
   userId?: string | null;
-
-  // optional redirect overrides
-  successPath?: string; // default /signup?session_id=...
-  cancelPath?: string;  // default /subscribe
+  successPath?: string;
+  cancelPath?: string;
 };
 
 export async function POST(req: Request) {
   try {
+    console.log("[stripe checkout] POST hit");
+
     if (!process.env.STRIPE_SECRET_KEY) {
+      console.error("[stripe checkout] STRIPE_SECRET_KEY missing");
       return NextResponse.json(
         { error: "Missing STRIPE_SECRET_KEY" },
         { status: 500 },
@@ -43,12 +53,20 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => null)) as CheckoutPayload | null;
     if (!body) {
+      console.error("[stripe checkout] invalid JSON body");
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
     const priceId = String(body.planKey ?? body.priceId ?? "").trim();
 
+    console.log("[stripe checkout] payload", {
+      priceId,
+      shopId: body.shopId,
+      userId: body.userId,
+    });
+
     if (!priceId || !priceId.startsWith("price_")) {
+      console.error("[stripe checkout] invalid priceId", priceId);
       return NextResponse.json(
         { error: "Missing/invalid priceId (expected Stripe price_*)" },
         { status: 400 },
@@ -67,8 +85,11 @@ export async function POST(req: Request) {
       body.cancelPath?.startsWith("/") ? body.cancelPath : "/subscribe"
     }`;
 
-    const shopId = body.shopId ? String(body.shopId).trim() : "";
-    const userId = body.userId ? String(body.userId).trim() : "";
+    console.log("[stripe checkout] creating session", {
+      mode: "subscription",
+      successUrl,
+      cancelUrl,
+    });
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -77,13 +98,19 @@ export async function POST(req: Request) {
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {
-        shop_id: shopId,
-        supabaseUserId: userId,
+        shop_id: body.shopId ?? "",
+        supabaseUserId: body.userId ?? "",
         purpose: "profixiq_subscription",
       },
     });
 
+    console.log("[stripe checkout] session created", {
+      sessionId: session.id,
+      hasUrl: Boolean(session.url),
+    });
+
     if (!session.url) {
+      console.error("[stripe checkout] session.url missing");
       return NextResponse.json(
         { error: "Stripe did not return a Checkout URL" },
         { status: 500 },
@@ -93,7 +120,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[stripe checkout]", message);
+    console.error("[stripe checkout] exception", message);
     return NextResponse.json(
       { error: "Checkout failed", details: message },
       { status: 500 },
