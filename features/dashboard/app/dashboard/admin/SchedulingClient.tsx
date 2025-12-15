@@ -184,8 +184,14 @@ function isoToLocalInput(iso: string | null): string {
   return format(d, "yyyy-MM-dd'T'HH:mm");
 }
 
-function localInputToIso(v: string): string {
-  // datetime-local returns local time; new Date(...) treats it as local.
+function isValidLocalDateTimeInput(v: string): boolean {
+  if (!v) return false;
+  const d = new Date(v); // datetime-local string is treated as local time
+  return isValid(d);
+}
+
+function localInputToIsoSafe(v: string): string | null {
+  if (!isValidLocalDateTimeInput(v)) return null;
   return new Date(v).toISOString();
 }
 
@@ -797,14 +803,21 @@ export default function SchedulingClient(): JSX.Element {
       return;
     }
 
+    const startIso = localInputToIsoSafe(newShiftStart);
+    const endIso = localInputToIsoSafe(newShiftEnd);
+    if (!startIso || !endIso) {
+      setErr("Invalid shift start/end time.");
+      return;
+    }
+
     setCreatingShift(true);
     setErr(null);
 
     const payload: Partial<ShiftRow> = {
       user_id: uid,
       shop_id: currentShopId,
-      start_time: localInputToIso(newShiftStart),
-      end_time: localInputToIso(newShiftEnd),
+      start_time: startIso,
+      end_time: endIso,
       // IMPORTANT: satisfy tech_shifts constraints
       type: "shift",
       status: "open",
@@ -829,12 +842,18 @@ export default function SchedulingClient(): JSX.Element {
     field: "start_time" | "end_time",
     value: string,
   ): Promise<void> {
+    const iso = localInputToIsoSafe(value);
+    if (!iso) {
+      setErr("Invalid shift time.");
+      return;
+    }
+
     setErr(null);
     try {
       await fetchJson<{ ok: true }>(`/api/scheduling/shifts/${shiftId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: localInputToIso(value) }),
+        body: JSON.stringify({ [field]: iso }),
       });
       await loadShifts();
     } catch (e) {
@@ -898,6 +917,12 @@ export default function SchedulingClient(): JSX.Element {
     event_type: PunchType,
     when: string,
   ): Promise<void> {
+    const iso = localInputToIsoSafe(when);
+    if (!iso) {
+      setErr("Invalid punch time.");
+      return;
+    }
+
     setErr(null);
     try {
       await fetchJson<{ ok: true }>("/api/scheduling/punches", {
@@ -906,7 +931,7 @@ export default function SchedulingClient(): JSX.Element {
         body: JSON.stringify({
           shift_id: shiftId,
           event_type: toDbPunchType(event_type),
-          timestamp: localInputToIso(when),
+          timestamp: iso,
         }),
       });
       await loadShifts();
@@ -920,13 +945,19 @@ export default function SchedulingClient(): JSX.Element {
     when: string,
     event_type?: PunchType,
   ): Promise<void> {
+    const iso = localInputToIsoSafe(when);
+    if (!iso) {
+      setErr("Invalid punch time.");
+      return;
+    }
+
     setErr(null);
     try {
       await fetchJson<{ ok: true }>(`/api/scheduling/punches/${punchId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          timestamp: localInputToIso(when),
+          timestamp: iso,
           ...(event_type ? { event_type: toDbPunchType(event_type) } : {}),
         }),
       });
@@ -1025,6 +1056,13 @@ export default function SchedulingClient(): JSX.Element {
       return;
     }
 
+    const startIso = localInputToIsoSafe(newSessionStart);
+    const endIso = localInputToIsoSafe(newSessionEnd);
+    if (!startIso || !endIso) {
+      setErr("Invalid session start/end time.");
+      return;
+    }
+
     setCreatingSession(true);
     setErr(null);
 
@@ -1037,8 +1075,8 @@ export default function SchedulingClient(): JSX.Element {
           user_id: uid,
           work_order_id: newSessionWorkOrderId,
           work_order_line_id: newSessionLineId || null,
-          started_at: localInputToIso(newSessionStart),
-          ended_at: localInputToIso(newSessionEnd),
+          started_at: startIso,
+          ended_at: endIso,
         } satisfies Partial<SessionRow>),
       });
 
@@ -1055,12 +1093,18 @@ export default function SchedulingClient(): JSX.Element {
     field: "started_at" | "ended_at",
     value: string,
   ): Promise<void> {
+    const iso = localInputToIsoSafe(value);
+    if (!iso) {
+      setErr("Invalid session time.");
+      return;
+    }
+
     setErr(null);
     try {
       await fetchJson<{ ok: true }>(`/api/scheduling/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: localInputToIso(value) }),
+        body: JSON.stringify({ [field]: iso }),
       });
       await loadSessions();
     } catch (e) {
@@ -1335,11 +1379,9 @@ export default function SchedulingClient(): JSX.Element {
           </div>
         )}
 
+        {/* Sessions create form unchanged (your version) */}
         {tab === "sessions" && (
           <div className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(" ")}>
-            {/* ... unchanged Sessions create form ... */}
-            {/* (kept identical to your version) */}
-
             <div>
               <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
                 Job time
@@ -1860,6 +1902,8 @@ function AddPunchInline(props: {
     format(new Date(), "yyyy-MM-dd'T'HH:mm"),
   );
 
+  const isWhenValid = useMemo(() => isValidLocalDateTimeInput(when), [when]);
+
   const control =
     "rounded-md border border-[color:var(--metal-border-soft,#1f2937)] " +
     "bg-black/50 px-2 py-1 text-xs text-neutral-100 outline-none transition " +
@@ -1893,8 +1937,9 @@ function AddPunchInline(props: {
         type="button"
         size="xs"
         className="text-xs font-semibold"
-        disabled={disabled}
+        disabled={disabled || !isWhenValid}
         onClick={() => onAdd(type, when)}
+        title={!isWhenValid ? "Enter a valid date/time." : ""}
       >
         Add punch
       </Button>
@@ -1922,6 +1967,8 @@ function PunchRowEditor(props: {
     setType(toUiPunchType(punch.event_type));
     setDirty(false);
   }, [punch.id, punch.timestamp, punch.event_type]);
+
+  const isWhenValid = useMemo(() => isValidLocalDateTimeInput(when), [when]);
 
   const control =
     "rounded-md border border-[color:var(--metal-border-soft,#1f2937)] " +
@@ -1963,9 +2010,10 @@ function PunchRowEditor(props: {
           type="button"
           size="xs"
           variant="outline"
-          disabled={disabled || !dirty}
-          onClick={() => dirty && onUpdate(when, type)}
+          disabled={disabled || !dirty || !isWhenValid}
+          onClick={() => dirty && isWhenValid && onUpdate(when, type)}
           className="text-[0.65rem] disabled:opacity-50"
+          title={!isWhenValid ? "Enter a valid date/time." : ""}
         >
           Save
         </Button>
