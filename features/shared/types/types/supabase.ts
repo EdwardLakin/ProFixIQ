@@ -4863,6 +4863,7 @@ export type Database = {
           auto_send_quote_email: boolean | null
           business_name: string | null
           city: string | null
+          country: string | null
           created_at: string | null
           created_by: string | null
           diagnostic_fee: number | null
@@ -4908,6 +4909,7 @@ export type Database = {
           auto_send_quote_email?: boolean | null
           business_name?: string | null
           city?: string | null
+          country?: string | null
           created_at?: string | null
           created_by?: string | null
           diagnostic_fee?: number | null
@@ -4953,6 +4955,7 @@ export type Database = {
           auto_send_quote_email?: boolean | null
           business_name?: string | null
           city?: string | null
+          country?: string | null
           created_at?: string | null
           created_by?: string | null
           diagnostic_fee?: number | null

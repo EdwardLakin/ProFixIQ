@@ -600,7 +600,7 @@ export default function FocusedJobModal(props: {
 
                 {/* punch – hidden once job is completed, same as mobile */}
                 {mode === "tech" && line && line.status !== "completed" && (
-                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+                  <div className="glass-card relative z-[5] rounded-2xl border border-white/10 bg-black/40 p-3">
                     <JobPunchButton
                       lineId={line.id}
                       punchedInAt={line.punched_in_at}
@@ -629,8 +629,8 @@ export default function FocusedJobModal(props: {
                         {line.status === "awaiting_approval"
                           ? "Awaiting approval — punching disabled"
                           : line.status === "declined"
-                          ? "Declined — punching disabled"
-                          : "Not approved — punching disabled"}
+                            ? "Declined — punching disabled"
+                            : "Not approved — punching disabled"}
                       </div>
                     )}
                   </div>
@@ -735,9 +735,8 @@ export default function FocusedJobModal(props: {
                         onClick={() => {
                           closeAllSubModals();
                           setOpenChat(true);
-                        }}                       
+                        }}
                       >
-                      
                         Chat
                       </button>
                       <button
@@ -960,7 +959,6 @@ export default function FocusedJobModal(props: {
           }
         />
       )}
-
 
       {/* DTC Suggest modal disabled for now
       {openDtc && line && (

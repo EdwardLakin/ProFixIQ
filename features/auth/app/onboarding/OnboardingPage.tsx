@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -16,24 +16,52 @@ const staffRedirect: Record<Role, string> = {
 };
 
 const isStaffRole = (r: string | null | undefined): r is Role =>
-  r === "owner" || r === "admin" || r === "manager" || r === "advisor" || r === "mechanic";
+  r === "owner" ||
+  r === "admin" ||
+  r === "manager" ||
+  r === "advisor" ||
+  r === "mechanic";
+
+const NA_COUNTRIES = [
+  { value: "US", label: "United States" },
+  { value: "CA", label: "Canada" },
+] as const;
+
+const TIMEZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Edmonton",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Vancouver",
+  "America/Toronto",
+  "America/Halifax",
+] as const;
 
 export default function OnboardingPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const [sessionChecked, setSessionChecked] = useState(false);
   const [hasSession, setHasSession] = useState(false);
 
+  // NA defaults
+  const [country, setCountry] = useState<"US" | "CA">("US");
+  const [timezone, setTimezone] = useState<string>("America/New_York");
+
+  // profile fields
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>("owner");
+
   const [userStreet, setUserStreet] = useState("");
   const [userCity, setUserCity] = useState("");
   const [userProvince, setUserProvince] = useState("");
   const [userPostal, setUserPostal] = useState("");
 
+  // shop fields
   const [businessName, setBusinessName] = useState("");
   const [shopName, setShopName] = useState("");
   const [shopStreet, setShopStreet] = useState("");
@@ -46,7 +74,7 @@ export default function OnboardingPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // --- 1) Handle Supabase magic link exchange ---
+  // magic link exchange
   useEffect(() => {
     const code = searchParams.get("code");
     if (!code) return;
@@ -65,7 +93,7 @@ export default function OnboardingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- 2) Check if user already belongs to a shop ---
+  // session check + skip if already linked
   useEffect(() => {
     (async () => {
       const {
@@ -97,32 +125,28 @@ export default function OnboardingPage() {
 
       const r = prof?.role ?? null;
 
-      // ✅ NEW: Skip onboarding if user already linked to a shop
       if (prof?.shop_id) {
-        if (isStaffRole(r)) {
-          router.replace(staffRedirect[r]);
-        } else {
-          router.replace("/dashboard");
-        }
+        if (isStaffRole(r)) router.replace(staffRedirect[r]);
+        else router.replace("/dashboard");
         return;
       }
 
-      // Legacy: otherwise check if their profile looks “complete”
       const complete =
         isStaffRole(r) &&
         !!prof?.full_name &&
         !!prof?.phone &&
         (r === "owner" ? true : !!prof?.shop_id);
 
-      if (complete) {
-        router.replace(staffRedirect[r]);
-      }
+      if (complete) router.replace(staffRedirect[r]);
     })();
   }, [router, searchParams, supabase]);
 
   useEffect(() => {
     setAsOwner(role === "owner");
   }, [role]);
+
+  const provinceLabel = country === "CA" ? "Province" : "State";
+  const postalLabel = country === "CA" ? "Postal code" : "ZIP code";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,13 +156,14 @@ export default function OnboardingPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     if (!user) {
       setError("User not found.");
       setLoading(false);
       return;
     }
 
-    // Update profile
+    // Update profile (keep address label flexible)
     const { error: updateErr } = await supabase
       .from("profiles")
       .update({
@@ -159,7 +184,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    // Owner bootstrap if needed
+    // Owner bootstrap
     if (asOwner) {
       if (!ownerPin || ownerPin.length < 4) {
         setError("Please provide an Owner PIN (min 4 characters).");
@@ -183,6 +208,8 @@ export default function OnboardingPage() {
           province: shopProvince,
           postal_code: shopPostal,
           pin: ownerPin,
+          country,
+          timezone,
         }),
       });
 
@@ -192,14 +219,19 @@ export default function OnboardingPage() {
         setLoading(false);
         return;
       }
+
+      // Owners go to step 2 to set defaults (labor/tax/etc)
+      router.replace("/onboarding/shop-defaults");
+      setLoading(false);
+      return;
     }
 
+    // staff → dashboard
     const finalRole: Role = asOwner ? "owner" : role;
     router.replace(staffRedirect[finalRole] || "/dashboard");
     setLoading(false);
   };
 
-  // --- Render ---
   if (!sessionChecked) {
     return (
       <div className="min-h-screen grid place-items-center bg-black text-white">
@@ -232,10 +264,8 @@ export default function OnboardingPage() {
     );
   }
 
-  // --- UI ---
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Top bar */}
       <header className="border-b border-neutral-900 bg-neutral-950/70 px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <div>
@@ -246,25 +276,58 @@ export default function OnboardingPage() {
               Get your workspace ready
             </h1>
             <p className="text-xs text-neutral-400">
-              Tell us about you {asOwner ? "and your shop" : ""} so we can route you to the
-              right dashboard.
+              Step 1 of 2 for owners (profile + shop).
             </p>
-          </div>
-          <div className="hidden sm:flex flex-col items-end gap-1 text-[10px]">
-            <span className="rounded-full border border-neutral-800 bg-neutral-900 px-2 py-1 text-neutral-300">
-              Onboarding • Step 1 of 1
-            </span>
-            <span className="text-[10px] text-neutral-500">
-              Takes about 1–2 minutes.
-            </span>
           </div>
         </div>
       </header>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
-        {/* Left: form */}
         <div className="flex-1 space-y-6">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* North America setup (drives labels everywhere) */}
+            <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-semibold text-neutral-100">
+                  Region defaults
+                </h2>
+                <p className="text-[11px] text-neutral-500">
+                  This sets the language/labels for address + taxes (US/Canada).
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-xs text-neutral-300">Country</label>
+                  <select
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value as "US" | "CA")}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  >
+                    {NA_COUNTRIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-neutral-300">Timezone</label>
+                  <select
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  >
+                    {TIMEZONES.map((tz) => (
+                      <option key={tz} value={tz}>
+                        {tz}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </section>
+
             {/* Your info */}
             <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
               <div className="mb-4 flex items-center justify-between gap-2">
@@ -287,7 +350,6 @@ export default function OnboardingPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Alex Smith"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
@@ -299,7 +361,6 @@ export default function OnboardingPage() {
                   <input
                     type="text"
                     required
-                    placeholder="Mobile or shop phone"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
@@ -307,7 +368,9 @@ export default function OnboardingPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-neutral-300">Home / billing address</label>
+                  <label className="text-xs text-neutral-300">
+                    Home / billing address
+                  </label>
                   <input
                     type="text"
                     required
@@ -328,7 +391,7 @@ export default function OnboardingPage() {
                     <input
                       type="text"
                       required
-                      placeholder="Province / State"
+                      placeholder={provinceLabel}
                       value={userProvince}
                       onChange={(e) => setUserProvince(e.target.value)}
                       className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
@@ -336,7 +399,7 @@ export default function OnboardingPage() {
                     <input
                       type="text"
                       required
-                      placeholder="Postal / ZIP"
+                      placeholder={postalLabel}
                       value={userPostal}
                       onChange={(e) => setUserPostal(e.target.value)}
                       className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
@@ -382,7 +445,7 @@ export default function OnboardingPage() {
                     Shop information
                   </h2>
                   <p className="text-[11px] text-neutral-500">
-                    If you&apos;re staff, your owner can link you to a shop later.
+                    Owners create a shop now; staff can be linked later.
                   </p>
                 </div>
                 {asOwner ? (
@@ -401,7 +464,6 @@ export default function OnboardingPage() {
                   <label className="text-xs text-neutral-300">Business name</label>
                   <input
                     type="text"
-                    placeholder="Legal business name"
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
@@ -413,7 +475,6 @@ export default function OnboardingPage() {
                   <label className="text-xs text-neutral-300">Shop name</label>
                   <input
                     type="text"
-                    placeholder="Public-facing shop name (optional)"
                     value={shopName}
                     onChange={(e) => setShopName(e.target.value)}
                     className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
@@ -424,7 +485,6 @@ export default function OnboardingPage() {
                   <label className="text-xs text-neutral-300">Shop address</label>
                   <input
                     type="text"
-                    placeholder="Street address"
                     value={shopStreet}
                     onChange={(e) => setShopStreet(e.target.value)}
                     className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
@@ -433,25 +493,25 @@ export default function OnboardingPage() {
                   <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
                     <input
                       type="text"
-                      placeholder="City"
                       value={shopCity}
                       onChange={(e) => setShopCity(e.target.value)}
+                      placeholder="City"
                       className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
                       required={asOwner}
                     />
                     <input
                       type="text"
-                      placeholder="Province / State"
                       value={shopProvince}
                       onChange={(e) => setShopProvince(e.target.value)}
+                      placeholder={provinceLabel}
                       className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
                       required={asOwner}
                     />
                     <input
                       type="text"
-                      placeholder="Postal / ZIP"
                       value={shopPostal}
                       onChange={(e) => setShopPostal(e.target.value)}
+                      placeholder={postalLabel}
                       className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
                       required={asOwner}
                     />
@@ -461,11 +521,10 @@ export default function OnboardingPage() {
                 {asOwner && (
                   <div className="space-y-1">
                     <label className="text-xs text-neutral-300">
-                      Owner PIN <span className="text-neutral-400">(min 4 characters)</span>
+                      Owner PIN <span className="text-neutral-400">(min 4 chars)</span>
                     </label>
                     <input
                       type="password"
-                      placeholder="PIN you can share with trusted staff"
                       value={ownerPin}
                       onChange={(e) => setOwnerPin(e.target.value)}
                       className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
@@ -485,38 +544,25 @@ export default function OnboardingPage() {
                 disabled={loading}
                 className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Saving…" : "Complete onboarding"}
+                {loading
+                  ? "Saving…"
+                  : asOwner
+                  ? "Continue to Step 2"
+                  : "Complete onboarding"}
               </button>
-              {error && (
-                <p className="text-xs text-red-400">
-                  {error}
-                </p>
-              )}
+              {error && <p className="text-xs text-red-400">{error}</p>}
             </div>
           </form>
         </div>
 
-        {/* Right side: helper cards */}
         <aside className="w-full space-y-4 lg:w-72">
           <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
             <h3 className="mb-2 text-sm font-semibold text-neutral-100">
-              What happens next
+              Next step
             </h3>
             <p className="text-xs text-neutral-400">
-              When you hit <span className="text-orange-300">Complete onboarding</span>,
-              we&apos;ll update your profile and, if you&apos;re the owner, create your shop
-              record. Then we&apos;ll route you straight to the right dashboard view.
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-neutral-100">
-              Current mode
-            </h3>
-            <p className="text-xs text-neutral-400">
-              {asOwner
-                ? "Owner setup — you’re creating the shop and will have full access."
-                : "Staff setup — your shop owner can link you to their shop later with your profile."}
+              Owners will set labor rate, tax, and other defaults on Step 2 so invoices,
+              quotes, and totals are correct immediately.
             </p>
           </div>
         </aside>
