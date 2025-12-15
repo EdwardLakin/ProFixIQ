@@ -1,4 +1,3 @@
-// app/api/scheduling/shifts/[id]/route.ts
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -8,16 +7,12 @@ import {
 
 type DB = Database;
 
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
+const ADMIN_ROLES = new Set<string>(["owner", "admin"]);
 
 type Caller = {
   id: string;
   role: string | null;
   shop_id: string | null;
-};
-
-type RouteContext = {
-  params: Promise<{ id: string }>;
 };
 
 function safeRole(v: unknown): string {
@@ -56,116 +51,137 @@ async function authz() {
   return { ok: true as const, me, isAdmin };
 }
 
-type ShiftUpdate = Pick<
-  DB["public"]["Tables"]["tech_shifts"]["Update"],
-  "start_time" | "end_time" | "type" | "status"
->;
-
 /* --------------------------------------------------------- */
-/* PATCH                                                     */
+/* GET  /api/scheduling/shifts                               */
 /* --------------------------------------------------------- */
-export async function PATCH(
-  req: NextRequest,
-  context: RouteContext,
-) {
-  const { id } = await context.params;
-
+export async function GET(req: NextRequest) {
   const a = await authz();
   if (!a.ok) return a.res;
   if (!a.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = (await req.json().catch(() => null)) as
-    | Partial<ShiftUpdate>
-    | null;
+  const url = new URL(req.url);
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  const userId = url.searchParams.get("user_id") || null;
+  const role = url.searchParams.get("role") || "all";
 
-  if (!body) {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const update: Partial<ShiftUpdate> = {
-    ...(body.start_time !== undefined ? { start_time: body.start_time } : {}),
-    ...(body.end_time !== undefined ? { end_time: body.end_time } : {}),
-    ...(body.type !== undefined ? { type: body.type } : {}),
-    ...(body.status !== undefined ? { status: body.status } : {}),
-  };
-
-  if (Object.keys(update).length === 0) {
-    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  if (!from || !to) {
+    return NextResponse.json({ error: "Missing from/to" }, { status: 400 });
   }
 
   const admin = createAdminSupabase();
 
-  const { data: shift, error: sErr } = await admin
+  // Optional role filter
+  let staffIds: string[] | null = null;
+  if (role !== "all") {
+    const { data: staff, error: staffErr } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("shop_id", a.me.shop_id)
+      .eq("role", role);
+
+    if (staffErr) return NextResponse.json({ error: staffErr.message }, { status: 500 });
+
+    staffIds = (staff ?? []).map((r) => r.id);
+    if (staffIds.length === 0) {
+      return NextResponse.json({ shifts: [], punches: [], billableMinutes: 0 });
+    }
+  }
+
+  // Shifts
+  let shiftQ = admin
     .from("tech_shifts")
-    .select("id, shop_id")
-    .eq("id", id)
-    .maybeSingle<{ id: string; shop_id: string | null }>();
+    .select("*")
+    .eq("shop_id", a.me.shop_id)
+    .gte("start_time", from)
+    .lte("start_time", to)
+    .order("start_time", { ascending: false });
 
-  if (sErr) {
-    return NextResponse.json({ error: sErr.message }, { status: 500 });
-  }
-  if (!shift) {
-    return NextResponse.json({ error: "Shift not found" }, { status: 404 });
-  }
-  if (shift.shop_id !== a.me.shop_id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (userId) shiftQ = shiftQ.eq("user_id", userId);
+  if (staffIds) shiftQ = shiftQ.in("user_id", staffIds);
+
+  const { data: shifts, error: sErr } = await shiftQ;
+  if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 });
+
+  const shiftIds = (shifts ?? []).map((s) => s.id).filter(Boolean) as string[];
+
+  // Punches
+  let punches: DB["public"]["Tables"]["punch_events"]["Row"][] = [];
+  if (shiftIds.length > 0) {
+    const { data: pRows, error: pErr } = await admin
+      .from("punch_events")
+      .select("*")
+      .in("shift_id", shiftIds)
+      .order("timestamp", { ascending: true });
+
+    if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
+    punches = (pRows ?? []) as typeof punches;
   }
 
-  const { error } = await admin
-    .from("tech_shifts")
-    .update(update)
-    .eq("id", id);
+  // Billable minutes (same as your client fallback)
+  let woQ = admin
+    .from("work_order_lines")
+    .select("labor_time, user_id, assigned_to, created_at, shop_id")
+    .eq("shop_id", a.me.shop_id)
+    .gte("created_at", from)
+    .lte("created_at", to);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (userId) {
+    woQ = woQ.or(`user_id.eq.${userId},assigned_to.eq.${userId}`);
+  } else if (staffIds) {
+    woQ = woQ.or(
+      `user_id.in.(${staffIds.join(",")}),assigned_to.in.(${staffIds.join(",")})`,
+    );
   }
 
-  return NextResponse.json({ ok: true });
+  const { data: lines, error: lErr } = await woQ;
+  if (lErr) return NextResponse.json({ error: lErr.message }, { status: 500 });
+
+  let billableMinutes = 0;
+  for (const r of (lines ?? []) as Array<{ labor_time: number | null }>) {
+    const hrs = typeof r.labor_time === "number" ? r.labor_time : 0;
+    billableMinutes += Math.max(0, hrs) * 60;
+  }
+
+  return NextResponse.json({
+    shifts: shifts ?? [],
+    punches,
+    billableMinutes,
+  });
 }
 
 /* --------------------------------------------------------- */
-/* DELETE                                                    */
+/* POST /api/scheduling/shifts                               */
 /* --------------------------------------------------------- */
-export async function DELETE(
-  _req: NextRequest,
-  context: RouteContext,
-) {
-  const { id } = await context.params;
-
+export async function POST(req: NextRequest) {
   const a = await authz();
   if (!a.ok) return a.res;
-  if (!a.isAdmin) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!a.isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const body = (await req.json().catch(() => null)) as
+    | Partial<DB["public"]["Tables"]["tech_shifts"]["Insert"]>
+    | null;
+
+  if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+
+  if (!body.user_id || !body.start_time) {
+    return NextResponse.json({ error: "Missing user_id or start_time" }, { status: 400 });
   }
 
   const admin = createAdminSupabase();
 
-  const { data: shift, error: sErr } = await admin
-    .from("tech_shifts")
-    .select("id, shop_id")
-    .eq("id", id)
-    .maybeSingle<{ id: string; shop_id: string | null }>();
+  // Force shop scope to caller shop
+  const insert: DB["public"]["Tables"]["tech_shifts"]["Insert"] = {
+    user_id: body.user_id,
+    shop_id: a.me.shop_id,
+    start_time: body.start_time,
+    end_time: body.end_time ?? null,
+  };
 
-  if (sErr) {
-    return NextResponse.json({ error: sErr.message }, { status: 500 });
-  }
-  if (!shift) {
-    return NextResponse.json({ error: "Shift not found" }, { status: 404 });
-  }
-  if (shift.shop_id !== a.me.shop_id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const { error } = await admin
-    .from("tech_shifts")
-    .delete()
-    .eq("id", id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const { error } = await admin.from("tech_shifts").insert(insert);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
 }
