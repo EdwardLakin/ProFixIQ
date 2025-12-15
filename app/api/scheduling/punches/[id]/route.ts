@@ -9,11 +9,18 @@ type PunchUpdate = Pick<
   "timestamp" | "event_type"
 >;
 
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
+
+/* --------------------------------------------------------- */
+/* DELETE                                                     */
+/* --------------------------------------------------------- */
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  context: RouteContext,
 ) {
-  const punchId = params.id;
+  const { id: punchId } = await context.params;
 
   const supabase = createServerSupabaseRoute();
 
@@ -26,7 +33,10 @@ export async function DELETE(
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { error } = await supabase.from("punch_events").delete().eq("id", punchId);
+  const { error } = await supabase
+    .from("punch_events")
+    .delete()
+    .eq("id", punchId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -35,11 +45,14 @@ export async function DELETE(
   return NextResponse.json({ ok: true });
 }
 
+/* --------------------------------------------------------- */
+/* PATCH (update punch)                                      */
+/* --------------------------------------------------------- */
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  context: RouteContext,
 ) {
-  const punchId = params.id;
+  const { id: punchId } = await context.params;
 
   const body = (await req.json().catch(() => null)) as PunchUpdate | null;
   if (!body) {
