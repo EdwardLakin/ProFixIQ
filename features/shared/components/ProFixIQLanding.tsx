@@ -1,3 +1,4 @@
+// app/page.tsx (or wherever your ProFixIQLanding lives)
 "use client";
 
 import { useEffect, useState } from "react";
@@ -183,7 +184,7 @@ export default function ProFixIQLanding() {
         </Container>
       </div>
 
-      {/* 1) HERO (keep your existing component; we just frame it) */}
+      {/* 1) HERO */}
       <div className="relative">
         <LandingHero />
       </div>
@@ -241,32 +242,35 @@ export default function ProFixIQLanding() {
 
           <div className="mt-10 rounded-3xl border border-white/10 bg-black/35 p-4 md:p-6 backdrop-blur-xl">
             <PricingSection
-              onCheckout={async ({
-                priceId,
-                interval,
-              }: {
-                priceId: string;
-                interval: Interval;
-              }) => {
+              onCheckout={async ({ priceId, interval }: { priceId: string; interval: Interval }) => {
                 const res = await fetch("/api/stripe/checkout", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
+                    // ✅ updated payload to match your checkout route expectations
+                    // route.ts currently uses { planKey, shopId, userId? }
                     planKey: priceId,
-                    interval,
-                    isAddon: false,
-                    shopId: null,
+                    shopId: "public_landing", // ✅ satisfy required field (server requires shopId)
                     userId: null,
+
+                    // keep for future/compat if your server starts reading it
+                    interval,
                   }),
                 });
 
+                const data = await res.json().catch(() => ({}));
+
                 if (!res.ok) {
-                  alert("Checkout failed");
+                  alert(data?.details || data?.error || "Checkout failed");
                   return;
                 }
-                const data = await res.json();
-                if (data?.url) window.location.href = data.url;
-                else alert("No checkout URL returned");
+
+                if (data?.url) {
+                  window.location.href = data.url;
+                  return;
+                }
+
+                alert("No checkout URL returned");
               }}
               onStartFree={() => {
                 window.location.href = "/onboarding/profile";
@@ -282,8 +286,7 @@ export default function ProFixIQLanding() {
                   Ready to see it in motion?
                 </div>
                 <div className="mt-1 text-sm text-neutral-400">
-                  Create a work order, run an inspection, and let the system do
-                  the rest.
+                  Create a work order, run an inspection, and let the system do the rest.
                 </div>
               </div>
 
