@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+
+export const runtime = "nodejs";
+
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
