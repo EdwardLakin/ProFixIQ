@@ -17,7 +17,7 @@ type Caller = {
 };
 
 type RouteContext = {
-  params: Record<string, string>;
+  params: Promise<{ id: string }>;
 };
 
 function safeRole(v: unknown): string {
@@ -61,16 +61,19 @@ type ShiftUpdate = Pick<
   "start_time" | "end_time" | "type" | "status"
 >;
 
-export async function PATCH(req: NextRequest, ctx: RouteContext) {
+/* --------------------------------------------------------- */
+/* PATCH                                                     */
+/* --------------------------------------------------------- */
+export async function PATCH(
+  req: NextRequest,
+  context: RouteContext,
+) {
+  const { id } = await context.params;
+
   const a = await authz();
   if (!a.ok) return a.res;
   if (!a.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const id = ctx.params["id"] ?? "";
-  if (!id) {
-    return NextResponse.json({ error: "Missing shift id" }, { status: 400 });
   }
 
   const body = (await req.json().catch(() => null)) as
@@ -81,7 +84,6 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Only allow specific fields
   const update: Partial<ShiftUpdate> = {
     ...(body.start_time !== undefined ? { start_time: body.start_time } : {}),
     ...(body.end_time !== undefined ? { end_time: body.end_time } : {}),
@@ -95,7 +97,6 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   const admin = createAdminSupabase();
 
-  // Enforce same-shop on the shift row itself
   const { data: shift, error: sErr } = await admin
     .from("tech_shifts")
     .select("id, shop_id")
@@ -112,7 +113,10 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { error } = await admin.from("tech_shifts").update(update).eq("id", id);
+  const { error } = await admin
+    .from("tech_shifts")
+    .update(update)
+    .eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -121,21 +125,23 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_req: NextRequest, ctx: RouteContext) {
+/* --------------------------------------------------------- */
+/* DELETE                                                    */
+/* --------------------------------------------------------- */
+export async function DELETE(
+  _req: NextRequest,
+  context: RouteContext,
+) {
+  const { id } = await context.params;
+
   const a = await authz();
   if (!a.ok) return a.res;
   if (!a.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const id = ctx.params["id"] ?? "";
-  if (!id) {
-    return NextResponse.json({ error: "Missing shift id" }, { status: 400 });
-  }
-
   const admin = createAdminSupabase();
 
-  // Enforce same-shop
   const { data: shift, error: sErr } = await admin
     .from("tech_shifts")
     .select("id, shop_id")
@@ -152,7 +158,10 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { error } = await admin.from("tech_shifts").delete().eq("id", id);
+  const { error } = await admin
+    .from("tech_shifts")
+    .delete()
+    .eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
