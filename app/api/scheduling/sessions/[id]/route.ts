@@ -7,17 +7,29 @@ type SessionUpdate = Pick<
   "started_at" | "ended_at" | "work_order_line_id"
 >;
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  const supabase = createAdminSupabase();
-  const body = (await req.json()) as SessionUpdate;
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
 
-  const { error } = await supabase
-    .from("tech_sessions")
-    .update(body)
-    .eq("id", params.id);
+export async function PATCH(req: NextRequest, context: RouteContext) {
+  const { id } = await context.params;
+
+  const supabase = createAdminSupabase();
+  const body = (await req.json().catch(() => null)) as SessionUpdate | null;
+
+  if (!body) {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  if (
+    body.started_at === undefined &&
+    body.ended_at === undefined &&
+    body.work_order_line_id === undefined
+  ) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+
+  const { error } = await supabase.from("tech_sessions").update(body).eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -26,16 +38,12 @@ export async function PATCH(
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function DELETE(_req: NextRequest, context: RouteContext) {
+  const { id } = await context.params;
+
   const supabase = createAdminSupabase();
 
-  const { error } = await supabase
-    .from("tech_sessions")
-    .delete()
-    .eq("id", params.id);
+  const { error } = await supabase.from("tech_sessions").delete().eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
