@@ -1,7 +1,7 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { Check } from "lucide-react";
-import { PRICE_IDS } from "@stripe/lib/stripe/constants";
 
 export type CheckoutPayload = {
   priceId: string; // Stripe price_...
@@ -10,168 +10,207 @@ export type CheckoutPayload = {
 
 type PricingSectionProps = {
   onCheckout: (payload: CheckoutPayload) => void | Promise<void>;
-  onStartFree: () => void; // you can keep this for trial/onboarding
+  onStartFree: () => void; // trial/onboarding
 };
 
-type PlanKey = "pro_30" | "unlimited";
+/**
+ * Matches your current app plan model:
+ * - pro30 (30 users)
+ * - unlimited
+ */
+type PlanKey = "pro30" | "unlimited";
+
+/**
+ * Centralize mapping here.
+ * Replace values with your real Stripe Price IDs.
+ */
+const PRICE_BY_PLAN: Record<PlanKey, { monthly: string; yearly?: string }> = {
+  pro30: {
+    monthly: "price_PRO30_MONTHLY",
+    yearly: "price_PRO30_YEARLY",
+  },
+  unlimited: {
+    monthly: "price_UNLIMITED_MONTHLY",
+    yearly: "price_UNLIMITED_YEARLY",
+  },
+};
 
 export default function PricingSection({
   onCheckout,
   onStartFree,
 }: PricingSectionProps) {
-  // Right now: monthly only. Keep the interval param for compatibility.
-  const interval: CheckoutPayload["interval"] = "monthly";
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">(
+    "monthly",
+  );
 
-  const pick = (key: PlanKey) => {
-    // If your constants file doesn’t have these yet, replace with hardcoded "price_..."
-    const anyIds = PRICE_IDS as unknown as Record<
-      string,
-      { monthly: string; yearly?: string }
-    >;
+  const plans = useMemo(
+    () =>
+      [
+        {
+          key: "pro30" as const,
+          title: "Shop (Up to 30 users)",
+          priceMonthly: "$300 / month",
+          priceYearly: "$3,000 / year",
+          desc: "Full access. Built for most repair shops.",
+          features: [
+            "Unlimited access to all features",
+            "Up to 30 users (techs, advisors, parts, admin)",
+            "AI planner, inspections, messaging, portal-ready",
+            "Priority support",
+          ],
+          featured: true,
+          cta: "Start",
+        },
+        {
+          key: "unlimited" as const,
+          title: "Shop (Unlimited users)",
+          priceMonthly: "$500 / month",
+          priceYearly: "$5,000 / year",
+          desc: "Full access at scale — no seat math.",
+          features: [
+            "Unlimited access to all features",
+            "Unlimited users",
+            "Best for multi-shift / multi-location ops",
+            "Priority support",
+          ],
+          cta: "Start",
+        },
+      ] as const,
+    [],
+  );
 
-    const row = anyIds[key];
-    if (!row?.monthly) {
-      // Safe fallback: keep the UI usable during dev
-      return "price_TODO";
+  function pickPriceId(key: PlanKey, interval: "monthly" | "yearly"): string {
+    const row = PRICE_BY_PLAN[key];
+    if (!row) throw new Error(`Missing plan mapping for: ${key}`);
+    if (interval === "yearly") {
+      if (!row.yearly) throw new Error(`Yearly price missing for: ${key}`);
+      return row.yearly;
     }
     return row.monthly;
-  };
+  }
 
-  const plans: Array<{
-    key: PlanKey;
-    title: string;
-    price: string;
-    desc: string;
-    features: string[];
-    featured?: boolean;
-    cta: string;
-    onClick: () => void;
-  }> = [
-    {
-      key: "pro_30",
-      title: "Shop (Up to 30 users)",
-      price: "$300 / month",
-      desc: "Full access. Built for most repair shops.",
-      features: [
-        "Unlimited access to all features",
-        "Up to 30 users (techs, advisors, parts, admin)",
-        "AI Planner + inspections + portal + messaging",
-        "Priority support",
-      ],
-      featured: true,
-      cta: "Start",
-      onClick: () => onCheckout({ priceId: pick("pro_30"), interval }),
-    },
-    {
-      key: "unlimited",
-      title: "Shop (Unlimited users)",
-      price: "$500 / month",
-      desc: "Full access at scale — no seat math.",
-      features: [
-        "Unlimited access to all features",
-        "Unlimited users",
-        "Best for multi-shift or multi-location ops",
-        "Priority support",
-      ],
-      cta: "Start",
-      onClick: () => onCheckout({ priceId: pick("unlimited"), interval }),
-    },
-  ];
+  async function handlePick(key: PlanKey) {
+    const priceId = pickPriceId(key, billingCycle);
+    await onCheckout({ priceId, interval: billingCycle });
+  }
 
   return (
     <div className="w-full">
       <div className="mx-auto mb-8 max-w-3xl text-center">
+        <div className="mb-2 font-blackops text-[0.75rem] tracking-[0.26em] text-neutral-300">
+          PROFIXIQ PLANS
+        </div>
+
         <p className="text-sm text-neutral-300">
           No feature gating. Full access from day one.
         </p>
+
         <p className="mt-2 text-xs text-neutral-500">
-          Considering a 1-week free trial — button below can route to onboarding
-          while pricing finalizes.
+          You can start onboarding now — choose a plan when ready.
         </p>
+
+        {/* Billing toggle (keep or remove) */}
+        <div className="mt-5 inline-flex overflow-hidden rounded-full border border-[var(--metal-border-soft)] bg-black/35">
+          <button
+            type="button"
+            onClick={() => setBillingCycle("monthly")}
+            className={[
+              "px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition",
+              billingCycle === "monthly"
+                ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black"
+                : "text-neutral-300 hover:bg-white/5",
+            ].join(" ")}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            onClick={() => setBillingCycle("yearly")}
+            className={[
+              "px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition",
+              billingCycle === "yearly"
+                ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black"
+                : "text-neutral-300 hover:bg-white/5",
+            ].join(" ")}
+          >
+            Yearly
+          </button>
+        </div>
 
         <button
           onClick={onStartFree}
-          className="mt-4 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-neutral-900/40 transition"
+          className="mt-5 inline-flex rounded-full border border-[var(--metal-border-soft)] bg-black/35 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5"
         >
-          Start trial / onboarding
+          Start onboarding
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {plans.map((p) => (
-          <div
-            key={p.key}
-            className={[
-              "rounded-3xl border bg-black/30 p-6 backdrop-blur-xl",
-              p.featured ? "border-white/20" : "border-white/10",
-            ].join(" ")}
-            style={
-              p.featured
-                ? {
-                    boxShadow: "0 0 0 1px rgba(193,102,59,0.22) inset",
-                  }
-                : undefined
-            }
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3
-                  className="text-xl text-white"
-                  style={{ fontFamily: "var(--font-blackops)" }}
-                >
-                  {p.title}
-                </h3>
-                <p className="mt-1 text-sm text-neutral-400">{p.desc}</p>
-              </div>
-              {p.featured ? (
-                <span
-                  className="rounded-full border px-3 py-1 text-xs font-semibold"
-                  style={{
-                    borderColor: "rgba(255,255,255,0.12)",
-                    backgroundColor: "rgba(193,102,59,0.16)",
-                    color: "var(--accent-copper-light)",
-                  }}
-                >
-                  Most popular
-                </span>
-              ) : null}
-            </div>
+        {plans.map((p) => {
+          const priceLabel =
+            billingCycle === "yearly" ? p.priceYearly : p.priceMonthly;
 
-            <div className="mt-5 flex items-baseline gap-2">
-              <div
-                className="text-3xl font-bold"
-                style={{ color: "var(--accent-copper-light)" }}
-              >
-                {p.price}
-              </div>
-            </div>
-
-            <ul className="mt-5 space-y-2 text-sm text-neutral-200">
-              {p.features.map((f) => (
-                <li key={f} className="flex items-start gap-2">
-                  <Check
-                    size={16}
-                    className="mt-0.5"
-                    style={{ color: "var(--accent-copper)" }}
-                  />
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-
-            <button
-              onClick={p.onClick}
-              className="mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold text-black transition hover:opacity-95"
-              style={{ backgroundColor: "var(--accent-copper)" }}
+          return (
+            <div
+              key={p.key}
+              className={[
+                "rounded-3xl border p-6 backdrop-blur-xl",
+                "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(0,0,0,0.35))]",
+                p.featured
+                  ? "border-[color:var(--accent-copper)]/45 shadow-[0_0_40px_rgba(212,118,49,0.18)]"
+                  : "border-[var(--metal-border-soft)]",
+              ].join(" ")}
             >
-              {p.cta}
-            </button>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-xl text-white font-blackops tracking-[0.08em]">
+                    {p.title}
+                  </h3>
+                  <p className="mt-1 text-sm text-neutral-400">{p.desc}</p>
+                </div>
 
-            <p className="mt-3 text-xs text-neutral-500">
-              Taxes billed per your Stripe setup. Cancel anytime.
-            </p>
-          </div>
-        ))}
+                {p.featured ? (
+                  <span className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
+                    Most popular
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="mt-5 flex items-baseline gap-2">
+                <div className="text-3xl font-bold text-[var(--accent-copper-light)]">
+                  {priceLabel}
+                </div>
+              </div>
+
+              <ul className="mt-5 space-y-2 text-sm text-neutral-200">
+                {p.features.map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <Check
+                      size={16}
+                      className="mt-0.5 text-[var(--accent-copper)]"
+                    />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                onClick={() => void handlePick(p.key)}
+                className="mt-6 w-full rounded-xl px-4 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-black shadow-[0_0_20px_rgba(212,118,49,0.55)] hover:brightness-110"
+                style={{
+                  background:
+                    "linear-gradient(to right,var(--accent-copper-soft),var(--accent-copper))",
+                }}
+              >
+                {p.cta}
+              </button>
+
+              <p className="mt-3 text-xs text-neutral-500">
+                Taxes billed per your Stripe setup. Cancel anytime.
+              </p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
