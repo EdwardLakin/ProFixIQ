@@ -24,9 +24,10 @@ function fmtMoney(amountCents: number, currency: string): string {
 export default async function PaySuccessPage({
   searchParams,
 }: {
-  searchParams: SearchParams;
+  searchParams?: Promise<SearchParams>;
 }) {
-  const sessionId = getStr(searchParams, "session_id");
+  const sp = (await searchParams) ?? {};
+  const sessionId = getStr(sp, "session_id");
 
   let title = "Payment complete";
   let subtitle = "Thanks — the payment was received.";
@@ -47,8 +48,10 @@ export default async function PaySuccessPage({
       shopId = session.metadata?.shop_id ?? null;
       workOrderId = session.metadata?.work_order_id ?? null;
 
-      const amountTotal = typeof session.amount_total === "number" ? session.amount_total : null;
-      const currency = typeof session.currency === "string" ? session.currency : null;
+      const amountTotal =
+        typeof session.amount_total === "number" ? session.amount_total : null;
+      const currency =
+        typeof session.currency === "string" ? session.currency : null;
 
       if (amountTotal !== null && currency) {
         amountText = fmtMoney(amountTotal, currency);
@@ -56,7 +59,8 @@ export default async function PaySuccessPage({
 
       if (session.payment_status && session.payment_status !== "paid") {
         title = "Payment pending";
-        subtitle = "We received the checkout session, but it is not marked paid yet.";
+        subtitle =
+          "We received the checkout session, but it is not marked paid yet.";
       }
     } catch {
       title = "Payment status";
@@ -68,7 +72,7 @@ export default async function PaySuccessPage({
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#050910,_#020308_60%,_#000)] px-4 py-10 text-neutral-100">
       <div className="mx-auto w-full max-w-2xl rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.85)] backdrop-blur">
         <div className="mb-2 font-blackops text-[0.85rem] tracking-[0.26em] text-neutral-300">
-          PROFixIQ Payments
+          PROFIXIQ PAYMENTS
         </div>
 
         <h1 className="text-2xl font-semibold text-neutral-100">{title}</h1>
@@ -77,13 +81,17 @@ export default async function PaySuccessPage({
         <div className="mt-5 space-y-2 rounded-xl border border-[var(--metal-border-soft)] bg-black/40 p-4">
           {amountText ? (
             <div className="text-sm text-neutral-200">
-              Amount: <span className="font-semibold text-neutral-50">{amountText}</span>
+              Amount:{" "}
+              <span className="font-semibold text-neutral-50">
+                {amountText}
+              </span>
             </div>
           ) : null}
 
           {workOrderId ? (
             <div className="text-sm text-neutral-200">
-              Work Order: <span className="font-mono text-neutral-50">{workOrderId}</span>
+              Work Order:{" "}
+              <span className="font-mono text-neutral-50">{workOrderId}</span>
             </div>
           ) : null}
 
