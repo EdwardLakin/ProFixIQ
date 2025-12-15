@@ -213,15 +213,16 @@ export function MobileTechHome({
       setLoadingCurrentJob(true);
       try {
         const { data, error } = await supabase
-          .from("work_order_lines")
-          .select(
-            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, punched_in_by",
-          )
-          .eq("punched_in_by", uid)
-          .is("punched_out_at", null)
-          .order("punched_in_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+  .from("work_order_lines")
+  .select(
+    "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_to",
+  )
+  .eq("assigned_to", uid)
+  .not("punched_in_at", "is", null)
+  .is("punched_out_at", null)
+  .order("punched_in_at", { ascending: false })
+  .limit(1)
+  .maybeSingle();
 
         if (error) {
           // eslint-disable-next-line no-console
