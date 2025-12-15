@@ -73,7 +73,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 2) Parse body
+    // 2) Parse body (UNCHANGED)
     const { shopId, update } = (await req.json().catch(() => ({}))) as Payload;
     if (!shopId || !update || typeof update !== "object") {
       return NextResponse.json(
@@ -132,7 +132,7 @@ export async function POST(req: Request) {
       if (!ALLOWED_FIELDS.has(k)) continue;
 
       if (k === "country") {
-        if (!isNaCountry(v)) continue; // ignore invalid
+        if (!isNaCountry(v)) continue;
         safeUpdate.country = String(v).trim().toUpperCase();
         continue;
       }
@@ -161,14 +161,12 @@ export async function POST(req: Request) {
         continue;
       }
 
-      // strings
       safeUpdate[k] = typeof v === "string" ? v.trim() : v;
     }
 
     // 5b) Keep legacy columns in sync (street/address, name/shop_name)
     const incoming = safeUpdate;
 
-    // If either street/address provided, mirror the other
     const street = typeof incoming.street === "string" ? incoming.street : null;
     const address = typeof incoming.address === "string" ? incoming.address : null;
     const resolvedStreet = street ?? address;
@@ -177,7 +175,6 @@ export async function POST(req: Request) {
       incoming.address = resolvedStreet;
     }
 
-    // Keep name + shop_name aligned if one is set
     const shopName =
       typeof incoming.shop_name === "string" ? incoming.shop_name : null;
     const name = typeof incoming.name === "string" ? incoming.name : null;
@@ -208,18 +205,23 @@ export async function POST(req: Request) {
     }
 
     // 7) Keep shop_profiles country/province in sync (best-effort)
-    const profilePatch: Record<string, unknown> = {};
-    if (incoming.country) profilePatch.country = incoming.country;
-    if (incoming.province) profilePatch.province = incoming.province;
+    type ShopProfileInsert =
+      Database["public"]["Tables"]["shop_profiles"]["Insert"];
 
-    if (Object.keys(profilePatch).length > 0) {
+    const profilePatch: ShopProfileInsert = { shop_id: shopId };
+
+if (typeof incoming.country === "string") {
+  profilePatch.country = incoming.country;
+}
+
+if (typeof incoming.province === "string") {
+  profilePatch.province = incoming.province;
+}
+    if (Object.keys(profilePatch).length > 1) {
       const { error: spErr } = await supabase
         .from("shop_profiles")
-        .upsert({ shop_id: shopId, ...profilePatch } as any, {
-          onConflict: "shop_id",
-        });
+        .upsert(profilePatch, { onConflict: "shop_id" });
 
-      // Do not fail the whole request if profile sync fails, but report if needed
       if (spErr) {
         return NextResponse.json({
           ok: true,

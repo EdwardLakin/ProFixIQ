@@ -20,6 +20,9 @@ function cleanNum(v: unknown): number | null {
   if (!Number.isFinite(n)) return null;
   return n;
 }
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
 
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
@@ -33,12 +36,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  let raw: any;
-  try {
-    raw = await req.json();
-  } catch {
+  const rawUnknown = (await req.json().catch(() => null)) as unknown;
+  if (!isRecord(rawUnknown)) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+  const raw = rawUnknown;
 
   const country = NA_COUNTRIES.has(cleanUpper(raw.country))
     ? cleanUpper(raw.country)

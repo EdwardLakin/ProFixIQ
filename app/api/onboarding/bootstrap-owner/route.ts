@@ -16,6 +16,10 @@ function cleanUpper(v: unknown): string {
   return cleanStr(v).toUpperCase();
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
@@ -29,12 +33,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ msg: "Unauthorized" }, { status: 401 });
     }
 
-    let raw: any;
-    try {
-      raw = await req.json();
-    } catch {
+    const rawUnknown = (await req.json().catch(() => null)) as unknown;
+    if (!isRecord(rawUnknown)) {
       return NextResponse.json({ msg: "Invalid JSON" }, { status: 400 });
     }
+    const raw = rawUnknown;
 
     const businessName = cleanStr(raw.businessName);
     const shopName = cleanStr(raw.shopName) || businessName;
