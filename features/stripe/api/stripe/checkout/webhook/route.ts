@@ -27,6 +27,10 @@ function clampCurrency(v: unknown): "usd" | "cad" | null {
   return null;
 }
 
+function toStripeId(v: unknown, prefix: string): string | null {
+  return typeof v === "string" && v.startsWith(prefix) ? v : null;
+}
+
 async function syncShopConnectFlagsByAccountId(accountId: string): Promise<void> {
   const acct = await stripe.accounts.retrieve(accountId);
   if (!acct) return;
@@ -56,102 +60,96 @@ async function syncShopConnectFlagsByAccountId(accountId: string): Promise<void>
     } as DB["public"]["Tables"]["shops"]["Update"])
     .eq("id", shopId);
 
-  if (updErr) {
-    console.error("❌ Failed to sync shop connect flags:", updErr.message);
-  }
+  if (updErr) console.error("❌ Failed to sync shop connect flags:", updErr.message);
 }
 
 export async function POST(req: Request) {
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET ?? "";
+
   if (!endpointSecret) {
-    return NextResponse.json(
-      { error: "Missing STRIPE_WEBHOOK_SECRET" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Missing STRIPE_WEBHOOK_SECRET" }, { status: 500 });
   }
   if (!process.env.STRIPE_SECRET_KEY) {
-    return NextResponse.json(
-      { error: "Missing STRIPE_SECRET_KEY" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
   }
-  if (
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    !process.env.SUPABASE_SERVICE_ROLE_KEY
-  ) {
-    return NextResponse.json(
-      { error: "Missing Supabase env vars" },
-      { status: 500 },
-    );
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return NextResponse.json({ error: "Missing Supabase env vars" }, { status: 500 });
+  }
+
+  const sig = req.headers.get("stripe-signature");
+  if (!sig) {
+    return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
   }
 
   let event: Stripe.Event;
-  const sig = req.headers.get("stripe-signature");
-  let rawBody = "";
-
   try {
-    rawBody = await req.text();
-
-    if (!sig) {
-      return NextResponse.json(
-        { error: "Missing Stripe signature" },
-        { status: 400 },
-      );
-    }
-
+    const rawBody = await req.text();
     event = stripe.webhooks.constructEvent(rawBody, sig, endpointSecret);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("❌ Stripe webhook verification failed:", message);
-    return NextResponse.json(
-      { error: `Webhook Error: ${message}` },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: `Webhook Error: ${message}` }, { status: 400 });
   }
 
   try {
     switch (event.type) {
-      /* ------------------------------------------------------- */
-      /* CONNECT: keep charges/payouts flags in sync              */
-      /* ------------------------------------------------------- */
       case "account.updated": {
         const acct = event.data.object as Stripe.Account;
-        if (isNonEmptyString(acct.id)) {
-          await syncShopConnectFlagsByAccountId(acct.id);
-        }
+        if (isNonEmptyString(acct.id)) await syncShopConnectFlagsByAccountId(acct.id);
         break;
       }
 
-      /* ------------------------------------------------------- */
-      /* PAYMENTS: Checkout completed                             */
-      /* ------------------------------------------------------- */
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
 
-        // Subscription completion (existing behavior)
+        /* ------------------------------ */
+        /* SUBSCRIPTIONS (Shop billing)   */
+        /* ------------------------------ */
         if (session.mode === "subscription") {
           const userId = session.metadata?.supabaseUserId ?? null;
+          const shopId = session.metadata?.shop_id ?? null;
 
-          if (userId) {
-            const { error: profileError } = await supabase
+          const stripeCustomerId = toStripeId(session.customer, "cus_");
+          const stripeSubscriptionId = toStripeId(session.subscription, "sub_");
+          const checkoutSessionId = session.id;
+
+          // Update profile (if we know who initiated checkout)
+          if (isNonEmptyString(userId)) {
+            const { error } = await supabase
               .from("profiles")
               .update({
                 stripe_checkout_complete: true,
-              } as DB["public"]["Tables"]["profiles"]["Update"])
+                // add these columns in DB if missing
+                stripe_customer_id: stripeCustomerId,
+                stripe_subscription_id: stripeSubscriptionId,
+                stripe_checkout_session_id: checkoutSessionId,
+              } as unknown as DB["public"]["Tables"]["profiles"]["Update"])
               .eq("id", userId);
 
-            if (profileError) {
-              console.error(
-                "❌ Failed to update profile:",
-                profileError.message,
-              );
-            }
+            if (error) console.error("❌ Failed to update profile:", error.message);
+          }
+
+          // Update shop (preferred place to store billing identity)
+          if (isNonEmptyString(shopId)) {
+            const { error } = await supabase
+              .from("shops")
+              .update({
+                // add these columns in DB if missing
+                stripe_customer_id: stripeCustomerId,
+                stripe_subscription_id: stripeSubscriptionId,
+                stripe_checkout_session_id: checkoutSessionId,
+              } as unknown as DB["public"]["Tables"]["shops"]["Update"])
+              .eq("id", shopId);
+
+            if (error) console.error("❌ Failed to update shop billing ids:", error.message);
           }
 
           break;
         }
 
-        // Customer payment completion (mode === "payment")
+        /* ------------------------------ */
+        /* CUSTOMER PAYMENTS (One-time)   */
+        /* ------------------------------ */
         if (session.mode === "payment") {
           const shopId = session.metadata?.shop_id ?? null;
           const workOrderId = session.metadata?.work_order_id ?? null;
@@ -160,37 +158,16 @@ export async function POST(req: Request) {
             typeof session.amount_total === "number" ? session.amount_total : null;
 
           const currency = clampCurrency(session.currency);
-
           const stripeSessionId = session.id;
+
           const paymentIntentId =
             typeof session.payment_intent === "string" ? session.payment_intent : null;
 
           if (!shopId || !isNonEmptyString(shopId)) {
-            console.warn("⚠️ payment session missing shop_id metadata", {
-              sessionId: stripeSessionId,
-            });
+            console.warn("⚠️ payment session missing shop_id metadata", { sessionId: stripeSessionId });
             break;
           }
 
-          if (amountTotal === null || !currency) {
-            console.warn("⚠️ payment session missing amount/currency", {
-              sessionId: stripeSessionId,
-              amount_total: session.amount_total,
-              currency: session.currency,
-            });
-          }
-
-          console.log("✅ Customer payment completed:", {
-            shopId,
-            workOrderId,
-            sessionId: stripeSessionId,
-            paymentIntent: paymentIntentId,
-            amountTotal,
-            currency,
-          });
-
-          // Insert payment record (idempotent by stripe_session_id unique)
-          // If amount/currency missing, store safe defaults to avoid breaking.
           const insertAmount = amountTotal ?? 0;
           const insertCurrency = currency ?? "usd";
 
@@ -209,17 +186,11 @@ export async function POST(req: Request) {
             },
           } as unknown as DB["public"]["Tables"]["payments"]["Insert"]);
 
-          // If duplicate due to retries, ignore
           if (payErr) {
-            const msg = String(payErr.message ?? "");
+            const msg = String(payErr.message ?? "").toLowerCase();
             const isDup =
-              msg.toLowerCase().includes("duplicate") ||
-              msg.toLowerCase().includes("unique") ||
-              msg.toLowerCase().includes("stripe_session_id");
-
-            if (!isDup) {
-              console.error("❌ Failed to insert payment:", payErr.message);
-            }
+              msg.includes("duplicate") || msg.includes("unique") || msg.includes("stripe_session_id");
+            if (!isDup) console.error("❌ Failed to insert payment:", payErr.message);
           }
 
           break;
@@ -236,9 +207,6 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("❌ Webhook processing error:", message);
-    return NextResponse.json(
-      { error: "Webhook handler failure" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Webhook handler failure" }, { status: 500 });
   }
 }
