@@ -13,15 +13,57 @@ type PatchBody = {
   notes?: string | null;
 };
 
-function bad(msg: string, code = 400) {
-  return NextResponse.json({ error: msg }, { status: code });
+function jsonError(msg: string, status = 400) {
+  return NextResponse.json({ error: msg }, { status });
+}
+
+function getIdFromUrl(url: string): string {
+  const { pathname } = new URL(url);
+  return pathname.split("/").pop() ?? "";
+}
+
+const STAFF_ROLES = new Set([
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "mechanic",
+  "parts",
+]);
+
+async function isStaffForShop(
+  supabase: ReturnType<typeof createRouteHandlerClient<Database>>,
+  userId: string,
+  shopId: string,
+): Promise<boolean> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role, shop_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!profile) return false;
+  return STAFF_ROLES.has(profile.role ?? "") && profile.shop_id === shopId;
+}
+
+async function isCustomerOwner(
+  supabase: ReturnType<typeof createRouteHandlerClient<Database>>,
+  userId: string,
+  customerId: string | null,
+): Promise<boolean> {
+  if (!customerId) return false;
+  const { data } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("id", customerId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return !!data;
 }
 
 export async function PATCH(req: Request): Promise<Response> {
-  // derive [id] from URL
-  const { pathname } = new URL(req.url);
-  const bookingId = pathname.split("/").pop() ?? "";
-  if (!bookingId) return bad("Missing booking id");
+  const bookingId = getIdFromUrl(req.url);
+  if (!bookingId) return jsonError("Missing booking id");
 
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
@@ -29,159 +71,111 @@ export async function PATCH(req: Request): Promise<Response> {
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr || !user) return bad("Not authenticated", 401);
 
-  let payload: PatchBody;
+  if (authErr || !user) return jsonError("Not authenticated", 401);
+
+  let body: PatchBody;
   try {
-    payload = (await req.json()) as PatchBody;
+    body = (await req.json()) as PatchBody;
   } catch {
-    return bad("Invalid JSON body");
+    return jsonError("Invalid JSON body");
   }
-
-  const { status: nextStatus, starts_at, ends_at, notes } = payload ?? {};
 
   const { data: booking, error: bErr } = await supabase
     .from("bookings")
-    .select("id, shop_id, customer_id, starts_at, ends_at, status")
+    .select("id, shop_id, customer_id, status, starts_at, ends_at, notes")
     .eq("id", bookingId)
-    .single();
-
-  if (bErr || !booking) return bad("Booking not found", 404);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, shop_id")
-    .eq("id", user.id)
-    .single();
-
-  const staffRoles = [
-    "owner",
-    "admin",
-    "manager",
-    "advisor",
-    "mechanic",
-    "parts",
-  ] as const;
-
-  const isStaff =
-    !!profile?.role &&
-    (staffRoles as readonly string[]).includes(profile.role) &&
-    profile.shop_id === booking.shop_id;
-
-  const { data: custRow } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("id", booking.customer_id)
-    .eq("user_id", user.id)
     .maybeSingle();
 
-  const isCustomerOwner = !!custRow;
-  if (!isStaff && !isCustomerOwner) return bad("Not allowed", 403);
+  if (bErr || !booking) return jsonError("Booking not found", 404);
 
-  const curr = booking.status as PatchBody["status"];
-  const allowedTransitions: Record<
-    NonNullable<PatchBody["status"]>,
-    NonNullable<PatchBody["status"]>[]
-  > = {
-    pending: ["confirmed", "cancelled"],
-    confirmed: ["completed", "cancelled"],
-    completed: [],
-    cancelled: [],
-  };
+  const staff = await isStaffForShop(supabase, user.id, booking.shop_id);
+  const owner = await isCustomerOwner(supabase, user.id, booking.customer_id);
 
-  if (isCustomerOwner && nextStatus && nextStatus !== "cancelled") {
-    return bad("Customers may only cancel their own booking", 403);
-  }
-  if (
-    nextStatus &&
-    (!curr || !allowedTransitions[curr].includes(nextStatus))
-  ) {
-    return bad(`Invalid status transition: ${curr} → ${nextStatus}`);
-  }
+  if (!staff && !owner) return jsonError("Not allowed", 403);
 
-  const newStart = starts_at ? new Date(starts_at) : null;
-  const newEnd = ends_at ? new Date(ends_at) : null;
-
-  if (newStart || newEnd) {
-    if (!isStaff) return bad("Only staff can reschedule", 403);
-    if (
-      !newStart ||
-      !newEnd ||
-      Number.isNaN(newStart.getTime()) ||
-      Number.isNaN(newEnd.getTime()) ||
-      newEnd <= newStart
-    ) {
-      return bad("Invalid starts_at/ends_at");
+  // Customers can only cancel, not reschedule or mark complete.
+  if (owner) {
+    if (body.starts_at || body.ends_at) {
+      return jsonError("Customers may not reschedule bookings", 403);
     }
-
-    const { data: shop } = await supabase
-      .from("shops")
-      .select("id, min_notice_minutes, max_lead_days")
-      .eq("id", booking.shop_id)
-      .single();
-
-    const now = new Date();
-    const minNotice = shop?.min_notice_minutes ?? 120;
-    const maxLead = shop?.max_lead_days ?? 30;
-
-    const minutesUntil = Math.floor(
-      (newStart.getTime() - now.getTime()) / 60000,
-    );
-    if (minutesUntil < minNotice) {
-      return bad(
-        `Reschedule requires at least ${minNotice} minutes notice`,
-      );
-    }
-
-    const startOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    ).getTime();
-    const daysUntil = Math.floor(
-      (newStart.getTime() - startOfToday) / 86400000,
-    );
-    if (daysUntil > maxLead) {
-      return bad(
-        `Cannot schedule more than ${maxLead} days ahead`,
-      );
-    }
-
-    const { data: overlaps, error: ovErr } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("shop_id", booking.shop_id)
-      .neq("id", booking.id)
-      .or(
-        `and(starts_at.lt.${newEnd.toISOString()},ends_at.gt.${newStart.toISOString()})`,
-      )
-      .limit(1);
-
-    if (ovErr) return bad("Failed to check overlaps", 500);
-    if (overlaps && overlaps.length > 0) {
-      return bad("Selected time overlaps another booking", 409);
+    if (body.status && body.status !== "cancelled") {
+      return jsonError("Customers may only cancel a booking", 403);
     }
   }
 
-  const patch: Partial<Database["public"]["Tables"]["bookings"]["Update"]> =
-    {};
+  // Validate reschedule times (staff only)
+  let nextStart: Date | null = null;
+  let nextEnd: Date | null = null;
+  if (body.starts_at || body.ends_at) {
+    if (!staff) return jsonError("Only staff can reschedule", 403);
 
-  if (nextStatus) patch.status = nextStatus;
-  if (typeof notes !== "undefined") patch.notes = notes;
-  if (newStart && newEnd) {
-    patch.starts_at = newStart.toISOString();
-    patch.ends_at = newEnd.toISOString();
+    if (!body.starts_at || !body.ends_at) {
+      return jsonError("starts_at and ends_at are required to reschedule");
+    }
+
+    nextStart = new Date(body.starts_at);
+    nextEnd = new Date(body.ends_at);
+
+    if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime())) {
+      return jsonError("Invalid starts_at/ends_at");
+    }
+    if (nextEnd <= nextStart) return jsonError("ends_at must be after starts_at");
   }
 
-  if (Object.keys(patch).length === 0) return bad("Nothing to update");
+  const patch: Partial<Database["public"]["Tables"]["bookings"]["Update"]> = {};
+
+  if (typeof body.notes !== "undefined") patch.notes = body.notes ?? null;
+  if (body.status) patch.status = body.status;
+  if (nextStart && nextEnd) {
+    patch.starts_at = nextStart.toISOString();
+    patch.ends_at = nextEnd.toISOString();
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return jsonError("Nothing to update");
+  }
 
   const { data: updated, error: upErr } = await supabase
     .from("bookings")
     .update(patch)
     .eq("id", bookingId)
     .select("*")
-    .single();
+    .maybeSingle();
 
-  if (upErr || !updated) return bad("Failed to update booking", 500);
+  if (upErr || !updated) return jsonError("Failed to update booking", 500);
+
   return NextResponse.json({ booking: updated }, { status: 200 });
+}
+
+export async function DELETE(req: Request): Promise<Response> {
+  const bookingId = getIdFromUrl(req.url);
+  if (!bookingId) return jsonError("Missing booking id");
+
+  const supabase = createRouteHandlerClient<Database>({ cookies });
+
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+
+  if (authErr || !user) return jsonError("Not authenticated", 401);
+
+  const { data: booking, error: bErr } = await supabase
+    .from("bookings")
+    .select("id, shop_id, customer_id")
+    .eq("id", bookingId)
+    .maybeSingle();
+
+  if (bErr || !booking) return jsonError("Booking not found", 404);
+
+  const staff = await isStaffForShop(supabase, user.id, booking.shop_id);
+  const owner = await isCustomerOwner(supabase, user.id, booking.customer_id);
+
+  if (!staff && !owner) return jsonError("Not allowed", 403);
+
+  const { error: delErr } = await supabase.from("bookings").delete().eq("id", bookingId);
+  if (delErr) return jsonError("Failed to delete booking", 500);
+
+  return NextResponse.json({ ok: true }, { status: 200 });
 }

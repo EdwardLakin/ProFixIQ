@@ -18,7 +18,6 @@ export default function PortalSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
 
-  // Form state mirrors customer_settings columns
   const [form, setForm] = useState<SettingsRow>({
     customer_id: "",
     comm_email_enabled: true,
@@ -31,7 +30,6 @@ export default function PortalSettingsPage() {
     updated_at: new Date().toISOString(),
   });
 
-  // timezone options (small curated list; expand as needed)
   const tzOptions = useMemo(
     () => [
       "UTC",
@@ -53,7 +51,6 @@ export default function PortalSettingsPage() {
       setLoading(true);
       setError(null);
 
-      // Who's logged in?
       const {
         data: { user },
         error: userErr,
@@ -64,7 +61,6 @@ export default function PortalSettingsPage() {
         return;
       }
 
-      // Get their customer row
       const { data: cust, error: custErr } = await supabase
         .from("customers")
         .select("*")
@@ -81,7 +77,6 @@ export default function PortalSettingsPage() {
 
       setCustomer(cust);
 
-      // Fetch settings (or create defaults if missing)
       const { data: existing, error: settingsErr } = await supabase
         .from("customer_settings")
         .select("*")
@@ -97,7 +92,6 @@ export default function PortalSettingsPage() {
       if (existing) {
         setForm(existing);
       } else {
-        // Create a default row (allowed for service_role usually; if not, user can save to create)
         const defaults: SettingsInsert = {
           customer_id: cust.id,
           comm_email_enabled: true,
@@ -108,12 +102,13 @@ export default function PortalSettingsPage() {
           language: "en",
           timezone: "UTC",
         };
-        // Try to insert optimistically; if RLS blocks, user Save will upsert later
+
         await supabase
           .from("customer_settings")
           .upsert(defaults)
           .select()
           .single();
+
         setForm({
           ...(defaults as SettingsRow),
           updated_at: new Date().toISOString(),
@@ -160,7 +155,7 @@ export default function PortalSettingsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 text-sm text-neutral-300">
+      <div className="mx-auto max-w-2xl rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-200 backdrop-blur-md shadow-card">
         Loading your settings…
       </div>
     );
@@ -168,11 +163,14 @@ export default function PortalSettingsPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-2xl space-y-4">
+      <div className="mx-auto max-w-2xl space-y-4 text-white">
         <header>
-          <h1 className="text-2xl font-blackops text-orange-400">Settings</h1>
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+            Settings
+          </h1>
         </header>
-        <div className="space-y-3 rounded-2xl border border-red-700 bg-red-900/40 p-4 text-sm">
+
+        <div className="space-y-3 rounded-2xl border border-red-500/35 bg-red-900/20 p-4 text-sm backdrop-blur-md shadow-card">
           <p className="text-red-100">{error}</p>
           <LinkButton href="/portal/profile" variant="outline" size="sm">
             Go to profile
@@ -183,24 +181,25 @@ export default function PortalSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6 text-white">
       <header className="space-y-1">
-        <h1 className="text-2xl font-blackops text-orange-400">Settings</h1>
-        <p className="text-sm text-neutral-400">
+        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+          Settings
+        </h1>
+        <p className="text-xs text-neutral-400">
           Choose how we contact you and how information is displayed.
         </p>
       </header>
 
-      {/* Communication Preferences */}
-      <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 sm:p-5">
-        <h2 className="text-lg font-semibold text-neutral-50">
+      <section className="space-y-3 rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card sm:p-5">
+        <h2 className="text-sm font-semibold text-neutral-50">
           Communication
         </h2>
 
         <label className="flex items-center gap-3 text-sm text-neutral-100">
           <input
             type="checkbox"
-            className="h-4 w-4"
+            className="h-4 w-4 accent-orange-500"
             checked={!!form.comm_email_enabled}
             onChange={(e) => update("comm_email_enabled", e.target.checked)}
           />
@@ -210,7 +209,7 @@ export default function PortalSettingsPage() {
         <label className="flex items-center gap-3 text-sm text-neutral-100">
           <input
             type="checkbox"
-            className="h-4 w-4"
+            className="h-4 w-4 accent-orange-500"
             checked={!!form.comm_sms_enabled}
             onChange={(e) => update("comm_sms_enabled", e.target.checked)}
           />
@@ -220,7 +219,7 @@ export default function PortalSettingsPage() {
         <label className="flex items-center gap-3 text-sm text-neutral-100">
           <input
             type="checkbox"
-            className="h-4 w-4"
+            className="h-4 w-4 accent-orange-500"
             checked={!!form.marketing_opt_in}
             onChange={(e) => update("marketing_opt_in", e.target.checked)}
           />
@@ -229,11 +228,11 @@ export default function PortalSettingsPage() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm text-gray-400">
+            <label className="mb-1 block text-xs text-neutral-400">
               Preferred contact
             </label>
             <select
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
+              className="w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               value={form.preferred_contact ?? "email"}
               onChange={(e) =>
                 update(
@@ -250,15 +249,14 @@ export default function PortalSettingsPage() {
         </div>
       </section>
 
-      {/* Display */}
-      <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 sm:p-5">
-        <h2 className="text-lg font-semibold text-neutral-50">Display</h2>
+      <section className="space-y-3 rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card sm:p-5">
+        <h2 className="text-sm font-semibold text-neutral-50">Display</h2>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm text-gray-400">Units</label>
+            <label className="mb-1 block text-xs text-neutral-400">Units</label>
             <select
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
+              className="w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               value={form.units ?? "imperial"}
               onChange={(e) =>
                 update("units", e.target.value as SettingsRow["units"])
@@ -270,25 +268,24 @@ export default function PortalSettingsPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-gray-400">
+            <label className="mb-1 block text-xs text-neutral-400">
               Language
             </label>
             <select
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
+              className="w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               value={form.language ?? "en"}
               onChange={(e) => update("language", e.target.value)}
             >
               <option value="en">English</option>
-              {/* Add more locales as supported */}
             </select>
           </div>
 
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-sm text-gray-400">
+            <label className="mb-1 block text-xs text-neutral-400">
               Timezone
             </label>
             <select
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
+              className="w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               value={form.timezone ?? "UTC"}
               onChange={(e) => update("timezone", e.target.value)}
             >
@@ -302,16 +299,15 @@ export default function PortalSettingsPage() {
         </div>
       </section>
 
-      {/* Save */}
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={onSave}
           disabled={saving}
-          className="rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-lg border border-orange-600 px-4 py-2 text-sm font-semibold text-orange-300 transition hover:bg-orange-600 hover:text-black disabled:opacity-60"
         >
           {saving ? "Saving…" : "Save settings"}
         </button>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-neutral-400">
           Last updated:{" "}
           {form.updated_at ? new Date(form.updated_at).toLocaleString() : "—"}
         </span>

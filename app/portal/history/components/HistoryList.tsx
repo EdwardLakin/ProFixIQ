@@ -14,19 +14,14 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+// Keep semantic colors, but align to glass + lighter borders.
 const STATUS_CLASSES: Record<string, string> = {
-  awaiting:
-    "bg-amber-500/10 text-amber-200 border border-amber-500/40",
-  scheduled:
-    "bg-sky-500/10 text-sky-200 border border-sky-500/40",
-  in_progress:
-    "bg-orange-500/10 text-orange-200 border border-orange-500/50",
-  completed:
-    "bg-emerald-500/10 text-emerald-200 border border-emerald-500/40",
-  on_hold:
-    "bg-purple-500/10 text-purple-200 border border-purple-500/40",
-  cancelled:
-    "bg-red-500/10 text-red-200 border border-red-500/40",
+  awaiting: "border border-amber-500/35 bg-amber-500/10 text-amber-200",
+  scheduled: "border border-sky-500/35 bg-sky-500/10 text-sky-200",
+  in_progress: "border border-orange-500/40 bg-orange-500/10 text-orange-200",
+  completed: "border border-emerald-500/35 bg-emerald-500/10 text-emerald-200",
+  on_hold: "border border-purple-500/35 bg-purple-500/10 text-purple-200",
+  cancelled: "border border-red-500/35 bg-red-500/10 text-red-200",
 };
 
 export default function HistoryList({ items }: Props) {
@@ -70,7 +65,7 @@ export default function HistoryList({ items }: Props) {
 
   if (!items.length) {
     return (
-      <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
+      <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-300 backdrop-blur-md shadow-card">
         No service history yet. Once this vehicle has been in for service,
         you’ll see it here.
       </div>
@@ -82,7 +77,7 @@ export default function HistoryList({ items }: Props) {
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
+      <div className="rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md shadow-card">
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-[200px] flex-1">
             <label className="mb-1 block text-[11px] uppercase tracking-[0.12em] text-neutral-400">
@@ -91,7 +86,7 @@ export default function HistoryList({ items }: Props) {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              className="w-full rounded border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-white outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-500"
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               placeholder="Search vehicle, work order, notes…"
             />
           </div>
@@ -103,7 +98,7 @@ export default function HistoryList({ items }: Props) {
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="min-w-[150px] rounded border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-white outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-500"
+              className="min-w-[170px] rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             >
               <option value="">All statuses</option>
               <option value="awaiting">Awaiting</option>
@@ -117,7 +112,7 @@ export default function HistoryList({ items }: Props) {
 
           {hasFilters && (
             <button
-              className="ml-auto rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+              className="ml-auto rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-200 hover:bg-black/55"
               onClick={() => {
                 setQ("");
                 setStatus("");
@@ -128,7 +123,7 @@ export default function HistoryList({ items }: Props) {
           )}
         </div>
 
-        <div className="mt-2 text-xs text-neutral-500">
+        <div className="mt-2 text-xs text-neutral-400">
           Showing{" "}
           <span className="font-semibold text-orange-300">
             {filtered.length}
@@ -139,7 +134,7 @@ export default function HistoryList({ items }: Props) {
 
       {/* Empty-after-filter */}
       {filtered.length === 0 ? (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-300 backdrop-blur-md shadow-card">
           No service visits match your filters. Try clearing the search or
           choosing a different status.
         </div>
@@ -151,7 +146,7 @@ export default function HistoryList({ items }: Props) {
               STATUS_LABELS[statusKey] ?? (statusKey || "Unknown");
             const statusClass =
               STATUS_CLASSES[statusKey] ??
-              "bg-neutral-700/40 text-neutral-100 border border-neutral-600/60";
+              "border border-white/10 bg-black/40 text-neutral-200";
 
             const title = h.vehicle
               ? `${h.vehicle.year ?? ""} ${h.vehicle.make ?? ""} ${
@@ -162,7 +157,7 @@ export default function HistoryList({ items }: Props) {
             return (
               <li
                 key={h.id}
-                className="rounded-xl border border-neutral-800 bg-neutral-950/90 p-3"
+                className="rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md shadow-card"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-xs text-neutral-400">
@@ -192,13 +187,15 @@ export default function HistoryList({ items }: Props) {
                     {h.vehicle.vin && (
                       <span className="mr-3">
                         VIN:{" "}
-                        <span className="font-mono">{h.vehicle.vin}</span>
+                        <span className="font-mono text-neutral-200">
+                          {h.vehicle.vin}
+                        </span>
                       </span>
                     )}
                     {h.vehicle.license_plate && (
                       <span>
                         Plate:{" "}
-                        <span className="font-mono">
+                        <span className="font-mono text-neutral-200">
                           {h.vehicle.license_plate}
                         </span>
                       </span>

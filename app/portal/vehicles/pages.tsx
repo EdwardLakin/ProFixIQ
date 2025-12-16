@@ -67,13 +67,13 @@ export default function PortalVehiclesPage() {
         data: { user },
         error: userErr,
       } = await supabase.auth.getUser();
+
       if (userErr || !user) {
         setError("You must be signed in.");
         setLoading(false);
         return;
       }
 
-      // Load customer by user_id
       const { data: cust, error: custErr } = await supabase
         .from("customers")
         .select("*")
@@ -81,11 +81,11 @@ export default function PortalVehiclesPage() {
         .maybeSingle();
 
       if (custErr) setError(custErr.message);
+
       if (cust) {
         const typed = cust as unknown as CustomerRow;
         setCustomer(typed);
 
-        // Load vehicles for this customer
         const { data: v, error: vehErr } = await supabase
           .from("vehicles")
           .select("*")
@@ -130,7 +130,6 @@ export default function PortalVehiclesPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // helpers: convert UI strings -> DB values
   const toNull = (s: string): string | null =>
     s.trim() === "" ? null : s.trim();
 
@@ -198,10 +197,8 @@ export default function PortalVehiclesPage() {
 
   const onDelete = async (id: string) => {
     if (!confirm("Delete this vehicle?")) return;
-    const { error: delErr } = await supabase
-      .from("vehicles")
-      .delete()
-      .eq("id", id);
+    const { error: delErr } = await supabase.from("vehicles").delete().eq("id", id);
+
     if (delErr) {
       setError(delErr.message);
     } else {
@@ -212,7 +209,7 @@ export default function PortalVehiclesPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 text-sm text-neutral-300">
+      <div className="mx-auto max-w-3xl rounded-2xl border border-neutral-800/70 bg-neutral-950/50 p-4 text-sm text-neutral-300 backdrop-blur">
         Loading your vehicles…
       </div>
     );
@@ -221,32 +218,26 @@ export default function PortalVehiclesPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-blackops text-orange-400">
-          My Vehicles
-        </h1>
+        <h1 className="text-2xl font-blackops text-orange-500">My Vehicles</h1>
         <p className="text-sm text-neutral-400">
           Save your vehicles so booking and service history stays organized.
         </p>
       </header>
 
       {error && (
-        <div className="rounded-2xl border border-red-700 bg-red-900/40 px-3 py-2 text-sm text-red-100">
+        <div className="rounded-2xl border border-red-700/60 bg-red-900/30 px-3 py-2 text-sm text-red-100 backdrop-blur">
           {error}
         </div>
       )}
 
-      {/* Add / Edit form */}
-      <div className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 sm:p-5">
+      <div className="space-y-3 rounded-2xl border border-neutral-800/70 bg-neutral-950/50 p-4 backdrop-blur sm:p-5">
         <div className="mb-1 flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-neutral-50">
             {isEdit ? "Edit vehicle" : "Add vehicle"}
           </h2>
           {isEdit && (
             <span className="text-xs text-neutral-500">
-              Editing{" "}
-              <span className="font-mono">
-                {editingId?.slice(0, 8)}…
-              </span>
+              Editing <span className="font-mono">{editingId?.slice(0, 8)}…</span>
             </span>
           )}
         </div>
@@ -283,9 +274,7 @@ export default function PortalVehiclesPage() {
             className="input"
             placeholder="License plate"
             value={form.license_plate}
-            onChange={(e) =>
-              setForm({ ...form, license_plate: e.target.value })
-            }
+            onChange={(e) => setForm({ ...form, license_plate: e.target.value })}
           />
           <input
             className="input"
@@ -304,84 +293,56 @@ export default function PortalVehiclesPage() {
 
         <div className="flex flex-wrap gap-3">
           <button className="btn" onClick={onSave} disabled={saving}>
-            {saving
-              ? "Saving…"
-              : isEdit
-              ? "Save changes"
-              : "Add vehicle"}
+            {saving ? "Saving…" : isEdit ? "Save changes" : "Add vehicle"}
           </button>
+
           {isEdit && (
-            <button
-              className="btn-secondary"
-              onClick={resetForm}
-              disabled={saving}
-            >
+            <button className="btn-secondary" onClick={resetForm} disabled={saving}>
               Cancel
             </button>
           )}
         </div>
 
-        <p className="text-xs text-neutral-500">
-          Fields marked with * are required.
-        </p>
+        <p className="text-xs text-neutral-500">Fields marked with * are required.</p>
       </div>
 
-      {/* List */}
       <div className="space-y-3">
         {vehicles.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-neutral-800 bg-neutral-950/70 p-4 text-sm text-neutral-400">
-            No vehicles yet. Add your first vehicle above so you can book
-            appointments faster and see service history.
+          <div className="rounded-2xl border border-dashed border-neutral-800/70 bg-neutral-950/40 p-4 text-sm text-neutral-400 backdrop-blur">
+            No vehicles yet. Add your first vehicle above so you can book appointments faster and
+            see service history.
           </div>
         ) : (
           vehicles.map((v) => {
-            const title = [v.year ?? "", v.make ?? "", v.model ?? ""]
-              .filter(Boolean)
-              .join(" ")
-              .trim() || "Vehicle";
+            const title =
+              [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() ||
+              "Vehicle";
 
             return (
               <div
                 key={v.id}
-                className="flex flex-col justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-3 sm:flex-row sm:items-center"
+                className="flex flex-col justify-between gap-3 rounded-2xl border border-neutral-800/70 bg-neutral-950/50 p-3 backdrop-blur sm:flex-row sm:items-center"
               >
                 <div>
-                  <div className="text-sm font-semibold text-neutral-50">
-                    {title}
-                  </div>
+                  <div className="text-sm font-semibold text-neutral-50">{title}</div>
                   <div className="mt-0.5 text-xs text-neutral-400">
-                    VIN{" "}
-                    <span className="font-mono">
-                      {v.vin || "—"}
-                    </span>{" "}
-                    • Plate{" "}
-                    <span className="font-mono">
-                      {v.license_plate || "—"}
-                    </span>{" "}
-                    • Mileage{" "}
-                    <span className="font-mono">
-                      {v.mileage || "—"}
-                    </span>
+                    VIN <span className="font-mono">{v.vin || "—"}</span> • Plate{" "}
+                    <span className="font-mono">{v.license_plate || "—"}</span> • Mileage{" "}
+                    <span className="font-mono">{v.mileage || "—"}</span>
                     {v.color && (
                       <>
                         {" "}
-                        • Color{" "}
-                        <span className="font-mono">{v.color}</span>
+                        • Color <span className="font-mono">{v.color}</span>
                       </>
                     )}
                   </div>
                 </div>
+
                 <div className="flex gap-2">
-                  <button
-                    className="btn-secondary"
-                    onClick={() => startEdit(v)}
-                  >
+                  <button className="btn-secondary" onClick={() => startEdit(v)}>
                     Edit
                   </button>
-                  <button
-                    className="btn-danger"
-                    onClick={() => onDelete(v.id)}
-                  >
+                  <button className="btn-danger" onClick={() => onDelete(v.id)}>
                     Delete
                   </button>
                 </div>

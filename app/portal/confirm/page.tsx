@@ -1,4 +1,3 @@
-// app/portal/auth/confirm/page.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -21,7 +20,7 @@ export default function PortalConfirmPage() {
   }, [router, supabase]);
 
   return (
-    <div className="mx-auto flex max-w-md items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-950/80 p-6 text-sm text-neutral-200">
+    <div className="mx-auto flex max-w-md items-center justify-center rounded-2xl border border-white/10 bg-black/30 p-6 text-sm text-neutral-200 backdrop-blur-md shadow-card">
       Completing sign-in…
     </div>
   );

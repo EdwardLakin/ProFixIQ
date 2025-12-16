@@ -24,15 +24,21 @@ export default async function HistoryPage() {
 
   if (!user) {
     return (
-      <div className="mx-auto max-w-xl space-y-3">
-        <h1 className="text-2xl font-blackops text-orange-400">
-          Service history
-        </h1>
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 p-4 text-sm text-neutral-200">
+      <div className="mx-auto max-w-xl space-y-3 text-white">
+        <header className="space-y-1">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+            Service history
+          </h1>
+          <p className="text-xs text-neutral-400">
+            Sign in to view your previous visits.
+          </p>
+        </header>
+
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-200 backdrop-blur-md shadow-card">
           <p>You need to be signed in to view your service history.</p>
           <Link
             href="/portal/signin"
-            className="mt-3 inline-flex rounded border border-orange-500 bg-orange-600 px-3 py-1.5 text-xs font-semibold text-black hover:bg-orange-500"
+            className="mt-3 inline-flex items-center justify-center rounded-lg border border-orange-600 px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-600 hover:text-black"
           >
             Go to sign in
           </Link>
@@ -51,31 +57,40 @@ export default async function HistoryPage() {
   if (custErr) {
     console.error("Error loading customer:", custErr);
     return (
-      <div className="mx-auto max-w-xl space-y-3">
-        <h1 className="text-2xl font-blackops text-orange-400">
-          Service history
-        </h1>
-        <p className="rounded-xl border border-red-700 bg-red-900/40 p-4 text-sm text-red-100">
+      <div className="mx-auto max-w-xl space-y-3 text-white">
+        <header className="space-y-1">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+            Service history
+          </h1>
+        </header>
+
+        <div className="rounded-2xl border border-red-500/35 bg-red-900/20 p-4 text-sm text-red-100 backdrop-blur-md shadow-card">
           Failed to load your customer profile. Please try again later.
-        </p>
+        </div>
       </div>
     );
   }
 
   if (!customer) {
     return (
-      <div className="mx-auto max-w-xl space-y-3">
-        <h1 className="text-2xl font-blackops text-orange-400">
-          Service history
-        </h1>
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 p-4 text-sm text-neutral-200">
+      <div className="mx-auto max-w-xl space-y-3 text-white">
+        <header className="space-y-1">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+            Service history
+          </h1>
+          <p className="text-xs text-neutral-400">
+            Complete your profile so we can connect your visits.
+          </p>
+        </header>
+
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-200 backdrop-blur-md shadow-card">
           <p>
             We couldn’t find a customer profile linked to your account yet.
             Complete your profile so we can connect your visits.
           </p>
           <Link
             href="/portal/profile"
-            className="mt-3 inline-flex rounded border border-orange-500 bg-orange-600 px-3 py-1.5 text-xs font-semibold text-black hover:bg-orange-500"
+            className="mt-3 inline-flex items-center justify-center rounded-lg border border-orange-600 px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-600 hover:text-black"
           >
             Go to profile
           </Link>
@@ -100,24 +115,27 @@ export default async function HistoryPage() {
   if (error) {
     console.error("Error loading history:", error);
     return (
-      <div className="mx-auto max-w-xl space-y-3">
-        <h1 className="text-2xl font-blackops text-orange-400">
-          Service history
-        </h1>
-        <p className="rounded-xl border border-red-700 bg-red-900/40 p-4 text-sm text-red-100">
+      <div className="mx-auto max-w-xl space-y-3 text-white">
+        <header className="space-y-1">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+            Service history
+          </h1>
+        </header>
+
+        <div className="rounded-2xl border border-red-500/35 bg-red-900/20 p-4 text-sm text-red-100 backdrop-blur-md shadow-card">
           Failed to load history.
-        </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4 text-white">
       <header className="space-y-1">
-        <h1 className="text-2xl font-blackops text-orange-400">
+        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
           Service history
         </h1>
-        <p className="text-sm text-neutral-400">
+        <p className="text-xs text-neutral-400">
           Past visits, notes, and work orders linked to your vehicles.
         </p>
       </header>

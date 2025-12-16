@@ -231,16 +231,23 @@ export default function PortalBookingPage() {
     selectedDate && closedWeekdays.has(selectedDate.getDay());
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-5xl px-3 py-6 text-white">
       <Toaster position="top-center" />
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-blackops text-orange-400">
-          Book an Appointment
-        </h1>
+        <div>
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+            Book an appointment
+          </h1>
+          <p className="mt-1 text-xs text-neutral-400">
+            Choose a shop, then pick a date and time.
+          </p>
+        </div>
 
-        <div className="flex items-center gap-3">
-          <label className="text-sm text-neutral-400">Shop</label>
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md">
+          <label className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+            Shop
+          </label>
           <select
             value={shopSlug}
             onChange={(e) => {
@@ -249,7 +256,7 @@ export default function PortalBookingPage() {
               setSelectedDate(null);
               router.replace(`/portal/booking?shop=${encodeURIComponent(slug)}`);
             }}
-            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white"
+            className="min-w-[200px] rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
           >
             {shops.map((s) => (
               <option key={s.id} value={s.slug as string}>
@@ -259,23 +266,25 @@ export default function PortalBookingPage() {
           </select>
 
           <LinkButton href="/portal/history" variant="outline" size="sm">
-            View History
+            View history
           </LinkButton>
         </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Calendar
-          className="shadow-inner"
-          month={month}
-          onMonthChange={setMonth}
-          value={selectedDate}
-          onChange={setSelectedDate}
-          disabled={disabledDate}
-        />
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md shadow-card">
+          <Calendar
+            className="shadow-inner"
+            month={month}
+            onMonthChange={setMonth}
+            value={selectedDate}
+            onChange={setSelectedDate}
+            disabled={disabledDate}
+          />
+        </div>
 
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-          <h2 className="mb-1 font-semibold text-white">Available Times</h2>
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
+          <h2 className="mb-1 font-semibold text-white">Available times</h2>
           <p className="mb-3 text-xs text-neutral-400">
             Times shown in <span className="font-medium">{tz}</span>.
             {closedLabel && (
@@ -323,8 +332,7 @@ export default function PortalBookingPage() {
       </div>
 
       <p className="mt-6 text-xs text-neutral-500">
-        * Times reflect shop hours, closed days, and blackout dates. Your
-        request is pending until confirmed by the shop.
+        * Your request is pending until confirmed by the shop.
       </p>
     </div>
   );

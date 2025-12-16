@@ -1,3 +1,4 @@
+// app/portal/appointments/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -33,27 +34,47 @@ function startOfToday(): Date {
   return d;
 }
 
+function cardClass() {
+  return "rounded-2xl border border-neutral-800/70 bg-neutral-950/45 p-4 backdrop-blur-md";
+}
+
+function fieldClass() {
+  return "mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950/60 px-2 py-1 text-sm text-white outline-none focus:border-orange-500/60 focus:ring-1 focus:ring-orange-500/40";
+}
+
+function safeString(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function customerLabel(c: CustomerRow): string {
+  const rec = c as unknown as Record<string, unknown>;
+
+  const first = safeString(rec["first_name"]);
+  const last = safeString(rec["last_name"]);
+  const full = safeString(rec["full_name"]) || safeString(rec["name"]);
+  const name =
+    full || `${first} ${last}`.trim() || safeString(rec["email"]) || "Customer";
+
+  const phone = safeString(rec["phone"]) || safeString(rec["mobile"]);
+  return phone ? `${name} (${phone})` : name;
+}
+
 export default function PortalAppointmentsPage() {
   const supabase = createClientComponentClient<Database>();
   const search = useSearchParams();
   const router = useRouter();
 
-  // shops
   const [shops, setShops] = useState<ShopRow[]>([]);
   const [shopSlug, setShopSlug] = useState<string>(search.get("shop") || "");
 
-  // customers for selected shop
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
 
-  // week
   const [weekStart, setWeekStart] = useState<Date>(() => startOfToday());
 
-  // data
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
 
-  // form
   const [editing, setEditing] = useState<Booking | null>(null);
   const [creatingDate, setCreatingDate] = useState<string | null>(null);
 
@@ -71,21 +92,19 @@ export default function PortalAppointmentsPage() {
         toast.error("Unable to load shops.");
         return;
       }
+
       const rows = (data ?? []) as ShopRow[];
       setShops(rows);
 
       if (!shopSlug && rows.length > 0) {
         const first = rows[0].slug as string;
         setShopSlug(first);
-        router.replace(
-          `/portal/appointments?shop=${encodeURIComponent(first)}`,
-        );
+        router.replace(`/portal/appointments?shop=${encodeURIComponent(first)}`);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // get selected shop row
   const selectedShop = useMemo(
     () => shops.find((s) => (s.slug as string | null) === shopSlug) ?? null,
     [shops, shopSlug],
@@ -122,7 +141,6 @@ export default function PortalAppointmentsPage() {
     })();
   }, [supabase, selectedShop]);
 
-  // compute week end (7 days)
   const weekEnd = useMemo(() => {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + 6);
@@ -138,14 +156,10 @@ export default function PortalAppointmentsPage() {
         const start = isoDate(weekStart);
         const end = isoDate(weekEnd);
         const res = await fetch(
-          `/api/portal/bookings?shop=${encodeURIComponent(
-            shopSlug,
-          )}&start=${start}&end=${end}`,
+          `/api/portal/bookings?shop=${encodeURIComponent(shopSlug)}&start=${start}&end=${end}`,
           { cache: "no-store" },
         );
-        if (!res.ok) {
-          throw new Error("Failed to load appointments.");
-        }
+        if (!res.ok) throw new Error("Failed to load appointments.");
         const j = (await res.json().catch(() => [])) as Booking[];
         setBookings(j ?? []);
       } catch (err: unknown) {
@@ -157,7 +171,6 @@ export default function PortalAppointmentsPage() {
     })();
   }, [shopSlug, weekStart, weekEnd]);
 
-  // create / save
   async function handleCreate(form: {
     date: string;
     startsAt: string;
@@ -200,13 +213,11 @@ export default function PortalAppointmentsPage() {
         throw new Error(j?.error || "Unable to create appointment.");
       }
 
-      // optimistic UI update so calendar + list update immediately
       setBookings((prev) => [...prev, j.booking as Booking]);
 
       toast.success("Appointment created.");
       setCreatingDate(null);
 
-      // sync with server (in case of computed fields)
       await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Create failed";
@@ -251,207 +262,168 @@ export default function PortalAppointmentsPage() {
   const totalForWeek = useMemo(() => bookings.length, [bookings]);
 
   return (
-    <div className="mx-auto max-w-6xl px-3 py-6 text-white">
+    <div className="space-y-6">
       <Toaster position="top-center" />
 
-      {/* header */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
-            Appointments
-          </h1>
-          <p className="mt-1 text-xs text-neutral-400">
-            Admin / manager / owner view of customer bookings for the week.
-          </p>
-        </div>
+      <header className="space-y-1">
+        <h1 className="text-2xl font-blackops text-orange-500">Appointments</h1>
+        <p className="text-sm text-neutral-400">
+          Admin / manager view of customer bookings for the week.
+        </p>
+      </header>
 
-        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md">
-          <label className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
-            Shop
-          </label>
-          <select
-            value={shopSlug}
-            onChange={(e) => {
-              const slug = e.target.value;
-              setShopSlug(slug);
-              router.replace(
-                `/portal/appointments?shop=${encodeURIComponent(slug)}`,
-              );
-            }}
-            className="min-w-[180px] rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-          >
-            {shops.map((s) => (
-              <option key={s.slug as string} value={s.slug as string}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <div className="ml-2 text-xs text-neutral-300">
-            <span className="text-[0.65rem] uppercase tracking-[0.13em] text-neutral-500">
+      {/* Shop selector */}
+      <div className={cardClass()}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+              Shop
+            </div>
+            <select
+              value={shopSlug}
+              onChange={(e) => {
+                const slug = e.target.value;
+                setShopSlug(slug);
+                router.replace(`/portal/appointments?shop=${encodeURIComponent(slug)}`);
+              }}
+              className={fieldClass() + " min-w-[220px]"}
+            >
+              {shops.map((s) => (
+                <option key={s.slug as string} value={s.slug as string}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="rounded-xl border border-neutral-800/70 bg-neutral-950/50 px-3 py-2">
+            <div className="text-[0.65rem] uppercase tracking-[0.13em] text-neutral-500">
               This week
-            </span>
-            <div className="font-semibold">
+            </div>
+            <div className="text-sm font-semibold text-neutral-100">
               {totalForWeek} booking{totalForWeek === 1 ? "" : "s"}
             </div>
           </div>
         </div>
       </div>
 
-      {/* main layout: calendar → form → list */}
-      <div className="space-y-6">
-        {/* calendar */}
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 overflow-hidden backdrop-blur-md shadow-card">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-white">
-              This week&apos;s calendar
-            </h2>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="xs"
-                onClick={() => {
-                  const d = new Date(weekStart);
-                  d.setDate(d.getDate() - 7);
-                  setWeekStart(d);
-                }}
-              >
-                ← Prev
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="xs"
-                onClick={() => setWeekStart(startOfToday())}
-              >
-                Today
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="xs"
-                onClick={() => {
-                  const d = new Date(weekStart);
-                  d.setDate(d.getDate() + 7);
-                  setWeekStart(d);
-                }}
-              >
-                Next →
-              </Button>
-            </div>
+      {/* Calendar */}
+      <div className={cardClass()}>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-neutral-50">Weekly calendar</h2>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                const d = new Date(weekStart);
+                d.setDate(d.getDate() - 7);
+                setWeekStart(d);
+              }}
+            >
+              ← Prev
+            </Button>
+            <Button type="button" variant="outline" size="xs" onClick={() => setWeekStart(startOfToday())}>
+              Today
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                const d = new Date(weekStart);
+                d.setDate(d.getDate() + 7);
+                setWeekStart(d);
+              }}
+            >
+              Next →
+            </Button>
           </div>
-
-          <div className="overflow-x-auto pb-2">
-            <WeeklyCalendar
-              weekStart={weekStart}
-              bookings={bookings}
-              onSelectDay={(dayIso) => setCreatingDate(dayIso)}
-              onSelectBooking={(b) => setEditing(b)}
-              loading={loadingBookings}
-            />
-          </div>
-
-          <p className="mt-3 text-[0.7rem] text-neutral-500">
-            Tip: click a day to start a new appointment on that day. Click an
-            appointment to edit.
-          </p>
         </div>
 
-        {/* create / edit form */}
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
-          {editing ? (
-            <EditForm
-              booking={editing}
-              customers={customers}
-              loadingCustomers={loadingCustomers}
-              onCancel={() => setEditing(null)}
-              onSave={(patch) => void handleUpdate(editing.id, patch)}
-            />
-          ) : (
-            <CreateForm
-              defaultDate={creatingDate ?? isoDate(weekStart)}
-              customers={customers}
-              loadingCustomers={loadingCustomers}
-              onSubmit={handleCreate}
-            />
-          )}
+        <div className="overflow-x-auto pb-2">
+          <WeeklyCalendar
+            weekStart={weekStart}
+            bookings={bookings}
+            onSelectDay={(dayIso) => setCreatingDate(dayIso)}
+            onSelectBooking={(b) => setEditing(b)}
+            loading={loadingBookings}
+          />
         </div>
 
-        {/* appointments list */}
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white">
-              Appointments this week ({bookings.length})
-            </h2>
-            {loadingBookings && (
-              <span className="text-[0.7rem] text-neutral-400">
-                Loading…
-              </span>
-            )}
-          </div>
+        <p className="mt-3 text-[0.75rem] text-neutral-500">
+          Click a day to create. Click an appointment to edit.
+        </p>
+      </div>
 
-          {loadingBookings ? (
-            <p className="text-sm text-neutral-400">
-              Fetching appointments…
-            </p>
-          ) : bookings.length === 0 ? (
-            <p className="text-sm text-neutral-400">
-              No appointments for this week.
-            </p>
-          ) : (
-            <ul className="divide-y divide-neutral-800">
-              {bookings
-                .slice()
-                .sort(
-                  (a, b) =>
-                    +new Date(a.starts_at) - +new Date(b.starts_at),
-                )
-                .map((b) => (
-                  <li
-                    key={b.id}
-                    className="flex flex-wrap items-center gap-3 py-3 text-sm"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-white">
-                        {b.customer_name || "Customer"}
-                      </div>
-                      <div className="text-[0.7rem] text-neutral-400">
-                        {new Date(b.starts_at).toLocaleString()} –{" "}
-                        {new Date(b.ends_at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </div>
-                      {b.notes ? (
-                        <div className="mt-1 text-[0.7rem] text-neutral-500">
-                          {b.notes}
-                        </div>
-                      ) : null}
+      {/* Create / Edit */}
+      <div className={cardClass()}>
+        {editing ? (
+          <EditForm
+            booking={editing}
+            customers={customers}
+            loadingCustomers={loadingCustomers}
+            onCancel={() => setEditing(null)}
+            onSave={(patch) => void handleUpdate(editing.id, patch)}
+          />
+        ) : (
+          <CreateForm
+            defaultDate={creatingDate ?? isoDate(weekStart)}
+            customers={customers}
+            loadingCustomers={loadingCustomers}
+            onSubmit={handleCreate}
+          />
+        )}
+      </div>
+
+      {/* List */}
+      <div className={cardClass()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-50">
+            Appointments this week ({bookings.length})
+          </h2>
+          {loadingBookings && <span className="text-[0.75rem] text-neutral-400">Loading…</span>}
+        </div>
+
+        {loadingBookings ? (
+          <p className="text-sm text-neutral-400">Fetching appointments…</p>
+        ) : bookings.length === 0 ? (
+          <p className="text-sm text-neutral-400">No appointments for this week.</p>
+        ) : (
+          <ul className="divide-y divide-neutral-800/70">
+            {bookings
+              .slice()
+              .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))
+              .map((b) => (
+                <li key={b.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-neutral-50">{b.customer_name || "Customer"}</div>
+                    <div className="text-[0.75rem] text-neutral-400">
+                      {new Date(b.starts_at).toLocaleString()} –{" "}
+                      {new Date(b.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="outline"
-                        onClick={() => setEditing(b)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost"
-                        className="text-red-300 hover:bg-red-900/25"
-                        onClick={() => void handleDelete(b.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-            </ul>
-          )}
-        </div>
+                    {b.notes ? <div className="mt-1 text-[0.75rem] text-neutral-500">{b.notes}</div> : null}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button type="button" size="xs" variant="outline" onClick={() => setEditing(b)}>
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      className="text-red-300 hover:bg-red-900/25"
+                      onClick={() => void handleDelete(b.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </li>
+              ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -466,9 +438,7 @@ async function refreshBookings(
   const start = isoDate(weekStart);
   const end = isoDate(weekEnd);
   const res = await fetch(
-    `/api/portal/bookings?shop=${encodeURIComponent(
-      shopSlug,
-    )}&start=${start}&end=${end}`,
+    `/api/portal/bookings?shop=${encodeURIComponent(shopSlug)}&start=${start}&end=${end}`,
     { cache: "no-store" },
   );
   const refreshed = (await res.json().catch(() => [])) as Booking[];
@@ -478,18 +448,6 @@ async function refreshBookings(
 /* -------------------------------------------------------------------------- */
 /* Forms                                                                      */
 /* -------------------------------------------------------------------------- */
-
-function customerLabel(c: CustomerRow): string {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const anyC: any = c;
-  const name =
-    anyC.full_name ||
-    anyC.name ||
-    `${anyC.first_name ?? ""} ${anyC.last_name ?? ""}`.trim() ||
-    "Customer";
-  const phone = anyC.phone || anyC.mobile || "";
-  return phone ? `${name} (${phone})` : name;
-}
 
 function CreateForm({
   defaultDate,
@@ -528,15 +486,16 @@ function CreateForm({
     setCustomerId(id);
     const c = customers.find((x) => x.id === id);
     if (!c) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const anyC: any = c;
-    const name =
-      anyC.full_name ||
-      anyC.name ||
-      `${anyC.first_name ?? ""} ${anyC.last_name ?? ""}`.trim();
+
+    const rec = c as unknown as Record<string, unknown>;
+    const full = safeString(rec["full_name"]) || safeString(rec["name"]);
+    const first = safeString(rec["first_name"]);
+    const last = safeString(rec["last_name"]);
+    const name = full || `${first} ${last}`.trim();
+
     setCustomerName(name || "");
-    setCustomerEmail(anyC.email || anyC.contact_email || "");
-    setCustomerPhone(anyC.phone || anyC.mobile || "");
+    setCustomerEmail(safeString(rec["email"]) || safeString(rec["contact_email"]));
+    setCustomerPhone(safeString(rec["phone"]) || safeString(rec["mobile"]));
   };
 
   return (
@@ -556,50 +515,30 @@ function CreateForm({
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-white">Create appointment</h3>
+      <h3 className="text-sm font-semibold text-neutral-50">Create appointment</h3>
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-neutral-300">
           Date
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-          />
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={fieldClass()} />
         </label>
+
         <div className="flex gap-2">
           <label className="flex-1 text-xs text-neutral-300">
             Start
-            <input
-              type="time"
-              value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
-              className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-            />
+            <input type="time" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={fieldClass()} />
           </label>
           <label className="flex-1 text-xs text-neutral-300">
             End
-            <input
-              type="time"
-              value={endsAt}
-              onChange={(e) => setEndsAt(e.target.value)}
-              className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-            />
+            <input type="time" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className={fieldClass()} />
           </label>
         </div>
       </div>
 
       <label className="text-xs text-neutral-300">
         Customer (from database)
-        <select
-          value={customerId}
-          onChange={(e) => handleSelectCustomer(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-        >
-          <option value="">
-            {loadingCustomers ? "Loading…" : "Select…"}
-          </option>
+        <select value={customerId} onChange={(e) => handleSelectCustomer(e.target.value)} className={fieldClass()}>
+          <option value="">{loadingCustomers ? "Loading…" : "Select…"}</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {customerLabel(c)}
@@ -610,42 +549,23 @@ function CreateForm({
 
       <label className="text-xs text-neutral-300">
         Customer name
-        <input
-          value={customerName}
-          onChange={(e) => setCustomerName(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-          placeholder="John Smith"
-        />
+        <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className={fieldClass()} placeholder="John Smith" />
       </label>
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-neutral-300">
           Email
-          <input
-            type="email"
-            value={customerEmail}
-            onChange={(e) => setCustomerEmail(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-          />
+          <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} className={fieldClass()} />
         </label>
         <label className="text-xs text-neutral-300">
           Phone
-          <input
-            value={customerPhone}
-            onChange={(e) => setCustomerPhone(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-          />
+          <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className={fieldClass()} />
         </label>
       </div>
 
       <label className="text-xs text-neutral-300">
         Notes
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={3}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-        />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={fieldClass()} />
       </label>
 
       <Button type="submit" size="sm" className="mt-1 font-semibold">
@@ -675,18 +595,10 @@ function EditForm({
   const [startsAt, setStartsAt] = useState(start.toISOString().slice(11, 16));
   const [endsAt, setEndsAt] = useState(end.toISOString().slice(11, 16));
 
-  const [customerId, setCustomerId] = useState<string>(
-    booking.customer_id ?? "",
-  );
-  const [customerName, setCustomerName] = useState(
-    booking.customer_name ?? "",
-  );
-  const [customerEmail, setCustomerEmail] = useState(
-    booking.customer_email ?? "",
-  );
-  const [customerPhone, setCustomerPhone] = useState(
-    booking.customer_phone ?? "",
-  );
+  const [customerId, setCustomerId] = useState<string>(booking.customer_id ?? "");
+  const [customerName, setCustomerName] = useState(booking.customer_name ?? "");
+  const [customerEmail, setCustomerEmail] = useState(booking.customer_email ?? "");
+  const [customerPhone, setCustomerPhone] = useState(booking.customer_phone ?? "");
   const [notes, setNotes] = useState(booking.notes ?? "");
   const [status, setStatus] = useState(booking.status ?? "pending");
 
@@ -694,15 +606,16 @@ function EditForm({
     setCustomerId(id);
     const c = customers.find((x) => x.id === id);
     if (!c) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const anyC: any = c;
-    const name =
-      anyC.full_name ||
-      anyC.name ||
-      `${anyC.first_name ?? ""} ${anyC.last_name ?? ""}`.trim();
+
+    const rec = c as unknown as Record<string, unknown>;
+    const full = safeString(rec["full_name"]) || safeString(rec["name"]);
+    const first = safeString(rec["first_name"]);
+    const last = safeString(rec["last_name"]);
+    const name = full || `${first} ${last}`.trim();
+
     setCustomerName(name || "");
-    setCustomerEmail(anyC.email || anyC.contact_email || "");
-    setCustomerPhone(anyC.phone || anyC.mobile || "");
+    setCustomerEmail(safeString(rec["email"]) || safeString(rec["contact_email"]));
+    setCustomerPhone(safeString(rec["phone"]) || safeString(rec["mobile"]));
   };
 
   return (
@@ -724,50 +637,30 @@ function EditForm({
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-white">Edit appointment</h3>
+      <h3 className="text-sm font-semibold text-neutral-50">Edit appointment</h3>
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-neutral-300">
           Date
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-          />
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={fieldClass()} />
         </label>
+
         <div className="flex gap-2">
           <label className="flex-1 text-xs text-neutral-300">
             Start
-            <input
-              type="time"
-              value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
-              className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-            />
+            <input type="time" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={fieldClass()} />
           </label>
           <label className="flex-1 text-xs text-neutral-300">
             End
-            <input
-              type="time"
-              value={endsAt}
-              onChange={(e) => setEndsAt(e.target.value)}
-              className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-            />
+            <input type="time" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className={fieldClass()} />
           </label>
         </div>
       </div>
 
       <label className="text-xs text-neutral-300">
         Customer (from database)
-        <select
-          value={customerId}
-          onChange={(e) => handleSelectCustomer(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-        >
-          <option value="">
-            {loadingCustomers ? "Loading…" : "Select…"}
-          </option>
+        <select value={customerId} onChange={(e) => handleSelectCustomer(e.target.value)} className={fieldClass()}>
+          <option value="">{loadingCustomers ? "Loading…" : "Select…"}</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {customerLabel(c)}
@@ -778,50 +671,28 @@ function EditForm({
 
       <label className="text-xs text-neutral-300">
         Customer name
-        <input
-          value={customerName}
-          onChange={(e) => setCustomerName(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-        />
+        <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className={fieldClass()} />
       </label>
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-neutral-300">
           Email
-          <input
-            type="email"
-            value={customerEmail}
-            onChange={(e) => setCustomerEmail(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-          />
+          <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} className={fieldClass()} />
         </label>
         <label className="text-xs text-neutral-300">
           Phone
-          <input
-            value={customerPhone}
-            onChange={(e) => setCustomerPhone(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-          />
+          <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className={fieldClass()} />
         </label>
       </div>
 
       <label className="text-xs text-neutral-300">
         Notes
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={3}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-        />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={fieldClass()} />
       </label>
 
       <label className="text-xs text-neutral-300">
         Status
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
-        >
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className={fieldClass()}>
           <option value="pending">Pending</option>
           <option value="confirmed">Confirmed</option>
           <option value="cancelled">Cancelled</option>
@@ -832,12 +703,7 @@ function EditForm({
         <Button type="submit" size="sm" className="font-semibold">
           Save changes
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={onCancel}
-        >
+        <Button type="button" size="sm" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
       </div>

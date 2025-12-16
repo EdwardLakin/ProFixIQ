@@ -1,4 +1,3 @@
-// app/portal/profile/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -140,30 +139,33 @@ export default function PortalProfilePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-xl rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 text-sm text-neutral-300">
+      <div className="mx-auto max-w-xl rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-200 backdrop-blur-md shadow-card">
         Loading your profile…
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-5">
+    <div className="mx-auto max-w-xl space-y-5 text-white">
       <header className="space-y-1">
-        <h1 className="text-2xl font-blackops text-orange-400">My profile</h1>
-        <p className="text-sm text-neutral-400">
+        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+          My profile
+        </h1>
+        <p className="text-xs text-neutral-400">
           Keep your contact details up to date so your shop can reach you
           easily.
         </p>
       </header>
 
-      <div className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 sm:p-6">
+      <div className="space-y-4 rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card sm:p-6">
         {error ? (
-          <div className="rounded border border-red-700 bg-red-900/40 px-3 py-2 text-sm text-red-200">
+          <div className="rounded-xl border border-red-500/35 bg-red-900/20 px-3 py-2 text-sm text-red-100">
             {error}
           </div>
         ) : null}
+
         {saved ? (
-          <div className="rounded border border-emerald-700 bg-emerald-900/30 px-3 py-2 text-sm text-emerald-200">
+          <div className="rounded-xl border border-emerald-500/35 bg-emerald-900/15 px-3 py-2 text-sm text-emerald-100">
             Saved!
           </div>
         ) : null}
@@ -171,31 +173,28 @@ export default function PortalProfilePage() {
         {/* Contact */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input
-            className="input"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             placeholder="First name"
             value={form.first_name}
-            onChange={(e) =>
-              setForm({ ...form, first_name: e.target.value })
-            }
+            onChange={(e) => setForm({ ...form, first_name: e.target.value })}
           />
           <input
-            className="input"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             placeholder="Last name"
             value={form.last_name}
-            onChange={(e) =>
-              setForm({ ...form, last_name: e.target.value })
-            }
+            onChange={(e) => setForm({ ...form, last_name: e.target.value })}
           />
         </div>
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input
-            className="input"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             placeholder="Phone"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
           />
           <input
-            className="input"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             placeholder="Email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -205,28 +204,27 @@ export default function PortalProfilePage() {
         {/* Address */}
         <div className="space-y-3">
           <input
-            className="input"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             placeholder="Street address"
             value={form.street}
             onChange={(e) => setForm({ ...form, street: e.target.value })}
           />
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <input
-              className="input"
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               placeholder="City"
               value={form.city}
               onChange={(e) => setForm({ ...form, city: e.target.value })}
             />
             <input
-              className="input"
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               placeholder="Province/State"
               value={form.province}
-              onChange={(e) =>
-                setForm({ ...form, province: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, province: e.target.value })}
             />
             <input
-              className="input"
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               placeholder="Postal/ZIP code"
               value={form.postal_code}
               onChange={(e) =>
@@ -236,7 +234,11 @@ export default function PortalProfilePage() {
           </div>
         </div>
 
-        <button className="btn mt-2" onClick={onSave} disabled={saving}>
+        <button
+          className="mt-2 inline-flex items-center justify-center rounded-lg border border-orange-600 px-4 py-2 text-sm font-semibold text-orange-300 transition hover:bg-orange-600 hover:text-black disabled:opacity-60"
+          onClick={onSave}
+          disabled={saving}
+        >
           {saving ? "Saving…" : "Save"}
         </button>
       </div>
