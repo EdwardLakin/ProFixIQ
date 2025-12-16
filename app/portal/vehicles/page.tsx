@@ -59,6 +59,8 @@ export default function PortalVehiclesPage() {
   const isEdit = useMemo(() => Boolean(editingId), [editingId]);
 
   useEffect(() => {
+    let mounted = true;
+
     (async () => {
       setLoading(true);
       setError(null);
@@ -67,6 +69,8 @@ export default function PortalVehiclesPage() {
         data: { user },
         error: userErr,
       } = await supabase.auth.getUser();
+
+      if (!mounted) return;
 
       if (userErr || !user) {
         setError("You must be signed in.");
@@ -101,6 +105,10 @@ export default function PortalVehiclesPage() {
 
       setLoading(false);
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, [supabase]);
 
   const resetForm = () => {
@@ -127,15 +135,18 @@ export default function PortalVehiclesPage() {
       mileage: v.mileage ?? "",
       color: v.color ?? "",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
-  const toNull = (s: string): string | null =>
-    s.trim() === "" ? null : s.trim();
+  const toNull = (s: string): string | null => (s.trim() === "" ? null : s.trim());
 
   const toYear = (s: string): number | null => {
     const n = Number(s);
-    return Number.isFinite(n) ? n : null;
+    if (!Number.isFinite(n)) return null;
+    const i = Math.trunc(n);
+    return i > 0 ? i : null;
   };
 
   const onSave = async () => {
@@ -196,7 +207,8 @@ export default function PortalVehiclesPage() {
   };
 
   const onDelete = async (id: string) => {
-    if (!confirm("Delete this vehicle?")) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this vehicle?")) return;
+
     const { error: delErr } = await supabase.from("vehicles").delete().eq("id", id);
 
     if (delErr) {

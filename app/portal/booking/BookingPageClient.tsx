@@ -14,7 +14,6 @@ type DB = Database;
 type Slot = { start: string; end: string };
 type AvailabilityResponse = { tz: string; slots: Slot[]; disabled?: boolean };
 
-// Only the columns we actually fetch/use
 type ShopOption = Pick<
   DB["public"]["Tables"]["shops"]["Row"],
   "id" | "name" | "slug" | "accepts_online_booking"
@@ -28,7 +27,6 @@ const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 const toYMD = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-// Format a Date in a specific IANA timezone
 const fmtTime = (iso: string, tz: string) =>
   new Intl.DateTimeFormat(undefined, {
     timeZone: tz,
@@ -37,7 +35,7 @@ const fmtTime = (iso: string, tz: string) =>
   }).format(new Date(iso));
 
 export default function PortalBookingPage() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const search = useSearchParams();
   const router = useRouter();
@@ -50,9 +48,14 @@ export default function PortalBookingPage() {
   const [shopSlug, setShopSlug] = useState<string>(search.get("shop") || "");
   const [tz, setTz] = useState<string>("UTC");
   const [slots, setSlots] = useState<Slot[]>([]);
-
-  // shop hours / closed days
   const [hours, setHours] = useState<HourRow[]>([]);
+
+  // Keep state in sync if the URL changes (back/forward, external nav, etc.)
+  useEffect(() => {
+    const urlShop = search.get("shop") || "";
+    setShopSlug((prev) => (prev === urlShop ? prev : urlShop));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   // Load shops that accept online booking
   useEffect(() => {
@@ -72,14 +75,17 @@ export default function PortalBookingPage() {
       const list = (data ?? []) as ShopOption[];
       setShops(list);
 
-      if (!shopSlug && list.length > 0) {
+      // If no shop in URL, auto-pick first and update URL
+      const urlShop = search.get("shop") || "";
+      if (!urlShop && list.length > 0) {
         const first = list[0].slug as string;
         setShopSlug(first);
+        setSelectedDate(null);
         router.replace(`/portal/booking?shop=${encodeURIComponent(first)}`);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase]);
 
   // Compute visible month range
   const range = useMemo(() => {
@@ -90,7 +96,7 @@ export default function PortalBookingPage() {
     return { start: toYMD(first), end: toYMD(last) };
   }, [month]);
 
-  // Fetch shop hours for the selected shop → used for closed days label/logic
+  // Fetch shop hours for selected shop
   useEffect(() => {
     const shop = shops.find((s) => (s.slug as string) === shopSlug);
     if (!shop) return;
@@ -124,22 +130,20 @@ export default function PortalBookingPage() {
   const closedWeekdays = useMemo(() => {
     const set = new Set<number>();
     hours.forEach((h) => {
-      if (h.open_time === h.close_time) {
-        set.add(h.weekday);
-      }
+      if (h.open_time === h.close_time) set.add(h.weekday);
     });
     return set;
   }, [hours]);
 
   const closedLabel = useMemo(() => {
     if (closedWeekdays.size === 0) return "";
-    const names = Array.from(closedWeekdays)
+    return Array.from(closedWeekdays)
       .sort()
-      .map((d) => WEEKDAYS[d]);
-    return names.join(", ");
+      .map((d) => WEEKDAYS[d])
+      .join(", ");
   }, [closedWeekdays]);
 
-  // Fetch availability whenever shop or month changes
+  // Fetch availability when shop/month changes
   useEffect(() => {
     if (!shopSlug) return;
 
@@ -157,13 +161,12 @@ export default function PortalBookingPage() {
 
         const data: AvailabilityResponse = await res.json();
 
+        setTz(data.tz || "UTC");
         if (data.disabled) {
           toast.warning("This shop is not accepting online bookings.");
           setSlots([]);
-          setTz(data.tz || "UTC");
         } else {
           setSlots(data.slots || []);
-          setTz(data.tz || "UTC");
         }
       } catch (err) {
         console.error(err);
@@ -174,7 +177,7 @@ export default function PortalBookingPage() {
     })();
   }, [shopSlug, range.start, range.end]);
 
-  // Group slots by day using local Y-M-D
+  // Group slots by local day (note: this is local timezone grouping)
   const slotsByDay = useMemo(() => {
     const map = new Map<string, Slot[]>();
     (slots || []).forEach((s) => {
@@ -189,11 +192,9 @@ export default function PortalBookingPage() {
     return map;
   }, [slots]);
 
-  // Slots for the selected date
   const daySlots = useMemo(() => {
     if (!selectedDate) return [];
-    const k = toYMD(selectedDate);
-    return slotsByDay.get(k) ?? [];
+    return slotsByDay.get(toYMD(selectedDate)) ?? [];
   }, [selectedDate, slotsByDay]);
 
   async function book(startIso: string, endIso: string) {
@@ -211,9 +212,7 @@ export default function PortalBookingPage() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || "Booking failed");
 
-      toast.success(
-        "Appointment requested! We’ll email you when it’s confirmed.",
-      );
+      toast.success("Appointment requested! We’ll email you when it’s confirmed.");
       setSlots((prev) => prev.filter((s) => s.start !== startIso));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Could not book.";
@@ -222,8 +221,7 @@ export default function PortalBookingPage() {
   }
 
   const disabledDate = (d: Date) => {
-    const weekday = d.getDay();
-    if (closedWeekdays.has(weekday)) return true;
+    if (closedWeekdays.has(d.getDay())) return true;
     return !slotsByDay.has(toYMD(d));
   };
 

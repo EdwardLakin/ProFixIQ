@@ -37,21 +37,19 @@ export default function PortalShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState<boolean>(false);
+  const [open, setOpen] = useState(false);
 
   const activeHref = useMemo(() => {
     const exact = NAV.find((x) => x.href === pathname);
     if (exact) return exact.href;
 
-    const starts = NAV.find(
-      (x) => x.href !== "/portal" && pathname.startsWith(x.href),
-    );
+    const starts = NAV.find((x) => x.href !== "/portal" && pathname.startsWith(x.href));
     return starts?.href ?? "/portal";
   }, [pathname]);
 
   return (
     <div className="min-h-dvh bg-neutral-950 text-neutral-100">
-      {/* Background glow (burnt copper / metallic vibe) */}
+      {/* Background glow */}
       <div className="pointer-events-none fixed inset-0 opacity-45">
         <div
           className="absolute inset-0"
@@ -101,46 +99,31 @@ export default function PortalShell({
                   )}
                 >
                   <span className="text-base">{item.icon}</span>
-                  <span
-                    className={cx(
-                      "font-semibold",
-                      active ? "text-neutral-50" : "text-neutral-200",
-                    )}
-                  >
+                  <span className={cx("font-semibold", active ? "text-neutral-50" : "text-neutral-200")}>
                     {item.label}
                   </span>
                   {active ? (
-                    <span
-                      className="ml-auto h-2 w-2 rounded-full"
-                      style={{ backgroundColor: COPPER }}
-                    />
+                    <span className="ml-auto h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
                   ) : null}
                 </Link>
               );
             })}
           </nav>
 
-          <div className="px-5 pb-5 text-xs text-neutral-500">
-            Powered by ProFixIQ
-          </div>
+          <div className="px-5 pb-5 text-xs text-neutral-500">Powered by ProFixIQ</div>
         </aside>
 
         {/* Mobile overlay sidebar */}
         {open && (
           <div className="fixed inset-0 z-40 md:hidden">
-            <div
-              className="absolute inset-0 bg-black/60"
-              onClick={() => setOpen(false)}
-            />
+            <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
             <div className="absolute left-0 top-0 h-full w-80 border-r border-white/10 bg-black/55 backdrop-blur-md">
               <div className="flex items-center justify-between px-5 py-5">
                 <div>
                   <div className="text-lg font-blackops" style={{ color: COPPER }}>
                     ProFixIQ
                   </div>
-                  <div className="mt-1 text-xs text-neutral-400">
-                    Customer Portal
-                  </div>
+                  <div className="mt-1 text-xs text-neutral-400">Customer Portal</div>
                 </div>
                 <button
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-200"
@@ -168,26 +151,20 @@ export default function PortalShell({
                       <span className="text-base">{item.icon}</span>
                       <span className="font-semibold">{item.label}</span>
                       {active ? (
-                        <span
-                          className="ml-auto h-2 w-2 rounded-full"
-                          style={{ backgroundColor: COPPER }}
-                        />
+                        <span className="ml-auto h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
                       ) : null}
                     </Link>
                   );
                 })}
               </nav>
 
-              <div className="px-5 py-5 text-xs text-neutral-500">
-                Powered by ProFixIQ
-              </div>
+              <div className="px-5 py-5 text-xs text-neutral-500">Powered by ProFixIQ</div>
             </div>
           </div>
         )}
 
         {/* Main column */}
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Top bar */}
           <header className="sticky top-0 z-30 border-b border-white/10 bg-black/20 backdrop-blur-md">
             <div className="flex items-center justify-between px-4 py-4">
               <div className="flex items-center gap-3">
@@ -200,9 +177,7 @@ export default function PortalShell({
                 </button>
 
                 <div>
-                  <div className="text-sm font-semibold text-neutral-50">
-                    {title}
-                  </div>
+                  <div className="text-sm font-semibold text-neutral-50">{title}</div>
                   <div className="text-xs text-neutral-400">{subtitle}</div>
                 </div>
               </div>
@@ -216,7 +191,6 @@ export default function PortalShell({
             </div>
           </header>
 
-          {/* Content */}
           <main className="flex-1 p-4 sm:p-6">
             <div className="rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md sm:p-6">
               {children}

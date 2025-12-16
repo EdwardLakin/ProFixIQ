@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -10,7 +10,7 @@ type DB = Database;
 export default function BookingConfirmationClient() {
   const params = useSearchParams();
   const router = useRouter();
-  const supabase = createClientComponentClient<DB>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const id = params.get("wo");
   const [data, setData] = useState<{
