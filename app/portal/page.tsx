@@ -67,7 +67,7 @@ export default function PortalHomePage() {
       <div className="rounded-2xl border border-neutral-800/70 bg-neutral-950/50 p-4 backdrop-blur">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-neutral-50">Recent activity</h2>
-          <Link href="/portal/appointments" className="text-xs text-orange-300 underline underline-offset-2">
+          <Link href="/portal/customer-appointments" className="text-xs text-orange-300 underline underline-offset-2">
             View appointments
           </Link>
         </div>
