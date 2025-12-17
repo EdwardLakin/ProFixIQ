@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
+type DB = Database;
+type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 
 // Local form shape = all strings so inputs are happy
 type CustomerForm = {
   first_name: string;
   last_name: string;
   phone: string;
-  email: string;
+  email: string; // auth-owned (read-only)
   street: string;
   city: string;
   province: string;
@@ -30,7 +31,8 @@ const emptyForm: CustomerForm = {
 };
 
 export default function PortalProfilePage() {
-  const supabase = createClientComponentClient<Database>();
+  // ✅ memoize to avoid recreating the client and re-running effects
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [form, setForm] = useState<CustomerForm>(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -51,44 +53,48 @@ export default function PortalProfilePage() {
         error: userErr,
       } = await supabase.auth.getUser();
 
+      if (cancelled) return;
+
       if (userErr) {
-        if (!cancelled) setError(userErr.message);
+        setError(userErr.message);
         setLoading(false);
         return;
       }
       if (!user) {
-        if (!cancelled) setError("You must be signed in.");
+        setError("You must be signed in.");
         setLoading(false);
         return;
       }
 
+      const authEmail = user.email ?? "";
+
+      // ✅ do NOT fetch customers.email anymore (auth owns email)
       const { data: customer, error: fetchErr } = await supabase
         .from("customers")
-        .select(
-          "first_name,last_name,phone,email,street,city,province,postal_code",
-        )
+        .select("first_name,last_name,phone,street,city,province,postal_code")
         .eq("user_id", user.id)
         .maybeSingle<CustomerRow>();
 
+      if (cancelled) return;
+
       if (fetchErr) {
-        if (!cancelled) setError(fetchErr.message);
+        setError(fetchErr.message);
         setLoading(false);
         return;
       }
 
-      if (!cancelled) {
-        setForm({
-          first_name: customer?.first_name ?? "",
-          last_name: customer?.last_name ?? "",
-          phone: customer?.phone ?? "",
-          email: customer?.email ?? "",
-          street: customer?.street ?? "",
-          city: customer?.city ?? "",
-          province: customer?.province ?? "",
-          postal_code: customer?.postal_code ?? "",
-        });
-        setLoading(false);
-      }
+      setForm({
+        first_name: (customer?.first_name as string | null) ?? "",
+        last_name: (customer?.last_name as string | null) ?? "",
+        phone: (customer?.phone as string | null) ?? "",
+        email: authEmail,
+        street: (customer?.street as string | null) ?? "",
+        city: (customer?.city as string | null) ?? "",
+        province: (customer?.province as string | null) ?? "",
+        postal_code: (customer?.postal_code as string | null) ?? "",
+      });
+
+      setLoading(false);
     })();
 
     return () => {
@@ -97,6 +103,8 @@ export default function PortalProfilePage() {
   }, [supabase]);
 
   const onSave = async () => {
+    if (saving) return;
+
     setSaving(true);
     setError(null);
     setSaved(false);
@@ -115,25 +123,30 @@ export default function PortalProfilePage() {
     // convert "" → null for nullable DB columns
     const toNull = (s: string) => (s.trim() === "" ? null : s.trim());
 
-    const { error: updateErr } = await supabase
+    // ✅ upsert ensures row exists, and with unique(user_id) prevents duplicates
+    const { error: upsertErr } = await supabase
       .from("customers")
-      .update({
-        first_name: toNull(form.first_name),
-        last_name: toNull(form.last_name),
-        phone: toNull(form.phone),
-        email: toNull(form.email),
-        street: toNull(form.street),
-        city: toNull(form.city),
-        province: toNull(form.province),
-        postal_code: toNull(form.postal_code),
-      })
-      .eq("user_id", user.id);
+      .upsert(
+        {
+          user_id: user.id,
+          first_name: toNull(form.first_name),
+          last_name: toNull(form.last_name),
+          phone: toNull(form.phone),
+          street: toNull(form.street),
+          city: toNull(form.city),
+          province: toNull(form.province),
+          postal_code: toNull(form.postal_code),
+          // ❌ do NOT write email here (avoids shop_email unique issues)
+        },
+        { onConflict: "user_id" },
+      );
 
-    if (updateErr) {
-      setError(updateErr.message);
+    if (upsertErr) {
+      setError(upsertErr.message);
     } else {
       setSaved(true);
     }
+
     setSaving(false);
   };
 
@@ -152,8 +165,7 @@ export default function PortalProfilePage() {
           My profile
         </h1>
         <p className="text-xs text-neutral-400">
-          Keep your contact details up to date so your shop can reach you
-          easily.
+          Keep your contact details up to date so your shop can reach you easily.
         </p>
       </header>
 
@@ -176,13 +188,13 @@ export default function PortalProfilePage() {
             className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             placeholder="First name"
             value={form.first_name}
-            onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+            onChange={(e) => setForm((p) => ({ ...p, first_name: e.target.value }))}
           />
           <input
             className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             placeholder="Last name"
             value={form.last_name}
-            onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+            onChange={(e) => setForm((p) => ({ ...p, last_name: e.target.value }))}
           />
         </div>
 
@@ -191,14 +203,20 @@ export default function PortalProfilePage() {
             className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             placeholder="Phone"
             value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
           />
-          <input
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-            placeholder="Email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
+
+          <div className="space-y-1">
+            <input
+              readOnly
+              className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-300 outline-none placeholder:text-neutral-600"
+              placeholder="Email"
+              value={form.email}
+            />
+            <p className="text-[11px] text-neutral-500">
+              Email is tied to your sign-in.
+            </p>
+          </div>
         </div>
 
         {/* Address */}
@@ -207,7 +225,7 @@ export default function PortalProfilePage() {
             className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             placeholder="Street address"
             value={form.street}
-            onChange={(e) => setForm({ ...form, street: e.target.value })}
+            onChange={(e) => setForm((p) => ({ ...p, street: e.target.value }))}
           />
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -215,21 +233,19 @@ export default function PortalProfilePage() {
               className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               placeholder="City"
               value={form.city}
-              onChange={(e) => setForm({ ...form, city: e.target.value })}
+              onChange={(e) => setForm((p) => ({ ...p, city: e.target.value }))}
             />
             <input
               className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               placeholder="Province/State"
               value={form.province}
-              onChange={(e) => setForm({ ...form, province: e.target.value })}
+              onChange={(e) => setForm((p) => ({ ...p, province: e.target.value }))}
             />
             <input
               className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               placeholder="Postal/ZIP code"
               value={form.postal_code}
-              onChange={(e) =>
-                setForm({ ...form, postal_code: e.target.value })
-              }
+              onChange={(e) => setForm((p) => ({ ...p, postal_code: e.target.value }))}
             />
           </div>
         </div>
