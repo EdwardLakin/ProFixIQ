@@ -17,16 +17,14 @@ function isAssetPath(p: string) {
 // Don’t split multi-cookie header; copy as-is
 function withSupabaseCookies(from: NextResponse, to: NextResponse) {
   const setCookie = from.headers.get("set-cookie");
-  if (setCookie) {
-    to.headers.set("set-cookie", setCookie);
-  }
+  if (setCookie) to.headers.set("set-cookie", setCookie);
   return to;
 }
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  // 🔹 Skip static assets + API routes completely (no Supabase call)
+  // Skip static assets + API routes
   if (isAssetPath(pathname) || pathname.startsWith("/api")) {
     return NextResponse.next();
   }
@@ -34,12 +32,16 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
-  // ---------------------------------------------------------------------------
-  // Session + onboarding state
-  // ---------------------------------------------------------------------------
   const {
     data: { session },
   } = await supabase.auth.getSession();
+
+  const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
+  const isPortalAuthPage =
+    pathname === "/portal/signin" ||
+    pathname === "/portal/confirm" ||
+    pathname === "/portal/confirm/" ||
+    pathname.startsWith("/portal/confirm");
 
   const isPublic =
     pathname === "/" ||
@@ -48,13 +50,14 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/portal") ||
-    pathname.startsWith("/mobile/sign-in"); // ✅ mobile companion sign-in is public
+    pathname.startsWith("/mobile/sign-in") ||
+    isPortalAuthPage; // ✅ ONLY portal auth pages are public
 
-  // Treat EITHER completed_onboarding = true OR shop_id IS NOT NULL
-  // as "this user is allowed into the app"
+  // ---------------------------------------------------------------------------
+  // App onboarding state (ONLY for main app users, not portal customers)
+  // ---------------------------------------------------------------------------
   let completed = false;
-  if (session?.user) {
+  if (session?.user && !isPortal) {
     try {
       const { data: profile } = await supabase
         .from("profiles")
@@ -63,10 +66,7 @@ export async function middleware(req: NextRequest) {
         .limit(1)
         .maybeSingle();
 
-      const hasShop = !!profile?.shop_id;
-      const didOnboarding = !!profile?.completed_onboarding;
-
-      completed = didOnboarding || hasShop;
+      completed = !!profile?.completed_onboarding || !!profile?.shop_id;
     } catch {
       completed = false;
     }
@@ -81,14 +81,14 @@ export async function middleware(req: NextRequest) {
   }
 
   // ---------------------------------------------------------------------------
-  // PUBLIC ROUTES (marketing, sign-in, portal, mobile sign-in)
+  // PUBLIC ROUTES
   // ---------------------------------------------------------------------------
   if (isPublic) {
+    // If signed in and hit main sign-in routes → bounce into app
     const isMainSignIn =
       pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
 
-    // If you're signed in and hit ANY sign-in route → bounce to app
     if (session?.user && (isMainSignIn || isMobileSignIn)) {
       const redirectParam = req.nextUrl.searchParams.get("redirect");
 
@@ -96,10 +96,8 @@ export async function middleware(req: NextRequest) {
       if (redirectParam) {
         to = redirectParam;
       } else if (isMobileSignIn) {
-        // mobile companion goes to mobile dashboard once onboarded
         to = completed ? "/mobile" : "/onboarding";
       } else {
-        // normal sign-in keeps existing behavior
         to = completed ? "/dashboard" : "/onboarding";
       }
 
@@ -107,24 +105,29 @@ export async function middleware(req: NextRequest) {
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // Don’t let already-complete users sit on /onboarding
-    if (pathname.startsWith("/onboarding") && session?.user && completed) {
-      const target = new URL("/dashboard", req.url);
+    // Portal auth pages:
+    // - If already signed in and go to /portal/signin, bounce to /portal
+    if (isPortal && session?.user && pathname === "/portal/signin") {
+      const target = new URL("/portal", req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // Public route, no special handling
     return res;
   }
 
   // ---------------------------------------------------------------------------
-  // PROTECTED ROUTES (dashboard, work orders, inspections, mobile, etc.)
+  // PROTECTED ROUTES
   // ---------------------------------------------------------------------------
 
-  // Not signed in → send to correct sign-in with redirect
+  // Not signed in → route to correct login with redirect
   if (!session?.user) {
-    const isMobileRoute = pathname.startsWith("/mobile");
+    if (isPortal) {
+      const login = new URL("/portal/signin", req.url);
+      login.searchParams.set("redirect", pathname + search);
+      return withSupabaseCookies(res, NextResponse.redirect(login));
+    }
 
+    const isMobileRoute = pathname.startsWith("/mobile");
     const loginPath = isMobileRoute ? "/mobile/sign-in" : "/sign-in";
     const login = new URL(loginPath, req.url);
     login.searchParams.set("redirect", pathname + search);
@@ -132,17 +135,15 @@ export async function middleware(req: NextRequest) {
     return withSupabaseCookies(res, NextResponse.redirect(login));
   }
 
-  // Signed in but NOT completed onboarding → force onboarding
-  if (!completed && !pathname.startsWith("/onboarding")) {
+  // Main-app users: signed in but NOT completed onboarding → force onboarding
+  if (!isPortal && !completed && !pathname.startsWith("/onboarding")) {
     const target = new URL("/onboarding", req.url);
     return withSupabaseCookies(res, NextResponse.redirect(target));
   }
 
-  // Normal case: authed + completed → continue
   return res;
 }
 
-// Paths that run through middleware
 export const config = {
   matcher: [
     "/",
@@ -159,6 +160,6 @@ export const config = {
     "/inspections/:path*",
     "/mobile/:path*",
     "/parts/:path*",
-    "/tech/queue"
+    "/tech/queue",
   ],
 };

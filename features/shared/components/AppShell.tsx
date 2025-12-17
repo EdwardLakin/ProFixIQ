@@ -1,4 +1,4 @@
-// features/shared/components/AppShell.tsx
+ // features/shared/components/AppShell.tsx
 "use client";
 
 import Link from "next/link";
@@ -59,16 +59,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const punchRef = useRef<HTMLDivElement | null>(null);
 
-  const isAppRoute = !NON_APP_ROUTES.some(
-    (p) => pathname === p || pathname.startsWith(p + "/"),
-  );
+  const isPortalRoute =
+    pathname === "/portal" || pathname.startsWith("/portal/");
 
-  // load session user once, load role, & subscribe to messages
+  const isAppRoute =
+    !isPortalRoute &&
+    !NON_APP_ROUTES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+
+  // load session user once, load role, & subscribe to messages (main app only)
   useEffect(() => {
+    if (!isAppRoute) return;
+
     (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
       const uid = session?.user?.id ?? null;
       setUserId(uid);
 
@@ -82,9 +88,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           .eq("id", uid)
           .single();
 
-        if (profile?.role) {
-          setUserRole(profile.role as string);
-        }
+        if (profile?.role) setUserRole(profile.role as string);
       } catch (err) {
         console.error("Failed to load profile role for AppShell", err);
       }
@@ -124,7 +128,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         supabase.removeChannel(channel);
       };
     })();
-  }, [supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, isAppRoute]);
 
   // click-away for shift tracker
   useEffect(() => {
@@ -160,6 +165,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     !!userRole &&
     ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
 
+  // ✅ Portal (and other NON_APP) routes should not be wrapped by the dashboard shell.
+  // This prevents the “Dashboard” sidebar/topbar/mobile nav from appearing on /portal/*.
   if (!isAppRoute) {
     return (
       <div className="min-h-screen bg-neutral-950 text-foreground">
@@ -175,7 +182,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Sidebar */}
         <aside
           className={cn(
-            // ✅ overflow-hidden prevents “ProFixIQ” / sidebar content from visually leaking when md:w-0
             "hidden overflow-hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
             HEADER_OFFSET_DESKTOP,
             sidebarOpen
@@ -196,7 +202,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 className="text-lg font-semibold tracking-tight transition-colors hover:opacity-95"
                 style={{
                   fontFamily: "Black Ops One, var(--font-blackops), system-ui",
-                  color: "#c1663b", // burnt copper
+                  color: "#c1663b",
                 }}
               >
                 ProFixIQ
@@ -228,7 +234,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               </button>
 
-              {/* ✅ only Dashboard */}
               <nav className="flex gap-4 text-sm text-neutral-400">
                 <Link href="/dashboard" className="hover:text-neutral-100">
                   Dashboard
@@ -337,7 +342,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {/* Global chat modal */}
+      {/* Global chat modal (main app only) */}
       <NewChatModal
         isOpen={chatOpen}
         onClose={() => {
@@ -350,7 +355,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         activeConversationId={incomingConvoId}
       />
 
-      {/* Global Agent Request modal */}
+      {/* Global Agent Request modal (main app only) */}
       {userId && (
         <AgentRequestModal
           open={agentDialogOpen}
