@@ -18,7 +18,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/portal", label: "Home", icon: "🏠" },
   { href: "/portal/booking", label: "Book", icon: "📅" },
-  { href: "/portal/appointments", label: "Appointments", icon: "🗓️" },
+  { href: "/portal/customer-appointments", label: "Appointments", icon: "🗓️" },
   { href: "/portal/history", label: "History", icon: "🧾" },
   { href: "/portal/vehicles", label: "Vehicles", icon: "🚗" },
   { href: "/portal/profile", label: "Profile", icon: "👤" },
