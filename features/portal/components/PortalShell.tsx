@@ -58,7 +58,8 @@ export default function PortalShell({
   const supabase = createClientComponentClient<DB>();
 
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [desktopOpen, setDesktopOpen] = useState(true);
+  // ✅ closed by default on desktop
+  const [desktopOpen, setDesktopOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   const hideNav = isPortalAuth(pathname);
@@ -67,7 +68,9 @@ export default function PortalShell({
     const exact = NAV.find((x) => x.href === pathname);
     if (exact) return exact.href;
 
-    const starts = NAV.find((x) => x.href !== "/portal" && pathname.startsWith(x.href));
+    const starts = NAV.find(
+      (x) => x.href !== "/portal" && pathname.startsWith(x.href),
+    );
     return starts?.href ?? "/portal";
   }, [pathname]);
 
@@ -88,10 +91,15 @@ export default function PortalShell({
       <div className="min-h-dvh app-metal-bg text-white">
         <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
           <div className="flex flex-col leading-none">
-            <span className="font-blackops text-xs tracking-[0.22em]" style={{ color: COPPER }}>
+            <span
+              className="font-blackops text-xs tracking-[0.22em]"
+              style={{ color: COPPER }}
+            >
               PROFIXIQ
             </span>
-            <span className="text-[0.65rem] text-neutral-300">Customer Portal</span>
+            <span className="text-[0.65rem] text-neutral-300">
+              Customer Portal
+            </span>
           </div>
 
           <button
@@ -128,7 +136,7 @@ export default function PortalShell({
             <MenuIcon />
           </button>
 
-          {/* Desktop sidebar collapse */}
+          {/* Desktop sidebar toggle */}
           <button
             type="button"
             onClick={() => setDesktopOpen((v) => !v)}
@@ -139,7 +147,9 @@ export default function PortalShell({
           </button>
 
           <div>
-            <div className="text-[0.75rem] font-medium text-neutral-100">{title}</div>
+            <div className="text-[0.75rem] font-medium text-neutral-100">
+              {title}
+            </div>
             <div className="text-[0.65rem] text-neutral-400">{subtitle}</div>
           </div>
         </div>
@@ -147,11 +157,21 @@ export default function PortalShell({
         <div className="flex items-center gap-2">
           <Link
             href="/portal/booking"
-            className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold transition hover:bg-black/70 active:scale-95"
-            style={{ color: COPPER }}
+            className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
           >
-            Book
+            <span style={{ color: COPPER }}>Book</span>
           </Link>
+
+          {/* ✅ Sign out on top right */}
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            disabled={signingOut}
+            className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95 disabled:opacity-60"
+            title="Sign out"
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
         </div>
       </header>
 
@@ -160,7 +180,9 @@ export default function PortalShell({
         <aside
           className={cx(
             "hidden overflow-hidden rounded-2xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card md:flex md:flex-col transition-all duration-300",
-            desktopOpen ? "w-72" : "w-0 border-transparent bg-transparent shadow-none",
+            desktopOpen
+              ? "w-72"
+              : "w-0 border-transparent bg-transparent shadow-none",
           )}
         >
           <div
@@ -170,10 +192,15 @@ export default function PortalShell({
             )}
           >
             <div className="px-5 py-5">
-              <div className="font-blackops text-lg tracking-[0.16em]" style={{ color: COPPER }}>
+              <div
+                className="font-blackops text-lg tracking-[0.16em]"
+                style={{ color: COPPER }}
+              >
                 PROFIXIQ
               </div>
-              <div className="mt-1 text-xs text-neutral-400">Customer Portal</div>
+              <div className="mt-1 text-xs text-neutral-400">
+                Customer Portal
+              </div>
             </div>
 
             <nav className="flex-1 space-y-1 px-3 pb-4">
@@ -192,39 +219,41 @@ export default function PortalShell({
                   >
                     <span className="font-semibold">{item.label}</span>
                     {active ? (
-                      <span className="ml-auto h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
+                      <span
+                        className="ml-auto h-2 w-2 rounded-full"
+                        style={{ backgroundColor: COPPER }}
+                      />
                     ) : null}
                   </Link>
                 );
               })}
             </nav>
 
-            <div className="px-5 pb-4">
-              <button
-                type="button"
-                onClick={signOut}
-                disabled={signingOut}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-100 hover:bg-red-500/20 disabled:opacity-60"
-              >
-                {signingOut ? "Signing out…" : "Sign out"}
-              </button>
+            <div className="px-5 pb-5 text-xs text-neutral-500">
+              Powered by ProFixIQ
             </div>
-
-            <div className="px-5 pb-5 text-xs text-neutral-500">Powered by ProFixIQ</div>
           </div>
         </aside>
 
         {/* Mobile overlay sidebar */}
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
-            <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setMobileOpen(false)}
+            />
             <div className="absolute left-0 top-0 h-full w-[78vw] max-w-[340px] border-r border-white/10 bg-black/85 backdrop-blur-xl">
               <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
                 <div>
-                  <div className="font-blackops text-lg tracking-[0.16em]" style={{ color: COPPER }}>
+                  <div
+                    className="font-blackops text-lg tracking-[0.16em]"
+                    style={{ color: COPPER }}
+                  >
                     PROFIXIQ
                   </div>
-                  <div className="mt-1 text-xs text-neutral-400">Customer Portal</div>
+                  <div className="mt-1 text-xs text-neutral-400">
+                    Customer Portal
+                  </div>
                 </div>
                 <button
                   className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-xs text-neutral-100"
@@ -251,7 +280,10 @@ export default function PortalShell({
                     >
                       <span className="font-semibold">{item.label}</span>
                       {active ? (
-                        <span className="ml-auto h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
+                        <span
+                          className="ml-auto h-2 w-2 rounded-full"
+                          style={{ backgroundColor: COPPER }}
+                        />
                       ) : null}
                     </Link>
                   );
@@ -261,14 +293,16 @@ export default function PortalShell({
               <div className="border-t border-white/10 px-5 py-4">
                 <button
                   type="button"
-                  onClick={signOut}
+                  onClick={() => void signOut()}
                   disabled={signingOut}
                   className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-100 hover:bg-red-500/20 disabled:opacity-60"
                 >
                   {signingOut ? "Signing out…" : "Sign out"}
                 </button>
 
-                <div className="mt-3 text-xs text-neutral-500">Powered by ProFixIQ</div>
+                <div className="mt-3 text-xs text-neutral-500">
+                  Powered by ProFixIQ
+                </div>
               </div>
             </div>
           </div>

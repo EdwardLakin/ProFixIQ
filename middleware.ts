@@ -38,7 +38,8 @@ export async function middleware(req: NextRequest) {
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
   const isPortalAuthPage =
-    pathname === "/portal/auth/sign-in" ||
+    pathname === "/portal/auth" ||
+    pathname.startsWith("/portal/auth/") ||
     pathname === "/portal/confirm" ||
     pathname === "/portal/confirm/" ||
     pathname.startsWith("/portal/confirm");
@@ -51,7 +52,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/mobile/sign-in") ||
-    isPortalAuthPage; // ✅ ONLY portal auth pages are public
+    isPortalAuthPage; // ✅ portal auth pages are public
 
   // ---------------------------------------------------------------------------
   // App onboarding state (ONLY for main app users, not portal customers)
@@ -105,9 +106,9 @@ export async function middleware(req: NextRequest) {
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // Portal auth pages:
-    // - If already signed in and go to /portal/auth/sign-in, bounce to /portal
-    if (isPortal && session?.user && pathname === "/portal/auth/sign-in") {
+    // ✅ Portal auth pages:
+    // If already signed in and hit ANY /portal/auth/* → bounce to /portal
+    if (isPortal && session?.user && pathname.startsWith("/portal/auth")) {
       const target = new URL("/portal", req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
