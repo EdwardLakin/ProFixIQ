@@ -1,3 +1,4 @@
+// app/portal/profile/page.tsx (or wherever your PortalProfilePage lives)
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -7,7 +8,6 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 
-// Local form shape = all strings so inputs are happy
 type CustomerForm = {
   first_name: string;
   last_name: string;
@@ -30,8 +30,23 @@ const emptyForm: CustomerForm = {
   postal_code: "",
 };
 
+function cardClass() {
+  return "rounded-3xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card";
+}
+
+function inputClass() {
+  return "w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-white/20 focus:ring-1 focus:ring-white/10";
+}
+
+function readOnlyClass() {
+  return "w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-300 outline-none placeholder:text-neutral-600";
+}
+
+function subtleButtonClass() {
+  return "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60 active:scale-[0.99]";
+}
+
 export default function PortalProfilePage() {
-  // ✅ memoize to avoid recreating the client and re-running effects
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [form, setForm] = useState<CustomerForm>(emptyForm);
@@ -68,7 +83,6 @@ export default function PortalProfilePage() {
 
       const authEmail = user.email ?? "";
 
-      // ✅ do NOT fetch customers.email anymore (auth owns email)
       const { data: customer, error: fetchErr } = await supabase
         .from("customers")
         .select("first_name,last_name,phone,street,city,province,postal_code")
@@ -120,10 +134,8 @@ export default function PortalProfilePage() {
       return;
     }
 
-    // convert "" → null for nullable DB columns
     const toNull = (s: string) => (s.trim() === "" ? null : s.trim());
 
-    // ✅ upsert ensures row exists, and with unique(user_id) prevents duplicates
     const { error: upsertErr } = await supabase
       .from("customers")
       .upsert(
@@ -136,24 +148,22 @@ export default function PortalProfilePage() {
           city: toNull(form.city),
           province: toNull(form.province),
           postal_code: toNull(form.postal_code),
-          // ❌ do NOT write email here (avoids shop_email unique issues)
         },
         { onConflict: "user_id" },
       );
 
-    if (upsertErr) {
-      setError(upsertErr.message);
-    } else {
-      setSaved(true);
-    }
+    if (upsertErr) setError(upsertErr.message);
+    else setSaved(true);
 
     setSaving(false);
   };
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-xl rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-200 backdrop-blur-md shadow-card">
-        Loading your profile…
+      <div className="mx-auto max-w-xl">
+        <div className={cardClass() + " text-sm text-neutral-200"}>
+          Loading your profile…
+        </div>
       </div>
     );
   }
@@ -161,37 +171,44 @@ export default function PortalProfilePage() {
   return (
     <div className="mx-auto max-w-xl space-y-5 text-white">
       <header className="space-y-1">
-        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
           My profile
         </h1>
         <p className="text-xs text-neutral-400">
           Keep your contact details up to date so your shop can reach you easily.
         </p>
+
+        <div
+          className="mt-3 h-px w-full"
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(197,122,74,0.0), rgba(197,122,74,0.35), rgba(197,122,74,0.0))",
+          }}
+        />
       </header>
 
-      <div className="space-y-4 rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card sm:p-6">
+      <div className={cardClass() + " space-y-4 sm:p-6"}>
         {error ? (
-          <div className="rounded-xl border border-red-500/35 bg-red-900/20 px-3 py-2 text-sm text-red-100">
+          <div className="rounded-2xl border border-red-500/35 bg-red-900/20 px-3 py-2 text-sm text-red-100">
             {error}
           </div>
         ) : null}
 
         {saved ? (
-          <div className="rounded-xl border border-emerald-500/35 bg-emerald-900/15 px-3 py-2 text-sm text-emerald-100">
+          <div className="rounded-2xl border border-emerald-500/35 bg-emerald-900/15 px-3 py-2 text-sm text-emerald-100">
             Saved!
           </div>
         ) : null}
 
-        {/* Contact */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+            className={inputClass()}
             placeholder="First name"
             value={form.first_name}
             onChange={(e) => setForm((p) => ({ ...p, first_name: e.target.value }))}
           />
           <input
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+            className={inputClass()}
             placeholder="Last name"
             value={form.last_name}
             onChange={(e) => setForm((p) => ({ ...p, last_name: e.target.value }))}
@@ -200,29 +217,21 @@ export default function PortalProfilePage() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+            className={inputClass()}
             placeholder="Phone"
             value={form.phone}
             onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
           />
 
           <div className="space-y-1">
-            <input
-              readOnly
-              className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-300 outline-none placeholder:text-neutral-600"
-              placeholder="Email"
-              value={form.email}
-            />
-            <p className="text-[11px] text-neutral-500">
-              Email is tied to your sign-in.
-            </p>
+            <input readOnly className={readOnlyClass()} placeholder="Email" value={form.email} />
+            <p className="text-[11px] text-neutral-500">Email is tied to your sign-in.</p>
           </div>
         </div>
 
-        {/* Address */}
         <div className="space-y-3">
           <input
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+            className={inputClass()}
             placeholder="Street address"
             value={form.street}
             onChange={(e) => setForm((p) => ({ ...p, street: e.target.value }))}
@@ -230,19 +239,19 @@ export default function PortalProfilePage() {
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <input
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+              className={inputClass()}
               placeholder="City"
               value={form.city}
               onChange={(e) => setForm((p) => ({ ...p, city: e.target.value }))}
             />
             <input
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+              className={inputClass()}
               placeholder="Province/State"
               value={form.province}
               onChange={(e) => setForm((p) => ({ ...p, province: e.target.value }))}
             />
             <input
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+              className={inputClass()}
               placeholder="Postal/ZIP code"
               value={form.postal_code}
               onChange={(e) => setForm((p) => ({ ...p, postal_code: e.target.value }))}
@@ -251,7 +260,12 @@ export default function PortalProfilePage() {
         </div>
 
         <button
-          className="mt-2 inline-flex items-center justify-center rounded-lg border border-orange-600 px-4 py-2 text-sm font-semibold text-orange-300 transition hover:bg-orange-600 hover:text-black disabled:opacity-60"
+          className={subtleButtonClass() + " mt-1"}
+          style={{
+            borderColor: "rgba(197,122,74,0.55)",
+            color: "rgba(245,225,205,0.95)",
+            background: "rgba(197,122,74,0.10)",
+          }}
           onClick={onSave}
           disabled={saving}
         >

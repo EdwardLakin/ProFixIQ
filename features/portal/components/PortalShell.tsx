@@ -12,17 +12,16 @@ type DB = Database;
 type NavItem = {
   href: string;
   label: string;
-  icon: string; // emoji for now; swap to your icon set later
 };
 
 const NAV: NavItem[] = [
-  { href: "/portal", label: "Home", icon: "🏠" },
-  { href: "/portal/booking", label: "Book", icon: "📅" },
-  { href: "/portal/customer-appointments", label: "Appointments", icon: "🗓️" },
-  { href: "/portal/history", label: "History", icon: "🧾" },
-  { href: "/portal/vehicles", label: "Vehicles", icon: "🚗" },
-  { href: "/portal/profile", label: "Profile", icon: "👤" },
-  { href: "/portal/settings", label: "Settings", icon: "⚙️" },
+  { href: "/portal", label: "Home" },
+  { href: "/portal/booking", label: "Book" },
+  { href: "/portal/customer-appointments", label: "Appointments" },
+  { href: "/portal/history", label: "History" },
+  { href: "/portal/vehicles", label: "Vehicles" },
+  { href: "/portal/profile", label: "Profile" },
+  { href: "/portal/settings", label: "Settings" },
 ];
 
 function cx(...parts: Array<string | false | null | undefined>) {
@@ -33,6 +32,16 @@ const COPPER = "#C57A4A";
 
 function isPortalAuth(pathname: string) {
   return pathname === "/portal/auth" || pathname.startsWith("/portal/auth/");
+}
+
+function MenuIcon() {
+  return (
+    <div className="flex flex-col gap-[3px]">
+      <span className="h-[2px] w-[14px] rounded-full bg-white" />
+      <span className="h-[2px] w-[14px] rounded-full bg-white" />
+      <span className="h-[2px] w-[14px] rounded-full bg-white" />
+    </div>
+  );
 }
 
 export default function PortalShell({
@@ -58,9 +67,7 @@ export default function PortalShell({
     const exact = NAV.find((x) => x.href === pathname);
     if (exact) return exact.href;
 
-    const starts = NAV.find(
-      (x) => x.href !== "/portal" && pathname.startsWith(x.href),
-    );
+    const starts = NAV.find((x) => x.href !== "/portal" && pathname.startsWith(x.href));
     return starts?.href ?? "/portal";
   }, [pathname]);
 
@@ -75,21 +82,16 @@ export default function PortalShell({
     }
   };
 
-  // ✅ AUTH PAGES: no sidebar + no hamburger + centered content
+  // AUTH PAGES: no nav, centered content
   if (hideNav) {
     return (
       <div className="min-h-dvh app-metal-bg text-white">
         <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
           <div className="flex flex-col leading-none">
-            <span
-              className="font-blackops text-xs tracking-[0.22em]"
-              style={{ color: COPPER }}
-            >
+            <span className="font-blackops text-xs tracking-[0.22em]" style={{ color: COPPER }}>
               PROFIXIQ
             </span>
-            <span className="text-[0.65rem] text-neutral-300">
-              Customer Portal
-            </span>
+            <span className="text-[0.65rem] text-neutral-300">Customer Portal</span>
           </div>
 
           <button
@@ -108,9 +110,12 @@ export default function PortalShell({
     );
   }
 
+  const ShellCard =
+    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
+
   return (
     <div className="min-h-dvh app-metal-bg text-white">
-      {/* Top bar (match MobileShell vibe) */}
+      {/* Top bar */}
       <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
         <div className="flex items-center gap-3">
           {/* Mobile drawer */}
@@ -120,11 +125,7 @@ export default function PortalShell({
             aria-label="Open menu"
             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/40 hover:bg-black/70 active:scale-95 md:hidden"
           >
-            <div className="flex flex-col gap-[3px]">
-              <span className="h-[2px] w-[14px] rounded-full bg-white" />
-              <span className="h-[2px] w-[14px] rounded-full bg-white" />
-              <span className="h-[2px] w-[14px] rounded-full bg-white" />
-            </div>
+            <MenuIcon />
           </button>
 
           {/* Desktop sidebar collapse */}
@@ -134,23 +135,22 @@ export default function PortalShell({
             aria-label="Toggle sidebar"
             className="hidden md:inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/40 hover:bg-black/70 active:scale-95"
           >
-            ☰
+            <MenuIcon />
           </button>
 
           <div>
-            <div className="text-[0.75rem] font-medium text-neutral-100">
-              {title}
-            </div>
+            <div className="text-[0.75rem] font-medium text-neutral-100">{title}</div>
             <div className="text-[0.65rem] text-neutral-400">{subtitle}</div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Link
             href="/portal/booking"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold transition hover:bg-black/70 active:scale-95"
+            style={{ color: COPPER }}
           >
-            <span style={{ color: COPPER }}>Book</span>
+            Book
           </Link>
         </div>
       </header>
@@ -163,10 +163,15 @@ export default function PortalShell({
             desktopOpen ? "w-72" : "w-0 border-transparent bg-transparent shadow-none",
           )}
         >
-          <div className={cx("transition-opacity duration-200", desktopOpen ? "opacity-100" : "opacity-0")}>
+          <div
+            className={cx(
+              "flex h-full flex-col transition-opacity duration-200",
+              desktopOpen ? "opacity-100" : "opacity-0",
+            )}
+          >
             <div className="px-5 py-5">
-              <div className="text-lg font-blackops" style={{ color: COPPER }}>
-                ProFixIQ
+              <div className="font-blackops text-lg tracking-[0.16em]" style={{ color: COPPER }}>
+                PROFIXIQ
               </div>
               <div className="mt-1 text-xs text-neutral-400">Customer Portal</div>
             </div>
@@ -179,26 +184,15 @@ export default function PortalShell({
                     key={item.href}
                     href={item.href}
                     className={cx(
-                      "flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition",
+                      "flex items-center rounded-xl border px-3 py-2 text-sm transition",
                       active
-                        ? "border-white/10 bg-white/5"
+                        ? "border-white/12 bg-white/6 text-neutral-50"
                         : "border-transparent text-neutral-200 hover:border-white/10 hover:bg-white/5",
                     )}
                   >
-                    <span className="text-base">{item.icon}</span>
-                    <span
-                      className={cx(
-                        "font-semibold",
-                        active ? "text-neutral-50" : "text-neutral-200",
-                      )}
-                    >
-                      {item.label}
-                    </span>
+                    <span className="font-semibold">{item.label}</span>
                     {active ? (
-                      <span
-                        className="ml-auto h-2 w-2 rounded-full"
-                        style={{ backgroundColor: COPPER }}
-                      />
+                      <span className="ml-auto h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
                     ) : null}
                   </Link>
                 );
@@ -216,24 +210,19 @@ export default function PortalShell({
               </button>
             </div>
 
-            <div className="px-5 pb-5 text-xs text-neutral-500">
-              Powered by ProFixIQ
-            </div>
+            <div className="px-5 pb-5 text-xs text-neutral-500">Powered by ProFixIQ</div>
           </div>
         </aside>
 
         {/* Mobile overlay sidebar */}
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
-            <div
-              className="absolute inset-0 bg-black/60"
-              onClick={() => setMobileOpen(false)}
-            />
+            <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
             <div className="absolute left-0 top-0 h-full w-[78vw] max-w-[340px] border-r border-white/10 bg-black/85 backdrop-blur-xl">
-              <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
+              <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
                 <div>
-                  <div className="text-lg font-blackops" style={{ color: COPPER }}>
-                    ProFixIQ
+                  <div className="font-blackops text-lg tracking-[0.16em]" style={{ color: COPPER }}>
+                    PROFIXIQ
                   </div>
                   <div className="mt-1 text-xs text-neutral-400">Customer Portal</div>
                 </div>
@@ -254,26 +243,22 @@ export default function PortalShell({
                       href={item.href}
                       onClick={() => setMobileOpen(false)}
                       className={cx(
-                        "flex items-center gap-3 rounded-xl border px-3 py-3 text-sm transition",
+                        "flex items-center rounded-xl border px-3 py-3 text-sm transition",
                         active
-                          ? "border-white/10 bg-white/5"
+                          ? "border-white/12 bg-white/6 text-neutral-50"
                           : "border-transparent text-neutral-200 hover:border-white/10 hover:bg-white/5",
                       )}
                     >
-                      <span className="text-base">{item.icon}</span>
                       <span className="font-semibold">{item.label}</span>
                       {active ? (
-                        <span
-                          className="ml-auto h-2 w-2 rounded-full"
-                          style={{ backgroundColor: COPPER }}
-                        />
+                        <span className="ml-auto h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
                       ) : null}
                     </Link>
                   );
                 })}
               </nav>
 
-              <div className="px-5 py-4 border-t border-white/10">
+              <div className="border-t border-white/10 px-5 py-4">
                 <button
                   type="button"
                   onClick={signOut}
@@ -283,9 +268,7 @@ export default function PortalShell({
                   {signingOut ? "Signing out…" : "Sign out"}
                 </button>
 
-                <div className="mt-3 text-xs text-neutral-500">
-                  Powered by ProFixIQ
-                </div>
+                <div className="mt-3 text-xs text-neutral-500">Powered by ProFixIQ</div>
               </div>
             </div>
           </div>
@@ -293,9 +276,7 @@ export default function PortalShell({
 
         {/* Main column */}
         <div className="min-w-0 flex-1">
-          <div className="rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6">
-            {children}
-          </div>
+          <div className={ShellCard}>{children}</div>
         </div>
       </div>
     </div>

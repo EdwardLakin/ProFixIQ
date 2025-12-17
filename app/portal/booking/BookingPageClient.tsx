@@ -23,9 +23,25 @@ type HourRow = { weekday: number; open_time: string; close_time: string };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+
 const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-const toYMD = (d: Date) =>
+const toYMDLocal = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+function ymdInTz(date: Date, tz: string) {
+  // YYYY-MM-DD as it appears in the shop timezone (prevents day-shift bugs)
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${y}-${m}-${d}`;
+}
 
 const fmtTime = (iso: string, tz: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -34,9 +50,20 @@ const fmtTime = (iso: string, tz: string) =>
     minute: "2-digit",
   }).format(new Date(iso));
 
+function glassCard() {
+  return "rounded-3xl border border-white/10 bg-black/30 backdrop-blur-md shadow-card";
+}
+
+function fieldBase() {
+  return "rounded-xl border border-white/12 bg-black/55 px-3 py-2 text-sm text-white outline-none transition focus:ring-1";
+}
+
+function softDivider() {
+  return "border-white/10";
+}
+
 export default function PortalBookingPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
   const search = useSearchParams();
   const router = useRouter();
 
@@ -75,7 +102,6 @@ export default function PortalBookingPage() {
       const list = (data ?? []) as ShopOption[];
       setShops(list);
 
-      // If no shop in URL, auto-pick first and update URL
       const urlShop = search.get("shop") || "";
       if (!urlShop && list.length > 0) {
         const first = list[0].slug as string;
@@ -87,13 +113,13 @@ export default function PortalBookingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
-  // Compute visible month range
+  // Visible month range (API expects YYYY-MM-DD strings)
   const range = useMemo(() => {
     const y = month.getFullYear();
     const m = month.getMonth();
     const first = new Date(y, m, 1);
     const last = new Date(y, m + 1, 0);
-    return { start: toYMD(first), end: toYMD(last) };
+    return { start: toYMDLocal(first), end: toYMDLocal(last) };
   }, [month]);
 
   // Fetch shop hours for selected shop
@@ -177,11 +203,11 @@ export default function PortalBookingPage() {
     })();
   }, [shopSlug, range.start, range.end]);
 
-  // Group slots by local day (note: this is local timezone grouping)
+  // ✅ Group slots by SHOP-TZ day key (fixes “calendar won’t click”)
   const slotsByDay = useMemo(() => {
     const map = new Map<string, Slot[]>();
     (slots || []).forEach((s) => {
-      const k = toYMD(new Date(s.start));
+      const k = ymdInTz(new Date(s.start), tz);
       const arr = map.get(k) ?? [];
       arr.push(s);
       map.set(k, arr);
@@ -190,12 +216,17 @@ export default function PortalBookingPage() {
       arr.sort((a, b) => +new Date(a.start) - +new Date(b.start)),
     );
     return map;
-  }, [slots]);
+  }, [slots, tz]);
+
+  const selectedKey = useMemo(() => {
+    if (!selectedDate) return null;
+    return ymdInTz(selectedDate, tz);
+  }, [selectedDate, tz]);
 
   const daySlots = useMemo(() => {
-    if (!selectedDate) return [];
-    return slotsByDay.get(toYMD(selectedDate)) ?? [];
-  }, [selectedDate, slotsByDay]);
+    if (!selectedKey) return [];
+    return slotsByDay.get(selectedKey) ?? [];
+  }, [selectedKey, slotsByDay]);
 
   async function book(startIso: string, endIso: string) {
     try {
@@ -213,6 +244,7 @@ export default function PortalBookingPage() {
       if (!res.ok) throw new Error(j?.error || "Booking failed");
 
       toast.success("Appointment requested! We’ll email you when it’s confirmed.");
+      // remove the selected slot from UI
       setSlots((prev) => prev.filter((s) => s.start !== startIso));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Could not book.";
@@ -222,7 +254,10 @@ export default function PortalBookingPage() {
 
   const disabledDate = (d: Date) => {
     if (closedWeekdays.has(d.getDay())) return true;
-    return !slotsByDay.has(toYMD(d));
+
+    // ✅ Match the same TZ day key we used for grouping
+    const k = ymdInTz(d, tz);
+    return !slotsByDay.has(k);
   };
 
   const isSelectedClosed =
@@ -234,7 +269,7 @@ export default function PortalBookingPage() {
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
             Book an appointment
           </h1>
           <p className="mt-1 text-xs text-neutral-400">
@@ -242,10 +277,11 @@ export default function PortalBookingPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md">
+        <div className={glassCard() + " flex flex-wrap items-center gap-2 px-3 py-2"}>
           <label className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
             Shop
           </label>
+
           <select
             value={shopSlug}
             onChange={(e) => {
@@ -254,7 +290,11 @@ export default function PortalBookingPage() {
               setSelectedDate(null);
               router.replace(`/portal/booking?shop=${encodeURIComponent(slug)}`);
             }}
-            className="min-w-[200px] rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+            className={fieldBase()}
+            style={{
+              borderColor: "rgba(255,255,255,0.14)",
+              boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.35)",
+            }}
           >
             {shops.map((s) => (
               <option key={s.id} value={s.slug as string}>
@@ -270,27 +310,38 @@ export default function PortalBookingPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md shadow-card">
-          <Calendar
-            className="shadow-inner"
-            month={month}
-            onMonthChange={setMonth}
-            value={selectedDate}
-            onChange={setSelectedDate}
-            disabled={disabledDate}
-          />
+        <div className={glassCard() + " p-3"}>
+          <div
+            className="rounded-2xl border p-2"
+            style={{
+              borderColor: "rgba(255,255,255,0.08)",
+              background:
+                "radial-gradient(circle at 20% 10%, rgba(197,122,74,0.10), transparent 55%), rgba(0,0,0,0.35)",
+            }}
+          >
+            <Calendar
+              className="shadow-inner"
+              month={month}
+              onMonthChange={setMonth}
+              value={selectedDate}
+              onChange={setSelectedDate}
+              disabled={disabledDate}
+            />
+          </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
-          <h2 className="mb-1 font-semibold text-white">Available times</h2>
-          <p className="mb-3 text-xs text-neutral-400">
-            Times shown in <span className="font-medium">{tz}</span>.
-            {closedLabel && (
-              <span className="mt-1 block text-[0.7rem] text-neutral-500">
-                Closed: {closedLabel}
-              </span>
-            )}
-          </p>
+        <div className={glassCard() + " p-4"}>
+          <div className={"mb-3 border-b pb-3 " + softDivider()}>
+            <h2 className="font-semibold text-white">Available times</h2>
+            <p className="mt-1 text-xs text-neutral-400">
+              Times shown in <span className="font-medium">{tz}</span>.
+              {closedLabel ? (
+                <span className="mt-1 block text-[0.7rem] text-neutral-500">
+                  Closed: {closedLabel}
+                </span>
+              ) : null}
+            </p>
+          </div>
 
           {!shopSlug ? (
             <p className="text-sm text-neutral-400">
@@ -317,8 +368,20 @@ export default function PortalBookingPage() {
               {daySlots.map((s, i) => (
                 <li key={i}>
                   <button
+                    type="button"
                     onClick={() => book(s.start, s.end)}
-                    className="w-full rounded-lg border border-orange-600 px-3 py-2 text-sm text-orange-400 transition hover:bg-orange-600 hover:text-black"
+                    className="w-full rounded-xl border px-3 py-2 text-sm font-semibold transition active:scale-[0.99]"
+                    style={{
+                      borderColor: "rgba(197,122,74,0.55)",
+                      color: "rgba(245, 225, 205, 0.95)",
+                      background: "rgba(197,122,74,0.10)",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget.style.background = "rgba(197,122,74,0.18)");
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget.style.background = "rgba(197,122,74,0.10)");
+                    }}
                   >
                     {fmtTime(s.start, tz)} – {fmtTime(s.end, tz)}
                   </button>
@@ -326,12 +389,29 @@ export default function PortalBookingPage() {
               ))}
             </ul>
           )}
+
+          {selectedKey ? (
+            <div className="mt-4 text-[0.7rem] text-neutral-500">
+              Selected day:{" "}
+              <span className="font-medium text-neutral-300">{selectedKey}</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
       <p className="mt-6 text-xs text-neutral-500">
         * Your request is pending until confirmed by the shop.
       </p>
+
+      <style jsx global>{`
+        /* Light “copper focus” without using orange utility classes */
+        select:focus,
+        input:focus,
+        textarea:focus,
+        button:focus {
+          outline: none;
+        }
+      `}</style>
     </div>
   );
 }
