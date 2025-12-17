@@ -122,7 +122,7 @@ export async function middleware(req: NextRequest) {
   // Not signed in → route to correct login with redirect
   if (!session?.user) {
     if (isPortal) {
-      const login = new URL("/portal/signin", req.url);
+      const login = new URL("/portal/sign-in", req.url);
       login.searchParams.set("redirect", pathname + search);
       return withSupabaseCookies(res, NextResponse.redirect(login));
     }
