@@ -1,3 +1,4 @@
+// app/portal/auth/confirm/page.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -10,13 +11,22 @@ export default function PortalConfirmPage() {
   const supabase = createClientComponentClient<Database>();
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      router.replace(session?.user ? "/portal/profile" : "/portal/auth/sign-in");
+      if (cancelled) return;
+
+      // ✅ land on portal home
+      router.replace(session?.user ? "/portal" : "/portal/auth/sign-in");
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router, supabase]);
 
   return (

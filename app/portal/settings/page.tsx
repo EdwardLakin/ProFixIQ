@@ -199,7 +199,7 @@ export default function PortalSettingsPage() {
 
         <div className="space-y-3 rounded-3xl border border-red-500/35 bg-red-900/20 p-4 text-sm backdrop-blur-md shadow-card">
           <p className="text-red-100">{error}</p>
-          <LinkButton href="/portal/profile" variant="outline" size="sm">
+          <LinkButton href="/portal" variant="outline" size="sm">
             Go to profile
           </LinkButton>
         </div>

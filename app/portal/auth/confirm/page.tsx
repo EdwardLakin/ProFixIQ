@@ -22,7 +22,8 @@ export default function PortalConfirmPage() {
 
       if (cancelled) return;
 
-      router.replace(user ? "/portal/profile" : "/portal/auth/sign-in");
+      // ✅ land on portal home, not profile
+      router.replace(user ? "/portal" : "/portal/auth/sign-in");
     })();
 
     return () => {
@@ -49,7 +50,10 @@ export default function PortalConfirmPage() {
         </p>
 
         <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full border border-white/10 bg-white/5">
-          <div className="h-full w-1/2 animate-pulse rounded-full" style={{ backgroundColor: COPPER }} />
+          <div
+            className="h-full w-1/2 animate-pulse rounded-full"
+            style={{ backgroundColor: COPPER }}
+          />
         </div>
       </div>
     </div>
