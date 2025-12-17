@@ -940,7 +940,7 @@ export default function CreateWorkOrderPage() {
               : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
           const portalUrl = `${
             origin || "https://profixiq.com"
-          }/portal/signup?email=${encodeURIComponent(customer.email)}`;
+          }/portal/auth/sign-up?email=${encodeURIComponent(customer.email)}`;
           const { error: fnErr } = await supabase.functions.invoke(
             "send-portal-invite",
             {

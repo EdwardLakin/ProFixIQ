@@ -15,7 +15,7 @@ export default function PortalConfirmPage() {
         data: { session },
       } = await supabase.auth.getSession();
 
-      router.replace(session?.user ? "/portal/profile" : "/portal/signin");
+      router.replace(session?.user ? "/portal/profile" : "/portal/auth/sign-in");
     })();
   }, [router, supabase]);
 

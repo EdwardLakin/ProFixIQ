@@ -37,7 +37,7 @@ export default async function HistoryPage() {
         <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-200 backdrop-blur-md shadow-card">
           <p>You need to be signed in to view your service history.</p>
           <Link
-            href="/portal/signin"
+            href="/portal/auth/sign-in"
             className="mt-3 inline-flex items-center justify-center rounded-lg border border-orange-600 px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-600 hover:text-black"
           >
             Go to sign in

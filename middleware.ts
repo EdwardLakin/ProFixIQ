@@ -38,7 +38,7 @@ export async function middleware(req: NextRequest) {
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
   const isPortalAuthPage =
-    pathname === "/portal/signin" ||
+    pathname === "/portal/auth/sign-in" ||
     pathname === "/portal/confirm" ||
     pathname === "/portal/confirm/" ||
     pathname.startsWith("/portal/confirm");
@@ -106,8 +106,8 @@ export async function middleware(req: NextRequest) {
     }
 
     // Portal auth pages:
-    // - If already signed in and go to /portal/signin, bounce to /portal
-    if (isPortal && session?.user && pathname === "/portal/signin") {
+    // - If already signed in and go to /portal/auth/sign-in, bounce to /portal
+    if (isPortal && session?.user && pathname === "/portal/auth/sign-in") {
       const target = new URL("/portal", req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
@@ -122,7 +122,7 @@ export async function middleware(req: NextRequest) {
   // Not signed in → route to correct login with redirect
   if (!session?.user) {
     if (isPortal) {
-      const login = new URL("/portal/sign-in", req.url);
+      const login = new URL("/portal/auth/sign-in", req.url);
       login.searchParams.set("redirect", pathname + search);
       return withSupabaseCookies(res, NextResponse.redirect(login));
     }
