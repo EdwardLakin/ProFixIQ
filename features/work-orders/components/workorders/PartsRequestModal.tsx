@@ -15,6 +15,12 @@ type Props = {
   submittedEventName?: string;
 };
 
+type SubmittedDetail = {
+  requestId: string;
+  workOrderId: string;
+  jobId: string;
+};
+
 export default function PartsRequestModal({
   isOpen,
   workOrderId,
@@ -51,17 +57,25 @@ export default function PartsRequestModal({
     }))
     .filter((i) => i.description && i.qty > 0);
 
-  const emit = (name: string) => {
+  const emit = (name: string, detail?: unknown) => {
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent(name));
+      window.dispatchEvent(new CustomEvent(name, detail ? { detail } : undefined));
     }
   };
 
   async function submit() {
+    if (submitting) return;
+
+    if (!workOrderId || !jobId) {
+      toast.error("Missing work order or job id.");
+      return;
+    }
+
     if (validItems.length === 0) {
       toast.error("Add at least one line.");
       return;
     }
+
     setSubmitting(true);
 
     try {
@@ -79,7 +93,7 @@ export default function PartsRequestModal({
       const raw = await res.text();
       let json: { requestId?: string; error?: string } | null = null;
       try {
-        json = raw ? (JSON.parse(raw) as any) : null;
+        json = raw ? (JSON.parse(raw) as { requestId?: string; error?: string }) : null;
       } catch {
         /* ignore */
       }
@@ -91,12 +105,17 @@ export default function PartsRequestModal({
       }
 
       toast.success("Parts request sent.");
-      emit(submittedEventName);
+
+      const detail: SubmittedDetail = {
+        requestId: json.requestId,
+        workOrderId,
+        jobId,
+      };
+
+      emit(submittedEventName, detail);
       emit(closeEventName);
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Unable to submit request",
-      );
+      toast.error(err instanceof Error ? err.message : "Unable to submit request");
     } finally {
       setSubmitting(false);
     }
@@ -167,9 +186,7 @@ export default function PartsRequestModal({
                 <input
                   className="col-span-8 rounded-md border border-[var(--metal-border-soft)] bg-black/80 px-2 py-1 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
                   value={r.description}
-                  onChange={(e) =>
-                    setCell(r.id, { description: e.target.value })
-                  }
+                  onChange={(e) => setCell(r.id, { description: e.target.value })}
                   placeholder="e.g. rear pads, serp belt…"
                 />
                 <input
@@ -179,9 +196,7 @@ export default function PartsRequestModal({
                   className="col-span-3 rounded-md border border-[var(--metal-border-soft)] bg-black/80 px-2 py-1 text-right text-sm text-neutral-100 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
                   value={r.qty}
                   onChange={(e) =>
-                    setCell(r.id, {
-                      qty: Math.max(1, Number(e.target.value) || 1),
-                    })
+                    setCell(r.id, { qty: Math.max(1, Number(e.target.value) || 1) })
                   }
                 />
                 <div className="col-span-1 flex items-center justify-center">
@@ -189,11 +204,7 @@ export default function PartsRequestModal({
                     className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-black/70 text-[0.7rem] text-neutral-300 transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-40 disabled:hover:bg-black/70 disabled:hover:text-neutral-300"
                     onClick={() => removeRow(r.id)}
                     disabled={rows.length <= 1}
-                    title={
-                      rows.length <= 1
-                        ? "At least one row is required"
-                        : "Remove row"
-                    }
+                    title={rows.length <= 1 ? "At least one row is required" : "Remove row"}
                     type="button"
                   >
                     ✕
