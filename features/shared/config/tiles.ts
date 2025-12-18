@@ -184,6 +184,14 @@ export const TILES: Tile[] = [
     section: "Admin",
   },
   {
+    href: "/dashboard/owner/settings",
+    title: "Settings",
+    subtitle: "Adjust shop settings",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
     href: "/dashboard/owner/reports/technicians",
     title: "Technicians",
     subtitle: "Roster & performance",

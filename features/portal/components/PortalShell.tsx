@@ -16,17 +16,17 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/portal", label: "Home" },
 
-  // ✅ new primary flow
+  // ✅ primary flow
   { href: "/portal/request/when", label: "Request" },
+
+  // ✅ parts hub (approvals / requested parts)
+  { href: "/portal/parts", label: "Parts" },
 
   { href: "/portal/customer-appointments", label: "Appointments" },
   { href: "/portal/history", label: "History" },
   { href: "/portal/vehicles", label: "Vehicles" },
   { href: "/portal/profile", label: "Profile" },
   { href: "/portal/settings", label: "Settings" },
-
-  // (optional) keep legacy booking page reachable if it still exists
-  // { href: "/portal/booking", label: "Book (legacy)" },
 ];
 
 function cx(...parts: Array<string | false | null | undefined>) {
@@ -155,7 +155,6 @@ export default function PortalShell({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* ✅ primary action */}
           <Link
             href="/portal/request/when"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
