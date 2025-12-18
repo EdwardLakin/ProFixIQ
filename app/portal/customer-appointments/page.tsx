@@ -30,7 +30,6 @@ type PortalBooking = {
   status?: string | null;
 };
 
-const COPPER = "#C57A4A";
 
 function cardClass() {
   return "rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card";

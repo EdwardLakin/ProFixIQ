@@ -3,123 +3,140 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-import {
-  nonEmpty,
-  requireAuthedUser,
-  requirePortalCustomer,
-  requireWorkOrderOwnedByCustomer,
-} from "@/features/portal/server/portalAuth";
-
 export const runtime = "nodejs";
 
-type QuoteOnlyBody = {
+type DB = Database;
+
+type Body = {
   workOrderId: string;
-
-  // optional duplication for convenience (WO already has these)
   vehicleId?: string | null;
-
-  // the customer request (e.g. "Replace tires", "Rear diff input u-joint")
   description: string;
-
-  // optional notes the customer adds
   notes?: string | null;
-
-  // quantity for quote lines (belongs in work_order_quote_lines)
-  qty?: number;
-
-  // optional hint for routing (parts/diag/etc)
-  jobType?: "quote_only" | "custom" | "menu";
 };
 
-function jsonError(msg: string, status = 400) {
+function bad(msg: string, status = 400) {
   return NextResponse.json({ error: msg }, { status });
 }
 
-function clampQty(n: number): number {
-  if (!Number.isFinite(n)) return 1;
-  const i = Math.trunc(n);
-  if (i < 1) return 1;
-  if (i > 99) return 99;
-  return i;
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
 }
 
-export async function POST(req: Request): Promise<Response> {
+function isNullableString(v: unknown): v is string | null | undefined {
+  return typeof v === "string" || v === null || typeof v === "undefined";
+}
+
+function parseBody(raw: unknown): Body | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const r = raw as Record<string, unknown>;
+
+  const workOrderId = r.workOrderId;
+  const vehicleId = r.vehicleId;
+  const description = r.description;
+  const notes = r.notes;
+
+  if (!isNonEmptyString(workOrderId)) return null;
+  if (!isNonEmptyString(description)) return null;
+  if (!isNullableString(vehicleId)) return null;
+  if (!isNullableString(notes)) return null;
+
+  return {
+    workOrderId: workOrderId.trim(),
+    vehicleId: typeof vehicleId === "string" ? vehicleId : null,
+    description: description.trim(),
+    notes: typeof notes === "string" ? notes : null,
+  };
+}
+
+export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<Database>({ cookies });
+    const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    // Auth
-    const user = await requireAuthedUser(supabase);
+    // 1) Auth (portal user)
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
 
-    // Parse body
-    let body: QuoteOnlyBody;
+    if (authErr || !user) return bad("Not authenticated", 401);
+
+    // 2) Parse body safely (no any)
+    let rawJson: unknown;
     try {
-      body = (await req.json()) as QuoteOnlyBody;
+      rawJson = await req.json();
     } catch {
-      return jsonError("Invalid JSON body");
+      return bad("Invalid JSON body");
     }
 
-    const workOrderId = body?.workOrderId ?? "";
-    const description = body?.description ?? "";
-    const notes = body?.notes ?? null;
-    const qty = clampQty(typeof body?.qty === "number" ? body.qty : 1);
+    const body = parseBody(rawJson);
+    if (!body) return bad("Missing/invalid fields");
 
-    if (!nonEmpty(workOrderId)) return jsonError("Missing workOrderId");
-    if (!nonEmpty(description)) return jsonError("Missing description");
+    const { workOrderId, vehicleId, description, notes } = body;
 
-    // Portal customer (owner of auth account)
-    const customer = await requirePortalCustomer(supabase as any, user.id);
+    // 3) Confirm the portal user owns the customer on this work order
+    const { data: customer, error: custErr } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    // Ensure WO belongs to this customer
-    const wo = await requireWorkOrderOwnedByCustomer(
-      supabase as any,
-      workOrderId,
-      customer.id,
-    );
+    if (custErr) return bad("Failed to resolve customer", 500);
+    if (!customer?.id) return bad("Customer profile not found", 404);
 
-    // Enforce portal-only rule: customer can only add quote lines while WO is still not invoiced
-    const status = (wo.status ?? "").toLowerCase();
-    if (status === "invoiced") {
-      return jsonError("This work order has already been invoiced", 409);
-    }
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("id, shop_id, customer_id, vehicle_id")
+      .eq("id", workOrderId)
+      .maybeSingle();
 
-    // Insert quote-only into work_order_quote_lines
-    // IMPORTANT: qty exists here (not on work_order_lines)
-    const insert: Database["public"]["Tables"]["work_order_quote_lines"]["Insert"] = {
-      work_order_id: wo.id,
-      shop_id: wo.shop_id,
-      vehicle_id: (body?.vehicleId ?? wo.vehicle_id) ?? null,
+    if (woErr) return bad("Failed to load work order", 500);
+    if (!wo) return bad("Work order not found", 404);
+    if (wo.customer_id !== customer.id) return bad("Not allowed", 403);
 
-      // customer requested quote line
-      description: description.trim(),
-      notes: typeof notes === "string" ? notes.trim() || null : null,
+    const effectiveVehicleId =
+      vehicleId ?? (wo.vehicle_id ? String(wo.vehicle_id) : null);
 
-      qty,
-
-      // Stage starts internal-pending; later your parts flow can promote to customer_pending
-      stage: "advisor_pending",
-
-      // optional classification (safe default)
-      job_type: "customer-requested",
-    };
+    // 4) Create a quote request entry (work_order_quote_lines)
+    // Use existing stage enum-like values:
+    // - advisor_pending means shop/parts/tech will price it.
+    const insertQuote: DB["public"]["Tables"]["work_order_quote_lines"]["Insert"] =
+      {
+        work_order_id: wo.id,
+        shop_id: wo.shop_id,
+        vehicle_id: effectiveVehicleId,
+        description,
+        notes: notes ?? null,
+        stage: "advisor_pending",
+        job_type: "customer_request",
+        qty: 1,
+        // keep totals null/0 until priced; your schema may allow null
+        est_labor_hours: null,
+        labor_total: null,
+        parts_total: null,
+        subtotal: null,
+        tax_total: null,
+        grand_total: null,
+        metadata: {
+          source: "portal",
+          line_kind: "quote_only",
+        } as DB["public"]["Tables"]["work_order_quote_lines"]["Insert"]["metadata"],
+      };
 
     const { data: created, error: insErr } = await supabase
       .from("work_order_quote_lines")
-      .insert(insert)
+      .insert(insertQuote)
       .select("*")
       .single();
 
     if (insErr || !created) {
-      const msg = insErr?.message || "Failed to add quote request";
-      return jsonError(msg, 500);
+      return bad(insErr?.message || "Failed to create quote request", 500);
     }
 
-    // Optional: log ai_events later when we wire /ai/common-problems + /ai/similar-labor
-    // (keeping this endpoint focused & minimal)
-
-    return NextResponse.json({ quoteLine: created }, { status: 201 });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("add-quote-only error:", msg);
-    return jsonError("Unexpected error", 500);
+    return NextResponse.json({ quote: created }, { status: 201 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("portal add-quote-only error:", msg);
+    return bad("Unexpected error", 500);
   }
 }
