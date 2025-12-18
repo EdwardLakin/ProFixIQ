@@ -39,7 +39,9 @@ function sectionTitle(s: string) {
 async function postJson<TResp>(
   url: string,
   body: unknown,
-): Promise<{ ok: true; data: TResp } | { ok: false; error: string; status: number }> {
+): Promise<
+  { ok: true; data: TResp } | { ok: false; error: string; status: number }
+> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -47,8 +49,18 @@ async function postJson<TResp>(
     cache: "no-store",
   });
 
-  const j = (await res.json().catch(() => ({}))) as { error?: string } & Record<string, unknown>;
-  if (!res.ok) return { ok: false, error: j?.error || "Request failed", status: res.status };
+  const j = (await res.json().catch(() => ({}))) as { error?: string } & Record<
+    string,
+    unknown
+  >;
+
+  if (!res.ok)
+    return {
+      ok: false,
+      error: (typeof j?.error === "string" && j.error) || "Request failed",
+      status: res.status,
+    };
+
   return { ok: true, data: j as unknown as TResp };
 }
 
@@ -64,6 +76,37 @@ function ymm(v: VehicleRow | null) {
 
 function safeTrim(s: unknown) {
   return typeof s === "string" ? s.trim() : "";
+}
+
+/** Safe access for optional columns that may exist in DB but not in generated TS types. */
+function rec(row: unknown): Record<string, unknown> {
+  return (row && typeof row === "object" ? (row as Record<string, unknown>) : {}) as Record<
+    string,
+    unknown
+  >;
+}
+
+function getOptString(row: unknown, key: string): string | null {
+  const v = rec(row)[key];
+  return typeof v === "string" ? v : null;
+}
+
+function getOptNumber(row: unknown, key: string): number | null {
+  const v = rec(row)[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function menuTitle(m: MenuItemRow): string {
+  // Prefer: name/title if they exist, else description, else fallback.
+  const name = getOptString(m, "name");
+  const title = getOptString(m, "title");
+  return (name || title || m.description || "Menu item").toString();
+}
+
+function lineTitle(l: WorkOrderLineRow): string {
+  // work_order_lines commonly uses complaint/cause/correction; keep it safe.
+  const desc = getOptString(l, "description");
+  return (desc || l.complaint || "Line").toString();
 }
 
 export default function PortalRequestBuildPage() {
@@ -99,16 +142,18 @@ export default function PortalRequestBuildPage() {
   const filteredMenu = useMemo(() => {
     const q = menuSearch.trim().toLowerCase();
     if (!q) return menuItems.slice(0, 40);
+
     return menuItems
       .filter((m) => {
         const hay = [
-          m.service_name ?? "",
+          menuTitle(m),
           m.description ?? "",
           m.category ?? "",
           m.service_key ?? "",
         ]
           .join(" ")
           .toLowerCase();
+
         return hay.includes(q);
       })
       .slice(0, 40);
@@ -143,6 +188,7 @@ export default function PortalRequestBuildPage() {
         .maybeSingle();
 
       if (cErr) throw new Error(cErr.message);
+
       const cust = (c ?? null) as CustomerRow | null;
       if (!cust?.id) {
         toast.error("Customer profile not found.");
@@ -171,7 +217,9 @@ export default function PortalRequestBuildPage() {
       if (w.vehicle_id) {
         const { data: v, error: vErr } = await supabase
           .from("vehicles")
-          .select("id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at")
+          .select(
+            "id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at",
+          )
           .eq("id", w.vehicle_id)
           .maybeSingle();
 
@@ -213,18 +261,19 @@ export default function PortalRequestBuildPage() {
 
         const all = (mi ?? []) as unknown as MenuItemRow[];
 
-        // If your menu_items stores vehicle context, keep items that match this vehicle OR are generic (null year/make/model)
+        // Optional vehicle matching if the columns exist on menu_items:
+        // vehicle_year / vehicle_make / vehicle_model (or similar)
         const vy = (vehicle?.year ?? null) as number | null;
         const vm = safeTrim(vehicle?.make ?? null);
         const vmo = safeTrim(vehicle?.model ?? null);
 
         const filtered = all.filter((m) => {
-          const my = (m.vehicle_year ?? null) as number | null;
-          const mm = safeTrim(m.vehicle_make ?? null);
-          const mmo = safeTrim(m.vehicle_model ?? null);
+          const my = getOptNumber(m, "vehicle_year");
+          const mm = safeTrim(getOptString(m, "vehicle_make"));
+          const mmo = safeTrim(getOptString(m, "vehicle_model"));
 
-          const isGeneric = my == null && !mm && !mmo;
-          if (isGeneric) return true;
+          const hasAnyVehicleKey = my != null || !!mm || !!mmo;
+          if (!hasAnyVehicleKey) return true; // treat as generic
 
           const yearOk = my == null || (vy != null && my === vy);
           const makeOk = !mm || (vm && mm.toLowerCase() === vm.toLowerCase());
@@ -279,7 +328,11 @@ export default function PortalRequestBuildPage() {
 
     const r = await postJson<{ line?: unknown }>(
       "/api/portal/request/add-custom-line",
-      { workOrderId: wo.id, description: desc, notes: customNotes.trim() || null },
+      {
+        workOrderId: wo.id,
+        description: desc,
+        notes: customNotes.trim() || null,
+      },
     );
 
     if (!r.ok) {
@@ -303,7 +356,9 @@ export default function PortalRequestBuildPage() {
     }
 
     const qtyN = Number(qoQty);
-    const qty = Number.isFinite(qtyN) ? Math.max(1, Math.min(99, Math.trunc(qtyN))) : 1;
+    const qty = Number.isFinite(qtyN)
+      ? Math.max(1, Math.min(99, Math.trunc(qtyN)))
+      : 1;
 
     const r = await postJson<{ quoteLine?: unknown }>(
       "/api/portal/request/add-quote-only",
@@ -327,10 +382,11 @@ export default function PortalRequestBuildPage() {
 
     setSubmitting(true);
     try {
-      const r = await postJson<{ ok?: boolean; bookingId?: string; workOrderId?: string }>(
-        "/api/portal/request/submit",
-        { workOrderId: wo.id },
-      );
+      const r = await postJson<{
+        ok?: boolean;
+        bookingId?: string;
+        workOrderId?: string;
+      }>("/api/portal/request/submit", { workOrderId: wo.id });
 
       if (!r.ok) {
         toast.error(r.error);
@@ -377,7 +433,10 @@ export default function PortalRequestBuildPage() {
   }
 
   const name =
-    [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() || "Customer";
+    [customer.first_name ?? "", customer.last_name ?? ""]
+      .filter(Boolean)
+      .join(" ")
+      .trim() || "Customer";
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5 text-white">
@@ -397,12 +456,19 @@ export default function PortalRequestBuildPage() {
             </h1>
             <p className="mt-1 text-xs text-neutral-400">
               {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"} • WO{" "}
-              <span className="font-mono text-neutral-300">{wo.id.slice(0, 8)}…</span>
+              <span className="font-mono text-neutral-300">
+                {wo.id.slice(0, 8)}…
+              </span>
             </p>
           </div>
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => void loadAll()} disabled={refreshing}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void loadAll()}
+              disabled={refreshing}
+            >
               {refreshing ? "Refreshing…" : "Refresh"}
             </Button>
             <LinkButton href="/portal/request/when" variant="outline" size="sm">
@@ -421,15 +487,17 @@ export default function PortalRequestBuildPage() {
           </div>
         </div>
 
-        {(lines.length === 0 && quoteLines.length === 0) ? (
+        {lines.length === 0 && quoteLines.length === 0 ? (
           <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-sm text-neutral-300">
             Nothing added yet. Add menu items, custom lines, or quote requests below.
           </div>
         ) : (
           <div className="mt-3 space-y-2">
             {lines.map((l) => {
-              const title = (l.description ?? l.complaint ?? "Line").toString();
+              const title = lineTitle(l);
               const status = (l.status ?? "pending").toString();
+              const est = getOptNumber(l, "price_estimate");
+
               return (
                 <div key={l.id} className="rounded-xl border border-white/10 bg-black/35 p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -447,12 +515,14 @@ export default function PortalRequestBuildPage() {
                           </span>
                         )}
                       </div>
-                      {l.notes ? (
-                        <div className="mt-2 text-xs text-neutral-400">{String(l.notes)}</div>
+
+                      {typeof l.notes === "string" && l.notes.trim().length > 0 ? (
+                        <div className="mt-2 text-xs text-neutral-400">{l.notes}</div>
                       ) : null}
                     </div>
+
                     <div className="text-right text-xs text-neutral-400">
-                      Est: {fmtMoney((l.price_estimate as unknown as number | null) ?? null)}
+                      Est: {fmtMoney(est)}
                     </div>
                   </div>
                 </div>
@@ -462,7 +532,8 @@ export default function PortalRequestBuildPage() {
             {quoteLines.map((q) => {
               const title = (q.description ?? "Quote request").toString();
               const stage = (q.stage ?? "advisor_pending").toString();
-              const qty = (q.qty ?? 1) as number;
+              const qty = typeof q.qty === "number" && Number.isFinite(q.qty) ? q.qty : 1;
+
               return (
                 <div key={q.id} className="rounded-xl border border-white/10 bg-black/25 p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -475,8 +546,9 @@ export default function PortalRequestBuildPage() {
                           quote
                         </span>
                       </div>
-                      {q.notes ? (
-                        <div className="mt-2 text-xs text-neutral-500">{String(q.notes)}</div>
+
+                      {typeof q.notes === "string" && q.notes.trim().length > 0 ? (
+                        <div className="mt-2 text-xs text-neutral-500">{q.notes}</div>
                       ) : null}
                     </div>
                   </div>
@@ -513,9 +585,12 @@ export default function PortalRequestBuildPage() {
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {filteredMenu.map((m) => {
-              const title = (m.service_name ?? m.description ?? "Menu item").toString();
-              const hrs = (m.base_labor_hours ?? m.labor_hours ?? null) as number | null;
-              const price = (m.total_price ?? m.base_price ?? null) as number | null;
+              const title = menuTitle(m);
+              const hrs =
+                (m.base_labor_hours ?? m.labor_hours ?? null) as number | null;
+              const price =
+                (m.total_price ?? m.base_price ?? null) as number | null;
+
               return (
                 <button
                   key={m.id}

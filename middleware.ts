@@ -14,11 +14,18 @@ function isAssetPath(p: string) {
   );
 }
 
-// Don’t split multi-cookie header; copy as-is
 function withSupabaseCookies(from: NextResponse, to: NextResponse) {
   const setCookie = from.headers.get("set-cookie");
   if (setCookie) to.headers.set("set-cookie", setCookie);
   return to;
+}
+
+function safeRedirectPath(v: string | null): string | null {
+  // only allow internal redirects
+  if (!v) return null;
+  if (!v.startsWith("/")) return null;
+  if (v.startsWith("//")) return null;
+  return v;
 }
 
 export async function middleware(req: NextRequest) {
@@ -38,12 +45,11 @@ export async function middleware(req: NextRequest) {
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
 
-  // ✅ Treat BOTH legacy and current portal confirm paths as portal auth pages
-  const isPortalAuthPage =
-    pathname === "/portal/auth/sign-in" ||
-    pathname === "/portal/auth/confirm" ||
-    pathname === "/portal/auth/confirm/" ||
-    pathname.startsWith("/portal/auth/confirm") ||
+  // ✅ Anything under /portal/auth is a portal auth page (sign-in, confirm, etc)
+  const isPortalAuthPage = pathname.startsWith("/portal/auth/");
+
+  // ✅ Legacy confirm paths still allowed (if you still have them linked anywhere)
+  const isLegacyPortalConfirm =
     pathname === "/portal/confirm" ||
     pathname === "/portal/confirm/" ||
     pathname.startsWith("/portal/confirm");
@@ -56,7 +62,8 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/mobile/sign-in") ||
-    isPortalAuthPage; // ✅ ONLY portal auth pages are public
+    isPortalAuthPage ||
+    isLegacyPortalConfirm;
 
   // ---------------------------------------------------------------------------
   // App onboarding state (ONLY for main app users, not portal customers)
@@ -78,7 +85,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // ---------------------------------------------------------------------------
-  // Landing page → redirect into app/onboarding when already signed in
+  // Landing page → redirect into app/onboarding when already signed in (main app only)
   // ---------------------------------------------------------------------------
   if (pathname === "/" && session?.user) {
     const target = new URL(completed ? "/dashboard" : "/onboarding", req.url);
@@ -89,31 +96,25 @@ export async function middleware(req: NextRequest) {
   // PUBLIC ROUTES
   // ---------------------------------------------------------------------------
   if (isPublic) {
-    // If signed in and hit main sign-in routes → bounce into app
-    const isMainSignIn =
-      pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
+    const redirectParam = safeRedirectPath(req.nextUrl.searchParams.get("redirect"));
+
+    // Main sign-in routes: signed in → bounce into app
+    const isMainSignIn = pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
 
     if (session?.user && (isMainSignIn || isMobileSignIn)) {
-      const redirectParam = req.nextUrl.searchParams.get("redirect");
-
-      let to: string;
-      if (redirectParam) {
-        to = redirectParam;
-      } else if (isMobileSignIn) {
-        to = completed ? "/mobile" : "/onboarding";
-      } else {
-        to = completed ? "/dashboard" : "/onboarding";
-      }
+      const to =
+        redirectParam ??
+        (isMobileSignIn ? (completed ? "/mobile" : "/onboarding") : completed ? "/dashboard" : "/onboarding");
 
       const target = new URL(to, req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // Portal auth pages:
-    // - If already signed in and go to /portal/auth/sign-in, bounce into portal flow start
-    if (isPortal && session?.user && pathname === "/portal/auth/sign-in") {
-      const target = new URL("/portal/customer-appointments", req.url);
+    // Portal auth pages: signed in → bounce to redirect OR portal flow start
+    if (isPortal && session?.user && (isPortalAuthPage || isLegacyPortalConfirm)) {
+      const to = redirectParam ?? "/portal/request/when";
+      const target = new URL(to, req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
@@ -124,7 +125,6 @@ export async function middleware(req: NextRequest) {
   // PROTECTED ROUTES
   // ---------------------------------------------------------------------------
 
-  // Not signed in → route to correct login with redirect
   if (!session?.user) {
     if (isPortal) {
       const login = new URL("/portal/auth/sign-in", req.url);

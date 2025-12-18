@@ -979,6 +979,7 @@ export type Database = {
           province: string | null
           shop_id: string | null
           street: string | null
+          updated_at: string
           user_id: string | null
           vehicle: string | null
         }
@@ -1000,6 +1001,7 @@ export type Database = {
           province?: string | null
           shop_id?: string | null
           street?: string | null
+          updated_at?: string
           user_id?: string | null
           vehicle?: string | null
         }
@@ -1021,6 +1023,7 @@ export type Database = {
           province?: string | null
           shop_id?: string | null
           street?: string | null
+          updated_at?: string
           user_id?: string | null
           vehicle?: string | null
         }
