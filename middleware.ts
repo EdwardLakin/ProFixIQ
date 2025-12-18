@@ -37,9 +37,13 @@ export async function middleware(req: NextRequest) {
   } = await supabase.auth.getSession();
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
+
+  // ✅ Treat BOTH legacy and current portal confirm paths as portal auth pages
   const isPortalAuthPage =
-    pathname === "/portal/auth" ||
-    pathname.startsWith("/portal/auth/") ||
+    pathname === "/portal/auth/sign-in" ||
+    pathname === "/portal/auth/confirm" ||
+    pathname === "/portal/auth/confirm/" ||
+    pathname.startsWith("/portal/auth/confirm") ||
     pathname === "/portal/confirm" ||
     pathname === "/portal/confirm/" ||
     pathname.startsWith("/portal/confirm");
@@ -52,7 +56,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/mobile/sign-in") ||
-    isPortalAuthPage; // ✅ portal auth pages are public
+    isPortalAuthPage; // ✅ ONLY portal auth pages are public
 
   // ---------------------------------------------------------------------------
   // App onboarding state (ONLY for main app users, not portal customers)
@@ -106,10 +110,10 @@ export async function middleware(req: NextRequest) {
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // ✅ Portal auth pages:
-    // If already signed in and hit ANY /portal/auth/* → bounce to /portal
-    if (isPortal && session?.user && pathname.startsWith("/portal/auth")) {
-      const target = new URL("/portal", req.url);
+    // Portal auth pages:
+    // - If already signed in and go to /portal/auth/sign-in, bounce into portal flow start
+    if (isPortal && session?.user && pathname === "/portal/auth/sign-in") {
+      const target = new URL("/portal/customer-appointments", req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 

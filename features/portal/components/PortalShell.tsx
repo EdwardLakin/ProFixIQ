@@ -1,4 +1,3 @@
-// features/portal/components/PortalShell.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -16,12 +15,18 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { href: "/portal", label: "Home" },
-  { href: "/portal/booking", label: "Book" },
+
+  // ✅ new primary flow
+  { href: "/portal/request/when", label: "Request" },
+
   { href: "/portal/customer-appointments", label: "Appointments" },
   { href: "/portal/history", label: "History" },
   { href: "/portal/vehicles", label: "Vehicles" },
   { href: "/portal/profile", label: "Profile" },
   { href: "/portal/settings", label: "Settings" },
+
+  // (optional) keep legacy booking page reachable if it still exists
+  // { href: "/portal/booking", label: "Book (legacy)" },
 ];
 
 function cx(...parts: Array<string | false | null | undefined>) {
@@ -46,7 +51,7 @@ function MenuIcon() {
 
 export default function PortalShell({
   title = "Customer Portal",
-  subtitle = "Manage bookings, vehicles, and your profile",
+  subtitle = "Request service, manage appointments, vehicles, and your profile",
   children,
 }: {
   title?: string;
@@ -58,7 +63,6 @@ export default function PortalShell({
   const supabase = createClientComponentClient<DB>();
 
   const [mobileOpen, setMobileOpen] = useState(false);
-  // ✅ closed by default on desktop
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -85,7 +89,6 @@ export default function PortalShell({
     }
   };
 
-  // AUTH PAGES: no nav, centered content
   if (hideNav) {
     return (
       <div className="min-h-dvh app-metal-bg text-white">
@@ -123,10 +126,8 @@ export default function PortalShell({
 
   return (
     <div className="min-h-dvh app-metal-bg text-white">
-      {/* Top bar */}
       <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
         <div className="flex items-center gap-3">
-          {/* Mobile drawer */}
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
@@ -136,7 +137,6 @@ export default function PortalShell({
             <MenuIcon />
           </button>
 
-          {/* Desktop sidebar toggle */}
           <button
             type="button"
             onClick={() => setDesktopOpen((v) => !v)}
@@ -155,14 +155,14 @@ export default function PortalShell({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* ✅ primary action */}
           <Link
-            href="/portal/booking"
+            href="/portal/request/when"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
           >
-            <span style={{ color: COPPER }}>Book</span>
+            <span style={{ color: COPPER }}>Request</span>
           </Link>
 
-          {/* ✅ Sign out on top right */}
           <button
             type="button"
             onClick={() => void signOut()}
@@ -176,7 +176,6 @@ export default function PortalShell({
       </header>
 
       <div className="relative mx-auto flex min-h-[calc(100dvh-52px)] w-full max-w-6xl gap-6 px-3 py-4 md:px-6">
-        {/* Desktop sidebar (collapsible) */}
         <aside
           className={cx(
             "hidden overflow-hidden rounded-2xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card md:flex md:flex-col transition-all duration-300",
@@ -235,7 +234,6 @@ export default function PortalShell({
           </div>
         </aside>
 
-        {/* Mobile overlay sidebar */}
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
             <div
@@ -308,7 +306,6 @@ export default function PortalShell({
           </div>
         )}
 
-        {/* Main column */}
         <div className="min-w-0 flex-1">
           <div className={ShellCard}>{children}</div>
         </div>

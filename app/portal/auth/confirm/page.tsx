@@ -1,4 +1,3 @@
-// app/portal/auth/confirm/page.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -17,13 +16,15 @@ export default function PortalConfirmPage() {
 
     (async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (cancelled) return;
 
-      // ✅ land on portal home, not profile
-      router.replace(user ? "/portal" : "/portal/auth/sign-in");
+      // ✅ After confirm, land on the portal entry that matters for this flow
+      router.replace(
+        session?.user ? "/portal/customer-appointments" : "/portal/auth/sign-in",
+      );
     })();
 
     return () => {
@@ -33,7 +34,7 @@ export default function PortalConfirmPage() {
 
   return (
     <div className="mx-auto max-w-lg">
-      <div className="rounded-2xl border border-white/10 bg-black/25 p-5 backdrop-blur-md">
+      <div className="rounded-2xl border border-white/10 bg-black/25 p-5 backdrop-blur-md shadow-card">
         <div
           className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.2em]"
           style={{ color: COPPER }}
@@ -41,8 +42,8 @@ export default function PortalConfirmPage() {
           Portal
         </div>
 
-        <h1 className="mt-4 text-xl font-blackops uppercase tracking-[0.16em]">
-          Finishing sign up
+        <h1 className="mt-4 text-xl font-blackops uppercase tracking-[0.16em] text-neutral-200">
+          Finishing sign in
         </h1>
 
         <p className="mt-2 text-sm text-neutral-400">
