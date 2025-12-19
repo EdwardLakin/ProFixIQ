@@ -1,0 +1,21 @@
+// app/api/portal/approvals/[lineId]/decline/route.ts
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+export async function POST(
+  _req: Request,
+  { params }: { params: { lineId: string } },
+) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  const { error } = await supabase.rpc("portal_decline_line", {
+    p_line_id: params.lineId,
+  });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ ok: true });
+}

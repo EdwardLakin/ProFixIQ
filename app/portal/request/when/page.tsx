@@ -1,3 +1,4 @@
+// app/portal/request/when/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -13,23 +14,12 @@ type DB = Database;
 
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
-type ShopRow = Pick<DB["public"]["Tables"]["shops"]["Row"], "id" | "slug" | "timezone">;
+type ShopRow = Pick<
+  DB["public"]["Tables"]["shops"]["Row"],
+  "id" | "slug" | "timezone"
+>;
 
 type ShopHoursRow = DB["public"]["Tables"]["shop_hours"]["Row"];
-
-// If your shop_hours uses different column names, adjust only these 3 helpers:
-function getWeekday(h: ShopHoursRow): number | null {
-  const v = (h as unknown as { weekday?: number | null }).weekday;
-  return typeof v === "number" ? v : null;
-}
-function getOpen(h: ShopHoursRow): string | null {
-  const v = (h as unknown as { open_time?: string | null; open?: string | null }).open_time ?? (h as unknown as { open?: string | null }).open ?? null;
-  return typeof v === "string" ? v : null;
-}
-function getClose(h: ShopHoursRow): string | null {
-  const v = (h as unknown as { close_time?: string | null; close?: string | null }).close_time ?? (h as unknown as { close?: string | null }).close ?? null;
-  return typeof v === "string" ? v : null;
-}
 
 type VisitType = "waiter" | "drop_off";
 
@@ -59,14 +49,107 @@ function addDays(base: Date, days: number) {
   return d;
 }
 
+function rec(row: unknown): Record<string, unknown> {
+  return (row && typeof row === "object" ? (row as Record<string, unknown>) : {}) as Record<
+    string,
+    unknown
+  >;
+}
+
+/**
+ * Normalizes a "weekday" coming from DB to JS getDay() format:
+ * JS: 0..6 where 0 = Sunday.
+ *
+ * Accepts:
+ * - 0..6 (already JS)
+ * - 1..7 (common DB): can be Mon=1..Sun=7 OR Sun=1..Sat=7
+ * We detect which mapping is likely by looking at "7" usage.
+ *
+ * If you know your exact mapping, we can hardcode it later.
+ */
+function normalizeWeekdayToJs(dowRaw: number): number | null {
+  if (!Number.isFinite(dowRaw)) return null;
+
+  // Already JS style
+  if (dowRaw >= 0 && dowRaw <= 6) return dowRaw;
+
+  // 1..7 style
+  if (dowRaw >= 1 && dowRaw <= 7) {
+    // Two common interpretations:
+    // A) Mon=1..Sun=7  => JS = (dowRaw % 7)  (Mon=1->1 ... Sat=6->6, Sun=7->0)
+    // B) Sun=1..Sat=7  => JS = (dowRaw - 1) (Sun=1->0 ... Sat=7->6)
+    //
+    // We can't be 100% sure without your schema docs, so we try BOTH later.
+    // Here we return null so caller can compute both candidates.
+    return null;
+  }
+
+  return null;
+}
+
+function getWeekdayCandidates(h: ShopHoursRow): number[] {
+  const r = rec(h);
+
+  const raw =
+    (typeof r.weekday === "number" ? r.weekday : null) ??
+    (typeof r.day_of_week === "number" ? r.day_of_week : null) ??
+    (typeof r.dow === "number" ? r.dow : null);
+
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return [];
+
+  // If already 0..6
+  const direct = normalizeWeekdayToJs(raw);
+  if (direct != null) return [direct];
+
+  // If 1..7, return both possible interpretations:
+  if (raw >= 1 && raw <= 7) {
+    const mon1 = raw % 7; // Mon=1..Sun=7 => Sun becomes 0
+    const sun1 = raw - 1; // Sun=1..Sat=7
+    // de-dupe
+    return Array.from(new Set([mon1, sun1])).filter((n) => n >= 0 && n <= 6);
+  }
+
+  return [];
+}
+
+function getOpen(h: ShopHoursRow): string | null {
+  const r = rec(h);
+  const v =
+    (typeof r.open_time === "string" ? r.open_time : null) ??
+    (typeof r.open === "string" ? r.open : null);
+  return typeof v === "string" ? v : null;
+}
+
+function getClose(h: ShopHoursRow): string | null {
+  const r = rec(h);
+  const v =
+    (typeof r.close_time === "string" ? r.close_time : null) ??
+    (typeof r.close === "string" ? r.close : null);
+  return typeof v === "string" ? v : null;
+}
+
+function isClosedRow(h: ShopHoursRow): boolean {
+  const r = rec(h);
+  // Common patterns
+  const closed =
+    (typeof r.is_closed === "boolean" ? r.is_closed : false) ||
+    (typeof r.closed === "boolean" ? r.closed : false) ||
+    (typeof r.is_open === "boolean" ? !r.is_open : false);
+
+  return !!closed;
+}
+
 function parseHmToMinutes(hm: string): number | null {
-  // accepts "HH:MM:SS" or "HH:MM"
-  const parts = hm.split(":").map((x) => x.trim());
+  // accepts "HH:MM:SS", "HH:MM", and tolerates suffixes like "09:00:00+00"
+  const cleaned = hm.trim().split(/[^\d:]/)[0] ?? ""; // keep only "HH:MM:SS" portion
+  const parts = cleaned.split(":").map((x) => x.trim());
   if (parts.length < 2) return null;
+
   const hh = Number(parts[0]);
   const mm = Number(parts[1]);
   if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
   if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+
   return hh * 60 + mm;
 }
 
@@ -80,14 +163,16 @@ function minutesToLabel(mins: number) {
 }
 
 type Slot = {
-  startsAtIso: string; // ISO
+  startsAtIso: string;
   label: string;
 };
 
 async function postJson<TResp>(
   url: string,
   body: unknown,
-): Promise<{ ok: true; data: TResp } | { ok: false; error: string; status: number }> {
+): Promise<
+  { ok: true; data: TResp } | { ok: false; error: string; status: number }
+> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -95,11 +180,35 @@ async function postJson<TResp>(
     cache: "no-store",
   });
 
-  const j = (await res.json().catch(() => ({}))) as { error?: string } & Record<string, unknown>;
+  const j = (await res.json().catch(() => ({}))) as { error?: string } & Record<
+    string,
+    unknown
+  >;
+
   if (!res.ok) {
-    return { ok: false, error: j?.error || "Request failed", status: res.status };
+    return {
+      ok: false,
+      error: (typeof j?.error === "string" && j.error) || "Request failed",
+      status: res.status,
+    };
   }
+
   return { ok: true, data: j as unknown as TResp };
+}
+
+function mergeRanges(ranges: Array<[number, number]>): Array<[number, number]> {
+  const sorted = ranges
+    .filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && b > a)
+    .sort((x, y) => x[0] - y[0]);
+
+  const out: Array<[number, number]> = [];
+  for (const [s, e] of sorted) {
+    const last = out[out.length - 1];
+    if (!last) out.push([s, e]);
+    else if (s <= last[1]) last[1] = Math.max(last[1], e);
+    else out.push([s, e]);
+  }
+  return out;
 }
 
 export default function PortalRequestWhenPage() {
@@ -120,7 +229,6 @@ export default function PortalRequestWhenPage() {
 
   const [starting, setStarting] = useState(false);
 
-  // Load auth -> customer -> shop -> vehicles -> shop hours
   useEffect(() => {
     let cancelled = false;
 
@@ -187,7 +295,9 @@ export default function PortalRequestWhenPage() {
 
       const { data: v, error: vErr } = await supabase
         .from("vehicles")
-        .select("id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at")
+        .select(
+          "id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at",
+        )
         .eq("customer_id", cust.id)
         .order("created_at", { ascending: false });
 
@@ -240,51 +350,69 @@ export default function PortalRequestWhenPage() {
   }, []);
 
   const slots: Slot[] = useMemo(() => {
-    // Basic: 1-hour slots between open/close for that weekday
     if (!date) return [];
     if (!shopHours.length) return [];
 
+    // IMPORTANT: build the date in local time (no implicit UTC shifting)
     const d = new Date(`${date}T00:00:00`);
     const jsDay = d.getDay(); // 0 Sun ... 6 Sat
 
-    const todays = shopHours.filter((h) => getWeekday(h) === jsDay);
-    if (!todays.length) return [];
+    // Filter rows that could match this JS day under either weekday encoding.
+    const candidateRows = shopHours.filter((h) => {
+      if (isClosedRow(h)) return false;
+      const cands = getWeekdayCandidates(h);
+      return cands.includes(jsDay);
+    });
 
-    // pick first row for the day (if multiple, future: merge)
-    const row = todays[0];
-    const open = getOpen(row);
-    const close = getClose(row);
+    if (!candidateRows.length) return [];
 
-    if (!open || !close) return [];
+    // Build open/close ranges in minutes and merge them (supports split shifts).
+    const ranges: Array<[number, number]> = [];
 
-    const openM = parseHmToMinutes(open);
-    const closeM = parseHmToMinutes(close);
-    if (openM == null || closeM == null) return [];
+    for (const row of candidateRows) {
+      const open = getOpen(row);
+      const close = getClose(row);
+      if (!open || !close) continue;
 
-    // If shop crosses midnight (rare), ignore for now
-    if (closeM <= openM) return [];
+      const openM = parseHmToMinutes(open);
+      const closeM = parseHmToMinutes(close);
+      if (openM == null || closeM == null) continue;
+
+      // ignore overnight for now
+      if (closeM <= openM) continue;
+
+      ranges.push([openM, closeM]);
+    }
+
+    const merged = mergeRanges(ranges);
+    if (!merged.length) return [];
 
     const startOfDay = new Date(`${date}T00:00:00.000`);
     const out: Slot[] = [];
-    for (let m = openM; m + 60 <= closeM; m += 60) {
-      const slotStart = new Date(startOfDay);
-      slotStart.setMinutes(m, 0, 0);
 
-      out.push({
-        startsAtIso: slotStart.toISOString(),
-        label: minutesToLabel(m),
-      });
+    // 1-hour slots
+    for (const [openM, closeM] of merged) {
+      for (let m = openM; m + 60 <= closeM; m += 60) {
+        const slotStart = new Date(startOfDay);
+        slotStart.setMinutes(m, 0, 0);
+
+        out.push({
+          startsAtIso: slotStart.toISOString(),
+          label: minutesToLabel(m),
+        });
+      }
     }
 
     return out;
   }, [date, shopHours]);
 
-  // Clear slot if date changes
   useEffect(() => {
     setSelectedSlotIso("");
   }, [date]);
 
-  const canStart = Boolean(customer?.id && shop?.id && vehicleId && selectedSlotIso);
+  const canStart = Boolean(
+    customer?.id && shop?.id && vehicleId && selectedSlotIso,
+  );
 
   async function onStart() {
     if (!canStart || starting) return;
@@ -379,7 +507,10 @@ export default function PortalRequestWhenPage() {
   }
 
   const customerName =
-    [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() || "Customer";
+    [customer.first_name ?? "", customer.last_name ?? ""]
+      .filter(Boolean)
+      .join(" ")
+      .trim() || "Customer";
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-5 text-white">
@@ -396,7 +527,8 @@ export default function PortalRequestWhenPage() {
           Pick a time
         </h1>
         <p className="text-xs text-neutral-400">
-          {customerName} • Shop: <span className="text-neutral-300">{shop.slug}</span>
+          {customerName} • Shop:{" "}
+          <span className="text-neutral-300">{shop.slug}</span>
         </p>
       </header>
 
@@ -405,6 +537,7 @@ export default function PortalRequestWhenPage() {
           <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
             Vehicle
           </div>
+
           {vehicles.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-sm text-neutral-300">
               No vehicles found. Add one first.
@@ -422,8 +555,10 @@ export default function PortalRequestWhenPage() {
             >
               {vehicles.map((v) => {
                 const label =
-                  [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() ||
-                  "Vehicle";
+                  [v.year ?? "", v.make ?? "", v.model ?? ""]
+                    .filter(Boolean)
+                    .join(" ")
+                    .trim() || "Vehicle";
                 const vin = v.vin ? ` • VIN ${String(v.vin).slice(-6)}` : "";
                 return (
                   <option key={v.id} value={v.id}>
@@ -440,7 +575,11 @@ export default function PortalRequestWhenPage() {
           <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
             Date
           </div>
-          <select className={inputClass()} value={date} onChange={(e) => setDate(e.target.value)}>
+          <select
+            className={inputClass()}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          >
             {dateOptions.map((d) => (
               <option key={d.iso} value={d.iso}>
                 {d.label}
@@ -460,6 +599,10 @@ export default function PortalRequestWhenPage() {
           {slots.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-sm text-neutral-300">
               No hours available for this day.
+              <div className="mt-2 text-[0.75rem] text-neutral-500">
+                (If this seems wrong, it usually means shop_hours weekday mapping didn’t
+                match — this build now supports 0–6 or 1–7 encodings.)
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -471,7 +614,8 @@ export default function PortalRequestWhenPage() {
                     type="button"
                     onClick={() => setSelectedSlotIso(s.startsAtIso)}
                     className={
-                      "rounded-xl border px-3 py-2 text-sm transition " + pillClass(active)
+                      "rounded-xl border px-3 py-2 text-sm transition " +
+                      pillClass(active)
                     }
                   >
                     {s.label}
@@ -490,7 +634,10 @@ export default function PortalRequestWhenPage() {
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              className={"rounded-xl border px-3 py-2 text-sm transition " + pillClass(visitType === "waiter")}
+              className={
+                "rounded-xl border px-3 py-2 text-sm transition " +
+                pillClass(visitType === "waiter")
+              }
               onClick={() => setVisitType("waiter")}
             >
               Waiter
@@ -500,7 +647,10 @@ export default function PortalRequestWhenPage() {
             </button>
             <button
               type="button"
-              className={"rounded-xl border px-3 py-2 text-sm transition " + pillClass(visitType === "drop_off")}
+              className={
+                "rounded-xl border px-3 py-2 text-sm transition " +
+                pillClass(visitType === "drop_off")
+              }
               onClick={() => setVisitType("drop_off")}
             >
               Drop off
@@ -521,13 +671,18 @@ export default function PortalRequestWhenPage() {
             {starting ? "Starting…" : "Next: build request"}
           </Button>
 
-          <LinkButton href="/portal/customer-appointments" variant="outline" size="sm">
+          <LinkButton
+            href="/portal/customer-appointments"
+            variant="outline"
+            size="sm"
+          >
             Back
           </LinkButton>
         </div>
 
         <p className="text-[0.75rem] text-neutral-500">
-          Next you’ll build your service request (menu items, custom lines, and quote-only requests).
+          Next you’ll build your service request (menu items, custom lines, and quote-only
+          requests).
         </p>
       </section>
     </div>

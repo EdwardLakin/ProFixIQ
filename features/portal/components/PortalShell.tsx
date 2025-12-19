@@ -1,3 +1,4 @@
+// app/portal/PortalShell.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -19,8 +20,8 @@ const NAV: NavItem[] = [
   // ✅ primary flow
   { href: "/portal/request/when", label: "Request" },
 
-  // ✅ parts hub (approvals / requested parts)
-  { href: "/portal/parts", label: "Parts" },
+  // ✅ approvals (new)
+  { href: "/portal/approvals", label: "Approvals" },
 
   { href: "/portal/customer-appointments", label: "Appointments" },
   { href: "/portal/history", label: "History" },
@@ -51,7 +52,7 @@ function MenuIcon() {
 
 export default function PortalShell({
   title = "Customer Portal",
-  subtitle = "Request service, manage appointments, vehicles, and your profile",
+  subtitle = "Request service, approve parts, manage appointments, vehicles, and your profile",
   children,
 }: {
   title?: string;
@@ -155,11 +156,20 @@ export default function PortalShell({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* ✅ primary action */}
           <Link
             href="/portal/request/when"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
           >
             <span style={{ color: COPPER }}>Request</span>
+          </Link>
+
+          {/* ✅ approvals quick access */}
+          <Link
+            href="/portal/approvals"
+            className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
+          >
+            <span style={{ color: COPPER }}>Approvals</span>
           </Link>
 
           <button

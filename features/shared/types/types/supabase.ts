@@ -611,6 +611,7 @@ export type Database = {
           starts_at: string
           status: string
           vehicle_id: string | null
+          work_order_id: string | null
         }
         Insert: {
           created_at?: string
@@ -623,6 +624,7 @@ export type Database = {
           starts_at: string
           status?: string
           vehicle_id?: string | null
+          work_order_id?: string | null
         }
         Update: {
           created_at?: string
@@ -635,6 +637,7 @@ export type Database = {
           starts_at?: string
           status?: string
           vehicle_id?: string | null
+          work_order_id?: string | null
         }
         Relationships: [
           {
@@ -663,6 +666,13 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -7829,6 +7839,15 @@ export type Database = {
         Args: { p_items: Json; p_notes: string; p_work_order: string }
         Returns: string
       }
+      create_part_request_with_items: {
+        Args: {
+          p_items: Json
+          p_job_id?: string
+          p_notes?: string
+          p_work_order_id: string
+        }
+        Returns: string
+      }
       current_shop_id: { Args: never; Returns: string }
       first_segment_uuid: { Args: { p: string }; Returns: string }
       get_work_order_assignments: {
@@ -7850,6 +7869,16 @@ export type Database = {
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
       mark_active: { Args: never; Returns: undefined }
+      portal_approve_line: { Args: { p_line_id: string }; Returns: undefined }
+      portal_approve_part_request_item: {
+        Args: { p_item_id: string }
+        Returns: undefined
+      }
+      portal_decline_line: { Args: { p_line_id: string }; Returns: undefined }
+      portal_decline_part_request_item: {
+        Args: { p_item_id: string }
+        Returns: undefined
+      }
       punch_in: { Args: { line_id: string }; Returns: undefined }
       punch_out: { Args: { line_id: string }; Returns: undefined }
       recalc_shop_active_user_count: {
