@@ -51,7 +51,7 @@ export default function PortalSignUpForm() {
           "Check your email to confirm your account. After confirming, you’ll land on your profile.",
         );
       } else {
-        router.replace("/portal/profile");
+        router.replace("/portal");
       }
     } catch (err: unknown) {
       const message =

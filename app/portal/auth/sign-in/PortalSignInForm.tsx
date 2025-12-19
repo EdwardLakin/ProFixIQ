@@ -24,7 +24,7 @@ export default function PortalSignInPage() {
     (async () => {
       const { data } = await supabase.auth.getUser();
       if (cancelled) return;
-      if (data?.user) router.replace("/portal/profile");
+      if (data?.user) router.replace("/portal");
     })();
 
     return () => {
@@ -58,7 +58,7 @@ export default function PortalSignInPage() {
       return;
     }
 
-    router.replace("/portal/profile");
+    router.replace("/portal");
   };
 
   return (
