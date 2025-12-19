@@ -40,6 +40,16 @@ export default function AuthPage() {
     return `${origin}/auth/callback${tail}`;
   }, [origin, sp]);
 
+  const goLanding = () => {
+    const href = "/";
+    router.replace(href);
+    setTimeout(() => {
+      if (typeof window !== "undefined" && window.location.pathname !== href) {
+        window.location.assign(href);
+      }
+    }, 60);
+  };
+
   // where to go *after* auth, based on profile + mode
   const routeAfterAuth = async (
     profile: { completed_onboarding?: boolean | null; shop_id?: string | null } | null,
@@ -172,9 +182,7 @@ export default function AuthPage() {
     }
 
     if (!data.session) {
-      setNotice(
-        "Check your inbox to confirm your email. We’ll continue after that.",
-      );
+      setNotice("Check your inbox to confirm your email. We’ll continue after that.");
       setLoading(false);
       return;
     }
@@ -203,6 +211,31 @@ export default function AuthPage() {
             px-6 py-7 sm:px-8 sm:py-9
           "
         >
+          {/* Back to landing */}
+          <div className="mb-4 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={goLanding}
+              disabled={loading}
+              className="
+                inline-flex items-center gap-2 rounded-full border
+                border-[color:var(--metal-border-soft,#1f2937)]
+                bg-black/60 px-3 py-1.5 text-[11px]
+                uppercase tracking-[0.2em] text-neutral-200
+                hover:bg-black/70 hover:text-white
+                disabled:cursor-not-allowed disabled:opacity-60
+              "
+            >
+              <span aria-hidden className="text-base leading-none">←</span>
+              Back
+            </button>
+
+            {/* tiny spacer / optional right-side label */}
+            <div className="text-[10px] text-neutral-500">
+              {isMobileMode ? "Mobile sign-in" : " "}
+            </div>
+          </div>
+
           {/* Brand / title */}
           <div className="mb-6 space-y-2 text-center">
             <div
@@ -289,19 +322,14 @@ export default function AuthPage() {
           )}
 
           {/* Form */}
-          <form
-            onSubmit={isSignIn ? handleSignIn : handleSignUp}
-            className="space-y-4"
-          >
+          <form onSubmit={isSignIn ? handleSignIn : handleSignUp} className="space-y-4">
             <div className="space-y-1 text-sm">
               <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
                 {isSignIn ? "Email or username" : "Email"}
               </label>
               <input
                 type={isSignIn ? "text" : "email"}
-                placeholder={
-                  isSignIn ? "jane@shop.com or shop username" : "you@example.com"
-                }
+                placeholder={isSignIn ? "jane@shop.com or shop username" : "you@example.com"}
                 autoComplete={isSignIn ? "username" : "email"}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
@@ -318,8 +346,7 @@ export default function AuthPage() {
               />
               {isSignIn && (
                 <p className="text-[11px] text-muted-foreground">
-                  Shop accounts can sign in using the username provided by your
-                  admin.
+                  Shop accounts can sign in using the username provided by your admin.
                 </p>
               )}
             </div>

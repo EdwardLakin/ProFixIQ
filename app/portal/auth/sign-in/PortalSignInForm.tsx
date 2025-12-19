@@ -32,18 +32,28 @@ export default function PortalSignInPage() {
     };
   }, [router, supabase]);
 
+  const goLanding = () => {
+    const href = "/";
+    router.replace(href);
+    setTimeout(() => {
+      if (typeof window !== "undefined" && window.location.pathname !== href) {
+        window.location.assign(href);
+      }
+    }, 60);
+  };
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password,
     });
 
     if (signInError) {
-      setError(signInError.message);
+      setError(signInError.message || "Sign in failed.");
       setLoading(false);
       return;
     }
@@ -52,77 +62,158 @@ export default function PortalSignInPage() {
   };
 
   return (
-    <div className="mx-auto max-w-lg">
-      <div className="rounded-2xl border border-white/10 bg-black/25 p-5 backdrop-blur-md sm:p-6">
-        <header className="space-y-2">
-          <div
-            className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.2em]"
-            style={{ color: COPPER }}
-          >
-            Customer Portal
-          </div>
-          <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
-            Sign in
-          </h1>
-          <p className="text-sm text-neutral-400">
-            Use the email and password you created when you signed up.
-          </p>
-        </header>
+    <div
+      className="
+        min-h-screen px-4 text-foreground
+        bg-background
+        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+      "
+    >
+      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center py-8">
+        <div
+          className="
+            w-full rounded-3xl border
+            border-[color:var(--metal-border-soft,#1f2937)]
+            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
+            shadow-[0_32px_80px_rgba(0,0,0,0.95)]
+            px-6 py-7 sm:px-8 sm:py-9
+          "
+        >
+          {/* Back to landing */}
+          <div className="mb-4 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={goLanding}
+              disabled={loading}
+              className="
+                inline-flex items-center gap-2 rounded-full border
+                border-[color:var(--metal-border-soft,#1f2937)]
+                bg-black/60 px-3 py-1.5 text-[11px]
+                uppercase tracking-[0.2em] text-neutral-200
+                hover:bg-black/70 hover:text-white
+                disabled:cursor-not-allowed disabled:opacity-60
+              "
+            >
+              <span aria-hidden className="text-base leading-none">
+                ←
+              </span>
+              Back
+            </button>
 
-        {error ? (
-          <p className="mt-4 rounded-lg border border-red-500/40 bg-red-950/40 px-3 py-2 text-sm text-red-100">
-            {error}
-          </p>
-        ) : null}
-
-        <form onSubmit={handleSignIn} className="mt-5 space-y-4">
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-neutral-300">
-              Email
-            </label>
-            <input
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-neutral-500 outline-none focus:ring-2"
-              style={{ boxShadow: "none" }}
-              required
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-neutral-300">
-              Password
-            </label>
-            <input
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-neutral-500 outline-none focus:ring-2"
-              required
-            />
+            <div className="text-[10px] text-neutral-500">Customer portal</div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold transition hover:bg-white/10 disabled:opacity-60"
-          >
-            <span style={{ color: COPPER }}>
+          {/* Brand / title */}
+          <div className="mb-6 space-y-2 text-center">
+            <div
+              className="
+                inline-flex items-center gap-1 rounded-full border
+                border-[color:var(--metal-border-soft,#1f2937)]
+                bg-black/70
+                px-3 py-1 text-[11px]
+                uppercase tracking-[0.22em]
+                text-neutral-300
+              "
+              style={{ color: COPPER }}
+            >
+              Customer Portal
+            </div>
+
+            <h1
+              className="mt-2 text-3xl sm:text-4xl font-semibold text-white"
+              style={{ fontFamily: "var(--font-blackops), system-ui" }}
+            >
+              Sign in
+            </h1>
+
+            <p className="text-xs text-muted-foreground sm:text-sm">
+              Use the email and password you created when you signed up.
+            </p>
+          </div>
+
+          {/* Error */}
+          {error ? (
+            <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
+              {error}
+            </div>
+          ) : null}
+
+          {/* Form */}
+          <form onSubmit={handleSignIn} className="space-y-4">
+            <div className="space-y-1 text-sm">
+              <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                Email
+              </label>
+              <input
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="
+                  w-full rounded-lg border
+                  border-[color:var(--metal-border-soft,#1f2937)]
+                  bg-black/70 px-3 py-2 text-sm text-white
+                  placeholder:text-neutral-500
+                  focus:outline-none focus:ring-2
+                  focus:ring-[var(--accent-copper-soft)]
+                  focus:border-[var(--accent-copper-soft)]
+                "
+                required
+              />
+            </div>
+
+            <div className="space-y-1 text-sm">
+              <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                Password
+              </label>
+              <input
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="
+                  w-full rounded-lg border
+                  border-[color:var(--metal-border-soft,#1f2937)]
+                  bg-black/70 px-3 py-2 text-sm text-white
+                  placeholder:text-neutral-500
+                  focus:outline-none focus:ring-2
+                  focus:ring-[var(--accent-copper-soft)]
+                  focus:border-[var(--accent-copper-soft)]
+                "
+                required
+                minLength={6}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="
+                mt-3 w-full rounded-full
+                bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))]
+                py-2.5 text-center text-sm
+                font-semibold uppercase tracking-[0.22em] text-black
+                shadow-[0_0_26px_rgba(212,118,49,0.9)]
+                hover:brightness-110
+                disabled:cursor-not-allowed disabled:opacity-60
+              "
+              style={{ fontFamily: "var(--font-blackops), system-ui" }}
+            >
               {loading ? "Signing in…" : "Sign in"}
-            </span>
-          </button>
-        </form>
+            </button>
+          </form>
 
-        <div className="mt-5 flex items-center justify-between text-sm text-neutral-400">
-          <span>Need an account?</span>
-          <Link href="/portal/auth/sign-up" className="font-semibold hover:underline" style={{ color: COPPER }}>
-            Sign up
-          </Link>
+          <div className="mt-5 flex items-center justify-between text-sm text-neutral-400">
+            <span>Need an account?</span>
+            <Link
+              href="/portal/auth/sign-up"
+              className="text-[11px] font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline underline-offset-2"
+            >
+              Sign up
+            </Link>
+          </div>
         </div>
       </div>
     </div>
