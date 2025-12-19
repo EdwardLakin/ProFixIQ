@@ -1,3 +1,4 @@
+// app/portal/request/build/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -78,7 +79,6 @@ function safeTrim(s: unknown) {
   return typeof s === "string" ? s.trim() : "";
 }
 
-/** Safe access for optional columns that may exist in DB but not in generated TS types. */
 function rec(row: unknown): Record<string, unknown> {
   return (row && typeof row === "object" ? (row as Record<string, unknown>) : {}) as Record<
     string,
@@ -97,14 +97,12 @@ function getOptNumber(row: unknown, key: string): number | null {
 }
 
 function menuTitle(m: MenuItemRow): string {
-  // Prefer: name/title if they exist, else description, else fallback.
   const name = getOptString(m, "name");
   const title = getOptString(m, "title");
   return (name || title || m.description || "Menu item").toString();
 }
 
 function lineTitle(l: WorkOrderLineRow): string {
-  // work_order_lines commonly uses complaint/cause/correction; keep it safe.
   const desc = getOptString(l, "description");
   return (desc || l.complaint || "Line").toString();
 }
@@ -115,6 +113,12 @@ export default function PortalRequestBuildPage() {
   const sp = useSearchParams();
 
   const workOrderId = sp.get("wo") ?? "";
+
+  // ✅ Option B: carry bookingId from when page (NOT startsAt)
+  const bookingId =
+    sp.get("booking") ??
+    sp.get("bookingId") ??
+    "";
 
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
@@ -128,11 +132,9 @@ export default function PortalRequestBuildPage() {
   const [quoteLines, setQuoteLines] = useState<QuoteLineRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  // add custom
   const [customDesc, setCustomDesc] = useState("");
   const [customNotes, setCustomNotes] = useState("");
 
-  // add quote-only
   const [qoDesc, setQoDesc] = useState("");
   const [qoNotes, setQoNotes] = useState("");
   const [qoQty, setQoQty] = useState("1");
@@ -169,7 +171,6 @@ export default function PortalRequestBuildPage() {
     setRefreshing(true);
 
     try {
-      // auth user -> customer
       const {
         data: { user },
         error: userErr,
@@ -197,7 +198,6 @@ export default function PortalRequestBuildPage() {
       }
       setCustomer(cust);
 
-      // work order (must belong to customer)
       const { data: w, error: wErr } = await supabase
         .from("work_orders")
         .select("*")
@@ -213,13 +213,10 @@ export default function PortalRequestBuildPage() {
       }
       setWo(w as WorkOrderRow);
 
-      // vehicle (optional)
       if (w.vehicle_id) {
         const { data: v, error: vErr } = await supabase
           .from("vehicles")
-          .select(
-            "id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at",
-          )
+          .select("id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at")
           .eq("id", w.vehicle_id)
           .maybeSingle();
 
@@ -228,7 +225,6 @@ export default function PortalRequestBuildPage() {
         setVehicle(null);
       }
 
-      // draft lines
       const { data: l, error: lErr } = await supabase
         .from("work_order_lines")
         .select("*")
@@ -247,7 +243,6 @@ export default function PortalRequestBuildPage() {
       if (qlErr) throw new Error(qlErr.message);
       setQuoteLines((ql ?? []) as unknown as QuoteLineRow[]);
 
-      // menu items for shop (filter locally by vehicle ymm if present)
       if (cust.shop_id) {
         const { data: mi, error: miErr } = await supabase
           .from("menu_items")
@@ -261,8 +256,6 @@ export default function PortalRequestBuildPage() {
 
         const all = (mi ?? []) as unknown as MenuItemRow[];
 
-        // Optional vehicle matching if the columns exist on menu_items:
-        // vehicle_year / vehicle_make / vehicle_model (or similar)
         const vy = (vehicle?.year ?? null) as number | null;
         const vm = safeTrim(vehicle?.make ?? null);
         const vmo = safeTrim(vehicle?.model ?? null);
@@ -273,7 +266,7 @@ export default function PortalRequestBuildPage() {
           const mmo = safeTrim(getOptString(m, "vehicle_model"));
 
           const hasAnyVehicleKey = my != null || !!mm || !!mmo;
-          if (!hasAnyVehicleKey) return true; // treat as generic
+          if (!hasAnyVehicleKey) return true;
 
           const yearOk = my == null || (vy != null && my === vy);
           const makeOk = !mm || (vm && mm.toLowerCase() === vm.toLowerCase());
@@ -380,13 +373,19 @@ export default function PortalRequestBuildPage() {
   async function onSubmit() {
     if (!wo?.id || submitting) return;
 
+    // ✅ Option B: bookingId must be present (slot already reserved)
+    if (!bookingId) {
+      toast.error("Missing booking. Please go back and pick a time again.");
+      router.replace("/portal/request/when");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const r = await postJson<{
-        ok?: boolean;
-        bookingId?: string;
-        workOrderId?: string;
-      }>("/api/portal/request/submit", { workOrderId: wo.id });
+      const r = await postJson<{ ok?: boolean; bookingId?: string; workOrderId?: string }>(
+        "/api/portal/request/submit",
+        { workOrderId: wo.id, bookingId },
+      );
 
       if (!r.ok) {
         toast.error(r.error);
@@ -419,9 +418,7 @@ export default function PortalRequestBuildPage() {
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
             Build request
           </h1>
-          <p className="mt-2 text-sm text-neutral-400">
-            This request is missing or expired.
-          </p>
+          <p className="mt-2 text-sm text-neutral-400">This request is missing or expired.</p>
           <div className="mt-4">
             <LinkButton href="/portal/request/when" size="sm">
               Start again
@@ -433,10 +430,8 @@ export default function PortalRequestBuildPage() {
   }
 
   const name =
-    [customer.first_name ?? "", customer.last_name ?? ""]
-      .filter(Boolean)
-      .join(" ")
-      .trim() || "Customer";
+    [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() ||
+    "Customer";
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5 text-white">
@@ -456,19 +451,12 @@ export default function PortalRequestBuildPage() {
             </h1>
             <p className="mt-1 text-xs text-neutral-400">
               {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"} • WO{" "}
-              <span className="font-mono text-neutral-300">
-                {wo.id.slice(0, 8)}…
-              </span>
+              <span className="font-mono text-neutral-300">{wo.id.slice(0, 8)}…</span>
             </p>
           </div>
 
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void loadAll()}
-              disabled={refreshing}
-            >
+            <Button type="button" variant="outline" onClick={() => void loadAll()} disabled={refreshing}>
               {refreshing ? "Refreshing…" : "Refresh"}
             </Button>
             <LinkButton href="/portal/request/when" variant="outline" size="sm">
@@ -478,7 +466,6 @@ export default function PortalRequestBuildPage() {
         </div>
       </header>
 
-      {/* Draft lines summary */}
       <section className={cardClass()}>
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-neutral-100">Current draft</h2>
@@ -521,9 +508,7 @@ export default function PortalRequestBuildPage() {
                       ) : null}
                     </div>
 
-                    <div className="text-right text-xs text-neutral-400">
-                      Est: {fmtMoney(est)}
-                    </div>
+                    <div className="text-right text-xs text-neutral-400">Est: {fmtMoney(est)}</div>
                   </div>
                 </div>
               );
@@ -559,14 +544,11 @@ export default function PortalRequestBuildPage() {
         )}
       </section>
 
-      {/* Menu items */}
       <section className={cardClass() + " space-y-3"}>
         <div className="flex items-end justify-between gap-3">
           <div>
             {sectionTitle("Add menu items")}
-            <div className="mt-1 text-xs text-neutral-500">
-              Fixed pricing lines your shop already offers.
-            </div>
+            <div className="mt-1 text-xs text-neutral-500">Fixed pricing lines your shop already offers.</div>
           </div>
           <div className="w-full max-w-sm">
             <input
@@ -586,10 +568,8 @@ export default function PortalRequestBuildPage() {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {filteredMenu.map((m) => {
               const title = menuTitle(m);
-              const hrs =
-                (m.base_labor_hours ?? m.labor_hours ?? null) as number | null;
-              const price =
-                (m.total_price ?? m.base_price ?? null) as number | null;
+              const hrs = (m.base_labor_hours ?? m.labor_hours ?? null) as number | null;
+              const price = (m.total_price ?? m.base_price ?? null) as number | null;
 
               return (
                 <button
@@ -615,7 +595,6 @@ export default function PortalRequestBuildPage() {
         )}
       </section>
 
-      {/* Custom line */}
       <section className={cardClass() + " space-y-3"}>
         {sectionTitle("Add custom line")}
         <div className="text-xs text-neutral-500">
@@ -642,7 +621,6 @@ export default function PortalRequestBuildPage() {
         </div>
       </section>
 
-      {/* Quote-only */}
       <section className={cardClass() + " space-y-3"}>
         {sectionTitle("Quote-only request")}
         <div className="text-xs text-neutral-500">
@@ -679,13 +657,12 @@ export default function PortalRequestBuildPage() {
         </div>
       </section>
 
-      {/* Submit */}
       <section className={cardClass()}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-neutral-100">Submit request</div>
             <div className="mt-1 text-xs text-neutral-500">
-              Submitting will finalize your draft and create the booking (work order first, then booking).
+              Submitting will finalize your draft and keep the reserved booking.
             </div>
           </div>
 

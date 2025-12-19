@@ -13,7 +13,7 @@ type Body = {
   visitType: "waiter" | "drop_off";
   notes?: string | null;
 
-  // ✅ NEW: the selected slot start from /api/portal/availability
+  // Selected slot start from the "when" page
   startsAt?: string | null; // ISO string
   durationMins?: number | null; // default 60
 };
@@ -25,6 +25,12 @@ function bad(msg: string, status = 400) {
 function isIsoDateString(s: string) {
   const t = Date.parse(s);
   return Number.isFinite(t);
+}
+
+function addMinsIso(startIso: string, mins: number): string {
+  const d = new Date(startIso);
+  d.setMinutes(d.getMinutes() + mins);
+  return d.toISOString();
 }
 
 export async function POST(req: Request) {
@@ -59,13 +65,15 @@ export async function POST(req: Request) {
         ? Math.max(15, Math.min(180, Math.trunc(body.durationMins)))
         : 60;
 
-    const startsAt = new Date(startsAtRaw);
-    const endsAt = new Date(startsAt.getTime() + duration * 60_000);
-
     // Basic safety: don't allow bookings in the past
-    if (startsAt.getTime() < Date.now() - 60_000) {
+    const startsAtDate = new Date(startsAtRaw);
+    if (Number.isNaN(startsAtDate.getTime())) return bad("Invalid startsAt");
+    if (startsAtDate.getTime() < Date.now() - 60_000) {
       return bad("Selected time is in the past. Please choose another slot.");
     }
+
+    const startsAt = startsAtDate.toISOString();
+    const endsAt = addMinsIso(startsAt, duration);
 
     // Portal customer by auth user
     const { data: customer, error: custErr } = await supabase
@@ -78,13 +86,25 @@ export async function POST(req: Request) {
     if (!customer?.id) return bad("Customer profile not found", 404);
     if (!customer.shop_id) return bad("Customer is not linked to a shop", 400);
 
-    // 1) Create the work order
+    // Overlap check BEFORE inserting booking
+    const { data: overlaps, error: ovErr } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("shop_id", customer.shop_id)
+      .or(`and(starts_at.lt.${endsAt},ends_at.gt.${startsAt})`)
+      .limit(1);
+
+    if (ovErr) return bad("Failed to check availability", 500);
+    if (overlaps && overlaps.length > 0) {
+      return bad("This time overlaps an existing booking", 409);
+    }
+
+    // 1) Create work order (draft/request shell)
     const insertWo: DB["public"]["Tables"]["work_orders"]["Insert"] = {
       shop_id: customer.shop_id,
       customer_id: customer.id,
       vehicle_id: body.vehicleId ?? null,
 
-      // Keep your portal behavior
       status: "awaiting_approval",
       approval_state: "pending",
       is_waiter: visitType === "waiter",
@@ -94,27 +114,18 @@ export async function POST(req: Request) {
     const { data: createdWo, error: woErr } = await supabase
       .from("work_orders")
       .insert(insertWo)
-      .select(
-        "id, shop_id, customer_id, vehicle_id, status, approval_state, is_waiter, created_at",
-      )
+      .select("id, shop_id, customer_id, vehicle_id, status, approval_state, is_waiter, created_at")
       .single();
 
     if (woErr || !createdWo?.id) return bad("Failed to create work order", 500);
 
-    // 2) Create the booking row so the selected slot is actually reserved
-    // (These keys exist in your availability route, so bookings has starts_at/ends_at/status.)
+    // 2) Reserve the booking slot now (Option B)
     const insertBooking: DB["public"]["Tables"]["bookings"]["Insert"] = {
       shop_id: customer.shop_id,
-      starts_at: startsAt.toISOString(),
-      ends_at: endsAt.toISOString(),
+      starts_at: startsAt,
+      ends_at: endsAt,
       status: "pending",
-
-      // Optional linkage if your schema supports them:
-      // These are common in ProFixIQ, and extra fields are allowed by supabase at runtime
-      // even if not present in types; but we only set fields that exist in generated Insert.
-      //
-      // If your bookings table DOES have work_order_id/customer_id/vehicle_id,
-      // add them here after confirming types.
+      notes: null,
     };
 
     const { data: createdBooking, error: bErr } = await supabase

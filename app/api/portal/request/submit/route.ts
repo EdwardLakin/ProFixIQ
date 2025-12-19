@@ -10,18 +10,11 @@ type DB = Database;
 
 type Body = {
   workOrderId: string;
-  startsAt: string; // ISO
-  // Customer does NOT pick end time. We book a 1-hour slot.
+  bookingId: string;
 };
 
 function bad(msg: string, status = 400) {
   return NextResponse.json({ error: msg }, { status });
-}
-
-function addHoursIso(startIso: string, hours: number): string {
-  const d = new Date(startIso);
-  d.setHours(d.getHours() + hours);
-  return d.toISOString();
 }
 
 export async function POST(req: Request) {
@@ -42,12 +35,8 @@ export async function POST(req: Request) {
     }
 
     const workOrderId = (body?.workOrderId ?? "").trim();
-    const startsAt = (body?.startsAt ?? "").trim();
-
-    if (!workOrderId || !startsAt) return bad("Missing workOrderId or startsAt");
-
-    const start = new Date(startsAt);
-    if (Number.isNaN(start.getTime())) return bad("Invalid startsAt");
+    const bookingId = (body?.bookingId ?? "").trim();
+    if (!workOrderId || !bookingId) return bad("Missing workOrderId or bookingId");
 
     // Resolve portal customer
     const { data: customer, error: custErr } = await supabase
@@ -62,7 +51,7 @@ export async function POST(req: Request) {
     // Load WO + ensure ownership
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
-      .select("id, shop_id, customer_id, vehicle_id, is_waiter")
+      .select("id, shop_id, customer_id")
       .eq("id", workOrderId)
       .maybeSingle();
 
@@ -70,41 +59,40 @@ export async function POST(req: Request) {
     if (!wo) return bad("Work order not found", 404);
     if (wo.customer_id !== customer.id) return bad("Not allowed", 403);
 
-    const endsAt = addHoursIso(startsAt, 1);
-
-    // Overlap check (same shop, overlapping window)
-    const { data: overlaps, error: ovErr } = await supabase
+    // Load booking + ensure it belongs to the same shop
+    const { data: booking, error: bErr } = await supabase
       .from("bookings")
-      .select("id")
-      .eq("shop_id", wo.shop_id)
-      .or(`and(starts_at.lt.${endsAt},ends_at.gt.${startsAt})`)
-      .limit(1);
+      .select("id, shop_id, starts_at, ends_at, status")
+      .eq("id", bookingId)
+      .maybeSingle();
 
-    if (ovErr) return bad("Failed to check availability", 500);
-    if (overlaps && overlaps.length > 0) return bad("This time overlaps an existing booking", 409);
+    if (bErr) return bad("Failed to load booking", 500);
+    if (!booking) return bad("Booking not found", 404);
+    if (booking.shop_id !== wo.shop_id) return bad("Not allowed", 403);
 
-    const insertBooking: DB["public"]["Tables"]["bookings"]["Insert"] = {
-      shop_id: wo.shop_id,
-      customer_id: wo.customer_id,
-      vehicle_id: wo.vehicle_id ?? null,
-      starts_at: startsAt,
-      ends_at: endsAt,
-      status: "pending",
-      notes: null,
-      // If you add bookings.work_order_id + bookings.visit_type in SQL, set them here:
-      // work_order_id: wo.id,
-      // visit_type: wo.is_waiter ? "waiter" : "drop_off",
+    // Optional sanity: booking should still be in the future-ish
+    const startT = Date.parse(String(booking.starts_at ?? ""));
+    if (Number.isFinite(startT) && startT < Date.now() - 60_000) {
+      return bad("This booking time is in the past. Please start again.", 409);
+    }
+
+    // Finalize: DO NOT create a new booking (Option B).
+    // Keep status as "pending" (or change if you add a distinct finalized status later).
+    const bookingUpdate: DB["public"]["Tables"]["bookings"]["Update"] = {
+      status: booking.status ?? "pending",
     };
 
-    const { data: created, error: insErr } = await supabase
+    const { error: updErr } = await supabase
       .from("bookings")
-      .insert(insertBooking)
-      .select("*")
-      .single();
+      .update(bookingUpdate)
+      .eq("id", booking.id);
 
-    if (insErr || !created) return bad("Failed to create booking", 500);
+    if (updErr) return bad("Failed to finalize booking", 500);
 
-    return NextResponse.json({ booking: created }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, workOrderId: wo.id, bookingId: booking.id },
+      { status: 200 },
+    );
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("portal request submit error:", msg);
