@@ -1,0 +1,144 @@
+===== FILE: app/api/portal/request/add-quote-only/route.ts =====
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+export const runtime = "nodejs";
+
+type DB = Database;
+
+type Body = {
+  workOrderId: string;
+  vehicleId?: string | null;
+  description: string;
+  notes?: string | null;
+};
+
+function bad(msg: string, status = 400) {
+  return NextResponse.json({ error: msg }, { status });
+}
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+function isNullableString(v: unknown): v is string | null | undefined {
+  return typeof v === "string" || v === null || typeof v === "undefined";
+}
+
+function parseBody(raw: unknown): Body | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const r = raw as Record<string, unknown>;
+
+  const workOrderId = r.workOrderId;
+  const vehicleId = r.vehicleId;
+  const description = r.description;
+  const notes = r.notes;
+
+  if (!isNonEmptyString(workOrderId)) return null;
+  if (!isNonEmptyString(description)) return null;
+  if (!isNullableString(vehicleId)) return null;
+  if (!isNullableString(notes)) return null;
+
+  return {
+    workOrderId: workOrderId.trim(),
+    vehicleId: typeof vehicleId === "string" ? vehicleId : null,
+    description: description.trim(),
+    notes: typeof notes === "string" ? notes : null,
+  };
+}
+
+export async function POST(req: Request) {
+  try {
+    const supabase = createRouteHandlerClient<DB>({ cookies });
+
+    // 1) Auth (portal user)
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
+
+    if (authErr || !user) return bad("Not authenticated", 401);
+
+    // 2) Parse body safely (no any)
+    let rawJson: unknown;
+    try {
+      rawJson = await req.json();
+    } catch {
+      return bad("Invalid JSON body");
+    }
+
+    const body = parseBody(rawJson);
+    if (!body) return bad("Missing/invalid fields");
+
+    const { workOrderId, vehicleId, description, notes } = body;
+
+    // 3) Confirm the portal user owns the customer on this work order
+    const { data: customer, error: custErr } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (custErr) return bad("Failed to resolve customer", 500);
+    if (!customer?.id) return bad("Customer profile not found", 404);
+
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("id, shop_id, customer_id, vehicle_id")
+      .eq("id", workOrderId)
+      .maybeSingle();
+
+    if (woErr) return bad("Failed to load work order", 500);
+    if (!wo) return bad("Work order not found", 404);
+    if (wo.customer_id !== customer.id) return bad("Not allowed", 403);
+
+    const effectiveVehicleId =
+      vehicleId ?? (wo.vehicle_id ? String(wo.vehicle_id) : null);
+
+    // 4) Create a quote request entry (work_order_quote_lines)
+    // Use existing stage enum-like values:
+    // - advisor_pending means shop/parts/tech will price it.
+    const insertQuote: DB["public"]["Tables"]["work_order_quote_lines"]["Insert"] =
+      {
+        work_order_id: wo.id,
+        shop_id: wo.shop_id,
+        vehicle_id: effectiveVehicleId,
+        description,
+        notes: notes ?? null,
+        stage: "advisor_pending",
+        job_type: "customer_request",
+        qty: 1,
+        // keep totals null/0 until priced; your schema may allow null
+        est_labor_hours: null,
+        labor_total: null,
+        parts_total: null,
+        subtotal: null,
+        tax_total: null,
+        grand_total: null,
+        metadata: {
+          source: "portal",
+          line_kind: "quote_only",
+        } as DB["public"]["Tables"]["work_order_quote_lines"]["Insert"]["metadata"],
+      };
+
+    const { data: created, error: insErr } = await supabase
+      .from("work_order_quote_lines")
+      .insert(insertQuote)
+      .select("*")
+      .single();
+
+    if (insErr || !created) {
+      return bad(insErr?.message || "Failed to create quote request", 500);
+    }
+
+    return NextResponse.json({ quote: created }, { status: 201 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("portal add-quote-only error:", msg);
+    return bad("Unexpected error", 500);
+  }
+}
+

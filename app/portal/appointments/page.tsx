@@ -59,6 +59,15 @@ function customerLabel(c: CustomerRow): string {
   return phone ? `${name} (${phone})` : name;
 }
 
+function pillClass(status?: string | null) {
+  const s = (status || "pending").toLowerCase();
+  if (s === "confirmed")
+    return "border-emerald-500/30 bg-emerald-900/15 text-emerald-200";
+  if (s === "cancelled")
+    return "border-red-500/30 bg-red-900/15 text-red-200";
+  return "border-orange-500/30 bg-orange-900/10 text-orange-200";
+}
+
 export default function PortalAppointmentsPage() {
   const supabase = createClientComponentClient<Database>();
   const search = useSearchParams();
@@ -259,6 +268,28 @@ export default function PortalAppointmentsPage() {
     }
   }
 
+  // quick actions for requests
+  async function approveBooking(b: Booking) {
+    await handleUpdate(b.id, { status: "confirmed" });
+  }
+
+  async function declineBooking(b: Booking) {
+    await handleUpdate(b.id, { status: "cancelled" });
+  }
+
+  const pending = useMemo(
+    () => bookings.filter((b) => (b.status || "pending").toLowerCase() === "pending"),
+    [bookings],
+  );
+  const confirmed = useMemo(
+    () => bookings.filter((b) => (b.status || "").toLowerCase() === "confirmed"),
+    [bookings],
+  );
+  const cancelled = useMemo(
+    () => bookings.filter((b) => (b.status || "").toLowerCase() === "cancelled"),
+    [bookings],
+  );
+
   const totalForWeek = useMemo(() => bookings.length, [bookings]);
 
   return (
@@ -296,15 +327,143 @@ export default function PortalAppointmentsPage() {
             </select>
           </div>
 
-          <div className="rounded-xl border border-neutral-800/70 bg-neutral-950/50 px-3 py-2">
-            <div className="text-[0.65rem] uppercase tracking-[0.13em] text-neutral-500">
-              This week
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-xl border border-neutral-800/70 bg-neutral-950/50 px-3 py-2">
+              <div className="text-[0.65rem] uppercase tracking-[0.13em] text-neutral-500">
+                This week
+              </div>
+              <div className="text-sm font-semibold text-neutral-100">
+                {totalForWeek} booking{totalForWeek === 1 ? "" : "s"}
+              </div>
             </div>
-            <div className="text-sm font-semibold text-neutral-100">
-              {totalForWeek} booking{totalForWeek === 1 ? "" : "s"}
+
+            <div className="rounded-xl border border-orange-500/20 bg-orange-950/10 px-3 py-2">
+              <div className="text-[0.65rem] uppercase tracking-[0.13em] text-orange-200/80">
+                Requests
+              </div>
+              <div className="text-sm font-semibold text-orange-100">
+                {pending.length}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/10 px-3 py-2">
+              <div className="text-[0.65rem] uppercase tracking-[0.13em] text-emerald-200/80">
+                Confirmed
+              </div>
+              <div className="text-sm font-semibold text-emerald-100">
+                {confirmed.length}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-red-500/20 bg-red-950/10 px-3 py-2">
+              <div className="text-[0.65rem] uppercase tracking-[0.13em] text-red-200/80">
+                Cancelled
+              </div>
+              <div className="text-sm font-semibold text-red-100">
+                {cancelled.length}
+              </div>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* NEW: Requests panel */}
+      <div className={cardClass()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-50">
+            Appointment requests (pending)
+          </h2>
+          {loadingBookings && (
+            <span className="text-[0.75rem] text-neutral-400">Loading…</span>
+          )}
+        </div>
+
+        {pending.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-neutral-800/70 bg-neutral-950/40 p-3 text-sm text-neutral-400">
+            No pending requests for this week.
+          </div>
+        ) : (
+          <ul className="divide-y divide-neutral-800/70">
+            {pending
+              .slice()
+              .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))
+              .map((b) => (
+                <li key={b.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium text-neutral-50">
+                        {b.customer_name || "Customer"}
+                      </div>
+                      <span
+                        className={
+                          "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] " +
+                          pillClass(b.status)
+                        }
+                      >
+                        {b.status || "pending"}
+                      </span>
+                    </div>
+
+                    <div className="mt-0.5 text-[0.75rem] text-neutral-400">
+                      {new Date(b.starts_at).toLocaleString()} –{" "}
+                      {new Date(b.ends_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.75rem] text-neutral-500">
+                      {b.customer_phone ? <span>{b.customer_phone}</span> : null}
+                      {b.customer_email ? <span>{b.customer_email}</span> : null}
+                    </div>
+
+                    {b.notes ? (
+                      <div className="mt-1 text-[0.75rem] text-neutral-500">
+                        {b.notes}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="xs"
+                      className="font-semibold"
+                      onClick={() => void approveBooking(b)}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      className="border-red-500/40 text-red-200 hover:bg-red-900/20"
+                      onClick={() => void declineBooking(b)}
+                    >
+                      Decline
+                    </Button>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      onClick={() => setEditing(b)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      className="text-red-300 hover:bg-red-900/25"
+                      onClick={() => void handleDelete(b.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </li>
+              ))}
+          </ul>
+        )}
       </div>
 
       {/* Calendar */}
@@ -324,7 +483,12 @@ export default function PortalAppointmentsPage() {
             >
               ← Prev
             </Button>
-            <Button type="button" variant="outline" size="xs" onClick={() => setWeekStart(startOfToday())}>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => setWeekStart(startOfToday())}
+            >
               Today
             </Button>
             <Button
@@ -383,7 +547,9 @@ export default function PortalAppointmentsPage() {
           <h2 className="text-sm font-semibold text-neutral-50">
             Appointments this week ({bookings.length})
           </h2>
-          {loadingBookings && <span className="text-[0.75rem] text-neutral-400">Loading…</span>}
+          {loadingBookings && (
+            <span className="text-[0.75rem] text-neutral-400">Loading…</span>
+          )}
         </div>
 
         {loadingBookings ? (
@@ -398,15 +564,50 @@ export default function PortalAppointmentsPage() {
               .map((b) => (
                 <li key={b.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium text-neutral-50">{b.customer_name || "Customer"}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium text-neutral-50">
+                        {b.customer_name || "Customer"}
+                      </div>
+                      <span
+                        className={
+                          "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] " +
+                          pillClass(b.status)
+                        }
+                      >
+                        {b.status || "pending"}
+                      </span>
+                    </div>
+
                     <div className="text-[0.75rem] text-neutral-400">
                       {new Date(b.starts_at).toLocaleString()} –{" "}
-                      {new Date(b.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(b.ends_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </div>
-                    {b.notes ? <div className="mt-1 text-[0.75rem] text-neutral-500">{b.notes}</div> : null}
+                    {b.notes ? (
+                      <div className="mt-1 text-[0.75rem] text-neutral-500">{b.notes}</div>
+                    ) : null}
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {(b.status || "pending").toLowerCase() === "pending" ? (
+                      <>
+                        <Button type="button" size="xs" onClick={() => void approveBooking(b)}>
+                          Approve
+                        </Button>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          className="border-red-500/40 text-red-200 hover:bg-red-900/20"
+                          onClick={() => void declineBooking(b)}
+                        >
+                          Decline
+                        </Button>
+                      </>
+                    ) : null}
+
                     <Button type="button" size="xs" variant="outline" onClick={() => setEditing(b)}>
                       Edit
                     </Button>
@@ -549,7 +750,12 @@ function CreateForm({
 
       <label className="text-xs text-neutral-300">
         Customer name
-        <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className={fieldClass()} placeholder="John Smith" />
+        <input
+          value={customerName}
+          onChange={(e) => setCustomerName(e.target.value)}
+          className={fieldClass()}
+          placeholder="John Smith"
+        />
       </label>
 
       <div className="grid gap-2 sm:grid-cols-2">

@@ -1,3 +1,4 @@
+// app/api/parts/request/create/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -34,7 +35,13 @@ export async function POST(req: Request) {
     );
   }
 
-  const workOrderId = body.workOrderId;
+  const workOrderId = body.workOrderId.trim();
+  if (!workOrderId) {
+    return NextResponse.json(
+      { error: "workOrderId is required." },
+      { status: 400 },
+    );
+  }
 
   // IMPORTANT: RPC args usually want undefined, not null.
   const jobId =
@@ -59,7 +66,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No valid items." }, { status: 400 });
   }
 
-  // 2) auth (still do this so we return 401 cleanly instead of a DB exception)
+  // 2) auth (return 401 cleanly instead of DB/RLS exception)
   const {
     data: { user },
     error: userErr,
@@ -72,14 +79,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // 3) atomic RPC (the “rocket”)
-  // Requires SQL function: public.create_part_request_with_items(...)
+  // 3) atomic RPC
   type RpcArgs =
     DB["public"]["Functions"]["create_part_request_with_items"]["Args"];
 
   const args: RpcArgs = {
     p_work_order_id: workOrderId,
-    // p_items is json/jsonb in Postgres; supabase types often model it loosely.
+    // json/jsonb in Postgres; generated types may be loose
     p_items: items as unknown as RpcArgs["p_items"],
     ...(jobId ? { p_job_id: jobId } : {}),
     ...(notes ? { p_notes: notes } : {}),

@@ -1,0 +1,1 @@
+psql not found; skipping bookings schema dump.
