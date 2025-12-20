@@ -1,8 +1,9 @@
-// app/portal/settings/page.tsx (or wherever your PortalSettingsPage lives)
+// app/portal/settings/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { Toaster, toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
 import LinkButton from "@shared/components/ui/LinkButton";
@@ -94,7 +95,9 @@ export default function PortalSettingsPage() {
       if (cancelled) return;
 
       if (custErr || !cust) {
-        setError("We couldn't find your customer profile. Please complete your profile first.");
+        setError(
+          "We couldn't find your customer profile. Please complete your profile first.",
+        );
         setLoading(false);
         return;
       }
@@ -129,7 +132,15 @@ export default function PortalSettingsPage() {
           timezone: "UTC",
         };
 
-        await supabase.from("customer_settings").upsert(defaults, { onConflict: "customer_id" });
+        const { error: seedErr } = await supabase
+          .from("customer_settings")
+          .upsert(defaults, { onConflict: "customer_id" });
+
+        if (seedErr) {
+          setError(seedErr.message);
+          setLoading(false);
+          return;
+        }
 
         setForm({
           ...(defaults as SettingsRow),
@@ -149,38 +160,51 @@ export default function PortalSettingsPage() {
     setForm((f) => ({ ...f, [key]: value }));
 
   const onSave = async () => {
-    if (!customer) return;
+    if (!customer) {
+      toast.error("Customer profile not loaded yet.");
+      return;
+    }
 
     setSaving(true);
     setError(null);
 
-    const payload: SettingsInsert = {
-      customer_id: customer.id,
-      comm_email_enabled: form.comm_email_enabled,
-      comm_sms_enabled: form.comm_sms_enabled,
-      marketing_opt_in: form.marketing_opt_in,
-      preferred_contact: form.preferred_contact ?? "email",
-      units: form.units ?? "imperial",
-      language: form.language ?? "en",
-      timezone: form.timezone ?? "UTC",
-    };
+    try {
+      const payload: SettingsInsert = {
+        customer_id: customer.id,
+        comm_email_enabled: form.comm_email_enabled,
+        comm_sms_enabled: form.comm_sms_enabled,
+        marketing_opt_in: form.marketing_opt_in,
+        preferred_contact: form.preferred_contact ?? "email",
+        units: form.units ?? "imperial",
+        language: form.language ?? "en",
+        timezone: form.timezone ?? "UTC",
+      };
 
-    const { error: upsertErr } = await supabase
-      .from("customer_settings")
-      .upsert(payload, { onConflict: "customer_id" });
+      const { error: upsertErr } = await supabase
+        .from("customer_settings")
+        .upsert(payload, { onConflict: "customer_id" });
 
-    if (upsertErr) {
-      setError(upsertErr.message);
-    } else {
+      if (upsertErr) {
+        setError(upsertErr.message);
+        toast.error(upsertErr.message || "Failed to save settings");
+        return;
+      }
+
       update("updated_at", new Date().toISOString() as SettingsRow["updated_at"]);
+      toast.success("Settings saved");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to save settings";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
   };
 
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl">
+        <Toaster position="top-center" />
         <div className={cardClass() + " text-sm text-neutral-200"}>
           Loading your settings…
         </div>
@@ -191,6 +215,7 @@ export default function PortalSettingsPage() {
   if (error) {
     return (
       <div className="mx-auto max-w-2xl space-y-4 text-white">
+        <Toaster position="top-center" />
         <header className="space-y-1">
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
             Settings
@@ -209,6 +234,8 @@ export default function PortalSettingsPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 text-white">
+      <Toaster position="top-center" />
+
       <header className="space-y-1">
         <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
           Settings
@@ -264,12 +291,17 @@ export default function PortalSettingsPage() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-neutral-400">Preferred contact</label>
+            <label className="mb-1 block text-xs text-neutral-400">
+              Preferred contact
+            </label>
             <select
               className={inputWrapClass()}
               value={form.preferred_contact ?? "email"}
               onChange={(e) =>
-                update("preferred_contact", e.target.value as SettingsRow["preferred_contact"])
+                update(
+                  "preferred_contact",
+                  e.target.value as SettingsRow["preferred_contact"],
+                )
               }
             >
               <option value="email">Email</option>
@@ -297,7 +329,9 @@ export default function PortalSettingsPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-neutral-400">Language</label>
+            <label className="mb-1 block text-xs text-neutral-400">
+              Language
+            </label>
             <select
               className={inputWrapClass()}
               value={form.language ?? "en"}
@@ -308,7 +342,9 @@ export default function PortalSettingsPage() {
           </div>
 
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs text-neutral-400">Timezone</label>
+            <label className="mb-1 block text-xs text-neutral-400">
+              Timezone
+            </label>
             <select
               className={inputWrapClass()}
               value={form.timezone ?? "UTC"}
@@ -335,7 +371,8 @@ export default function PortalSettingsPage() {
         </button>
 
         <span className="text-xs text-neutral-400">
-          Last updated: {form.updated_at ? new Date(form.updated_at).toLocaleString() : "—"}
+          Last updated:{" "}
+          {form.updated_at ? new Date(form.updated_at).toLocaleString() : "—"}
         </span>
       </div>
     </div>
