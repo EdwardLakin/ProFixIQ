@@ -45,6 +45,41 @@ function MenuIcon() {
   );
 }
 
+function NavPill({
+  href,
+  label,
+  active,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={cx(
+        // mobile-bench-ish “pill row”
+        "group flex items-center justify-between rounded-xl border px-4 py-3 text-sm transition",
+        active
+          ? "border-white/14 bg-white/7 text-white shadow-[0_10px_30px_rgba(0,0,0,0.55)]"
+          : "border-white/10 bg-black/20 text-neutral-200 hover:border-white/14 hover:bg-white/5",
+      )}
+    >
+      <span className="font-semibold">{label}</span>
+      <span
+        className={cx(
+          "h-2 w-2 rounded-full transition-opacity",
+          active ? "opacity-100" : "opacity-0 group-hover:opacity-70",
+        )}
+        style={{ backgroundColor: COPPER }}
+      />
+    </Link>
+  );
+}
+
 export default function PortalShell({
   title = "Customer Portal",
   subtitle = "Request service, approve parts, manage appointments, vehicles, and your profile",
@@ -85,6 +120,9 @@ export default function PortalShell({
     }
   };
 
+  const ShellCard =
+    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
+
   // ✅ AUTH PAGES: allow the auth page to own the full viewport/background
   if (hideNav) {
     return (
@@ -119,7 +157,6 @@ export default function PortalShell({
           </button>
         </header>
 
-        {/* 🔥 No max-w container. No centering wrapper. */}
         <main className="relative min-h-[calc(100dvh-52px)] w-full">
           {children}
         </main>
@@ -127,15 +164,12 @@ export default function PortalShell({
     );
   }
 
-  const ShellCard =
-    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
-
   return (
     <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
       {/* ✅ Portal ambient glow (behind everything) */}
       <div className="pointer-events-none absolute inset-0">
         {/* copper halo */}
-        <div className="absolute left-1/2 top-[8%] h-[72rem] w-[72rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.14),transparent_62%)]" />
+        <div className="absolute left-1/2 top-[6%] h-[80rem] w-[80rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.14),transparent_62%)]" />
         {/* secondary cool bloom */}
         <div className="absolute right-[-18%] top-[28%] h-[46rem] w-[46rem] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.06),transparent_60%)]" />
         {/* vignette depth */}
@@ -197,7 +231,9 @@ export default function PortalShell({
         </div>
       </header>
 
-      <div className="relative mx-auto flex min-h-[calc(100dvh-52px)] w-full max-w-6xl gap-6 px-3 py-4 md:px-6">
+      {/* ✅ Mobile-first layout: stack by default, sidebar becomes left column on md+ */}
+      <div className="relative mx-auto flex min-h-[calc(100dvh-52px)] w-full max-w-6xl flex-col gap-4 px-3 py-4 md:flex-row md:gap-6 md:px-6">
+        {/* Desktop sidebar */}
         <aside
           className={cx(
             "hidden overflow-hidden rounded-2xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card md:flex md:flex-col transition-all duration-300",
@@ -224,30 +260,16 @@ export default function PortalShell({
               </div>
             </div>
 
-            <nav className="flex-1 space-y-1 px-3 pb-4">
-              {NAV.map((item) => {
-                const active = item.href === activeHref;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cx(
-                      "flex items-center rounded-xl border px-3 py-2 text-sm transition",
-                      active
-                        ? "border-white/12 bg-white/6 text-neutral-50"
-                        : "border-transparent text-neutral-200 hover:border-white/10 hover:bg-white/5",
-                    )}
-                  >
-                    <span className="font-semibold">{item.label}</span>
-                    {active ? (
-                      <span
-                        className="ml-auto h-2 w-2 rounded-full"
-                        style={{ backgroundColor: COPPER }}
-                      />
-                    ) : null}
-                  </Link>
-                );
-              })}
+            {/* ✅ Make desktop nav look like mobile “pill list” */}
+            <nav className="flex-1 space-y-2 px-3 pb-4">
+              {NAV.map((item) => (
+                <NavPill
+                  key={item.href}
+                  href={item.href}
+                  label={item.label}
+                  active={item.href === activeHref}
+                />
+              ))}
             </nav>
 
             <div className="px-5 pb-5 text-xs text-neutral-500">
@@ -256,13 +278,14 @@ export default function PortalShell({
           </div>
         </aside>
 
+        {/* Mobile drawer */}
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
             <div
               className="absolute inset-0 bg-black/60"
               onClick={() => setMobileOpen(false)}
             />
-            <div className="absolute left-0 top-0 h-full w-[78vw] max-w-[340px] border-r border-white/10 bg-black/85 backdrop-blur-xl">
+            <div className="absolute left-0 top-0 h-full w-[82vw] max-w-[360px] border-r border-white/10 bg-black/85 backdrop-blur-xl">
               <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
                 <div>
                   <div
@@ -283,34 +306,20 @@ export default function PortalShell({
                 </button>
               </div>
 
-              <nav className="space-y-1 px-3 py-3">
-                {NAV.map((item) => {
-                  const active = item.href === activeHref;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMobileOpen(false)}
-                      className={cx(
-                        "flex items-center rounded-xl border px-3 py-3 text-sm transition",
-                        active
-                          ? "border-white/12 bg-white/6 text-neutral-50"
-                          : "border-transparent text-neutral-200 hover:border-white/10 hover:bg-white/5",
-                      )}
-                    >
-                      <span className="font-semibold">{item.label}</span>
-                      {active ? (
-                        <span
-                          className="ml-auto h-2 w-2 rounded-full"
-                          style={{ backgroundColor: COPPER }}
-                        />
-                      ) : null}
-                    </Link>
-                  );
-                })}
+              {/* ✅ Mobile bench-ish pill list */}
+              <nav className="space-y-2 px-4 py-4">
+                {NAV.map((item) => (
+                  <NavPill
+                    key={item.href}
+                    href={item.href}
+                    label={item.label}
+                    active={item.href === activeHref}
+                    onClick={() => setMobileOpen(false)}
+                  />
+                ))}
               </nav>
 
-              <div className="border-t border-white/10 px-5 py-4">
+              <div className="mt-auto border-t border-white/10 px-5 py-4">
                 <button
                   type="button"
                   onClick={() => void signOut()}
@@ -328,6 +337,7 @@ export default function PortalShell({
           </div>
         )}
 
+        {/* Content */}
         <div className="min-w-0 flex-1">
           <div className={ShellCard}>{children}</div>
         </div>
