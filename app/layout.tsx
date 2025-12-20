@@ -3,7 +3,6 @@ import "./globals.css";
 import { Inter, Black_Ops_One } from "next/font/google";
 import Providers from "./providers";
 import AppShell from "@/features/shared/components/AppShell";
-import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -16,6 +15,7 @@ const inter = Inter({
   variable: "--font-inter",
   display: "swap",
 });
+
 const blackOps = Black_Ops_One({
   weight: "400",
   subsets: ["latin"],
@@ -54,16 +54,10 @@ export default async function RootLayout({
       >
         <Providers initialSession={session ?? null}>
           <VoiceProvider>
-            <AppShell>
-              {session?.user ? (
-                <TabsBridge>
-                  <main className="relative z-0">{children}</main>
-                </TabsBridge>
-              ) : (
-                <main className="relative z-0">{children}</main>
-              )}
-            </AppShell>
+            {/* ✅ AppShell now decides whether to wrap content in TabsBridge */}
+            <AppShell>{children}</AppShell>
           </VoiceProvider>
+
           {/* Legacy toast for older parts of the app – dark metal theme */}
           <Toaster
             position="bottom-center"

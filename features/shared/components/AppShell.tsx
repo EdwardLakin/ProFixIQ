@@ -1,4 +1,4 @@
- // features/shared/components/AppShell.tsx
+// features/shared/components/AppShell.tsx
 "use client";
 
 import Link from "next/link";
@@ -13,6 +13,7 @@ import ShiftTracker from "@shared/components/ShiftTracker";
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import AgentRequestModal from "@/features/agent/components/AgentRequestModal";
 import { cn } from "@/features/shared/utils/cn";
+import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
 
 const NON_APP_ROUTES = [
   "/",
@@ -165,8 +166,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     !!userRole &&
     ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
 
-  // ✅ Portal (and other NON_APP) routes should not be wrapped by the dashboard shell.
-  // This prevents the “Dashboard” sidebar/topbar/mobile nav from appearing on /portal/*.
+  // ✅ Portal (and other NON_APP) routes should not be wrapped by the dashboard shell,
+  // and should NOT get TabsBridge.
   if (!isAppRoute) {
     return (
       <div className="min-h-screen bg-neutral-950 text-foreground">
@@ -315,7 +316,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* content */}
           <main className="flex w-full flex-1 flex-col bg-neutral-950 px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
-            {children}
+            {/* ✅ TabsBridge only for MAIN APP routes when signed in */}
+            {userId ? (
+              <TabsBridge>
+                <main className="relative z-0">{children}</main>
+              </TabsBridge>
+            ) : (
+              <main className="relative z-0">{children}</main>
+            )}
           </main>
 
           {/* mobile nav */}

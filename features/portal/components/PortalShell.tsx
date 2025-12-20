@@ -88,8 +88,16 @@ export default function PortalShell({
   // ✅ AUTH PAGES: allow the auth page to own the full viewport/background
   if (hideNav) {
     return (
-      <div className="min-h-dvh app-metal-bg text-white">
-        <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
+      <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
+        {/* ✅ Portal ambient glow (behind everything) */}
+        <div className="pointer-events-none absolute inset-0">
+          {/* copper halo */}
+          <div className="absolute left-1/2 top-[-22%] h-[58rem] w-[58rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.18),transparent_60%)]" />
+          {/* cool vignette depth */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.88),transparent_68%)]" />
+        </div>
+
+        <header className="relative metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
           <div className="flex flex-col leading-none">
             <span
               className="font-blackops text-xs tracking-[0.22em]"
@@ -112,7 +120,7 @@ export default function PortalShell({
         </header>
 
         {/* 🔥 No max-w container. No centering wrapper. */}
-        <main className="min-h-[calc(100dvh-52px)] w-full">
+        <main className="relative min-h-[calc(100dvh-52px)] w-full">
           {children}
         </main>
       </div>
@@ -123,8 +131,18 @@ export default function PortalShell({
     "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
 
   return (
-    <div className="min-h-dvh app-metal-bg text-white">
-      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
+    <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
+      {/* ✅ Portal ambient glow (behind everything) */}
+      <div className="pointer-events-none absolute inset-0">
+        {/* copper halo */}
+        <div className="absolute left-1/2 top-[8%] h-[72rem] w-[72rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.14),transparent_62%)]" />
+        {/* secondary cool bloom */}
+        <div className="absolute right-[-18%] top-[28%] h-[46rem] w-[46rem] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.06),transparent_60%)]" />
+        {/* vignette depth */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.82),transparent_70%)]" />
+      </div>
+
+      <header className="relative metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
         <div className="flex items-center gap-3">
           <button
             type="button"
