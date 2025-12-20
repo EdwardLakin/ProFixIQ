@@ -11,6 +11,10 @@ type DB = Database;
 type Body = {
   workOrderId: string;
   bookingId: string;
+
+  // NEW (optional for backwards compatibility)
+  customerAgreedAt?: string | null;
+  customerSignatureUrl?: string | null;
 };
 
 function bad(msg: string, status = 400) {
@@ -35,6 +39,14 @@ function toPositiveQty(v: unknown, fallback = 1): number {
   return n;
 }
 
+function parseIsoDate(v: unknown): string | null {
+  const s = toNonEmptyString(v);
+  if (!s) return null;
+  const t = Date.parse(s);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toISOString();
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
@@ -55,6 +67,12 @@ export async function POST(req: Request) {
     const workOrderId = (body?.workOrderId ?? "").trim();
     const bookingId = (body?.bookingId ?? "").trim();
     if (!workOrderId || !bookingId) return bad("Missing workOrderId or bookingId");
+
+    // NEW: require "agreed at" (review step gate)
+    const customerAgreedAt = parseIsoDate(body?.customerAgreedAt ?? null);
+    if (!customerAgreedAt) return bad("You must agree to the terms before submitting.", 400);
+
+    const customerSignatureUrl = toNonEmptyString(body?.customerSignatureUrl ?? null);
 
     // Resolve portal customer
     const { data: customer, error: custErr } = await supabase
@@ -94,23 +112,32 @@ export async function POST(req: Request) {
       return bad("This booking time is in the past. Please start again.", 409);
     }
 
+    // Persist portal approval artifacts on the WO (non-breaking if columns exist)
+    // NOTE: you must add these columns to work_orders:
+    // - customer_agreed_at timestamptz
+    // - customer_signature_url text
+    // - portal_submitted_at timestamptz (optional but useful)
+    const woUpdate: DB["public"]["Tables"]["work_orders"]["Update"] = {
+      customer_approval_at: customerAgreedAt,
+      customer_approval_signature_url: customerSignatureUrl,
+    };
+
+    const { error: woUpdErr } = await supabase.from("work_orders").update(woUpdate).eq("id", wo.id);
+    if (woUpdErr) return bad("Failed to save agreement/signature", 500);
+
     // Finalize booking (Option B)
+    // Keep it pending for staff-side approve/decline on appointments page.
     const bookingUpdate: DB["public"]["Tables"]["bookings"]["Update"] = {
       status: booking.status ?? "pending",
     };
 
-    const { error: updErr } = await supabase
-      .from("bookings")
-      .update(bookingUpdate)
-      .eq("id", booking.id);
-
+    const { error: updErr } = await supabase.from("bookings").update(bookingUpdate).eq("id", booking.id);
     if (updErr) return bad("Failed to finalize booking", 500);
 
     /* ------------------------------------------------------------------ */
-    /* Parts request creation (NEW)                                         */
+    /* Parts request creation                                              */
     /* ------------------------------------------------------------------ */
 
-    // Pull WO lines (we prefer menu-lines that stored parts_needed)
     const { data: lines, error: linesErr } = await supabase
       .from("work_order_lines")
       .select("id, complaint, parts_needed")
@@ -118,7 +145,6 @@ export async function POST(req: Request) {
       .order("created_at", { ascending: true });
 
     if (linesErr) {
-      // Non-fatal: booking still submitted successfully
       console.warn("portal submit: failed to load work_order_lines:", linesErr.message);
       return NextResponse.json(
         { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null },
@@ -126,16 +152,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // Build items list:
-    // - If a line has parts_needed: create items from it
-    // - Else fall back to complaint as a single “needs quote” item
     const items: { description: string; qty: number }[] = [];
 
     for (const line of lines ?? []) {
-      const rec = line as unknown as Record<string, unknown>;
-
-      const complaint = toNonEmptyString(rec["complaint"]);
-      const partsNeededRaw = rec["parts_needed"];
+      const r = line as unknown as Record<string, unknown>;
+      const complaint = toNonEmptyString(r["complaint"]);
+      const partsNeededRaw = r["parts_needed"];
 
       if (Array.isArray(partsNeededRaw)) {
         for (const p of partsNeededRaw) {
@@ -147,13 +169,9 @@ export async function POST(req: Request) {
         continue;
       }
 
-      // If no structured parts list, treat complaint as “quote needed”
-      if (complaint) {
-        items.push({ description: complaint, qty: 1 });
-      }
+      if (complaint) items.push({ description: complaint, qty: 1 });
     }
 
-    // If there’s nothing to quote, just finish submit.
     if (items.length === 0) {
       return NextResponse.json(
         { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null },
@@ -161,24 +179,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // Create / reuse active parts request (idempotent function handles duplicates)
     type RpcArgs = DB["public"]["Functions"]["create_part_request_with_items"]["Args"];
 
     const rpcArgs: RpcArgs = {
       p_work_order_id: wo.id,
       p_items: items as unknown as RpcArgs["p_items"],
-      // No job id available in portal flow right now; keep optional
-      // p_job_id: undefined,
       p_notes: "Portal request submit: auto parts quote",
     };
 
-    const { data: partsRequestId, error: prErr } = await supabase.rpc(
-      "create_part_request_with_items",
-      rpcArgs,
-    );
+    const { data: partsRequestId, error: prErr } = await supabase.rpc("create_part_request_with_items", rpcArgs);
 
     if (prErr) {
-      // Non-fatal: booking submitted even if parts request failed
       console.warn("portal submit: create_part_request_with_items failed:", prErr.message);
       return NextResponse.json(
         { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null },

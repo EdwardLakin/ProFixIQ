@@ -10,6 +10,10 @@ import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import LinkButton from "@shared/components/ui/LinkButton";
 
+import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
+import LegalTerms from "@/features/shared/components/LegalTerms";
+import { uploadSignatureImage } from "@/features/shared/lib/utils/uploadSignature";
+
 type DB = Database;
 
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
@@ -40,9 +44,7 @@ function sectionTitle(s: string) {
 async function postJson<TResp>(
   url: string,
   body: unknown,
-): Promise<
-  { ok: true; data: TResp } | { ok: false; error: string; status: number }
-> {
+): Promise<{ ok: true; data: TResp } | { ok: false; error: string; status: number }> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -50,10 +52,7 @@ async function postJson<TResp>(
     cache: "no-store",
   });
 
-  const j = (await res.json().catch(() => ({}))) as { error?: string } & Record<
-    string,
-    unknown
-  >;
+  const j = (await res.json().catch(() => ({}))) as { error?: string } & Record<string, unknown>;
 
   if (!res.ok)
     return {
@@ -107,6 +106,31 @@ function lineTitle(l: WorkOrderLineRow): string {
   return (desc || l.complaint || "Line").toString();
 }
 
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function modalShell(open: boolean) {
+  return cx(
+    "fixed inset-0 z-[80] flex items-end justify-center p-3 sm:items-center",
+    open ? "" : "pointer-events-none opacity-0",
+  );
+}
+
+function modalBackdrop(open: boolean) {
+  return cx(
+    "absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity",
+    open ? "opacity-100" : "opacity-0",
+  );
+}
+
+function modalCard(open: boolean) {
+  return cx(
+    "relative w-full max-w-2xl rounded-3xl border border-white/10 bg-black/70 p-4 shadow-[0_0_40px_rgba(0,0,0,0.85)] backdrop-blur-md transition-transform",
+    open ? "translate-y-0" : "translate-y-6",
+  );
+}
+
 export default function PortalRequestBuildPage() {
   const supabase = createClientComponentClient<DB>();
   const router = useRouter();
@@ -115,10 +139,7 @@ export default function PortalRequestBuildPage() {
   const workOrderId = sp.get("wo") ?? "";
 
   // ✅ Option B: carry bookingId from when page (NOT startsAt)
-  const bookingId =
-    sp.get("booking") ??
-    sp.get("bookingId") ??
-    "";
+  const bookingId = sp.get("booking") ?? sp.get("bookingId") ?? "";
 
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
@@ -141,18 +162,19 @@ export default function PortalRequestBuildPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // NEW: Review & Sign
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [sigUrl, setSigUrl] = useState<string | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
+
   const filteredMenu = useMemo(() => {
     const q = menuSearch.trim().toLowerCase();
     if (!q) return menuItems.slice(0, 40);
 
     return menuItems
       .filter((m) => {
-        const hay = [
-          menuTitle(m),
-          m.description ?? "",
-          m.category ?? "",
-          m.service_key ?? "",
-        ]
+        const hay = [menuTitle(m), m.description ?? "", m.category ?? "", m.service_key ?? ""]
           .join(" ")
           .toLowerCase();
 
@@ -296,10 +318,10 @@ export default function PortalRequestBuildPage() {
   async function addMenuLine(menuItemId: string) {
     if (!wo?.id) return;
 
-    const r = await postJson<{ line?: unknown }>(
-      "/api/portal/request/add-menu-line",
-      { workOrderId: wo.id, menuItemId },
-    );
+    const r = await postJson<{ line?: unknown }>("/api/portal/request/add-menu-line", {
+      workOrderId: wo.id,
+      menuItemId,
+    });
 
     if (!r.ok) {
       toast.error(r.error);
@@ -319,14 +341,11 @@ export default function PortalRequestBuildPage() {
       return;
     }
 
-    const r = await postJson<{ line?: unknown }>(
-      "/api/portal/request/add-custom-line",
-      {
-        workOrderId: wo.id,
-        description: desc,
-        notes: customNotes.trim() || null,
-      },
-    );
+    const r = await postJson<{ line?: unknown }>("/api/portal/request/add-custom-line", {
+      workOrderId: wo.id,
+      description: desc,
+      notes: customNotes.trim() || null,
+    });
 
     if (!r.ok) {
       toast.error(r.error);
@@ -349,14 +368,14 @@ export default function PortalRequestBuildPage() {
     }
 
     const qtyN = Number(qoQty);
-    const qty = Number.isFinite(qtyN)
-      ? Math.max(1, Math.min(99, Math.trunc(qtyN)))
-      : 1;
+    const qty = Number.isFinite(qtyN) ? Math.max(1, Math.min(99, Math.trunc(qtyN))) : 1;
 
-    const r = await postJson<{ quoteLine?: unknown }>(
-      "/api/portal/request/add-quote-only",
-      { workOrderId: wo.id, description: desc, notes: qoNotes.trim() || null, qty },
-    );
+    const r = await postJson<{ quoteLine?: unknown }>("/api/portal/request/add-quote-only", {
+      workOrderId: wo.id,
+      description: desc,
+      notes: qoNotes.trim() || null,
+      qty,
+    });
 
     if (!r.ok) {
       toast.error(r.error);
@@ -370,22 +389,57 @@ export default function PortalRequestBuildPage() {
     await loadAll();
   }
 
-  async function onSubmit() {
+  // NEW: open the review gate instead of submitting immediately
+  function beginSubmit() {
     if (!wo?.id || submitting) return;
 
-    // ✅ Option B: bookingId must be present (slot already reserved)
     if (!bookingId) {
       toast.error("Missing booking. Please go back and pick a time again.");
       router.replace("/portal/request/when");
       return;
     }
 
+    // reset per-open state
+    setAgreed(false);
+    setSigUrl(null);
+    setReviewOpen(true);
+  }
+
+  async function finalizeSubmit(opts: { requireSignature?: boolean }) {
+    if (!wo?.id || submitting || reviewBusy) return;
+
+    if (!bookingId) {
+      toast.error("Missing booking. Please go back and pick a time again.");
+      router.replace("/portal/request/when");
+      return;
+    }
+
+    if (!agreed) {
+      toast.error("Please agree to the terms before submitting.");
+      return;
+    }
+
+    setReviewBusy(true);
     setSubmitting(true);
+
     try {
-      const r = await postJson<{ ok?: boolean; bookingId?: string; workOrderId?: string }>(
-        "/api/portal/request/submit",
-        { workOrderId: wo.id, bookingId },
-      );
+      let uploadedSigUrl: string | null = sigUrl;
+
+      if (!uploadedSigUrl && opts.requireSignature) {
+        toast.error("Signature required.");
+        return;
+      }
+
+      const r = await postJson<{
+        ok?: boolean;
+        bookingId?: string;
+        workOrderId?: string;
+      }>("/api/portal/request/submit", {
+        workOrderId: wo.id,
+        bookingId,
+        customerAgreedAt: new Date().toISOString(),
+        customerSignatureUrl: uploadedSigUrl,
+      });
 
       if (!r.ok) {
         toast.error(r.error);
@@ -393,21 +447,39 @@ export default function PortalRequestBuildPage() {
       }
 
       toast.success("Submitted.");
+      setReviewOpen(false);
       router.replace("/portal/customer-appointments");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Submit failed.";
       toast.error(msg);
     } finally {
       setSubmitting(false);
+      setReviewBusy(false);
+    }
+  }
+
+  async function captureSignature() {
+    if (!wo?.id || reviewBusy) return;
+    setReviewBusy(true);
+    try {
+      const base64: string | null = await openSignaturePad({
+        shopName: "",
+      });
+
+      if (!base64) return;
+
+      const uploaded = await uploadSignatureImage(base64, wo.id);
+      setSigUrl(uploaded);
+      toast.success("Signature saved.");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save signature");
+    } finally {
+      setReviewBusy(false);
     }
   }
 
   if (loading) {
-    return (
-      <div className={cardClass() + " mx-auto max-w-3xl text-sm text-neutral-200"}>
-        Loading…
-      </div>
-    );
+    return <div className={cardClass() + " mx-auto max-w-3xl text-sm text-neutral-200"}>Loading…</div>;
   }
 
   if (!wo?.id || !customer?.id) {
@@ -666,7 +738,7 @@ export default function PortalRequestBuildPage() {
             </div>
           </div>
 
-          <Button type="button" onClick={() => void onSubmit()} disabled={submitting}>
+          <Button type="button" onClick={beginSubmit} disabled={submitting}>
             {submitting ? "Submitting…" : "Submit request"}
           </Button>
         </div>
@@ -675,6 +747,104 @@ export default function PortalRequestBuildPage() {
       <div className="pb-2 text-[0.75rem] text-neutral-500">
         Tip: Menu items are pre-priced. Custom and quote-only lines can trigger parts pricing and AI assistance.
       </div>
+
+      {/* Review & Sign modal */}
+      <div className={modalShell(reviewOpen)} aria-hidden={!reviewOpen}>
+        <div className={modalBackdrop(reviewOpen)} onClick={() => setReviewOpen(false)} />
+        <div className={modalCard(reviewOpen)} role="dialog" aria-modal="true">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div
+                className="font-blackops text-[0.9rem] uppercase tracking-[0.18em]"
+                style={{ color: COPPER }}
+              >
+                Review &amp; sign
+              </div>
+              <div className="mt-1 text-xs text-neutral-300">
+                Confirm your request details and agree to terms before submitting.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setReviewOpen(false)}
+              className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-xs text-neutral-200 hover:bg-black/70"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            <div className="rounded-2xl border border-white/10 bg-black/35 p-3">
+              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
+                Summary
+              </div>
+              <div className="mt-2 text-sm text-neutral-100">
+                {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"}
+              </div>
+              <div className="mt-1 text-xs text-neutral-400">
+                WO <span className="font-mono text-neutral-300">{wo.id}</span> • Lines {lines.length} • Quote requests{" "}
+                {quoteLines.length}
+              </div>
+              <div className="mt-2 text-xs text-neutral-500">
+                Booking reservation is held while you submit this request.
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-3 text-xs text-neutral-300">
+              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
+                Disclaimers
+              </div>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-neutral-300">
+                <li>Prices and estimates are subject to change after inspection and diagnosis.</li>
+                <li>This is a request and is not confirmed until the shop approves the appointment.</li>
+                <li>Parts availability and additional findings may affect timing and total cost.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+              <LegalTerms onAgreeChange={setAgreed} defaultOpen />
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs text-neutral-300">
+                  Signature{" "}
+                  <span className="text-neutral-500">(recommended)</span>
+                </div>
+                <div className="text-[0.7rem] text-neutral-500">
+                  {sigUrl ? (
+                    <span className="text-emerald-200">Saved</span>
+                  ) : (
+                    <span className="text-neutral-400">Not provided</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => void captureSignature()} disabled={reviewBusy}>
+                  {reviewBusy ? "Working…" : sigUrl ? "Re-sign" : "Add signature"}
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={() => void finalizeSubmit({ requireSignature: false })}
+                  disabled={submitting || reviewBusy || !agreed}
+                >
+                  {submitting ? "Submitting…" : "Agree & Submit request"}
+                </Button>
+
+                <span className="text-[0.7rem] text-neutral-500">
+                  Staff will review and approve the appointment.
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mount once for openSignaturePad */}
+      <SignaturePad />
     </div>
   );
 }

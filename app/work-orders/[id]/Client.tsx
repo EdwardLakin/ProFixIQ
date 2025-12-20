@@ -933,117 +933,117 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   // 🔍 open inspection – fetch template, inject corner grid, stage to session, then open generic fill screen
-const openInspectionForLine = useCallback(
-  async (ln: WorkOrderLine) => {
-    if (!ln?.id) return;
+  const openInspectionForLine = useCallback(
+    async (ln: WorkOrderLine) => {
+      if (!ln?.id) return;
 
-    const anyLine = ln as WorkOrderLineWithInspectionMeta;
-    const templateId = extractInspectionTemplateId(anyLine);
+      const anyLine = ln as WorkOrderLineWithInspectionMeta;
+      const templateId = extractInspectionTemplateId(anyLine);
 
-    if (!templateId) {
-      toast.error(
-        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
-      );
-      return;
-    }
-
-    // 1) Load the inspection template for this line
-    const { data, error } = await supabase
-      .from("inspection_templates")
-      .select("template_name, sections, vehicle_type")
-      .eq("id", templateId)
-      .maybeSingle();
-
-    if (error || !data) {
-      toast.error("Unable to load inspection template.");
-      return;
-    }
-
-    const rawSections = (data.sections ?? []) as TemplateSection[];
-    const vehicleType = String(data.vehicle_type ?? "");
-    const sections = prepareSectionsWithCornerGrid(
-      rawSections,
-      vehicleType,
-      null, // no explicit ?grid override from here
-    );
-
-    const title = data.template_name ?? "Inspection";
-
-    // 2) Stage into sessionStorage so GenericInspectionScreen can boot in the modal
-    if (typeof window !== "undefined") {
-      const paramsObj: Record<string, string> = {};
-
-      if (wo?.id) paramsObj.workOrderId = wo.id;
-      paramsObj.workOrderLineId = ln.id;
-      paramsObj.view = "mobile";
-      paramsObj.embed = "1";
-      if (ln.description) paramsObj.seed = String(ln.description);
-
-      // prefill customer / vehicle into params if available
-      if (customer) {
-        if (customer.first_name) paramsObj.first_name = customer.first_name;
-        if (customer.last_name) paramsObj.last_name = customer.last_name;
-        if (customer.phone) paramsObj.phone = customer.phone;
-        if (customer.email) paramsObj.email = customer.email;
-        if (customer.address) paramsObj.address = customer.address;
-        if (customer.city) paramsObj.city = customer.city;
-        if (customer.province) paramsObj.province = customer.province;
-        if (customer.postal_code)
-          paramsObj.postal_code = customer.postal_code;
+      if (!templateId) {
+        toast.error(
+          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+        );
+        return;
       }
 
-      if (vehicle) {
-        if (vehicle.year != null)
-          paramsObj.year = String(vehicle.year as string | number);
-        if (vehicle.make) paramsObj.make = vehicle.make;
-        if (vehicle.model) paramsObj.model = vehicle.model;
-        if (vehicle.vin) paramsObj.vin = vehicle.vin;
-        if (vehicle.license_plate)
-          paramsObj.license_plate = vehicle.license_plate;
-        if (vehicle.mileage != null)
-          paramsObj.mileage = String(vehicle.mileage);
-        if (vehicle.color) paramsObj.color = vehicle.color;
-        if (vehicle.unit_number)
-          paramsObj.unit_number = vehicle.unit_number;
-        if (vehicle.engine_hours != null)
-          paramsObj.engine_hours = String(vehicle.engine_hours);
+      // 1) Load the inspection template for this line
+      const { data, error } = await supabase
+        .from("inspection_templates")
+        .select("template_name, sections, vehicle_type")
+        .eq("id", templateId)
+        .maybeSingle();
+
+      if (error || !data) {
+        toast.error("Unable to load inspection template.");
+        return;
       }
 
-      sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
-      sessionStorage.setItem("inspection:title", title);
-      sessionStorage.setItem("inspection:vehicleType", vehicleType);
-      sessionStorage.setItem("inspection:template", "generic");
-      sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
-
-      // Legacy keys for older flows
-      sessionStorage.setItem(
-        "customInspection:sections",
-        JSON.stringify(sections),
+      const rawSections = (data.sections ?? []) as TemplateSection[];
+      const vehicleType = String(data.vehicle_type ?? "");
+      const sections = prepareSectionsWithCornerGrid(
+        rawSections,
+        vehicleType,
+        null, // no explicit ?grid override from here
       );
-      sessionStorage.setItem("customInspection:title", title);
-      sessionStorage.setItem(
-        "customInspection:includeOil",
-        JSON.stringify(false),
-      );
-    }
 
-    // 3) Set src for the modal (mainly for debugging / template label)
-    const sp = new URLSearchParams();
-    sp.set("template", "generic");
-    if (wo?.id) sp.set("workOrderId", wo.id);
-    sp.set("workOrderLineId", ln.id);
-    sp.set("embed", "1");
-    sp.set("view", "mobile");
-    if (ln.description) sp.set("seed", String(ln.description));
+      const title = data.template_name ?? "Inspection";
 
-    const url = `/inspections/fill?${sp.toString()}`;
+      // 2) Stage into sessionStorage so GenericInspectionScreen can boot in the modal
+      if (typeof window !== "undefined") {
+        const paramsObj: Record<string, string> = {};
 
-    setInspectionSrc(url);
-    setInspectionOpen(true);
-    toast.success("Inspection opened");
-  },
-  [wo?.id, customer, vehicle],
-);
+        if (wo?.id) paramsObj.workOrderId = wo.id;
+        paramsObj.workOrderLineId = ln.id;
+        paramsObj.view = "mobile";
+        paramsObj.embed = "1";
+        if (ln.description) paramsObj.seed = String(ln.description);
+
+        // prefill customer / vehicle into params if available
+        if (customer) {
+          if (customer.first_name) paramsObj.first_name = customer.first_name;
+          if (customer.last_name) paramsObj.last_name = customer.last_name;
+          if (customer.phone) paramsObj.phone = customer.phone;
+          if (customer.email) paramsObj.email = customer.email;
+          if (customer.address) paramsObj.address = customer.address;
+          if (customer.city) paramsObj.city = customer.city;
+          if (customer.province) paramsObj.province = customer.province;
+          if (customer.postal_code)
+            paramsObj.postal_code = customer.postal_code;
+        }
+
+        if (vehicle) {
+          if (vehicle.year != null)
+            paramsObj.year = String(vehicle.year as string | number);
+          if (vehicle.make) paramsObj.make = vehicle.make;
+          if (vehicle.model) paramsObj.model = vehicle.model;
+          if (vehicle.vin) paramsObj.vin = vehicle.vin;
+          if (vehicle.license_plate)
+            paramsObj.license_plate = vehicle.license_plate;
+          if (vehicle.mileage != null)
+            paramsObj.mileage = String(vehicle.mileage);
+          if (vehicle.color) paramsObj.color = vehicle.color;
+          if (vehicle.unit_number)
+            paramsObj.unit_number = vehicle.unit_number;
+          if (vehicle.engine_hours != null)
+            paramsObj.engine_hours = String(vehicle.engine_hours);
+        }
+
+        sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
+        sessionStorage.setItem("inspection:title", title);
+        sessionStorage.setItem("inspection:vehicleType", vehicleType);
+        sessionStorage.setItem("inspection:template", "generic");
+        sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
+
+        // Legacy keys for older flows
+        sessionStorage.setItem(
+          "customInspection:sections",
+          JSON.stringify(sections),
+        );
+        sessionStorage.setItem("customInspection:title", title);
+        sessionStorage.setItem(
+          "customInspection:includeOil",
+          JSON.stringify(false),
+        );
+      }
+
+      // 3) Set src for the modal (mainly for debugging / template label)
+      const sp = new URLSearchParams();
+      sp.set("template", "generic");
+      if (wo?.id) sp.set("workOrderId", wo.id);
+      sp.set("workOrderLineId", ln.id);
+      sp.set("embed", "1");
+      sp.set("view", "mobile");
+      if (ln.description) sp.set("seed", String(ln.description));
+
+      const url = `/inspections/fill?${sp.toString()}`;
+
+      setInspectionSrc(url);
+      setInspectionOpen(true);
+      toast.success("Inspection opened");
+    },
+    [wo?.id, customer, vehicle],
+  );
 
   // parts drawer close / bulk
   useEffect(() => {
@@ -1122,7 +1122,7 @@ const openInspectionForLine = useCallback(
       ) : (
         <div className="space-y-6">
           {/* Header – simplified, thinner border, full-width */}
-          <div className="rounded-xl border border-border/60 bg-card/90 p-4 shadow-sm">
+          <div className="rounded-xl border border-white/18 bg-card/90 p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
                 <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
@@ -1160,7 +1160,7 @@ const openInspectionForLine = useCallback(
           </div>
 
           {/* Vehicle & Customer – styled like the photo block */}
-          <div className="rounded-xl border border-border/60 bg-card/90 p-4">
+          <div className="rounded-xl border border-white/18 bg-card/90 p-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-foreground sm:text-base">
                 Vehicle &amp; Customer
@@ -1178,7 +1178,7 @@ const openInspectionForLine = useCallback(
             {showDetails && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 {/* Vehicle */}
-                <div className="rounded-lg bg-muted/70 p-3">
+                <div className="rounded-lg border border-white/12 bg-muted/70 p-3">
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Vehicle
                   </h3>
@@ -1215,7 +1215,7 @@ const openInspectionForLine = useCallback(
                 </div>
 
                 {/* Customer */}
-                <div className="rounded-lg bg-muted/70 p-3">
+                <div className="rounded-lg border border-white/12 bg-muted/70 p-3">
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Customer
                   </h3>
@@ -1256,7 +1256,7 @@ const openInspectionForLine = useCallback(
           </div>
 
           {/* Awaiting Customer Approval */}
-          <div className="rounded-xl border border-border/60 bg-card/90 p-4">
+          <div className="rounded-xl border border-white/18 bg-card/90 p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-blue-200 sm:text-base">
                 Awaiting customer approval
@@ -1291,7 +1291,7 @@ const openInspectionForLine = useCallback(
                       return (
                         <div
                           key={ln.id}
-                          className="rounded-lg border border-border/60 bg-muted/70 p-3"
+                          className="rounded-lg border border-white/12 bg-muted/70 p-3"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -1373,7 +1373,7 @@ const openInspectionForLine = useCallback(
                     {approvalPendingQuotes.map((q, idx) => (
                       <div
                         key={q.id}
-                        className="rounded-lg border border-border/60 bg-muted/70 p-3"
+                        className="rounded-lg border border-white/12 bg-muted/70 p-3"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -1430,7 +1430,7 @@ const openInspectionForLine = useCallback(
           </div>
 
           {/* Jobs list – full width; JobCard handles its own status pills */}
-          <div className="rounded-xl border border-border/60 bg-card/90 p-4">
+          <div className="rounded-xl border border-white/18 bg-card/90 p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-foreground sm:text-base">
@@ -1526,7 +1526,7 @@ const openInspectionForLine = useCallback(
           </div>
 
           {/* Suggested maintenance / quick add – full-width card */}
-          <div className="rounded-xl border border-border/60 bg-card/90 p-4 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-white/18 bg-card/90 p-4 text-sm text-muted-foreground">
             <WorkOrderSuggestionsPanel
               workOrderId={wo.id}
               vehicleId={vehicle?.id ?? null}
@@ -1535,7 +1535,7 @@ const openInspectionForLine = useCallback(
             />
           </div>
 
-          <div className="rounded-xl border border-border/60 bg-card/90 p-4 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-white/18 bg-card/90 p-4 text-sm text-muted-foreground">
             <p>
               Select a job card above to open the focused job panel with full editing,
               punch and inspection controls.
