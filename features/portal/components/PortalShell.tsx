@@ -16,13 +16,8 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { href: "/portal", label: "Home" },
-
-  // ✅ primary flow
   { href: "/portal/request/when", label: "Request" },
-
-  // ✅ approvals (new)
   { href: "/portal/approvals", label: "Approvals" },
-
   { href: "/portal/customer-appointments", label: "Appointments" },
   { href: "/portal/history", label: "History" },
   { href: "/portal/vehicles", label: "Vehicles" },
@@ -90,6 +85,7 @@ export default function PortalShell({
     }
   };
 
+  // ✅ AUTH PAGES: allow the auth page to own the full viewport/background
   if (hideNav) {
     return (
       <div className="min-h-dvh app-metal-bg text-white">
@@ -115,7 +111,8 @@ export default function PortalShell({
           </button>
         </header>
 
-        <main className="mx-auto flex min-h-[calc(100dvh-52px)] w-full max-w-5xl items-center px-3 py-8">
+        {/* 🔥 No max-w container. No centering wrapper. */}
+        <main className="min-h-[calc(100dvh-52px)] w-full">
           {children}
         </main>
       </div>
@@ -156,7 +153,6 @@ export default function PortalShell({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* ✅ primary action */}
           <Link
             href="/portal/request/when"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
@@ -164,7 +160,6 @@ export default function PortalShell({
             <span style={{ color: COPPER }}>Request</span>
           </Link>
 
-          {/* ✅ approvals quick access */}
           <Link
             href="/portal/approvals"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
