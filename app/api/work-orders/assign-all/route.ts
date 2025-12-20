@@ -3,16 +3,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
 
 type Body = {
   work_order_id: string;
   tech_id: string;
   // optional, defaults to true → only update rows where assigned_to is null
   only_unassigned?: boolean;
-  // optional: who is doing the assignment (profiles.id)
-  assigned_by?: string | null;
 };
 
 type LineTechInsert = {
@@ -21,79 +22,107 @@ type LineTechInsert = {
   assigned_by?: string | null;
 };
 
-function mustEnv(name: string): string {
-  const v = process.env[name];
-  if (!v || v.trim() === "") throw new Error(`Missing required env: ${name}`);
-  return v;
+const STAFF_CAN_ASSIGN = new Set(["owner", "admin", "manager", "advisor", "dispatcher"]);
+
+function isStaffRole(role: unknown): boolean {
+  return STAFF_CAN_ASSIGN.has(String(role ?? "").toLowerCase());
 }
 
 export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
   try {
-    const {
-      work_order_id,
-      tech_id,
-      only_unassigned = true,
-      assigned_by = null,
-    } = (await req.json()) as Partial<Body>;
+    const body = (await req.json()) as Partial<Body>;
+    const { work_order_id, tech_id, only_unassigned = true } = body;
 
     if (!work_order_id) {
-      return NextResponse.json(
-        { error: "work_order_id is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "work_order_id is required" }, { status: 400 });
     }
     if (!tech_id) {
-      return NextResponse.json(
-        { error: "tech_id is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "tech_id is required" }, { status: 400 });
     }
 
-    const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
-    const service = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
-    const supabase = createClient<Database>(url, service);
+    // Auth (do NOT trust client for who is assigning)
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
 
-    // (optional) make sure tech exists + is a tech-ish role
+    if (authErr || !user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const assigned_by = user.id; // Option A: profiles.id == auth.uid()
+
+    // Load caller profile (shop + role)
+    const { data: caller, error: callerErr } = await supabase
+      .from("profiles")
+      .select("id, shop_id, role")
+      .eq("id", assigned_by)
+      .maybeSingle();
+
+    if (callerErr) {
+      return NextResponse.json({ error: callerErr.message }, { status: 400 });
+    }
+    if (!caller?.shop_id) {
+      return NextResponse.json({ error: "Profile missing shop_id" }, { status: 403 });
+    }
+    if (!isStaffRole(caller.role)) {
+      return NextResponse.json({ error: "Forbidden: role cannot assign work" }, { status: 403 });
+    }
+
+    // Load WO + verify same shop
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("id, shop_id")
+      .eq("id", work_order_id)
+      .maybeSingle();
+
+    if (woErr) {
+      return NextResponse.json({ error: woErr.message }, { status: 400 });
+    }
+    if (!wo) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+    }
+    if (wo.shop_id !== caller.shop_id) {
+      return NextResponse.json({ error: "Forbidden: cross-shop assignment" }, { status: 403 });
+    }
+
+    // Load tech profile + verify same shop
     const { data: techProfile, error: techErr } = await supabase
       .from("profiles")
-      .select("id, role, full_name")
+      .select("id, role, full_name, shop_id")
       .eq("id", tech_id)
       .maybeSingle();
 
     if (techErr) {
-      return NextResponse.json(
-        { error: `Failed to load tech profile: ${techErr.message}` },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: `Failed to load tech profile: ${techErr.message}` }, { status: 400 });
     }
     if (!techProfile) {
-      return NextResponse.json(
-        { error: "Tech profile not found for that id." },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Tech profile not found for that id." }, { status: 404 });
+    }
+    if (techProfile.shop_id !== caller.shop_id) {
+      return NextResponse.json({ error: "Tech is not in the same shop." }, { status: 403 });
     }
 
-    // build update
+    // Update work_order_lines (set BOTH assigned_to and assigned_tech_id)
+    // assigned_tech_id is used by punch_in/out functions in DB
     let query = supabase
       .from("work_order_lines")
-      .update({ assigned_to: tech_id })
+      .update({ assigned_to: tech_id, assigned_tech_id: tech_id })
       .eq("work_order_id", work_order_id);
 
     if (only_unassigned) {
       query = query.is("assigned_to", null);
     }
 
-    // we SELECT ids so we know which lines were actually changed
     const { data: updatedRows, error: updErr } = await query.select("id");
 
     if (updErr) {
-      return NextResponse.json(
-        { error: `Update failed: ${updErr.message}` },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: `Update failed: ${updErr.message}` }, { status: 400 });
     }
 
-    // NEW: also reflect this in work_order_line_technicians (many-to-many)
+    // Keep many-to-many table in sync (non-fatal if it fails)
     if (updatedRows && updatedRows.length > 0) {
       const linkRows: LineTechInsert[] = updatedRows.map((row) => ({
         work_order_line_id: row.id,
@@ -107,13 +136,8 @@ export async function POST(req: Request) {
           onConflict: "work_order_line_id,technician_id",
         });
 
-      // not fatal — we still assigned the lines
       if (linkErr) {
-        // you can log this to your logs if you want
-        console.warn(
-          "assign-all: failed to upsert work_order_line_technicians:",
-          linkErr.message
-        );
+        console.warn("assign-all: failed to upsert work_order_line_technicians:", linkErr.message);
       }
     }
 
