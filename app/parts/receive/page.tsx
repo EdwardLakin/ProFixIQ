@@ -1,3 +1,4 @@
+// app/parts/receive/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -32,6 +33,8 @@ export default function ReceivePage(): JSX.Element {
   const [scanning, setScanning] = useState<boolean>(false);
   const [qty, setQty] = useState<number>(1);
 
+  const onDetectedRef = useRef<((res: QuaggaResult) => void) | null>(null);
+
   // bootstrap: shop, POs, locations
   useEffect(() => {
     (async () => {
@@ -39,11 +42,14 @@ export default function ReceivePage(): JSX.Element {
       const uid = userRes.user?.id;
       if (!uid) return;
 
-      const { data: prof } = await supabase
+      // ✅ Option A: profiles.id == auth.uid()
+      const { data: prof, error: profErr } = await supabase
         .from("profiles")
         .select("shop_id")
-        .eq("user_id", uid)
-        .single();
+        .eq("id", uid)
+        .maybeSingle();
+
+      if (profErr) return;
 
       const sid = prof?.shop_id ?? "";
       setShopId(sid);
@@ -66,14 +72,27 @@ export default function ReceivePage(): JSX.Element {
       setPOs((poRes.data ?? []) as PurchaseOrder[]);
       const locRows = (locRes.data ?? []) as StockLoc[];
       setLocs(locRows);
+
       const main = locRows.find((l) => (l.code ?? "").toUpperCase() === "MAIN");
       if (main) setSelectedLoc(main.id);
     })();
   }, [supabase]);
 
+  const cleanupScannerHandlers = () => {
+    try {
+      if (Quagga && onDetectedRef.current && (Quagga as any).offDetected) {
+        (Quagga as any).offDetected(onDetectedRef.current);
+      }
+    } catch {
+      // ignore
+    }
+    onDetectedRef.current = null;
+  };
+
   // start/stop camera
   const startScan = async () => {
     if (!Quagga || scanning || !videoRef.current) return;
+
     setScanning(true);
 
     Quagga.init(
@@ -97,18 +116,20 @@ export default function ReceivePage(): JSX.Element {
       },
       (err?: Error) => {
         if (err) {
-          // eslint-disable-next-line no-console
           console.error(err);
           setScanning(false);
           return;
         }
         Quagga?.start();
-      }
+      },
     );
 
-    Quagga.onDetected(async (res: QuaggaResult) => {
+    cleanupScannerHandlers();
+
+    const handler = async (res: QuaggaResult) => {
       const code = res.codeResult?.code ?? "";
       if (!code || code === lastScan) return;
+
       setLastScan(code);
 
       const supplierId =
@@ -121,7 +142,7 @@ export default function ReceivePage(): JSX.Element {
 
       if (!part_id) {
         alert(
-          `No part found for "${code}". Map it in Parts → Inventory → Edit → Barcodes.`
+          `No part found for "${code}". Map it in Parts → Inventory → Edit → Barcodes.`,
         );
         return;
       }
@@ -142,16 +163,21 @@ export default function ReceivePage(): JSX.Element {
         }),
       });
 
-      const locLabel =
-        locs.find((l) => l.id === selectedLoc)?.code ?? "LOC";
+      const locLabel = locs.find((l) => l.id === selectedLoc)?.code ?? "LOC";
       alert(`Received ×${qty} to ${locLabel}`);
+
       window.dispatchEvent(new CustomEvent("parts:received"));
       window.setTimeout(() => setLastScan(""), 1000);
-    });
+    };
+
+    onDetectedRef.current = handler;
+
+    Quagga.onDetected(handler);
   };
 
   const stopScan = () => {
     try {
+      cleanupScannerHandlers();
       Quagga?.stop();
     } catch {
       /* ignore */
@@ -161,6 +187,7 @@ export default function ReceivePage(): JSX.Element {
 
   useEffect(() => {
     return () => stopScan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -235,6 +262,7 @@ export default function ReceivePage(): JSX.Element {
             Use mobile camera to scan UPC/EAN/Code128.
           </span>
         </div>
+
         <div
           ref={videoRef}
           className="aspect-video w-full overflow-hidden rounded border border-neutral-800 bg-black"

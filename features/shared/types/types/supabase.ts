@@ -3048,6 +3048,27 @@ export type Database = {
             referencedRelation: "part_requests"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "part_request_items_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_request_items_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "part_request_items_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
         ]
       }
       part_request_lines: {
@@ -7879,6 +7900,7 @@ export type Database = {
         Args: { p_item_id: string }
         Returns: undefined
       }
+      portal_list_approvals: { Args: never; Returns: Json }
       punch_in: { Args: { line_id: string }; Returns: undefined }
       punch_out: { Args: { line_id: string }; Returns: undefined }
       recalc_shop_active_user_count: {
@@ -7915,6 +7937,10 @@ export type Database = {
           p_vendor: string
         }
         Returns: undefined
+      }
+      wo_release_parts_holds_for_part: {
+        Args: { p_part_id: string }
+        Returns: number
       }
     }
     Enums: {
