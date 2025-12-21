@@ -24,16 +24,9 @@ const ALL_STATUSES: Request["status"][] = [
 ];
 
 // Status columns we actually want to show on THIS page
-const VISIBLE_STATUSES: Request["status"][] = [
-  "requested",
-  "quoted",
-  "approved",
-];
+const VISIBLE_STATUSES: Request["status"][] = ["requested", "quoted", "approved"];
 
-function makeEmptyBuckets(): Record<
-  Request["status"],
-  (Request & { items: Item[] })[]
-> {
+function makeEmptyBuckets(): Record<Request["status"], (Request & { items: Item[] })[]> {
   return {
     requested: [],
     quoted: [],
@@ -51,90 +44,94 @@ export default function PartsRequestsPage() {
     Record<Request["status"], (Request & { items: Item[] })[]>
   >(makeEmptyBuckets());
 
-  const [workOrdersById, setWorkOrdersById] = useState<
-    Record<string, WorkOrderMeta>
-  >({});
+  const [workOrdersById, setWorkOrdersById] = useState<Record<string, WorkOrderMeta>>({});
 
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
+  const reload = async () => {
+    setLoading(true);
 
-      // 1) fetch all requests
-      const { data: reqs, error } = await supabase
-        .from("part_requests")
-        .select("*")
-        .order("created_at", { ascending: false });
+    // 1) fetch all requests
+    const { data: reqs, error } = await supabase
+      .from("part_requests")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("load part_requests failed:", error.message);
-        toast.error("Failed to load parts requests");
-        setLoading(false);
-        return;
-      }
-
-      const requestList = (reqs ?? []) as Request[];
-      const requestIds = requestList.map((r) => r.id);
-
-      // 2) fetch all items for these requests
-      const itemsMap: Record<string, Item[]> = {};
-      if (requestIds.length) {
-        const { data: items } = await supabase
-          .from("part_request_items")
-          .select("*")
-          .in("request_id", requestIds);
-
-        for (const it of items ?? []) {
-          (itemsMap[it.request_id] ||= []).push(it);
-        }
-      }
-
-      // 3) fetch work order metadata for display (TU000001 instead of UUID)
-      const woIds = Array.from(
-        new Set(
-          requestList
-            .map((r) => r.work_order_id)
-            .filter((id): id is string => typeof id === "string" && !!id),
-        ),
-      );
-
-      const woMap: Record<string, WorkOrderMeta> = {};
-      if (woIds.length) {
-        const { data: workOrders, error: woError } = await supabase
-          .from("work_orders")
-          .select("id, custom_id")
-          .in("id", woIds);
-
-        if (woError) {
-          console.error(
-            "load work_orders for parts requests failed:",
-            woError.message,
-          );
-        } else {
-          for (const wo of workOrders ?? []) {
-            woMap[wo.id] = {
-              id: wo.id,
-              custom_id: wo.custom_id ?? null,
-            };
-          }
-        }
-      }
-      setWorkOrdersById(woMap);
-
-      // 4) group by status
-      const grouped = makeEmptyBuckets();
-
-      for (const r of requestList) {
-        const status = (r.status ?? "requested") as Request["status"];
-        const bucket = grouped[status] ?? grouped.requested;
-        bucket.push({ ...r, items: itemsMap[r.id] ?? [] });
-      }
-
-      setByStatus(grouped);
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error("load part_requests failed:", error.message);
+      toast.error("Failed to load parts requests");
       setLoading(false);
-    })();
+      return;
+    }
+
+    const requestList = (reqs ?? []) as Request[];
+    const requestIds = requestList.map((r) => r.id);
+
+    // 2) fetch all items for these requests
+    const itemsMap: Record<string, Item[]> = {};
+    if (requestIds.length) {
+      const { data: items, error: itemsErr } = await supabase
+        .from("part_request_items")
+        .select("*")
+        .in("request_id", requestIds);
+
+      if (itemsErr) {
+        // eslint-disable-next-line no-console
+        console.error("load part_request_items failed:", itemsErr.message);
+      }
+
+      for (const it of items ?? []) {
+        (itemsMap[it.request_id] ||= []).push(it);
+      }
+    }
+
+    // 3) fetch work order metadata for display (TU000001 instead of UUID)
+    const woIds = Array.from(
+      new Set(
+        requestList
+          .map((r) => r.work_order_id)
+          .filter((id): id is string => typeof id === "string" && !!id),
+      ),
+    );
+
+    const woMap: Record<string, WorkOrderMeta> = {};
+    if (woIds.length) {
+      const { data: workOrders, error: woError } = await supabase
+        .from("work_orders")
+        .select("id, custom_id")
+        .in("id", woIds);
+
+      if (woError) {
+        // eslint-disable-next-line no-console
+        console.error("load work_orders for parts requests failed:", woError.message);
+      } else {
+        for (const wo of workOrders ?? []) {
+          woMap[wo.id] = {
+            id: wo.id,
+            custom_id: wo.custom_id ?? null,
+          };
+        }
+      }
+    }
+    setWorkOrdersById(woMap);
+
+    // 4) group by status
+    const grouped = makeEmptyBuckets();
+    for (const r of requestList) {
+      const status = (r.status ?? "requested") as Request["status"];
+      const bucket = grouped[status] ?? grouped.requested;
+      bucket.push({ ...r, items: itemsMap[r.id] ?? [] });
+    }
+
+    setByStatus(grouped);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
   // Derived: apply search filter client-side
@@ -147,9 +144,7 @@ export default function PartsRequestsPage() {
     (ALL_STATUSES as Request["status"][]).forEach((status) => {
       const list = byStatus[status] ?? [];
       filtered[status] = list.filter((r) => {
-        const woMeta = r.work_order_id
-          ? workOrdersById[r.work_order_id]
-          : undefined;
+        const woMeta = r.work_order_id ? workOrdersById[r.work_order_id] : undefined;
 
         // label used both for display and search
         const woLabel =
@@ -172,34 +167,45 @@ export default function PartsRequestsPage() {
   }, [search, byStatus, workOrdersById]);
 
   const handleDelete = async (requestId: string) => {
-    const confirmed = window.confirm(
-      "Delete this parts request? This will also remove its items.",
-    );
+    const confirmed = window.confirm("Delete this parts request? This will also remove its items.");
     if (!confirmed) return;
 
     // delete items first (in case cascade is not configured)
-    const { error: itemsError } = await supabase
+    const { data: deletedItems, error: itemsError } = await supabase
       .from("part_request_items")
       .delete()
-      .eq("request_id", requestId);
+      .eq("request_id", requestId)
+      .select("id");
 
     if (itemsError) {
-      console.error(
-        "delete part_request_items failed:",
-        itemsError.message,
-      );
+      // eslint-disable-next-line no-console
+      console.error("delete part_request_items failed:", itemsError.message);
       toast.error("Unable to delete request items.");
       return;
     }
 
-    const { error } = await supabase
+    // If RLS blocks delete, Supabase often returns [] with no error
+    if (!deletedItems || deletedItems.length === 0) {
+      toast.error("Not permitted to delete request items (RLS).");
+      return;
+    }
+
+    const { data: deletedReq, error } = await supabase
       .from("part_requests")
       .delete()
-      .eq("id", requestId);
+      .eq("id", requestId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
+      // eslint-disable-next-line no-console
       console.error("delete part_requests failed:", error.message);
       toast.error("Unable to delete parts request.");
+      return;
+    }
+
+    if (!deletedReq?.id) {
+      toast.error("Not permitted to delete this request (RLS).");
       return;
     }
 
@@ -207,9 +213,7 @@ export default function PartsRequestsPage() {
     setByStatus((prev) => {
       const next = makeEmptyBuckets();
       (ALL_STATUSES as Request["status"][]).forEach((status) => {
-        next[status] = (prev[status] ?? []).filter(
-          (r) => r.id !== requestId,
-        );
+        next[status] = (prev[status] ?? []).filter((r) => r.id !== requestId);
       });
       return next;
     });
@@ -228,8 +232,7 @@ export default function PartsRequestsPage() {
         <div>
           <h1 className="text-2xl font-bold">Parts Requests</h1>
           <p className="mt-1 text-sm text-neutral-400">
-            Active requests that still need quoting or approval. Completed
-            requests move off this list.
+            Active requests that still need quoting or approval. Completed requests move off this list.
           </p>
         </div>
         <Link
@@ -243,9 +246,7 @@ export default function PartsRequestsPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <p className="text-xs text-neutral-500">
           Search by WO#, request id, or line description. Showing{" "}
-          <span className="font-semibold text-neutral-200">
-            {totalVisibleCount}
-          </span>{" "}
+          <span className="font-semibold text-neutral-200">{totalVisibleCount}</span>{" "}
           active request{totalVisibleCount === 1 ? "" : "s"}.
         </p>
         <div className="w-full md:w-80">
@@ -277,45 +278,29 @@ export default function PartsRequestsPage() {
                 </div>
                 <div className="flex-1 space-y-3 p-3">
                   {list.length === 0 ? (
-                    <div className="text-sm text-neutral-500">
-                      No requests
-                    </div>
+                    <div className="text-sm text-neutral-500">No requests</div>
                   ) : (
                     list.map((r) => {
-                      const woMeta = r.work_order_id
-                        ? workOrdersById[r.work_order_id]
-                        : undefined;
+                      const woMeta = r.work_order_id ? workOrdersById[r.work_order_id] : undefined;
 
                       // Prefer TU000001-style custom id; otherwise fall back
                       // to whatever FK we have, shortened.
                       const woDisplayId =
                         woMeta?.custom_id ||
-                        (woMeta?.id ??
-                          r.work_order_id ??
-                          "")
-                          .toString()
-                          .slice(0, 8) || null;
+                        (woMeta?.id ?? r.work_order_id ?? "").toString().slice(0, 8) ||
+                        null;
 
                       return (
-                        <div
-                          key={r.id}
-                          className="rounded border border-neutral-800 bg-neutral-950"
-                        >
+                        <div key={r.id} className="rounded border border-neutral-800 bg-neutral-950">
                           <Link
                             href={`/parts/requests/${r.id}`}
                             className="block p-3 hover:border-orange-500"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                <div className="text-sm font-semibold">
-                                  WO: {woDisplayId ?? "—"}
-                                </div>
+                                <div className="text-sm font-semibold">WO: {woDisplayId ?? "—"}</div>
                                 <div className="text-xs text-neutral-400">
-                                  {r.created_at
-                                    ? new Date(
-                                        r.created_at,
-                                      ).toLocaleString()
-                                    : "—"}
+                                  {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
                                 </div>
                               </div>
                             </div>
@@ -327,9 +312,7 @@ export default function PartsRequestsPage() {
                                 </li>
                               ))}
                               {(r.items ?? []).length > 4 && (
-                                <li>
-                                  + {(r.items ?? []).length - 4} more…
-                                </li>
+                                <li>+ {(r.items ?? []).length - 4} more…</li>
                               )}
                             </ul>
                           </Link>

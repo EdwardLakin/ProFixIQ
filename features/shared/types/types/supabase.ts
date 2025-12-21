@@ -3126,6 +3126,7 @@ export type Database = {
           assigned_to: string | null
           created_at: string
           id: string
+          job_id: string | null
           notes: string | null
           requested_by: string | null
           shop_id: string
@@ -3136,6 +3137,7 @@ export type Database = {
           assigned_to?: string | null
           created_at?: string
           id?: string
+          job_id?: string | null
           notes?: string | null
           requested_by?: string | null
           shop_id: string
@@ -3146,13 +3148,36 @@ export type Database = {
           assigned_to?: string | null
           created_at?: string
           id?: string
+          job_id?: string | null
           notes?: string | null
           requested_by?: string | null
           shop_id?: string
           status?: Database["public"]["Enums"]["part_request_status"]
           work_order_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "part_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "part_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       part_returns: {
         Row: {
@@ -6952,6 +6977,7 @@ export type Database = {
           location_id: string
           part_id: string
           qty: number
+          source_request_item_id: string | null
           stock_move_id: string | null
           unit_cost: number
           work_order_id: string | null
@@ -6963,6 +6989,7 @@ export type Database = {
           location_id: string
           part_id: string
           qty: number
+          source_request_item_id?: string | null
           stock_move_id?: string | null
           unit_cost?: number
           work_order_id?: string | null
@@ -6974,6 +7001,7 @@ export type Database = {
           location_id?: string
           part_id?: string
           qty?: number
+          source_request_item_id?: string | null
           stock_move_id?: string | null
           unit_cost?: number
           work_order_id?: string | null
@@ -7006,6 +7034,13 @@ export type Database = {
             columns: ["part_id"]
             isOneToOne: false
             referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_source_request_item_id_fkey"
+            columns: ["source_request_item_id"]
+            isOneToOne: false
+            referencedRelation: "part_request_items"
             referencedColumns: ["id"]
           },
           {
@@ -7937,6 +7972,14 @@ export type Database = {
           p_vendor: string
         }
         Returns: undefined
+      }
+      upsert_part_allocation_from_request_item: {
+        Args: {
+          p_create_stock_move?: boolean
+          p_location_id: string
+          p_request_item_id: string
+        }
+        Returns: string
       }
       wo_release_parts_holds_for_part: {
         Args: { p_part_id: string }

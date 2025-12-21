@@ -22426,7 +22426,7 @@ export default function PortalRequestBuildPage() {
     setSubmitting(true);
 
     try {
-      let uploadedSigUrl: string | null = sigUrl;
+      const uploadedSigUrl: string | null = sigUrl;
 
       if (!uploadedSigUrl && opts.requireSignature) {
         toast.error("Signature required.");
