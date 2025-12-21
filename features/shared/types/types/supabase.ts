@@ -7905,6 +7905,7 @@ export type Database = {
         Returns: string
       }
       current_shop_id: { Args: never; Returns: string }
+      delete_part_request: { Args: { p_request_id: string }; Returns: string }
       first_segment_uuid: { Args: { p: string }; Returns: string }
       get_work_order_assignments: {
         Args: { p_work_order_id: string }

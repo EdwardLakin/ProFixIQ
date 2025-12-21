@@ -8,19 +8,14 @@ import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
-type Request = DB["public"]["Tables"]["part_requests"]["Row"];
-type Item = DB["public"]["Tables"]["part_request_items"]["Row"] & {
-  // schema is catching up
-  work_order_line_id?: string | null;
-  markup_pct?: number | null;
-  qty?: number | null;
-};
-type Status = Request["status"];
-type Part = DB["public"]["Tables"]["parts"]["Row"];
-type QuoteUpdate = DB["public"]["Tables"]["work_order_quote_lines"]["Update"];
-type StockLocation = DB["public"]["Tables"]["stock_locations"]["Row"];
 
-const DEFAULT_MARKUP = 30; // %
+type RequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
+type ItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
+type PartRow = DB["public"]["Tables"]["parts"]["Row"];
+type LocationRow = DB["public"]["Tables"]["stock_locations"]["Row"];
+type QuoteUpdate = DB["public"]["Tables"]["work_order_quote_lines"]["Update"];
+
+type Status = RequestRow["status"];
 
 type UpsertResponse = {
   ok: boolean;
@@ -30,43 +25,39 @@ type UpsertResponse = {
   detail?: string;
 };
 
-// ✅ no `any` — explicit shape for the columns we select
-type AllocationSelect = {
-  id: string;
-  source_request_item_id: string | null;
-  stock_move_id: string | null;
+type UiItem = ItemRow & {
+  ui_added: boolean; // staged/locked for quote
+  ui_part_id: string | null;
+  ui_qty: number;
+  ui_price: number | null; // sell/unit
 };
 
-type RpcUpsertAllocArgs = {
-  p_request_item_id: string;
-  p_location_id: string;
-  p_create_stock_move: boolean;
-};
+function toNum(v: unknown, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 export default function PartsRequestDetail() {
   const { id } = useParams<{ id: string }>();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  const [req, setReq] = useState<Request | null>(null);
-  const [items, setItems] = useState<Item[]>([]);
+  const [req, setReq] = useState<RequestRow | null>(null);
+  const [rows, setRows] = useState<UiItem[]>([]);
+  const [parts, setParts] = useState<PartRow[]>([]);
+  const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [locationId, setLocationId] = useState<string>("");
+
   const [loading, setLoading] = useState(true);
   const [addingItem, setAddingItem] = useState(false);
+  const [quoting, setQuoting] = useState(false);
 
-  const [parts, setParts] = useState<Part[]>([]);
-  const [markupPct, setMarkupPct] = useState<Record<string, number>>({});
-  const [savedRows, setSavedRows] = useState<Record<string, boolean>>({});
-  const [manualParts, setManualParts] = useState<
-    Record<string, { name: string; sku: string }>
-  >({});
-
-  // ✅ NEW: stock locations + allocation state (drives “Parts Used”)
-  const [locations, setLocations] = useState<StockLocation[]>([]);
-  const [locationId, setLocationId] = useState<string>("");
-  const [allocByRequestItemId, setAllocByRequestItemId] = useState<
-    Record<string, { allocation_id: string; stock_move_id: string | null }>
-  >({});
-  const [allocating, setAllocating] = useState(false);
+  const workOrderLineId = useMemo(() => {
+    for (const it of rows) {
+      if (it.work_order_line_id) return it.work_order_line_id;
+    }
+    return null;
+  }, [rows]);
 
   async function load() {
     setLoading(true);
@@ -83,94 +74,38 @@ export default function PartsRequestDetail() {
     const { data: its, error: itErr } = await supabase
       .from("part_request_items")
       .select("*")
-      .eq("request_id", id);
+      .eq("request_id", id)
+      .order("id", { ascending: true });
 
     if (itErr) toast.error(itErr.message);
-    const itemsList = (its ?? []) as Item[];
-    setItems(itemsList);
 
-    // inventory
+    const itemRows = (its ?? []) as ItemRow[];
+    const ui: UiItem[] = itemRows.map((row) => ({
+      ...row,
+      ui_added: false,
+      ui_part_id: row.part_id ?? null,
+      ui_qty: toNum(row.qty, 1),
+      ui_price: row.quoted_price == null ? null : toNum(row.quoted_price, 0),
+    }));
+    setRows(ui);
+
     if (r?.shop_id) {
-      const [{ data: ps }, { data: locs, error: locErr }] = await Promise.all([
-        supabase
-          .from("parts")
-          .select("*")
-          .eq("shop_id", r.shop_id)
-          .order("name")
-          .limit(500),
-        supabase
-          .from("stock_locations")
-          .select("id, shop_id, code, name")
-          .eq("shop_id", r.shop_id)
-          .order("name"),
+      const [{ data: ps }, { data: locs }] = await Promise.all([
+        supabase.from("parts").select("*").eq("shop_id", r.shop_id).order("name").limit(1000),
+        supabase.from("stock_locations").select("*").eq("shop_id", r.shop_id).order("code"),
       ]);
 
-      setParts(ps ?? []);
-      setLocations((locs ?? []) as StockLocation[]);
+      setParts((ps ?? []) as PartRow[]);
+      const locList = (locs ?? []) as LocationRow[];
+      setLocations(locList);
 
-      if (locErr) {
-        // eslint-disable-next-line no-console
-        console.warn("load stock_locations failed:", locErr.message);
-      }
-
-      const locList = (locs ?? []) as StockLocation[];
-      if (!locationId) {
-        if (locList.length === 1) setLocationId(locList[0].id as string);
-        else if (locList.length > 1) setLocationId("");
-      } else {
-        const stillExists = locList.some((l) => l.id === locationId);
-        if (!stillExists) setLocationId("");
+      // Auto-pick if only one location, or if none selected yet.
+      if (!locationId && locList.length === 1 && locList[0]?.id) {
+        setLocationId(String(locList[0].id));
       }
     } else {
       setParts([]);
       setLocations([]);
-      setLocationId("");
-    }
-
-    // markup init
-    const m: Record<string, number> = {};
-    for (const it of itemsList) {
-      m[it.id] =
-        typeof it.markup_pct === "number" && !Number.isNaN(it.markup_pct)
-          ? it.markup_pct
-          : DEFAULT_MARKUP;
-    }
-    setMarkupPct(m);
-
-    setSavedRows({});
-
-    // ✅ allocation lookup so UI reflects “Parts Used”
-    if (itemsList.length) {
-      const itemIds = itemsList.map((x) => x.id);
-
-      const { data: allocs, error: aErr } = await supabase
-        .from("work_order_part_allocations")
-        .select("id, source_request_item_id, stock_move_id")
-        .in("source_request_item_id", itemIds)
-        .returns<AllocationSelect[]>();
-
-      if (aErr) {
-        // eslint-disable-next-line no-console
-        console.warn("load allocations failed:", aErr.message);
-        setAllocByRequestItemId({});
-      } else {
-        const map: Record<
-          string,
-          { allocation_id: string; stock_move_id: string | null }
-        > = {};
-
-        for (const a of allocs ?? []) {
-          if (!a.source_request_item_id) continue;
-          map[a.source_request_item_id] = {
-            allocation_id: a.id,
-            stock_move_id: a.stock_move_id ?? null,
-          };
-        }
-
-        setAllocByRequestItemId(map);
-      }
-    } else {
-      setAllocByRequestItemId({});
     }
 
     setLoading(false);
@@ -181,37 +116,29 @@ export default function PartsRequestDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  function getLineIdFromItems(list: Item[]): string | null {
-    for (const it of list) {
-      if (it.work_order_line_id) return it.work_order_line_id;
-    }
-    return null;
-  }
-
   async function addItem() {
     if (!req) {
       toast.error("Request not loaded yet.");
       return;
     }
+
     setAddingItem(true);
     try {
-      const lineId = getLineIdFromItems(items);
-
-      const insertPayload: DB["public"]["Tables"]["part_request_items"]["Insert"] =
-        {
-          request_id: req.id,
-          work_order_line_id: lineId ?? null,
-          description: "",
-          qty: 1,
-          quoted_price: 0,
-          vendor: null,
-        };
+      const insertPayload: DB["public"]["Tables"]["part_request_items"]["Insert"] = {
+        request_id: req.id,
+        work_order_line_id: workOrderLineId ?? null,
+        description: "",
+        qty: 1,
+        quoted_price: null,
+        vendor: null,
+        part_id: null,
+      };
 
       const { data, error } = await supabase
         .from("part_request_items")
         .insert(insertPayload)
         .select("*")
-        .maybeSingle<Item>();
+        .maybeSingle<ItemRow>();
 
       if (error) {
         toast.error(error.message);
@@ -222,9 +149,15 @@ export default function PartsRequestDetail() {
         return;
       }
 
-      setItems((prev) => [...prev, data]);
-      setMarkupPct((prev) => ({ ...prev, [data.id]: DEFAULT_MARKUP }));
-      setSavedRows((prev) => ({ ...prev, [data.id]: false }));
+      const ui: UiItem = {
+        ...data,
+        ui_added: false,
+        ui_part_id: data.part_id ?? null,
+        ui_qty: toNum(data.qty, 1),
+        ui_price: data.quoted_price == null ? null : toNum(data.quoted_price, 0),
+      };
+
+      setRows((prev) => [...prev, ui]);
     } finally {
       setAddingItem(false);
     }
@@ -250,52 +183,139 @@ export default function PartsRequestDetail() {
       return;
     }
 
-    setItems((prev) => prev.filter((it) => it.id !== itemId));
-    setMarkupPct((prev) => {
-      const copy = { ...prev };
-      delete copy[itemId];
-      return copy;
-    });
-    setSavedRows((prev) => {
-      const copy = { ...prev };
-      delete copy[itemId];
-      return copy;
-    });
-    setManualParts((prev) => {
-      const copy = { ...prev };
-      delete copy[itemId];
-      return copy;
-    });
-    setAllocByRequestItemId((prev) => {
-      const copy = { ...prev };
-      delete copy[itemId];
-      return copy;
-    });
-
+    setRows((prev) => prev.filter((x) => x.id !== itemId));
     toast.success("Item removed.");
   }
 
-  async function setStatus(s: Status) {
-    const { error } = await supabase.rpc("set_part_request_status", {
-      p_request: id,
-      p_status: s,
-    });
+  function updateRow(itemId: string, patch: Partial<UiItem>) {
+    setRows((prev) => prev.map((x) => (x.id === itemId ? ({ ...x, ...patch } as UiItem) : x)));
+  }
 
-    if (error) {
-      toast.error(error.message);
+  function stageAddToLine(itemId: string) {
+    const it = rows.find((x) => x.id === itemId);
+    if (!it) return;
+
+    const partId = it.ui_part_id;
+    const qty = toNum(it.ui_qty, 0);
+    const price = it.ui_price;
+
+    if (!partId) {
+      toast.error("Pick a stock part first.");
+      return;
+    }
+    if (!qty || qty <= 0) {
+      toast.error("Enter a quantity greater than 0.");
+      return;
+    }
+    if (price == null || !Number.isFinite(price)) {
+      toast.error("Price is missing.");
       return;
     }
 
-    if (s === "quoted") {
-      const lineId = getLineIdFromItems(items);
+    updateRow(itemId, { ui_added: true });
+  }
 
-      if (!lineId) {
-        toast.success("Parts request marked as quoted.");
-        await load();
-        window.dispatchEvent(new Event("parts-request:submitted"));
+  function unstage(itemId: string) {
+    updateRow(itemId, { ui_added: false });
+  }
+
+  const totalSell = useMemo(() => {
+    let sum = 0;
+    for (const it of rows) {
+      if (!it.ui_added) continue;
+      const qty = toNum(it.ui_qty, 0);
+      const price = it.ui_price ?? 0;
+      sum += price * qty;
+    }
+    return sum;
+  }, [rows]);
+
+  const allAdded = useMemo(() => {
+    if (rows.length === 0) return false;
+    return rows.every((it) => it.ui_added && !!it.ui_part_id && toNum(it.ui_qty, 0) > 0 && it.ui_price != null);
+  }, [rows]);
+
+  async function markQuoted() {
+    if (!req) return;
+
+    if (!workOrderLineId) {
+      toast.error("Missing work order line id for this request.");
+      return;
+    }
+
+    // If you’re allocating inventory / creating stock moves, location is required.
+    if (!locationId) {
+      toast.error("Select a stock location first.");
+      return;
+    }
+
+    if (!allAdded) {
+      toast.error("Add all parts to the line before quoting.");
+      return;
+    }
+
+    setQuoting(true);
+    try {
+      // 1) Persist all items (ONE SAVE: on Quote)
+      for (const it of rows) {
+        const partId = it.ui_part_id;
+        const qty = toNum(it.ui_qty, 1);
+        const price = it.ui_price;
+
+        if (!partId || price == null) {
+          toast.error("Some rows are missing a part or price.");
+          return;
+        }
+
+        const part = parts.find((p) => String(p.id) === partId);
+        const desc = (part?.name ?? it.description ?? "").trim();
+
+        const { error } = await supabase
+          .from("part_request_items")
+          .update({
+            part_id: partId,
+            description: desc || it.description || "Part",
+            qty,
+            // Store SELL price here (your WO side only needs description/qty/price)
+            quoted_price: price,
+            vendor: null,
+            markup_pct: null,
+          })
+          .eq("id", it.id);
+
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+      }
+
+      // 2) Allocate inventory + stock move (idempotent per source_request_item_id)
+      for (const it of rows) {
+        const { error } = await supabase.rpc("upsert_part_allocation_from_request_item", {
+          p_request_item_id: it.id,
+          p_location_id: locationId,
+          p_create_stock_move: true,
+        });
+
+        if (error) {
+          // This is where INSUFFICIENT_STOCK will show up
+          toast.error(error.message);
+          return;
+        }
+      }
+
+      // 3) Set request status => quoted
+      const { error: statusErr } = await supabase.rpc("set_part_request_status", {
+        p_request: id,
+        p_status: "quoted" satisfies Status,
+      });
+
+      if (statusErr) {
+        toast.error(statusErr.message);
         return;
       }
 
+      // 4) Update WO line status so WO UI reflects it
       const { error: wolErr } = await supabase
         .from("work_order_lines")
         .update({
@@ -303,53 +323,36 @@ export default function PartsRequestDetail() {
           approval_state: "pending",
           hold_reason: "Parts quote ready – awaiting customer approval",
         } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", lineId);
+        .eq("id", workOrderLineId);
 
       if (wolErr) {
         toast.error(`Quoted, but WO line update failed: ${wolErr.message}`);
-        await load();
         return;
       }
 
-      if (req?.work_order_id) {
-        let partsTotalForLine = 0;
-
-        for (const it of items) {
-          if (it.work_order_line_id !== lineId) continue;
-
-          const cost =
-            typeof it.quoted_price === "number" && !Number.isNaN(it.quoted_price)
-              ? it.quoted_price
-              : 0;
-
-          const m = markupPct[it.id] ?? DEFAULT_MARKUP;
-          const unitSell = cost * (1 + m / 100);
-
-          const qty = typeof it.qty === "number" && it.qty > 0 ? Number(it.qty) : 0;
-
-          partsTotalForLine += unitSell * qty;
-        }
-
+      // 5) Sync quote totals (sell total)
+      if (req.work_order_id) {
         const { error: quoteErr } = await supabase
           .from("work_order_quote_lines")
           .update({
             stage: "advisor_pending",
-            parts_total: partsTotalForLine,
-            grand_total: partsTotalForLine,
+            parts_total: totalSell,
+            grand_total: totalSell,
           } as QuoteUpdate)
           .match({
             work_order_id: req.work_order_id,
-            work_order_line_id: lineId,
+            work_order_line_id: workOrderLineId,
           });
 
         if (quoteErr) toast.warning(`WO quote totals not synced: ${quoteErr.message}`);
       }
 
+      // 6) Menu save (best-effort)
       try {
         const res = await fetch("/api/menu-items/upsert-from-line", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workOrderLineId: lineId }),
+          body: JSON.stringify({ workOrderLineId }),
         });
 
         const j = (await res.json().catch(() => null)) as UpsertResponse | null;
@@ -371,260 +374,15 @@ export default function PartsRequestDetail() {
         toast.warning(msg);
       }
 
+      // 7) Notify WO page listeners
       window.dispatchEvent(new Event("parts-request:submitted"));
 
       toast.success("Parts request marked as quoted.");
-      await load();
-      return;
-    }
-
-    toast.success(`Parts request marked as ${String(s)}.`);
-    await load();
-  }
-
-  async function saveLine(it: Item) {
-    const qty =
-      typeof it.qty === "number" && !Number.isNaN(it.qty) ? it.qty : null;
-
-    if (!qty || qty <= 0) {
-      toast.error("Enter a quantity greater than 0 before saving.");
-      return;
-    }
-
-    const cost =
-      typeof it.quoted_price === "number" && !Number.isNaN(it.quoted_price)
-        ? it.quoted_price
-        : 0;
-
-    const m = markupPct[it.id] ?? DEFAULT_MARKUP;
-
-    const { error } = await supabase
-      .from("part_request_items")
-      .update({
-        description: (it.description ?? "").trim(),
-        part_id: it.part_id ?? null,
-        vendor: it.vendor ?? null,
-        quoted_price: cost,
-        qty,
-        markup_pct: m,
-      })
-      .eq("id", it.id);
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-
-    setSavedRows((prev) => ({ ...prev, [it.id]: true }));
-    toast.success("Line saved");
-  }
-
-  async function attachPartToItem(itemId: string, partId: string) {
-    if (!partId) {
-      const { error } = await supabase
-        .from("part_request_items")
-        .update({ part_id: null })
-        .eq("id", itemId);
-
-      if (error) toast.error(error.message);
-      setSavedRows((prev) => ({ ...prev, [itemId]: false }));
-      await load();
-      return;
-    }
-
-    const p = parts.find((x) => x.id === partId);
-    const desc = p?.name ?? "";
-
-    const { error } = await supabase
-      .from("part_request_items")
-      .update({
-        part_id: partId,
-        description: desc,
-      })
-      .eq("id", itemId);
-
-    if (error) {
-      toast.error("Cannot attach part — check RLS.");
-      return;
-    }
-
-    setManualParts((prev) => {
-      const copy = { ...prev };
-      delete copy[itemId];
-      return copy;
-    });
-
-    setSavedRows((prev) => ({ ...prev, [itemId]: false }));
-    await load();
-  }
-
-  async function createManualPartAndAttach(itemId: string, name: string, sku: string) {
-    const item = items.find((x) => x.id === itemId);
-    if (!item) return;
-
-    if (!req?.shop_id) {
-      toast.error("Cannot create part — missing shop.");
-      return;
-    }
-    if (!name.trim()) {
-      toast.error("Enter a name for the part.");
-      return;
-    }
-
-    const { data: inserted, error } = await supabase
-      .from("parts")
-      .insert({
-        shop_id: req.shop_id,
-        name: name.trim(),
-        sku: sku.trim() || null,
-      })
-      .select("*")
-      .maybeSingle<Part>();
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    if (!inserted) {
-      toast.error("Unable to create part.");
-      return;
-    }
-
-    const { error: attachErr } = await supabase
-      .from("part_request_items")
-      .update({
-        part_id: inserted.id,
-        description: inserted.name ?? name.trim(),
-      })
-      .eq("id", itemId);
-
-    if (attachErr) {
-      toast.error(attachErr.message);
-      return;
-    }
-
-    toast.success("Part created and attached.");
-    setManualParts((prev) => {
-      const copy = { ...prev };
-      delete copy[itemId];
-      return copy;
-    });
-
-    await load();
-  }
-
-  async function allocateOne(requestItemId: string) {
-    if (!locationId) {
-      toast.error("Select a stock location first.");
-      return;
-    }
-
-    const already = allocByRequestItemId[requestItemId];
-    if (already?.allocation_id) {
-      toast.message("Already allocated from this request item.");
-      return;
-    }
-
-    const { data, error } = await supabase.rpc(
-      "upsert_part_allocation_from_request_item",
-      {
-        p_request_item_id: requestItemId,
-        p_location_id: locationId,
-        p_create_stock_move: true,
-      } as RpcUpsertAllocArgs,
-    );
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-
-    const allocId = typeof data === "string" ? data : null;
-    if (!allocId) {
-      toast.error("Allocation not created (no id returned).");
-      return;
-    }
-
-    window.dispatchEvent(new Event("wo:parts-used"));
-    window.dispatchEvent(new Event("parts-request:submitted"));
-    toast.success("Allocated to work order.");
-    await load();
-  }
-
-  async function allocateAllEligible() {
-    if (!locationId) {
-      toast.error("Select a stock location first.");
-      return;
-    }
-
-    const eligible = items.filter((it) => {
-      if (!it.id) return false;
-      if (!it.part_id) return false;
-      if (!it.work_order_line_id) return false;
-      if (allocByRequestItemId[it.id]?.allocation_id) return false;
-      return true;
-    });
-
-    if (eligible.length === 0) {
-      toast.message("No eligible items to allocate.");
-      return;
-    }
-
-    setAllocating(true);
-    try {
-      for (const it of eligible) {
-        const { data, error } = await supabase.rpc(
-          "upsert_part_allocation_from_request_item",
-          {
-            p_request_item_id: it.id as string,
-            p_location_id: locationId,
-            p_create_stock_move: true,
-          } as RpcUpsertAllocArgs,
-        );
-
-        if (error) {
-          toast.error(`${it.description || "Item"}: ${error.message}`);
-          return;
-        }
-
-        const allocId = typeof data === "string" ? data : null;
-        if (!allocId) {
-          toast.error(`${it.description || "Item"}: allocation did not return an id.`);
-          return;
-        }
-      }
-
-      window.dispatchEvent(new Event("wo:parts-used"));
-      window.dispatchEvent(new Event("parts-request:submitted"));
-      toast.success("Allocated eligible items.");
-      await load();
+      router.back();
     } finally {
-      setAllocating(false);
+      setQuoting(false);
     }
   }
-
-  const grandTotals = (() => {
-    let sum = 0;
-    for (const it of items) {
-      const cost =
-        typeof it.quoted_price === "number" && !Number.isNaN(it.quoted_price)
-          ? it.quoted_price
-          : 0;
-      const m = markupPct[it.id] ?? DEFAULT_MARKUP;
-      const unitSell = cost * (1 + m / 100);
-      const qty = typeof it.qty === "number" && it.qty > 0 ? Number(it.qty) : 0;
-      sum += unitSell * qty;
-    }
-    return sum;
-  })();
-
-  const eligibleCount = items.filter((it) => {
-    if (!it.id) return false;
-    if (!it.part_id) return false;
-    if (!it.work_order_line_id) return false;
-    if (allocByRequestItemId[it.id]?.allocation_id) return false;
-    return true;
-  }).length;
 
   return (
     <div className="space-y-4 p-6 text-white">
@@ -653,188 +411,109 @@ export default function PartsRequestDetail() {
 
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-neutral-700 bg-neutral-950 px-3 py-1 text-xs capitalize text-neutral-200">
-                  Status: {req.status}
+                  Status: {req.status ?? "requested"}
                 </span>
+
+                <button
+                  className="rounded border border-neutral-600 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-100 hover:bg-neutral-800 disabled:opacity-60"
+                  onClick={() => void addItem()}
+                  disabled={addingItem || quoting}
+                >
+                  {addingItem ? "Adding…" : "＋ Add part row"}
+                </button>
 
                 {req.status !== "quoted" && (
                   <button
-                    className="rounded border border-orange-500 px-3 py-1.5 text-sm text-orange-300 hover:bg-orange-500/10"
-                    onClick={() => void setStatus("quoted")}
+                    className="rounded border border-orange-500 px-3 py-1.5 text-sm text-orange-300 hover:bg-orange-500/10 disabled:opacity-60"
+                    onClick={() => void markQuoted()}
+                    disabled={quoting || !allAdded}
+                    title={!allAdded ? "Add all parts to line first" : ""}
                   >
-                    Mark Quoted
+                    {quoting ? "Quoting…" : "Mark Quoted"}
                   </button>
                 )}
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-800 pt-3">
+            <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div className="text-xs text-neutral-400">
+                Add parts from stock, lock them to the line, then press <span className="text-neutral-200">Mark Quoted</span>{" "}
+                once.
+              </div>
+
               <div className="flex items-center gap-2">
-                <span className="text-xs text-neutral-400">Stock location</span>
+                <div className="text-xs text-neutral-400">Stock location</div>
                 <select
-                  className="min-w-[220px] rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-white"
+                  className="w-56 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
                   value={locationId}
                   onChange={(e) => setLocationId(e.target.value)}
+                  disabled={quoting || locations.length === 0}
                 >
-                  <option value="">— select location —</option>
+                  <option value="">— select —</option>
                   {locations.map((l) => (
-                    <option key={l.id} value={l.id as string}>
+                    <option key={String(l.id)} value={String(l.id)}>
                       {l.code ? `${l.code} — ${l.name}` : l.name}
                     </option>
                   ))}
                 </select>
               </div>
-
-              <button
-                type="button"
-                className="rounded border border-blue-600 px-3 py-1.5 text-xs font-semibold text-blue-200 hover:bg-blue-900/20 disabled:opacity-60"
-                onClick={() => void allocateAllEligible()}
-                disabled={allocating || !locationId || eligibleCount === 0}
-              >
-                {allocating ? "Allocating…" : `Allocate eligible (${eligibleCount})`}
-              </button>
-
-              <span className="text-[11px] text-neutral-500">
-                Allocations drive the Work Order “Parts used” section.
-              </span>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-neutral-200">Items in this request</h2>
-              <button
-                type="button"
-                className="inline-flex items-center rounded border border-neutral-600 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-100 hover:bg-neutral-800 disabled:opacity-60"
-                onClick={() => void addItem()}
-                disabled={addingItem}
-              >
-                {addingItem ? "Adding…" : "＋ Add item"}
-              </button>
-            </div>
+          <div className="overflow-hidden rounded border border-neutral-800">
+            <table className="w-full text-sm">
+              <thead className="bg-neutral-900 text-neutral-400">
+                <tr>
+                  <th className="p-2 text-left">Stock part</th>
+                  <th className="p-2 text-left">Description</th>
+                  <th className="p-2 text-right">Qty</th>
+                  <th className="p-2 text-right">Price (unit)</th>
+                  <th className="p-2 text-right">Line total</th>
+                  <th className="w-40 p-2" />
+                </tr>
+              </thead>
 
-            <div className="overflow-hidden rounded border border-neutral-800">
-              <table className="w-full text-sm">
-                <thead className="bg-neutral-900 text-neutral-400">
-                  <tr>
-                    <th className="p-2 text-left">Inventory</th>
-                    <th className="p-2 text-left">Description</th>
-                    <th className="p-2 text-right">Qty</th>
-                    <th className="p-2 text-left">Vendor</th>
-                    <th className="p-2 text-right">Cost (unit)</th>
-                    <th className="p-2 text-right">Markup %</th>
-                    <th className="p-2 text-right">Sell (unit)</th>
-                    <th className="p-2 text-right">Line total</th>
-                    <th className="w-40 p-2" />
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr className="border-t border-neutral-800">
+                    <td className="p-3 text-sm text-neutral-500" colSpan={6}>
+                      No items yet. Click “Add part row”.
+                    </td>
                   </tr>
-                </thead>
-
-                <tbody>
-                  {items.map((it) => {
-                    const cost =
-                      typeof it.quoted_price === "number" && !Number.isNaN(it.quoted_price)
-                        ? it.quoted_price
-                        : 0;
-                    const m = markupPct[it.id] ?? DEFAULT_MARKUP;
-                    const qty = typeof it.qty === "number" && it.qty > 0 ? it.qty : null;
-                    const unitSell = cost * (1 + m / 100);
-                    const lineTotal = unitSell * (qty ?? 0);
-                    const isSaved = savedRows[it.id] === true;
-
-                    const manual = manualParts[it.id] || { name: "", sku: "" };
-                    const hasStockPart = !!it.part_id;
-
-                    const alloc = allocByRequestItemId[it.id];
-                    const isAllocated = !!alloc?.allocation_id;
-
-                    const canAllocate =
-                      !!locationId && !!it.part_id && !!it.work_order_line_id && !isAllocated;
+                ) : (
+                  rows.map((it) => {
+                    const locked = it.ui_added || quoting;
+                    const qty = toNum(it.ui_qty, 0);
+                    const price = it.ui_price ?? 0;
+                    const lineTotal = qty > 0 ? price * qty : 0;
 
                     return (
-                      <tr
-                        key={it.id}
-                        className={`border-t border-neutral-800 ${
-                          isSaved ? "bg-neutral-900/50 text-neutral-400" : ""
-                        }`}
-                      >
+                      <tr key={String(it.id)} className="border-t border-neutral-800">
                         <td className="p-2 align-top">
-                          <div className="flex flex-col gap-1">
-                            <select
-                              className="w-40 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
-                              value={it.part_id ?? ""}
-                              onChange={(e) => {
-                                setSavedRows((prev) => ({ ...prev, [it.id]: false }));
-                                void attachPartToItem(it.id, e.target.value);
-                              }}
-                              disabled={isSaved}
-                            >
-                              <option value="">— select —</option>
-                              {parts.map((p) => (
-                                <option key={p.id} value={p.id as string}>
-                                  {p.sku ? `${p.sku} — ${p.name}` : p.name}
-                                </option>
-                              ))}
-                            </select>
-
-                            {!hasStockPart && (
-                              <>
-                                <div className="flex gap-1">
-                                  <input
-                                    className="flex-1 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
-                                    placeholder="Manual part name"
-                                    value={manual.name}
-                                    onChange={(e) =>
-                                      setManualParts((prev) => ({
-                                        ...prev,
-                                        [it.id]: {
-                                          name: e.target.value,
-                                          sku: prev[it.id]?.sku ?? "",
-                                        },
-                                      }))
-                                    }
-                                    disabled={isSaved}
-                                  />
-                                  <input
-                                    className="w-20 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
-                                    placeholder="SKU"
-                                    value={manual.sku}
-                                    onChange={(e) =>
-                                      setManualParts((prev) => ({
-                                        ...prev,
-                                        [it.id]: {
-                                          name: prev[it.id]?.name ?? "",
-                                          sku: e.target.value,
-                                        },
-                                      }))
-                                    }
-                                    disabled={isSaved}
-                                  />
-                                </div>
-
-                                <button
-                                  className="rounded border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-50"
-                                  onClick={() =>
-                                    void createManualPartAndAttach(it.id, manual.name, manual.sku)
-                                  }
-                                  disabled={isSaved}
-                                >
-                                  Add & attach
-                                </button>
-                              </>
-                            )}
-
-                            {isAllocated ? (
-                              <div className="inline-flex items-center gap-2 text-[11px]">
-                                <span className="rounded-full border border-emerald-700/60 bg-emerald-900/20 px-2 py-0.5 font-semibold text-emerald-200">
-                                  Allocated
-                                </span>
-                                {alloc?.stock_move_id ? (
-                                  <span className="text-neutral-500">Stock moved</span>
-                                ) : (
-                                  <span className="text-neutral-500">No stock move</span>
-                                )}
-                              </div>
-                            ) : null}
-                          </div>
+                          <select
+                            className="w-72 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
+                            value={it.ui_part_id ?? ""}
+                            onChange={(e) => {
+                              const partId = e.target.value || null;
+                              const p = parts.find((x) => String(x.id) === String(partId));
+                              updateRow(String(it.id), {
+                                ui_part_id: partId,
+                                part_id: partId,
+                                description: (p?.name ?? it.description ?? "").trim(),
+                                // Default price from stock part (sell price)
+                                ui_price: p?.price == null ? null : toNum(p.price, 0),
+                                ui_added: false,
+                              });
+                            }}
+                            disabled={locked}
+                          >
+                            <option value="">— select —</option>
+                            {parts.map((p) => (
+                              <option key={String(p.id)} value={String(p.id)}>
+                                {p.sku ? `${p.sku} — ${p.name}` : p.name}
+                              </option>
+                            ))}
+                          </select>
                         </td>
 
                         <td className="p-2 align-top">
@@ -842,16 +521,8 @@ export default function PartsRequestDetail() {
                             className="w-full rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
                             value={it.description ?? ""}
                             placeholder="Description"
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setItems((prev) =>
-                                prev.map((x) =>
-                                  x.id === it.id ? ({ ...x, description: v } as Item) : x,
-                                ),
-                              );
-                              setSavedRows((prev) => ({ ...prev, [it.id]: false }));
-                            }}
-                            disabled={isSaved}
+                            onChange={(e) => updateRow(String(it.id), { description: e.target.value, ui_added: false })}
+                            disabled={locked}
                           />
                         </td>
 
@@ -861,34 +532,13 @@ export default function PartsRequestDetail() {
                             min={1}
                             step={1}
                             className="w-16 rounded border border-neutral-700 bg-neutral-900 p-1 text-right disabled:opacity-50"
-                            value={qty ?? ""}
+                            value={Number.isFinite(it.ui_qty) ? String(it.ui_qty) : "1"}
                             onChange={(e) => {
                               const raw = e.target.value;
-                              setItems((prev) =>
-                                prev.map((x) =>
-                                  x.id === it.id
-                                    ? ({ ...x, qty: raw === "" ? null : Number(raw) } as Item)
-                                    : x,
-                                ),
-                              );
-                              setSavedRows((prev) => ({ ...prev, [it.id]: false }));
+                              const nextQty = raw === "" ? 1 : Math.max(1, Math.floor(toNum(raw, 1)));
+                              updateRow(String(it.id), { ui_qty: nextQty, ui_added: false });
                             }}
-                            disabled={isSaved}
-                          />
-                        </td>
-
-                        <td className="p-2 align-top">
-                          <input
-                            className="w-32 rounded border border-neutral-700 bg-neutral-900 p-1 disabled:opacity-50"
-                            value={it.vendor ?? ""}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setItems((prev) =>
-                                prev.map((x) => (x.id === it.id ? { ...x, vendor: v } : x)),
-                              );
-                              setSavedRows((prev) => ({ ...prev, [it.id]: false }));
-                            }}
-                            disabled={isSaved}
+                            disabled={locked}
                           />
                         </td>
 
@@ -897,92 +547,73 @@ export default function PartsRequestDetail() {
                             type="number"
                             step={0.01}
                             className="w-24 rounded border border-neutral-700 bg-neutral-900 p-1 text-right disabled:opacity-50"
-                            value={cost === 0 ? "" : cost}
+                            value={it.ui_price == null ? "" : String(it.ui_price)}
                             onChange={(e) => {
                               const raw = e.target.value;
-                              const v = raw === "" ? null : Number(raw);
-                              setItems((prev) =>
-                                prev.map((x) =>
-                                  x.id === it.id ? ({ ...x, quoted_price: v } as Item) : x,
-                                ),
-                              );
-                              setSavedRows((prev) => ({ ...prev, [it.id]: false }));
+                              updateRow(String(it.id), {
+                                ui_price: raw === "" ? null : toNum(raw, 0),
+                                ui_added: false,
+                              });
                             }}
-                            disabled={isSaved}
+                            disabled={locked}
                           />
                         </td>
 
-                        <td className="p-2 text-right align-top">
-                          <input
-                            type="number"
-                            step={1}
-                            className="w-20 rounded border border-neutral-700 bg-neutral-900 p-1 text-right disabled:opacity-50"
-                            value={m}
-                            onChange={(e) => {
-                              setMarkupPct((prev) => ({
-                                ...prev,
-                                [it.id]: Math.max(0, Number(e.target.value || DEFAULT_MARKUP)),
-                              }));
-                              setSavedRows((prev) => ({ ...prev, [it.id]: false }));
-                            }}
-                            disabled={isSaved}
-                          />
-                        </td>
-
-                        <td className="p-2 text-right tabular-nums align-top">{unitSell.toFixed(2)}</td>
                         <td className="p-2 text-right tabular-nums align-top">{lineTotal.toFixed(2)}</td>
 
                         <td className="p-2 align-top">
                           <div className="flex flex-col items-stretch gap-1">
-                            <button
-                              className={`rounded border px-2 py-1 text-xs ${
-                                isSaved
-                                  ? "cursor-default border-neutral-700 bg-neutral-800/60 text-neutral-300"
-                                  : "border-neutral-700 hover:bg-neutral-800"
-                              }`}
-                              onClick={() => !isSaved && void saveLine(it)}
-                              disabled={isSaved}
-                            >
-                              {isSaved ? "Saved" : "Save"}
-                            </button>
+                            {!it.ui_added ? (
+                              <button
+                                className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-60"
+                                onClick={() => stageAddToLine(String(it.id))}
+                                disabled={quoting}
+                              >
+                                Add to line
+                              </button>
+                            ) : (
+                              <button
+                                className="rounded border border-orange-500 px-2 py-1 text-xs text-orange-300 hover:bg-orange-500/10 disabled:opacity-60"
+                                onClick={() => unstage(String(it.id))}
+                                disabled={quoting}
+                              >
+                                Added ✓ (undo)
+                              </button>
+                            )}
 
                             <button
-                              className="rounded border border-red-700 px-2 py-1 text-xs text-red-200 hover:bg-red-900/40"
-                              onClick={() => void deleteLine(it.id as string)}
+                              className="rounded border border-red-700 px-2 py-1 text-xs text-red-200 hover:bg-red-900/40 disabled:opacity-60"
+                              onClick={() => void deleteLine(String(it.id))}
+                              disabled={quoting}
                             >
                               Delete
-                            </button>
-
-                            <button
-                              className={`rounded border px-2 py-1 text-xs ${
-                                canAllocate
-                                  ? "border-emerald-600 text-emerald-200 hover:bg-emerald-900/20"
-                                  : "border-neutral-700 text-neutral-400 opacity-70"
-                              }`}
-                              onClick={() => void allocateOne(it.id as string)}
-                              disabled={!canAllocate || allocating}
-                            >
-                              {isAllocated ? "Allocated" : "Allocate to WO"}
                             </button>
                           </div>
                         </td>
                       </tr>
                     );
-                  })}
-                </tbody>
+                  })
+                )}
+              </tbody>
 
-                <tfoot>
-                  <tr className="bg-neutral-900/50">
-                    <td className="p-2 text-right" colSpan={7}>
-                      <span className="text-sm text-neutral-300">Total (with markup)</span>
-                    </td>
-                    <td className="p-2 text-right tabular-nums font-semibold">{grandTotals.toFixed(2)}</td>
-                    <td />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+              <tfoot>
+                <tr className="bg-neutral-900/50">
+                  <td className="p-2 text-right" colSpan={4}>
+                    <span className="text-sm text-neutral-300">Total (added parts)</span>
+                  </td>
+                  <td className="p-2 text-right tabular-nums font-semibold">{totalSell.toFixed(2)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
           </div>
+
+          {!allAdded && rows.length > 0 && req.status !== "quoted" && (
+            <div className="text-xs text-neutral-500">
+              Tip: Click <span className="text-neutral-200">Add to line</span> on every row, then press{" "}
+              <span className="text-neutral-200">Mark Quoted</span>.
+            </div>
+          )}
         </>
       )}
     </div>
