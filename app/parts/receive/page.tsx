@@ -6,13 +6,35 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveScannedCode } from "@/features/parts/server/scanActions";
 
-// Quagga (typed shim)
-type QuaggaModule = typeof import("@ericblade/quagga2");
 type QuaggaResult = { codeResult?: { code?: string | null } | null };
-let Quagga: QuaggaModule["default"] | null = null;
+
+type QuaggaConfig = {
+  inputStream: {
+    name: string;
+    type: "LiveStream";
+    target: HTMLElement;
+    constraints?: { facingMode?: string };
+  };
+  decoder: { readers: string[] };
+  locate?: boolean;
+};
+
+type QuaggaDetectedHandler = (res: QuaggaResult) => void;
+
+type QuaggaLike = {
+  init: (cfg: QuaggaConfig, cb: (err?: Error) => void) => void;
+  start: () => void;
+  stop: () => void;
+  onDetected: (handler: QuaggaDetectedHandler) => void;
+  offDetected?: (handler: QuaggaDetectedHandler) => void;
+};
+
+let Quagga: QuaggaLike | null = null;
+
 if (typeof window !== "undefined") {
   void import("@ericblade/quagga2").then((m) => {
-    Quagga = m.default;
+    // quagga2 default export is the Quagga API object
+    Quagga = (m.default as unknown) as QuaggaLike;
   });
 }
 
@@ -33,9 +55,8 @@ export default function ReceivePage(): JSX.Element {
   const [scanning, setScanning] = useState<boolean>(false);
   const [qty, setQty] = useState<number>(1);
 
-  const onDetectedRef = useRef<((res: QuaggaResult) => void) | null>(null);
+  const onDetectedRef = useRef<QuaggaDetectedHandler | null>(null);
 
-  // bootstrap: shop, POs, locations
   useEffect(() => {
     (async () => {
       const { data: userRes } = await supabase.auth.getUser();
@@ -80,8 +101,8 @@ export default function ReceivePage(): JSX.Element {
 
   const cleanupScannerHandlers = () => {
     try {
-      if (Quagga && onDetectedRef.current && (Quagga as any).offDetected) {
-        (Quagga as any).offDetected(onDetectedRef.current);
+      if (Quagga && onDetectedRef.current && typeof Quagga.offDetected === "function") {
+        Quagga.offDetected(onDetectedRef.current);
       }
     } catch {
       // ignore
@@ -89,7 +110,6 @@ export default function ReceivePage(): JSX.Element {
     onDetectedRef.current = null;
   };
 
-  // start/stop camera
   const startScan = async () => {
     if (!Quagga || scanning || !videoRef.current) return;
 
@@ -104,18 +124,13 @@ export default function ReceivePage(): JSX.Element {
           constraints: { facingMode: "environment" },
         },
         decoder: {
-          readers: [
-            "upc_reader",
-            "upc_e_reader",
-            "ean_reader",
-            "ean_8_reader",
-            "code_128_reader",
-          ],
+          readers: ["upc_reader", "upc_e_reader", "ean_reader", "ean_8_reader", "code_128_reader"],
         },
         locate: true,
       },
       (err?: Error) => {
         if (err) {
+          // eslint-disable-next-line no-console
           console.error(err);
           setScanning(false);
           return;
@@ -126,14 +141,13 @@ export default function ReceivePage(): JSX.Element {
 
     cleanupScannerHandlers();
 
-    const handler = async (res: QuaggaResult) => {
+    const handler: QuaggaDetectedHandler = async (res) => {
       const code = res.codeResult?.code ?? "";
       if (!code || code === lastScan) return;
 
       setLastScan(code);
 
-      const supplierId =
-        pos.find((p) => p.id === selectedPo)?.supplier_id ?? null;
+      const supplierId = pos.find((p) => p.id === selectedPo)?.supplier_id ?? null;
 
       const { part_id } = await resolveScannedCode({
         code,
@@ -141,9 +155,7 @@ export default function ReceivePage(): JSX.Element {
       });
 
       if (!part_id) {
-        alert(
-          `No part found for "${code}". Map it in Parts → Inventory → Edit → Barcodes.`,
-        );
+        alert(`No part found for "${code}". Map it in Parts → Inventory → Edit → Barcodes.`);
         return;
       }
 
@@ -171,7 +183,6 @@ export default function ReceivePage(): JSX.Element {
     };
 
     onDetectedRef.current = handler;
-
     Quagga.onDetected(handler);
   };
 
@@ -196,9 +207,7 @@ export default function ReceivePage(): JSX.Element {
 
       <div className="rounded border border-neutral-800 bg-neutral-900 p-3 grid gap-3 sm:grid-cols-3">
         <div className="sm:col-span-1">
-          <div className="text-xs text-neutral-400 mb-1">
-            Purchase Order (optional)
-          </div>
+          <div className="text-xs text-neutral-400 mb-1">Purchase Order (optional)</div>
           <select
             className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
             value={selectedPo}
@@ -258,9 +267,7 @@ export default function ReceivePage(): JSX.Element {
               Stop Scanner
             </button>
           )}
-          <span className="text-xs text-neutral-400">
-            Use mobile camera to scan UPC/EAN/Code128.
-          </span>
+          <span className="text-xs text-neutral-400">Use mobile camera to scan UPC/EAN/Code128.</span>
         </div>
 
         <div

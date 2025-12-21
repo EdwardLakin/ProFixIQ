@@ -1,3 +1,4 @@
+// app/api/portal/request/add-inspection-line/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
       data: { user },
       error: authErr,
     } = await supabase.auth.getUser();
+
     if (authErr || !user) return bad("Not authenticated", 401);
 
     let body: Body;
@@ -33,11 +35,14 @@ export async function POST(req: Request) {
       return bad("Invalid JSON body");
     }
 
-    const workOrderId = (body?.workOrderId ?? "").trim();
-    const templateId = (body?.templateId ?? "").trim();
-    if (!workOrderId || !templateId) return bad("Missing workOrderId or templateId");
+    const workOrderId = (body.workOrderId ?? "").trim();
+    const templateId = (body.templateId ?? "").trim();
 
-    // Resolve portal customer
+    if (!workOrderId || !templateId) {
+      return bad("Missing workOrderId or templateId");
+    }
+
+    // Resolve portal customer (customer owns this auth user)
     const { data: customer, error: custErr } = await supabase
       .from("customers")
       .select("id, shop_id")
@@ -47,10 +52,10 @@ export async function POST(req: Request) {
     if (custErr) return bad(custErr.message, 500);
     if (!customer?.id) return bad("Customer profile not found", 404);
 
-    // Load WO + ensure ownership
+    // Load WO + ensure customer owns it
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
-      .select("id, shop_id, customer_id")
+      .select("id, shop_id, customer_id, vehicle_id")
       .eq("id", workOrderId)
       .maybeSingle();
 
@@ -58,7 +63,7 @@ export async function POST(req: Request) {
     if (!wo) return bad("Work order not found", 404);
     if (wo.customer_id !== customer.id) return bad("Not allowed", 403);
 
-    // Load template + ensure same shop
+    // Load template + ensure same shop + active
     const { data: tpl, error: tErr } = await supabase
       .from("inspection_templates")
       .select("id, shop_id, name, title, description, is_active")
@@ -70,21 +75,24 @@ export async function POST(req: Request) {
     if (tpl.shop_id !== wo.shop_id) return bad("Not allowed", 403);
     if (tpl.is_active === false) return bad("Inspection template is inactive", 409);
 
-    const title = (tpl.name ?? tpl.title ?? tpl.description ?? "Inspection").toString();
+    const title = String(tpl.name ?? tpl.title ?? tpl.description ?? "Inspection");
 
-    // Create inspection line
+    // Create inspection line (uses only real columns)
     const insert: DB["public"]["Tables"]["work_order_lines"]["Insert"] = {
       work_order_id: wo.id,
       shop_id: wo.shop_id,
-      job_type: "inspection" as any, // if your enum typing complains, keep as any here only
+      vehicle_id: wo.vehicle_id ?? null,
+
+      job_type: "inspection",
       description: title,
-      status: "pending" as any,
-      // If your table has a dedicated column, add it here:
-      // inspection_template_id: tpl.id,
-      metadata: {
-        inspection_template_id: tpl.id,
-      } as any,
-    } as any;
+
+      // launch-safe defaults
+      status: "awaiting",
+      line_status: "pending",
+
+      // real column in your schema list
+      inspection_template_id: tpl.id,
+    };
 
     const { data: line, error: insErr } = await supabase
       .from("work_order_lines")
@@ -92,7 +100,9 @@ export async function POST(req: Request) {
       .select("*")
       .single();
 
-    if (insErr || !line) return bad(insErr?.message ?? "Failed to add inspection line", 500);
+    if (insErr || !line) {
+      return bad(insErr?.message ?? "Failed to add inspection line", 500);
+    }
 
     return NextResponse.json({ ok: true, line }, { status: 200 });
   } catch (e: unknown) {
