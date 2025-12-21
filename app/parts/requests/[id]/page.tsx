@@ -1,3 +1,4 @@
+// app/parts/requests/[id]/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -29,6 +30,13 @@ type UpsertResponse = {
   detail?: string;
 };
 
+// ✅ no `any` — explicit shape for the columns we select
+type AllocationSelect = {
+  id: string;
+  source_request_item_id: string | null;
+  stock_move_id: string | null;
+};
+
 type RpcUpsertAllocArgs = {
   p_request_item_id: string;
   p_location_id: string;
@@ -43,8 +51,8 @@ export default function PartsRequestDetail() {
   const [req, setReq] = useState<Request | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [addingItem, setAddingItem] = useState(false);
+
   const [parts, setParts] = useState<Part[]>([]);
   const [markupPct, setMarkupPct] = useState<Record<string, number>>({});
   const [savedRows, setSavedRows] = useState<Record<string, boolean>>({});
@@ -105,17 +113,11 @@ export default function PartsRequestDetail() {
         console.warn("load stock_locations failed:", locErr.message);
       }
 
-      // default the location if not chosen
       const locList = (locs ?? []) as StockLocation[];
       if (!locationId) {
-        if (locList.length === 1) {
-          setLocationId(locList[0].id as string);
-        } else if (locList.length > 1) {
-          // keep empty to force a deliberate selection
-          setLocationId("");
-        }
+        if (locList.length === 1) setLocationId(locList[0].id as string);
+        else if (locList.length > 1) setLocationId("");
       } else {
-        // if previously selected location disappeared, reset
         const stillExists = locList.some((l) => l.id === locationId);
         if (!stillExists) setLocationId("");
       }
@@ -135,16 +137,17 @@ export default function PartsRequestDetail() {
     }
     setMarkupPct(m);
 
-    // clear saved flags on fresh load
     setSavedRows({});
 
     // ✅ allocation lookup so UI reflects “Parts Used”
     if (itemsList.length) {
       const itemIds = itemsList.map((x) => x.id);
+
       const { data: allocs, error: aErr } = await supabase
         .from("work_order_part_allocations")
         .select("id, source_request_item_id, stock_move_id")
-        .in("source_request_item_id", itemIds);
+        .in("source_request_item_id", itemIds)
+        .returns<AllocationSelect[]>();
 
       if (aErr) {
         // eslint-disable-next-line no-console
@@ -155,14 +158,15 @@ export default function PartsRequestDetail() {
           string,
           { allocation_id: string; stock_move_id: string | null }
         > = {};
-        (allocs ?? []).forEach((a) => {
-          const src = (a as any).source_request_item_id as string | null;
-          if (!src) return;
-          map[src] = {
-            allocation_id: (a as any).id as string,
-            stock_move_id: ((a as any).stock_move_id as string | null) ?? null,
+
+        for (const a of allocs ?? []) {
+          if (!a.source_request_item_id) continue;
+          map[a.source_request_item_id] = {
+            allocation_id: a.id,
+            stock_move_id: a.stock_move_id ?? null,
           };
-        });
+        }
+
         setAllocByRequestItemId(map);
       }
     } else {
@@ -292,7 +296,6 @@ export default function PartsRequestDetail() {
         return;
       }
 
-      // 1) update the WO line so WO UI reflects it
       const { error: wolErr } = await supabase
         .from("work_order_lines")
         .update({
@@ -308,7 +311,6 @@ export default function PartsRequestDetail() {
         return;
       }
 
-      // 2) sync quote totals (best-effort)
       if (req?.work_order_id) {
         let partsTotalForLine = 0;
 
@@ -340,12 +342,9 @@ export default function PartsRequestDetail() {
             work_order_line_id: lineId,
           });
 
-        if (quoteErr) {
-          toast.warning(`WO quote totals not synced: ${quoteErr.message}`);
-        }
+        if (quoteErr) toast.warning(`WO quote totals not synced: ${quoteErr.message}`);
       }
 
-      // 3) menu save best-effort
       try {
         const res = await fetch("/api/menu-items/upsert-from-line", {
           method: "POST",
@@ -372,7 +371,6 @@ export default function PartsRequestDetail() {
         toast.warning(msg);
       }
 
-      // 4) force WO refresh
       window.dispatchEvent(new Event("parts-request:submitted"));
 
       toast.success("Parts request marked as quoted.");
@@ -422,7 +420,6 @@ export default function PartsRequestDetail() {
   }
 
   async function attachPartToItem(itemId: string, partId: string) {
-    // allow detach
     if (!partId) {
       const { error } = await supabase
         .from("part_request_items")
@@ -451,7 +448,6 @@ export default function PartsRequestDetail() {
       return;
     }
 
-    // selecting stock part = manual fields no longer needed
     setManualParts((prev) => {
       const copy = { ...prev };
       delete copy[itemId];
@@ -517,7 +513,6 @@ export default function PartsRequestDetail() {
     await load();
   }
 
-  // ✅ NEW: convert request item -> allocation (drives Parts Used)
   async function allocateOne(requestItemId: string) {
     if (!locationId) {
       toast.error("Select a stock location first.");
@@ -540,7 +535,6 @@ export default function PartsRequestDetail() {
     );
 
     if (error) {
-      // surface function-raised messages like INSUFFICIENT_STOCK
       toast.error(error.message);
       return;
     }
@@ -551,7 +545,6 @@ export default function PartsRequestDetail() {
       return;
     }
 
-    // nudge WO page to refresh Parts Used immediately
     window.dispatchEvent(new Event("wo:parts-used"));
     window.dispatchEvent(new Event("parts-request:submitted"));
     toast.success("Allocated to work order.");
@@ -590,7 +583,6 @@ export default function PartsRequestDetail() {
         );
 
         if (error) {
-          // stop on first failure so inventory state is clear
           toast.error(`${it.description || "Item"}: ${error.message}`);
           return;
         }
@@ -664,7 +656,6 @@ export default function PartsRequestDetail() {
                   Status: {req.status}
                 </span>
 
-                {/* ✅ only quoting happens here */}
                 {req.status !== "quoted" && (
                   <button
                     className="rounded border border-orange-500 px-3 py-1.5 text-sm text-orange-300 hover:bg-orange-500/10"
@@ -676,7 +667,6 @@ export default function PartsRequestDetail() {
               </div>
             </div>
 
-            {/* ✅ NEW: allocate controls */}
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-800 pt-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-neutral-400">Stock location</span>
@@ -699,7 +689,6 @@ export default function PartsRequestDetail() {
                 className="rounded border border-blue-600 px-3 py-1.5 text-xs font-semibold text-blue-200 hover:bg-blue-900/20 disabled:opacity-60"
                 onClick={() => void allocateAllEligible()}
                 disabled={allocating || !locationId || eligibleCount === 0}
-                title="Convert request items into Parts Used allocations (updates WO Parts Used + stock)"
               >
                 {allocating ? "Allocating…" : `Allocate eligible (${eligibleCount})`}
               </button>
@@ -758,10 +747,7 @@ export default function PartsRequestDetail() {
                     const isAllocated = !!alloc?.allocation_id;
 
                     const canAllocate =
-                      !!locationId &&
-                      !!it.part_id &&
-                      !!it.work_order_line_id &&
-                      !isAllocated;
+                      !!locationId && !!it.part_id && !!it.work_order_line_id && !isAllocated;
 
                     return (
                       <tr
@@ -789,7 +775,6 @@ export default function PartsRequestDetail() {
                               ))}
                             </select>
 
-                            {/* ✅ Manual entry only if NO stock part selected */}
                             {!hasStockPart && (
                               <>
                                 <div className="flex gap-1">
@@ -837,7 +822,6 @@ export default function PartsRequestDetail() {
                               </>
                             )}
 
-                            {/* ✅ Allocation status */}
                             {isAllocated ? (
                               <div className="inline-flex items-center gap-2 text-[11px]">
                                 <span className="rounded-full border border-emerald-700/60 bg-emerald-900/20 px-2 py-0.5 font-semibold text-emerald-200">
@@ -977,17 +961,6 @@ export default function PartsRequestDetail() {
                               }`}
                               onClick={() => void allocateOne(it.id as string)}
                               disabled={!canAllocate || allocating}
-                              title={
-                                !it.part_id
-                                  ? "Select an inventory part to allocate"
-                                  : !it.work_order_line_id
-                                  ? "This request item isn't linked to a work order line"
-                                  : !locationId
-                                  ? "Select a stock location"
-                                  : isAllocated
-                                  ? "Already allocated"
-                                  : "Allocate this item to the work order (Parts Used)"
-                              }
                             >
                               {isAllocated ? "Allocated" : "Allocate to WO"}
                             </button>
