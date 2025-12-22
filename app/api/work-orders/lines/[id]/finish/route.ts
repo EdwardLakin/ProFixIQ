@@ -14,6 +14,11 @@ function extractLineId(req: NextRequest) {
   return m?.[1] ?? null;
 }
 
+function clean(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  return s.length ? s : null;
+}
+
 export async function POST(req: NextRequest) {
   const id = extractLineId(req);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
@@ -24,14 +29,18 @@ export async function POST(req: NextRequest) {
   if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
   if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const now = new Date().toISOString();
-  const { cause, correction } = (await req.json().catch(() => ({}))) as Body;
+  const nowIso = new Date().toISOString();
+  const body = (await req.json().catch(() => ({}))) as Body;
 
+  const cause = clean(body.cause);
+  const correction = clean(body.correction);
+
+  // Always set completed + punched_out_at. Only set cause/correction when provided.
   const updatePayload: Database["public"]["Tables"]["work_order_lines"]["Update"] = {
     status: "completed",
-    punched_out_at: now,
-    ...(cause !== undefined ? { cause } : {}),
-    ...(correction !== undefined ? { correction } : {}),
+    punched_out_at: nowIso,
+    ...(cause !== null ? { cause } : {}),
+    ...(correction !== null ? { correction } : {}),
   };
 
   const { data, error } = await supabase
@@ -43,13 +52,19 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  await supabase.from("activity_logs").insert({
-    entity_type: "work_order_line",
-    entity_id: id,
-    action: "finish",
-    actor_id: auth.user.id,
-    created_at: now,
-  });
+  // Best-effort activity log — never fail the finish if logging fails
+  try {
+    await supabase.from("activity_logs").insert({
+      entity_type: "work_order_line",
+      entity_id: id,
+      action: "finish",
+      actor_id: auth.user.id,
+      created_at: nowIso,
+    });
+  } catch (e) {
+    // ignore logging errors (RLS / table missing / etc.)
+    console.warn("activity_logs insert failed", e);
+  }
 
   return NextResponse.json({ success: true, line: data });
 }
