@@ -9,58 +9,43 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-type Request = DB["public"]["Tables"]["part_requests"]["Row"];
-type Item = DB["public"]["Tables"]["part_request_items"]["Row"];
-type WorkOrder = Pick<
-  DB["public"]["Tables"]["work_orders"]["Row"],
-  "id" | "custom_id" | "status" | "created_at"
->;
+type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
+type PartRequestItem = DB["public"]["Tables"]["part_request_items"]["Row"];
+type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 
-type WoGroup = {
-  wo: WorkOrder;
-  requests: Array<Request & { items: Item[] }>;
-  itemCount: number;
-  needsQuote: boolean;
-  newestRequestAt: number;
+type WoBucket = {
+  workOrderId: string;
+  customId: string | null;
+  status: "needs_quote" | "quoted";
+  requests: PartRequest[];
+  itemsCount: number;
+  latestAt: string | null;
 };
 
-const VISIBLE_STATUSES: Request["status"][] = ["requested", "quoted", "approved"];
+const VISIBLE_STATUSES: PartRequest["status"][] = ["requested", "quoted", "approved"];
 
-function isNonEmptyString(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length > 0;
-}
+const CARD = "rounded-xl border border-white/12 bg-card/90 p-4";
+const SUBCARD = "rounded-lg border border-white/10 bg-muted/70 p-3";
+const PILL_BASE =
+  "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold";
+const PILL_NEEDS = `${PILL_BASE} border-red-500/40 bg-red-500/10 text-red-200`;
+const PILL_QUOTED = `${PILL_BASE} border-teal-500/40 bg-teal-500/10 text-teal-200`;
 
-function requestNeedsQuote(status: Request["status"] | null | undefined): boolean {
-  return (status ?? "requested").toLowerCase() !== "quoted";
-}
-
-function woChip(needsQuote: boolean): string {
-  // red = needs quote, teal = quoted
-  if (!needsQuote) {
-    return "inline-flex items-center rounded-full border border-teal-500/40 bg-teal-900/20 px-3 py-1 text-xs font-medium text-teal-200";
-  }
-  return "inline-flex items-center rounded-full border border-red-500/40 bg-red-900/20 px-3 py-1 text-xs font-medium text-red-200";
+function looksLikeUuid(s: string): boolean {
+  return s.includes("-") && s.length >= 36;
 }
 
 export default function PartsRequestsPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  const [groups, setGroups] = useState<WoGroup[]>([]);
-  const [search, setSearch] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(true);
-
-  // theme (match WO page)
-  const pageWrap =
-    "w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16";
-  const card = "rounded-xl border border-white/18 bg-card/90 p-4 shadow-sm";
-  const subCard = "rounded-lg border border-white/12 bg-muted/70";
-  const input =
-    "w-full rounded-md border border-white/12 bg-card/70 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-white/20";
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [buckets, setBuckets] = useState<WoBucket[]>([]);
 
   const reload = async (): Promise<void> => {
     setLoading(true);
 
-    // 1) Load requests (active statuses)
+    // 1) load part_requests (active-ish)
     const { data: reqs, error } = await supabase
       .from("part_requests")
       .select("*")
@@ -69,130 +54,130 @@ export default function PartsRequestsPage(): JSX.Element {
 
     if (error) {
       // eslint-disable-next-line no-console
-      console.error("load part_requests failed:", error.message);
+      console.error("[parts/requests] load part_requests failed:", error);
       toast.error("Failed to load parts requests");
       setLoading(false);
       return;
     }
 
-    const requestList: Request[] = (reqs ?? []) as Request[];
-    const requestIds = requestList.map((r) => r.id);
+    const requestList = (reqs ?? []) as PartRequest[];
 
-    // 2) Load items for those requests
-    const itemsMap: Record<string, Item[]> = {};
+    // 2) items count per request (for “X items”)
+    const requestIds = requestList.map((r) => r.id);
+    const itemsCountByRequest: Record<string, number> = {};
     if (requestIds.length) {
       const { data: items, error: itemsErr } = await supabase
         .from("part_request_items")
-        .select("*")
+        .select("id, request_id")
         .in("request_id", requestIds);
 
       if (itemsErr) {
         // eslint-disable-next-line no-console
-        console.error("load part_request_items failed:", itemsErr.message);
-      }
-
-      for (const it of (items ?? []) as Item[]) {
-        (itemsMap[it.request_id] ||= []).push(it);
+        console.error("[parts/requests] load items failed:", itemsErr);
+      } else {
+        (items ?? []).forEach((it) => {
+          const row = it as Pick<PartRequestItem, "id" | "request_id">;
+          itemsCountByRequest[row.request_id] = (itemsCountByRequest[row.request_id] ?? 0) + 1;
+        });
       }
     }
 
-    // 3) Work orders for those requests
+    // 3) load work_orders to get custom_id
     const woIds = Array.from(
       new Set(
         requestList
           .map((r) => r.work_order_id)
-          .filter((x): x is string => isNonEmptyString(x)),
+          .filter((x): x is string => typeof x === "string" && x.length > 0),
       ),
     );
 
-    const woMap: Record<string, WorkOrder> = {};
+    const woById: Record<string, WorkOrder> = {};
     if (woIds.length) {
-      const { data: workOrders, error: woError } = await supabase
+      const { data: wos, error: woErr } = await supabase
         .from("work_orders")
-        .select("id, custom_id, status, created_at")
+        .select("id, custom_id")
         .in("id", woIds);
 
-      if (woError) {
+      if (woErr) {
         // eslint-disable-next-line no-console
-        console.error("load work_orders failed:", woError.message);
+        console.error("[parts/requests] load work_orders failed:", woErr);
       } else {
-        for (const wo of (workOrders ?? []) as WorkOrder[]) {
-          woMap[wo.id] = {
-            id: wo.id,
-            custom_id: wo.custom_id ?? null,
-            status: wo.status ?? null,
-            created_at: wo.created_at ?? null,
-          };
+        (wos ?? []).forEach((w) => {
+          const row = w as WorkOrder;
+          woById[row.id] = row;
+        });
+      }
+    }
+
+    // 4) group into 1 card per work order
+    const byWo: Record<string, WoBucket> = {};
+
+    for (const r of requestList) {
+      const workOrderId = r.work_order_id;
+      if (!workOrderId) continue;
+
+      const wo = woById[workOrderId];
+      const customId = wo?.custom_id ?? null;
+
+      if (!byWo[workOrderId]) {
+        byWo[workOrderId] = {
+          workOrderId,
+          customId,
+          status: "needs_quote",
+          requests: [],
+          itemsCount: 0,
+          latestAt: null,
+        };
+      }
+
+      byWo[workOrderId].requests.push(r);
+      byWo[workOrderId].itemsCount += itemsCountByRequest[r.id] ?? 0;
+
+      const createdAt = r.created_at ? String(r.created_at) : null;
+      if (createdAt) {
+        if (!byWo[workOrderId].latestAt) byWo[workOrderId].latestAt = createdAt;
+        else if (new Date(createdAt).getTime() > new Date(byWo[workOrderId].latestAt!).getTime()) {
+          byWo[workOrderId].latestAt = createdAt;
         }
       }
     }
 
-    // 4) Group by work order
-    const tmp: Record<string, WoGroup> = {};
+    // status: needs_quote if ANY request is requested
+    Object.values(byWo).forEach((b) => {
+      const hasRequested = b.requests.some((r) => (r.status ?? "requested") === "requested");
+      b.status = hasRequested ? "needs_quote" : "quoted";
+    });
 
-    for (const r of requestList) {
-      const woId = r.work_order_id;
-      if (!isNonEmptyString(woId)) continue;
+    const list = Object.values(byWo).sort((a, b) => {
+      const ta = a.latestAt ? new Date(a.latestAt).getTime() : 0;
+      const tb = b.latestAt ? new Date(b.latestAt).getTime() : 0;
+      return tb - ta;
+    });
 
-      const wo = woMap[woId] ?? { id: woId, custom_id: null, status: null, created_at: null };
-
-      const enriched: Request & { items: Item[] } = {
-        ...r,
-        items: itemsMap[r.id] ?? [],
-      };
-
-      if (!tmp[woId]) {
-        tmp[woId] = {
-          wo,
-          requests: [],
-          itemCount: 0,
-          needsQuote: false,
-          newestRequestAt: 0,
-        };
-      }
-
-      tmp[woId].requests.push(enriched);
-      tmp[woId].itemCount += enriched.items.length;
-      tmp[woId].needsQuote = tmp[woId].needsQuote || requestNeedsQuote(r.status);
-      tmp[woId].newestRequestAt = Math.max(
-        tmp[woId].newestRequestAt,
-        r.created_at ? new Date(r.created_at).getTime() : 0,
-      );
-    }
-
-    const list = Object.values(tmp).sort((a, b) => b.newestRequestAt - a.newestRequestAt);
-    setGroups(list);
+    setBuckets(list);
     setLoading(false);
   };
 
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase]);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return groups;
+    if (!q) return buckets;
 
-    return groups.filter((g) => {
-      const woLabel = (g.wo.custom_id || g.wo.id).toLowerCase();
-      if (woLabel.includes(q)) return true;
+    return buckets.filter((b) => {
+      const woLabel = (b.customId ?? b.workOrderId).toLowerCase();
+      const matchesWo = woLabel.includes(q);
 
-      // also match request ids + item descriptions
-      if (g.requests.some((r) => r.id.toLowerCase().includes(q))) return true;
-      if (
-        g.requests.some((r) =>
-          (r.items ?? []).some((it) => (it.description ?? "").toLowerCase().includes(q)),
-        )
-      )
-        return true;
-
-      return false;
+      const matchesReq = b.requests.some((r) => r.id.toLowerCase().includes(q));
+      return matchesWo || matchesReq;
     });
-  }, [groups, search]);
+  }, [buckets, search]);
 
   return (
-    <div className={pageWrap}>
+    <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Parts Requests</h1>
@@ -204,108 +189,84 @@ export default function PartsRequestsPage(): JSX.Element {
 
         <Link
           href="/parts"
-          className="inline-flex items-center rounded-md border border-white/18 bg-card/70 px-3 py-2 text-sm font-semibold hover:bg-card/90"
+          className="inline-flex items-center justify-center rounded-lg border border-white/12 bg-card/90 px-4 py-2 text-sm font-medium text-foreground hover:bg-card/95"
         >
           Parts Catalog
         </Link>
       </div>
 
-      <div className={card}>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <p className="text-xs text-muted-foreground">
-            Search by WO#, request id, or part description. Showing{" "}
-            <span className="font-semibold text-foreground">{filtered.length}</span> work order
-            {filtered.length === 1 ? "" : "s"}.
-          </p>
+      <div className={`${CARD} mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between`}>
+        <div className="text-xs text-muted-foreground">
+          Search by WO#, request id, or part description. Showing{" "}
+          <span className="font-semibold text-foreground">{filtered.length}</span>{" "}
+          work order{filtered.length === 1 ? "" : "s"}.
+        </div>
 
-          <div className="w-full md:w-96">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
-              className={input}
-            />
-          </div>
+        <div className="w-full md:w-96">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search…"
+            className="w-full rounded-lg border border-white/12 bg-muted/70 px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-white/10"
+          />
         </div>
       </div>
 
       {loading ? (
-        <div className={`${card} mt-4`}>Loading…</div>
+        <div className={`${CARD} text-sm text-muted-foreground`}>Loading…</div>
       ) : filtered.length === 0 ? (
-        <div className={`${card} mt-4 text-sm text-muted-foreground`}>
-          No active parts requests.
-        </div>
+        <div className={`${CARD} text-sm text-muted-foreground`}>No active parts requests.</div>
       ) : (
-        <div className="mt-4 grid gap-4 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((g) => {
-            const woDisplay = g.wo.custom_id || `#${g.wo.id.slice(0, 8)}`;
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((b) => {
+            const woLabel = b.customId || (looksLikeUuid(b.workOrderId) ? `#${b.workOrderId.slice(0, 8)}` : b.workOrderId);
+            const pill = b.status === "needs_quote" ? PILL_NEEDS : PILL_QUOTED;
 
-            // ✅ choose where the card goes:
-            // Option A (recommended): go straight to the work order page (custom id friendly)
-            const workOrderHref = `/work-orders/${encodeURIComponent(g.wo.custom_id || g.wo.id)}`;
-
-            // Option B (if you later upgrade /parts/requests/[id] to be a WO view)
-            // const workOrderHref = `/parts/requests/${encodeURIComponent(g.wo.custom_id || g.wo.id)}`;
+            // IMPORTANT: link to the parts requests WO page (not the WO client page)
+            const href = `/parts/requests/${encodeURIComponent(b.customId || b.workOrderId)}`;
 
             return (
-              <div key={g.wo.id} className={card}>
-                <div className="flex items-start justify-between gap-2">
+              <div key={b.workOrderId} className={CARD}>
+                <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-lg font-semibold text-foreground">
-                      {woDisplay}
+                    <div className="text-lg font-semibold tracking-wide text-foreground">
+                      {woLabel}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      {g.requests.length} request{g.requests.length === 1 ? "" : "s"} ·{" "}
-                      {g.itemCount} item{g.itemCount === 1 ? "" : "s"}
+                      {b.requests.length} request{b.requests.length === 1 ? "" : "s"} · {b.itemsCount} item{b.itemsCount === 1 ? "" : "s"}
                     </div>
                   </div>
 
-                  <span className={woChip(g.needsQuote)}>
-                    {g.needsQuote ? "Needs quote" : "Quoted"}
-                  </span>
+                  <span className={pill}>{b.status === "needs_quote" ? "Needs quote" : "Quoted"}</span>
                 </div>
 
-                <div className="mt-3 space-y-2">
-                  {g.requests.slice(0, 2).map((r) => {
-                    const need = requestNeedsQuote(r.status);
-                    return (
-                      <div key={r.id} className={`${subCard} p-3`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs text-muted-foreground">
-                            Req #{r.id.slice(0, 8)}
-                          </div>
-                          <span className={woChip(need)}>
-                            {need ? "Needs quote" : "Quoted"}
-                          </span>
-                        </div>
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-foreground/90">
-                          {(r.items ?? []).slice(0, 3).map((it) => (
-                            <li key={it.id}>{it.description || "Part"}</li>
-                          ))}
-                          {(r.items ?? []).length > 3 && (
-                            <li className="text-muted-foreground">
-                              + {(r.items ?? []).length - 3} more…
-                            </li>
-                          )}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                  {g.requests.length > 2 && (
-                    <div className="text-xs text-muted-foreground">
-                      + {g.requests.length - 2} more requests…
-                    </div>
-                  )}
+                <div className={`${SUBCARD} mt-3`}>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Requests
+                  </div>
+                  <ul className="mt-2 space-y-1 text-sm text-foreground">
+                    {b.requests.slice(0, 3).map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-2">
+                        <span className="truncate">
+                          Req #{r.id.slice(0, 8)}
+                        </span>
+                        <span className={(r.status ?? "requested") === "quoted" ? PILL_QUOTED : PILL_NEEDS}>
+                          {(r.status ?? "requested") === "quoted" ? "Quoted" : "Needs quote"}
+                        </span>
+                      </li>
+                    ))}
+                    {b.requests.length > 3 && (
+                      <li className="text-xs text-muted-foreground">+ {b.requests.length - 3} more…</li>
+                    )}
+                  </ul>
                 </div>
 
-                <div className="mt-4 flex items-center justify-end gap-2">
+                <div className="mt-4 flex justify-end">
                   <Link
-                    href={workOrderHref}
-                    className="inline-flex items-center rounded-md border border-white/18 bg-card/70 px-3 py-2 text-xs font-semibold hover:bg-card/90"
-                    title="Open the work order"
+                    href={href}
+                    className="inline-flex items-center justify-center rounded-lg border border-white/12 bg-card/90 px-4 py-2 text-sm font-semibold text-foreground hover:bg-card/95"
                   >
-                    Open work order →
+                    Open requests →
                   </Link>
                 </div>
               </div>
