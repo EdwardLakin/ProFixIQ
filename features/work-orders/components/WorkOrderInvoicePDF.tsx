@@ -35,12 +35,9 @@ type Props = {
 };
 
 // Use built-in fonts reliably (remote font URLs can fail in PDFs).
-// We'll rely on default Helvetica and bold weight usage.
 Font.register({
   family: "Helvetica",
-  fonts: [
-    { src: undefined as unknown as string }, // react-pdf requires registration shape; default font still works
-  ],
+  fonts: [{ src: undefined as unknown as string }],
 });
 
 const styles = StyleSheet.create({
@@ -53,7 +50,6 @@ const styles = StyleSheet.create({
     lineHeight: 1.4,
     color: "#0a0a0a",
   },
-
   header: {
     marginBottom: 14,
     paddingBottom: 10,
@@ -61,26 +57,9 @@ const styles = StyleSheet.create({
     borderBottomColor: "#ddd",
     borderBottomStyle: "solid",
   },
-
-  title: {
-    fontSize: 18,
-    fontWeight: 700,
-    textAlign: "center",
-  },
-
-  subtitle: {
-    marginTop: 4,
-    fontSize: 10,
-    textAlign: "center",
-    color: "#444",
-  },
-
-  grid2: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 10,
-  },
-
+  title: { fontSize: 18, fontWeight: 700, textAlign: "center" },
+  subtitle: { marginTop: 4, fontSize: 10, textAlign: "center", color: "#444" },
+  grid2: { flexDirection: "row", gap: 12, marginTop: 10 },
   box: {
     flexGrow: 1,
     borderWidth: 1,
@@ -89,47 +68,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 10,
   },
-
-  boxTitle: {
-    fontSize: 10,
-    fontWeight: 700,
-    marginBottom: 6,
-    color: "#111",
-  },
-
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 2,
-  },
-
-  label: {
-    fontSize: 10,
-    color: "#333",
-  },
-
-  value: {
-    fontSize: 10,
-    color: "#111",
-    maxWidth: 260,
-  },
-
-  section: {
-    marginTop: 12,
-  },
-
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: 700,
-    marginBottom: 6,
-  },
-
-  paragraph: {
-    fontSize: 10,
-    color: "#222",
-  },
-
+  boxTitle: { fontSize: 10, fontWeight: 700, marginBottom: 6, color: "#111" },
+  row: { flexDirection: "row", justifyContent: "space-between", gap: 10, marginBottom: 2 },
+  label: { fontSize: 10, color: "#333" },
+  value: { fontSize: 10, color: "#111", maxWidth: 260 },
+  section: { marginTop: 12 },
+  sectionTitle: { fontSize: 11, fontWeight: 700, marginBottom: 6 },
+  paragraph: { fontSize: 10, color: "#222" },
   lineItem: {
     borderWidth: 1,
     borderColor: "#efefef",
@@ -138,18 +83,8 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 8,
   },
-
-  bullet: {
-    fontSize: 10,
-    marginBottom: 2,
-    color: "#111",
-  },
-
-  subText: {
-    fontSize: 9.5,
-    color: "#333",
-  },
-
+  bullet: { fontSize: 10, marginBottom: 2, color: "#111" },
+  subText: { fontSize: 9.5, color: "#333" },
   signatureWrap: {
     marginTop: 18,
     borderTopWidth: 1,
@@ -158,14 +93,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     alignItems: "center",
   },
-
-  signatureLabel: {
-    fontSize: 10,
-    marginBottom: 6,
-    color: "#111",
-    fontWeight: 700,
-  },
-
+  signatureLabel: { fontSize: 10, marginBottom: 6, color: "#111", fontWeight: 700 },
   signatureImage: {
     width: 220,
     height: 90,
@@ -175,7 +103,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     objectFit: "contain",
   },
-
   footer: {
     position: "absolute",
     left: 32,
@@ -188,11 +115,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-
-  footerText: {
-    fontSize: 9,
-    color: "#666",
-  },
+  footerText: { fontSize: 9, color: "#666" },
 });
 
 function safeStr(v: unknown): string {
@@ -229,7 +152,6 @@ export function WorkOrderInvoicePDF({
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Invoice</Text>
           <Text style={styles.subtitle}>Work Order #{workOrderId}</Text>
@@ -265,17 +187,13 @@ export function WorkOrderInvoicePDF({
           </View>
         </View>
 
-        {/* Summary */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Repair Summary</Text>
           <Text style={styles.paragraph}>
-            {typeof summary === "string" && summary.trim().length > 0
-              ? summary.trim()
-              : "—"}
+            {typeof summary === "string" && summary.trim().length > 0 ? summary.trim() : "—"}
           </Text>
         </View>
 
-        {/* Lines */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Work Performed</Text>
 
@@ -300,21 +218,16 @@ export function WorkOrderInvoicePDF({
           )}
         </View>
 
-        {/* Signature */}
-        {typeof signatureImage === "string" &&
-          signatureImage.trim().length > 0 && (
-            <View style={styles.signatureWrap}>
-              <Text style={styles.signatureLabel}>Customer Signature</Text>
-              <Image src={signatureImage} style={styles.signatureImage} />
-            </View>
-          )}
+        {typeof signatureImage === "string" && signatureImage.trim().length > 0 && (
+          <View style={styles.signatureWrap}>
+            <Text style={styles.signatureLabel}>Customer Signature</Text>
+            <Image src={signatureImage} style={styles.signatureImage} />
+          </View>
+        )}
 
-        {/* Footer */}
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>ProFixIQ</Text>
-          <Text style={styles.footerText}>
-            Generated {new Date().toLocaleDateString()}
-          </Text>
+          <Text style={styles.footerText}>Generated {new Date().toLocaleDateString()}</Text>
         </View>
       </Page>
     </Document>

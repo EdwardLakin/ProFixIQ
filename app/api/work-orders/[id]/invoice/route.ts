@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
-import { recordWorkOrderTraining } from "@/features/integrations/ai";
+import { reviewWorkOrder } from "../_lib/reviewWorkOrder";
 
 type DB = Database;
 
 function getIdFromUrl(url: string): string | null {
-  const parts = new URL(url).pathname.split("/"); // ["", "api", "work-orders", "<id>", "ai-review"]
+  const parts = new URL(url).pathname.split("/"); // ["", "api", "work-orders", "<id>", "invoice"]
   return parts.length >= 5 ? parts[3] : null;
 }
 
@@ -21,130 +21,26 @@ export async function POST(req: Request) {
 
   if (!woId) {
     return NextResponse.json(
-      {
-        ok: false,
-        issues: [{ kind: "bad_request", message: "Missing work order id" }],
-      },
+      { ok: false, issues: [{ kind: "bad_request", message: "Missing work order id" }] },
       { status: 400 },
     );
   }
 
   try {
-    const { data: wo, error: woErr } = await supabase
-      .from("work_orders")
-      .select("*")
-      .eq("id", woId)
-      .maybeSingle();
+    const result = await reviewWorkOrder({
+      supabase,
+      workOrderId: woId,
+      kind: "invoice_review",
+    });
 
-    if (woErr) throw woErr;
-    if (!wo) {
-      return NextResponse.json(
-        {
-          ok: false,
-          issues: [{ kind: "missing_wo", message: "WO not found" }],
-        },
-        { status: 404 },
-      );
+    // (Optional) If you want invoice review to hard-404 on missing WO:
+    if (!result.ok && result.issues.some((i) => i.kind === "missing_wo")) {
+      return NextResponse.json(result, { status: 404 });
     }
 
-    const { data: lines, error: lnErr } = await supabase
-      .from("work_order_lines")
-      .select("*")
-      .eq("work_order_id", wo.id);
-
-    if (lnErr) throw lnErr;
-
-    const issues: { kind: string; lineId?: string; message: string }[] = [];
-
-    for (const ln of lines ?? []) {
-      const st = String(ln.status ?? "awaiting");
-
-      if (st !== "completed") {
-        issues.push({
-          kind: "line_not_completed",
-          lineId: ln.id,
-          message: `Line not completed: ${
-            ln.description ?? ln.complaint ?? "job"
-          }`,
-        });
-      }
-
-      // optional “marked N/A” booleans if you add them later; kept narrow without any
-      const causeNA =
-        (ln as Record<string, unknown>)["cause_marked_na"] === true;
-      const correctionNA =
-        (ln as Record<string, unknown>)["correction_marked_na"] === true;
-
-      if (!ln.cause && !causeNA) {
-        issues.push({
-          kind: "missing_cause",
-          lineId: ln.id,
-          message: `Missing cause: ${ln.description ?? "job"}`,
-        });
-      }
-
-      if (!ln.correction && !correctionNA) {
-        issues.push({
-          kind: "missing_correction",
-          lineId: ln.id,
-          message: `Missing correction: ${ln.description ?? "job"}`,
-        });
-      }
-
-      if (!(typeof ln.labor_time === "number" && ln.labor_time > 0)) {
-        issues.push({
-          kind: "no_labor_time",
-          lineId: ln.id,
-          message: `No labor time set: ${ln.description ?? "job"}`,
-        });
-      }
-    }
-
-    if (!wo.customer_id) {
-      issues.push({
-        kind: "missing_customer",
-        message: "Missing customer on WO",
-      });
-    } else {
-      const { data: cust } = await supabase
-        .from("customers")
-        .select("email")
-        .eq("id", wo.customer_id)
-        .maybeSingle();
-
-      if (!cust?.email) {
-        issues.push({
-          kind: "missing_email",
-          message: "Customer has no email",
-        });
-      }
-    }
-
-    const ok = issues.length === 0;
-
-    // 🔎 AI training hook: log each AI review run as a training event
-    if (wo.shop_id) {
-      try {
-        await recordWorkOrderTraining({
-          shopId: wo.shop_id,
-          workOrderId: wo.id,
-          vehicleYmm: null, // TODO: hydrate from vehicles table if you want Y/M/M context
-          payload: {
-            kind: "ai_review",
-            ok,
-            issue_count: issues.length,
-            issues,
-          },
-        });
-      } catch (trainErr) {
-        // Never block users on training/logging problems
-        console.warn("AI training (ai-review) failed:", trainErr);
-      }
-    }
-
-    return NextResponse.json({ ok, issues });
+    return NextResponse.json(result);
   } catch (e: unknown) {
-    const msg = isError(e) ? e.message : "AI review failed";
+    const msg = isError(e) ? e.message : "Invoice review failed";
     return NextResponse.json(
       { ok: false, issues: [{ kind: "error", message: msg }] },
       { status: 500 },

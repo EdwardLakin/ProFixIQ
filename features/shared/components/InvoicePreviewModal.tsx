@@ -29,6 +29,9 @@ function normalizeCurrencyFromCountry(country: unknown): "usd" | "cad" {
   return c === "CA" ? "cad" : "usd";
 }
 
+type ReviewIssue = { kind: string; lineId?: string; message: string };
+type ReviewResponse = { ok: boolean; issues: ReviewIssue[] };
+
 export default function InvoicePreviewModal({
   isOpen,
   onClose,
@@ -45,6 +48,11 @@ export default function InvoicePreviewModal({
   const [shopId, setShopId] = useState<string | null>(null);
   const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
   const [currency, setCurrency] = useState<"usd" | "cad">("usd");
+
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewOk, setReviewOk] = useState<boolean>(false);
+  const [reviewIssues, setReviewIssues] = useState<ReviewIssue[]>([]);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -89,7 +97,47 @@ export default function InvoicePreviewModal({
     })();
   }, [isOpen, supabase, workOrderId]);
 
+  // 🔒 Invoice review gate (runs every time modal opens)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setReviewLoading(true);
+    setReviewError(null);
+    setReviewIssues([]);
+    setReviewOk(false);
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/work-orders/${workOrderId}/invoice`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        const json = (await res.json().catch(() => null)) as ReviewResponse | null;
+
+        if (!res.ok || !json) {
+          setReviewOk(false);
+          setReviewIssues([
+            { kind: "error", message: "Invoice review failed (bad response)" },
+          ]);
+          return;
+        }
+
+        setReviewOk(Boolean(json.ok));
+        setReviewIssues(Array.isArray(json.issues) ? json.issues : []);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Invoice review failed";
+        setReviewOk(false);
+        setReviewError(msg);
+        setReviewIssues([{ kind: "error", message: msg }]);
+      } finally {
+        setReviewLoading(false);
+      }
+    })();
+  }, [isOpen, workOrderId]);
+
   const canTakePayment = Boolean(shopId && stripeAccountId);
+  const canProceed = canTakePayment && reviewOk && !reviewLoading;
 
   return (
     <ModalShell
@@ -101,7 +149,7 @@ export default function InvoicePreviewModal({
       bodyScrollable={false}
     >
       <div className="flex h-[78vh] flex-col gap-3">
-        {/* Top action row (metal/glass theme, no orange-400/500) */}
+        {/* Top action row */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
           <div className="flex items-center gap-3">
             <div className="text-[0.7rem] uppercase tracking-[0.22em] text-neutral-300">
@@ -112,9 +160,7 @@ export default function InvoicePreviewModal({
             </div>
 
             {loading ? (
-              <span className="text-[0.7rem] text-neutral-400">
-                Loading shop…
-              </span>
+              <span className="text-[0.7rem] text-neutral-400">Loading shop…</span>
             ) : canTakePayment ? (
               <span className="text-[0.7rem] text-neutral-400">
                 Payments enabled ({currency.toUpperCase()})
@@ -124,17 +170,27 @@ export default function InvoicePreviewModal({
                 Payments unavailable (shop not connected)
               </span>
             )}
+
+            {reviewLoading ? (
+              <span className="text-[0.7rem] text-neutral-400">Reviewing…</span>
+            ) : reviewOk ? (
+              <span className="text-[0.7rem] text-emerald-300">Invoice ready</span>
+            ) : (
+              <span className="text-[0.7rem] text-amber-300">Missing required info</span>
+            )}
           </div>
 
-          {/* Desktop payment CTA */}
+          {/* Desktop actions */}
           <div className="hidden md:flex items-center gap-2">
             {canTakePayment && (
-              <CustomerPaymentButton
-                shopId={shopId as string}
-                stripeAccountId={stripeAccountId as string}
-                currency={currency}
-                workOrderId={workOrderId}
-              />
+              <div className={canProceed ? "" : "opacity-50 pointer-events-none"}>
+                <CustomerPaymentButton
+                  shopId={shopId as string}
+                  stripeAccountId={stripeAccountId as string}
+                  currency={currency}
+                  workOrderId={workOrderId}
+                />
+              </div>
             )}
             <button
               type="button"
@@ -146,15 +202,44 @@ export default function InvoicePreviewModal({
           </div>
         </div>
 
+        {/* Review issues panel (only shows if blocked) */}
+        {!reviewOk && (
+          <div className="rounded-xl border border-amber-500/30 bg-black/35 px-3 py-2">
+            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-amber-200">
+              Invoice blocked
+            </div>
+            <div className="mt-1 text-[0.75rem] text-neutral-300">
+              Fix the items below, then reopen the invoice preview.
+            </div>
+
+            {reviewError && (
+              <div className="mt-2 text-[0.75rem] text-red-200">
+                {reviewError}
+              </div>
+            )}
+
+            <ul className="mt-2 space-y-1 text-[0.8rem] text-neutral-200">
+              {(reviewIssues ?? []).slice(0, 12).map((i, idx) => (
+                <li key={`${i.kind}-${idx}`} className="flex gap-2">
+                  <span className="text-amber-300">•</span>
+                  <span>{i.message}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Mobile payment row */}
         <div className="md:hidden flex items-center justify-between gap-2 rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
           {canTakePayment ? (
-            <CustomerPaymentButton
-              shopId={shopId as string}
-              stripeAccountId={stripeAccountId as string}
-              currency={currency}
-              workOrderId={workOrderId}
-            />
+            <div className={canProceed ? "" : "opacity-50 pointer-events-none"}>
+              <CustomerPaymentButton
+                shopId={shopId as string}
+                stripeAccountId={stripeAccountId as string}
+                currency={currency}
+                workOrderId={workOrderId}
+              />
+            </div>
           ) : (
             <span className="text-[0.7rem] text-neutral-500">
               Connect Stripe to accept payments
@@ -170,7 +255,7 @@ export default function InvoicePreviewModal({
           </button>
         </div>
 
-        {/* PDF Surface (keep child-managed scroll) */}
+        {/* PDF Surface */}
         <div className="flex-1 overflow-hidden rounded-xl border border-[var(--metal-border-soft)] bg-black/30">
           <PDFViewer width="100%" height="100%">
             <WorkOrderInvoicePDF

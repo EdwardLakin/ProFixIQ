@@ -38,26 +38,17 @@ const BADGE_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[0.7rem] font-medium tracking-[0.08em] uppercase";
 
 const STATUS_BADGE: Record<StatusKey, string> = {
-  awaiting_approval:
-    "bg-blue-500/10 border-blue-400/60 text-blue-100",
-  awaiting:
-    "bg-sky-500/10 border-sky-400/60 text-sky-100",
-  queued:
-    "bg-indigo-500/10 border-indigo-400/60 text-indigo-100",
+  awaiting_approval: "bg-blue-500/10 border-blue-400/60 text-blue-100",
+  awaiting: "bg-sky-500/10 border-sky-400/60 text-sky-100",
+  queued: "bg-indigo-500/10 border-indigo-400/60 text-indigo-100",
   in_progress:
     "bg-[var(--accent-copper)]/15 border-[var(--accent-copper-light)]/70 text-[var(--accent-copper-light)]",
-  on_hold:
-    "bg-amber-500/10 border-amber-400/70 text-amber-100",
-  planned:
-    "bg-purple-500/10 border-purple-400/70 text-purple-100",
-  new:
-    "bg-neutral-900/80 border-neutral-500/80 text-neutral-100",
-  completed:
-    "bg-green-500/10 border-green-400/70 text-green-100",
-  ready_to_invoice:
-    "bg-emerald-500/10 border-emerald-400/70 text-emerald-100",
-  invoiced:
-    "bg-teal-500/10 border-teal-400/70 text-teal-100",
+  on_hold: "bg-amber-500/10 border-amber-400/70 text-amber-100",
+  planned: "bg-purple-500/10 border-purple-400/70 text-purple-100",
+  new: "bg-neutral-900/80 border-neutral-500/80 text-neutral-100",
+  completed: "bg-green-500/10 border-green-400/70 text-green-100",
+  ready_to_invoice: "bg-emerald-500/10 border-emerald-400/70 text-emerald-100",
+  invoiced: "bg-teal-500/10 border-teal-400/70 text-teal-100",
 };
 
 const chip = (s: string | null | undefined) => {
@@ -110,6 +101,47 @@ export default function WorkOrdersView(): JSX.Element {
 
   // 🔁 version counter to force assigned summary to refetch
   const [, setAssignVersion] = useState(0);
+
+  // ✅ invoice review loading indicator per row
+  const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
+
+  // ✅ invoice review entry point (uses /invoice route)
+  const runInvoiceReview = useCallback(async (woId: string) => {
+    try {
+      setReviewLoadingId(woId);
+
+      const res = await fetch(`/api/work-orders/${woId}/invoice`, {
+        method: "POST",
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        toast.error(json?.issues?.[0]?.message ?? "Invoice review failed");
+        return;
+      }
+
+      if (json?.ok) {
+        toast.success("Invoice review passed ✅ Ready to invoice.");
+        return;
+      }
+
+      const issues: Array<{ message?: string }> = Array.isArray(json?.issues)
+        ? json.issues
+        : [];
+
+      toast.error(
+        `Invoice review found ${issues.length} issue(s): ${
+          issues[0]?.message ?? "Fix required fields."
+        }`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Invoice review failed";
+      toast.error(msg);
+    } finally {
+      setReviewLoadingId(null);
+    }
+  }, []);
 
   // load current user role + mechanics once
   useEffect(() => {
@@ -452,6 +484,10 @@ export default function WorkOrdersView(): JSX.Element {
 
               const plate = r.vehicles?.license_plate ?? "";
 
+              const isReadyToInvoice =
+                String(r.status ?? "").toLowerCase() === "ready_to_invoice" ||
+                String(r.status ?? "").toLowerCase() === "completed";
+
               return (
                 <div
                   key={r.id}
@@ -486,9 +522,7 @@ export default function WorkOrdersView(): JSX.Element {
                       <span className="mx-1 text-neutral-600">•</span>
                       {vehicleLabel || "No vehicle"}
                       {plate ? (
-                        <span className="ml-1 text-neutral-400">
-                          ({plate})
-                        </span>
+                        <span className="ml-1 text-neutral-400">({plate})</span>
                       ) : null}
                     </div>
                   </div>
@@ -506,12 +540,26 @@ export default function WorkOrdersView(): JSX.Element {
                     >
                       Open
                     </Link>
+
+                    {/* ✅ Invoice review button (entry point) */}
+                    {isReadyToInvoice && (
+                      <button
+                        onClick={() => void runInvoiceReview(r.id)}
+                        disabled={reviewLoadingId === r.id}
+                        className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                        title="Check required fields before invoicing"
+                      >
+                        {reviewLoadingId === r.id ? "Reviewing…" : "Invoice review"}
+                      </button>
+                    )}
+
                     <button
                       onClick={() => void handleDelete(r.id)}
                       className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
                     >
                       Delete
                     </button>
+
                     {canAssign && (
                       <>
                         {!isAssigning ? (
