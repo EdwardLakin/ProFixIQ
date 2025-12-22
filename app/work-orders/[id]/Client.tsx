@@ -1,4 +1,4 @@
-//app/work-orders/[id]/Client.tsx
+// app/work-orders/[id]/Client.tsx
 
 "use client";
 
@@ -634,13 +634,15 @@ export default function WorkOrderIdClient(): JSX.Element {
   useEffect(() => {
     interface InspectionCompletedEventDetail {
       workOrderLineId?: string;
+      work_order_line_id?: string;
+      lineId?: string;
       cause?: string;
       correction?: string;
     }
 
     const handler = (ev: CustomEvent<InspectionCompletedEventDetail>) => {
       const d = ev.detail || {};
-      const lineId = d.workOrderLineId;
+      const lineId = d.workOrderLineId || d.work_order_line_id || d.lineId;
       if (!lineId) return;
 
       setFocusedJobId(lineId);
@@ -973,8 +975,15 @@ export default function WorkOrderIdClient(): JSX.Element {
       if (typeof window !== "undefined") {
         const paramsObj: Record<string, string> = {};
 
-        if (wo?.id) paramsObj.workOrderId = wo.id;
+        if (wo?.id) {
+          paramsObj.workOrderId = wo.id;
+          paramsObj.work_order_id = wo.id; // ✅ legacy/snake_case
+        }
+
         paramsObj.workOrderLineId = ln.id;
+        paramsObj.work_order_line_id = ln.id; // ✅ legacy/snake_case
+        paramsObj.lineId = ln.id; // ✅ legacy alias used in some screens
+
         paramsObj.view = "mobile";
         paramsObj.embed = "1";
         if (ln.description) paramsObj.seed = String(ln.description);
@@ -1030,8 +1039,16 @@ export default function WorkOrderIdClient(): JSX.Element {
       // 3) Set src for the modal (mainly for debugging / template label)
       const sp = new URLSearchParams();
       sp.set("template", "generic");
-      if (wo?.id) sp.set("workOrderId", wo.id);
+
+      if (wo?.id) {
+        sp.set("workOrderId", wo.id);
+        sp.set("work_order_id", wo.id); // ✅ legacy/snake_case
+      }
+
       sp.set("workOrderLineId", ln.id);
+      sp.set("work_order_line_id", ln.id); // ✅ legacy/snake_case
+      sp.set("lineId", ln.id); // ✅ legacy alias used in some screens
+
       sp.set("embed", "1");
       sp.set("view", "mobile");
       if (ln.description) sp.set("seed", String(ln.description));

@@ -38,18 +38,37 @@ export default function InspectionModal({
 
     try {
       const base =
-        typeof window !== "undefined"
-          ? window.location.origin
-          : "http://localhost";
+        typeof window !== "undefined" ? window.location.origin : "http://localhost";
       const url = new URL(src, base);
       const parts = url.pathname.split("/").filter(Boolean);
 
-      const idx = parts.findIndex(
-        (p) => p === "inspection" || p === "inspections",
-      );
+      const idx = parts.findIndex((p) => p === "inspection" || p === "inspections");
       const template = idx >= 0 ? parts[idx + 1] : parts[parts.length - 1];
 
       const params = paramsToObject(url.searchParams);
+
+      // Normalize legacy param keys so downstream code always sees the same ones.
+      // This prevents silent failures when older flows look for snake_case or lineId.
+      const woId =
+        url.searchParams.get("workOrderId") ||
+        url.searchParams.get("work_order_id") ||
+        undefined;
+
+      const lineId =
+        url.searchParams.get("workOrderLineId") ||
+        url.searchParams.get("work_order_line_id") ||
+        url.searchParams.get("lineId") ||
+        undefined;
+
+      if (woId) {
+        params.workOrderId = woId;
+        params.work_order_id = woId;
+      }
+      if (lineId) {
+        params.workOrderLineId = lineId;
+        params.work_order_line_id = lineId;
+        params.lineId = lineId;
+      }
 
       const embedParam = url.searchParams.get("embed");
       const isEmbed =
@@ -60,15 +79,15 @@ export default function InspectionModal({
 
       // any key we use in WO context to point at a line
       const hasWOLine =
-        !!url.searchParams.get("workOrderLineId") ||
-        !!url.searchParams.get("work_order_line_id") ||
-        !!url.searchParams.get("lineId");
+        !!params.workOrderLineId ||
+        !!params.work_order_line_id ||
+        !!params.lineId;
 
       // only treat it as "work-order mode" if the URL clearly refers to a WO
       const isWorkOrderContext =
         parts.includes("work-orders") ||
-        !!url.searchParams.get("workOrderId") ||
-        !!url.searchParams.get("work_order_id");
+        !!params.workOrderId ||
+        !!params.work_order_id;
 
       // ✅ only warn when embedded *and* we're really in a WO context
       const missingWOLine = isEmbed && isWorkOrderContext && !hasWOLine;
@@ -215,11 +234,7 @@ export default function InspectionModal({
             </div>
           ) : (
             <div className="mx-auto w-full max-w-5xl">
-              <InspectionHost
-                template={derived.template}
-                embed
-                params={derived.params}
-              />
+              <InspectionHost template={derived.template} embed params={derived.params} />
             </div>
           )}
 
