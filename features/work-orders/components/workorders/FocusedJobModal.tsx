@@ -601,7 +601,7 @@ export default function FocusedJobModal(props: {
                 {/* punch – hidden once job is completed, same as mobile */}
                 {mode === "tech" && line && line.status !== "completed" && (
                   <div className="glass-card relative z-[5] rounded-2xl border border-white/10 bg-black/40 p-3">
-der                     <JobPunchButton
+                     <JobPunchButton
                       // ✅ Fix: JobPunchButton expects the work orline id param.
                       // Keep lineId too for any older internal usage.
                       lineId={line.id}
