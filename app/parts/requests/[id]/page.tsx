@@ -2,14 +2,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type RequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
 type ItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
@@ -27,24 +27,19 @@ type UpsertResponse = {
 };
 
 type UiItem = ItemRow & {
-  ui_added: boolean;
+  ui_added: boolean; // staged for quote
   ui_part_id: string | null;
   ui_qty: number;
-  ui_price?: number; // undefined = not set
+  ui_price?: number; // sell/unit (undefined = not set)
 };
 
-const CARD = "rounded-xl border border-white/12 bg-card/90";
-const SUBCARD = "rounded-lg border border-white/10 bg-muted/70";
-const BTN = "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60";
-const BTN_GHOST = `${BTN} border-white/12 bg-card/90 hover:bg-card/95`;
-const BTN_COPPER = `${BTN} border-[#8b5a2b]/60 bg-card/90 text-[#c88a4d] hover:bg-[#8b5a2b]/10`;
-const PILL_BASE =
-  "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold";
-const PILL_NEEDS = `${PILL_BASE} border-red-500/40 bg-red-500/10 text-red-200`;
-const PILL_QUOTED = `${PILL_BASE} border-teal-500/40 bg-teal-500/10 text-teal-200`;
+type RequestUi = {
+  req: RequestRow;
+  items: UiItem[];
+};
 
-function looksLikeUuid(s: string): boolean {
-  return s.includes("-") && s.length >= 36;
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
 }
 
 function toNum(v: unknown, fallback: number): number {
@@ -52,107 +47,159 @@ function toNum(v: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function isNonEmptyString(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length > 0;
+function looksLikeUuid(s: string): boolean {
+  return s.includes("-") && s.length >= 36;
 }
 
-// in your schema, part_requests.job_id is used as the WO line id (and items may also have work_order_line_id)
-function resolveWorkOrderLineId(currentReq: RequestRow | null, list: UiItem[]): string | null {
+function splitCustomId(raw: string): { prefix: string; n: number | null } {
+  const m = raw.toUpperCase().match(/^([A-Z]+)\s*0*?(\d+)?$/);
+  if (!m) return { prefix: raw.toUpperCase(), n: null };
+  const n = m[2] ? parseInt(m[2], 10) : null;
+  return { prefix: m[1], n: Number.isFinite(n ?? NaN) ? n : null };
+}
+
+function resolveWorkOrderLineId(currentReq: RequestRow, list: UiItem[]): string | null {
+  // 1) try any item work_order_line_id
   for (const it of list) {
     if (isNonEmptyString(it.work_order_line_id)) return it.work_order_line_id;
   }
-  if (isNonEmptyString(currentReq?.job_id)) return currentReq.job_id;
+
+  // 2) in your schema, part_requests.job_id is used as the WO line id
+  if (isNonEmptyString(currentReq.job_id)) return currentReq.job_id;
+
   return null;
 }
 
-export default function PartsRequestsForWorkOrderPage(): JSX.Element {
-  const { id } = useParams<{ id: string }>(); // work_order id OR custom_id
-  const router = useRouter();
-  const sp = useSearchParams();
+function computeRequestBadge(req: RequestRow, items: UiItem[]): "needs_quote" | "quoted" {
+  const status = (req.status ?? "requested").toLowerCase();
+  if (status === "quoted" || status === "approved" || status === "fulfilled") return "quoted";
 
+  // even if request.status says requested, if every row is priced/parted we can show quoted
+  const allDone = items.length > 0 && items.every((it) => {
+    const hasPart = isNonEmptyString(it.part_id ?? it.ui_part_id ?? null);
+    const hasPrice = it.quoted_price != null || it.ui_price != null;
+    const qty = toNum(it.qty ?? it.ui_qty, 0);
+    return hasPart && hasPrice && qty > 0;
+  });
+
+  return allDone ? "quoted" : "needs_quote";
+}
+
+export default function PartsRequestsForWorkOrderPage(): JSX.Element {
+  const { id: routeId } = useParams<{ id: string }>();
+  const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  const [loading, setLoading] = useState(true);
-
-  const [wo, setWo] = useState<WorkOrder | null>(null);
-  const [requests, setRequests] = useState<RequestRow[]>([]);
-  const [itemsByRequest, setItemsByRequest] = useState<Record<string, UiItem[]>>({});
-
+  const [wo, setWo] = useState<WorkOrderRow | null>(null);
+  const [requests, setRequests] = useState<RequestUi[]>([]);
   const [parts, setParts] = useState<PartRow[]>([]);
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [locationId, setLocationId] = useState<string>("");
 
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
-  const [addingItem, setAddingItem] = useState(false);
-  const [quoting, setQuoting] = useState(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [savingReqId, setSavingReqId] = useState<string | null>(null);
 
-  const selectedReq = useMemo(
-    () => (selectedRequestId ? requests.find((r) => r.id === selectedRequestId) ?? null : null),
-    [requests, selectedRequestId],
-  );
+  // ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
+  const COPPER_BORDER = "border-[#8b5a2b]/60";
+  const COPPER_TEXT = "text-[#c88a4d]";
+  const COPPER_TEXT_SOFT = "text-[#b27a45]";
+  const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
+  const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
 
-  const rows = useMemo(() => {
-    if (!selectedRequestId) return [];
-    return itemsByRequest[selectedRequestId] ?? [];
-  }, [itemsByRequest, selectedRequestId]);
+  const pageWrap = "space-y-4 p-6 text-white";
+  const glassCard =
+    "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+  const glassHeader =
+    "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
+  const inputBase =
+    `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
+  const selectBase =
+    `rounded-lg border bg-neutral-950/40 px-2 py-2 text-xs text-white border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
 
-  const workOrderLineId = useMemo(() => resolveWorkOrderLineId(selectedReq, rows), [selectedReq, rows]);
+  const btnBase =
+    "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition disabled:opacity-60";
+  const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
+  const btnCopper = `${btnBase} ${COPPER_BORDER} ${COPPER_TEXT} bg-neutral-950/20 ${COPPER_HOVER_BG}`;
+  const btnDanger =
+    `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
 
-  const totalSell = useMemo(() => {
-    let sum = 0;
-    for (const it of rows) {
-      if (!it.ui_added) continue;
-      const qty = toNum(it.ui_qty, 0);
-      const price = it.ui_price ?? 0;
-      sum += price * qty;
+  const pillBase =
+    "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium";
+  const pillNeedsQuote = `${pillBase} border-red-500/35 bg-red-950/35 text-red-200`;
+  const pillQuoted = `${pillBase} border-teal-500/35 bg-teal-950/25 text-teal-200`;
+
+  async function resolveWorkOrder(idOrCustom: string): Promise<WorkOrderRow | null> {
+    const raw = (idOrCustom ?? "").trim();
+    if (!raw) return null;
+
+    // by UUID
+    if (looksLikeUuid(raw)) {
+      const { data, error } = await supabase
+        .from("work_orders")
+        .select("*")
+        .eq("id", raw)
+        .maybeSingle();
+      if (!error && data) return data as WorkOrderRow;
     }
-    return sum;
-  }, [rows]);
 
-  // For the “quote individually” behavior:
-  // only require at least ONE staged row, not all rows.
-  const stagedValid = useMemo(() => {
-    const staged = rows.filter((r) => r.ui_added);
-    if (staged.length === 0) return false;
-    return staged.every((it) => {
-      const qty = toNum(it.ui_qty, 0);
-      return !!it.ui_part_id && qty > 0 && it.ui_price != null;
-    });
-  }, [rows]);
+    // by custom_id exact
+    {
+      const { data } = await supabase
+        .from("work_orders")
+        .select("*")
+        .eq("custom_id", raw)
+        .maybeSingle();
+      if (data) return data as WorkOrderRow;
+    }
+
+    // by custom_id ilike
+    {
+      const { data } = await supabase
+        .from("work_orders")
+        .select("*")
+        .ilike("custom_id", raw.toUpperCase())
+        .maybeSingle();
+      if (data) return data as WorkOrderRow;
+    }
+
+    // fallback normalize EL000003 vs EL3
+    {
+      const { prefix, n } = splitCustomId(raw);
+      if (n != null) {
+        const { data: cands } = await supabase
+          .from("work_orders")
+          .select("*")
+          .ilike("custom_id", `${prefix}%`)
+          .limit(50);
+
+        const wanted = `${prefix}${n}`;
+        const match = (cands ?? []).find((r) => {
+          const cid = (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1");
+          return cid === wanted;
+        });
+        if (match) return match as WorkOrderRow;
+      }
+    }
+
+    return null;
+  }
 
   async function load(): Promise<void> {
     setLoading(true);
 
-    // 1) resolve WO (by uuid OR custom_id)
-    let woRow: WorkOrder | null = null;
-
-    if (looksLikeUuid(id)) {
-      const res = await supabase.from("work_orders").select("*").eq("id", id).maybeSingle();
-      woRow = (res.data as WorkOrder | null) ?? null;
-    }
-
+    const woRow = await resolveWorkOrder(routeId);
     if (!woRow) {
-      const exact = await supabase.from("work_orders").select("*").eq("custom_id", id).maybeSingle();
-      woRow = (exact.data as WorkOrder | null) ?? null;
-
-      if (!woRow) {
-        const ilike = await supabase.from("work_orders").select("*").ilike("custom_id", id.toUpperCase()).maybeSingle();
-        woRow = (ilike.data as WorkOrder | null) ?? null;
-      }
-    }
-
-    if (!woRow) {
-      toast.error("Work order not found / not visible.");
       setWo(null);
       setRequests([]);
-      setItemsByRequest({});
+      setParts([]);
+      setLocations([]);
       setLoading(false);
       return;
     }
 
     setWo(woRow);
 
-    // 2) load ALL part_requests for this work order
+    // load requests for this work order
     const { data: reqs, error: reqErr } = await supabase
       .from("part_requests")
       .select("*")
@@ -162,52 +209,45 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     if (reqErr) toast.error(reqErr.message);
 
     const reqList = (reqs ?? []) as RequestRow[];
-    setRequests(reqList);
-
-    // default selection from querystring, else first request
-    const fromQuery = sp.get("request");
-    const initial =
-      (fromQuery && reqList.some((r) => r.id === fromQuery) ? fromQuery : null) ??
-      reqList[0]?.id ??
-      null;
-    setSelectedRequestId(initial);
-
-    // 3) load items for those requests
     const reqIds = reqList.map((r) => r.id);
-    const map: Record<string, UiItem[]> = {};
 
+    // load items for those requests
+    const itemsByRequest: Record<string, ItemRow[]> = {};
     if (reqIds.length) {
       const { data: items, error: itErr } = await supabase
         .from("part_request_items")
         .select("*")
-        .in("request_id", reqIds)
-        .order("id", { ascending: true });
+        .in("request_id", reqIds);
 
       if (itErr) toast.error(itErr.message);
 
-      const itemRows = (items ?? []) as ItemRow[];
-      for (const row of itemRows) {
-        const sell = row.quoted_price == null ? undefined : toNum(row.quoted_price, 0);
-        const ui: UiItem = {
-          ...row,
-          ui_added: false,
-          ui_part_id: row.part_id ?? null,
-          ui_qty: toNum(row.qty, 1),
-          ui_price: sell,
-        };
-        (map[row.request_id] ||= []).push(ui);
+      for (const it of (items ?? []) as ItemRow[]) {
+        (itemsByRequest[it.request_id] ||= []).push(it);
       }
     }
 
-    setItemsByRequest(map);
+    const uiRequests: RequestUi[] = reqList.map((r) => {
+      const itemRows = itemsByRequest[r.id] ?? [];
+      const uiItems: UiItem[] = itemRows
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+        .map((row) => {
+          const sell = row.quoted_price == null ? undefined : toNum(row.quoted_price, 0);
+          return {
+            ...row,
+            ui_added: false,
+            ui_part_id: row.part_id ?? null,
+            ui_qty: toNum(row.qty, 1),
+            ui_price: sell,
+          };
+        });
 
-    // 4) parts + locations (shop_id from part_requests if present)
-    const shopId =
-      (reqList.find((r) => r.shop_id)?.shop_id ?? null) ||
-      
-      (woRow as any)?.shop_id ||
-      null;
+      return { req: r, items: uiItems };
+    });
 
+    setRequests(uiRequests);
+
+    // parts + locations (from work order shop id)
+    const shopId = woRow.shop_id ?? null;
     if (shopId) {
       const [{ data: ps }, { data: locs }] = await Promise.all([
         supabase.from("parts").select("*").eq("shop_id", shopId).order("name").limit(1000),
@@ -232,59 +272,30 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [routeId]);
 
-  function updateRow(itemId: string, patch: Partial<UiItem>): void {
-    if (!selectedRequestId) return;
-    setItemsByRequest((prev) => {
-      const list = prev[selectedRequestId] ?? [];
-      return {
-        ...prev,
-        [selectedRequestId]: list.map((x) => (x.id === itemId ? ({ ...x, ...patch } as UiItem) : x)),
-      };
-    });
+  function updateItem(reqId: string, itemId: string, patch: Partial<UiItem>): void {
+    setRequests((prev) =>
+      prev.map((r) => {
+        if (r.req.id !== reqId) return r;
+        return {
+          ...r,
+          items: r.items.map((it) => (it.id === itemId ? ({ ...it, ...patch } as UiItem) : it)),
+        };
+      }),
+    );
   }
 
-  function stageAddToLine(itemId: string): void {
-    const it = rows.find((x) => x.id === itemId);
-    if (!it) return;
+  async function addRow(reqId: string): Promise<void> {
+    const target = requests.find((r) => r.req.id === reqId);
+    if (!target) return;
 
-    const partId = it.ui_part_id;
-    const qty = toNum(it.ui_qty, 0);
-    const price = it.ui_price;
-
-    if (!partId) {
-      toast.error("Pick a stock part first.");
-      return;
-    }
-    if (!qty || qty <= 0) {
-      toast.error("Enter a quantity greater than 0.");
-      return;
-    }
-    if (price == null || !Number.isFinite(price)) {
-      toast.error("Price is missing.");
-      return;
-    }
-
-    updateRow(itemId, { ui_added: true });
-  }
-
-  function unstage(itemId: string): void {
-    updateRow(itemId, { ui_added: false });
-  }
-
-  async function addItem(): Promise<void> {
-    if (!selectedReq) {
-      toast.error("Select a request first.");
-      return;
-    }
-
-    setAddingItem(true);
+    setSavingReqId(reqId);
     try {
-      const lineId = resolveWorkOrderLineId(selectedReq, rows);
+      const lineId = resolveWorkOrderLineId(target.req, target.items);
 
       const insertPayload: DB["public"]["Tables"]["part_request_items"]["Insert"] = {
-        request_id: selectedReq.id,
+        request_id: target.req.id,
         work_order_line_id: lineId,
         description: "",
         qty: 1,
@@ -316,16 +327,17 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         ui_price: data.quoted_price == null ? undefined : toNum(data.quoted_price, 0),
       };
 
-      setItemsByRequest((prev) => {
-        const list = prev[selectedReq.id] ?? [];
-        return { ...prev, [selectedReq.id]: [...list, ui] };
-      });
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.req.id === reqId ? { ...r, items: [...r.items, ui] } : r,
+        ),
+      );
     } finally {
-      setAddingItem(false);
+      setSavingReqId(null);
     }
   }
 
-  async function deleteLine(itemId: string): Promise<void> {
+  async function deleteLine(reqId: string, itemId: string): Promise<void> {
     const ok = window.confirm("Remove this item from the request?");
     if (!ok) return;
 
@@ -345,45 +357,105 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    if (!selectedRequestId) return;
-    setItemsByRequest((prev) => {
-      const list = prev[selectedRequestId] ?? [];
-      return { ...prev, [selectedRequestId]: list.filter((x) => x.id !== itemId) };
-    });
-
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.req.id === reqId ? { ...r, items: r.items.filter((x) => x.id !== itemId) } : r,
+      ),
+    );
     toast.success("Item removed.");
   }
 
-  async function markQuotedSelected(): Promise<void> {
-    if (!selectedReq) return;
+  function stageAddToLine(reqId: string, itemId: string): void {
+    const target = requests.find((r) => r.req.id === reqId);
+    const it = target?.items.find((x) => x.id === itemId);
+    if (!it) return;
 
-    const lineId = resolveWorkOrderLineId(selectedReq, rows);
-    if (!lineId) {
-      toast.error("Missing work order line id for this request.");
+    const partId = it.ui_part_id;
+    const qty = toNum(it.ui_qty, 0);
+    const price = it.ui_price;
+
+    // ✅ FIX: no "return toast.error()" inside void function
+    if (!partId) {
+      toast.error("Pick a stock part first.");
       return;
     }
+    if (!qty || qty <= 0) {
+      toast.error("Enter a quantity greater than 0.");
+      return;
+    }
+    if (price == null || !Number.isFinite(price)) {
+      toast.error("Price is missing.");
+      return;
+    }
+
+    updateItem(reqId, itemId, { ui_added: true });
+  }
+
+  function unstage(reqId: string, itemId: string): void {
+    updateItem(reqId, itemId, { ui_added: false });
+  }
+
+  function requestTotals(r: RequestUi): { stagedTotal: number; stagedCount: number } {
+    let sum = 0;
+    let count = 0;
+    for (const it of r.items) {
+      if (!it.ui_added) continue;
+      const qty = toNum(it.ui_qty, 0);
+      const price = it.ui_price ?? 0;
+      if (qty > 0) {
+        sum += price * qty;
+        count += 1;
+      }
+    }
+    return { stagedTotal: sum, stagedCount: count };
+  }
+
+  function stagedIsValid(r: RequestUi): boolean {
+    // allow partial quoting: valid if at least 1 staged row and every staged row is fully filled
+    const staged = r.items.filter((it) => it.ui_added);
+    if (staged.length === 0) return false;
+
+    return staged.every((it) => {
+      const qty = toNum(it.ui_qty, 0);
+      return (
+        isNonEmptyString(it.ui_part_id) &&
+        qty > 0 &&
+        it.ui_price != null &&
+        Number.isFinite(it.ui_price)
+      );
+    });
+  }
+
+  async function markQuotedForRequest(reqId: string): Promise<void> {
+    const target = requests.find((r) => r.req.id === reqId);
+    if (!target) return;
 
     if (!locationId) {
       toast.error("Select a stock location first.");
       return;
     }
 
-    if (!stagedValid) {
-      toast.error("Stage at least one valid row (Add to line) before quoting.");
+    if (!stagedIsValid(target)) {
+      toast.error("Stage at least one valid row before quoting.");
       return;
     }
 
-    setQuoting(true);
-    try {
-      const stagedRows = rows.filter((r) => r.ui_added);
+    const lineId = resolveWorkOrderLineId(target.req, target.items);
 
-      // 1) Persist ONLY staged items (one save)
-      for (const it of stagedRows) {
+    setSavingReqId(reqId);
+    try {
+      const staged = target.items.filter((it) => it.ui_added);
+
+      // 1) Persist staged items only
+      for (const it of staged) {
         const partId = it.ui_part_id;
         const qty = toNum(it.ui_qty, 1);
         const price = it.ui_price;
 
-        if (!partId || price == null) continue;
+        if (!partId || price == null) {
+          toast.error("Some staged rows are missing a part or price.");
+          return;
+        }
 
         const part = parts.find((p) => String(p.id) === partId);
         const desc = (part?.name ?? it.description ?? "").trim();
@@ -394,7 +466,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             part_id: partId,
             description: desc || it.description || "Part",
             qty,
-            quoted_price: price,
+            quoted_price: price, // sell price
             vendor: null,
             markup_pct: null,
             work_order_line_id: it.work_order_line_id ?? lineId,
@@ -407,8 +479,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         }
       }
 
-      // 2) Allocate inventory + stock move for ONLY staged items
-      for (const it of stagedRows) {
+      // 2) Allocate inventory + stock move (only staged)
+      for (const it of staged) {
         const { error } = await supabase.rpc("upsert_part_allocation_from_request_item", {
           p_request_item_id: it.id,
           p_location_id: locationId,
@@ -421,18 +493,56 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         }
       }
 
-      // 3) Set THIS request status => quoted
-      const { error: statusErr } = await supabase.rpc("set_part_request_status", {
-        p_request: selectedReq.id,
-        p_status: "quoted" satisfies Status,
+      // 3) Decide if request can become quoted (all items completed)
+      // Refresh local interpretation: items with part_id + quoted_price
+      const after = target.items.map((it) => {
+        if (!it.ui_added) return it;
+        return {
+          ...it,
+          part_id: it.ui_part_id,
+          quoted_price: it.ui_price ?? null,
+          ui_added: false, // clear stage after quote
+        };
       });
 
-      if (statusErr) {
-        toast.error(statusErr.message);
+      const allNowQuoted =
+        after.length > 0 &&
+        after.every((it) => {
+          const hasPart = isNonEmptyString(it.part_id ?? it.ui_part_id ?? null);
+          const hasPrice = it.quoted_price != null || it.ui_price != null;
+          const qty = toNum(it.qty ?? it.ui_qty, 0);
+          return hasPart && hasPrice && qty > 0;
+        });
+
+      if (allNowQuoted) {
+        const { error: statusErr } = await supabase.rpc("set_part_request_status", {
+          p_request: reqId,
+          p_status: "quoted" satisfies Status,
+        });
+
+        if (statusErr) {
+          toast.error(statusErr.message);
+          return;
+        }
+      }
+
+      // 4) Update WO line status + quote totals + menu save (only if we have a line id)
+      if (!lineId) {
+        toast.success(allNowQuoted ? "Request quoted." : "Staged rows quoted (request still needs more).");
+        // update local state and exit
+        setRequests((prev) =>
+          prev.map((r) => {
+            if (r.req.id !== reqId) return r;
+            return {
+              req: { ...r.req, status: allNowQuoted ? "quoted" : (r.req.status ?? "requested") },
+              items: after,
+            };
+          }),
+        );
+        window.dispatchEvent(new Event("parts-request:submitted"));
         return;
       }
 
-      // 4) Update WO line status (quoted/pending)
       const { error: wolErr } = await supabase
         .from("work_order_lines")
         .update({
@@ -443,18 +553,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         .eq("id", lineId);
 
       if (wolErr) {
-        toast.error(`Quoted, but WO line update failed: ${wolErr.message}`);
-        return;
+        toast.warning(`Quoted, but WO line update failed: ${wolErr.message}`);
       }
 
-      // 5) Sync quote totals (only staged rows total)
-      const stagedTotal = stagedRows.reduce((sum, it) => {
-        const qty = toNum(it.ui_qty, 0);
-        const price = it.ui_price ?? 0;
-        return sum + qty * price;
-      }, 0);
+      // totals for this request (staged total)
+      const { stagedTotal } = requestTotals({ req: target.req, items: staged });
 
-      if (selectedReq.work_order_id) {
+      if (target.req.work_order_id) {
         const { error: quoteErr } = await supabase
           .from("work_order_quote_lines")
           .update({
@@ -463,14 +568,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             grand_total: stagedTotal,
           } as QuoteUpdate)
           .match({
-            work_order_id: selectedReq.work_order_id,
+            work_order_id: target.req.work_order_id,
             work_order_line_id: lineId,
           });
 
         if (quoteErr) toast.warning(`WO quote totals not synced: ${quoteErr.message}`);
       }
 
-      // 6) Menu save (best-effort)
       try {
         const res = await fetch("/api/menu-items/upsert-from-line", {
           method: "POST",
@@ -481,317 +585,323 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         const j = (await res.json().catch(() => null)) as UpsertResponse | null;
 
         if (!res.ok || !j?.ok) {
-          toast.warning(j?.detail || j?.error || "Quoted, but couldn’t save to menu items.");
+          const msg =
+            j?.detail ||
+            j?.error ||
+            "Quoted, but couldn’t save to menu items (see server logs / RLS).";
+          toast.warning(msg);
+        } else {
+          toast.success(`Quoted and ${j.updated ? "updated" : "saved"} to menu items.`);
         }
-      } catch {
-        toast.warning("Quoted, but couldn’t save to menu items (network error).");
+      } catch (e) {
+        const msg =
+          e instanceof Error
+            ? `Quoted, but couldn’t save to menu items: ${e.message}`
+            : "Quoted, but couldn’t save to menu items (network error).";
+        toast.warning(msg);
       }
 
-      // local UI refresh
-      toast.success("Request marked as quoted.");
+      // update local state
+      setRequests((prev) =>
+        prev.map((r) => {
+          if (r.req.id !== reqId) return r;
+          return {
+            req: { ...r.req, status: allNowQuoted ? "quoted" : (r.req.status ?? "requested") },
+            items: after,
+          };
+        }),
+      );
+
       window.dispatchEvent(new Event("parts-request:submitted"));
-      void load();
+      toast.success(allNowQuoted ? "Request quoted." : "Staged rows quoted (request still needs more).");
     } finally {
-      setQuoting(false);
+      setSavingReqId(null);
     }
   }
 
-  const woLabel = wo?.custom_id || (wo?.id ? `#${wo.id.slice(0, 8)}` : "—");
+  const woDisplay = wo?.custom_id || (wo?.id ? `#${wo.id.slice(0, 8)}` : null);
 
   return (
-    <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <button className={BTN_GHOST} onClick={() => router.back()}>
-          ← Back
-        </button>
-      </div>
+    <div className={pageWrap}>
+      <button className={btnGhost} onClick={() => router.back()}>
+        ← Back
+      </button>
 
       {loading ? (
-        <div className={`${CARD} p-4 text-sm text-muted-foreground`}>Loading…</div>
+        <div className={`${glassCard} p-4 text-neutral-300`}>Loading…</div>
       ) : !wo ? (
-        <div className={`${CARD} p-4 text-sm text-red-200`}>Work order not found.</div>
+        <div className={`${glassCard} p-4 text-neutral-300`}>
+          Work order not found / not visible.
+        </div>
       ) : (
-        <div className="space-y-4">
-          {/* header */}
-          <div className={`${CARD} p-4`}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-xl font-semibold text-foreground">Work Order {woLabel}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  Parts requests: {requests.length}
+        <>
+          <div className={`${glassCard} overflow-hidden`}>
+            <div className={`${glassHeader} px-5 py-4`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xl font-semibold tracking-wide">
+                    Work Order{" "}
+                    <span className={COPPER_TEXT}>{woDisplay}</span>
+                  </div>
+                  <div className="mt-1 text-sm text-neutral-400">
+                    Parts requests for this work order.
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="text-xs text-neutral-400">Stock location</div>
+                  <select
+                    className={`${selectBase} w-64`}
+                    value={locationId}
+                    onChange={(e) => setLocationId(e.target.value)}
+                    disabled={!!savingReqId || locations.length === 0}
+                  >
+                    <option value="">— select —</option>
+                    {locations.map((l) => (
+                      <option key={String(l.id)} value={String(l.id)}>
+                        {l.code ? `${l.code} — ${l.name}` : l.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="text-xs text-muted-foreground">Stock location</div>
-                <select
-                  className="rounded-lg border border-white/12 bg-muted/70 px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-white/10"
-                  value={locationId}
-                  onChange={(e) => setLocationId(e.target.value)}
-                  disabled={quoting || locations.length === 0}
-                >
-                  <option value="">— select —</option>
-                  {locations.map((l) => (
-                    <option key={String(l.id)} value={String(l.id)}>
-                      {l.code ? `${l.code} — ${l.name}` : l.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="mt-3 text-xs text-neutral-400">
+                Stage rows you have pricing for, then quote that request. Requests stay{" "}
+                <span className={COPPER_TEXT_SOFT}>requested</span> until all rows are fully quoted.
               </div>
             </div>
           </div>
 
-          {/* split: request list + editor */}
-          <div className="grid gap-4 lg:grid-cols-3">
-            {/* left: requests list */}
-            <div className={`${CARD} p-4`}>
-              <div className="text-sm font-semibold text-foreground">Requests</div>
-              <div className="mt-2 space-y-2">
-                {requests.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No requests for this work order.</div>
-                ) : (
-                  requests.map((r) => {
-                    const isSelected = r.id === selectedRequestId;
-                    const pill = (r.status ?? "requested") === "quoted" ? PILL_QUOTED : PILL_NEEDS;
-                    const reqItems = itemsByRequest[r.id] ?? [];
-                    const itemCount = reqItems.length;
-
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => setSelectedRequestId(r.id)}
-                        className={[
-                          "w-full text-left",
-                          "rounded-lg border px-3 py-3",
-                          isSelected ? "border-white/18 bg-card/95" : "border-white/10 bg-muted/70 hover:bg-muted/80",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-foreground">
-                              Req #{r.id.slice(0, 8)}
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {itemCount} item{itemCount === 1 ? "" : "s"}
-                            </div>
-                          </div>
-                          <span className={pill}>
-                            {(r.status ?? "requested") === "quoted" ? "Quoted" : "Needs quote"}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+          {requests.length === 0 ? (
+            <div className={`${glassCard} p-4 text-neutral-400`}>
+              No parts requests for this work order yet.
             </div>
+          ) : (
+            <div className="space-y-4">
+              {requests.map((r) => {
+                const badge = computeRequestBadge(r.req, r.items);
+                const busy = savingReqId === r.req.id;
+                const { stagedTotal, stagedCount } = requestTotals(r);
 
-            {/* right: selected request editor */}
-            <div className={`${CARD} p-4 lg:col-span-2`}>
-              {!selectedReq ? (
-                <div className="text-sm text-muted-foreground">Select a request to work on.</div>
-              ) : (
-                <>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="text-lg font-semibold text-foreground">
-                        Request #{selectedReq.id.slice(0, 8)}
+                return (
+                  <div key={r.req.id} className={`${glassCard} overflow-hidden`}>
+                    <div className={`${glassHeader} px-5 py-4`}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold">
+                            Request{" "}
+                            <span className={COPPER_TEXT}>
+                              #{r.req.id.slice(0, 8)}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-neutral-400">
+                            Created{" "}
+                            {r.req.created_at
+                              ? new Date(r.req.created_at).toLocaleString()
+                              : "—"}
+                            <span className="mx-2 text-neutral-600">·</span>
+                            Line:{" "}
+                            {resolveWorkOrderLineId(r.req, r.items)?.slice(0, 8) ?? "—"}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className={badge === "needs_quote" ? pillNeedsQuote : pillQuoted}>
+                            {badge === "needs_quote" ? "Needs quote" : "Quoted"}
+                          </span>
+
+                          <button
+                            className={btnGhost}
+                            onClick={() => void addRow(r.req.id)}
+                            disabled={busy}
+                          >
+                            {busy ? "Working…" : "＋ Add part row"}
+                          </button>
+
+                          <button
+                            className={btnCopper}
+                            onClick={() => void markQuotedForRequest(r.req.id)}
+                            disabled={busy || !locationId || !stagedIsValid(r)}
+                            title={!locationId ? "Select a stock location first" : ""}
+                          >
+                            {busy ? "Saving…" : "Quote staged"}
+                          </button>
+                        </div>
                       </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        Status: {selectedReq.status ?? "requested"}{" "}
-                        {workOrderLineId ? <span>· Line: {workOrderLineId.slice(0, 8)}</span> : <span>· Line: —</span>}
+
+                      <div className="mt-3 text-xs text-neutral-400">
+                        Staged:{" "}
+                        <span className={COPPER_TEXT_SOFT}>{stagedCount}</span>{" "}
+                        row{stagedCount === 1 ? "" : "s"} · Total{" "}
+                        <span className={COPPER_TEXT_SOFT}>
+                          {stagedTotal.toFixed(2)}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        className={BTN_GHOST}
-                        onClick={() => void addItem()}
-                        disabled={addingItem || quoting}
-                      >
-                        {addingItem ? "Adding…" : "＋ Add part row"}
-                      </button>
+                    <div className="p-4">
+                      <div className="overflow-hidden rounded-xl border border-white/10 bg-neutral-950/20">
+                        <table className="w-full text-sm">
+                          <thead className="bg-white/5 text-neutral-400">
+                            <tr>
+                              <th className="p-3 text-left">Stock part</th>
+                              <th className="p-3 text-left">Description</th>
+                              <th className="p-3 text-right">Qty</th>
+                              <th className="p-3 text-right">Price (unit)</th>
+                              <th className="p-3 text-right">Line total</th>
+                              <th className="w-48 p-3" />
+                            </tr>
+                          </thead>
 
-                      {(selectedReq.status ?? "requested") !== "quoted" && (
-                        <button
-                          className={BTN_COPPER}
-                          onClick={() => void markQuotedSelected()}
-                          disabled={quoting || !stagedValid}
-                          title={!stagedValid ? "Stage at least one row before quoting" : ""}
-                        >
-                          {quoting ? "Quoting…" : "Mark Quoted"}
-                        </button>
+                          <tbody>
+                            {r.items.length === 0 ? (
+                              <tr className="border-t border-white/10">
+                                <td className="p-4 text-sm text-neutral-500" colSpan={6}>
+                                  No items yet. Click “Add part row”.
+                                </td>
+                              </tr>
+                            ) : (
+                              r.items.map((it) => {
+                                const locked = busy; // allow editing even if staged; only lock while saving
+                                const qty = toNum(it.ui_qty, 0);
+                                const price = it.ui_price ?? 0;
+                                const lineTotal = qty > 0 ? price * qty : 0;
+
+                                return (
+                                  <tr key={String(it.id)} className="border-t border-white/10">
+                                    <td className="p-3 align-top">
+                                      <select
+                                        className={`${selectBase} w-80`}
+                                        value={it.ui_part_id ?? ""}
+                                        onChange={(e) => {
+                                          const partId = e.target.value || null;
+                                          const p = parts.find((x) => String(x.id) === String(partId));
+                                          updateItem(r.req.id, String(it.id), {
+                                            ui_part_id: partId,
+                                            part_id: partId,
+                                            description: (p?.name ?? it.description ?? "").trim(),
+                                            ui_price: p?.price == null ? undefined : toNum(p.price, 0),
+                                            ui_added: false,
+                                          });
+                                        }}
+                                        disabled={locked}
+                                      >
+                                        <option value="">— select —</option>
+                                        {parts.map((p) => (
+                                          <option key={String(p.id)} value={String(p.id)}>
+                                            {p.sku ? `${p.sku} — ${p.name}` : p.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </td>
+
+                                    <td className="p-3 align-top">
+                                      <input
+                                        className={`${inputBase} w-full py-2 text-xs`}
+                                        value={it.description ?? ""}
+                                        placeholder="Description"
+                                        onChange={(e) =>
+                                          updateItem(r.req.id, String(it.id), {
+                                            description: e.target.value,
+                                            ui_added: false,
+                                          })
+                                        }
+                                        disabled={locked}
+                                      />
+                                    </td>
+
+                                    <td className="p-3 text-right align-top">
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        step={1}
+                                        className={`${inputBase} w-20 py-2 text-right text-xs`}
+                                        value={Number.isFinite(it.ui_qty) ? String(it.ui_qty) : "1"}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          const nextQty =
+                                            raw === "" ? 1 : Math.max(1, Math.floor(toNum(raw, 1)));
+                                          updateItem(r.req.id, String(it.id), {
+                                            ui_qty: nextQty,
+                                            ui_added: false,
+                                          });
+                                        }}
+                                        disabled={locked}
+                                      />
+                                    </td>
+
+                                    <td className="p-3 text-right align-top">
+                                      <input
+                                        type="number"
+                                        step={0.01}
+                                        className={`${inputBase} w-28 py-2 text-right text-xs`}
+                                        value={it.ui_price == null ? "" : String(it.ui_price)}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          updateItem(r.req.id, String(it.id), {
+                                            ui_price: raw === "" ? undefined : toNum(raw, 0),
+                                            ui_added: false,
+                                          });
+                                        }}
+                                        disabled={locked}
+                                      />
+                                    </td>
+
+                                    <td className="p-3 text-right tabular-nums align-top">
+                                      {lineTotal.toFixed(2)}
+                                    </td>
+
+                                    <td className="p-3 align-top">
+                                      <div className="flex flex-col items-stretch gap-2">
+                                        {!it.ui_added ? (
+                                          <button
+                                            className={`${btnGhost} py-2 text-xs`}
+                                            onClick={() => stageAddToLine(r.req.id, String(it.id))}
+                                            disabled={busy}
+                                          >
+                                            Stage
+                                          </button>
+                                        ) : (
+                                          <button
+                                            className={`${btnCopper} py-2 text-xs`}
+                                            onClick={() => unstage(r.req.id, String(it.id))}
+                                            disabled={busy}
+                                          >
+                                            Staged ✓ (undo)
+                                          </button>
+                                        )}
+
+                                        <button
+                                          className={`${btnDanger} py-2 text-xs`}
+                                          onClick={() => void deleteLine(r.req.id, String(it.id))}
+                                          disabled={busy}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {!stagedIsValid(r) && r.items.length > 0 && (
+                        <div className="mt-3 text-xs text-neutral-500">
+                          Tip: stage at least one row with a part, qty, and price, then press{" "}
+                          <span className={COPPER_TEXT_SOFT}>Quote staged</span>.
+                        </div>
                       )}
                     </div>
                   </div>
-
-                  <div className="mt-3 text-xs text-muted-foreground">
-                    Tip: stage only the lines you have pricing for. Unstaged lines stay “requested”.
-                  </div>
-
-                  <div className={`${SUBCARD} mt-4 overflow-hidden`}>
-                    <table className="w-full text-sm">
-                      <thead className="bg-white/5 text-muted-foreground">
-                        <tr>
-                          <th className="p-3 text-left">Stock part</th>
-                          <th className="p-3 text-left">Description</th>
-                          <th className="p-3 text-right">Qty</th>
-                          <th className="p-3 text-right">Price</th>
-                          <th className="p-3 text-right">Total</th>
-                          <th className="w-44 p-3" />
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {rows.length === 0 ? (
-                          <tr className="border-t border-white/10">
-                            <td className="p-4 text-sm text-muted-foreground" colSpan={6}>
-                              No items yet. Click “Add part row”.
-                            </td>
-                          </tr>
-                        ) : (
-                          rows.map((it) => {
-                            const locked = it.ui_added || quoting;
-                            const qty = toNum(it.ui_qty, 0);
-                            const price = it.ui_price ?? 0;
-                            const lineTotal = qty > 0 ? price * qty : 0;
-
-                            return (
-                              <tr key={String(it.id)} className="border-t border-white/10">
-                                <td className="p-3 align-top">
-                                  <select
-                                    className="w-80 rounded-lg border border-white/12 bg-card/90 px-2 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-white/10 disabled:opacity-50"
-                                    value={it.ui_part_id ?? ""}
-                                    onChange={(e) => {
-                                      const partId = e.target.value || null;
-                                      const p = parts.find((x) => String(x.id) === String(partId));
-                                      updateRow(String(it.id), {
-                                        ui_part_id: partId,
-                                        part_id: partId,
-                                        description: (p?.name ?? it.description ?? "").trim(),
-                                        ui_price: p?.price == null ? undefined : toNum(p.price, 0),
-                                        ui_added: false,
-                                      });
-                                    }}
-                                    disabled={locked}
-                                  >
-                                    <option value="">— select —</option>
-                                    {parts.map((p) => (
-                                      <option key={String(p.id)} value={String(p.id)}>
-                                        {p.sku ? `${p.sku} — ${p.name}` : p.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-
-                                <td className="p-3 align-top">
-                                  <input
-                                    className="w-full rounded-lg border border-white/12 bg-card/90 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-white/10 disabled:opacity-50"
-                                    value={it.description ?? ""}
-                                    placeholder="Description"
-                                    onChange={(e) => updateRow(String(it.id), { description: e.target.value, ui_added: false })}
-                                    disabled={locked}
-                                  />
-                                </td>
-
-                                <td className="p-3 text-right align-top">
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    step={1}
-                                    className="w-20 rounded-lg border border-white/12 bg-card/90 px-3 py-2 text-right text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-white/10 disabled:opacity-50"
-                                    value={Number.isFinite(it.ui_qty) ? String(it.ui_qty) : "1"}
-                                    onChange={(e) => {
-                                      const raw = e.target.value;
-                                      const nextQty = raw === "" ? 1 : Math.max(1, Math.floor(toNum(raw, 1)));
-                                      updateRow(String(it.id), { ui_qty: nextQty, ui_added: false });
-                                    }}
-                                    disabled={locked}
-                                  />
-                                </td>
-
-                                <td className="p-3 text-right align-top">
-                                  <input
-                                    type="number"
-                                    step={0.01}
-                                    className="w-28 rounded-lg border border-white/12 bg-card/90 px-3 py-2 text-right text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-white/10 disabled:opacity-50"
-                                    value={it.ui_price == null ? "" : String(it.ui_price)}
-                                    onChange={(e) => {
-                                      const raw = e.target.value;
-                                      updateRow(String(it.id), {
-                                        ui_price: raw === "" ? undefined : toNum(raw, 0),
-                                        ui_added: false,
-                                      });
-                                    }}
-                                    disabled={locked}
-                                  />
-                                </td>
-
-                                <td className="p-3 text-right tabular-nums align-top">
-                                  {lineTotal.toFixed(2)}
-                                </td>
-
-                                <td className="p-3 align-top">
-                                  <div className="flex flex-col items-stretch gap-2">
-                                    {!it.ui_added ? (
-                                      <button
-                                        className={BTN_GHOST}
-                                        onClick={() => stageAddToLine(String(it.id))}
-                                        disabled={quoting}
-                                      >
-                                        Add to line
-                                      </button>
-                                    ) : (
-                                      <button
-                                        className={BTN_COPPER}
-                                        onClick={() => unstage(String(it.id))}
-                                        disabled={quoting}
-                                      >
-                                        Added ✓ (undo)
-                                      </button>
-                                    )}
-
-                                    <button
-                                      className={`${BTN} border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/15`}
-                                      onClick={() => void deleteLine(String(it.id))}
-                                      disabled={quoting}
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-
-                      <tfoot>
-                        <tr className="bg-white/5">
-                          <td className="p-3 text-right" colSpan={4}>
-                            <span className="text-sm text-muted-foreground">Total (staged parts)</span>
-                          </td>
-                          <td className="p-3 text-right tabular-nums font-semibold text-[#c88a4d]">
-                            {totalSell.toFixed(2)}
-                          </td>
-                          <td />
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-
-                  {!stagedValid && rows.length > 0 && (selectedReq.status ?? "requested") !== "quoted" && (
-                    <div className="mt-3 text-xs text-muted-foreground">
-                      Tip: stage at least one row with <span className="text-[#c88a4d]">Add to line</span>, then press{" "}
-                      <span className="text-[#c88a4d]">Mark Quoted</span>.
-                    </div>
-                  )}
-                </>
-              )}
+                );
+              })}
             </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
     </div>
   );

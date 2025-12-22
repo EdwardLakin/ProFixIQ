@@ -20,16 +20,22 @@ type WoBucket = {
   requests: PartRequest[];
   itemsCount: number;
   latestAt: string | null;
+  searchBlob: string; // request ids + item descriptions for search
 };
 
 const VISIBLE_STATUSES: PartRequest["status"][] = ["requested", "quoted", "approved"];
 
-const CARD = "rounded-xl border border-white/12 bg-card/90 p-4";
-const SUBCARD = "rounded-lg border border-white/10 bg-muted/70 p-3";
+const CARD =
+  "rounded-xl border border-white/10 bg-card/85 p-4 shadow-sm";
+const INPUT =
+  "w-full rounded-lg border border-white/10 bg-muted/60 px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-white/10";
+const BTN =
+  "inline-flex items-center justify-center rounded-lg border border-white/10 bg-card/85 px-4 py-2 text-sm font-medium text-foreground hover:bg-card/95";
+
 const PILL_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold";
-const PILL_NEEDS = `${PILL_BASE} border-red-500/40 bg-red-500/10 text-red-200`;
-const PILL_QUOTED = `${PILL_BASE} border-teal-500/40 bg-teal-500/10 text-teal-200`;
+const PILL_NEEDS = `${PILL_BASE} border-red-500/35 bg-red-500/10 text-red-200`;
+const PILL_QUOTED = `${PILL_BASE} border-teal-500/35 bg-teal-500/10 text-teal-200`;
 
 function looksLikeUuid(s: string): boolean {
   return s.includes("-") && s.length >= 36;
@@ -45,7 +51,7 @@ export default function PartsRequestsPage(): JSX.Element {
   const reload = async (): Promise<void> => {
     setLoading(true);
 
-    // 1) load part_requests (active-ish)
+    // 1) load active-ish part_requests
     const { data: reqs, error } = await supabase
       .from("part_requests")
       .select("*")
@@ -62,27 +68,32 @@ export default function PartsRequestsPage(): JSX.Element {
 
     const requestList = (reqs ?? []) as PartRequest[];
 
-    // 2) items count per request (for “X items”)
+    // 2) load request items (for counts + search by part description)
     const requestIds = requestList.map((r) => r.id);
     const itemsCountByRequest: Record<string, number> = {};
+    const descByRequest: Record<string, string[]> = {};
+
     if (requestIds.length) {
       const { data: items, error: itemsErr } = await supabase
         .from("part_request_items")
-        .select("id, request_id")
+        .select("request_id, description")
         .in("request_id", requestIds);
 
       if (itemsErr) {
         // eslint-disable-next-line no-console
-        console.error("[parts/requests] load items failed:", itemsErr);
+        console.error("[parts/requests] load part_request_items failed:", itemsErr);
       } else {
         (items ?? []).forEach((it) => {
-          const row = it as Pick<PartRequestItem, "id" | "request_id">;
+          const row = it as Pick<PartRequestItem, "request_id" | "description">;
           itemsCountByRequest[row.request_id] = (itemsCountByRequest[row.request_id] ?? 0) + 1;
+
+          const d = (row.description ?? "").trim();
+          if (d) (descByRequest[row.request_id] ||= []).push(d);
         });
       }
     }
 
-    // 3) load work_orders to get custom_id
+    // 3) load work_orders for custom_id
     const woIds = Array.from(
       new Set(
         requestList
@@ -127,6 +138,7 @@ export default function PartsRequestsPage(): JSX.Element {
           requests: [],
           itemsCount: 0,
           latestAt: null,
+          searchBlob: "",
         };
       }
 
@@ -146,6 +158,13 @@ export default function PartsRequestsPage(): JSX.Element {
     Object.values(byWo).forEach((b) => {
       const hasRequested = b.requests.some((r) => (r.status ?? "requested") === "requested");
       b.status = hasRequested ? "needs_quote" : "quoted";
+
+      const reqIdsBlob = b.requests.map((r) => r.id).join(" ");
+      const descBlob = b.requests
+        .flatMap((r) => descByRequest[r.id] ?? [])
+        .join(" ");
+      const woBlob = `${b.customId ?? ""} ${b.workOrderId}`;
+      b.searchBlob = `${woBlob} ${reqIdsBlob} ${descBlob}`.toLowerCase();
     });
 
     const list = Object.values(byWo).sort((a, b) => {
@@ -166,14 +185,7 @@ export default function PartsRequestsPage(): JSX.Element {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return buckets;
-
-    return buckets.filter((b) => {
-      const woLabel = (b.customId ?? b.workOrderId).toLowerCase();
-      const matchesWo = woLabel.includes(q);
-
-      const matchesReq = b.requests.some((r) => r.id.toLowerCase().includes(q));
-      return matchesWo || matchesReq;
-    });
+    return buckets.filter((b) => b.searchBlob.includes(q));
   }, [buckets, search]);
 
   return (
@@ -187,10 +199,7 @@ export default function PartsRequestsPage(): JSX.Element {
           </p>
         </div>
 
-        <Link
-          href="/parts"
-          className="inline-flex items-center justify-center rounded-lg border border-white/12 bg-card/90 px-4 py-2 text-sm font-medium text-foreground hover:bg-card/95"
-        >
+        <Link href="/parts" className={BTN}>
           Parts Catalog
         </Link>
       </div>
@@ -207,7 +216,7 @@ export default function PartsRequestsPage(): JSX.Element {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
-            className="w-full rounded-lg border border-white/12 bg-muted/70 px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-white/10"
+            className={INPUT}
           />
         </div>
       </div>
@@ -219,10 +228,11 @@ export default function PartsRequestsPage(): JSX.Element {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {filtered.map((b) => {
-            const woLabel = b.customId || (looksLikeUuid(b.workOrderId) ? `#${b.workOrderId.slice(0, 8)}` : b.workOrderId);
-            const pill = b.status === "needs_quote" ? PILL_NEEDS : PILL_QUOTED;
+            const woLabel =
+              b.customId ||
+              (looksLikeUuid(b.workOrderId) ? `#${b.workOrderId.slice(0, 8)}` : b.workOrderId);
 
-            // IMPORTANT: link to the parts requests WO page (not the WO client page)
+            // link to the parts requests WO page (not the WO page)
             const href = `/parts/requests/${encodeURIComponent(b.customId || b.workOrderId)}`;
 
             return (
@@ -233,39 +243,18 @@ export default function PartsRequestsPage(): JSX.Element {
                       {woLabel}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      {b.requests.length} request{b.requests.length === 1 ? "" : "s"} · {b.itemsCount} item{b.itemsCount === 1 ? "" : "s"}
+                      {b.requests.length} request{b.requests.length === 1 ? "" : "s"} ·{" "}
+                      {b.itemsCount} item{b.itemsCount === 1 ? "" : "s"}
                     </div>
                   </div>
 
-                  <span className={pill}>{b.status === "needs_quote" ? "Needs quote" : "Quoted"}</span>
-                </div>
-
-                <div className={`${SUBCARD} mt-3`}>
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Requests
-                  </div>
-                  <ul className="mt-2 space-y-1 text-sm text-foreground">
-                    {b.requests.slice(0, 3).map((r) => (
-                      <li key={r.id} className="flex items-center justify-between gap-2">
-                        <span className="truncate">
-                          Req #{r.id.slice(0, 8)}
-                        </span>
-                        <span className={(r.status ?? "requested") === "quoted" ? PILL_QUOTED : PILL_NEEDS}>
-                          {(r.status ?? "requested") === "quoted" ? "Quoted" : "Needs quote"}
-                        </span>
-                      </li>
-                    ))}
-                    {b.requests.length > 3 && (
-                      <li className="text-xs text-muted-foreground">+ {b.requests.length - 3} more…</li>
-                    )}
-                  </ul>
+                  <span className={b.status === "needs_quote" ? PILL_NEEDS : PILL_QUOTED}>
+                    {b.status === "needs_quote" ? "Needs quote" : "Quoted"}
+                  </span>
                 </div>
 
                 <div className="mt-4 flex justify-end">
-                  <Link
-                    href={href}
-                    className="inline-flex items-center justify-center rounded-lg border border-white/12 bg-card/90 px-4 py-2 text-sm font-semibold text-foreground hover:bg-card/95"
-                  >
+                  <Link href={href} className={BTN}>
                     Open requests →
                   </Link>
                 </div>
