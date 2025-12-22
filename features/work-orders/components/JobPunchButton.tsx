@@ -1,4 +1,3 @@
-// shared/components/JobPunchButton.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -109,10 +108,16 @@ export default function JobPunchButton({
   const label = busy
     ? "Saving…"
     : isStarted
-    ? "Finish job"
-    : isOnHold
-    ? "On hold"
-    : "Start job";
+      ? "Finish job"
+      : isOnHold
+        ? "On hold"
+        : "Start job";
+
+  // ✅ Force visible styles for Start (green), without depending on Button variants
+  const startClasses =
+    "bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500 hover:border-emerald-400 focus-visible:ring-emerald-400";
+  const finishClasses =
+    "border-[var(--accent-copper-light)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-faint)]";
 
   return (
     <div className="relative w-full">
@@ -121,9 +126,12 @@ export default function JobPunchButton({
         onClick={handlePrimary}
         disabled={busy || effectiveDisabled}
         isLoading={busy}
-        variant={isStarted ? "outline" : "copper"}
+        variant="outline"
         size="md"
-        className="inline-flex w-full items-center justify-center text-center text-sm font-blackops tracking-[0.16em] uppercase"
+        className={[
+          "inline-flex w-full items-center justify-center text-center text-sm font-blackops tracking-[0.16em] uppercase",
+          isStarted ? finishClasses : startClasses,
+        ].join(" ")}
         aria-pressed={isStarted}
         aria-busy={busy}
       >
