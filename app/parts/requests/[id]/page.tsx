@@ -14,7 +14,6 @@ type RequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
 type ItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type LocationRow = DB["public"]["Tables"]["stock_locations"]["Row"];
-type QuoteUpdate = DB["public"]["Tables"]["work_order_quote_lines"]["Update"];
 
 type Status = RequestRow["status"];
 
@@ -27,10 +26,10 @@ type UpsertResponse = {
 };
 
 type UiItem = ItemRow & {
-  ui_added: boolean; // staged for quote
   ui_part_id: string | null;
   ui_qty: number;
   ui_price?: number; // sell/unit (undefined = not set)
+  ui_added?: boolean; // purely UI “added” state (not used for logic)
 };
 
 type RequestUi = {
@@ -70,18 +69,17 @@ function resolveWorkOrderLineId(currentReq: RequestRow, list: UiItem[]): string 
   return null;
 }
 
+function isRowComplete(it: UiItem): boolean {
+  const hasPart = isNonEmptyString(it.part_id ?? it.ui_part_id ?? null);
+  const hasPrice = it.quoted_price != null || it.ui_price != null;
+  const qty = toNum(it.qty ?? it.ui_qty, 0);
+  return hasPart && hasPrice && qty > 0;
+}
+
 function computeRequestBadge(req: RequestRow, items: UiItem[]): "needs_quote" | "quoted" {
   const status = (req.status ?? "requested").toLowerCase();
   if (status === "quoted" || status === "approved" || status === "fulfilled") return "quoted";
-
-  // even if request.status says requested, if every row is priced/parted we can show quoted
-  const allDone = items.length > 0 && items.every((it) => {
-    const hasPart = isNonEmptyString(it.part_id ?? it.ui_part_id ?? null);
-    const hasPrice = it.quoted_price != null || it.ui_price != null;
-    const qty = toNum(it.qty ?? it.ui_qty, 0);
-    return hasPart && hasPrice && qty > 0;
-  });
-
+  const allDone = items.length > 0 && items.every((it) => isRowComplete(it));
   return allDone ? "quoted" : "needs_quote";
 }
 
@@ -94,7 +92,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [requests, setRequests] = useState<RequestUi[]>([]);
   const [parts, setParts] = useState<PartRow[]>([]);
   const [locations, setLocations] = useState<LocationRow[]>([]);
-  const [locationId, setLocationId] = useState<string>("");
+  const [defaultLocationId, setDefaultLocationId] = useState<string>("");
 
   const [loading, setLoading] = useState<boolean>(true);
   const [savingReqId, setSavingReqId] = useState<string | null>(null);
@@ -132,7 +130,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const raw = (idOrCustom ?? "").trim();
     if (!raw) return null;
 
-    // by UUID
     if (looksLikeUuid(raw)) {
       const { data, error } = await supabase
         .from("work_orders")
@@ -142,7 +139,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       if (!error && data) return data as WorkOrderRow;
     }
 
-    // by custom_id exact
     {
       const { data } = await supabase
         .from("work_orders")
@@ -152,7 +148,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       if (data) return data as WorkOrderRow;
     }
 
-    // by custom_id ilike
     {
       const { data } = await supabase
         .from("work_orders")
@@ -162,7 +157,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       if (data) return data as WorkOrderRow;
     }
 
-    // fallback normalize EL000003 vs EL3
     {
       const { prefix, n } = splitCustomId(raw);
       if (n != null) {
@@ -193,13 +187,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setRequests([]);
       setParts([]);
       setLocations([]);
+      setDefaultLocationId("");
       setLoading(false);
       return;
     }
 
     setWo(woRow);
 
-    // load requests for this work order
     const { data: reqs, error: reqErr } = await supabase
       .from("part_requests")
       .select("*")
@@ -211,7 +205,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const reqList = (reqs ?? []) as RequestRow[];
     const reqIds = reqList.map((r) => r.id);
 
-    // load items for those requests
     const itemsByRequest: Record<string, ItemRow[]> = {};
     if (reqIds.length) {
       const { data: items, error: itErr } = await supabase
@@ -234,10 +227,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           const sell = row.quoted_price == null ? undefined : toNum(row.quoted_price, 0);
           return {
             ...row,
-            ui_added: false,
             ui_part_id: row.part_id ?? null,
             ui_qty: toNum(row.qty, 1),
             ui_price: sell,
+            ui_added: false,
           };
         });
 
@@ -246,7 +239,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     setRequests(uiRequests);
 
-    // parts + locations (from work order shop id)
+    // parts + locations (we auto-pick the first location so user never selects)
     const shopId = woRow.shop_id ?? null;
     if (shopId) {
       const [{ data: ps }, { data: locs }] = await Promise.all([
@@ -255,15 +248,21 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       ]);
 
       setParts((ps ?? []) as PartRow[]);
+
       const locList = (locs ?? []) as LocationRow[];
       setLocations(locList);
 
-      if (!locationId && locList.length === 1 && locList[0]?.id) {
-        setLocationId(String(locList[0].id));
+      // 🔑 default location (no UI step)
+      if (locList.length > 0) {
+        const first = locList[0]?.id ? String(locList[0].id) : "";
+        setDefaultLocationId(first);
+      } else {
+        setDefaultLocationId("");
       }
     } else {
       setParts([]);
       setLocations([]);
+      setDefaultLocationId("");
     }
 
     setLoading(false);
@@ -321,16 +320,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
       const ui: UiItem = {
         ...data,
-        ui_added: false,
         ui_part_id: data.part_id ?? null,
         ui_qty: toNum(data.qty, 1),
         ui_price: data.quoted_price == null ? undefined : toNum(data.quoted_price, 0),
+        ui_added: false,
       };
 
       setRequests((prev) =>
-        prev.map((r) =>
-          r.req.id === reqId ? { ...r, items: [...r.items, ui] } : r,
-        ),
+        prev.map((r) => (r.req.id === reqId ? { ...r, items: [...r.items, ui] } : r)),
       );
     } finally {
       setSavingReqId(null);
@@ -365,16 +362,15 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     toast.success("Item removed.");
   }
 
-  function stageAddToLine(reqId: string, itemId: string): void {
+  async function addAndAttach(reqId: string, itemId: string): Promise<void> {
     const target = requests.find((r) => r.req.id === reqId);
     const it = target?.items.find((x) => x.id === itemId);
-    if (!it) return;
+    if (!target || !it) return;
 
     const partId = it.ui_part_id;
     const qty = toNum(it.ui_qty, 0);
     const price = it.ui_price;
 
-    // ✅ FIX: no "return toast.error()" inside void function
     if (!partId) {
       toast.error("Pick a stock part first.");
       return;
@@ -388,102 +384,46 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    updateItem(reqId, itemId, { ui_added: true });
-  }
-
-  function unstage(reqId: string, itemId: string): void {
-    updateItem(reqId, itemId, { ui_added: false });
-  }
-
-  function requestTotals(r: RequestUi): { stagedTotal: number; stagedCount: number } {
-    let sum = 0;
-    let count = 0;
-    for (const it of r.items) {
-      if (!it.ui_added) continue;
-      const qty = toNum(it.ui_qty, 0);
-      const price = it.ui_price ?? 0;
-      if (qty > 0) {
-        sum += price * qty;
-        count += 1;
-      }
-    }
-    return { stagedTotal: sum, stagedCount: count };
-  }
-
-  function stagedIsValid(r: RequestUi): boolean {
-    // allow partial quoting: valid if at least 1 staged row and every staged row is fully filled
-    const staged = r.items.filter((it) => it.ui_added);
-    if (staged.length === 0) return false;
-
-    return staged.every((it) => {
-      const qty = toNum(it.ui_qty, 0);
-      return (
-        isNonEmptyString(it.ui_part_id) &&
-        qty > 0 &&
-        it.ui_price != null &&
-        Number.isFinite(it.ui_price)
-      );
-    });
-  }
-
-  async function markQuotedForRequest(reqId: string): Promise<void> {
-    const target = requests.find((r) => r.req.id === reqId);
-    if (!target) return;
-
-    if (!locationId) {
-      toast.error("Select a stock location first.");
-      return;
-    }
-
-    if (!stagedIsValid(target)) {
-      toast.error("Stage at least one valid row before quoting.");
-      return;
-    }
-
     const lineId = resolveWorkOrderLineId(target.req, target.items);
+    if (!lineId) {
+      toast.error("Missing work order line id for this request.");
+      return;
+    }
+
+    // We keep inventory allocation working, but remove the UI step:
+    // - we auto-pick the first location (if any)
+    // - if none exist, we still save the request item but cannot allocate inventory
+    const locId = defaultLocationId || "";
 
     setSavingReqId(reqId);
     try {
-      const staged = target.items.filter((it) => it.ui_added);
+      const part = parts.find((p) => String(p.id) === partId);
+      const desc = (part?.name ?? it.description ?? "").trim();
 
-      // 1) Persist staged items only
-      for (const it of staged) {
-        const partId = it.ui_part_id;
-        const qty = toNum(it.ui_qty, 1);
-        const price = it.ui_price;
+      // 1) persist the item immediately
+      const { error: updErr } = await supabase
+        .from("part_request_items")
+        .update({
+          part_id: partId,
+          description: desc || it.description || "Part",
+          qty,
+          quoted_price: price,
+          vendor: null,
+          markup_pct: null,
+          work_order_line_id: it.work_order_line_id ?? lineId,
+        } as DB["public"]["Tables"]["part_request_items"]["Update"])
+        .eq("id", it.id);
 
-        if (!partId || price == null) {
-          toast.error("Some staged rows are missing a part or price.");
-          return;
-        }
-
-        const part = parts.find((p) => String(p.id) === partId);
-        const desc = (part?.name ?? it.description ?? "").trim();
-
-        const { error } = await supabase
-          .from("part_request_items")
-          .update({
-            part_id: partId,
-            description: desc || it.description || "Part",
-            qty,
-            quoted_price: price, // sell price
-            vendor: null,
-            markup_pct: null,
-            work_order_line_id: it.work_order_line_id ?? lineId,
-          })
-          .eq("id", it.id);
-
-        if (error) {
-          toast.error(error.message);
-          return;
-        }
+      if (updErr) {
+        toast.error(updErr.message);
+        return;
       }
 
-      // 2) Allocate inventory + stock move (only staged)
-      for (const it of staged) {
+      // 2) allocate (only if we have a location)
+      if (locId) {
         const { error } = await supabase.rpc("upsert_part_allocation_from_request_item", {
           p_request_item_id: it.id,
-          p_location_id: locationId,
+          p_location_id: locId,
           p_create_stock_move: true,
         });
 
@@ -491,90 +431,65 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           toast.error(error.message);
           return;
         }
+      } else {
+        toast.warning("No stock location exists for this shop. Item saved, but inventory was not allocated.");
       }
 
-      // 3) Decide if request can become quoted (all items completed)
-      // Refresh local interpretation: items with part_id + quoted_price
-      const after = target.items.map((it) => {
-        if (!it.ui_added) return it;
-        return {
-          ...it,
-          part_id: it.ui_part_id,
-          quoted_price: it.ui_price ?? null,
-          ui_added: false, // clear stage after quote
-        };
-      });
+      // 3) update local state so badge flips immediately
+      setRequests((prev) =>
+        prev.map((r) => {
+          if (r.req.id !== reqId) return r;
 
-      const allNowQuoted =
-        after.length > 0 &&
-        after.every((it) => {
-          const hasPart = isNonEmptyString(it.part_id ?? it.ui_part_id ?? null);
-          const hasPrice = it.quoted_price != null || it.ui_price != null;
-          const qty = toNum(it.qty ?? it.ui_qty, 0);
-          return hasPart && hasPrice && qty > 0;
-        });
+          const nextItems = r.items.map((x) => {
+            if (x.id !== itemId) return x;
+            return {
+              ...x,
+              part_id: partId,
+              quoted_price: price,
+              qty,
+              ui_added: true,
+            } as UiItem;
+          });
 
-      if (allNowQuoted) {
-        const { error: statusErr } = await supabase.rpc("set_part_request_status", {
-          p_request: reqId,
-          p_status: "quoted" satisfies Status,
-        });
+          const allNowQuoted = nextItems.length > 0 && nextItems.every((x) => isRowComplete(x));
 
-        if (statusErr) {
-          toast.error(statusErr.message);
-          return;
+          return {
+            req: {
+              ...r.req,
+              status: allNowQuoted ? "quoted" : (r.req.status ?? "requested"),
+            },
+            items: nextItems,
+          };
+        }),
+      );
+
+      // 4) if all rows complete, mark request quoted in DB
+      {
+        const refreshed = requests.find((r) => r.req.id === reqId);
+        const localItems = refreshed?.items ?? [];
+        const optimistic = localItems.map((x) =>
+          x.id === itemId
+            ? ({ ...x, part_id: partId, quoted_price: price, qty } as UiItem)
+            : x,
+        );
+
+        const allNowQuoted = optimistic.length > 0 && optimistic.every((x) => isRowComplete(x));
+        if (allNowQuoted) {
+          const { error: statusErr } = await supabase.rpc("set_part_request_status", {
+            p_request: reqId,
+            p_status: "quoted" satisfies Status,
+          });
+          if (statusErr) {
+            toast.warning(statusErr.message);
+          }
         }
       }
 
-      // 4) Update WO line status + quote totals + menu save (only if we have a line id)
-      if (!lineId) {
-        toast.success(allNowQuoted ? "Request quoted." : "Staged rows quoted (request still needs more).");
-        // update local state and exit
-        setRequests((prev) =>
-          prev.map((r) => {
-            if (r.req.id !== reqId) return r;
-            return {
-              req: { ...r.req, status: allNowQuoted ? "quoted" : (r.req.status ?? "requested") },
-              items: after,
-            };
-          }),
-        );
-        window.dispatchEvent(new Event("parts-request:submitted"));
-        return;
-      }
+      // 5) tell WO page to refresh + redraw parts used
+      window.dispatchEvent(new Event("parts-request:submitted"));
+      window.dispatchEvent(new Event("wo:parts-used"));
 
-      const { error: wolErr } = await supabase
-        .from("work_order_lines")
-        .update({
-          status: "quoted",
-          approval_state: "pending",
-          hold_reason: "Parts quote ready – awaiting customer approval",
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", lineId);
-
-      if (wolErr) {
-        toast.warning(`Quoted, but WO line update failed: ${wolErr.message}`);
-      }
-
-      // totals for this request (staged total)
-      const { stagedTotal } = requestTotals({ req: target.req, items: staged });
-
-      if (target.req.work_order_id) {
-        const { error: quoteErr } = await supabase
-          .from("work_order_quote_lines")
-          .update({
-            stage: "advisor_pending",
-            parts_total: stagedTotal,
-            grand_total: stagedTotal,
-          } as QuoteUpdate)
-          .match({
-            work_order_id: target.req.work_order_id,
-            work_order_line_id: lineId,
-          });
-
-        if (quoteErr) toast.warning(`WO quote totals not synced: ${quoteErr.message}`);
-      }
-
+      // 6) best-effort: save to menu items (keeps your catalog in sync)
       try {
         const res = await fetch("/api/menu-items/upsert-from-line", {
           method: "POST",
@@ -585,35 +500,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         const j = (await res.json().catch(() => null)) as UpsertResponse | null;
 
         if (!res.ok || !j?.ok) {
-          const msg =
-            j?.detail ||
-            j?.error ||
-            "Quoted, but couldn’t save to menu items (see server logs / RLS).";
-          toast.warning(msg);
-        } else {
-          toast.success(`Quoted and ${j.updated ? "updated" : "saved"} to menu items.`);
+          toast.warning(j?.detail || j?.error || "Added, but couldn’t save to menu items.");
         }
-      } catch (e) {
-        const msg =
-          e instanceof Error
-            ? `Quoted, but couldn’t save to menu items: ${e.message}`
-            : "Quoted, but couldn’t save to menu items (network error).";
-        toast.warning(msg);
+      } catch {
+        // ignore
       }
 
-      // update local state
-      setRequests((prev) =>
-        prev.map((r) => {
-          if (r.req.id !== reqId) return r;
-          return {
-            req: { ...r.req, status: allNowQuoted ? "quoted" : (r.req.status ?? "requested") },
-            items: after,
-          };
-        }),
-      );
-
-      window.dispatchEvent(new Event("parts-request:submitted"));
-      toast.success(allNowQuoted ? "Request quoted." : "Staged rows quoted (request still needs more).");
+      toast.success("Added to the work order line.");
     } finally {
       setSavingReqId(null);
     }
@@ -640,35 +533,19 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-xl font-semibold tracking-wide">
-                    Work Order{" "}
-                    <span className={COPPER_TEXT}>{woDisplay}</span>
+                    Work Order <span className={COPPER_TEXT}>{woDisplay}</span>
                   </div>
                   <div className="mt-1 text-sm text-neutral-400">
                     Parts requests for this work order.
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="text-xs text-neutral-400">Stock location</div>
-                  <select
-                    className={`${selectBase} w-64`}
-                    value={locationId}
-                    onChange={(e) => setLocationId(e.target.value)}
-                    disabled={!!savingReqId || locations.length === 0}
-                  >
-                    <option value="">— select —</option>
-                    {locations.map((l) => (
-                      <option key={String(l.id)} value={String(l.id)}>
-                        {l.code ? `${l.code} — ${l.name}` : l.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* Stock location selector removed (auto-picked internally) */}
               </div>
 
               <div className="mt-3 text-xs text-neutral-400">
-                Stage rows you have pricing for, then quote that request. Requests stay{" "}
-                <span className={COPPER_TEXT_SOFT}>requested</span> until all rows are fully quoted.
+                Add parts to attach them to the work order line. The request becomes{" "}
+                <span className={COPPER_TEXT_SOFT}>quoted</span> automatically once every row has a part + qty + price.
               </div>
             </div>
           </div>
@@ -682,7 +559,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
               {requests.map((r) => {
                 const badge = computeRequestBadge(r.req, r.items);
                 const busy = savingReqId === r.req.id;
-                const { stagedTotal, stagedCount } = requestTotals(r);
 
                 return (
                   <div key={r.req.id} className={`${glassCard} overflow-hidden`}>
@@ -690,19 +566,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-sm font-semibold">
-                            Request{" "}
-                            <span className={COPPER_TEXT}>
-                              #{r.req.id.slice(0, 8)}
-                            </span>
+                            Request <span className={COPPER_TEXT}>#{r.req.id.slice(0, 8)}</span>
                           </div>
                           <div className="mt-1 text-xs text-neutral-400">
                             Created{" "}
-                            {r.req.created_at
-                              ? new Date(r.req.created_at).toLocaleString()
-                              : "—"}
+                            {r.req.created_at ? new Date(r.req.created_at).toLocaleString() : "—"}
                             <span className="mx-2 text-neutral-600">·</span>
-                            Line:{" "}
-                            {resolveWorkOrderLineId(r.req, r.items)?.slice(0, 8) ?? "—"}
+                            Line: {resolveWorkOrderLineId(r.req, r.items)?.slice(0, 8) ?? "—"}
                           </div>
                         </div>
 
@@ -718,25 +588,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                           >
                             {busy ? "Working…" : "＋ Add part row"}
                           </button>
-
-                          <button
-                            className={btnCopper}
-                            onClick={() => void markQuotedForRequest(r.req.id)}
-                            disabled={busy || !locationId || !stagedIsValid(r)}
-                            title={!locationId ? "Select a stock location first" : ""}
-                          >
-                            {busy ? "Saving…" : "Quote staged"}
-                          </button>
                         </div>
-                      </div>
-
-                      <div className="mt-3 text-xs text-neutral-400">
-                        Staged:{" "}
-                        <span className={COPPER_TEXT_SOFT}>{stagedCount}</span>{" "}
-                        row{stagedCount === 1 ? "" : "s"} · Total{" "}
-                        <span className={COPPER_TEXT_SOFT}>
-                          {stagedTotal.toFixed(2)}
-                        </span>
                       </div>
                     </div>
 
@@ -763,7 +615,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                               </tr>
                             ) : (
                               r.items.map((it) => {
-                                const locked = busy; // allow editing even if staged; only lock while saving
+                                const locked = busy;
                                 const qty = toNum(it.ui_qty, 0);
                                 const price = it.ui_price ?? 0;
                                 const lineTotal = qty > 0 ? price * qty : 0;
@@ -779,10 +631,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           const p = parts.find((x) => String(x.id) === String(partId));
                                           updateItem(r.req.id, String(it.id), {
                                             ui_part_id: partId,
-                                            part_id: partId,
                                             description: (p?.name ?? it.description ?? "").trim(),
                                             ui_price: p?.price == null ? undefined : toNum(p.price, 0),
-                                            ui_added: false,
                                           });
                                         }}
                                         disabled={locked}
@@ -802,10 +652,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         value={it.description ?? ""}
                                         placeholder="Description"
                                         onChange={(e) =>
-                                          updateItem(r.req.id, String(it.id), {
-                                            description: e.target.value,
-                                            ui_added: false,
-                                          })
+                                          updateItem(r.req.id, String(it.id), { description: e.target.value })
                                         }
                                         disabled={locked}
                                       />
@@ -822,10 +669,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           const raw = e.target.value;
                                           const nextQty =
                                             raw === "" ? 1 : Math.max(1, Math.floor(toNum(raw, 1)));
-                                          updateItem(r.req.id, String(it.id), {
-                                            ui_qty: nextQty,
-                                            ui_added: false,
-                                          });
+                                          updateItem(r.req.id, String(it.id), { ui_qty: nextQty });
                                         }}
                                         disabled={locked}
                                       />
@@ -841,7 +685,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           const raw = e.target.value;
                                           updateItem(r.req.id, String(it.id), {
                                             ui_price: raw === "" ? undefined : toNum(raw, 0),
-                                            ui_added: false,
                                           });
                                         }}
                                         disabled={locked}
@@ -854,23 +697,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
                                     <td className="p-3 align-top">
                                       <div className="flex flex-col items-stretch gap-2">
-                                        {!it.ui_added ? (
-                                          <button
-                                            className={`${btnGhost} py-2 text-xs`}
-                                            onClick={() => stageAddToLine(r.req.id, String(it.id))}
-                                            disabled={busy}
-                                          >
-                                            Stage
-                                          </button>
-                                        ) : (
-                                          <button
-                                            className={`${btnCopper} py-2 text-xs`}
-                                            onClick={() => unstage(r.req.id, String(it.id))}
-                                            disabled={busy}
-                                          >
-                                            Staged ✓ (undo)
-                                          </button>
-                                        )}
+                                        <button
+                                          className={`${btnCopper} py-2 text-xs`}
+                                          onClick={() => void addAndAttach(r.req.id, String(it.id))}
+                                          disabled={busy}
+                                        >
+                                          {busy ? "Saving…" : "Add"}
+                                        </button>
 
                                         <button
                                           className={`${btnDanger} py-2 text-xs`}
@@ -889,10 +722,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                         </table>
                       </div>
 
-                      {!stagedIsValid(r) && r.items.length > 0 && (
+                      {locations.length === 0 && (
                         <div className="mt-3 text-xs text-neutral-500">
-                          Tip: stage at least one row with a part, qty, and price, then press{" "}
-                          <span className={COPPER_TEXT_SOFT}>Quote staged</span>.
+                          No stock locations exist for this shop, so inventory allocation is skipped.
+                          Parts will still be saved to the request item.
                         </div>
                       )}
                     </div>
