@@ -31,7 +31,7 @@ export default function PartsDashboard() {
   useEffect(() => {
     const fetch = async () => {
       const { data } = await supabase
-        .from("parts_requests")
+        .from("part_requests")
         .select("*")
         .order("created_at", { ascending: false });
 

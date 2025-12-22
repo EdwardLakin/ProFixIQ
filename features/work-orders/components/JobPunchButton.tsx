@@ -18,6 +18,8 @@ type Props = {
 
 type DB = Database;
 
+type RpcErrorLike = { message?: string | null; code?: string | null };
+
 export default function JobPunchButton({
   lineId,
   punchedInAt,
@@ -42,22 +44,74 @@ export default function JobPunchButton({
     window.setTimeout(() => setFlash(null), 1200);
   };
 
+  const showUserFriendlyRpcError = (err: RpcErrorLike): boolean => {
+    const msg = String(err.message ?? "");
+    const msgLc = msg.toLowerCase();
+
+    // PostgREST schema cache / function signature mismatch
+    if (msgLc.includes("schema cache") || msgLc.includes("could not find the function")) {
+      toast.error("System updated. Refresh the page and try again.");
+      return true;
+    }
+
+    // Auth / permission style errors
+    if (err.code === "28000" || msgLc.includes("not assigned")) {
+      toast.error("This job is assigned to another tech. Ask a manager to reassign it.");
+      return true;
+    }
+    if (msgLc.includes("forbidden") || msgLc.includes("not allowed")) {
+      toast.error("You don’t have permission to start this job.");
+      return true;
+    }
+
+    // One-active-job constraint (if you enforce it)
+    if (err.code === "23505" || msgLc.includes("another active job") || msgLc.includes("active job")) {
+      toast.error("You already have another active job. Finish it first.");
+      return true;
+    }
+
+    return false;
+  };
+
+  async function punchInRpc(): Promise<{ ok: true } | { ok: false; error: RpcErrorLike }> {
+    // ✅ Your generated types currently expect `line_id` (as shown in the TS error).
+    // But if the DB function was changed to `p_line_id`, PostgREST can get out of sync briefly.
+    // So we try `line_id` first, then fallback to `p_line_id` if needed.
+    const first = await supabase.rpc("punch_in", { line_id: lineId });
+
+    if (!first.error) return { ok: true };
+
+    const msg = String(first.error.message ?? "").toLowerCase();
+    const looksLikeArgMismatch =
+      msg.includes("schema cache") ||
+      msg.includes("could not find the function") ||
+      msg.includes("function public.punch_in");
+
+    if (!looksLikeArgMismatch) return { ok: false, error: first.error };
+
+    // Fallback attempt (ignore TS on purpose)
+    const second = await (supabase as unknown as { rpc: Function }).rpc("punch_in", {
+      p_line_id: lineId,
+    });
+
+    if (!second?.error) return { ok: true };
+    return { ok: false, error: second.error as RpcErrorLike };
+  }
+
   const start = async () => {
     if (busy || effectiveDisabled) return;
+    if (!lineId) {
+      toast.error("Missing job line id.");
+      return;
+    }
+
     setBusy(true);
     try {
-      // Uses your RPC (enforces one active job, assignment, etc.)
-      const { error: punchErr } = await supabase.rpc("punch_in", {
-        line_id: lineId,
-      });
+      const rpc = await punchInRpc();
 
-      if (punchErr) {
-        if (punchErr.code === "23505") {
-          toast.error("You already have another active job. Finish it first.");
-        } else if (punchErr.code === "28000") {
-          toast.error("Job is not assigned to you.");
-        } else {
-          toast.error(punchErr.message ?? "Start failed");
+      if (!rpc.ok) {
+        if (!showUserFriendlyRpcError(rpc.error)) {
+          toast.error(rpc.error.message ?? "Start failed");
         }
         return;
       }
