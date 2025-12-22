@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import clsx from "clsx";
 
 /* -------------------------------------------------------------------------- */
@@ -7,6 +8,7 @@ import clsx from "clsx";
 /* -------------------------------------------------------------------------- */
 
 const COPPER = "rgb(184 115 51)"; // burnt copper hex: #B87333
+const COPPER_HOVER = "rgb(168 105 45)";
 const COPPER_SOFT = "rgba(184, 115, 51, 0.55)";
 const COPPER_FAINT = "rgba(184, 115, 51, 0.28)";
 const METAL_BORDER = "rgba(255,255,255,0.10)";
@@ -23,8 +25,7 @@ type Variant =
 
 type Size = "xs" | "sm" | "md" | "lg";
 
-interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
   className?: string;
   variant?: Variant;
@@ -54,7 +55,7 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
     "border",
     "border-[--metal-border]", // resolved via CSS var
     "bg-[--glass-bg]",
-    "hover:bg-[rgba(255,255,255,0.05)]"
+    "hover:bg-[rgba(255,255,255,0.05)]",
   ),
 
   /** Slightly dimmer glass */
@@ -62,7 +63,7 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
     "text-neutral-200",
     "border border-[--metal-border-strong]",
     "bg-[rgba(0,0,0,0.22)]",
-    "hover:bg-[rgba(255,255,255,0.06)]"
+    "hover:bg-[rgba(255,255,255,0.06)]",
   ),
 
   /** Strong red destructive */
@@ -70,7 +71,7 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
     "text-white",
     "border border-red-500/50",
     "bg-red-700/60",
-    "hover:bg-red-600/70"
+    "hover:bg-red-600/70",
   ),
 
   /** Transparent ghost */
@@ -78,7 +79,7 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
     "text-neutral-200",
     "border border-[--metal-border]",
     "bg-transparent",
-    "hover:bg-[rgba(255,255,255,0.05)]"
+    "hover:bg-[rgba(255,255,255,0.05)]",
   ),
 
   /** Outline-only metallic border */
@@ -86,7 +87,7 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
     "text-white",
     "border border-[--metal-border-strong]",
     "bg-transparent",
-    "hover:bg-[rgba(255,255,255,0.06)]"
+    "hover:bg-[rgba(255,255,255,0.06)]",
   ),
 };
 
@@ -94,13 +95,17 @@ const variantClasses: Record<Exclude<Variant, "copper">, string> = {
 /*  COPPER ACCENT VARIANT                                                     */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * IMPORTANT:
+ * Tailwind can't compile runtime template strings like `bg-[${COPPER}]`.
+ * So we use CSS variables and static class strings instead.
+ */
 const copperClass = clsx(
   "text-black",
-  `bg-[${COPPER}]`,
-  "hover:bg-[rgb(168,105,45)]",
-  // use the soft/faint tokens via CSS vars so TS stops complaining
+  "bg-[--copper]",
+  "hover:bg-[--copper-hover]",
   "border border-[--copper-soft]",
-  "shadow-[0_0_0_1px_var(--copper-faint),0_0_12px_var(--copper-faint)]"
+  "shadow-[0_0_0_1px_var(--copper-faint),0_0_12px_var(--copper-faint)]",
 );
 
 /* -------------------------------------------------------------------------- */
@@ -133,19 +138,21 @@ export function buttonClasses({
       : variantClasses[variant as Exclude<Variant, "copper">];
 
   return clsx(
-    // theme variables (now also include copper-soft/faint)
+    // theme variables (now also include copper + hover + soft/faint)
     {
       "--metal-border": METAL_BORDER,
       "--metal-border-strong": METAL_BORDER_STRONG,
       "--glass-bg": GLASS_BG,
+      "--copper": COPPER,
+      "--copper-hover": COPPER_HOVER,
       "--copper-soft": COPPER_SOFT,
       "--copper-faint": COPPER_FAINT,
-    },
+    } as React.CSSProperties,
     base,
     applied,
     sizeClasses[size],
     disabled || isLoading ? "opacity-50 cursor-not-allowed" : "",
-    className
+    className,
   );
 }
 
