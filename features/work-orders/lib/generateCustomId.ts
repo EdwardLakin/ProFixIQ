@@ -3,49 +3,97 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-export async function generateWorkOrderCustomId(
-  supabase: SupabaseClient<DB>,
-  customerId: string | null,
-): Promise<string | null> {
-  if (!customerId) return null;
+function initialsFromName(input: string | null | undefined): string {
+  const s = (input ?? "").trim();
+  if (!s) return "XX";
+  const parts = s.split(/\s+/).filter(Boolean);
 
-  // 1) load customer for initials
-  const { data: customer, error } = await supabase
-    .from("customers")
-    .select("first_name, last_name")
-    .eq("id", customerId)
+  const first = (parts[0]?.[0] ?? "X").toUpperCase();
+  const last =
+    (parts.length > 1 ? parts[parts.length - 1]?.[0] : parts[0]?.[1]) ?? "X";
+
+  return `${first}${String(last).toUpperCase()}`;
+}
+
+async function loadStaffInitials(
+  supabase: SupabaseClient<DB>,
+  userId: string,
+): Promise<string> {
+  // Try profiles.user_id first (common pattern)
+  const byUserId = await supabase
+    .from("profiles")
+    .select("full_name, first_name, last_name")
+    .eq("user_id", userId)
     .maybeSingle();
 
-  if (error || !customer) {
-    // eslint-disable-next-line no-console
-    console.error("[generateWorkOrderCustomId] customer load failed:", error);
-    return null;
-  }
+  const row =
+    byUserId.data ??
+    // Fallback: some schemas use profiles.id == auth.uid()
+    (
+      await supabase
+        .from("profiles")
+        .select("full_name, first_name, last_name")
+        .eq("id", userId)
+        .maybeSingle()
+    ).data ??
+    null;
 
-  const firstInitial =
-    (customer.first_name?.trim()[0] ?? "X").toUpperCase();
-  const lastInitial =
-    (customer.last_name?.trim()[0] ?? "X").toUpperCase();
-  const prefix = `${firstInitial}${lastInitial}`;
+  const full =
+    (row as any)?.full_name ??
+    [row?.first_name, row?.last_name].filter(Boolean).join(" ") ??
+    null;
 
-  // 2) find the highest existing number for this prefix
-  const { data: rows, error: werr } = await supabase
+  return initialsFromName(full);
+}
+
+/**
+ * Generates a human-friendly work order number:
+ *   <STAFF_INITIALS><6-digit shop-wide sequence>
+ *
+ * Example:
+ *   EL000231
+ *
+ * Notes:
+ * - Sequence is shop-wide (shop_id filtered).
+ * - Initials are just “context”; the number is the true ordering.
+ */
+export async function generateWorkOrderCustomId(
+  supabase: SupabaseClient<DB>,
+  args: {
+    shopId: string;
+    createdByUserId: string;
+  },
+): Promise<string> {
+  const { shopId, createdByUserId } = args;
+
+  const prefix = await loadStaffInitials(supabase, createdByUserId);
+
+  // Find highest existing sequence number for this shop, regardless of initials.
+  // We parse the trailing digits of custom_id (e.g., EL000231 -> 231).
+  const { data: rows, error } = await supabase
     .from("work_orders")
     .select("custom_id")
-    .ilike("custom_id", `${prefix}%`)
-    .order("custom_id", { ascending: false })
-    .limit(1);
+    .eq("shop_id", shopId)
+    .not("custom_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(250); // enough to find a high number even if some have weird formats
 
-  let nextNumber = 1;
-  if (!werr && rows && rows.length > 0) {
-    const last = rows[0]?.custom_id ?? "";
-    const m = last.match(/(\d+)$/);
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (Number.isFinite(n)) nextNumber = n + 1;
-    }
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[generateWorkOrderCustomId] load work_orders failed:", error);
   }
 
-  const numberPart = String(nextNumber).padStart(6, "0"); // -> 000001
-  return `${prefix}${numberPart}`; // e.g. TU000001
+  let max = 0;
+
+  for (const r of rows ?? []) {
+    const id = String((r as any).custom_id ?? "");
+    const m = id.match(/(\d+)$/);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+
+  const nextNumber = max + 1;
+  const numberPart = String(nextNumber).padStart(6, "0");
+  return `${prefix}${numberPart}`;
 }
