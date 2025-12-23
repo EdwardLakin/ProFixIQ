@@ -223,25 +223,26 @@ type KnownStatus =
   | "invoiced";
 
 const BASE_BADGE =
-  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium";
+  "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] sm:text-xs font-semibold tracking-wide";
 
 const BADGE: Record<KnownStatus, string> = {
-  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
-  awaiting: "bg-sky-900/20 border-sky-500/40 text-sky-300",
-  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
-  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
-  on_hold: "bg-amber-900/20 border-amber-500/40 text-amber-300",
-  planned: "bg-purple-900/20 border-purple-500/40 text-purple-300",
-  new: "bg-neutral-800 border-neutral-600 text-neutral-200",
-  completed: "bg-green-900/20 border-green-500/40 text-green-300",
-  ready_to_invoice: "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
-  invoiced: "bg-teal-900/20 border-teal-500/40 text-teal-300",
+  awaiting_approval: "bg-blue-900/35 border-blue-400/45 text-blue-100",
+  awaiting: "bg-sky-900/35 border-sky-400/40 text-sky-100",
+  queued: "bg-indigo-900/35 border-indigo-400/40 text-indigo-100",
+  in_progress: "bg-amber-900/30 border-amber-400/40 text-amber-100",
+  on_hold: "bg-amber-900/35 border-amber-400/45 text-amber-100",
+  planned: "bg-purple-900/35 border-purple-400/45 text-purple-100",
+  new: "bg-neutral-900/60 border-neutral-500/45 text-neutral-100",
+  completed: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
+  ready_to_invoice: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
+  invoiced: "bg-teal-900/30 border-teal-400/40 text-teal-100",
 };
 
 const chip = (s: string | null | undefined): string => {
   const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as KnownStatus;
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
+
 
 // roles allowed to assign jobs
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
@@ -1097,9 +1098,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // 🔥 Burnt-copper + glass card tokens (theme-only change)
   const cardBase =
-    "rounded-2xl border border-[rgba(184,115,51,0.35)] bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+  "rounded-2xl border border-white/12 bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
   const cardInner =
-    "rounded-xl border border-[rgba(184,115,51,0.22)] bg-black/35";
+  "rounded-xl border border-white/10 bg-black/35 backdrop-blur-md";
 
   return (
     <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
