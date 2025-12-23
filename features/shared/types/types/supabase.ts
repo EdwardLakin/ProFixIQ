@@ -7904,9 +7904,67 @@ export type Database = {
         }
         Returns: string
       }
+      create_work_order_with_custom_id: {
+        Args: {
+          p_customer_id: string
+          p_is_waiter: boolean
+          p_notes: string
+          p_priority: number
+          p_shop_id: string
+          p_vehicle_id: string
+        }
+        Returns: {
+          approval_state: string | null
+          assigned_tech: string | null
+          created_at: string | null
+          created_by: string | null
+          custom_id: string | null
+          customer_approval_at: string | null
+          customer_approval_signature_path: string | null
+          customer_approval_signature_url: string | null
+          customer_approved_by: string | null
+          customer_id: string | null
+          customer_name: string | null
+          id: string
+          inspection_id: string | null
+          inspection_pdf_url: string | null
+          inspection_type: string | null
+          invoice_total: number | null
+          invoice_url: string | null
+          is_waiter: boolean
+          labor_total: number | null
+          notes: string | null
+          odometer_km: number | null
+          parts_total: number | null
+          priority: number | null
+          quote: Json | null
+          quote_url: string | null
+          shop_id: string | null
+          status: string | null
+          type: string | null
+          updated_at: string | null
+          user_id: string | null
+          vehicle_color: string | null
+          vehicle_engine_hours: number | null
+          vehicle_id: string | null
+          vehicle_info: string | null
+          vehicle_mileage: number | null
+          vehicle_unit_number: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "work_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       current_shop_id: { Args: never; Returns: string }
       delete_part_request: { Args: { p_request_id: string }; Returns: string }
       first_segment_uuid: { Args: { p: string }; Returns: string }
+      generate_next_work_order_custom_id: {
+        Args: { p_shop_id: string; p_user_id: string }
+        Returns: string
+      }
       get_work_order_assignments: {
         Args: { p_work_order_id: string }
         Returns: {
@@ -7937,7 +7995,7 @@ export type Database = {
         Returns: undefined
       }
       portal_list_approvals: { Args: never; Returns: Json }
-      punch_in: { Args: { line_id: string }; Returns: undefined }
+      punch_in: { Args: { p_line_id: string }; Returns: undefined }
       punch_out: { Args: { line_id: string }; Returns: undefined }
       recalc_shop_active_user_count: {
         Args: { p_shop_id: string }
@@ -7980,7 +8038,7 @@ export type Database = {
           p_location_id: string
           p_request_item_id: string
         }
-        Returns: string
+        Returns: undefined
       }
       wo_release_parts_holds_for_part: {
         Args: { p_part_id: string }
