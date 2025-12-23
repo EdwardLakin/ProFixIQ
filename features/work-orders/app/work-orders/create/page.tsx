@@ -914,38 +914,34 @@ export default function CreateWorkOrderPage() {
       }
 
       if (sendInvite && customer.email) {
-        try {
-          const origin =
-            typeof window !== "undefined"
-              ? window.location.origin
-              : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-          const portalUrl = `${
-            origin || "https://profixiq.com"
-          }/portal/auth/sign-up?email=${encodeURIComponent(customer.email)}`;
-          const { error: fnErr } = await supabase.functions.invoke(
-            "send-portal-invite",
-            {
-              body: {
-                email: customer.email,
-                customer_id: latest.customer_id,
-                portal_url: portalUrl,
-              },
-            },
-          );
-          if (fnErr)
-            setInviteNotice(
-              "Work order created. Failed to send invite email (logged).",
-            );
-          else
-            setInviteNotice(
-              "Work order created. Invite email queued to the customer.",
-            );
-        } catch {
-          setInviteNotice(
-            "Work order created. Failed to send invite email (caught).",
-          );
-        }
-      }
+  try {
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+
+    const res = await fetch("/api/portal/invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: customer.email,
+        redirectTo: `${origin}/portal`,
+      }),
+    });
+
+    const j = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+
+    if (!res.ok || !j?.ok) {
+      setInviteNotice(
+        `Work order created. Failed to send invite email${j?.error ? `: ${j.error}` : ""}.`,
+      );
+    } else {
+      setInviteNotice("Work order created. Invite email sent to the customer.");
+    }
+  } catch {
+    setInviteNotice("Work order created. Failed to send invite email (caught).");
+  }
+}
 
       router.push(`/work-orders/${latest.id}/approve`);
     } catch (ex) {
