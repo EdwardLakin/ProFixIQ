@@ -49,14 +49,19 @@ export default function JobPunchButton({
     const msgLc = msg.toLowerCase();
 
     // PostgREST schema cache / function signature mismatch
-    if (msgLc.includes("schema cache") || msgLc.includes("could not find the function")) {
+    if (
+      msgLc.includes("schema cache") ||
+      msgLc.includes("could not find the function")
+    ) {
       toast.error("System updated. Refresh the page and try again.");
       return true;
     }
 
     // Auth / permission style errors
     if (err.code === "28000" || msgLc.includes("not assigned")) {
-      toast.error("This job is assigned to another tech. Ask a manager to reassign it.");
+      toast.error(
+        "This job is assigned to another tech. Ask a manager to reassign it.",
+      );
       return true;
     }
     if (msgLc.includes("forbidden") || msgLc.includes("not allowed")) {
@@ -65,7 +70,11 @@ export default function JobPunchButton({
     }
 
     // One-active-job constraint (if you enforce it)
-    if (err.code === "23505" || msgLc.includes("another active job") || msgLc.includes("active job")) {
+    if (
+      err.code === "23505" ||
+      msgLc.includes("another active job") ||
+      msgLc.includes("active job")
+    ) {
       toast.error("You already have another active job. Finish it first.");
       return true;
     }
@@ -73,11 +82,16 @@ export default function JobPunchButton({
     return false;
   };
 
-  async function punchInRpc(): Promise<{ ok: true } | { ok: false; error: RpcErrorLike }> {
-    // ✅ Your generated types currently expect `line_id` (as shown in the TS error).
-    // But if the DB function was changed to `p_line_id`, PostgREST can get out of sync briefly.
-    // So we try `line_id` first, then fallback to `p_line_id` if needed.
-    const first = await supabase.rpc("punch_in", { line_id: lineId });
+  async function punchInRpc(): Promise<
+    { ok: true } | { ok: false; error: RpcErrorLike }
+  > {
+    /**
+     * ✅ Fix for Vercel build error:
+     * Your generated Supabase types currently expect the argument name `p_line_id`
+     * (not `line_id`). So we call with `p_line_id` first (typed), then fall back
+     * to `line_id` (untyped) in case PostgREST is temporarily out of sync.
+     */
+    const first = await supabase.rpc("punch_in", { p_line_id: lineId });
 
     if (!first.error) return { ok: true };
 
@@ -85,14 +99,16 @@ export default function JobPunchButton({
     const looksLikeArgMismatch =
       msg.includes("schema cache") ||
       msg.includes("could not find the function") ||
-      msg.includes("function public.punch_in");
+      msg.includes("function public.punch_in") ||
+      msg.includes("does not exist");
 
     if (!looksLikeArgMismatch) return { ok: false, error: first.error };
 
     // Fallback attempt (ignore TS on purpose)
-    const second = await (supabase as unknown as { rpc: Function }).rpc("punch_in", {
-      p_line_id: lineId,
-    });
+    const second = await (supabase as unknown as { rpc: Function }).rpc(
+      "punch_in",
+      { line_id: lineId },
+    );
 
     if (!second?.error) return { ok: true };
     return { ok: false, error: second.error as RpcErrorLike };
