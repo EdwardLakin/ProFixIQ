@@ -1096,11 +1096,11 @@ export default function WorkOrderIdClient(): JSX.Element {
     <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
   );
 
-  // 🔥 Burnt-copper + glass card tokens (theme-only change)
-  const cardBase =
-  "rounded-2xl border border-white/12 bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
-  const cardInner =
-  "rounded-xl border border-white/10 bg-black/35 backdrop-blur-md";
+  // ✅ Mobile-matching: dark slate surface + thin neutral border (no copper)
+const cardBase =
+  "rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+const cardInner =
+  "rounded-xl border border-slate-700/60 bg-slate-950/60";
 
   return (
     <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
