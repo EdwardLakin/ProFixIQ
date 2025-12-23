@@ -185,21 +185,24 @@ export default function MobileWorkOrderClient({
 }): JSX.Element {
   const router = useRouter();
 
-  const [wo, setWo] = useTabState<WorkOrder | null>("m:wo:id:wo", null);
+  // 🔥 IMPORTANT: scope tab-state keys by routeId so different work orders don’t bleed state
+  const keyBase = useMemo(() => `m:wo:${routeId}`, [routeId]);
+
+  const [wo, setWo] = useTabState<WorkOrder | null>(`${keyBase}:wo`, null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>(
-    "m:wo:id:lines",
+    `${keyBase}:lines`,
     [],
   );
   const [quoteLines, setQuoteLines] = useTabState<WorkOrderQuoteLine[]>(
-    "m:wo:id:quoteLines",
+    `${keyBase}:quoteLines`,
     [],
   );
   const [vehicle, setVehicle] = useTabState<Vehicle | null>(
-    "m:wo:id:veh",
+    `${keyBase}:veh`,
     null,
   );
   const [customer, setCustomer] = useTabState<Customer | null>(
-    "m:wo:id:cust",
+    `${keyBase}:cust`,
     null,
   );
 
@@ -211,17 +214,22 @@ export default function MobileWorkOrderClient({
   );
 
   const [currentUserId, setCurrentUserId] = useTabState<string | null>(
-    "m:wo:id:uid",
+    `${keyBase}:uid`,
     null,
   );
   const [, setUserId] = useTabState<string | null>(
-    "m:wo:id:effectiveUid",
+    `${keyBase}:effectiveUid`,
     null,
   );
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
+  const [shopId, setShopId] = useTabState<string | null>(
+    `${keyBase}:shopId`,
+    null,
+  );
+
   const [showDetails, setShowDetails] = useTabState<boolean>(
-    "m:wo:showDetails",
+    `${keyBase}:showDetails`,
     true,
   );
   const [warnedMissing, setWarnedMissing] = useState(false);
@@ -251,6 +259,7 @@ export default function MobileWorkOrderClient({
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (!mounted) return;
 
       const uid = user?.id ?? null;
@@ -258,12 +267,22 @@ export default function MobileWorkOrderClient({
       setUserId(uid);
 
       if (uid) {
-        const { data: prof } = await supabase
+        const { data: prof, error: profErr } = await supabase
           .from("profiles")
-          .select("role")
+          .select("role, shop_id")
           .eq("id", uid)
           .maybeSingle();
-        setCurrentUserRole(prof?.role ?? null);
+
+        if (!profErr) {
+          setCurrentUserRole(prof?.role ?? null);
+          setShopId((prof?.shop_id as string | null) ?? null);
+        } else {
+          setCurrentUserRole(null);
+          setShopId(null);
+        }
+      } else {
+        setCurrentUserRole(null);
+        setShopId(null);
       }
 
       if (!uid) setLoading(false);
@@ -276,6 +295,8 @@ export default function MobileWorkOrderClient({
       else {
         setCurrentUserId(null);
         setUserId(null);
+        setCurrentUserRole(null);
+        setShopId(null);
         setLoading(false);
       }
     });
@@ -284,7 +305,7 @@ export default function MobileWorkOrderClient({
       mounted = false;
       sub?.subscription?.unsubscribe?.();
     };
-  }, [routeId, setCurrentUserId, setUserId]);
+  }, [routeId, setCurrentUserId, setUserId, setShopId]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
@@ -296,7 +317,7 @@ export default function MobileWorkOrderClient({
       try {
         let woRow: WorkOrder | null = null;
 
-        // by UUID
+        // 1) by UUID
         if (looksLikeUuid(routeId)) {
           const { data, error } = await supabase
             .from("work_orders")
@@ -306,32 +327,48 @@ export default function MobileWorkOrderClient({
           if (!error) woRow = (data as WorkOrder | null) ?? null;
         }
 
-        // by custom_id
+        // 2) by custom_id (NOW SHOP-SCOPED when we have shopId)
         if (!woRow) {
-          const eqRes = await supabase
+          // exact match
+          const eqQuery = supabase
             .from("work_orders")
             .select("*")
-            .eq("custom_id", routeId)
-            .maybeSingle();
+            .eq("custom_id", routeId);
+
+          const eqRes = shopId
+            ? await eqQuery.eq("shop_id", shopId).maybeSingle()
+            : await eqQuery.maybeSingle();
+
           woRow = (eqRes.data as WorkOrder | null) ?? null;
 
+          // ilike match
           if (!woRow) {
-            const ilikeRes = await supabase
+            const ilikeQuery = supabase
               .from("work_orders")
               .select("*")
-              .ilike("custom_id", routeId.toUpperCase())
-              .maybeSingle();
+              .ilike("custom_id", routeId.toUpperCase());
+
+            const ilikeRes = shopId
+              ? await ilikeQuery.eq("shop_id", shopId).maybeSingle()
+              : await ilikeQuery.maybeSingle();
+
             woRow = (ilikeRes.data as WorkOrder | null) ?? null;
           }
 
+          // prefix + number normalization fallback
           if (!woRow) {
             const { prefix, n } = splitCustomId(routeId);
             if (n !== null) {
-              const { data: cands } = await supabase
+              const candQuery = supabase
                 .from("work_orders")
                 .select("*")
                 .ilike("custom_id", `${prefix}%`)
                 .limit(50);
+
+              const { data: cands } = shopId
+                ? await candQuery.eq("shop_id", shopId)
+                : await candQuery;
+
               const wanted = `${prefix}${n}`;
               const match = (cands ?? []).find(
                 (r) =>
@@ -449,13 +486,13 @@ export default function MobileWorkOrderClient({
     },
     [
       routeId,
+      shopId,
       warnedMissing,
       setWo,
       setLines,
       setQuoteLines,
       setVehicle,
       setCustomer,
-      setTechNamesById,
     ],
   );
 
@@ -642,6 +679,8 @@ export default function MobileWorkOrderClient({
         waiterFlagSource.customer_waiting)
     );
 
+  const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
+
   /* ----------------------- line & quote actions ----------------------- */
 
   const approveLine = useCallback(
@@ -752,6 +791,32 @@ export default function MobileWorkOrderClient({
     [fetchAll],
   );
 
+  // 🔹 Open mobile inspection page for a given line
+  const openInspection = useCallback(
+    (ln: WorkOrderLine) => {
+      if (!ln?.id || !wo?.id) return;
+
+      const anyLine = ln as WorkOrderLineWithInspectionMeta;
+      const templateId = extractInspectionTemplateId(anyLine);
+
+      if (!templateId) {
+        toast.error(
+          "This job line doesn't have an inspection template attached yet. Attach or build a template first.",
+        );
+        return;
+      }
+
+      const sp = new URLSearchParams();
+      sp.set("workOrderId", wo.id);
+      sp.set("workOrderLineId", ln.id);
+      sp.set("templateId", templateId);
+      sp.set("view", "mobile");
+
+      router.push(`/mobile/inspections/${ln.id}?${sp.toString()}`);
+    },
+    [router, wo?.id],
+  );
+
   /* ----------------------- mobile focused job view ----------------------- */
 
   if (focusedOpen && focusedJobId) {
@@ -775,32 +840,6 @@ export default function MobileWorkOrderClient({
     />
   );
 
-  const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
-
-  // 🔹 Open mobile inspection page for a given line
-  // inside MobileWorkOrderClient, in openInspection()
-const openInspection = (ln: WorkOrderLine) => {
-  if (!ln?.id || !wo?.id) return;
-
-  const anyLine = ln as WorkOrderLineWithInspectionMeta;
-  const templateId = extractInspectionTemplateId(anyLine);
-
-  if (!templateId) {
-    toast.error(
-      "This job line doesn't have an inspection template attached yet. Attach or build a template first.",
-    );
-    return;
-  }
-
-  const sp = new URLSearchParams();
-  sp.set("workOrderId", wo.id);
-  sp.set("workOrderLineId", ln.id);
-  sp.set("templateId", templateId);
-  sp.set("view", "mobile"); // 👈 NEW
-
-  router.push(`/mobile/inspections/${ln.id}?${sp.toString()}`);
-};
-
   return (
     <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
       <VoiceContextSetter
@@ -813,7 +852,6 @@ const openInspection = (ln: WorkOrderLine) => {
 
       {/* header bar */}
       <div className="mb-4 flex items-center justify-between gap-2">
-        {/* Use history/back behavior instead of hard-coded route */}
         <PreviousPageButton />
         {wo?.custom_id && (
           <span className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[11px] text-neutral-300 backdrop-blur">
@@ -1296,7 +1334,6 @@ const openInspection = (ln: WorkOrderLine) => {
                           isPunchedIn={punchedIn}
                           onOpen={openFocused}
                           onAssign={undefined}
-                          // 🔹 go straight to mobile inspection screen
                           onOpenInspection={() => openInspection(ln)}
                           onAddPart={undefined}
                         />
