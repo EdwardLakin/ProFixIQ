@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
@@ -68,6 +68,8 @@ type AddMenuParams =
       source?: "single" | "package" | "menu_item" | "ai" | "inspection";
       returnLineId?: boolean;
       partsToAllocate?: PartToAllocate[];
+      // if you ever need it, pass the menu_item id to allocate from:
+      menuItemIdForParts?: string | null;
     }
   | {
       kind: "template";
@@ -134,104 +136,73 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const shopReady = !!shopId;
   const vehicleId = vehicle?.id ?? null;
 
-  // AI modal (new, using shared AiSuggestModal)
+  // AI modal
   const [aiOpen, setAiOpen] = useState(false);
 
-  // shop context setter (session var; good for SELECT policies, but not enough for INSERT)
   const lastSetShopId = useRef<string | null>(null);
+
   async function ensureShopContext(id: string | null) {
     if (!id) return;
     if (lastSetShopId.current === id) return;
+
     const { error } = await supabase.rpc("set_current_shop_id", {
       p_shop_id: id,
     });
-    if (!error) {
-      lastSetShopId.current = id;
-    } else {
-      throw error;
+
+    if (error) {
+      // surface real error
+      throw new Error(error.message || "Failed to set shop context");
     }
+
+    lastSetShopId.current = id;
   }
 
-  /**
-   * Critical: your INSERT RLS policy on work_order_lines checks:
-   * work_orders.shop_id == profiles.shop_id for (profiles.id = auth.uid OR profiles.user_id = auth.uid)
-   * So we must ensure the current user's profile is linked to the same shop as the WO.
-   *
-   * If profile.shop_id is null, we can safely self-heal by writing shop_id.
-   * If it’s set to a different shop, we must hard-fail with a clear message.
-   */
-  async function ensureProfileLinkedToShop(targetShopId: string) {
-    const { data: auth, error: authErr } = await supabase.auth.getUser();
-    if (authErr) throw authErr;
-    const uid = auth?.user?.id;
-    if (!uid) throw new Error("Not signed in.");
-
-    const { data: prof, error } = await supabase
-      .from("profiles")
-      .select("id, user_id, shop_id")
-      .or(`id.eq.${uid},user_id.eq.${uid}`)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!prof) {
-      throw new Error(
-        "No profile row found for this user. Ensure profiles has a row where id=auth.uid() (or user_id=auth.uid()).",
-      );
-    }
-
-    if (!prof.shop_id) {
-      const { error: updErr } = await supabase
-        .from("profiles")
-        .update({ shop_id: targetShopId })
-        .or(`id.eq.${uid},user_id.eq.${uid}`);
-      if (updErr) throw updErr;
-      return;
-    }
-
-    if (prof.shop_id !== targetShopId) {
-      throw new Error(
-        `Shop mismatch: your profile is linked to ${prof.shop_id} but this work order is ${targetShopId}.`,
-      );
-    }
-  }
-
-  // bootstrap WO + related (shop, vehicle, customer, line count)
+  // bootstrap WO + related
   useEffect(() => {
     (async () => {
-      const { data: wo } = await supabase
+      const { data: wo, error: woErr } = await supabase
         .from("work_orders")
         .select("id, vehicle_id, customer_id, shop_id")
         .eq("id", workOrderId)
         .maybeSingle();
 
+      if (woErr) {
+        toast.error(woErr.message);
+        return;
+      }
+
       setShopId(wo?.shop_id ?? null);
 
       if (wo?.vehicle_id) {
-        const { data: v } = await supabase
+        const { data: v, error: vErr } = await supabase
           .from("vehicles")
           .select("id, year, make, model, vin, license_plate")
           .eq("id", wo.vehicle_id)
           .maybeSingle();
+        if (vErr) toast.message(vErr.message);
         if (v) setVehicle(v as VehicleLite);
       } else {
         setVehicle(null);
       }
 
       if (wo?.customer_id) {
-        const { data: c } = await supabase
+        const { data: c, error: cErr } = await supabase
           .from("customers")
           .select("id, first_name, last_name, phone, email")
           .eq("id", wo.customer_id)
           .maybeSingle();
+        if (cErr) toast.message(cErr.message);
         if (c) setCustomer(c as CustomerLite);
       } else {
         setCustomer(null);
       }
 
-      const { count } = await supabase
+      const { count, error: cntErr } = await supabase
         .from("work_order_lines")
         .select("*", { count: "exact", head: true })
         .eq("work_order_id", workOrderId);
+
+      if (cntErr) toast.message(cntErr.message);
       setWoLineCount(typeof count === "number" ? count : null);
     })();
   }, [supabase, workOrderId]);
@@ -246,8 +217,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         typeof vehicle?.year === "number"
           ? vehicle.year
           : typeof vehicle?.year === "string"
-          ? parseInt(vehicle.year, 10)
-          : null;
+            ? parseInt(vehicle.year, 10)
+            : null;
 
       const vMake =
         typeof vehicle?.make === "string" && vehicle.make.trim().length
@@ -263,7 +234,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       let others: MenuItemRow[] = [];
 
       if (vYear || vMake || vModel) {
-        // 1) items that match this vehicle’s YMM
         let q = supabase
           .from("menu_items")
           .select("*")
@@ -280,7 +250,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         preferred = (exact ?? []) as MenuItemRow[];
 
         const excludeIds = preferred.map((mi) => mi.id);
-        // 2) recent active items for this shop, excluding the ones already in preferred
         let fbQuery = supabase
           .from("menu_items")
           .select("*")
@@ -297,7 +266,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         if (fbErr) throw fbErr;
         others = (fb ?? []) as MenuItemRow[];
       } else {
-        // No vehicle context yet: just recent active menu items for this shop
         const { data, error } = await supabase
           .from("menu_items")
           .select("*")
@@ -305,26 +273,27 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
           .eq("is_active", true)
           .order("created_at", { ascending: false })
           .limit(20);
+
         if (error) throw error;
         preferred = (data ?? []) as MenuItemRow[];
         others = [];
       }
 
       setMenuItems([...preferred, ...others]);
-    } catch {
-      // ignore; soft fail
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to load menu items.";
+      toast.message(msg);
     } finally {
       setMenuLoading(false);
     }
   }, [supabase, shopId, vehicle]);
 
-  // load inspection templates (owner + public + same-shop via RLS)
+  // load templates
   const loadTemplates = useCallback(async () => {
     if (!shopId) return;
 
     setTemplatesLoading(true);
     try {
-      // Make sure current_shop_id is set so shop-wide SELECT RLS kicks in
       await ensureShopContext(shopId);
 
       const [{ data: auth }, { data, error }] = await Promise.all([
@@ -340,7 +309,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       const uid = auth?.user?.id ?? null;
       const rows = (data ?? []) as TemplateRow[];
 
-      // Sort: mine → same-shop → public → rest
       const score = (t: TemplateRow): number => {
         if (uid && t.user_id === uid) return 0;
         if (t.shop_id && t.shop_id === shopId) return 1;
@@ -350,15 +318,15 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       rows.sort((a, b) => score(a) - score(b));
       setTemplates(rows);
-    } catch {
-      // ignore; soft fail – user just sees "No templates yet"
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to load templates.";
+      toast.message(msg);
       setTemplates([]);
     } finally {
       setTemplatesLoading(false);
     }
   }, [supabase, shopId]);
 
-  // initial loads
   useEffect(() => {
     if (shopId) {
       void loadMenuItems();
@@ -367,109 +335,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }, [shopId, loadMenuItems, loadTemplates]);
 
   // ============================================================
-  // add line (menu or template)
+  // allocation helpers (PATCHED: ensureShopContext + show real errors)
   // ============================================================
-  async function addMenuItem(params: AddMenuParams): Promise<string | null> {
-    if (!shopReady || !shopId) return null;
-
-    setAddingId(params.kind === "template" ? params.template.id : params.name);
-    try {
-      // ✅ Critical: make INSERT RLS pass
-      await ensureProfileLinkedToShop(shopId);
-
-      // Optional: helps SELECT policies / other reads
-      await ensureShopContext(shopId);
-
-      // template-backed line
-      if (params.kind === "template") {
-        const line: WorkOrderLineInsert & {
-          inspection_template_id?: string | null;
-        } = {
-          work_order_id: workOrderId,
-          vehicle_id: vehicleId,
-          description:
-            params.name ?? params.template.template_name ?? "Inspection",
-          job_type: "inspection",
-          labor_time:
-            params.laborHours ??
-            (typeof params.template.labor_hours === "number"
-              ? params.template.labor_hours
-              : null),
-          status: "awaiting",
-          priority: 3,
-          notes: params.template.description ?? null,
-          shop_id: shopId,
-          inspection_template_id: params.template.id,
-        };
-
-        const { data, error } = await supabase
-          .from("work_order_lines")
-          .insert(line)
-          .select("id")
-          .single();
-
-        if (error) throw error;
-
-        window.dispatchEvent(new CustomEvent("wo:line-added"));
-        toast.success("Inspection added");
-        return data?.id ?? null;
-      }
-
-      // normal branch
-      const line: WorkOrderLineInsert = {
-        work_order_id: workOrderId,
-        vehicle_id: vehicleId,
-        description: params.name,
-        job_type: params.jobType,
-        labor_time: params.laborHours ?? null,
-        status: "awaiting",
-        priority: 3,
-        notes: params.notes ?? null,
-        shop_id: shopId,
-      };
-
-      const { data, error } = await supabase
-        .from("work_order_lines")
-        .insert(line)
-        .select("id")
-        .single();
-
-      if (error) throw error;
-
-      if (params.partsToAllocate && params.partsToAllocate.length && data?.id) {
-        await autoAllocateExplicitParts(params.partsToAllocate, data.id);
-      }
-
-      window.dispatchEvent(new CustomEvent("wo:line-added"));
-      toast.success(
-        params.source === "ai"
-          ? "AI suggestion added"
-          : params.source === "menu_item"
-          ? "Menu item added"
-          : "Job added",
-      );
-
-      return params.returnLineId ? (data?.id ?? null) : null;
-    } catch (e: unknown) {
-      const msg =
-        e instanceof Error ? e.message : "Failed to add job (RLS blocked).";
-      lastSetShopId.current = null;
-
-      // Make the RLS cause obvious in the toast
-      if (/row-level security/i.test(msg)) {
-        toast.error(
-          "Blocked by RLS. Your profile shop_id likely doesn’t match this work order’s shop.",
-        );
-      } else {
-        toast.error(msg);
-      }
-      return null;
-    } finally {
-      setAddingId(null);
-    }
-  }
-
-  // ---------- allocation helpers ----------
   type MenuItemPartRow = {
     id: string;
     name: string | null;
@@ -487,6 +354,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     name?: string | null;
     shop: string;
   }): Promise<string | null> {
+    // ensure shop context for any RLS policies using current_shop_id()
+    await ensureShopContext(shop);
+
     if (sku) {
       const bySku = await supabase
         .from("parts")
@@ -495,8 +365,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         .eq("sku", sku)
         .limit(1)
         .maybeSingle();
-      if (!bySku.error && bySku.data?.id) return bySku.data.id;
+
+      if (bySku.error) {
+        throw new Error(`parts lookup by sku blocked: ${bySku.error.message}`);
+      }
+      if (bySku.data?.id) return bySku.data.id;
     }
+
     if (name) {
       const byName = await supabase
         .from("parts")
@@ -505,8 +380,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         .ilike("name", name)
         .limit(1)
         .maybeSingle();
+
+      if (byName.error) {
+        throw new Error(`parts lookup by name blocked: ${byName.error.message}`);
+      }
       if (byName.data?.id) return byName.data.id;
     }
+
     return null;
   }
 
@@ -514,6 +394,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     partId: string,
     shop: string,
   ): Promise<string | null> {
+    await ensureShopContext(shop);
+
     const withStock = await supabase
       .from("part_stock")
       .select("location_id, qty")
@@ -521,7 +403,10 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       .order("qty", { ascending: false })
       .limit(1);
 
-    if (!withStock.error && withStock.data?.length) {
+    if (withStock.error) {
+      throw new Error(`part_stock read blocked: ${withStock.error.message}`);
+    }
+    if (withStock.data?.length) {
       return withStock.data[0].location_id as unknown as string;
     }
 
@@ -533,6 +418,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       .limit(1)
       .maybeSingle();
 
+    if (anyLoc.error) {
+      throw new Error(`stock_locations read blocked: ${anyLoc.error.message}`);
+    }
     return anyLoc.data?.id ?? null;
   }
 
@@ -542,17 +430,21 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   ) {
     if (!shopId) return;
 
+    // PATCH: guarantee session shop is set for all follow-on selects
+    await ensureShopContext(shopId);
+
     const { data: rows, error } = await supabase
       .from("menu_item_parts")
       .select("id, name, sku, quantity, unit_cost")
       .eq("menu_item_id", menuItemId);
 
     if (error) {
-      toast.message("Added job, but couldn't read menu parts.");
+      toast.warning(`Added job, but menu parts read was blocked: ${error.message}`);
       return;
     }
 
     const mParts = (rows ?? []) as MenuItemPartRow[];
+
     const allocations: {
       work_order_line_id: string;
       part_id: string;
@@ -565,24 +457,38 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         typeof p.quantity === "number" && p.quantity > 0 ? p.quantity : 0;
       if (!qty) continue;
 
-      const partId = await findPartIdForShop({
-        sku: p.sku ?? undefined,
-        name: p.name ?? undefined,
-        shop: shopId,
-      });
+      let partId: string | null = null;
+      try {
+        partId = await findPartIdForShop({
+          sku: p.sku ?? undefined,
+          name: p.name ?? undefined,
+          shop: shopId,
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "parts lookup blocked";
+        toast.warning(`Added job, but ${msg}`);
+        return;
+      }
+
       if (!partId) {
-        toast.message(
-          `Skipped "${p.name ?? p.sku ?? "part"}" (not in Parts).`,
-        );
+        toast.message(`Skipped "${p.name ?? p.sku ?? "part"}" (not in Parts).`);
         continue;
       }
-      const locId = await pickDefaultLocationId(partId, shopId);
+
+      let locId: string | null = null;
+      try {
+        locId = await pickDefaultLocationId(partId, shopId);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "location lookup blocked";
+        toast.warning(`Added job, but ${msg}`);
+        return;
+      }
+
       if (!locId) {
-        toast.message(
-          `Skipped "${p.name ?? p.sku ?? "part"}" (no stock location).`,
-        );
+        toast.message(`Skipped "${p.name ?? p.sku ?? "part"}" (no stock location).`);
         continue;
       }
+
       allocations.push({
         work_order_line_id: workOrderLineId,
         part_id: partId,
@@ -596,14 +502,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     const { error: allocErr } = await supabase
       .from("work_order_part_allocations")
       .insert(allocations);
+
     if (allocErr) {
-      toast.warning("Job added, but parts couldn't be allocated.");
+      toast.warning(`Job added, but parts couldn't be allocated: ${allocErr.message}`);
     } else {
       window.dispatchEvent(new CustomEvent("wo:parts-used"));
       toast.success(
-        `Allocated ${allocations.length} part${
-          allocations.length > 1 ? "s" : ""
-        }`,
+        `Allocated ${allocations.length} part${allocations.length > 1 ? "s" : ""}`,
       );
     }
   }
@@ -613,6 +518,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     workOrderLineId: string,
   ) {
     if (!shopId || !list.length) return;
+
+    await ensureShopContext(shopId);
 
     const allocations: {
       work_order_line_id: string;
@@ -644,13 +551,117 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
 
     if (!allocations.length) return;
+
     const { error } = await supabase
       .from("work_order_part_allocations")
       .insert(allocations);
-    if (!error) window.dispatchEvent(new CustomEvent("wo:parts-used"));
+
+    if (error) {
+      toast.warning(`Parts couldn't be allocated: ${error.message}`);
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent("wo:parts-used"));
   }
 
-  // tiny wrappers
+  // ============================================================
+  // add line (menu or template)
+  // ============================================================
+  async function addMenuItem(params: AddMenuParams): Promise<string | null> {
+    if (!shopReady || !shopId) return null;
+
+    setAddingId(params.kind === "template" ? params.template.id : params.name);
+
+    try {
+      await ensureShopContext(shopId);
+
+      // template-backed line
+      if (params.kind === "template") {
+        const line: WorkOrderLineInsert & {
+          inspection_template_id?: string | null;
+        } = {
+          work_order_id: workOrderId,
+          vehicle_id: vehicleId,
+          description:
+            params.name ?? params.template.template_name ?? "Inspection",
+          job_type: "inspection",
+          labor_time:
+            params.laborHours ??
+            (typeof params.template.labor_hours === "number"
+              ? params.template.labor_hours
+              : null),
+          status: "awaiting",
+          priority: 3,
+          notes: params.template.description ?? null,
+          shop_id: shopId,
+          inspection_template_id: params.template.id,
+        };
+
+        const { data, error } = await supabase
+          .from("work_order_lines")
+          .insert(line)
+          .select("id")
+          .single();
+
+        if (error) throw new Error(error.message);
+
+        window.dispatchEvent(new CustomEvent("wo:line-added"));
+        toast.success("Inspection added");
+        return data?.id ?? null;
+      }
+
+      // normal branch
+      const line: WorkOrderLineInsert = {
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        description: params.name,
+        job_type: params.jobType,
+        labor_time: params.laborHours ?? null,
+        status: "awaiting",
+        priority: 3,
+        notes: params.notes ?? null,
+        shop_id: shopId,
+      };
+
+      const { data, error } = await supabase
+        .from("work_order_lines")
+        .insert(line)
+        .select("id")
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      // allocate parts if provided explicitly
+      if (params.partsToAllocate && params.partsToAllocate.length && data?.id) {
+        await autoAllocateExplicitParts(params.partsToAllocate, data.id);
+      }
+
+      // allocate parts from menu_item_parts if a menuItemId was provided
+      if (params.menuItemIdForParts && data?.id) {
+        await autoAllocateMenuParts(params.menuItemIdForParts, data.id);
+      }
+
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
+      toast.success(
+        params.source === "ai"
+          ? "AI suggestion added"
+          : params.source === "menu_item"
+            ? "Menu item added"
+            : "Job added",
+      );
+
+      return params.returnLineId ? (data?.id ?? null) : null;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to add job.";
+      lastSetShopId.current = null;
+      toast.error(msg);
+      return null;
+    } finally {
+      setAddingId(null);
+    }
+  }
+
+  // wrappers
   async function addPackage(pkg: PackageDef) {
     await addMenuItem({
       kind: "normal",
@@ -663,24 +674,22 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }
 
   async function addSavedMenuItem(mi: MenuItemRow) {
-    const lineId = await addMenuItem({
+    await addMenuItem({
       kind: "normal",
       name: mi.name ?? "Service",
       jobType: "maintenance",
       laborHours:
         typeof mi.labor_time === "number"
           ? mi.labor_time
-          : // fallback in case you add labor_hours to menu_items later
-          typeof (mi as any).labor_hours === "number"
-          ? (mi as any).labor_hours
-          : null,
+          : typeof (mi as any).labor_hours === "number"
+            ? (mi as any).labor_hours
+            : null,
       notes: mi.description ?? null,
       source: "menu_item",
-      returnLineId: true,
+      returnLineId: false,
+      // PATCH: pass menu item id so allocation happens inside addMenuItem (same shop context)
+      menuItemIdForParts: mi.id ?? null,
     });
-    if (lineId && mi.id) {
-      await autoAllocateMenuParts(mi.id, lineId);
-    }
   }
 
   async function addTemplateAsLine(t: TemplateRow) {
@@ -694,8 +703,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     vehicle && (vehicle.year || vehicle.make || vehicle.model)
       ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
       : vehicle?.license_plate
-      ? `Plate ${vehicle.license_plate}`
-      : null;
+        ? `Plate ${vehicle.license_plate}`
+        : null;
 
   return (
     <div className="space-y-5 text-white">
@@ -778,9 +787,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 </span>
               </div>
               <div className="mt-1 text-xs text-neutral-400">
-                {p.estLaborHours != null
-                  ? `~${p.estLaborHours.toFixed(1)}h`
-                  : "Labor TBD"}
+                {p.estLaborHours != null ? `~${p.estLaborHours.toFixed(1)}h` : "Labor TBD"}
               </div>
               <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
                 {p.summary}
@@ -841,7 +848,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* From My Menu (vehicle-matched first) */}
+      {/* From My Menu */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
@@ -873,8 +880,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                     {typeof mi.labor_time === "number"
                       ? `${mi.labor_time.toFixed(1)}h`
                       : typeof (mi as any).labor_hours === "number"
-                      ? `${(mi as any).labor_hours.toFixed(1)}h`
-                      : "Labor TBD"}{" "}
+                        ? `${(mi as any).labor_hours.toFixed(1)}h`
+                        : "Labor TBD"}{" "}
                     •{" "}
                     {typeof mi.total_price === "number"
                       ? `$${mi.total_price.toFixed(0)}`
@@ -882,11 +889,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   </div>
                   {mi.vehicle_year || mi.vehicle_make || mi.vehicle_model ? (
                     <div className="mt-1 text-[10px] text-neutral-500">
-                      {[
-                        mi.vehicle_year ?? "",
-                        mi.vehicle_make ?? "",
-                        mi.vehicle_model ?? "",
-                      ]
+                      {[mi.vehicle_year ?? "", mi.vehicle_make ?? "", mi.vehicle_model ?? ""]
                         .filter(Boolean)
                         .join(" ")}
                     </div>
@@ -906,7 +909,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* New shared AI Suggest modal */}
+      {/* AI Suggest modal */}
       <AiSuggestModal
         open={aiOpen}
         onClose={() => setAiOpen(false)}
@@ -914,9 +917,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         vehicleId={vehicleId ?? null}
         vehicleLabel={vehicleLabel ?? null}
         onAdded={(count) => {
-          setWoLineCount((prev) =>
-            typeof prev === "number" ? prev + count : prev,
-          );
+          setWoLineCount((prev) => (typeof prev === "number" ? prev + count : prev));
         }}
       />
     </div>
