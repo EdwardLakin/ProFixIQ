@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import ModalShell from "@/features/shared/components/ModalShell";
 
-type JobType = "diagnosis" | "repair" | "maintenance" | "tech-suggested";
+type JobType = "diagnosis" | "repair" | "maintenance" | "inspection" | "tech-suggested";
 
 type RawSuggestion = {
   name: string;
@@ -28,6 +28,12 @@ type AiSuggestModalProps = {
   onAdded?: (count: number) => void;
 };
 
+function normalizeJobType(t: JobType): "diagnosis" | "repair" | "maintenance" | "inspection" {
+  if (t === "tech-suggested") return "diagnosis";
+  if (t === "diagnosis" || t === "repair" || t === "maintenance" || t === "inspection") return t;
+  return "diagnosis";
+}
+
 export function AiSuggestModal(props: AiSuggestModalProps) {
   const {
     open,
@@ -44,7 +50,6 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<UiSuggestion[]>([]);
 
-  // Reset state when modal opens
   useEffect(() => {
     if (!open) return;
     setComplaint(initialComplaint ?? "");
@@ -63,9 +68,11 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
 
     setLoading(true);
     try {
-      const body: Record<string, unknown> = { workOrderId };
+      const body: Record<string, unknown> = {
+        workOrderId,
+        complaint: complaint.trim() || null,
+      };
 
-      // We let the backend derive the complaint from first line + vehicle
       if (vehicleId) {
         body.vehicleId = {
           id: vehicleId,
@@ -93,6 +100,7 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
         ...s,
         id: `${idx}`,
         selected: true,
+        jobType: normalizeJobType(s.jobType) as any,
       }));
 
       if (ui.length === 0) {
@@ -122,10 +130,10 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
       const items = selected.map((s) => ({
         description: s.name,
         serviceCode: undefined,
-        jobType: s.jobType,
+        jobType: normalizeJobType(s.jobType),
         laborHours: s.laborHours,
         notes: s.notes,
-        aiComplaint: s.aiComplaint ?? (complaint || undefined),
+        aiComplaint: s.aiComplaint ?? (complaint.trim() || undefined),
         aiCause: s.aiCause,
         aiCorrection: s.aiCorrection,
       }));
@@ -153,9 +161,7 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
 
       onAdded?.(count);
 
-      // let the create page know something changed
       window.dispatchEvent(new CustomEvent("wo:line-added"));
-
       onClose();
     } catch (err) {
       const msg =
@@ -180,15 +186,12 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
         ? "Thinking…"
         : "Suggest Jobs"
       : loading
-      ? "Adding…"
-      : "Add Selected";
+        ? "Adding…"
+        : "Add Selected";
 
   const handlePrimary = async () => {
-    if (step === "input") {
-      await handleGetSuggestions();
-    } else {
-      await handleAddSelected();
-    }
+    if (step === "input") await handleGetSuggestions();
+    else await handleAddSelected();
   };
 
   return (
@@ -217,9 +220,8 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
       <div className="space-y-3">
         <div>
           <p className="text-xs text-neutral-400">
-            Describe the concern. We’ll suggest jobs and add them as
+            Describe the concern. We’ll suggest jobs and add them as{" "}
             <span className="font-semibold text-neutral-200">
-              {" "}
               quote lines (awaiting approval)
             </span>
             .
@@ -227,14 +229,11 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
           {vehicleLabel && (
             <p className="mt-1 text-xs text-neutral-500">
               Using context for:{" "}
-              <span className="font-mono text-neutral-100">
-                {vehicleLabel}
-              </span>
+              <span className="font-mono text-neutral-100">{vehicleLabel}</span>
             </p>
           )}
         </div>
 
-        {/* Complaint input (always visible; feeds aiComplaint if LLM doesn’t supply its own) */}
         <div>
           <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
             Customer concern
@@ -278,7 +277,7 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
                         {s.name}
                       </span>
                       <span className="rounded-full border border-neutral-600 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
-                        {s.jobType.replace("-", " ")}
+                        {normalizeJobType(s.jobType).replace("-", " ")}
                       </span>
                       <span className="text-[10px] text-neutral-400">
                         ~{s.laborHours}h

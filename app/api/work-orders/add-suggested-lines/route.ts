@@ -26,7 +26,7 @@ function normalizeVehicleId(v?: string | null): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
-// --- parts request types (same shape as your parts route) ---
+// --- parts request types ---
 type PRInsert = DB["public"]["Tables"]["part_requests"]["Insert"];
 type PRIInsert = DB["public"]["Tables"]["part_request_items"]["Insert"];
 
@@ -36,6 +36,12 @@ type PartRequestItemInsertWithExtras = PRIInsert & {
 };
 
 const DEFAULT_MARKUP = 30; // %
+
+type ProfileLite = {
+  id: string;
+  user_id: string | null;
+  shop_id: string | null;
+};
 
 export async function POST(req: Request) {
   const supabase = createServerComponentClient<DB>({ cookies });
@@ -63,16 +69,13 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser();
 
     if (authError) {
-      return NextResponse.json(
-        { error: authError.message },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: authError.message }, { status: 401 });
     }
-
-    if (!user) {
+    if (!user?.id) {
       return NextResponse.json({ error: "Not signed in" }, { status: 401 });
     }
 
+    // Read the WO (RLS applies)
     const { data: wo, error: woError } = await supabase
       .from("work_orders")
       .select("id, shop_id, odometer_km")
@@ -80,32 +83,97 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (woError) {
+      return NextResponse.json({ error: woError.message }, { status: 500 });
+    }
+    if (!wo) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+    }
+
+    const woShopId = (wo.shop_id as string | null) ?? null;
+    if (!woShopId) {
       return NextResponse.json(
-        { error: woError.message },
-        { status: 500 },
+        {
+          error:
+            "Work order has no shop_id. This must be set before adding lines (RLS relies on it).",
+        },
+        { status: 409 },
       );
     }
 
-    if (!wo) {
+    // Verify we have a profile row for this user (either id or user_id mapping)
+    const { data: profileRow, error: profErr } = await supabase
+      .from("profiles")
+      .select("id, user_id, shop_id")
+      .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+      .maybeSingle();
+
+    if (profErr) {
+      return NextResponse.json({ error: profErr.message }, { status: 500 });
+    }
+
+    if (!profileRow) {
       return NextResponse.json(
-        { error: "Work order not found" },
-        { status: 404 },
+        {
+          error:
+            "No profile row exists for this user. Create/restore profiles row (id=auth.uid or user_id=auth.uid) and link shop_id.",
+        },
+        { status: 403 },
       );
     }
+
+    const profile = profileRow as unknown as ProfileLite;
+
+    // Self-heal: if profile has no shop_id, attach them to this WO's shop
+    if (!profile.shop_id) {
+      const { error: updErr } = await supabase
+        .from("profiles")
+        .update({ shop_id: woShopId })
+        .or(`id.eq.${user.id},user_id.eq.${user.id}`);
+
+      if (updErr) {
+        return NextResponse.json(
+          {
+            error:
+              updErr.message ??
+              "Could not link your profile to this shop. Check profiles RLS.",
+          },
+          { status: 403 },
+        );
+      }
+    } else if (profile.shop_id !== woShopId) {
+      // Hard stop: if your profile is linked to a different shop, RLS insert will fail
+      return NextResponse.json(
+        {
+          error:
+            "Shop mismatch: your profile is linked to a different shop than this work order. Fix profiles.shop_id alignment.",
+          details: {
+            profile_shop_id: profile.shop_id,
+            work_order_shop_id: woShopId,
+          },
+        },
+        { status: 403 },
+      );
+    }
+
+    // Optional but helpful: set shop context (won't harm; helps other reads in this request)
+    // NOTE: this will only succeed if membership is aligned (which we ensured above)
+    await supabase.rpc("set_current_shop_id", { p_shop_id: woShopId });
 
     const effectiveOdometerKm =
-      odometerKm ?? (wo.odometer_km as number | null) ?? null;
+      odometerKm ?? ((wo.odometer_km as number | null) ?? null);
 
     const normalizedVehicleId = normalizeVehicleId(vehicleId ?? null);
 
-    // 1) Insert work_order_lines in "awaiting parts" state
+    // Insert work_order_lines
     const lineRows = items.map((i) => ({
       work_order_id: workOrderId,
       vehicle_id: normalizedVehicleId,
-      shop_id: wo.shop_id ?? null,
-      description: i.description,
+      // shop_id is not required for your INSERT policy (policy checks parent WO + profile),
+      // but keeping it consistent avoids future drift + helps SELECT policy patterns.
+      shop_id: woShopId,
+      description: (i.description ?? "").trim(),
       job_type: i.jobType ?? "maintenance",
-      labor_time: i.laborHours ?? 0,
+      labor_time: typeof i.laborHours === "number" ? i.laborHours : 0,
       complaint: i.aiComplaint ?? null,
       cause: i.aiCause ?? null,
       correction: i.aiCorrection ?? null,
@@ -117,39 +185,35 @@ export async function POST(req: Request) {
       notes: i.notes ?? null,
     }));
 
-    const {
-      data: insertedLines,
-      error: insertError,
-    } = await supabase
+    // Guard against empty descriptions
+    if (lineRows.some((r) => !r.description)) {
+      return NextResponse.json(
+        { error: "One or more items had an empty description." },
+        { status: 400 },
+      );
+    }
+
+    const { data: insertedLines, error: insertError } = await supabase
       .from("work_order_lines")
       .insert(lineRows)
       .select("id, description");
 
     if (insertError || !insertedLines) {
-      return NextResponse.json(
-        { error: insertError?.message ?? "Failed to insert lines" },
-        { status: 500 },
-      );
+      const msg = insertError?.message ?? "Failed to insert lines";
+      // If this hits, it's almost always profile/shop misalignment or missing profile row.
+      return NextResponse.json({ error: msg }, { status: 403 });
     }
 
-    // 2) Auto-create a single part_request + items for these lines
-    if (!wo.shop_id) {
-      // if shop_id is missing we just skip PR creation, but lines are still there
-      return NextResponse.json({ ok: true, inserted: lineRows.length });
-    }
-
+    // Create part_request + items
     const header: PRInsert = {
       work_order_id: workOrderId,
-      shop_id: wo.shop_id,
+      shop_id: woShopId,
       requested_by: user.id,
       status: "requested",
       notes: "Auto-created from AI suggested services",
     };
 
-    const {
-      data: pr,
-      error: prErr,
-    } = await supabase
+    const { data: pr, error: prErr } = await supabase
       .from("part_requests")
       .insert(header)
       .select("id")

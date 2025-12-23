@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -23,78 +23,106 @@ export function NewWorkOrderLineForm(props: {
   workOrderId: string;
   vehicleId: string | null;
   defaultJobType: WOJobType | null;
-  shopId?: string | null; // satisfies RLS
+  shopId?: string | null; // REQUIRED for your shop-based models
   onCreated?: () => void;
 }) {
   const { workOrderId, vehicleId, defaultJobType, shopId, onCreated } = props;
-  const supabase = createClientComponentClient<DB>();
+
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [complaint, setComplaint] = useState("");
   const [cause, setCause] = useState("");
   const [correction, setCorrection] = useState("");
   const [labor, setLabor] = useState<string>("");
   const [status, setStatus] = useState<InsertLine["status"]>("awaiting");
-  const [jobType, setJobType] = useState<WOJobType | null>(defaultJobType ?? null);
+  const [jobType, setJobType] = useState<WOJobType | null>(
+    defaultJobType ?? null,
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  const lastSetShopId = useRef<string | null>(null);
 
   const canSave = complaint.trim().length > 0 && !!workOrderId;
 
   function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
-    const allowed: WOJobType[] = ["diagnosis", "inspection", "maintenance", "repair"];
-    return (t && (allowed as string[]).includes(t)) ? (t as InsertLine["job_type"]) : null;
+    const allowed: WOJobType[] = [
+      "diagnosis",
+      "inspection",
+      "maintenance",
+      "repair",
+    ];
+    return t && (allowed as string[]).includes(t)
+      ? (t as InsertLine["job_type"])
+      : null;
   }
 
-  function normalizeStatus(s: InsertLine["status"] | null | undefined): AllowedStatus {
+  function normalizeStatus(
+    s: InsertLine["status"] | null | undefined,
+  ): AllowedStatus {
     const v = (s ?? "awaiting") as string;
-    return (ALLOWED_STATUS as readonly string[]).includes(v) ? (v as AllowedStatus) : "awaiting";
-  }
-
-  async function ensureShopContext() {
-    if (!shopId) return;
-    if (lastSetShopId.current === shopId) return;
-    const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
-    if (!error) lastSetShopId.current = shopId;
-    else throw error;
+    return (ALLOWED_STATUS as readonly string[]).includes(v)
+      ? (v as AllowedStatus)
+      : "awaiting";
   }
 
   async function addLine() {
     if (!canSave) return;
+
+    // If shopId is missing, we don’t even try — this almost always turns into a 403 anyway.
+    if (!shopId) {
+      setErr(
+        "Missing shopId for this work order. Refresh the page and click “Save & Continue” first so the work order loads its shop context.",
+      );
+      return;
+    }
+
     setBusy(true);
     setErr(null);
 
     try {
-      await ensureShopContext();
-
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       const payload: InsertLine = {
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
         user_id: user?.id ?? null,
-        complaint: complaint || null,
-        cause: cause || null,
-        correction: correction || null,
+        complaint: complaint.trim() || null,
+        cause: cause.trim() || null,
+        correction: correction.trim() || null,
         labor_time: labor ? Number(labor) : null,
         status: normalizeStatus(status),
         job_type: normalizeJobType(jobType),
-        shop_id: shopId ?? null,
+
+        // IMPORTANT: keep shop_id explicit so all RLS/shop triggers stay deterministic
+        shop_id: shopId,
       };
 
-      const { error } = await supabase.from("work_order_lines").insert(payload);
+      const { data, error } = await supabase
+        .from("work_order_lines")
+        .insert(payload)
+        .select("id")
+        .single();
+
       if (error) {
-        if (/(job_type).*check/i.test(error.message)) {
+        const msg = error.message || "Insert failed";
+
+        if (/(job_type).*check/i.test(msg)) {
           setErr("This job type isn’t allowed by the database. Pick another type.");
-        } else if (/status.*check/i.test(error.message)) {
+        } else if (/status.*check/i.test(msg)) {
           setErr("This status isn’t allowed by the database. Try a different status.");
-        } else if (/row-level security/i.test(error.message) || /current_shop_id/i.test(error.message)) {
-          setErr("Shop mismatch: your session isn’t scoped to this shop. Try again.");
-          lastSetShopId.current = null;
+        } else if (/row-level security/i.test(msg) || /permission/i.test(msg)) {
+          setErr(
+            `Permission blocked (RLS). workOrderId=${workOrderId} shopId=${shopId}. ${msg}`,
+          );
         } else {
-          setErr(error.message);
+          setErr(msg);
         }
+        return;
+      }
+
+      if (!data?.id) {
+        setErr("Insert succeeded but no row was returned. Check PostgREST preferences.");
         return;
       }
 
@@ -104,13 +132,12 @@ export function NewWorkOrderLineForm(props: {
       setLabor("");
       setStatus("awaiting");
       setJobType(defaultJobType ?? null);
-      onCreated?.();
 
+      onCreated?.();
       window.dispatchEvent(new CustomEvent("wo:line-added"));
     } catch (e: unknown) {
       const msg = (e as Error)?.message ?? "Failed to add line.";
       setErr(msg);
-      lastSetShopId.current = null;
     } finally {
       setBusy(false);
     }
@@ -118,24 +145,20 @@ export function NewWorkOrderLineForm(props: {
 
   return (
     <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 text-sm text-white space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-neutral-100">
-            Add job line
-          </h3>
+          <h3 className="text-sm font-semibold text-neutral-100">Add job line</h3>
           <p className="text-[11px] text-neutral-400">
             Complaint is required. Cause / correction can be filled in later.
           </p>
         </div>
         <div className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-[10px] text-neutral-300">
-          Linked to WO: <span className="font-mono">{workOrderId.slice(0, 8)}…</span>
+          Linked to WO:{" "}
+          <span className="font-mono">{workOrderId.slice(0, 8)}…</span>
         </div>
       </div>
 
-      {/* Fields */}
       <div className="grid gap-3 sm:grid-cols-2">
-        {/* Complaint */}
         <div className="sm:col-span-2 space-y-1">
           <label className="mb-0.5 block text-xs text-neutral-300">
             Complaint <span className="text-red-400">*</span>
@@ -148,7 +171,6 @@ export function NewWorkOrderLineForm(props: {
           />
         </div>
 
-        {/* Cause */}
         <div className="space-y-1">
           <label className="mb-0.5 block text-xs text-neutral-300">Cause</label>
           <textarea
@@ -159,11 +181,8 @@ export function NewWorkOrderLineForm(props: {
           />
         </div>
 
-        {/* Correction */}
         <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">
-            Correction
-          </label>
+          <label className="mb-0.5 block text-xs text-neutral-300">Correction</label>
           <textarea
             value={correction}
             onChange={(e) => setCorrection(e.target.value)}
@@ -172,11 +191,8 @@ export function NewWorkOrderLineForm(props: {
           />
         </div>
 
-        {/* Labor */}
         <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">
-            Labor (hrs)
-          </label>
+          <label className="mb-0.5 block text-xs text-neutral-300">Labor (hrs)</label>
           <input
             inputMode="decimal"
             value={labor}
@@ -189,11 +205,8 @@ export function NewWorkOrderLineForm(props: {
           </p>
         </div>
 
-        {/* Status */}
         <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">
-            Status
-          </label>
+          <label className="mb-0.5 block text-xs text-neutral-300">Status</label>
           <select
             value={normalizeStatus(status)}
             onChange={(e) => setStatus(e.target.value as InsertLine["status"])}
@@ -205,21 +218,13 @@ export function NewWorkOrderLineForm(props: {
             <option value="paused">Paused</option>
             <option value="completed">Completed</option>
           </select>
-          <p className="text-[10px] text-neutral-500">
-            Defaults to <span className="italic">Awaiting</span> if not changed.
-          </p>
         </div>
 
-        {/* Job type */}
         <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">
-            Job type
-          </label>
+          <label className="mb-0.5 block text-xs text-neutral-300">Job type</label>
           <select
             value={jobType ?? ""}
-            onChange={(e) =>
-              setJobType((e.target.value || null) as WOJobType | null)
-            }
+            onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
             className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
           >
             <option value="">Unspecified</option>
@@ -228,20 +233,15 @@ export function NewWorkOrderLineForm(props: {
             <option value="maintenance">Maintenance</option>
             <option value="repair">Repair</option>
           </select>
-          <p className="text-[10px] text-neutral-500">
-            Used for reporting and technician queues.
-          </p>
         </div>
       </div>
 
-      {/* Error */}
       {err && (
         <div className="rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {err}
         </div>
       )}
 
-      {/* Actions */}
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
           disabled={!canSave || busy}

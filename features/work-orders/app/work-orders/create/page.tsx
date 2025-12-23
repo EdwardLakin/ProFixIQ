@@ -291,6 +291,8 @@ export default function CreateWorkOrderPage() {
       if (!user?.id) return;
 
       let shop: string | null = null;
+
+      // ✅ prefer user_id first (new schema alignment)
       const byUserId = await supabase
         .from("profiles")
         .select("shop_id")
@@ -300,6 +302,7 @@ export default function CreateWorkOrderPage() {
       if (byUserId.data?.shop_id) {
         shop = byUserId.data.shop_id;
       } else {
+        // legacy fallback: profiles.id == auth.uid()
         const byId = await supabase
           .from("profiles")
           .select("shop_id")
@@ -369,41 +372,54 @@ export default function CreateWorkOrderPage() {
     })();
   }, [supabase]);
 
+  // ✅ patched: align to profiles.user_id first; fallback to profiles.id
   async function getOrLinkShopId(userId: string): Promise<string | null> {
-    // 1) try to read the profile we actually have (id = auth user id)
-    const { data: profileById, error: profErr } = await supabase
+    // 1) try profile by user_id (new schema)
+    const byUserId = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (byUserId.error) throw byUserId.error;
+    if (byUserId.data?.shop_id) return byUserId.data.shop_id;
+
+    // 2) fallback: legacy profile keyed by id
+    const byId = await supabase
       .from("profiles")
       .select("shop_id")
       .eq("id", userId)
       .maybeSingle();
 
-    if (profErr) throw profErr;
-    if (profileById?.shop_id) {
-      return profileById.shop_id;
-    }
+    if (byId.error) throw byId.error;
+    if (byId.data?.shop_id) return byId.data.shop_id;
 
-    // 2) no shop on profile → see if this user owns a shop
-    const { data: ownedShop, error: shopErr } = await supabase
+    // 3) see if this user owns a shop
+    const ownedShop = await supabase
       .from("shops")
       .select("id")
       .eq("owner_id", userId)
       .maybeSingle();
 
-    if (shopErr) throw shopErr;
-    if (!ownedShop?.id) {
-      // nothing to link
-      return null;
+    if (ownedShop.error) throw ownedShop.error;
+    if (!ownedShop.data?.id) return null;
+
+    // 4) write it back to profile so future calls are fast
+    const updByUserId = await supabase
+      .from("profiles")
+      .update({ shop_id: ownedShop.data.id })
+      .eq("user_id", userId);
+
+    if (updByUserId.error) {
+      const updById = await supabase
+        .from("profiles")
+        .update({ shop_id: ownedShop.data.id })
+        .eq("id", userId);
+
+      if (updById.error) throw updById.error;
     }
 
-    // 3) write it back to profile so future calls are fast
-    const { error: updErr } = await supabase
-      .from("profiles")
-      .update({ shop_id: ownedShop.id })
-      .eq("id", userId);
-
-    if (updErr) throw updErr;
-
-    return ownedShop.id;
+    return ownedShop.data.id;
   }
 
   const buildCustomerInsert = (c: SessionCustomer, shopId: string | null) => ({
@@ -550,9 +566,15 @@ export default function CreateWorkOrderPage() {
       if (data) return data;
     }
 
-    let q = supabase.from("customers").select("*").eq("shop_id", shopId).limit(1);
+    let q = supabase
+      .from("customers")
+      .select("*")
+      .eq("shop_id", shopId)
+      .limit(1);
+
     if (customer.phone) q = q.ilike("phone", customer.phone);
     else if (customer.email) q = q.ilike("email", customer.email);
+
     const { data: found } = await q;
     if (found?.length) {
       setCustomerId(found[0].id);
@@ -564,8 +586,10 @@ export default function CreateWorkOrderPage() {
       .insert(buildCustomerInsert(customer, shopId))
       .select("*")
       .single();
+
     if (insErr || !inserted)
       throw new Error(insErr?.message ?? "Failed to create customer");
+
     setCustomerId(inserted.id);
     return inserted;
   }
@@ -582,10 +606,12 @@ export default function CreateWorkOrderPage() {
         .single();
       if (data) return data;
     }
+
     const orParts = [
       vehicle.vin ? `vin.eq.${vehicle.vin}` : "",
       vehicle.license_plate ? `license_plate.eq.${vehicle.license_plate}` : "",
     ].filter(Boolean);
+
     if (orParts.length) {
       const { data: maybe } = await supabase
         .from("vehicles")
@@ -603,14 +629,17 @@ export default function CreateWorkOrderPage() {
       .insert(buildVehicleInsert(vehicle, cust.id, shopId))
       .select("*")
       .single();
+
     if (insErr || !inserted)
       throw new Error(insErr?.message ?? "Failed to create vehicle");
+
     setVehicleId(inserted.id);
     return inserted as VehicleRow;
   }
 
   // Save & Continue (creates/links WO right away)
   const [savingCv, setSavingCv] = useState(false);
+
   const fetchLines = useCallback(async () => {
     if (!wo?.id) return;
     const { data } = await supabase
@@ -618,11 +647,13 @@ export default function CreateWorkOrderPage() {
       .select("*")
       .eq("work_order_id", wo.id)
       .order("created_at", { ascending: true });
+
     setLines(data ?? []);
   }, [supabase, wo?.id, setLines]);
 
-  const handleSaveCustomerVehicle = useCallback(async () => {
-    if (savingCv) return;
+  // ✅ patched: return the WO id so submit flow never relies on stale state
+  const handleSaveCustomerVehicle = useCallback(async (): Promise<string> => {
+    if (savingCv) return wo?.id ?? "";
     setSavingCv(true);
     setError("");
 
@@ -637,6 +668,7 @@ export default function CreateWorkOrderPage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user?.id) throw new Error("Not signed in.");
+
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
@@ -685,11 +717,13 @@ export default function CreateWorkOrderPage() {
             .eq("id", wo.id)
             .select("*")
             .single();
+
           if (updErr) throw updErr;
           setWo(updated);
         }
+
         await fetchLines();
-        return;
+        return wo.id;
       }
 
       // ✅ Create WO via DB RPC (handles custom_id + retries + uniqueness)
@@ -714,10 +748,13 @@ export default function CreateWorkOrderPage() {
 
       setWo(created as WorkOrderRow);
       await fetchLines();
+
+      return String(created.id);
     } catch (e) {
       const msg =
         e instanceof Error ? e.message : "Failed to save customer/vehicle.";
       setError(msg);
+      throw e;
     } finally {
       setSavingCv(false);
     }
@@ -725,6 +762,8 @@ export default function CreateWorkOrderPage() {
     savingCv,
     supabase,
     wo?.id,
+    wo?.customer_id,
+    wo?.vehicle_id,
     notes,
     customer,
     fetchLines,
@@ -770,9 +809,11 @@ export default function CreateWorkOrderPage() {
   async function uploadVehicleFiles(vId: string): Promise<UploadSummary> {
     let uploaded = 0,
       failed = 0;
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     const uploader = user?.id ?? null;
     const currentShopIdForMedia = wo?.shop_id ?? null;
 
@@ -802,6 +843,7 @@ export default function CreateWorkOrderPage() {
 
     for (const f of photoFiles) await upOne("vehicle-photos", f, "photo");
     for (const f of docFiles) await upOne("vehicle-docs", f, "document");
+
     return { uploaded, failed };
   }
 
@@ -892,9 +934,8 @@ export default function CreateWorkOrderPage() {
     setUploadSummary(null);
 
     try {
-      await handleSaveCustomerVehicle();
-
-      const woId = wo?.id;
+      // ✅ always get a real WO id from the save action (no stale state)
+      const woId = await handleSaveCustomerVehicle();
       if (!woId) throw new Error("Could not create work order.");
 
       const { data: latest, error: latestErr } = await supabase
@@ -914,6 +955,7 @@ export default function CreateWorkOrderPage() {
       }
 
       // ✅ Send portal invite via API (SendGrid + Supabase admin magic link)
+      // NOTE: this runs on submit (Approve & Sign), not on Save & Continue.
       if (sendInvite && customer.email) {
         try {
           const res = await fetch("/api/portal/invite", {
@@ -936,10 +978,14 @@ export default function CreateWorkOrderPage() {
               }.`,
             );
           } else {
-            setInviteNotice("Work order created. Invite email sent to the customer.");
+            setInviteNotice(
+              "Work order created. Invite email sent to the customer.",
+            );
           }
         } catch {
-          setInviteNotice("Work order created. Failed to send invite email (caught).");
+          setInviteNotice(
+            "Work order created. Failed to send invite email (caught).",
+          );
         }
       }
 
@@ -1026,7 +1072,7 @@ export default function CreateWorkOrderPage() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-200 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:bg:white/5"
+            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-200 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:bg-white/5"
           >
             Back to list
           </button>
@@ -1074,9 +1120,9 @@ export default function CreateWorkOrderPage() {
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleSaveCustomerVehicle}
+                  onClick={() => void handleSaveCustomerVehicle()}
                   disabled={savingCv || loading}
-                  className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs sm:text-sm font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500 hover:bg-black/80 disabled:opacity-60"
+                  className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500 hover:bg-black/80 disabled:opacity-60 sm:text-sm"
                 >
                   {savingCv ? "Saving…" : "Save & Continue"}
                 </button>
@@ -1084,7 +1130,7 @@ export default function CreateWorkOrderPage() {
                 <button
                   type="button"
                   onClick={handleClearForm}
-                  className="rounded-full border border-red-600/70 bg-black/70 px-3 py-1.5 text-xs sm:text-sm font-medium uppercase tracking-[0.16em] text-red-200 hover:bg-red-900/30"
+                  className="rounded-full border border-red-600/70 bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-red-200 hover:bg-red-900/30 sm:text-sm"
                 >
                   Clear form
                 </button>
@@ -1222,7 +1268,7 @@ export default function CreateWorkOrderPage() {
                   <button
                     type="button"
                     onClick={() => setAiSuggestOpen(true)}
-                    className="inline-flex items-center rounded-full border border-blue-600 bg-black/70 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30"
+                    className="inline-flex items-center rounded-full border border-blue-600 bg-black/70 px-3 py-1.5 text-xs text-blue-300 hover:bg-blue-900/30 sm:text-sm"
                   >
                     AI: Suggest jobs
                   </button>
@@ -1260,7 +1306,7 @@ export default function CreateWorkOrderPage() {
                         {ln.job_type === "inspection" && (
                           <button
                             type="button"
-                            onClick={() => openInspectionForLine(ln)}
+                            onClick={() => void openInspectionForLine(ln)}
                             className="rounded border border-orange-500 px-2 py-1 text-xs text-orange-200 hover:bg-orange-500/10"
                           >
                             Open inspection
@@ -1268,7 +1314,7 @@ export default function CreateWorkOrderPage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => handleDeleteLine(ln.id)}
+                          onClick={() => void handleDeleteLine(ln.id)}
                           className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
                         >
                           Delete
@@ -1367,7 +1413,7 @@ export default function CreateWorkOrderPage() {
               <button
                 type="button"
                 onClick={() => router.push("/work-orders")}
-                className="text-sm text-neutral-400 hover:text:white"
+                className="text-sm text-neutral-400 hover:text-white"
                 disabled={loading}
               >
                 Cancel
