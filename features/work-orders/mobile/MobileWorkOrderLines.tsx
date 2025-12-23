@@ -77,14 +77,13 @@ export function MobileWorkOrderLines({
 
         <ul className="space-y-2">
           {lines.map((line, idx) => {
-            const label =
-              line.description ||
-              line.complaint ||
-              "Job line";
+            const label = line.description || line.complaint || "Job line";
 
             const statusLabel = line.status
               ? line.status.replaceAll("_", " ")
               : "awaiting";
+
+            const canAssign = Boolean(workOrderId);
 
             return (
               <li
@@ -118,17 +117,25 @@ export function MobileWorkOrderLines({
                     </div>
                   )}
 
-                  {line.status && (
-                    <div className="mt-1">
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] ${statusChip(
-                          line.status,
-                        )}`}
-                      >
-                        {statusLabel}
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] ${statusChip(
+                        line.status,
+                      )}`}
+                    >
+                      {statusLabel}
+                    </span>
+
+                    {line.assigned_to ? (
+                      <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-sky-100">
+                        Assigned
                       </span>
-                    </div>
-                  )}
+                    ) : (
+                      <span className="inline-flex items-center rounded-full border border-neutral-500/30 bg-neutral-700/20 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-neutral-200">
+                        Unassigned
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex flex-col items-end justify-between gap-1 pl-1">
@@ -142,10 +149,17 @@ export function MobileWorkOrderLines({
                     <button
                       type="button"
                       onClick={() => {
+                        if (!canAssign) return;
                         setAssignLineId(line.id);
                         setAssignOpen(true);
                       }}
-                      className="shrink-0 rounded-full border border-sky-500/70 px-2 py-0.5 text-[0.7rem] text-sky-100 hover:bg-sky-500/15"
+                      className="shrink-0 rounded-full border border-sky-500/70 px-2 py-0.5 text-[0.7rem] text-sky-100 hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!canAssign}
+                      title={
+                        canAssign
+                          ? "Assign technician"
+                          : "Open a work order first"
+                      }
                     >
                       Assign
                     </button>
