@@ -1,7 +1,8 @@
+// app/portal/auth/confirm/page.tsx
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -9,28 +10,48 @@ const COPPER = "#C57A4A";
 
 export default function PortalConfirmPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClientComponentClient<Database>();
+
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        // Supabase magic link (PKCE) returns ?code=...
+        const code = searchParams.get("code");
+        if (code) {
+          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+          if (exErr) throw new Error(exErr.message);
+        }
 
-      if (cancelled) return;
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      // ✅ After confirm, land on the portal entry that matters for this flow
-      router.replace(
-        session?.user ? "/portal/customer-appointments" : "/portal/auth/sign-in",
-      );
+        if (cancelled) return;
+
+        if (!session?.user) {
+          router.replace("/portal/auth/sign-in");
+          return;
+        }
+
+        // ✅ Default to /portal (not appointments)
+        const next = searchParams.get("next");
+        router.replace(next && next.startsWith("/") ? next : "/portal");
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "Unable to confirm sign-in.");
+        router.replace("/portal/auth/sign-in");
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [router, supabase]);
+  }, [router, searchParams, supabase]);
 
   return (
     <div className="mx-auto max-w-lg">
@@ -47,14 +68,11 @@ export default function PortalConfirmPage() {
         </h1>
 
         <p className="mt-2 text-sm text-neutral-400">
-          One moment… we’re completing your sign-in.
+          {error ? "Sign-in failed — redirecting…" : "One moment… we’re completing your sign-in."}
         </p>
 
         <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full border border-white/10 bg-white/5">
-          <div
-            className="h-full w-1/2 animate-pulse rounded-full"
-            style={{ backgroundColor: COPPER }}
-          />
+          <div className="h-full w-1/2 animate-pulse rounded-full" style={{ backgroundColor: COPPER }} />
         </div>
       </div>
     </div>

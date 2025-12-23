@@ -1,56 +1,100 @@
+// app/api/portal/invite/route.ts
 import { NextResponse } from "next/server";
 import sgMail from "@sendgrid/mail";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 
+type Body = {
+  email?: string;
+  next?: string; // optional: where to land after confirm (must be a safe internal path like "/portal")
+};
+
 export async function POST(req: Request) {
   try {
-    const { email, redirectTo } = await req.json();
+    const body = (await req.json().catch(() => ({}))) as Body;
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const next = typeof body.next === "string" ? body.next.trim() : "";
 
     if (!email) {
       return NextResponse.json({ ok: false, error: "Missing email" }, { status: 400 });
     }
 
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+    const siteUrl =
+      (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "") || "https://profixiq.com";
+
+    // ✅ Only allow internal redirects (prevents open-redirect abuse)
+    const safeNext = next.startsWith("/") ? next : "/portal";
+
+    // ✅ Magic link must redirect to confirm page (PKCE exchange happens there)
+    const redirectTo = `${siteUrl}/portal/auth/confirm?next=${encodeURIComponent(safeNext)}`;
+
+    if (!process.env.SENDGRID_API_KEY) {
+      return NextResponse.json(
+        { ok: false, error: "SENDGRID_API_KEY is not set" },
+        { status: 500 },
+      );
+    }
+    if (!process.env.SENDGRID_FROM_EMAIL) {
+      return NextResponse.json(
+        { ok: false, error: "SENDGRID_FROM_EMAIL is not set" },
+        { status: 500 },
+      );
+    }
+
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
     // 1️⃣ Generate Supabase magic link
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
       email,
-      options: {
-        redirectTo: redirectTo || `${process.env.NEXT_PUBLIC_SITE_URL}/portal`,
-      },
+      options: { redirectTo },
     });
 
-    if (error || !data?.properties?.action_link) {
-      throw error || new Error("Failed to generate magic link");
+    const link = data?.properties?.action_link;
+    if (error || !link) {
+      console.error("[portal invite] generateLink error:", error);
+      return NextResponse.json(
+        { ok: false, error: "Failed to generate magic link" },
+        { status: 500 },
+      );
     }
-
-    const link = data.properties.action_link;
 
     // 2️⃣ Send via SendGrid
     await sgMail.send({
       to: email,
       from: {
-        email: process.env.SENDGRID_FROM_EMAIL!,
+        email: process.env.SENDGRID_FROM_EMAIL,
         name: "ProFixIQ",
       },
-      subject: "Access your customer portal",
+      subject: "Access your ProFixIQ customer portal",
       html: `
-        <p>You can access your customer portal using the secure link below:</p>
-        <p>
-          <a href="${link}" style="padding:10px 14px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;">
-            Open Customer Portal
-          </a>
-        </p>
-        <p style="font-size:12px;color:#94a3b8">
-          This link expires automatically and is single-use.
-        </p>
+        <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto;line-height:1.4">
+          <p>You can access your customer portal using the secure link below:</p>
+
+          <p>
+            <a href="${link}"
+               style="
+                 display:inline-block;
+                 padding:12px 18px;
+                 background:#C57A4A;
+                 color:#000;
+                 border-radius:10px;
+                 text-decoration:none;
+                 font-weight:700;
+               ">
+              Open Customer Portal
+            </a>
+          </p>
+
+          <p style="font-size:12px;color:#94a3b8">
+            This link is single-use and expires automatically.
+          </p>
+        </div>
       `,
     });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error("[portal invite]", e);
+    console.error("[portal invite] fatal:", e);
     return NextResponse.json(
       { ok: false, error: "Failed to send portal invite" },
       { status: 500 },
