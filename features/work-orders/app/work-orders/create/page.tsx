@@ -7,12 +7,7 @@
  * Integrated with VIN scanner + draft store.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
@@ -214,7 +209,6 @@ export default function CreateWorkOrderPage() {
         make: d.vehicle.make ?? prev.make,
         model: d.vehicle.model ?? prev.model,
         license_plate:
-          // support both new `license_plate` and legacy `plate` fields
           (d.vehicle as any).license_plate ??
           (d.vehicle as any).plate ??
           prev.license_plate,
@@ -228,7 +222,6 @@ export default function CreateWorkOrderPage() {
     value: string | null,
   ) => {
     if (field === "business_name") {
-      // store extra field alongside SessionCustomer shape
       setCustomer((c) => ({ ...(c as any), business_name: value } as any));
       cvDraft.setCustomerField(field as any, value);
     } else {
@@ -237,23 +230,14 @@ export default function CreateWorkOrderPage() {
     }
   };
 
-  const onVehicleChange = (
-    field: keyof SessionVehicle,
-    value: string | null,
-  ) => {
+  const onVehicleChange = (field: keyof SessionVehicle, value: string | null) => {
     setVehicle((v) => ({ ...v, [field]: value }));
     cvDraft.setVehicleField(field as any, value);
   };
 
   // Captured ids
-  const [customerId, setCustomerId] = useTabState<string | null>(
-    "customerId",
-    null,
-  );
-  const [vehicleId, setVehicleId] = useTabState<string | null>(
-    "vehicleId",
-    null,
-  );
+  const [customerId, setCustomerId] = useTabState<string | null>("customerId", null);
+  const [vehicleId, setVehicleId] = useTabState<string | null>("vehicleId", null);
 
   // Work order + lines
   const [wo, setWo] = useTabState<WorkOrderRow | null>("__create_wo", null);
@@ -269,23 +253,18 @@ export default function CreateWorkOrderPage() {
   // Defaults / notes
   const [type, setType] = useTabState<WOType>("type", "maintenance");
   const [notes, setNotes] = useTabState("notes", "");
-  // 👇 work order priority (1 urgent → 4 low). default 3 = normal
   const [priority, setPriority] = useTabState<number>("priority", 3);
-  // 👇 waiter flag (customer waiting on-site)
   const [isWaiter, setIsWaiter] = useTabState<boolean>("is_waiter", false);
 
   // Uploads
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [docFiles, setDocFiles] = useState<File[]>([]);
-  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(
-    null,
-  );
+  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
 
   // UI state
   const [loading, setLoading] = useTabState("loading", false);
   const [error, setError] = useTabState("error", "");
-  const [inviteNotice, setInviteNotice] =
-    useTabState<string>("inviteNotice", "");
+  const [inviteNotice, setInviteNotice] = useTabState<string>("inviteNotice", "");
   const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
 
   // Current user id (for VIN modal)
@@ -380,7 +359,6 @@ export default function CreateWorkOrderPage() {
   }, [supabase]);
 
   async function getOrLinkShopId(userId: string): Promise<string | null> {
-    // 1) try to read the profile we actually have (id = auth user id)
     const { data: profileById, error: profErr } = await supabase
       .from("profiles")
       .select("shop_id")
@@ -388,11 +366,8 @@ export default function CreateWorkOrderPage() {
       .maybeSingle();
 
     if (profErr) throw profErr;
-    if (profileById?.shop_id) {
-      return profileById.shop_id;
-    }
+    if (profileById?.shop_id) return profileById.shop_id;
 
-    // 2) no shop on profile → see if this user owns a shop
     const { data: ownedShop, error: shopErr } = await supabase
       .from("shops")
       .select("id")
@@ -400,12 +375,8 @@ export default function CreateWorkOrderPage() {
       .maybeSingle();
 
     if (shopErr) throw shopErr;
-    if (!ownedShop?.id) {
-      // nothing to link
-      return null;
-    }
+    if (!ownedShop?.id) return null;
 
-    // 3) write it back to profile so future calls are fast
     const { error: updErr } = await supabase
       .from("profiles")
       .update({ shop_id: ownedShop.id })
@@ -429,11 +400,7 @@ export default function CreateWorkOrderPage() {
     shop_id: shopId,
   });
 
-  const buildVehicleInsert = (
-    v: SessionVehicle,
-    customerId: string,
-    shopId: string | null,
-  ) => ({
+  const buildVehicleInsert = (v: SessionVehicle, customerId: string, shopId: string | null) => ({
     customer_id: customerId,
     vin: strOrNull(v.vin),
     year: numOrNull(v.year),
@@ -447,7 +414,6 @@ export default function CreateWorkOrderPage() {
     shop_id: shopId,
   });
 
-  // helper to hydrate customer state from DB row (including business_name when present)
   const hydrateCustomerFromRow = (row: any): SessionCustomer => {
     const base: any = {
       first_name: row.first_name ?? null,
@@ -459,9 +425,7 @@ export default function CreateWorkOrderPage() {
       province: getStrField(row, "province"),
       postal_code: getStrField(row, "postal_code"),
     };
-    if (row.business_name) {
-      base.business_name = row.business_name;
-    }
+    if (row.business_name) base.business_name = row.business_name;
     return base as SessionCustomer;
   };
 
@@ -513,8 +477,7 @@ export default function CreateWorkOrderPage() {
               mileage: getStrField(data, "mileage"),
               unit_number: getStrField(data, "unit_number"),
               color: getStrField(data, "color"),
-              engine_hours:
-                data.engine_hours != null ? String(data.engine_hours) : null,
+              engine_hours: data.engine_hours != null ? String(data.engine_hours) : null,
             });
             setVehicleId(data.id);
 
@@ -574,16 +537,14 @@ export default function CreateWorkOrderPage() {
       .insert(buildCustomerInsert(customer, shopId))
       .select("*")
       .single();
-    if (insErr || !inserted)
+    if (insErr || !inserted) {
       throw new Error(insErr?.message ?? "Failed to create customer");
+    }
     setCustomerId(inserted.id);
     return inserted;
   }
 
-  async function ensureVehicleRow(
-    cust: CustomerRow,
-    shopId: string | null,
-  ): Promise<VehicleRow> {
+  async function ensureVehicleRow(cust: CustomerRow, shopId: string | null): Promise<VehicleRow> {
     if (vehicleId) {
       const { data } = await supabase
         .from("vehicles")
@@ -592,10 +553,12 @@ export default function CreateWorkOrderPage() {
         .single();
       if (data) return data;
     }
+
     const orParts = [
       vehicle.vin ? `vin.eq.${vehicle.vin}` : "",
       vehicle.license_plate ? `license_plate.eq.${vehicle.license_plate}` : "",
     ].filter(Boolean);
+
     if (orParts.length) {
       const { data: maybe } = await supabase
         .from("vehicles")
@@ -613,14 +576,16 @@ export default function CreateWorkOrderPage() {
       .insert(buildVehicleInsert(vehicle, cust.id, shopId))
       .select("*")
       .single();
-    if (insErr || !inserted)
+    if (insErr || !inserted) {
       throw new Error(insErr?.message ?? "Failed to create vehicle");
+    }
     setVehicleId(inserted.id);
     return inserted as VehicleRow;
   }
 
   // Save & Continue (creates/links WO right away)
   const [savingCv, setSavingCv] = useState(false);
+
   const fetchLines = useCallback(async () => {
     if (!wo?.id) return;
     const { data } = await supabase
@@ -638,9 +603,7 @@ export default function CreateWorkOrderPage() {
 
     try {
       if (!customer.first_name && !customer.phone && !customer.email) {
-        throw new Error(
-          "Please enter at least a name, phone, or email for the customer.",
-        );
+        throw new Error("Please enter at least a name, phone, or email for the customer.");
       }
 
       const {
@@ -663,10 +626,7 @@ export default function CreateWorkOrderPage() {
           city: customer.city ?? null,
           province: customer.province ?? null,
           postal_code: customer.postal_code ?? null,
-          // business_name is optional, lives in draft as any if supported
-          ...(cust as any).business_name
-            ? { business_name: (cust as any).business_name }
-            : {},
+          ...(cust as any).business_name ? { business_name: (cust as any).business_name } : {},
         } as any,
         vehicle: {
           vin: veh.vin ?? null,
@@ -688,7 +648,6 @@ export default function CreateWorkOrderPage() {
             .update({
               customer_id: cust.id,
               vehicle_id: veh.id,
-              // keep existing waiter flag when editing
               ...(typeof (wo as any).is_waiter !== "undefined"
                 ? { is_waiter: (wo as any).is_waiter }
                 : {}),
@@ -703,7 +662,6 @@ export default function CreateWorkOrderPage() {
         return;
       }
 
-      // 🔑 Only here do we create a new work order now
       const customId = await generateWorkOrderCustomId(supabase, cust.id);
       const newId = uuidv4();
 
@@ -719,7 +677,6 @@ export default function CreateWorkOrderPage() {
         priority: priority,
       };
 
-      // waiter flag – stored on work_orders.is_waiter (typed via any)
       (insertPayload as any).is_waiter = isWaiter;
 
       const { data: inserted, error: insertWOError } = await supabase
@@ -727,14 +684,14 @@ export default function CreateWorkOrderPage() {
         .insert(insertPayload as any)
         .select("*")
         .single();
-      if (insertWOError || !inserted)
+      if (insertWOError || !inserted) {
         throw new Error(insertWOError?.message || "Failed to create work order.");
+      }
 
       setWo(inserted);
       await fetchLines();
     } catch (e) {
-      const msg =
-        e instanceof Error ? e.message : "Failed to save customer/vehicle.";
+      const msg = e instanceof Error ? e.message : "Failed to save customer/vehicle.";
       setError(msg);
     } finally {
       setSavingCv(false);
@@ -755,7 +712,7 @@ export default function CreateWorkOrderPage() {
 
   // Clear form
   const handleClearForm = useCallback(() => {
-    setCustomer(defaultCustomer as any); // clears known fields; extra ones like business_name drop to undefined
+    setCustomer(defaultCustomer as any);
     setVehicle(defaultVehicle);
     setCustomerId(null);
     setVehicleId(null);
@@ -800,9 +757,7 @@ export default function CreateWorkOrderPage() {
       mediaType: "photo" | "document",
     ) => {
       const key = `veh_${vId}/${Date.now()}_${f.name}`;
-      const up = await supabase.storage.from(bucket).upload(key, f, {
-        upsert: false,
-      });
+      const up = await supabase.storage.from(bucket).upload(key, f, { upsert: false });
       if (up.error) {
         failed += 1;
         return;
@@ -839,18 +794,14 @@ export default function CreateWorkOrderPage() {
 
         if (wo.shop_id) (q as any).eq("shop_id", wo.shop_id);
 
-        const { data: deleted, error } = await (q as any)
-          .select("id")
-          .maybeSingle();
+        const { data: deleted, error } = await (q as any).select("id").maybeSingle();
 
         if (error) {
           alert(error.message || "Delete failed");
           return;
         }
         if (!deleted) {
-          alert(
-            "Could not delete the line (no matching row). Check permissions/policies.",
-          );
+          alert("Could not delete the line (no matching row). Check permissions/policies.");
           return;
         }
 
@@ -864,7 +815,7 @@ export default function CreateWorkOrderPage() {
     [supabase, wo?.id, wo?.shop_id, fetchLines, setLines],
   );
 
-  // 🔍 open inspection – reuse generic /inspections/run loader so corner grids & sections match Templates page
+  // 🔍 open inspection
   const openInspectionForLine = useCallback(
     async (ln: WorkOrderLine) => {
       if (!ln?.id) return;
@@ -884,12 +835,10 @@ export default function CreateWorkOrderPage() {
       if (wo?.id) sp.set("workOrderId", wo.id);
       sp.set("workOrderLineId", ln.id);
       sp.set("templateId", templateId);
-      sp.set("embed", "1"); // so GenericInspectionScreen knows it's in a modal
-      sp.set("view", "mobile"); // mobile voice controls
+      sp.set("embed", "1");
+      sp.set("view", "mobile");
 
-      if (ln.description) {
-        sp.set("seed", String(ln.description));
-      }
+      if (ln.description) sp.set("seed", String(ln.description));
 
       const url = `/inspections/run?${sp.toString()}`;
 
@@ -910,7 +859,6 @@ export default function CreateWorkOrderPage() {
     setUploadSummary(null);
 
     try {
-      // Make sure customer & vehicle (and WO) are persisted first
       await handleSaveCustomerVehicle();
 
       const woId = wo?.id;
@@ -941,35 +889,24 @@ export default function CreateWorkOrderPage() {
           const portalUrl = `${
             origin || "https://profixiq.com"
           }/portal/auth/sign-up?email=${encodeURIComponent(customer.email)}`;
-          const { error: fnErr } = await supabase.functions.invoke(
-            "send-portal-invite",
-            {
-              body: {
-                email: customer.email,
-                customer_id: latest.customer_id,
-                portal_url: portalUrl,
-              },
+          const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
+            body: {
+              email: customer.email,
+              customer_id: latest.customer_id,
+              portal_url: portalUrl,
             },
-          );
+          });
           if (fnErr)
-            setInviteNotice(
-              "Work order created. Failed to send invite email (logged).",
-            );
-          else
-            setInviteNotice(
-              "Work order created. Invite email queued to the customer.",
-            );
+            setInviteNotice("Work order created. Failed to send invite email (logged).");
+          else setInviteNotice("Work order created. Invite email queued to the customer.");
         } catch {
-          setInviteNotice(
-            "Work order created. Failed to send invite email (caught).",
-          );
+          setInviteNotice("Work order created. Failed to send invite email (caught).");
         }
       }
 
       router.push(`/work-orders/${latest.id}/approve`);
     } catch (ex) {
-      const message =
-        ex instanceof Error ? ex.message : "Failed to create work order.";
+      const message = ex instanceof Error ? ex.message : "Failed to create work order.";
       setError(message);
     } finally {
       setLoading(false);
@@ -1012,26 +949,24 @@ export default function CreateWorkOrderPage() {
 
   // Vehicle label for AI modal context
   const vehicleLabel =
-    (vehicle.year || vehicle.make || vehicle.model)
-      ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
-          vehicle.model ?? ""
-        }`.trim()
+    vehicle.year || vehicle.make || vehicle.model
+      ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
       : vehicle.license_plate
-      ? `Plate ${vehicle.license_plate}`
-      : null;
+        ? `Plate ${vehicle.license_plate}`
+        : null;
 
   /* UI */
   return (
     <div className="relative min-h-[calc(100vh-4rem)] px-4 py-6 text-white">
-      {/* radial wash similar to Service Menu page */}
+      {/* radial wash (switch orange -> copper vars) */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(212,118,49,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
 
       <div className="mx-auto max-w-6xl space-y-6">
-        {/* Header card – matches Menu header vibe */}
-        <section className="metal-card mb-2 flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+        {/* Header card */}
+        <section className="mb-2 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/35 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
           <div>
             <h1
               className="text-2xl font-semibold text-white"
@@ -1039,52 +974,54 @@ export default function CreateWorkOrderPage() {
             >
               Create Work Order
             </h1>
-            <p className="mt-1 text-sm text-neutral-400">
+            <p className="mt-1 text-sm text-white/55">
               Link a customer and vehicle, add jobs and inspections, then send
               to approval and signature.
             </p>
             {wo?.custom_id && (
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-white/45">
                 Current WO:{" "}
-                <span className="font-mono text-orange-300">
+                <span className="font-mono text-[var(--accent-copper-light)]">
                   {wo.custom_id}
                 </span>
               </p>
             )}
           </div>
+
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-200 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:bg:white/5"
+            className="rounded-full border border-white/12 bg-black/45 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white/75 shadow-[0_10px_24px_rgba(0,0,0,0.70)] hover:bg-white/5"
           >
             Back to list
           </button>
         </section>
 
-        {/* Main metal card with form */}
-        <section className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl sm:px-6 sm:py-6">
+        {/* Main card with form */}
+        <section className="rounded-2xl border border-white/10 bg-black/35 px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.85)] backdrop-blur-xl sm:px-6 sm:py-6">
           {error && (
-            <div className="mb-4 rounded-lg border border-red-500/60 bg-red-950/70 px-4 py-2 text-sm text-red-100">
+            <div className="mb-4 rounded-lg border border-red-500/45 bg-red-950/45 px-4 py-2 text-sm text-red-100">
               {error}
             </div>
           )}
 
           {uploadSummary && (
-            <div className="mb-4 rounded-lg border border-neutral-700 bg-black/60 px-4 py-2 text-sm text-neutral-100">
+            <div className="mb-4 rounded-lg border border-white/10 bg-black/35 px-4 py-2 text-sm text-white/80">
               Uploaded {uploadSummary.uploaded} file(s)
               {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
             </div>
           )}
+
           {inviteNotice && (
-            <div className="mb-4 rounded-lg border border-neutral-700 bg-black/60 px-4 py-2 text-sm text-neutral-100">
+            <div className="mb-4 rounded-lg border border-white/10 bg-black/35 px-4 py-2 text-sm text-white/80">
               {inviteNotice}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Customer & Vehicle */}
-            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">
+            <section className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:p-5">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-white/45">
                 Customer &amp; Vehicle
               </h2>
 
@@ -1108,7 +1045,7 @@ export default function CreateWorkOrderPage() {
                   type="button"
                   onClick={handleSaveCustomerVehicle}
                   disabled={savingCv || loading}
-                  className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs sm:text-sm font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500 hover:bg-black/80 disabled:opacity-60"
+                  className="rounded-full border border-white/12 bg-black/45 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-white/80 hover:bg-white/5 disabled:opacity-60 sm:text-sm"
                 >
                   {savingCv ? "Saving…" : "Save & Continue"}
                 </button>
@@ -1116,7 +1053,7 @@ export default function CreateWorkOrderPage() {
                 <button
                   type="button"
                   onClick={handleClearForm}
-                  className="rounded-full border border-red-600/70 bg-black/70 px-3 py-1.5 text-xs sm:text-sm font-medium uppercase tracking-[0.16em] text-red-200 hover:bg-red-900/30"
+                  className="rounded-full border border-red-500/45 bg-black/45 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-950/35 sm:text-sm"
                 >
                   Clear form
                 </button>
@@ -1125,7 +1062,6 @@ export default function CreateWorkOrderPage() {
                   userId={currentUserId ?? "anon"}
                   action="/api/vin"
                   onDecoded={(d) => {
-                    // 1) push into transient VIN draft store
                     draft.setVehicle({
                       vin: d.vin,
                       year: d.year ?? null,
@@ -1137,7 +1073,6 @@ export default function CreateWorkOrderPage() {
                       transmission: d.transmission ?? null,
                     } as any);
 
-                    // 2) hydrate the visible form state
                     setVehicle((prev) =>
                       ({
                         ...prev,
@@ -1145,26 +1080,13 @@ export default function CreateWorkOrderPage() {
                         year: d.year ?? prev.year,
                         make: d.make ?? prev.make,
                         model: d.model ?? prev.model,
-                        engine:
-                          d.engine ??
-                          (prev as any).engine ??
-                          null,
-                        fuel_type:
-                          d.fuelType ??
-                          (prev as any).fuel_type ??
-                          null,
-                        drivetrain:
-                          d.driveType ??
-                          (prev as any).drivetrain ??
-                          null,
-                        transmission:
-                          d.transmission ??
-                          (prev as any).transmission ??
-                          null,
+                        engine: d.engine ?? (prev as any).engine ?? null,
+                        fuel_type: d.fuelType ?? (prev as any).fuel_type ?? null,
+                        drivetrain: d.driveType ?? (prev as any).drivetrain ?? null,
+                        transmission: d.transmission ?? (prev as any).transmission ?? null,
                       } as any),
                     );
 
-                    // 3) persist into CV draft
                     cvDraft.bulkSet({
                       vehicle: {
                         vin: d.vin ?? null,
@@ -1179,19 +1101,19 @@ export default function CreateWorkOrderPage() {
                     });
                   }}
                 >
-                  <span className="cursor-pointer rounded-full border border-orange-500/80 bg-black/70 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/10 sm:text-sm">
+                  <span className="cursor-pointer rounded-full border border-white/12 bg-black/45 px-3 py-1.5 text-xs text-[var(--accent-copper-light)] hover:bg-[color:var(--accent-copper-900,rgba(120,63,28,0.20))] sm:text-sm">
                     Add by VIN / Scan
                   </span>
                 </VinCaptureModal>
               </div>
 
-              <label className="mt-3 flex items-center gap-2 text-xs text-neutral-300">
+              <label className="mt-3 flex items-center gap-2 text-xs text-white/60">
                 <input
                   id="send-invite"
                   type="checkbox"
                   checked={sendInvite}
                   onChange={(e) => setSendInvite(e.target.checked)}
-                  className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
+                  className="h-4 w-4 rounded border-white/20 bg-black/50"
                   disabled={loading}
                 />
                 Email a customer portal sign-up link
@@ -1199,37 +1121,31 @@ export default function CreateWorkOrderPage() {
             </section>
 
             {/* Uploads */}
-            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-              <h2 className="mb-3 text-sm font-semibold text-neutral-100">
-                Uploads
-              </h2>
+            <section className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:p-5">
+              <h2 className="mb-3 text-sm font-semibold text-white/85">Uploads</h2>
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-white/45">
                     Vehicle Photos
                   </label>
                   <input
                     type="file"
                     accept="image/*"
                     multiple
-                    onChange={(e) =>
-                      setPhotoFiles(Array.from(e.target.files ?? []))
-                    }
+                    onChange={(e) => setPhotoFiles(Array.from(e.target.files ?? []))}
                     className="input"
                     disabled={loading}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-white/45">
                     Documents (PDF/JPG/PNG)
                   </label>
                   <input
                     type="file"
                     accept="application/pdf,image/*"
                     multiple
-                    onChange={(e) =>
-                      setDocFiles(Array.from(e.target.files ?? []))
-                    }
+                    onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))}
                     className="input"
                     disabled={loading}
                   />
@@ -1239,8 +1155,8 @@ export default function CreateWorkOrderPage() {
 
             {/* Quick add from menu */}
             {wo?.id && (
-              <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-                <h2 className="mb-3 text-sm font-semibold text-orange-300">
+              <section className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:p-5">
+                <h2 className="mb-3 text-sm font-semibold text-[var(--accent-copper-light)]">
                   Quick add from menu
                 </h2>
                 <MenuQuickAdd workOrderId={wo.id} />
@@ -1249,8 +1165,8 @@ export default function CreateWorkOrderPage() {
 
             {/* Manual add line */}
             {wo?.id && (
-              <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-                <h2 className="mb-3 text-sm font-semibold text-neutral-100">
+              <section className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:p-5">
+                <h2 className="mb-3 text-sm font-semibold text-white/85">
                   Add Job Line
                 </h2>
                 <NewWorkOrderLineForm
@@ -1264,55 +1180,53 @@ export default function CreateWorkOrderPage() {
             )}
 
             {/* Current Lines */}
-            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
+            <section className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:p-5">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-sm font-semibold text-neutral-100">
-                  Current lines
-                </h2>
+                <h2 className="text-sm font-semibold text-white/85">Current lines</h2>
                 {wo?.id && (
                   <button
                     type="button"
                     onClick={() => setAiSuggestOpen(true)}
-                    className="inline-flex items-center rounded-full border border-blue-600 bg-black/70 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30"
+                    className="inline-flex items-center rounded-full border border-white/15 bg-black/45 px-3 py-1.5 text-xs text-blue-200 hover:bg-blue-950/30 sm:text-sm"
                   >
                     AI: Suggest jobs
                   </button>
                 )}
               </div>
+
               {!wo?.id || lines.length === 0 ? (
-                <p className="text-sm text-neutral-400">No lines yet.</p>
+                <p className="text-sm text-white/45">No lines yet.</p>
               ) : (
                 <div className="space-y-2">
                   {lines.map((ln) => (
                     <div
                       key={ln.id}
-                      className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-950/80 p-3 sm:flex-row sm:items-start sm:justify-between"
+                      className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/35 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.60)] sm:flex-row sm:items-start sm:justify-between"
                     >
                       <div className="min-w-0">
-                        <div className="truncate font-medium">
+                        <div className="truncate font-medium text-white/90">
                           {ln.description || ln.complaint || "Untitled job"}
                         </div>
-                        <div className="text-xs text-neutral-400">
+                        <div className="text-xs text-white/50">
                           {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                          {typeof ln.labor_time === "number"
-                            ? `${ln.labor_time}h`
-                            : "—"}{" "}
-                          • {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                          {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •{" "}
+                          {(ln.status ?? "awaiting").replaceAll("_", " ")}
                         </div>
                         {(ln.complaint || ln.cause || ln.correction) && (
-                          <div className="mt-1 text-xs text-neutral-500">
+                          <div className="mt-1 text-xs text-white/40">
                             {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
                             {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
                             {ln.correction ? `| Corr: ${ln.correction}` : ""}
                           </div>
                         )}
                       </div>
+
                       <div className="flex gap-2">
                         {ln.job_type === "inspection" && (
                           <button
                             type="button"
                             onClick={() => openInspectionForLine(ln)}
-                            className="rounded border border-orange-500 px-2 py-1 text-xs text-orange-200 hover:bg-orange-500/10"
+                            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs text-[var(--accent-copper-light)] hover:bg-[color:var(--accent-copper-900,rgba(120,63,28,0.20))]"
                           >
                             Open inspection
                           </button>
@@ -1320,7 +1234,7 @@ export default function CreateWorkOrderPage() {
                         <button
                           type="button"
                           onClick={() => handleDeleteLine(ln.id)}
-                          className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                          className="rounded-md border border-red-500/45 bg-black/40 px-2 py-1 text-xs text-red-200 hover:bg-red-950/35"
                         >
                           Delete
                         </button>
@@ -1332,13 +1246,13 @@ export default function CreateWorkOrderPage() {
             </section>
 
             {/* Work Order defaults / options */}
-            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-              <h2 className="mb-3 text-sm font-semibold text-neutral-100">
+            <section className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:p-5">
+              <h2 className="mb-3 text-sm font-semibold text-white/85">
                 Work order options
               </h2>
               <div className="grid gap-3 md:grid-cols-3">
                 <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-white/45">
                     Default job type
                   </label>
                   <select
@@ -1351,12 +1265,13 @@ export default function CreateWorkOrderPage() {
                     <option value="diagnosis">Diagnosis</option>
                     <option value="inspection">Inspection</option>
                   </select>
-                  <p className="mt-1 text-[11px] text-neutral-500">
+                  <p className="mt-1 text-[11px] text-white/35">
                     Sets the default for new lines you add on this work order.
                   </p>
                 </div>
+
                 <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-white/45">
                     Priority
                   </label>
                   <select
@@ -1370,12 +1285,13 @@ export default function CreateWorkOrderPage() {
                     <option value={3}>Normal</option>
                     <option value={4}>Low</option>
                   </select>
-                  <p className="mt-1 text-[11px] text-neutral-500">
+                  <p className="mt-1 text-[11px] text-white/35">
                     Used to highlight urgent jobs in queues and dashboards.
                   </p>
                 </div>
+
                 <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-white/45">
                     Customer waiting (waiter)
                   </label>
                   <select
@@ -1387,14 +1303,14 @@ export default function CreateWorkOrderPage() {
                     <option value="dropoff">Drop-off / not waiting</option>
                     <option value="waiter">Customer waiting (waiter)</option>
                   </select>
-                  <p className="mt-1 text-[11px] text-neutral-500">
+                  <p className="mt-1 text-[11px] text-white/35">
                     When set to waiter, the work order will show a{" "}
-                    <span className="font-semibold">WAITING</span> status
-                    badge.
+                    <span className="font-semibold">WAITING</span> status badge.
                   </p>
                 </div>
+
                 <div className="md:col-span-3">
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-white/45">
                     Notes
                   </label>
                   <textarea
@@ -1414,14 +1330,15 @@ export default function CreateWorkOrderPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_24px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60"
+                className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_24px_rgba(212,118,49,0.55)] hover:brightness-110 disabled:opacity-60"
               >
                 {loading ? "Creating..." : "Approve & Sign"}
               </button>
+
               <button
                 type="button"
                 onClick={() => router.push("/work-orders")}
-                className="text-sm text-neutral-400 hover:text:white"
+                className="text-sm text-white/55 hover:text-white"
                 disabled={loading}
               >
                 Cancel

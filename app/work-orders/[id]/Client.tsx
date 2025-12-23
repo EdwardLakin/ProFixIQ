@@ -1,5 +1,4 @@
 // app/work-orders/[id]/Client.tsx
-
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -1096,6 +1095,12 @@ export default function WorkOrderIdClient(): JSX.Element {
     <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
   );
 
+  // 🔥 Burnt-copper + glass card tokens (theme-only change)
+  const cardBase =
+    "rounded-2xl border border-[rgba(184,115,51,0.35)] bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+  const cardInner =
+    "rounded-xl border border-[rgba(184,115,51,0.22)] bg-black/35";
+
   return (
     <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
       <VoiceContextSetter
@@ -1113,7 +1118,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       </div>
 
       {!currentUserId && (
-        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-900/10 p-3 text-sm text-amber-100">
+        <div className="mb-4 rounded-2xl border border-[rgba(184,115,51,0.30)] bg-black/45 p-3 text-sm text-amber-100 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
           You appear signed out on this tab. If actions fail, open{" "}
           <Link href="/sign-in" className="underline hover:text-white">
             Sign In
@@ -1123,7 +1128,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       )}
 
       {viewError && (
-        <div className="mb-4 whitespace-pre-wrap rounded-xl border border-red-500/40 bg-red-950/60 p-3 text-sm text-red-200">
+        <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
           {viewError}
         </div>
       )}
@@ -1138,13 +1143,13 @@ export default function WorkOrderIdClient(): JSX.Element {
         <div className="mt-6 text-sm text-red-400">Work order not found.</div>
       ) : (
         <div className="space-y-6">
-          {/* Header – simplified, thinner border, full-width */}
-          <div className="rounded-xl border border-white/18 bg-card/90 p-4 shadow-sm">
+          {/* Header – glass + thin burnt-copper border */}
+          <div className={`${cardBase} p-4`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
                 <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
                   Work Order{" "}
-                  <span className="text-orange-400">
+                  <span className="text-[rgba(184,115,51,0.95)]">
                     {wo.custom_id || `#${wo.id.slice(0, 8)}`}
                   </span>
                 </h1>
@@ -1161,7 +1166,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <span
                     className="
                       inline-flex items-center whitespace-nowrap
-                      rounded-full border border-red-500
+                      rounded-full border border-red-500/60
                       bg-red-500/10
                       px-4 py-1.5
                       text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
@@ -1176,15 +1181,15 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
           </div>
 
-          {/* Vehicle & Customer – styled like the photo block */}
-          <div className="rounded-xl border border-white/18 bg-card/90 p-4">
+          {/* Vehicle & Customer – glass cards */}
+          <div className={`${cardBase} p-4`}>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-foreground sm:text-base">
                 Vehicle &amp; Customer
               </h2>
               <button
                 type="button"
-                className="text-xs font-medium text-orange-400 hover:text-orange-300 hover:underline"
+                className="text-xs font-medium text-[rgba(184,115,51,0.95)] hover:underline"
                 onClick={() => setShowDetails((v) => !v)}
                 aria-expanded={showDetails}
               >
@@ -1195,7 +1200,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             {showDetails && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 {/* Vehicle */}
-                <div className="rounded-lg border border-white/12 bg-muted/70 p-3">
+                <div className={`${cardInner} p-3`}>
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Vehicle
                   </h3>
@@ -1232,7 +1237,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
 
                 {/* Customer */}
-                <div className="rounded-lg border border-white/12 bg-muted/70 p-3">
+                <div className={`${cardInner} p-3`}>
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Customer
                   </h3>
@@ -1255,7 +1260,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                       {customer.id && (
                         <Link
                           href={`/customers/${customer.id}`}
-                          className="mt-2 inline-flex text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline"
+                          className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
                           title="Open customer profile"
                         >
                           View customer profile →
@@ -1273,7 +1278,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           </div>
 
           {/* Awaiting Customer Approval */}
-          <div className="rounded-xl border border-white/18 bg-card/90 p-4">
+          <div className={`${cardBase} p-4`}>
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-blue-200 sm:text-base">
                 Awaiting customer approval
@@ -1306,10 +1311,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         : "Awaiting parts quote";
 
                       return (
-                        <div
-                          key={ln.id}
-                          className="rounded-lg border border-white/12 bg-muted/70 p-3"
-                        >
+                        <div key={ln.id} className={`${cardInner} p-3`}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-foreground">
@@ -1357,14 +1359,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                               <div className="flex shrink-0 flex-wrap items-center gap-2">
                                 <button
                                   type="button"
-                                  className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                  className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
                                   onClick={() => approveLine(ln.id)}
                                 >
                                   Approve
                                 </button>
                                 <button
                                   type="button"
-                                  className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                  className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
                                   onClick={() => declineLine(ln.id)}
                                 >
                                   Decline
@@ -1388,10 +1390,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                       Quote suggestions
                     </div>
                     {approvalPendingQuotes.map((q, idx) => (
-                      <div
-                        key={q.id}
-                        className="rounded-lg border border-white/12 bg-muted/70 p-3"
-                      >
+                      <div key={q.id} className={`${cardInner} p-3`}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="truncate text-sm font-medium text-foreground">
@@ -1423,14 +1422,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                             <div className="flex shrink-0 flex-wrap items-center gap-2">
                               <button
                                 type="button"
-                                className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
                                 onClick={() => approveQuoteLine(q.id)}
                               >
                                 Approve
                               </button>
                               <button
                                 type="button"
-                                className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
                                 onClick={() => declineQuoteLine(q.id)}
                               >
                                 Decline
@@ -1447,7 +1446,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           </div>
 
           {/* Jobs list – full width; JobCard handles its own status pills */}
-          <div className="rounded-xl border border-white/18 bg-card/90 p-4">
+          <div className={`${cardBase} p-4`}>
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-foreground sm:text-base">
@@ -1543,7 +1542,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           </div>
 
           {/* Suggested maintenance / quick add – full-width card */}
-          <div className="rounded-xl border border-white/18 bg-card/90 p-4 text-sm text-muted-foreground">
+          <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
             <WorkOrderSuggestionsPanel
               workOrderId={wo.id}
               vehicleId={vehicle?.id ?? null}
@@ -1552,7 +1551,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             />
           </div>
 
-          <div className="rounded-xl border border-white/18 bg-card/90 p-4 text-sm text-muted-foreground">
+          <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
             <p>
               Select a job card above to open the focused job panel with full editing,
               punch and inspection controls.

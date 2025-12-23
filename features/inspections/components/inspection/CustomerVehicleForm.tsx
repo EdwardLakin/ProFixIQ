@@ -158,16 +158,19 @@ function CustomerAutocomplete({
   return (
     <div ref={wrapRef} className="relative">
       {(open || busy) && (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-white/15 bg-black/80 backdrop-blur-xl shadow-lg shadow-black/70">
+        <div
+          className="
+            absolute z-20 mt-1 w-full overflow-hidden rounded-xl
+            border border-white/12
+            bg-black/55 backdrop-blur-xl
+            shadow-[0_18px_45px_rgba(0,0,0,0.70)]
+          "
+        >
           {busy && (
-            <div className="px-3 py-2 text-xs text-neutral-300">
-              Searching…
-            </div>
+            <div className="px-3 py-2 text-xs text-white/60">Searching…</div>
           )}
           {rows.map((c) => {
-            const contact = [c.first_name, c.last_name]
-              .filter(Boolean)
-              .join(" ");
+            const contact = [c.first_name, c.last_name].filter(Boolean).join(" ");
             const top = c.business_name || contact || "Unnamed";
             const sub =
               c.business_name && contact
@@ -177,7 +180,11 @@ function CustomerAutocomplete({
               <button
                 key={c.id}
                 type="button"
-                className="block w-full cursor-pointer px-3 py-2 text-left text-sm transition hover:bg-[var(--accent-copper)]/15 hover:text-neutral-50"
+                className="
+                  block w-full cursor-pointer px-3 py-2 text-left text-sm transition
+                  hover:bg-[color:var(--accent-copper-900,rgba(120,63,28,0.20))]
+                  hover:text-white
+                "
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -185,17 +192,13 @@ function CustomerAutocomplete({
                   setOpen(false);
                 }}
               >
-                <div className="truncate text-neutral-100">{top}</div>
-                <div className="truncate text-xs text-neutral-400">
-                  {sub || "—"}
-                </div>
+                <div className="truncate text-white/90">{top}</div>
+                <div className="truncate text-xs text-white/50">{sub || "—"}</div>
               </button>
             );
           })}
           {!busy && rows.length === 0 && (
-            <div className="px-3 py-2 text-xs text-neutral-400">
-              No matches
-            </div>
+            <div className="px-3 py-2 text-xs text-white/45">No matches</div>
           )}
         </div>
       )}
@@ -281,11 +284,16 @@ function UnitNumberAutocomplete({
   return (
     <div ref={wrapRef} className="relative">
       {(open || busy) && (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-white/15 bg-black/80 backdrop-blur-xl shadow-lg shadow-black/70">
+        <div
+          className="
+            absolute z-20 mt-1 w-full overflow-hidden rounded-xl
+            border border-white/12
+            bg-black/55 backdrop-blur-xl
+            shadow-[0_18px_45px_rgba(0,0,0,0.70)]
+          "
+        >
           {busy && (
-            <div className="px-3 py-2 text-xs text-neutral-300">
-              Searching…
-            </div>
+            <div className="px-3 py-2 text-xs text-white/60">Searching…</div>
           )}
           {rows.map((v) => {
             const title =
@@ -305,7 +313,11 @@ function UnitNumberAutocomplete({
               <button
                 key={v.id}
                 type="button"
-                className="block w-full cursor-pointer px-3 py-2 text-left text-sm transition hover:bg-[var(--accent-copper)]/15 hover:text-neutral-50"
+                className="
+                  block w-full cursor-pointer px-3 py-2 text-left text-sm transition
+                  hover:bg-[color:var(--accent-copper-900,rgba(120,63,28,0.20))]
+                  hover:text-white
+                "
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -313,17 +325,13 @@ function UnitNumberAutocomplete({
                   setOpen(false);
                 }}
               >
-                <div className="truncate text-neutral-100">{title}</div>
-                <div className="truncate text-xs text-neutral-400">
-                  {sub || "—"}
-                </div>
+                <div className="truncate text-white/90">{title}</div>
+                <div className="truncate text-xs text-white/50">{sub || "—"}</div>
               </button>
             );
           })}
           {!busy && rows.length === 0 && (
-            <div className="px-3 py-2 text-xs text-neutral-400">
-              No matches
-            </div>
+            <div className="px-3 py-2 text-xs text-white/45">No matches</div>
           )}
         </div>
       )}
@@ -355,9 +363,7 @@ export default function CustomerVehicleForm({
     onVehicleSelected,
   } = (handlers as Handlers) ?? {};
 
-  const [currentCustomerId, setCurrentCustomerId] = useState<string | null>(
-    null,
-  );
+  const [currentCustomerId, setCurrentCustomerId] = useState<string | null>(null);
 
   async function handlePickedCustomer(c: CustomerRow) {
     const fallback = splitNamefallback(c.name);
@@ -476,7 +482,6 @@ export default function CustomerVehicleForm({
       const engineFamily = ((vehicle as any).engine as string | null) ?? null;
 
       if (!year || !make || !model) {
-        // Not enough info to generate a schedule; skip silently
         return;
       }
 
@@ -489,38 +494,35 @@ export default function CustomerVehicleForm({
           model,
           engineFamily,
         }),
-      }).catch(() => {
-        // Swallow errors; rule generation shouldn't block UX
-      });
+      }).catch(() => {});
     } catch (err) {
-      // Just log to console; we don't want to blow up the form UX
       // eslint-disable-next-line no-console
       console.error("Save & rule generation failed", err);
     }
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 py-6 space-y-8 text-white">
+    <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6 text-white">
       {/* Header card */}
-      <section className="metal-panel metal-panel--card rounded-2xl border border-white/10 px-4 py-4 shadow-card">
+      <section className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-blackops tracking-[0.16em] text-[var(--accent-copper-light)]">
               Customer &amp; Vehicle
             </h1>
-            <p className="mt-1 text-[0.75rem] text-neutral-300">
+            <p className="mt-1 text-[0.75rem] text-white/55">
               Search existing customers and units, or enter new details to
               attach to this visit.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {workOrderExists && (
-              <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200 shadow-[0_0_18px_rgba(16,185,129,0.25)]">
+              <span className="rounded-full border border-emerald-500/45 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200 shadow-[0_0_18px_rgba(16,185,129,0.18)]">
                 Linked to existing work order
               </span>
             )}
             {shopId && (
-              <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[11px] font-mono text-neutral-300">
+              <span className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[11px] font-mono text-white/55">
                 Shop&nbsp;
                 <span className="text-[var(--accent-copper-soft)]">
                   {shopId.slice(0, 8)}
@@ -534,12 +536,12 @@ export default function CustomerVehicleForm({
       {/* Main grid: Customer / Vehicle */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr),minmax(0,1.1fr)]">
         {/* Customer card */}
-        <section className="glass-card rounded-2xl border border-white/10 bg-black/40 px-4 py-4 shadow-[0_0_45px_rgba(0,0,0,0.65)] backdrop-blur-xl sm:px-6 sm:py-6 space-y-4">
+        <section className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:px-6 sm:py-6 space-y-4">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-white sm:text-base">
               Customer Info
             </h2>
-            <span className="text-[11px] text-neutral-400">
+            <span className="text-[11px] text-white/45">
               Start typing to search existing customers in this shop.
             </span>
           </div>
@@ -547,15 +549,16 @@ export default function CustomerVehicleForm({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Business name + autocomplete */}
             <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs text-neutral-300">
+              <label className="text-xs text-white/60">
                 Business name{" "}
-                <span className="text-neutral-500">(optional)</span>
+                <span className="text-white/35">(optional)</span>
               </label>
               <input
                 className="input"
                 placeholder="Business name"
-                value={(customer as { business_name?: string | null })
-                  .business_name ?? ""}
+                value={
+                  (customer as { business_name?: string | null }).business_name ?? ""
+                }
                 onChange={(e) =>
                   (onCustomerChange as Handlers["onCustomerChange"])?.(
                     "business_name",
@@ -565,8 +568,7 @@ export default function CustomerVehicleForm({
               />
               <CustomerAutocomplete
                 q={
-                  (customer as { business_name?: string | null })
-                    .business_name ?? ""
+                  (customer as { business_name?: string | null }).business_name ?? ""
                 }
                 shopId={shopId}
                 onPick={handlePickedCustomer}
@@ -575,14 +577,12 @@ export default function CustomerVehicleForm({
 
             {/* First name */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">First name</label>
+              <label className="text-xs text-white/60">First name</label>
               <input
                 className="input"
                 placeholder="First name"
                 value={customer.first_name ?? ""}
-                onChange={(e) =>
-                  onCustomerChange("first_name", e.target.value || null)
-                }
+                onChange={(e) => onCustomerChange("first_name", e.target.value || null)}
               />
               <CustomerAutocomplete
                 q={customer.first_name ?? ""}
@@ -593,14 +593,12 @@ export default function CustomerVehicleForm({
 
             {/* Last name */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Last name</label>
+              <label className="text-xs text-white/60">Last name</label>
               <input
                 className="input"
                 placeholder="Last name"
                 value={customer.last_name ?? ""}
-                onChange={(e) =>
-                  onCustomerChange("last_name", e.target.value || null)
-                }
+                onChange={(e) => onCustomerChange("last_name", e.target.value || null)}
               />
               <CustomerAutocomplete
                 q={customer.last_name ?? ""}
@@ -611,73 +609,63 @@ export default function CustomerVehicleForm({
 
             {/* Phone */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Phone</label>
+              <label className="text-xs text-white/60">Phone</label>
               <input
                 className="input"
                 placeholder="Phone"
                 value={customer.phone ?? ""}
-                onChange={(e) =>
-                  onCustomerChange("phone", e.target.value || null)
-                }
+                onChange={(e) => onCustomerChange("phone", e.target.value || null)}
               />
             </div>
 
             {/* Email */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Email</label>
+              <label className="text-xs text-white/60">Email</label>
               <input
                 type="email"
                 className="input"
                 placeholder="Email"
                 value={customer.email ?? ""}
-                onChange={(e) =>
-                  onCustomerChange("email", e.target.value || null)
-                }
+                onChange={(e) => onCustomerChange("email", e.target.value || null)}
               />
             </div>
 
             {/* Address */}
             <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs text-neutral-300">Address</label>
+              <label className="text-xs text-white/60">Address</label>
               <input
                 className="input"
                 placeholder="Street address"
                 value={customer.address ?? ""}
-                onChange={(e) =>
-                  onCustomerChange("address", e.target.value || null)
-                }
+                onChange={(e) => onCustomerChange("address", e.target.value || null)}
               />
             </div>
 
             {/* City */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">City</label>
+              <label className="text-xs text-white/60">City</label>
               <input
                 className="input"
                 placeholder="City"
                 value={customer.city ?? ""}
-                onChange={(e) =>
-                  onCustomerChange("city", e.target.value || null)
-                }
+                onChange={(e) => onCustomerChange("city", e.target.value || null)}
               />
             </div>
 
             {/* Province */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Province</label>
+              <label className="text-xs text-white/60">Province</label>
               <input
                 className="input"
                 placeholder="Province / State"
                 value={customer.province ?? ""}
-                onChange={(e) =>
-                  onCustomerChange("province", e.target.value || null)
-                }
+                onChange={(e) => onCustomerChange("province", e.target.value || null)}
               />
             </div>
 
             {/* Postal code */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Postal code</label>
+              <label className="text-xs text-white/60">Postal code</label>
               <input
                 className="input"
                 placeholder="Postal code"
@@ -691,12 +679,12 @@ export default function CustomerVehicleForm({
         </section>
 
         {/* Vehicle card */}
-        <section className="glass-card rounded-2xl border border-white/10 bg-black/40 px-4 py-4 shadow-[0_0_45px_rgba(0,0,0,0.65)] backdrop-blur-xl sm:px-6 sm:py-6 space-y-4">
+        <section className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl sm:px-6 sm:py-6 space-y-4">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-white sm:text-base">
               Vehicle Info
             </h2>
-            <span className="text-[11px] text-neutral-400">
+            <span className="text-[11px] text-white/45">
               Use unit # or plate to pull an existing vehicle for this customer.
             </span>
           </div>
@@ -704,14 +692,12 @@ export default function CustomerVehicleForm({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Unit # + autocomplete */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Unit #</label>
+              <label className="text-xs text-white/60">Unit #</label>
               <input
                 className="input"
                 placeholder="Unit #"
                 value={vehicle.unit_number ?? ""}
-                onChange={(e) =>
-                  onVehicleChange("unit_number", e.target.value || null)
-                }
+                onChange={(e) => onVehicleChange("unit_number", e.target.value || null)}
               />
               <UnitNumberAutocomplete
                 q={vehicle.unit_number ?? ""}
@@ -720,10 +706,7 @@ export default function CustomerVehicleForm({
                 onPick={(v) => {
                   onVehicleChange("unit_number", v.unit_number ?? null);
                   onVehicleChange("vin", (v.vin ?? "") || null);
-                  onVehicleChange(
-                    "year",
-                    v.year != null ? String(v.year) : null,
-                  );
+                  onVehicleChange("year", v.year != null ? String(v.year) : null);
                   onVehicleChange("make", v.make ?? null);
                   onVehicleChange("model", v.model ?? null);
                   onVehicleChange("license_plate", v.license_plate ?? null);
@@ -756,60 +739,52 @@ export default function CustomerVehicleForm({
 
             {/* Year */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Year</label>
+              <label className="text-xs text-white/60">Year</label>
               <input
                 inputMode="numeric"
                 className="input"
                 placeholder="Year"
                 value={vehicle.year ?? ""}
-                onChange={(e) =>
-                  onVehicleChange("year", e.target.value || null)
-                }
+                onChange={(e) => onVehicleChange("year", e.target.value || null)}
               />
             </div>
 
             {/* Make */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Make</label>
+              <label className="text-xs text-white/60">Make</label>
               <input
                 className="input"
                 placeholder="Make"
                 value={vehicle.make ?? ""}
-                onChange={(e) =>
-                  onVehicleChange("make", e.target.value || null)
-                }
+                onChange={(e) => onVehicleChange("make", e.target.value || null)}
               />
             </div>
 
             {/* Model */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Model</label>
+              <label className="text-xs text-white/60">Model</label>
               <input
                 className="input"
                 placeholder="Model"
                 value={vehicle.model ?? ""}
-                onChange={(e) =>
-                  onVehicleChange("model", e.target.value || null)
-                }
+                onChange={(e) => onVehicleChange("model", e.target.value || null)}
               />
             </div>
 
             {/* VIN */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">VIN</label>
+              <label className="text-xs text-white/60">VIN</label>
               <input
                 className="input"
                 placeholder="VIN"
                 value={vehicle.vin ?? ""}
-                onChange={(e) =>
-                  onVehicleChange("vin", e.target.value || null)
-                }
+                onChange={(e) => onVehicleChange("vin", e.target.value || null)}
               />
             </div>
 
             {/* Plate */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">License plate</label>
+              <label className="text-xs text-white/60">License plate</label>
               <input
                 className="input"
                 placeholder="License plate"
@@ -822,34 +797,30 @@ export default function CustomerVehicleForm({
 
             {/* Mileage */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Mileage</label>
+              <label className="text-xs text-white/60">Mileage</label>
               <input
                 inputMode="numeric"
                 className="input"
                 placeholder="Mileage"
                 value={vehicle.mileage ?? ""}
-                onChange={(e) =>
-                  onVehicleChange("mileage", e.target.value || null)
-                }
+                onChange={(e) => onVehicleChange("mileage", e.target.value || null)}
               />
             </div>
 
             {/* Color */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Color</label>
+              <label className="text-xs text-white/60">Color</label>
               <input
                 className="input"
                 placeholder="Color"
                 value={vehicle.color ?? ""}
-                onChange={(e) =>
-                  onVehicleChange("color", e.target.value || null)
-                }
+                onChange={(e) => onVehicleChange("color", e.target.value || null)}
               />
             </div>
 
             {/* Engine hours */}
             <div className="space-y-1">
-              <label className="text-xs text-neutral-300">Engine hours</label>
+              <label className="text-xs text-white/60">Engine hours</label>
               <input
                 inputMode="numeric"
                 className="input"
@@ -862,35 +833,25 @@ export default function CustomerVehicleForm({
             </div>
 
             {/* Engine / trim */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">
-              Engine / Trim
-            </label>
-            <input
-              className="input"
-              placeholder="e.g. 3.5L EcoBoost"
-              value={(vehicle as any).engine ?? ""}
-              onChange={(e) =>
-                (onVehicleChange as any)(
-                  "engine",
-                  e.target.value || null,
-                )
-              }
+            <div className="space-y-1">
+              <label className="text-xs text-white/60">Engine / Trim</label>
+              <input
+                className="input"
+                placeholder="e.g. 3.5L EcoBoost"
+                value={(vehicle as any).engine ?? ""}
+                onChange={(e) => (onVehicleChange as any)("engine", e.target.value || null)}
               />
             </div>
 
             {/* Transmission */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Transmission</label>
-            <select
-              className="input"
-              value={(vehicle as any).transmission ?? ""}
-              onChange={(e) =>
-                (onVehicleChange as any)(
-                  "transmission",
-                  e.target.value || null,
-                )
-              }
+            <div className="space-y-1">
+              <label className="text-xs text-white/60">Transmission</label>
+              <select
+                className="input"
+                value={(vehicle as any).transmission ?? ""}
+                onChange={(e) =>
+                  (onVehicleChange as any)("transmission", e.target.value || null)
+                }
               >
                 <option value="">Select transmission</option>
                 <option value="automatic">Automatic</option>
@@ -902,17 +863,12 @@ export default function CustomerVehicleForm({
             </div>
 
             {/* Fuel type */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Fuel type</label>
-            <select
-              className="input"
-              value={(vehicle as any).fuel_type ?? ""}
-              onChange={(e) =>
-                (onVehicleChange as any)(
-                  "fuel_type",
-                  e.target.value || null,
-                )
-              }
+            <div className="space-y-1">
+              <label className="text-xs text-white/60">Fuel type</label>
+              <select
+                className="input"
+                value={(vehicle as any).fuel_type ?? ""}
+                onChange={(e) => (onVehicleChange as any)("fuel_type", e.target.value || null)}
               >
                 <option value="">Select fuel type</option>
                 <option value="gasoline">Gasoline</option>
@@ -925,17 +881,12 @@ export default function CustomerVehicleForm({
             </div>
 
             {/* Drivetrain */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Drivetrain</label>
-            <select
-              className="input"
-              value={(vehicle as any).drivetrain ?? ""}
-              onChange={(e) =>
-                (onVehicleChange as any)(
-                  "drivetrain",
-                  e.target.value || null,
-                )
-              }
+            <div className="space-y-1">
+              <label className="text-xs text-white/60">Drivetrain</label>
+              <select
+                className="input"
+                value={(vehicle as any).drivetrain ?? ""}
+                onChange={(e) => (onVehicleChange as any)("drivetrain", e.target.value || null)}
               >
                 <option value="">Select drivetrain</option>
                 <option value="fwd">FWD</option>
@@ -957,18 +908,21 @@ export default function CustomerVehicleForm({
               type="button"
               onClick={handleSaveClick}
               disabled={saving}
-              className="inline-flex items-center rounded-full bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_25px_rgba(0,0,0,0.9)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="
+                inline-flex items-center rounded-full
+                bg-[var(--accent-copper)]
+                px-4 py-2 text-sm font-semibold text-black
+                shadow-[0_0_25px_rgba(0,0,0,0.85)]
+                transition hover:opacity-90
+                disabled:cursor-not-allowed disabled:opacity-60
+              "
               title={
                 workOrderExists
                   ? "Update Work Order with these details"
                   : "Create Work Order with these details"
               }
             >
-              {saving
-                ? "Saving…"
-                : workOrderExists
-                ? "Update & Continue"
-                : "Save & Continue"}
+              {saving ? "Saving…" : workOrderExists ? "Update & Continue" : "Save & Continue"}
             </button>
           )}
 
@@ -976,7 +930,12 @@ export default function CustomerVehicleForm({
             <button
               type="button"
               onClick={onClear}
-              className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs sm:text-sm text-neutral-200 transition hover:border-red-400 hover:bg-red-950/40 hover:text-red-200"
+              className="
+                inline-flex items-center rounded-full
+                border border-white/12 bg-white/5
+                px-3 py-1.5 text-xs sm:text-sm text-white/75
+                transition hover:border-red-400/60 hover:bg-red-950/35 hover:text-red-200
+              "
               title="Clear Customer & Vehicle fields (does not delete an existing Work Order)"
             >
               Clear
@@ -986,7 +945,13 @@ export default function CustomerVehicleForm({
           {/* 🔵 DEBUG SHOP */}
           <button
             type="button"
-            className="inline-flex items-center rounded-full border border-blue-500/60 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-200 shadow-[0_0_16px_rgba(37,99,235,0.35)] hover:bg-blue-500/20"
+            className="
+              inline-flex items-center rounded-full
+              border border-blue-500/45 bg-blue-500/10
+              px-3 py-1.5 text-[11px] font-medium text-blue-200
+              shadow-[0_0_16px_rgba(37,99,235,0.25)]
+              hover:bg-blue-500/15
+            "
             onClick={async () => {
               try {
                 const {
@@ -1017,11 +982,7 @@ export default function CustomerVehicleForm({
                   ),
                 );
               } catch (err) {
-                alert(
-                  `Debug failed: ${
-                    (err as Error)?.message || "unknown error"
-                  }`,
-                );
+                alert(`Debug failed: ${(err as Error)?.message || "unknown error"}`);
               }
             }}
           >
@@ -1029,7 +990,7 @@ export default function CustomerVehicleForm({
           </button>
 
           {workOrderExists ? (
-            <span className="text-xs text-neutral-400">
+            <span className="text-xs text-white/45">
               Work order already exists — you can add lines now.
             </span>
           ) : null}
