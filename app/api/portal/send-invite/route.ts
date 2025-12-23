@@ -8,24 +8,42 @@ type Body = {
   next?: string; // optional: where to land after confirm (must be a safe internal path like "/portal")
 };
 
+function isSafeInternalNextPath(next: string): boolean {
+  // Only allow internal paths like "/portal" or "/portal/something"
+  // Disallow protocol-relative URLs, absolute URLs, and weird control chars.
+  if (!next.startsWith("/")) return false;
+  if (next.startsWith("//")) return false;
+  if (next.includes("\n") || next.includes("\r")) return false;
+  // Optional: tighten further if you ONLY want portal pages:
+  // return next === "/portal" || next.startsWith("/portal/");
+  return true;
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as Body;
-    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const email =
+      typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const next = typeof body.next === "string" ? body.next.trim() : "";
 
     if (!email) {
-      return NextResponse.json({ ok: false, error: "Missing email" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Missing email" },
+        { status: 400 },
+      );
     }
 
     const siteUrl =
-      (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "") || "https://profixiq.com";
+      (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "") ||
+      "https://profixiq.com";
 
     // ✅ Only allow internal redirects (prevents open-redirect abuse)
-    const safeNext = next.startsWith("/") ? next : "/portal";
+    const safeNext = isSafeInternalNextPath(next) ? next : "/portal";
 
     // ✅ Magic link must redirect to confirm page (PKCE exchange happens there)
-    const redirectTo = `${siteUrl}/portal/auth/confirm?next=${encodeURIComponent(safeNext)}`;
+    const redirectTo = `${siteUrl}/portal/auth/confirm?next=${encodeURIComponent(
+      safeNext,
+    )}`;
 
     if (!process.env.SENDGRID_API_KEY) {
       return NextResponse.json(
@@ -58,39 +76,57 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2️⃣ Send via SendGrid
-    await sgMail.send({
-      to: email,
-      from: {
-        email: process.env.SENDGRID_FROM_EMAIL,
-        name: "ProFixIQ",
-      },
-      subject: "Access your ProFixIQ customer portal",
-      html: `
-        <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto;line-height:1.4">
-          <p>You can access your customer portal using the secure link below:</p>
+    // 2️⃣ Send via SendGrid (Dynamic Template if set, otherwise fallback HTML)
+    const templateId = process.env.SENDGRID_PORTAL_INVITE_TEMPLATE_ID?.trim();
 
-          <p>
-            <a href="${link}"
-               style="
-                 display:inline-block;
-                 padding:12px 18px;
-                 background:#C57A4A;
-                 color:#000;
-                 border-radius:10px;
-                 text-decoration:none;
-                 font-weight:700;
-               ">
-              Open Customer Portal
-            </a>
-          </p>
+    if (templateId) {
+      await sgMail.send({
+        to: email,
+        from: {
+          email: process.env.SENDGRID_FROM_EMAIL,
+          name: "ProFixIQ",
+        },
+        templateId,
+        dynamicTemplateData: {
+          portal_link: link,
+          next: safeNext,
+          year: new Date().getFullYear(),
+        },
+      });
+    } else {
+      await sgMail.send({
+        to: email,
+        from: {
+          email: process.env.SENDGRID_FROM_EMAIL,
+          name: "ProFixIQ",
+        },
+        subject: "Access your ProFixIQ customer portal",
+        html: `
+          <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto;line-height:1.4">
+            <p>You can access your customer portal using the secure link below:</p>
 
-          <p style="font-size:12px;color:#94a3b8">
-            This link is single-use and expires automatically.
-          </p>
-        </div>
-      `,
-    });
+            <p>
+              <a href="${link}"
+                 style="
+                   display:inline-block;
+                   padding:12px 18px;
+                   background:#C57A4A;
+                   color:#000;
+                   border-radius:10px;
+                   text-decoration:none;
+                   font-weight:700;
+                 ">
+                Open Customer Portal
+              </a>
+            </p>
+
+            <p style="font-size:12px;color:#94a3b8">
+              This link is single-use and expires automatically.
+            </p>
+          </div>
+        `,
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
