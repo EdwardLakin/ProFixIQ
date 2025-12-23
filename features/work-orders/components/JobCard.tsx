@@ -66,7 +66,7 @@ const BADGE: Record<KnownStatus, string> = {
   awaiting: "bg-sky-900/35 border-sky-400/40 text-sky-100",
   queued: "bg-indigo-900/35 border-indigo-400/40 text-indigo-100",
 
-  // ⬇️ remove orange, use burnt copper
+  // keep your copper in_progress (matches your current theme direction)
   in_progress:
     "bg-[color:var(--accent-copper-900,rgba(120,63,28,0.35))] border-[color:var(--accent-copper-soft,rgba(205,120,64,0.55))] text-[color:var(--accent-copper-light,#f6d2b3)]",
 
@@ -86,7 +86,10 @@ const statusChip = (s: string | null | undefined): string => {
 };
 
 /**
- * Card surface styling (glass + thin borders)
+ * Restored “old” card surface feel:
+ * - calmer glass
+ * - thin light borders
+ * - subtle status tint (not heavy gradients)
  */
 const CARD_SURFACE: Record<
   KnownStatus,
@@ -94,62 +97,52 @@ const CARD_SURFACE: Record<
 > = {
   awaiting_approval: {
     border: "border-white/12",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.08),rgba(0,0,0,0.55))]",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-sky-300/40",
   },
   awaiting: {
     border: "border-white/12",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.08),rgba(0,0,0,0.55))]",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-white/20",
   },
   queued: {
     border: "border-white/12",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.08),rgba(0,0,0,0.55))]",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-indigo-300/35",
   },
   in_progress: {
-    // burnt copper border + subtle copper-tinted glow (no orange)
-    border: "border-[color:var(--accent-copper-soft,rgba(205,120,64,0.45))]",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(205,120,64,0.12),rgba(0,0,0,0.55))]",
+    border: "border-white/12",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-[color:var(--accent-copper-soft,rgba(205,120,64,0.45))]",
   },
   on_hold: {
     border: "border-white/12",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.08),rgba(0,0,0,0.55))]",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-amber-300/35",
   },
   planned: {
     border: "border-white/12",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(192,132,252,0.08),rgba(0,0,0,0.55))]",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-purple-300/35",
   },
   new: {
-    border: "border-white/10",
-    surface: "bg-black/55",
+    border: "border-white/12",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-white/20",
   },
   completed: {
-    border: "border-white/10",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.08),rgba(0,0,0,0.55))]",
+    border: "border-white/12",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-teal-300/30",
   },
   ready_to_invoice: {
-    border: "border-white/10",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08),rgba(0,0,0,0.55))]",
+    border: "border-white/12",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-emerald-300/30",
   },
   invoiced: {
-    border: "border-white/10",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.08),rgba(0,0,0,0.55))]",
+    border: "border-white/12",
+    surface: "bg-[rgba(0,0,0,0.42)]",
     ring: "ring-teal-300/30",
   },
 };
@@ -214,7 +207,9 @@ export function JobCard({
 
   const partsCount = parts.length;
   const partsSummary =
-    partsCount === 0 ? "No parts yet" : `${partsCount} part${partsCount === 1 ? "" : "s"}`;
+    partsCount === 0
+      ? "No parts yet"
+      : `${partsCount} part${partsCount === 1 ? "" : "s"}`;
 
   const handleCardClick = () => {
     onOpen();
@@ -227,7 +222,7 @@ export function JobCard({
 
   const inspectionBtnClass = isCompletedLike()
     ? "border-white/14 text-teal-100 hover:bg-white/5"
-    : "border-[color:var(--accent-copper-soft,rgba(205,120,64,0.45))] text-[color:var(--accent-copper-light,#f6d2b3)] hover:bg-[color:var(--accent-copper-900,rgba(120,63,28,0.18))]";
+    : "border-white/14 text-white/85 hover:bg-white/5 hover:text-white";
 
   return (
     <div
@@ -236,8 +231,12 @@ export function JobCard({
         surfaceCfg.border,
         surfaceCfg.surface,
         "backdrop-blur-xl",
-        "shadow-[0_18px_45px_rgba(0,0,0,0.85)] hover:shadow-[0_22px_55px_rgba(0,0,0,0.95)]",
+        // restored calmer shadow + hover
+        "shadow-[0_14px_40px_rgba(0,0,0,0.80)] hover:shadow-[0_18px_48px_rgba(0,0,0,0.92)]",
+        // punched-in ring is the main accent
         isPunchedIn ? `ring-2 ${surfaceCfg.ring}` : "ring-0",
+        // subtle hover border accent (not always copper)
+        "hover:border-white/18",
       ].join(" ")}
       title="Open focused job"
       onClick={handleCardClick}
@@ -282,7 +281,7 @@ export function JobCard({
               <button
                 type="button"
                 onClick={toggleCollapsed}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/12 bg-black/35 text-[11px] text-white/80 shadow-[0_0_14px_rgba(0,0,0,0.55)] hover:border-[color:var(--accent-copper-soft,rgba(205,120,64,0.40))] hover:text-white hover:bg-black/60"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/12 bg-black/35 text-[11px] text-white/80 shadow-[0_0_14px_rgba(0,0,0,0.55)] hover:border-white/20 hover:text-white hover:bg-black/60"
                 title={collapsed ? "Expand job details" : "Collapse job details"}
               >
                 <span
@@ -302,7 +301,7 @@ export function JobCard({
                   e.stopPropagation();
                   onAddPart?.();
                 }}
-                className="hidden rounded-md border border-white/14 bg-black/20 px-2 py-1 text-[11px] font-medium text-white/80 hover:border-[color:var(--accent-copper-soft,rgba(205,120,64,0.40))] hover:text-white hover:bg-white/5 sm:inline-flex"
+                className="hidden rounded-md border border-white/14 bg-black/20 px-2 py-1 text-[11px] font-medium text-white/80 hover:border-white/20 hover:text-white hover:bg-white/5 sm:inline-flex"
                 title="Add / use part on this job"
               >
                 Add part
@@ -311,7 +310,9 @@ export function JobCard({
               <div className="sm:hidden">
                 <UsePartButton
                   workOrderLineId={line.id}
-                  onApplied={() => window.dispatchEvent(new CustomEvent("wo:parts-used"))}
+                  onApplied={() =>
+                    window.dispatchEvent(new CustomEvent("wo:parts-used"))
+                  }
                   label="Add part"
                 />
               </div>
@@ -379,7 +380,7 @@ export function JobCard({
                         e.stopPropagation();
                         onAddPart?.();
                       }}
-                      className="inline-flex items-center rounded-md border border-white/12 bg-black/25 px-2 py-0.5 text-[11px] font-medium text-white/75 hover:border-[color:var(--accent-copper-soft,rgba(205,120,64,0.40))] hover:text-white hover:bg-white/5 sm:hidden"
+                      className="inline-flex items-center rounded-md border border-white/12 bg-black/25 px-2 py-0.5 text-[11px] font-medium text-white/75 hover:border-white/20 hover:text-white hover:bg-white/5 sm:hidden"
                     >
                       Add part
                     </button>
@@ -425,7 +426,7 @@ export function JobCard({
                   {pricing?.lineTotal != null && (
                     <span className="flex items-center gap-1">
                       <span className="text-white/45">Line total</span>
-                      <span className="font-semibold text-[color:var(--accent-copper-light,#f6d2b3)]">
+                      <span className="font-semibold text-white">
                         {formatMoney(pricing.lineTotal)}
                       </span>
                     </span>
