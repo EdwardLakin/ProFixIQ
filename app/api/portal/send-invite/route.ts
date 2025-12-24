@@ -9,14 +9,21 @@ type Body = {
 };
 
 function isSafeInternalNextPath(next: string): boolean {
-  // Only allow internal paths like "/portal" or "/portal/something"
-  // Disallow protocol-relative URLs, absolute URLs, and weird control chars.
   if (!next.startsWith("/")) return false;
   if (next.startsWith("//")) return false;
   if (next.includes("\n") || next.includes("\r")) return false;
-  // Optional: tighten further if you ONLY want portal pages:
-  // return next === "/portal" || next.startsWith("/portal/");
   return true;
+}
+
+function normalizeSiteUrl(raw: string): string {
+  const trimmed = (raw || "").trim().replace(/\/$/, "");
+  if (!trimmed) return "https://profixiq.com";
+
+  // If someone set "profixiq.com" (no scheme), force https://
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
 }
 
 export async function POST(req: Request) {
@@ -33,9 +40,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const siteUrl =
-      (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "") ||
-      "https://profixiq.com";
+    const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || "");
 
     // ✅ Only allow internal redirects (prevents open-redirect abuse)
     const safeNext = isSafeInternalNextPath(next) ? next : "/portal";
@@ -79,6 +84,14 @@ export async function POST(req: Request) {
     // 2️⃣ Send via SendGrid (Dynamic Template if set, otherwise fallback HTML)
     const templateId = process.env.SENDGRID_PORTAL_INVITE_TEMPLATE_ID?.trim();
 
+    // ✅ IMPORTANT:
+    // Disable click tracking so SendGrid doesn’t rewrite the Supabase link.
+    // Link rewriting / scanners can consume single-use OTP links and cause otp_expired.
+    const trackingSettings = {
+      clickTracking: { enable: false, enableText: false },
+      openTracking: { enable: true },
+    };
+
     if (templateId) {
       await sgMail.send({
         to: email,
@@ -92,6 +105,7 @@ export async function POST(req: Request) {
           next: safeNext,
           year: new Date().getFullYear(),
         },
+        trackingSettings,
       });
     } else {
       await sgMail.send({
@@ -125,6 +139,7 @@ export async function POST(req: Request) {
             </p>
           </div>
         `,
+        trackingSettings,
       });
     }
 
