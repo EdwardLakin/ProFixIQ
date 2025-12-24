@@ -1,4 +1,7 @@
-// NEW: app/api/menu/item/[id]/route.ts
+// app/api/menu/item/[id]/route.ts (FULL FILE REPLACEMENT)
+// Next.js 15 route handler params are async (Promise)
+// Fixes: "invalid GET export" type error on Vercel
+
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
@@ -11,6 +14,7 @@ type DB = Database;
 
 type MenuItemUpdate = DB["public"]["Tables"]["menu_items"]["Update"];
 type MenuItemPartInsert = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
+type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
 
 type PatchBody = {
   item?: {
@@ -28,9 +32,17 @@ type PatchBody = {
   }[];
 };
 
-export async function GET(_req: NextRequest, ctx: { params: { id: string } }) {
+type Params = { id: string };
+type Ctx = { params: Promise<Params> };
+
+function getShopIdFromItem(item: MenuItemRow): string | null {
+  const v = item.shop_id;
+  return typeof v === "string" && v.length ? v : null;
+}
+
+export async function GET(_req: NextRequest, ctx: Ctx) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
-  const id = ctx.params.id;
+  const { id } = await ctx.params;
 
   const {
     data: { user },
@@ -57,8 +69,7 @@ export async function GET(_req: NextRequest, ctx: { params: { id: string } }) {
     return NextResponse.json({ ok: false, error: "not_found", detail: "Menu item not found" }, { status: 404 });
   }
 
-  // Set shop context for subsequent reads (if your RLS uses current_shop_id)
-  const shopId = (item.shop_id as string | null) ?? null;
+  const shopId = getShopIdFromItem(item);
   if (shopId) {
     const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
     if (ctxErr) {
@@ -79,9 +90,9 @@ export async function GET(_req: NextRequest, ctx: { params: { id: string } }) {
   return NextResponse.json({ ok: true, item, parts: parts ?? [] });
 }
 
-export async function PATCH(req: NextRequest, ctx: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, ctx: Ctx) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
-  const id = ctx.params.id;
+  const { id } = await ctx.params;
 
   const {
     data: { user },
@@ -113,7 +124,7 @@ export async function PATCH(req: NextRequest, ctx: { params: { id: string } }) {
     return NextResponse.json({ ok: false, error: "not_found", detail: "Menu item not found" }, { status: 404 });
   }
 
-  const shopId = (item.shop_id as string | null) ?? null;
+  const shopId = typeof item.shop_id === "string" && item.shop_id.length ? item.shop_id : null;
   if (shopId) {
     const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
     if (ctxErr) {
@@ -168,9 +179,9 @@ export async function PATCH(req: NextRequest, ctx: { params: { id: string } }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_req: NextRequest, ctx: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, ctx: Ctx) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
-  const id = ctx.params.id;
+  const { id } = await ctx.params;
 
   const {
     data: { user },
@@ -197,7 +208,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: { id: string } })
     return NextResponse.json({ ok: false, error: "not_found", detail: "Menu item not found" }, { status: 404 });
   }
 
-  const shopId = (item.shop_id as string | null) ?? null;
+  const shopId = typeof item.shop_id === "string" && item.shop_id.length ? item.shop_id : null;
   if (shopId) {
     const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
     if (ctxErr) {
