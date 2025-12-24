@@ -19,11 +19,12 @@ function normalizeSiteUrl(raw: string): string {
   const trimmed = (raw || "").trim().replace(/\/$/, "");
   if (!trimmed) return "https://profixiq.com";
 
-  // If someone set "profixiq.com" (no scheme), force https://
-  if (!/^https?:\/\//i.test(trimmed)) {
-    return `https://${trimmed}`;
+  const lower = trimmed.toLowerCase();
+
+  if (!/^https?:\/\//i.test(lower)) {
+    return `https://${lower}`;
   }
-  return trimmed;
+  return lower;
 }
 
 export async function POST(req: Request) {
