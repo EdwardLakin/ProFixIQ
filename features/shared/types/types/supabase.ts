@@ -2541,7 +2541,9 @@ export type Database = {
           id: string
           menu_item_id: string
           name: string
+          part_id: string | null
           quantity: number
+          shop_id: string | null
           unit_cost: number
           user_id: string | null
         }
@@ -2550,7 +2552,9 @@ export type Database = {
           id?: string
           menu_item_id: string
           name: string
+          part_id?: string | null
           quantity?: number
+          shop_id?: string | null
           unit_cost?: number
           user_id?: string | null
         }
@@ -2559,7 +2563,9 @@ export type Database = {
           id?: string
           menu_item_id?: string
           name?: string
+          part_id?: string | null
           quantity?: number
+          shop_id?: string | null
           unit_cost?: number
           user_id?: string | null
         }
@@ -2569,6 +2575,34 @@ export type Database = {
             columns: ["menu_item_id"]
             isOneToOne: false
             referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "menu_item_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_parts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_parts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -6977,6 +7011,7 @@ export type Database = {
           location_id: string
           part_id: string
           qty: number
+          shop_id: string
           source_request_item_id: string | null
           stock_move_id: string | null
           unit_cost: number
@@ -6989,6 +7024,7 @@ export type Database = {
           location_id: string
           part_id: string
           qty: number
+          shop_id: string
           source_request_item_id?: string | null
           stock_move_id?: string | null
           unit_cost?: number
@@ -7001,6 +7037,7 @@ export type Database = {
           location_id?: string
           part_id?: string
           qty?: number
+          shop_id?: string
           source_request_item_id?: string | null
           stock_move_id?: string | null
           unit_cost?: number
@@ -7034,6 +7071,20 @@ export type Database = {
             columns: ["part_id"]
             isOneToOne: false
             referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_shop_fk"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_shop_fk"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
           {
@@ -8043,6 +8094,10 @@ export type Database = {
       wo_release_parts_holds_for_part: {
         Args: { p_part_id: string }
         Returns: number
+      }
+      work_order_in_my_shop: {
+        Args: { p_work_order_id: string }
+        Returns: boolean
       }
     }
     Enums: {

@@ -5,42 +5,46 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+
 type MenuInsert = DB["public"]["Tables"]["menu_items"]["Insert"];
+type MenuItemPartInsert = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
+
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  // 1) who is calling?
   const {
     data: { user },
     error: userErr,
   } = await supabase.auth.getUser();
 
-  if (userErr) {
-    console.error("[API menu/save] auth error:", userErr);
+  if (userErr || !user) {
     return NextResponse.json(
-      { ok: false, error: "auth_error", detail: userErr.message },
+      { ok: false, error: "auth_error", detail: userErr?.message ?? "Not signed in" },
       { status: 401 },
     );
   }
 
-  // 2) body from client
-  const body = (await req.json()) as {
-    item: {
-      name: string;
-      description: string | null;
-      labor_time: number | null;
-      part_cost: number | null;
-      total_price: number | null;
-      inspection_template_id: string | null;
-      shop_id?: string | null;
-    };
-    parts?: {
-      name: string;
-      quantity: number;
-      unit_cost: number;
-    }[];
-  };
+  const body = (await req.json().catch(() => null)) as
+    | {
+        item: {
+          name: string;
+          description: string | null;
+          labor_time: number | null;
+          part_cost: number | null;
+          total_price: number | null;
+          inspection_template_id: string | null;
+          shop_id?: string | null;
+        };
+        parts?: {
+          name: string;
+          quantity: number;
+          unit_cost: number;
+          part_id?: string | null;
+        }[];
+      }
+    | null;
 
   if (!body?.item?.name) {
     return NextResponse.json(
@@ -49,12 +53,10 @@ export async function POST(req: Request) {
     );
   }
 
-  // 3) figure out shop_id the RLS wants
-  let shopId: string | null =
-    body.item.shop_id != null ? body.item.shop_id : null;
+  // Determine shop_id (RLS scoping)
+  let shopId: string | null = body.item.shop_id ?? null;
 
-  // If caller didn’t send one, try to look it up from user's profile
-  if (!shopId && user) {
+  if (!shopId) {
     const { data: prof, error: profErr } = await supabase
       .from("profiles")
       .select("shop_id")
@@ -68,26 +70,32 @@ export async function POST(req: Request) {
     }
   }
 
-  // 4) normalize numeric fields
+  // Set session shop context for RLS policies that reference current_shop_id()
+  if (shopId) {
+    const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
+    if (ctxErr) {
+      return NextResponse.json(
+        { ok: false, error: "shop_context_failed", detail: ctxErr.message },
+        { status: 403 },
+      );
+    }
+  }
+
   const laborHours =
-    typeof body.item.labor_time === "number" &&
-    Number.isFinite(body.item.labor_time)
+    typeof body.item.labor_time === "number" && Number.isFinite(body.item.labor_time)
       ? body.item.labor_time
       : null;
 
   const partCost =
-    typeof body.item.part_cost === "number" &&
-    Number.isFinite(body.item.part_cost)
+    typeof body.item.part_cost === "number" && Number.isFinite(body.item.part_cost)
       ? body.item.part_cost
       : null;
 
   const totalPrice =
-    typeof body.item.total_price === "number" &&
-    Number.isFinite(body.item.total_price)
+    typeof body.item.total_price === "number" && Number.isFinite(body.item.total_price)
       ? body.item.total_price
       : null;
 
-  // 5) build row to insert (full info)
   const itemInsert: MenuInsert = {
     name: body.item.name,
     description: body.item.description,
@@ -96,54 +104,43 @@ export async function POST(req: Request) {
     part_cost: partCost,
     total_price: totalPrice,
     inspection_template_id: body.item.inspection_template_id,
-    user_id: user?.id ?? null,
+    user_id: user.id,
     is_active: true,
     shop_id: shopId,
   };
 
-  console.log("[API menu/save] inserting", itemInsert);
-
-  // 6) insert menu item
   const { data: created, error: itemErr } = await supabase
     .from("menu_items")
     .insert(itemInsert)
-    .select("id")
+    .select("id, shop_id")
     .single();
 
   if (itemErr || !created) {
-    console.error("[API menu/save] insert failed:", itemErr);
     return NextResponse.json(
-      {
-        ok: false,
-        error: "insert_failed",
-        detail: itemErr?.message ?? "insert failed",
-      },
+      { ok: false, error: "insert_failed", detail: itemErr?.message ?? "insert failed" },
       { status: 400 },
     );
   }
 
-  // 7) insert parts (respect RLS on menu_item_parts: it wants user_id = auth.uid())
+  // Insert parts
   if (Array.isArray(body.parts) && body.parts.length > 0) {
     const partsInsert = body.parts
       .filter((p) => p.name && p.quantity > 0)
-      .map((p) => ({
+      .map<MenuItemPartInsert>((p) => ({
         menu_item_id: created.id,
         name: p.name,
         quantity: p.quantity,
         unit_cost: p.unit_cost,
-        user_id: user?.id ?? null,
+        user_id: user.id,
+        // NEW schema (recommended): shop_id + part_id
+        shop_id: created.shop_id ?? shopId,
+        part_id: p.part_id ?? null,
       }));
 
     if (partsInsert.length) {
-      const { error: partsErr } = await supabase
-        .from("menu_item_parts")
-        .insert(partsInsert);
-
+      const { error: partsErr } = await supabase.from("menu_item_parts").insert(partsInsert);
       if (partsErr) {
-        console.warn(
-          "[API menu/save] parts insert failed:",
-          partsErr.message,
-        );
+        console.warn("[API menu/save] parts insert failed:", partsErr.message);
       }
     }
   }

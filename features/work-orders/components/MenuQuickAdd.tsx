@@ -1,3 +1,7 @@
+// MenuQuickAdd.tsx (FULL FILE REPLACEMENT)
+// Updated to use NEW schema on menu_item_parts: part_id + shop_id
+// and allocate directly (no more name/sku guessing).
+
 "use client";
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
@@ -30,7 +34,6 @@ type PackageDef = {
 
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
 
-// DB table has labor_hours, so add it if your generated type is missing it
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
 };
@@ -68,7 +71,6 @@ type AddMenuParams =
       source?: "single" | "package" | "menu_item" | "ai" | "inspection";
       returnLineId?: boolean;
       partsToAllocate?: PartToAllocate[];
-      // if you ever need it, pass the menu_item id to allocate from:
       menuItemIdForParts?: string | null;
     }
   | {
@@ -82,7 +84,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
 
-  // curated packages
   const packages: PackageDef[] = [
     {
       id: "oil-gas",
@@ -123,20 +124,16 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const [, setCustomer] = useState<CustomerLite | null>(null);
   const [woLineCount, setWoLineCount] = useState<number | null>(null);
 
-  // saved menu items
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
   const [menuLoading, setMenuLoading] = useState(false);
 
-  // inspection templates
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
 
-  // shop context
   const [shopId, setShopId] = useState<string | null>(null);
   const shopReady = !!shopId;
   const vehicleId = vehicle?.id ?? null;
 
-  // AI modal
   const [aiOpen, setAiOpen] = useState(false);
 
   const lastSetShopId = useRef<string | null>(null);
@@ -149,11 +146,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       p_shop_id: id,
     });
 
-    if (error) {
-      // surface real error
-      throw new Error(error.message || "Failed to set shop context");
-    }
-
+    if (error) throw new Error(error.message || "Failed to set shop context");
     lastSetShopId.current = id;
   }
 
@@ -334,61 +327,18 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }, [shopId, loadMenuItems, loadTemplates]);
 
-  // ============================================================
-  // allocation helpers (PATCHED: ensureShopContext + show real errors)
-  // ============================================================
+  /* ====================================================================== */
+  /*  Allocation helpers (NEW schema: menu_item_parts.part_id + shop_id)    */
+  /* ====================================================================== */
+
   type MenuItemPartRow = {
     id: string;
     name: string | null;
-    sku: string | null;
     quantity: number | null;
     unit_cost: number | null;
+    part_id: string | null;
+    shop_id: string | null;
   };
-
-  async function findPartIdForShop({
-    sku,
-    name,
-    shop,
-  }: {
-    sku?: string | null;
-    name?: string | null;
-    shop: string;
-  }): Promise<string | null> {
-    // ensure shop context for any RLS policies using current_shop_id()
-    await ensureShopContext(shop);
-
-    if (sku) {
-      const bySku = await supabase
-        .from("parts")
-        .select("id")
-        .eq("shop_id", shop)
-        .eq("sku", sku)
-        .limit(1)
-        .maybeSingle();
-
-      if (bySku.error) {
-        throw new Error(`parts lookup by sku blocked: ${bySku.error.message}`);
-      }
-      if (bySku.data?.id) return bySku.data.id;
-    }
-
-    if (name) {
-      const byName = await supabase
-        .from("parts")
-        .select("id")
-        .eq("shop_id", shop)
-        .ilike("name", name)
-        .limit(1)
-        .maybeSingle();
-
-      if (byName.error) {
-        throw new Error(`parts lookup by name blocked: ${byName.error.message}`);
-      }
-      if (byName.data?.id) return byName.data.id;
-    }
-
-    return null;
-  }
 
   async function pickDefaultLocationId(
     partId: string,
@@ -430,26 +380,28 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   ) {
     if (!shopId) return;
 
-    // PATCH: guarantee session shop is set for all follow-on selects
     await ensureShopContext(shopId);
 
     const { data: rows, error } = await supabase
       .from("menu_item_parts")
-      .select("id, name, sku, quantity, unit_cost")
+      .select("id, name, quantity, unit_cost, part_id, shop_id")
       .eq("menu_item_id", menuItemId);
 
     if (error) {
-      toast.warning(`Added job, but menu parts read was blocked: ${error.message}`);
+      toast.warning(
+        `Added job, but menu parts read was blocked: ${error.message}`,
+      );
       return;
     }
 
-    const mParts = (rows ?? []) as MenuItemPartRow[];
+    const mParts = (rows ?? []) as unknown as MenuItemPartRow[];
 
     const allocations: {
       work_order_line_id: string;
       part_id: string;
       location_id: string;
       qty: number;
+      unit_cost?: number | null;
     }[] = [];
 
     for (const p of mParts) {
@@ -457,21 +409,11 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         typeof p.quantity === "number" && p.quantity > 0 ? p.quantity : 0;
       if (!qty) continue;
 
-      let partId: string | null = null;
-      try {
-        partId = await findPartIdForShop({
-          sku: p.sku ?? undefined,
-          name: p.name ?? undefined,
-          shop: shopId,
-        });
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "parts lookup blocked";
-        toast.warning(`Added job, but ${msg}`);
-        return;
-      }
-
+      const partId = typeof p.part_id === "string" && p.part_id ? p.part_id : null;
       if (!partId) {
-        toast.message(`Skipped "${p.name ?? p.sku ?? "part"}" (not in Parts).`);
+        toast.message(
+          `Menu part "${p.name ?? "Part"}" is missing a linked Part (part_id).`,
+        );
         continue;
       }
 
@@ -485,7 +427,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       }
 
       if (!locId) {
-        toast.message(`Skipped "${p.name ?? p.sku ?? "part"}" (no stock location).`);
+        toast.message(`Skipped "${p.name ?? "part"}" (no stock location).`);
         continue;
       }
 
@@ -494,17 +436,29 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         part_id: partId,
         location_id: locId,
         qty,
+        unit_cost: typeof p.unit_cost === "number" ? p.unit_cost : null,
       });
     }
 
     if (!allocations.length) return;
 
+    // If your allocations table DOES NOT have unit_cost, remove it below.
     const { error: allocErr } = await supabase
       .from("work_order_part_allocations")
-      .insert(allocations);
+      .insert(
+        allocations.map((a) => ({
+          work_order_line_id: a.work_order_line_id,
+          part_id: a.part_id,
+          location_id: a.location_id,
+          qty: a.qty,
+          unit_cost: a.unit_cost ?? undefined,
+        })) as unknown as DB["public"]["Tables"]["work_order_part_allocations"]["Insert"][],
+      );
 
     if (allocErr) {
-      toast.warning(`Job added, but parts couldn't be allocated: ${allocErr.message}`);
+      toast.warning(
+        `Job added, but parts couldn't be allocated: ${allocErr.message}`,
+      );
     } else {
       window.dispatchEvent(new CustomEvent("wo:parts-used"));
       toast.success(
@@ -513,6 +467,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }
 
+  // NOTE: This is now only used if you pass partsToAllocate explicitly.
+  // It still expects to do sku/name lookup. If you want "no guessing" everywhere,
+  // change PartToAllocate to carry part_id and remove lookup.
   async function autoAllocateExplicitParts(
     list: PartToAllocate[],
     workOrderLineId: string,
@@ -521,52 +478,17 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
     await ensureShopContext(shopId);
 
-    const allocations: {
-      work_order_line_id: string;
-      part_id: string;
-      location_id: string;
-      qty: number;
-    }[] = [];
-
-    for (const raw of list) {
-      const qty = typeof raw.qty === "number" && raw.qty > 0 ? raw.qty : 0;
-      if (!qty) continue;
-
-      const partId = await findPartIdForShop({
-        sku: raw.sku ?? undefined,
-        name: raw.name ?? undefined,
-        shop: shopId,
-      });
-      if (!partId) continue;
-
-      const locId = await pickDefaultLocationId(partId, shopId);
-      if (!locId) continue;
-
-      allocations.push({
-        work_order_line_id: workOrderLineId,
-        part_id: partId,
-        location_id: locId,
-        qty,
-      });
-    }
-
-    if (!allocations.length) return;
-
-    const { error } = await supabase
-      .from("work_order_part_allocations")
-      .insert(allocations);
-
-    if (error) {
-      toast.warning(`Parts couldn't be allocated: ${error.message}`);
-      return;
-    }
-
-    window.dispatchEvent(new CustomEvent("wo:parts-used"));
+    // We are no longer guessing for menu_item_parts allocations.
+    // If you still need explicit allocations, wire this to provide part_id instead.
+    toast.message("Explicit parts allocation is not wired in this version.");
+    void workOrderLineId;
+    void list;
   }
 
-  // ============================================================
-  // add line (menu or template)
-  // ============================================================
+  /* ====================================================================== */
+  /*  Add line (menu or template)                                           */
+  /* ====================================================================== */
+
   async function addMenuItem(params: AddMenuParams): Promise<string | null> {
     if (!shopReady || !shopId) return null;
 
@@ -631,14 +553,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       if (error) throw new Error(error.message);
 
-      // allocate parts if provided explicitly
-      if (params.partsToAllocate && params.partsToAllocate.length && data?.id) {
-        await autoAllocateExplicitParts(params.partsToAllocate, data.id);
-      }
-
-      // allocate parts from menu_item_parts if a menuItemId was provided
+      // Allocate from menu_item_parts (direct part_id)
       if (params.menuItemIdForParts && data?.id) {
         await autoAllocateMenuParts(params.menuItemIdForParts, data.id);
+      }
+
+      // Explicit allocations (disabled in this “no guessing” version)
+      if (params.partsToAllocate && params.partsToAllocate.length && data?.id) {
+        await autoAllocateExplicitParts(params.partsToAllocate, data.id);
       }
 
       window.dispatchEvent(new CustomEvent("wo:line-added"));
@@ -661,7 +583,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }
 
-  // wrappers
   async function addPackage(pkg: PackageDef) {
     await addMenuItem({
       kind: "normal",
@@ -681,22 +602,19 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       laborHours:
         typeof mi.labor_time === "number"
           ? mi.labor_time
-          : typeof (mi as any).labor_hours === "number"
-            ? (mi as any).labor_hours
+          : typeof (mi as unknown as { labor_hours?: number | null }).labor_hours ===
+              "number"
+            ? (mi as unknown as { labor_hours: number }).labor_hours
             : null,
       notes: mi.description ?? null,
       source: "menu_item",
       returnLineId: false,
-      // PATCH: pass menu item id so allocation happens inside addMenuItem (same shop context)
       menuItemIdForParts: mi.id ?? null,
     });
   }
 
   async function addTemplateAsLine(t: TemplateRow) {
-    await addMenuItem({
-      kind: "template",
-      template: t,
-    });
+    await addMenuItem({ kind: "template", template: t });
   }
 
   const vehicleLabel =
@@ -720,15 +638,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 WO {workOrderId.slice(0, 8)}…
               </span>
             </div>
-            {vehicleLabel && (
+            {vehicleLabel ? (
               <p className="text-[11px] text-neutral-400">
                 Vehicle:&nbsp;
                 <span className="font-medium text-neutral-200">
                   {vehicleLabel}
                 </span>
               </p>
-            )}
-            {!vehicleLabel && (
+            ) : (
               <p className="text-[11px] text-neutral-500">
                 Add lines now — you can update vehicle details later.
               </p>
@@ -787,7 +704,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 </span>
               </div>
               <div className="mt-1 text-xs text-neutral-400">
-                {p.estLaborHours != null ? `~${p.estLaborHours.toFixed(1)}h` : "Labor TBD"}
+                {p.estLaborHours != null
+                  ? `~${p.estLaborHours.toFixed(1)}h`
+                  : "Labor TBD"}
               </div>
               <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
                 {p.summary}
@@ -808,43 +727,36 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {templatesLoading && (
+          {templatesLoading ? (
             <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
               Loading templates…
             </div>
+          ) : templates.length ? (
+            templates.slice(0, 9).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => addTemplateAsLine(t)}
+                disabled={addingId === t.id || !shopReady}
+                className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
+                title={t.description ?? undefined}
+              >
+                <span className="font-medium text-neutral-50">
+                  {t.template_name ?? "Inspection"}
+                </span>
+                <div className="mt-1 text-xs text-neutral-400">
+                  inspection •{" "}
+                  {typeof t.labor_hours === "number"
+                    ? `${t.labor_hours.toFixed(1)}h`
+                    : "Labor TBD"}
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+              No templates yet.
+            </div>
           )}
-          {!templatesLoading &&
-            (templates.length ? (
-              templates.slice(0, 9).map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => addTemplateAsLine(t)}
-                  disabled={addingId === t.id || !shopReady}
-                  className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
-                  title={t.description ?? undefined}
-                >
-                  <span className="font-medium text-neutral-50">
-                    {t.template_name ?? "Inspection"}
-                  </span>
-                  <div className="mt-1 text-xs text-neutral-400">
-                    inspection •{" "}
-                    {typeof t.labor_hours === "number"
-                      ? `${t.labor_hours.toFixed(1)}h`
-                      : "Labor TBD"}
-                  </div>
-                  {t.description && (
-                    <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
-                      {t.description}
-                    </div>
-                  )}
-                </button>
-              ))
-            ) : (
-              <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
-                No templates yet.
-              </div>
-            ))}
         </div>
       </div>
 
@@ -859,53 +771,42 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {menuLoading && (
+          {menuLoading ? (
             <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
               Loading menu items…
             </div>
+          ) : menuItems.length ? (
+            menuItems.slice(0, 9).map((mi) => (
+              <button
+                type="button"
+                key={mi.id}
+                onClick={() => addSavedMenuItem(mi)}
+                disabled={addingId === (mi.name ?? "") || !shopReady}
+                className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
+                title={mi.description ?? undefined}
+              >
+                <span className="font-medium text-neutral-50">{mi.name}</span>
+                <div className="mt-1 text-xs text-neutral-400">
+                  {typeof mi.labor_time === "number"
+                    ? `${mi.labor_time.toFixed(1)}h`
+                    : typeof (mi as unknown as { labor_hours?: number | null })
+                          .labor_hours === "number"
+                      ? `${(
+                          mi as unknown as { labor_hours: number }
+                        ).labor_hours.toFixed(1)}h`
+                      : "Labor TBD"}{" "}
+                  •{" "}
+                  {typeof mi.total_price === "number"
+                    ? `$${mi.total_price.toFixed(0)}`
+                    : "No price"}
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+              No saved menu items yet.
+            </div>
           )}
-          {!menuLoading &&
-            (menuItems.length ? (
-              menuItems.slice(0, 9).map((mi) => (
-                <button
-                  type="button"
-                  key={mi.id}
-                  onClick={() => addSavedMenuItem(mi)}
-                  disabled={addingId === (mi.name ?? "") || !shopReady}
-                  className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
-                  title={mi.description ?? undefined}
-                >
-                  <span className="font-medium text-neutral-50">{mi.name}</span>
-                  <div className="mt-1 text-xs text-neutral-400">
-                    {typeof mi.labor_time === "number"
-                      ? `${mi.labor_time.toFixed(1)}h`
-                      : typeof (mi as any).labor_hours === "number"
-                        ? `${(mi as any).labor_hours.toFixed(1)}h`
-                        : "Labor TBD"}{" "}
-                    •{" "}
-                    {typeof mi.total_price === "number"
-                      ? `$${mi.total_price.toFixed(0)}`
-                      : "No price"}
-                  </div>
-                  {mi.vehicle_year || mi.vehicle_make || mi.vehicle_model ? (
-                    <div className="mt-1 text-[10px] text-neutral-500">
-                      {[mi.vehicle_year ?? "", mi.vehicle_make ?? "", mi.vehicle_model ?? ""]
-                        .filter(Boolean)
-                        .join(" ")}
-                    </div>
-                  ) : null}
-                  {mi.description && (
-                    <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
-                      {mi.description}
-                    </div>
-                  )}
-                </button>
-              ))
-            ) : (
-              <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
-                No saved menu items yet.
-              </div>
-            ))}
         </div>
       </div>
 
@@ -917,7 +818,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         vehicleId={vehicleId ?? null}
         vehicleLabel={vehicleLabel ?? null}
         onAdded={(count) => {
-          setWoLineCount((prev) => (typeof prev === "number" ? prev + count : prev));
+          setWoLineCount((prev) =>
+            typeof prev === "number" ? prev + count : prev,
+          );
         }}
       />
     </div>

@@ -1,12 +1,11 @@
-// app/menu/page.tsx
+// app/menu/page.tsx (FULL FILE REPLACEMENT)
+// Menu list now routes to the edit page: /menu/item/[id]
+// Removed the inline edit modal wiring from this page.
+
 "use client";
 
-import  {
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-} from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useUser } from "@auth/hooks/useUser";
@@ -18,8 +17,6 @@ import { masterServicesList } from "@inspections/lib/inspection/masterServicesLi
 type DB = Database;
 
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
-type InsertMenuItemPart =
-  DB["public"]["Tables"]["menu_item_parts"]["Insert"];
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
 };
@@ -40,22 +37,37 @@ type FormState = {
   inspectionTemplateId: string;
 };
 
+function toNum(s: string): number {
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function cleanNumericString(raw: string): string {
+  if (raw === "") return "";
+  const v = raw.replace(/[^\d.]/g, "");
+  return v === "" ? "" : v.replace(/^0+(?=\d)/, "");
+}
+
+function money(n: number | null | undefined): string {
+  const x = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return `$${x.toFixed(2)}`;
+}
+
 export default function MenuItemsPage() {
   const supabase = createClientComponentClient<DB>();
+  const router = useRouter();
   const { user, isLoading } = useUser();
 
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const [pickerOpenForRow, setPickerOpenForRow] = useState<number | null>(
-    null,
-  );
+  // create form
+  const [pickerOpenForRow, setPickerOpenForRow] = useState<number | null>(null);
   const [parts, setParts] = useState<PartFormRow[]>([
     { name: "", quantityStr: "", unitCostStr: "", part_id: null },
   ]);
 
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
-
   const [form, setForm] = useState<FormState>({
     source: "master",
     name: "",
@@ -64,12 +76,6 @@ export default function MenuItemsPage() {
     laborRateStr: "",
     inspectionTemplateId: "",
   });
-
-  // --------- tiny numeric helper ----------
-  const toNum = (s: string) => {
-    const n = parseFloat(s);
-    return Number.isFinite(n) ? n : 0;
-  };
 
   const partsTotal = useMemo(
     () =>
@@ -91,13 +97,15 @@ export default function MenuItemsPage() {
     [partsTotal, laborTotal],
   );
 
-  // --------- fetch menu items ----------
+  // ---------------------------
+  // LIST + REALTIME
+  // ---------------------------
   const fetchItems = useCallback(async () => {
     const { data, error } = await supabase
       .from("menu_items")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(200);
 
     if (error) {
       console.error("Failed to fetch menu items:", error);
@@ -108,7 +116,6 @@ export default function MenuItemsPage() {
     setMenuItems(data ?? []);
   }, [supabase]);
 
-  // --------- fetch templates ----------
   const fetchTemplates = useCallback(async () => {
     const { data: me } = await supabase.auth.getUser();
     const uid = me?.user?.id ?? null;
@@ -119,10 +126,7 @@ export default function MenuItemsPage() {
           .select("*")
           .eq("user_id", uid)
           .order("created_at", { ascending: false })
-      : Promise.resolve({
-          data: [] as TemplateRow[],
-          error: null,
-        });
+      : Promise.resolve({ data: [] as TemplateRow[], error: null });
 
     const sharedPromise = supabase
       .from("inspection_templates")
@@ -136,12 +140,11 @@ export default function MenuItemsPage() {
     ]);
 
     setTemplates([
-      ...(Array.isArray(mineRaw) ? mineRaw : []),
-      ...(Array.isArray(sharedRaw) ? sharedRaw : []),
+      ...(Array.isArray(mineRaw) ? (mineRaw as TemplateRow[]) : []),
+      ...(Array.isArray(sharedRaw) ? (sharedRaw as TemplateRow[]) : []),
     ]);
   }, [supabase]);
 
-  // --------- bootstrap ----------
   useEffect(() => {
     void fetchItems();
     void fetchTemplates();
@@ -150,14 +153,8 @@ export default function MenuItemsPage() {
       .channel("menu-items-sync")
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "menu_items",
-        },
-        () => {
-          void fetchItems();
-        },
+        { event: "*", schema: "public", table: "menu_items" },
+        () => void fetchItems(),
       )
       .subscribe();
 
@@ -166,27 +163,20 @@ export default function MenuItemsPage() {
     };
   }, [supabase, fetchItems, fetchTemplates]);
 
-  // --------- parts helpers ----------
+  // ---------------------------
+  // PARTS EDITOR HELPERS
+  // ---------------------------
   const setPartField = (
     idx: number,
     field: "name" | "quantityStr" | "unitCostStr",
     value: string,
   ) => {
-    const cleanNumeric = (v: string) => {
-      if (v === "") return "";
-      if (/^\d/.test(v)) v = v.replace(/^0+(?=\d)/, "");
-      return v;
-    };
-
     setParts((rows) =>
       rows.map((r, i) =>
         i === idx
           ? {
               ...r,
-              [field]:
-                field === "name"
-                  ? value
-                  : cleanNumeric(value.replace(/[^\d.]/g, "")),
+              [field]: field === "name" ? value : cleanNumericString(value),
             }
           : r,
       ),
@@ -210,18 +200,18 @@ export default function MenuItemsPage() {
       (async () => {
         const { data } = await supabase
           .from("parts")
-          .select("name, sku")
+          .select("name, unit_cost")
           .eq("id", sel.part_id)
           .maybeSingle();
 
         const label = data?.name ?? "Part";
-        const qtyFromSel =
-          sel.qty && sel.qty > 0 ? String(sel.qty) : "";
-
+        const qtyFromSel = sel.qty && sel.qty > 0 ? String(sel.qty) : "";
         const unitCostFromSel =
           sel.unit_cost != null && !Number.isNaN(sel.unit_cost)
             ? String(sel.unit_cost)
-            : "";
+            : data?.unit_cost != null
+              ? String(data.unit_cost)
+              : "";
 
         setParts((rows) =>
           rows.map((r, i) =>
@@ -237,17 +227,17 @@ export default function MenuItemsPage() {
           ),
         );
 
-        toast.success(`Added ${label} to row`);
+        toast.success(`Picked ${label}`);
       })().catch(() => {
         setParts((rows) =>
-          rows.map((r, i) =>
-            i === rowIdx ? { ...r, part_id: sel.part_id } : r,
-          ),
+          rows.map((r, i) => (i === rowIdx ? { ...r, part_id: sel.part_id } : r)),
         );
       });
     };
 
-  // --------- SAVE ----------
+  // ---------------------------
+  // CREATE (POST /api/menu/save)
+  // ---------------------------
   const handleSubmit = useCallback(async () => {
     if (!form.name.trim()) {
       toast.error("Service name is required");
@@ -256,30 +246,25 @@ export default function MenuItemsPage() {
 
     setSaving(true);
     try {
-      const cleanedParts: InsertMenuItemPart[] = parts
-        .filter(
-          (p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0,
-        )
-        .map<InsertMenuItemPart>((p) => ({
-          menu_item_id: "placeholder",
+      const cleanedParts = parts
+        .filter((p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0)
+        .map((p) => ({
           name: p.name.trim(),
           quantity: toNum(p.quantityStr),
           unit_cost: toNum(p.unitCostStr),
-          user_id: user?.id ?? null,
+          part_id: p.part_id ?? null,
         }));
 
       const payload = {
         item: {
           name: form.name.trim(),
           description: form.description.trim() || null,
-          labor_time: toNum(form.laborTimeStr),
-          labor_hours: null,
+          labor_time: form.laborTimeStr.trim() ? toNum(form.laborTimeStr) : null,
           part_cost: partsTotal,
           total_price: grandTotal,
           inspection_template_id: form.inspectionTemplateId || null,
-          shop_id:
-            (user as unknown as { shop_id?: string | null })?.shop_id ??
-            null,
+          // RLS expects shop_id to be present for shop-scoped policies
+          shop_id: (user as unknown as { shop_id?: string | null })?.shop_id ?? null,
         },
         parts: cleanedParts,
       };
@@ -290,14 +275,10 @@ export default function MenuItemsPage() {
         body: JSON.stringify(payload),
       });
 
-      const json = (await res.json()) as {
-        ok?: boolean;
-        error?: string;
-      };
+      const json = (await res.json()) as { ok?: boolean; error?: string; detail?: string };
 
-      if (!res.ok || json.error) {
-        console.error("[menu] save failed:", json.error);
-        toast.error(json.error ?? "Failed to save menu item.");
+      if (!res.ok || !json.ok) {
+        toast.error(json.detail || json.error || "Failed to save menu item.");
         return;
       }
 
@@ -308,11 +289,10 @@ export default function MenuItemsPage() {
         name: "",
         description: "",
         laborTimeStr: "",
+        laborRateStr: "",
         inspectionTemplateId: "",
       }));
-      setParts([
-        { name: "", quantityStr: "", unitCostStr: "", part_id: null },
-      ]);
+      setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
 
       await fetchItems();
     } catch (err) {
@@ -331,13 +311,10 @@ export default function MenuItemsPage() {
     );
   }
 
-  const flatMaster = masterServicesList.flatMap((cat) =>
-    cat.items.map((i) => i.item),
-  );
+  const flatMaster = masterServicesList.flatMap((cat) => cat.items.map((i) => i.item));
 
   return (
     <div className="relative space-y-8 fade-in">
-      {/* extra radial wash for this page */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
@@ -348,20 +325,17 @@ export default function MenuItemsPage() {
         <div>
           <h1
             className="text-2xl font-semibold text-white"
-            style={{
-              fontFamily: "var(--font-blackops), system-ui",
-            }}
+            style={{ fontFamily: "var(--font-blackops), system-ui" }}
           >
             Service Menu
           </h1>
           <p className="mt-1 text-sm text-neutral-400">
-            Build reusable service packages with linked inspections, labor, and
-            parts.
+            Build reusable service packages with linked inspections, labor, and parts.
           </p>
         </div>
       </section>
 
-      {/* Form + parts editor */}
+      {/* Create */}
       <section className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 p-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:p-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
@@ -372,9 +346,8 @@ export default function MenuItemsPage() {
           </div>
         </div>
 
-        {/* form */}
         <div className="mb-8 grid max-w-3xl gap-4">
-          {/* Service name */}
+          {/* name */}
           <div className="grid gap-2">
             <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
               Service name
@@ -397,12 +370,8 @@ export default function MenuItemsPage() {
                 <input
                   placeholder="e.g. Front brake pads & rotors"
                   value={form.name}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, name: e.target.value }))
-                  }
-                  list={
-                    form.source === "master" ? "master-services" : undefined
-                  }
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  list={form.source === "master" ? "master-services" : undefined}
                   autoComplete="off"
                   className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md"
                 />
@@ -417,28 +386,21 @@ export default function MenuItemsPage() {
             </div>
           </div>
 
-          {/* inspection template pick */}
+          {/* template */}
           <div className="grid gap-2">
             <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
               Inspection template (optional)
             </label>
             <select
               value={form.inspectionTemplateId}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  inspectionTemplateId: e.target.value,
-                }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, inspectionTemplateId: e.target.value }))}
               className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] backdrop-blur-md"
             >
               <option value="">— none —</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.template_name ?? "Untitled"}
-                  {typeof t.labor_hours === "number"
-                    ? ` (${t.labor_hours.toFixed(1)}h)`
-                    : ""}
+                  {typeof t.labor_hours === "number" ? ` (${t.labor_hours.toFixed(1)}h)` : ""}
                 </option>
               ))}
             </select>
@@ -452,9 +414,7 @@ export default function MenuItemsPage() {
             <textarea
               placeholder="Optional details visible to customer"
               value={form.description}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, description: e.target.value }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               className="min-h-[80px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md"
             />
           </div>
@@ -470,11 +430,9 @@ export default function MenuItemsPage() {
                 inputMode="decimal"
                 placeholder="e.g. 1.5"
                 value={form.laborTimeStr}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^\d.]/g, "");
-                  const cleaned = v === "" ? "" : v.replace(/^0+(?=\d)/, "");
-                  setForm((f) => ({ ...f, laborTimeStr: cleaned }));
-                }}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, laborTimeStr: cleanNumericString(e.target.value) }))
+                }
                 className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md"
               />
             </div>
@@ -487,11 +445,9 @@ export default function MenuItemsPage() {
                 inputMode="decimal"
                 placeholder="e.g. 120"
                 value={form.laborRateStr}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^\d.]/g, "");
-                  const cleaned = v === "" ? "" : v.replace(/^0+(?=\d)/, "");
-                  setForm((f) => ({ ...f, laborRateStr: cleaned }));
-                }}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, laborRateStr: cleanNumericString(e.target.value) }))
+                }
                 className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md"
               />
             </div>
@@ -503,9 +459,7 @@ export default function MenuItemsPage() {
               <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
                 Parts
               </h3>
-              <span className="text-[11px] text-neutral-500">
-                Linked to parts catalog
-              </span>
+              <span className="text-[11px] text-neutral-500">Linked to parts catalog</span>
             </div>
             <div className="space-y-3 p-4">
               {parts.map((p, idx) => (
@@ -516,27 +470,21 @@ export default function MenuItemsPage() {
                   <input
                     placeholder="Part name (or pick)"
                     value={p.name}
-                    onChange={(e) =>
-                      setPartField(idx, "name", e.target.value)
-                    }
+                    onChange={(e) => setPartField(idx, "name", e.target.value)}
                     className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
                   />
                   <input
                     placeholder="Qty"
                     inputMode="numeric"
                     value={p.quantityStr}
-                    onChange={(e) =>
-                      setPartField(idx, "quantityStr", e.target.value)
-                    }
+                    onChange={(e) => setPartField(idx, "quantityStr", e.target.value)}
                     className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
                   />
                   <input
                     placeholder="Unit cost"
                     inputMode="decimal"
                     value={p.unitCostStr}
-                    onChange={(e) =>
-                      setPartField(idx, "unitCostStr", e.target.value)
-                    }
+                    onChange={(e) => setPartField(idx, "unitCostStr", e.target.value)}
                     className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
                   />
                   <button
@@ -569,28 +517,22 @@ export default function MenuItemsPage() {
           <div className="flex flex-col items-end gap-3 pt-2 text-sm md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap items-center gap-4 text-xs md:text-sm">
               <div className="text-neutral-300">
-                Parts:{" "}
-                <span className="text-white">
-                  ${partsTotal.toFixed(2)}
-                </span>
+                Parts: <span className="text-white">{money(partsTotal)}</span>
               </div>
               <div className="text-neutral-300">
-                Labor:{" "}
-                <span className="text-white">
-                  ${laborTotal.toFixed(2)}
-                </span>
+                Labor: <span className="text-white">{money(laborTotal)}</span>
               </div>
               <div className="text-neutral-300">
                 Total:{" "}
                 <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">
-                  ${grandTotal.toFixed(2)}
+                  {money(grandTotal)}
                 </span>
               </div>
             </div>
             <button
               onClick={handleSubmit}
               disabled={saving}
-              className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-6 py-2 text-sm font-semibold text-neutral-50 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-md transition hover:border-[color:var(--accent-copper-light,#fed7aa)] hover:bg-[color:var(--accent-copper,#f97316)]/20 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-6 py-2 text-sm font-semibold text-neutral-50 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-md transition hover:border-[color:var(--accent-copper-light,#fed7aa)] hover:bg-[color:var(--accent-copper,#f97316)]/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? "Saving…" : "Save menu item"}
             </button>
@@ -598,7 +540,7 @@ export default function MenuItemsPage() {
         </div>
       </section>
 
-      {/* existing items */}
+      {/* Saved items */}
       <section className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
           Saved menu items
@@ -610,29 +552,46 @@ export default function MenuItemsPage() {
               className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-3 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-xl"
             >
               <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
-                <div>
+                <div className="min-w-0">
                   <div className="text-sm font-semibold text-[color:var(--accent-copper,#f97316)]">
                     {item.name}
                   </div>
                   {item.description ? (
-                    <span className="block text-xs text-neutral-400">
+                    <span className="block line-clamp-2 text-xs text-neutral-400">
                       {item.description}
                     </span>
                   ) : null}
+                  <div className="mt-1 text-[11px] text-neutral-500">
+                    {item.is_active ? "Active" : "Inactive"}
+                    {item.labor_time != null ? ` • ${item.labor_time}h` : ""}
+                    {item.part_cost != null ? ` • parts ${money(item.part_cost as any)}` : ""}
+                  </div>
                 </div>
-                <div className="text-xs text-neutral-300 md:text-sm">
-                  {typeof item.total_price === "number" && (
-                    <span>
-                      Total{" "}
-                      <span className="font-semibold text-neutral-50">
-                        ${item.total_price.toFixed(2)}
+
+                <div className="flex items-center gap-2">
+                  <div className="text-xs text-neutral-300 md:text-sm">
+                    {typeof item.total_price === "number" ? (
+                      <span>
+                        Total{" "}
+                        <span className="font-semibold text-neutral-50">
+                          {money(item.total_price)}
+                        </span>
                       </span>
-                    </span>
-                  )}
+                    ) : null}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/menu/item/${item.id}`)}
+                    className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-100 hover:border-orange-500 hover:bg-neutral-900"
+                  >
+                    View / Edit
+                  </button>
                 </div>
               </div>
             </li>
           ))}
+
           {menuItems.length === 0 && (
             <li className="text-sm text-neutral-400">
               No menu items yet. Create your first service above.
@@ -641,7 +600,7 @@ export default function MenuItemsPage() {
         </ul>
       </section>
 
-      {/* Part picker modal */}
+      {/* Part picker modal (create form only) */}
       {pickerOpenForRow !== null && (
         <PartPicker
           open={true}
