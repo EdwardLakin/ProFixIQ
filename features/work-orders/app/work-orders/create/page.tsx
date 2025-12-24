@@ -958,7 +958,7 @@ export default function CreateWorkOrderPage() {
       // NOTE: this runs on submit (Approve & Sign), not on Save & Continue.
       if (sendInvite && customer.email) {
         try {
-          const res = await fetch("/api/portal/invite", {
+          const res = await fetch("/api/portal/send-invite", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

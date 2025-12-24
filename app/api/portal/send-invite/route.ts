@@ -1,4 +1,4 @@
-// app/api/portal/invite/route.ts
+// app/api/portal/send-invite/route.ts
 import { NextResponse } from "next/server";
 import sgMail from "@sendgrid/mail";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";

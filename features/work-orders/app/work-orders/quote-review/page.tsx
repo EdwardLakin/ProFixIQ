@@ -178,6 +178,9 @@ function SingleQuoteReview({ woId }: { woId: string }) {
   const [quoteLines, setQuoteLines] = useState<QuoteLine[]>([]);
   const [quoteLoading, setQuoteLoading] = useState(true);
 
+  // PORTAL INVITE: cached customer email for invite trigger
+  const [customerEmail, setCustomerEmail] = useState<string>("");
+
   // Load WO + lines
   useEffect(() => {
     if (!woId) return;
@@ -190,6 +193,23 @@ function SingleQuoteReview({ woId }: { woId: string }) {
         .eq("id", woId)
         .maybeSingle();
       setWo(woRow ?? null);
+
+      // PORTAL INVITE: resolve customer email for invite send
+      setCustomerEmail("");
+      const custId =
+        (woRow as unknown as { customer_id?: string | null })?.customer_id ??
+        null;
+      if (custId) {
+        const { data: cust } = await supabase
+          .from("customers")
+          .select("email")
+          .eq("id", custId)
+          .maybeSingle();
+
+        const email =
+          typeof cust?.email === "string" ? cust.email.trim().toLowerCase() : "";
+        setCustomerEmail(email);
+      }
 
       if (woRow?.shop_id) {
         const { data: shopRow } = await supabase
@@ -268,11 +288,10 @@ function SingleQuoteReview({ woId }: { woId: string }) {
     const { error } = await supabase
       .from("work_order_quote_lines")
       .update({
-        
         stage: "customer_pending",
-        
+
         group_id: groupId,
-        
+
         sent_to_customer_at: new Date().toISOString() as any,
       })
       .in(
@@ -285,8 +304,42 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       return;
     }
 
-    // TODO: trigger customer portal notification / email using groupId
-    alert("Quote sent to customer.");
+    // PORTAL INVITE: trigger portal invite email (magic link) after sending quotes
+    const email = customerEmail.trim().toLowerCase();
+    if (!email) {
+      alert("Quote sent to customer.");
+      alert(
+        "Portal invite was not sent because no customer email was found on this work order.",
+      );
+      await reloadQuotes();
+      return;
+    }
+
+    const next = `/work-orders/${woId}/approve`;
+
+    try {
+      const inviteRes = await fetch("/api/portal/send-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, next }),
+      });
+
+      const inviteJson = (await inviteRes
+        .json()
+        .catch(() => null)) as { ok?: boolean; error?: string } | null;
+
+      if (!inviteRes.ok || !inviteJson?.ok) {
+        alert("Quote sent to customer.");
+        alert(inviteJson?.error ?? "Failed to send portal invite email.");
+      } else {
+        alert("Quote sent to customer.");
+        alert("Portal invite email sent.");
+      }
+    } catch {
+      alert("Quote sent to customer.");
+      alert("Failed to send portal invite email.");
+    }
+
     await reloadQuotes();
   }
 
@@ -294,9 +347,8 @@ function SingleQuoteReview({ woId }: { woId: string }) {
     const { error } = await supabase
       .from("work_order_quote_lines")
       .update({
-        
         stage: "customer_approved",
-        
+
         approved_at: new Date().toISOString() as any,
       })
       .eq("id", q.id);
@@ -314,9 +366,8 @@ function SingleQuoteReview({ woId }: { woId: string }) {
     const { error } = await supabase
       .from("work_order_quote_lines")
       .update({
-        
         stage: "customer_declined",
-        
+
         declined_at: new Date().toISOString() as any,
       })
       .eq("id", q.id);
