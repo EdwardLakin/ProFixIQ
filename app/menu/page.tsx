@@ -1,6 +1,6 @@
 // app/menu/page.tsx (FULL FILE REPLACEMENT)
-// Menu list now routes to the edit page: /menu/item/[id]
-// Removed the inline edit modal wiring from this page.
+// Menu list routes to: /menu/item/[id]
+// NO `any` casts.
 
 "use client";
 
@@ -53,6 +53,13 @@ function money(n: number | null | undefined): string {
   return `$${x.toFixed(2)}`;
 }
 
+function getShopIdFromUser(user: unknown): string | null {
+  if (!user || typeof user !== "object") return null;
+  const rec = user as Record<string, unknown>;
+  const v = rec["shop_id"];
+  return typeof v === "string" && v.length ? v : null;
+}
+
 export default function MenuItemsPage() {
   const supabase = createClientComponentClient<DB>();
   const router = useRouter();
@@ -92,10 +99,7 @@ export default function MenuItemsPage() {
     [form.laborTimeStr, form.laborRateStr],
   );
 
-  const grandTotal = useMemo(
-    () => partsTotal + laborTotal,
-    [partsTotal, laborTotal],
-  );
+  const grandTotal = useMemo(() => partsTotal + laborTotal, [partsTotal, laborTotal]);
 
   // ---------------------------
   // LIST + REALTIME
@@ -151,10 +155,8 @@ export default function MenuItemsPage() {
 
     const channel = supabase
       .channel("menu-items-sync")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "menu_items" },
-        () => void fetchItems(),
+      .on("postgres_changes", { event: "*", schema: "public", table: "menu_items" }, () =>
+        void fetchItems(),
       )
       .subscribe();
 
@@ -174,20 +176,14 @@ export default function MenuItemsPage() {
     setParts((rows) =>
       rows.map((r, i) =>
         i === idx
-          ? {
-              ...r,
-              [field]: field === "name" ? value : cleanNumericString(value),
-            }
+          ? { ...r, [field]: field === "name" ? value : cleanNumericString(value) }
           : r,
       ),
     );
   };
 
   const addPartRow = () => {
-    setParts((rows) => [
-      ...rows,
-      { name: "", quantityStr: "", unitCostStr: "", part_id: null },
-    ]);
+    setParts((rows) => [...rows, { name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
   };
 
   const removePartRow = (idx: number) => {
@@ -244,6 +240,12 @@ export default function MenuItemsPage() {
       return;
     }
 
+    const shopId = getShopIdFromUser(user);
+    if (!shopId) {
+      toast.error("Missing shop context (shop_id).");
+      return;
+    }
+
     setSaving(true);
     try {
       const cleanedParts = parts
@@ -263,8 +265,7 @@ export default function MenuItemsPage() {
           part_cost: partsTotal,
           total_price: grandTotal,
           inspection_template_id: form.inspectionTemplateId || null,
-          // RLS expects shop_id to be present for shop-scoped policies
-          shop_id: (user as unknown as { shop_id?: string | null })?.shop_id ?? null,
+          shop_id: shopId,
         },
         parts: cleanedParts,
       };
@@ -356,10 +357,7 @@ export default function MenuItemsPage() {
               <select
                 value={form.source}
                 onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    source: e.target.value as "master" | "manual",
-                  }))
+                  setForm((f) => ({ ...f, source: e.target.value as "master" | "manual" }))
                 }
                 className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] backdrop-blur-md sm:w-44"
               >
@@ -564,7 +562,7 @@ export default function MenuItemsPage() {
                   <div className="mt-1 text-[11px] text-neutral-500">
                     {item.is_active ? "Active" : "Inactive"}
                     {item.labor_time != null ? ` • ${item.labor_time}h` : ""}
-                    {item.part_cost != null ? ` • parts ${money(item.part_cost as any)}` : ""}
+                    {item.part_cost != null ? ` • parts ${money(item.part_cost)}` : ""}
                   </div>
                 </div>
 
