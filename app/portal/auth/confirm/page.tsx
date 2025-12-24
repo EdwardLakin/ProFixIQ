@@ -1,29 +1,48 @@
 // app/portal/auth/confirm/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 const COPPER = "#C57A4A";
 
+/**
+ * Portal Confirm
+ * -----------------------------------------------------------------------------
+ * Handles magic-link / email confirmation:
+ *  - Reads ?code from Supabase PKCE magic link
+ *  - exchangeCodeForSession(code)
+ *  - If session -> redirect to safe `next` or /portal
+ *  - If no session -> redirect to /portal/auth/sign-in
+ */
 export default function PortalConfirmPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClientComponentClient<Database>();
 
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+
+    const safeNext = (() => {
+      const n = searchParams.get("next") || "";
+      if (!n.startsWith("/")) return "/portal";
+      if (n.startsWith("//")) return "/portal";
+      if (n.includes("\n") || n.includes("\r")) return "/portal";
+      return n;
+    })();
 
     (async () => {
       try {
         // Supabase magic link (PKCE) returns ?code=...
         const code = searchParams.get("code");
         if (code) {
-          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+          const { error: exErr } = await supabase.auth.exchangeCodeForSession(
+            code,
+          );
           if (exErr) throw new Error(exErr.message);
         }
 
@@ -38,12 +57,13 @@ export default function PortalConfirmPage() {
           return;
         }
 
-        // ✅ Default to /portal (not appointments)
-        const next = searchParams.get("next");
-        router.replace(next && next.startsWith("/") ? next : "/portal");
-      } catch (e) {
+        // ✅ Land on safe `next` or /portal
+        router.replace(safeNext || "/portal");
+      } catch (e: unknown) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Unable to confirm sign-in.");
+        setError(
+          e instanceof Error ? e.message : "Unable to confirm sign-in.",
+        );
         router.replace("/portal/auth/sign-in");
       }
     })();
@@ -54,25 +74,64 @@ export default function PortalConfirmPage() {
   }, [router, searchParams, supabase]);
 
   return (
-    <div className="mx-auto max-w-lg">
-      <div className="rounded-2xl border border-white/10 bg-black/25 p-5 backdrop-blur-md shadow-card">
+    <div
+      className="
+        min-h-screen px-4 text-foreground
+        bg-background
+        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+      "
+    >
+      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center py-8">
         <div
-          className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.2em]"
-          style={{ color: COPPER }}
+          className="
+            w-full rounded-3xl border
+            border-[color:var(--metal-border-soft,#1f2937)]
+            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
+            shadow-[0_32px_80px_rgba(0,0,0,0.95)]
+            px-6 py-7 sm:px-8 sm:py-9
+          "
         >
-          Portal
-        </div>
+          <div className="mb-4 flex items-center justify-center">
+            <div
+              className="
+                inline-flex items-center gap-1 rounded-full border
+                border-[color:var(--metal-border-soft,#1f2937)]
+                bg-black/70
+                px-3 py-1 text-[11px]
+                uppercase tracking-[0.22em]
+                text-neutral-300
+              "
+              style={{ color: COPPER }}
+            >
+              Customer Portal
+            </div>
+          </div>
 
-        <h1 className="mt-4 text-xl font-blackops uppercase tracking-[0.16em] text-neutral-200">
-          Finishing sign in
-        </h1>
+          <h1
+            className="text-center text-2xl sm:text-3xl font-semibold text-white"
+            style={{ fontFamily: "var(--font-blackops), system-ui" }}
+          >
+            Completing sign-in
+          </h1>
 
-        <p className="mt-2 text-sm text-neutral-400">
-          {error ? "Sign-in failed — redirecting…" : "One moment… we’re completing your sign-in."}
-        </p>
+          <p className="mt-2 text-center text-xs text-neutral-400 sm:text-sm">
+            {error
+              ? "Sign-in failed — redirecting…"
+              : "One moment… we’re completing your sign-in."}
+          </p>
 
-        <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full border border-white/10 bg-white/5">
-          <div className="h-full w-1/2 animate-pulse rounded-full" style={{ backgroundColor: COPPER }} />
+          {error ? (
+            <div className="mt-4 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full border border-white/10 bg-white/5">
+            <div
+              className="h-full w-1/2 animate-pulse rounded-full"
+              style={{ backgroundColor: COPPER }}
+            />
+          </div>
         </div>
       </div>
     </div>
