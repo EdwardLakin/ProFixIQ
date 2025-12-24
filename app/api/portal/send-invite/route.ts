@@ -45,10 +45,9 @@ export async function POST(req: Request) {
     // ✅ Only allow internal redirects (prevents open-redirect abuse)
     const safeNext = isSafeInternalNextPath(next) ? next : "/portal";
 
-    // ✅ Magic link must redirect to confirm page (PKCE exchange happens there)
-    const redirectTo = `${siteUrl}/portal/auth/confirm?next=${encodeURIComponent(
-      safeNext,
-    )}`;
+    // ✅ For customer *invites*, just land directly on /portal.
+    // Supabase will log them in via the magic link, then redirect here.
+    const redirectTo = `${siteUrl}${safeNext}`;
 
     if (!process.env.SENDGRID_API_KEY) {
       return NextResponse.json(
@@ -84,9 +83,7 @@ export async function POST(req: Request) {
     // 2️⃣ Send via SendGrid (Dynamic Template if set, otherwise fallback HTML)
     const templateId = process.env.SENDGRID_PORTAL_INVITE_TEMPLATE_ID?.trim();
 
-    // ✅ IMPORTANT:
     // Disable click tracking so SendGrid doesn’t rewrite the Supabase link.
-    // Link rewriting / scanners can consume single-use OTP links and cause otp_expired.
     const trackingSettings = {
       clickTracking: { enable: false, enableText: false },
       openTracking: { enable: true },
