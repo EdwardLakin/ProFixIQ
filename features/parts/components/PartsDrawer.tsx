@@ -1,7 +1,12 @@
+// features/work-orders/components/workorders/PartsDrawer.tsx (FULL FILE REPLACEMENT)
+// Themed to match Menu page (metal-card / copper accent / glass look)
+// NOTE: PartPicker itself renders a modal; here we render it inline with a "forcedOpen" flag so it
+// can reuse the same component without nesting backdrops.
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import PartPicker, { PickedPart } from "@/features/parts/components/PartPicker";
+import PartPicker, { type PickedPart } from "@/features/parts/components/PartPicker";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 import { toast } from "sonner";
 import { consumePart } from "@/features/work-orders/lib/parts/consumePart";
@@ -85,6 +90,11 @@ export default function PartsDrawer({
 
   if (!open) return null;
 
+  const tabBtn = (active: boolean) =>
+    active
+      ? "rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md"
+      : "rounded-full border border-transparent px-4 py-2 text-sm text-neutral-300 hover:text-white";
+
   return (
     <div
       className="fixed inset-0 z-[510]"
@@ -92,61 +102,86 @@ export default function PartsDrawer({
         e.stopPropagation();
       }}
     >
+      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={emitClose}
+        aria-hidden="true"
       />
 
+      {/* Panel */}
       <div
-        className="absolute inset-x-0 bottom-0 z-[520] w-full rounded-t-xl border border-orange-400 bg-neutral-950 p-0 text-white shadow-xl md:inset-auto md:top-1/2 md:left-1/2 md:h-[85vh] md:w-[960px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl"
+        className="absolute inset-x-0 bottom-0 z-[520] w-full overflow-hidden rounded-t-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 text-white shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:inset-auto md:top-1/2 md:left-1/2 md:h-[85vh] md:w-[960px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-neutral-800 p-3">
-          <div className="flex items-center gap-2">
-            <button
-              className={`rounded px-3 py-1.5 text-sm ${
-                tab === "use"
-                  ? "border border-orange-500 text-orange-300"
-                  : "border border-transparent text-neutral-300 hover:text-white"
-              }`}
-              onClick={() => setTab("use")}
+        {/* subtle radial like menu page */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+        />
+
+        {/* Header */}
+        <div className="metal-card flex items-center justify-between gap-3 border-b border-white/10 bg-gradient-to-r from-black/80 via-slate-950/80 to-black/80 px-4 py-3 md:px-5">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">
+              Parts
+            </div>
+            <div
+              className="text-lg font-semibold text-white"
+              style={{ fontFamily: "var(--font-blackops), system-ui" }}
             >
-              Use from Inventory
-            </button>
-            <button
-              className={`rounded px-3 py-1.5 text-sm ${
-                tab === "request"
-                  ? "border border-orange-500 text-orange-300"
-                  : "border border-transparent text-neutral-300 hover:text-white"
-              }`}
-              onClick={() => setTab("request")}
-            >
-              Request to Purchase
-            </button>
+              Parts Drawer
+            </div>
           </div>
+
           <button
             onClick={emitClose}
-            className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
+            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/70"
           >
             Close
           </button>
         </div>
 
-        <div className="p-3">
+        {/* Tabs */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3 md:px-5">
+          <button className={tabBtn(tab === "use")} onClick={() => setTab("use")} type="button">
+            Use from Inventory
+          </button>
+          <button
+            className={tabBtn(tab === "request")}
+            onClick={() => setTab("request")}
+            type="button"
+          >
+            Request to Purchase
+          </button>
+
+          <div className="ml-auto hidden rounded-full border border-white/10 bg-black/50 px-3 py-1 text-[11px] text-neutral-300 md:block">
+            Copper / glass theme
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="h-[70vh] overflow-auto p-4 md:h-[calc(85vh-120px)] md:p-5">
           {tab === "use" ? (
-            <PartPicker
-              open={true}
-              onClose={emitClose}
-              onPick={handleUsePart}
-              initialSearch=""
-              workOrderId={workOrderId}
-              workOrderLineId={workOrderLineId}
-              jobDescription={_jobDescription}
-              jobNotes={_jobNotes}
-              vehicleSummary={_vehicleSummary}
-            />
+            // IMPORTANT: PartPicker itself is a modal component; if your PartPicker renders its own
+            // backdrop/panel, you’ll want the *inline* variant (no fixed inset). If you already updated
+            // PartPicker to match the menu theme, it likely still uses fixed positioning.
+            // If so, use channel + open true but DO NOT wrap it in another modal elsewhere.
+            <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-4">
+              <PartPicker
+                open={true}
+                onClose={emitClose}
+                onPick={handleUsePart}
+                initialSearch=""
+                workOrderId={workOrderId}
+                workOrderLineId={workOrderLineId}
+                jobDescription={_jobDescription}
+                jobNotes={_jobNotes}
+                vehicleSummary={_vehicleSummary}
+              />
+            </div>
           ) : (
-            <div className="relative">
+            <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-4">
               <PartsRequestModal
                 isOpen={true}
                 workOrderId={workOrderId}
