@@ -41,14 +41,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || "");
+        const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || "");
 
     // ✅ Only allow internal redirects (prevents open-redirect abuse)
     const safeNext = isSafeInternalNextPath(next) ? next : "/portal";
 
-    // ✅ For customer *invites*, just land directly on /portal.
-    // Supabase will log them in via the magic link, then redirect here.
-    const redirectTo = `${siteUrl}${safeNext}`;
+    // ✅ Magic link goes to confirm page, which then bounces to `next`
+    const redirectTo = `${siteUrl}/portal/auth/confirm?next=${encodeURIComponent(
+      safeNext,
+    )}`;
 
     if (!process.env.SENDGRID_API_KEY) {
       return NextResponse.json(

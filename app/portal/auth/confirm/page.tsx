@@ -14,6 +14,7 @@ const COPPER = "#C57A4A";
  * Handles magic-link / email confirmation:
  *  - Reads ?code from Supabase PKCE magic link
  *  - exchangeCodeForSession(code)
+ *  - Ensures a `customers` row is linked to this user (portal profile)
  *  - If session -> redirect to safe `next` or /portal
  *  - If no session -> redirect to /portal/auth/sign-in
  */
@@ -55,6 +56,43 @@ export default function PortalConfirmPage() {
         if (!session?.user) {
           router.replace("/portal/auth/sign-in");
           return;
+        }
+
+        // -------------------------------------------------------------------
+        // Ensure this authed user has a portal customer profile.
+        // Try to attach to an existing customer row by email first (so we
+        // keep the shop_id + history from the work order), otherwise create.
+        // -------------------------------------------------------------------
+        try {
+          const email = session.user.email ?? null;
+          if (email) {
+            const { data: existing, error: findErr } = await supabase
+              .from("customers")
+              .select("id, shop_id, user_id")
+              .eq("email", email.toLowerCase())
+              .limit(1);
+
+            if (!findErr && existing && existing.length > 0) {
+              const row = existing[0];
+              if (!row.user_id) {
+                await supabase
+                  .from("customers")
+                  .update({ user_id: session.user.id })
+                  .eq("id", row.id);
+              }
+            } else {
+              // Fallback: create a lightweight portal customer row
+              await supabase.from("customers").upsert(
+                {
+                  user_id: session.user.id,
+                  email: email.toLowerCase(),
+                } as any,
+                { onConflict: "user_id" } as any,
+              );
+            }
+          }
+        } catch {
+          // If this fails, we still let them in; they just might not see WOs yet.
         }
 
         // ✅ Land on safe `next` or /portal

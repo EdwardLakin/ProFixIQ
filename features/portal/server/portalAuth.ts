@@ -1,3 +1,5 @@
+//features/portal/server/portalAuth.ts
+
 import type { Database } from "@shared/types/types/supabase";
 
 export type DB = Database;
