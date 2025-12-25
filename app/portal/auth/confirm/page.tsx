@@ -8,6 +8,9 @@ import type { Database } from "@shared/types/types/supabase";
 
 const COPPER = "#C57A4A";
 
+type CustomersRow = Database["public"]["Tables"]["customers"]["Row"];
+type CustomersInsert = Database["public"]["Tables"]["customers"]["Insert"];
+
 /**
  * Portal Confirm
  * -----------------------------------------------------------------------------
@@ -73,7 +76,7 @@ export default function PortalConfirmPage() {
               .limit(1);
 
             if (!findErr && existing && existing.length > 0) {
-              const row = existing[0];
+              const row = existing[0] as CustomersRow;
               if (!row.user_id) {
                 await supabase
                   .from("customers")
@@ -81,14 +84,13 @@ export default function PortalConfirmPage() {
                   .eq("id", row.id);
               }
             } else {
-              // Fallback: create a lightweight portal customer row
-              await supabase.from("customers").upsert(
-                {
-                  user_id: session.user.id,
-                  email: email.toLowerCase(),
-                } as any,
-                { onConflict: "user_id" } as any,
-              );
+              const insertPayload: CustomersInsert = {
+                user_id: session.user.id,
+                email: email.toLowerCase(),
+              };
+              await supabase
+                .from("customers")
+                .upsert(insertPayload, { onConflict: "user_id" });
             }
           }
         } catch {
