@@ -23,9 +23,8 @@ type QuoteLineRow = Pick<
   "id" | "description" | "job_type" | "labor_time" | "price_estimate" | "line_no"
 >;
 
-type PageProps = {
-  params: { id: string };
-};
+// 👇 allow Next’s new async params shape
+type PageParams = Promise<{ id: string }> | { id: string };
 
 export const dynamic = "force-dynamic";
 
@@ -45,8 +44,15 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-export default async function PortalQuotePage({ params }: PageProps) {
-  const workOrderId = params.id;
+export default async function PortalQuotePage({
+  params,
+}: {
+  params: PageParams;
+}) {
+  // Normalize params whether it’s a Promise or plain object
+  const resolvedParams = await Promise.resolve(params);
+  const workOrderId = resolvedParams.id;
+
   const cookieStore = cookies();
   const supabase = createServerComponentClient<Database>({
     cookies: () => cookieStore,
