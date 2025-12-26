@@ -1,4 +1,4 @@
-//app/portal/work-orders/[id]/invoice/page.tsx
+// app/portal/work-orders/[id]/invoice/page.tsx
 
 import Link from "next/link";
 
@@ -8,8 +8,12 @@ type Params = {
   id: string;
 };
 
-export default function PortalInvoicePage({ params }: { params: Params }) {
-  const workOrderId = params.id;
+export default async function PortalInvoicePage({
+  params,
+}: {
+  params: Promise<Params>;
+}) {
+  const { id: workOrderId } = await params;
 
   return (
     <div
