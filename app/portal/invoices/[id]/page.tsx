@@ -22,7 +22,7 @@ type InvoiceLineRow = Pick<
   "id" | "description" | "job_type" | "labor_time" | "price_estimate" | "line_no"
 >;
 
-type PageProps = {
+type InvoicePageProps = {
   params: { id: string };
 };
 
@@ -44,7 +44,7 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-export default async function PortalInvoicePage({ params }: PageProps) {
+export default async function PortalInvoicePage({ params }: InvoicePageProps) {
   const workOrderId = params.id;
   const cookieStore = cookies();
   const supabase = createServerComponentClient<Database>({
