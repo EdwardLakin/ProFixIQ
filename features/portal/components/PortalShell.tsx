@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import PortalNotificationsBell from "@/features/portal/components/PortalNotificationsBell";
 
 type DB = Database;
 
@@ -205,6 +206,9 @@ export default function PortalShell({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* 🔔 Portal notifications bell */}
+          <PortalNotificationsBell />
+
           <Link
             href="/portal/request/when"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"

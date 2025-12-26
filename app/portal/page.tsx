@@ -8,9 +8,10 @@ import type { Database } from "@shared/types/types/supabase";
 
 const COPPER = "#C57A4A";
 
-type Customer = Database["public"]["Tables"]["customers"]["Row"];
-type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
-type WorkOrderRow = Database["public"]["Tables"]["work_orders"]["Row"];
+type DB = Database;
+type Customer = DB["public"]["Tables"]["customers"]["Row"];
+type BookingRow = DB["public"]["Tables"]["bookings"]["Row"];
+type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 
 function StatCard({
   title,
@@ -46,7 +47,12 @@ function formatWhen(iso: string) {
   });
 }
 
-function formatWoRef(wo: Pick<WorkOrderRow, "id" | "status"> | null) {
+function formatWoRef(
+  wo: Pick<
+    WorkOrderRow,
+    "id" | "status" | "created_at" | "invoice_sent_at" | "approval_state"
+  > | null,
+) {
   if (!wo) return "—";
   const short = wo.id?.slice(0, 8) ?? "—";
   return `#${short}`;
@@ -60,10 +66,12 @@ export default function PortalHomePage() {
 
   const [vehiclesCount, setVehiclesCount] = useState<number | null>(null);
   const [nextBookingAt, setNextBookingAt] = useState<string | null>(null);
-  const [activeWo, setActiveWo] = useState<Pick<
-    WorkOrderRow,
-    "id" | "status" | "created_at"
-  > | null>(null);
+  const [activeWo, setActiveWo] = useState<
+    Pick<
+      WorkOrderRow,
+      "id" | "status" | "created_at" | "invoice_sent_at" | "approval_state"
+    > | null
+  >(null);
 
   useEffect(() => {
     let mounted = true;
@@ -135,14 +143,19 @@ export default function PortalHomePage() {
 
       const { data: wo } = await supabase
         .from("work_orders")
-        .select("id, status, created_at")
+        .select("id, status, created_at, invoice_sent_at, approval_state")
         .eq("customer_id", cust.id)
         .in("status", ACTIVE_STATUSES as string[])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      const w = wo as Pick<WorkOrderRow, "id" | "status" | "created_at"> | null;
+      const w = wo as
+        | Pick<
+            WorkOrderRow,
+            "id" | "status" | "created_at" | "invoice_sent_at" | "approval_state"
+          >
+        | null;
 
       if (!mounted) return;
       setVehiclesCount(typeof vCount === "number" ? vCount : null);
@@ -170,6 +183,18 @@ export default function PortalHomePage() {
 
   const activeReqValue = loading ? "…" : formatWoRef(activeWo);
 
+  const hasInvoice =
+    !!activeWo &&
+    !!activeWo.invoice_sent_at &&
+    (activeWo.status === "ready_to_invoice" || activeWo.status === "invoiced");
+
+  // Treat “awaiting_approval” / approval_state flags as “quote ready”
+  const hasQuote =
+    !!activeWo &&
+    (activeWo.status === "awaiting_approval" ||
+      activeWo.approval_state === "awaiting_customer" ||
+      activeWo.approval_state === "requested");
+
   return (
     <div className="space-y-6 text-white">
       <div>
@@ -181,7 +206,7 @@ export default function PortalHomePage() {
         </p>
       </div>
 
-      {/* ✅ removed Last visit, added Active request */}
+      {/* Stats */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard title="Upcoming" value={upcomingValue} sub="Next appointment" />
         <StatCard title="Vehicles" value={vehiclesValue} sub="Saved to your account" />
@@ -192,6 +217,7 @@ export default function PortalHomePage() {
         />
       </div>
 
+      {/* Primary actions */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Link
           href="/portal/request/when"
@@ -220,6 +246,7 @@ export default function PortalHomePage() {
         </Link>
       </div>
 
+      {/* Recent activity + deep links to new pages */}
       <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-neutral-50">Recent activity</h2>
@@ -233,7 +260,48 @@ export default function PortalHomePage() {
         </div>
 
         <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-black/20 p-3 text-sm text-neutral-400">
-          No activity yet. After you submit a request, updates will appear here.
+          {loading ? (
+            "Loading…"
+          ) : hasInvoice && activeWo ? (
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">
+                  Invoice ready
+                </div>
+                <div className="text-sm text-neutral-100">
+                  Work Order {formatWoRef(activeWo)} — sent{" "}
+                  {activeWo.invoice_sent_at
+                    ? formatWhen(activeWo.invoice_sent_at)
+                    : "recently"}
+                </div>
+              </div>
+              <Link
+                href={`/portal/invoices/${activeWo.id}`}
+                className="mt-2 inline-flex items-center justify-center rounded-full border border-white/18 bg-black/40 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-black/70 sm:mt-0"
+              >
+                View invoice
+              </Link>
+            </div>
+          ) : hasQuote && activeWo ? (
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">
+                  Quote ready
+                </div>
+                <div className="text-sm text-neutral-100">
+                  Work Order {formatWoRef(activeWo)} — waiting for your approval.
+                </div>
+              </div>
+              <Link
+                href={`/portal/quotes/${activeWo.id}`}
+                className="mt-2 inline-flex items-center justify-center rounded-full border border-white/18 bg-black/40 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-black/70 sm:mt-0"
+              >
+                Review quote
+              </Link>
+            </div>
+          ) : (
+            "No activity yet. After you submit a request, updates will appear here."
+          )}
         </div>
       </div>
     </div>
