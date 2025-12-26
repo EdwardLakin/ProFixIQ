@@ -17,6 +17,8 @@ const SENDGRID_TEMPLATE_ID =
   process.env.SENDGRID_INVOICE_TEMPLATE_ID ??
   "d-b4fc5385e0964ea880f930b1ea59a37c";
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
+
 if (!SENDGRID_API_KEY) {
   console.warn("[invoices/send] SENDGRID_API_KEY is not set");
 }
@@ -30,6 +32,7 @@ type RequestBody = {
   invoiceTotal?: number;
   customerName?: string;
   shopName?: string;
+  // Optional extras to feed into SendGrid template
   lines?: unknown;
   vehicleInfo?: unknown;
 };
@@ -96,6 +99,8 @@ export async function POST(req: Request) {
       }
     }
 
+    const portalInvoiceUrl = `${SITE_URL}/portal/invoices/${workOrderId}`;
+
     // ------------------------------------------------------------------
     // 3) Send the invoice email via SendGrid (dynamic template)
     // ------------------------------------------------------------------
@@ -110,6 +115,7 @@ export async function POST(req: Request) {
             invoiceTotal,
             vehicleInfo,
             lines,
+            portalUrl: portalInvoiceUrl,
           },
         },
       ],
@@ -140,6 +146,7 @@ export async function POST(req: Request) {
         invoice_sent_at: new Date().toISOString(),
         invoice_last_sent_to: customerEmail,
         invoice_total: invoiceTotal ?? null,
+        invoice_url: portalInvoiceUrl,
       })
       .eq("id", workOrderId);
 

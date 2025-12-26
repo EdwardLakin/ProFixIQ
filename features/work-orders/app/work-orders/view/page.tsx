@@ -104,77 +104,12 @@ export default function WorkOrdersView(): JSX.Element {
 
   // ✅ invoice review loading indicator per row
   const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
+  // ✅ invoice send loading indicator per row
+  const [invoiceSendingId, setInvoiceSendingId] = useState<string | null>(null);
 
-  // ✅ invoice review entry point (uses /invoice route)
-  const runInvoiceReview = useCallback(async (woId: string) => {
-    try {
-      setReviewLoadingId(woId);
-
-      const res = await fetch(`/api/work-orders/${woId}/invoice`, {
-        method: "POST",
-      });
-
-      const json = await res.json();
-
-      if (!res.ok) {
-        toast.error(json?.issues?.[0]?.message ?? "Invoice review failed");
-        return;
-      }
-
-      if (json?.ok) {
-        toast.success("Invoice review passed ✅ Ready to invoice.");
-        return;
-      }
-
-      const issues: Array<{ message?: string }> = Array.isArray(json?.issues)
-        ? json.issues
-        : [];
-
-      toast.error(
-        `Invoice review found ${issues.length} issue(s): ${
-          issues[0]?.message ?? "Fix required fields."
-        }`,
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Invoice review failed";
-      toast.error(msg);
-    } finally {
-      setReviewLoadingId(null);
-    }
-  }, []);
-
-  // load current user role + mechanics once
-  useEffect(() => {
-    (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user?.id) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-        setCurrentRole(prof?.role ?? null);
-      }
-
-      try {
-        const res = await fetch("/api/assignables");
-        const json = await res.json();
-        if (res.ok) {
-          setTechs(json.data ?? []);
-        } else {
-          console.warn("Failed to load mechanics:", json.error);
-        }
-      } catch (e) {
-        console.warn("Failed to load mechanics:", e);
-      }
-    })();
-  }, [supabase]);
-
-  const canAssign = currentRole ? ASSIGN_ROLES.has(currentRole) : false;
-
+  // -------------------------------------------------------------------
+  // Load work orders
+  // -------------------------------------------------------------------
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -240,6 +175,146 @@ export default function WorkOrdersView(): JSX.Element {
     setLoading(false);
   }, [q, status, supabase]);
 
+  // -------------------------------------------------------------------
+  // Invoice review + send
+  // -------------------------------------------------------------------
+  const runInvoiceReview = useCallback(
+    async (woId: string) => {
+      try {
+        setReviewLoadingId(woId);
+
+        const res = await fetch(`/api/work-orders/${woId}/invoice`, {
+          method: "POST",
+        });
+
+        const json = (await res.json()) as {
+          ok?: boolean;
+          issues?: Array<{ message?: string }>;
+        };
+
+        if (!res.ok) {
+          toast.error(json?.issues?.[0]?.message ?? "Invoice review failed");
+          return;
+        }
+
+        if (json?.ok) {
+          toast.success("Invoice review passed ✅ Ready to invoice.");
+          return;
+        }
+
+        const issues: Array<{ message?: string }> = Array.isArray(json?.issues)
+          ? json.issues
+          : [];
+
+        toast.error(
+          `Invoice review found ${issues.length} issue(s): ${
+            issues[0]?.message ?? "Fix required fields."
+          }`,
+        );
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Invoice review failed";
+        toast.error(msg);
+      } finally {
+        setReviewLoadingId(null);
+      }
+    },
+    [],
+  );
+
+  const handleSendInvoice = useCallback(
+    async (wo: Row) => {
+      if (!wo.customers?.email) {
+        toast.error("No customer email on file for this work order.");
+        return;
+      }
+
+      const customerNameFromCustomer =
+        [wo.customers.first_name, wo.customers.last_name]
+          .filter((part) => !!part)
+          .join(" ") || null;
+
+      const customerName =
+        customerNameFromCustomer || wo.customer_name || undefined;
+
+      const laborTotal = wo.labor_total ?? 0;
+      const partsTotal = wo.parts_total ?? 0;
+
+      const invoiceTotal =
+        wo.invoice_total ?? Number(laborTotal) + Number(partsTotal);
+
+      try {
+        setInvoiceSendingId(wo.id);
+
+        const res = await fetch("/api/invoices/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderId: wo.id,
+            customerEmail: wo.customers.email,
+            customerName,
+            shopName: undefined, // can wire real shop name later
+            invoiceTotal,
+          }),
+        });
+
+        const json = (await res.json()) as { ok?: boolean; error?: string };
+
+        if (!res.ok || !json.ok) {
+          toast.error(json.error ?? "Failed to send invoice email");
+          return;
+        }
+
+        toast.success("Invoice email sent to customer.");
+        await load(); // refresh list so invoice_* fields update
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Failed to send invoice email.";
+        toast.error(msg);
+      } finally {
+        setInvoiceSendingId(null);
+      }
+    },
+    [load],
+  );
+
+  // -------------------------------------------------------------------
+  // Auth + portal role + mechanics
+  // -------------------------------------------------------------------
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user?.id) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+        setCurrentRole(prof?.role ?? null);
+      }
+
+      try {
+        const res = await fetch("/api/assignables");
+        const json = (await res.json()) as {
+          data?: Array<Pick<Profile, "id" | "full_name" | "role">>;
+        };
+        if (res.ok) {
+          setTechs(json.data ?? []);
+        } else {
+          console.warn("Failed to load mechanics:", json);
+        }
+      } catch (e) {
+        console.warn("Failed to load mechanics:", e);
+      }
+    })();
+  }, [supabase]);
+
+  const canAssign = currentRole ? ASSIGN_ROLES.has(currentRole) : false;
+
+  // initial load
   useEffect(() => {
     void load();
   }, [load]);
@@ -309,7 +384,7 @@ export default function WorkOrdersView(): JSX.Element {
             only_unassigned: true,
           }),
         });
-        const json = await res.json();
+        const json = (await res.json()) as { error?: string };
         if (!res.ok) {
           alert(json.error || "Failed to assign.");
           return;
@@ -346,7 +421,7 @@ export default function WorkOrdersView(): JSX.Element {
   );
 
   return (
-    <div className="mx-auto max-w-6xl bg-background px-4 py-6 text-foreground space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6 bg-background px-4 py-6 text-foreground">
       {/* Header card */}
       <section className="metal-panel metal-panel--card rounded-2xl border border-white/10 px-4 py-4 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -484,9 +559,9 @@ export default function WorkOrdersView(): JSX.Element {
 
               const plate = r.vehicles?.license_plate ?? "";
 
+              const statusLower = String(r.status ?? "").toLowerCase();
               const isReadyToInvoice =
-                String(r.status ?? "").toLowerCase() === "ready_to_invoice" ||
-                String(r.status ?? "").toLowerCase() === "completed";
+                statusLower === "ready_to_invoice" || statusLower === "completed";
 
               return (
                 <div
@@ -553,6 +628,18 @@ export default function WorkOrdersView(): JSX.Element {
                       </button>
                     )}
 
+                    {/* ✅ Send invoice email */}
+                    {isReadyToInvoice && (
+                      <button
+                        onClick={() => void handleSendInvoice(r)}
+                        disabled={invoiceSendingId === r.id}
+                        className="rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper)]/15 px-2.5 py-1 text-xs text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/25 disabled:opacity-50"
+                        title="Email invoice and notify portal customer"
+                      >
+                        {invoiceSendingId === r.id ? "Sending…" : "Send invoice"}
+                      </button>
+                    )}
+
                     <button
                       onClick={() => void handleDelete(r.id)}
                       className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
@@ -597,7 +684,7 @@ export default function WorkOrdersView(): JSX.Element {
                             </button>
                             <button
                               onClick={() => setAssigningFor(null)}
-                              className="rounded-full border border-white/15 bg_WHITE/5 px-2 py-1 text-[0.7rem] text-neutral-200 hover:bg-white/10"
+                              className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[0.7rem] text-neutral-200 hover:bg-white/10"
                             >
                               ✕
                             </button>
