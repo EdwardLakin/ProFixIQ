@@ -1,6 +1,6 @@
 // app/api/work-orders/quotes/[id]/approval/route.ts
 import "server-only";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -18,7 +18,7 @@ type DecisionBody = {
 };
 
 export async function POST(
-  req: Request,
+  req: NextRequest,
   { params }: { params: { id: string } },
 ) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
