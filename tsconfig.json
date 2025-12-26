@@ -53,6 +53,5 @@
     "types/**/*.ts",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules",
-              "supabase/functions",]
+  "exclude": ["node_modules"]
 }
