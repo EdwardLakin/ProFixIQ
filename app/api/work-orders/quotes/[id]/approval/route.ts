@@ -1,6 +1,6 @@
 // app/api/work-orders/quotes/[id]/approval/route.ts
 import "server-only";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -17,13 +17,19 @@ type DecisionBody = {
   decision: Decision;
 };
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const workOrderId = params.id;
+  // URL shape: /api/work-orders/quotes/:id/approval
+  const segments = req.nextUrl.pathname.split("/").filter(Boolean);
+  const workOrderId = segments[segments.length - 2];
+
+  if (!workOrderId) {
+    return NextResponse.json(
+      { error: "Missing work order id in URL" },
+      { status: 400 },
+    );
+  }
 
   let body: DecisionBody;
   try {
