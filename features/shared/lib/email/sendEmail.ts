@@ -1,4 +1,4 @@
-// lib/sendEmail.ts
+// features/shared/lib/email/sendEmail.ts
 
 import { createClient } from "@supabase/supabase-js";
 

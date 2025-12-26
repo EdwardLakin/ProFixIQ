@@ -1,3 +1,5 @@
+// features/shared/lib/email/sendInvoiceEmail.ts
+
 type InvoiceLine = {
   title: string;
   description?: string;
@@ -28,6 +30,9 @@ export async function sendInvoiceEmail({
   summary,
   vehicleInfo,
   customerInfo,
+  invoiceTotal,
+  pdfUrl,
+  shopName,
 }: {
   vehicleId: string;
   workOrderId: string;
@@ -35,26 +40,36 @@ export async function sendInvoiceEmail({
   summary?: string;
   vehicleInfo?: VehicleInfo;
   customerInfo?: CustomerInfo;
+  invoiceTotal?: number;
+  pdfUrl?: string | null;
+  shopName?: string;
 }) {
-  const res = await fetch(
-    "https://jaqjlyhvyofjvtwaeurr.supabase.co/functions/v1/send-invoice-email",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        vehicleId,
-        workOrderId,
-        lines,
-        summary,
-        vehicleInfo,
-        customerInfo,
-      }),
-    },
+  const baseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(
+    /\/$/,
+    "",
   );
 
-  if (!res.ok) throw new Error("Failed to send invoice email");
+  const res = await fetch(`${baseUrl}/functions/v1/send-invoice-email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      vehicleId,
+      workOrderId,
+      lines,
+      summary,
+      vehicleInfo,
+      customerInfo,
+      invoiceTotal,
+      pdfUrl,
+      shopName,
+    }),
+  });
 
-  return await res.json();
+  if (!res.ok) {
+    throw new Error(`Failed to send invoice email (status ${res.status})`);
+  }
+
+  return res.json().catch(() => ({}));
 }
