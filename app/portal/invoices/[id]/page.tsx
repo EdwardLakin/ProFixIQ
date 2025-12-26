@@ -22,10 +22,6 @@ type InvoiceLineRow = Pick<
   "id" | "description" | "job_type" | "labor_time" | "price_estimate" | "line_no"
 >;
 
-type InvoicePageProps = {
-  params: { id: string };
-};
-
 export const dynamic = "force-dynamic";
 
 function formatCurrency(value: number | null | undefined): string {
@@ -44,8 +40,13 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-export default async function PortalInvoicePage({ params }: InvoicePageProps) {
-  const workOrderId = params.id;
+export default async function PortalInvoicePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id: workOrderId } = await params;
+
   const cookieStore = cookies();
   const supabase = createServerComponentClient<Database>({
     cookies: () => cookieStore,
