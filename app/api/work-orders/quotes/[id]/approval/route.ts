@@ -11,20 +11,19 @@ type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 
-type RouteContext = {
-  params: { id: string };
-};
-
 type Decision = "approved" | "declined";
 
 type DecisionBody = {
   decision: Decision;
 };
 
-export async function POST(req: Request, context: RouteContext) {
+export async function POST(
+  req: Request,
+  { params }: { params: { id: string } },
+) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const workOrderId = context.params.id;
+  const workOrderId = params.id;
 
   let body: DecisionBody;
   try {
