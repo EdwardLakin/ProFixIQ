@@ -23,8 +23,11 @@ type QuoteLineRow = Pick<
   "id" | "description" | "job_type" | "labor_time" | "price_estimate" | "line_no"
 >;
 
-// Route params description
-type RouteParams = { id: string };
+type PageProps = {
+  params: {
+    id: string;
+  };
+};
 
 export const dynamic = "force-dynamic";
 
@@ -44,14 +47,8 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-export default async function PortalQuotePage({
-  params,
-}: {
-  params: RouteParams;
-}) {
-  // Normalize in case Next hands us something async-ish internally
-  const resolvedParams = (await Promise.resolve(params)) as RouteParams;
-  const workOrderId = resolvedParams.id;
+export default async function PortalQuotePage({ params }: PageProps) {
+  const workOrderId = params.id;
 
   const cookieStore = cookies();
   const supabase = createServerComponentClient<Database>({
@@ -151,9 +148,7 @@ export default async function PortalQuotePage({
                 hover:bg-black/70 hover:text-white
               "
             >
-              <span aria-hidden className="text-base leading-none">
-                ←
-              </span>
+              <span aria-hidden className="text-base leading-none">←</span>
               Back
             </Link>
 
