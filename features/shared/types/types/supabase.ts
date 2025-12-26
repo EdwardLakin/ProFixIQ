@@ -4096,6 +4096,57 @@ export type Database = {
           },
         ]
       }
+      portal_notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          kind: string
+          read_at: string | null
+          title: string
+          user_id: string
+          work_order_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          kind: string
+          read_at?: string | null
+          title: string
+          user_id: string
+          work_order_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          kind?: string
+          read_at?: string | null
+          title?: string
+          user_id?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_notifications_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_notifications_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           agent_role: string | null
@@ -7342,6 +7393,9 @@ export type Database = {
           inspection_id: string | null
           inspection_pdf_url: string | null
           inspection_type: string | null
+          invoice_last_sent_to: string | null
+          invoice_pdf_url: string | null
+          invoice_sent_at: string | null
           invoice_total: number | null
           invoice_url: string | null
           is_waiter: boolean
@@ -7380,6 +7434,9 @@ export type Database = {
           inspection_id?: string | null
           inspection_pdf_url?: string | null
           inspection_type?: string | null
+          invoice_last_sent_to?: string | null
+          invoice_pdf_url?: string | null
+          invoice_sent_at?: string | null
           invoice_total?: number | null
           invoice_url?: string | null
           is_waiter?: boolean
@@ -7418,6 +7475,9 @@ export type Database = {
           inspection_id?: string | null
           inspection_pdf_url?: string | null
           inspection_type?: string | null
+          invoice_last_sent_to?: string | null
+          invoice_pdf_url?: string | null
+          invoice_sent_at?: string | null
           invoice_total?: number | null
           invoice_url?: string | null
           is_waiter?: boolean
@@ -7980,6 +8040,9 @@ export type Database = {
           inspection_id: string | null
           inspection_pdf_url: string | null
           inspection_type: string | null
+          invoice_last_sent_to: string | null
+          invoice_pdf_url: string | null
+          invoice_sent_at: string | null
           invoice_total: number | null
           invoice_url: string | null
           is_waiter: boolean
