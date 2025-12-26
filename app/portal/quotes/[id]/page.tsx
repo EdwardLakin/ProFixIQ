@@ -23,12 +23,6 @@ type QuoteLineRow = Pick<
   "id" | "description" | "job_type" | "labor_time" | "price_estimate" | "line_no"
 >;
 
-type PageProps = {
-  params: {
-    id: string;
-  };
-};
-
 export const dynamic = "force-dynamic";
 
 function formatCurrency(value: number | null | undefined): string {
@@ -47,7 +41,12 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-export default async function PortalQuotePage({ params }: PageProps) {
+// ✅ No custom PageProps type; we inline a compatible shape instead
+export default async function PortalQuotePage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const workOrderId = params.id;
 
   const cookieStore = cookies();
