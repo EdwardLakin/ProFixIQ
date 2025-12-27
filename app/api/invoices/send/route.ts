@@ -7,7 +7,7 @@ type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 
-const supabaseAdmin = createClient<Database>(
+const supabaseAdmin = createClient<DB>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
@@ -18,6 +18,12 @@ const SENDGRID_TEMPLATE_ID =
   "d-b4fc5385e0964ea880f930b1ea59a37c";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
+
+// ✅ Use the same verified sender that worked in your debug route
+const SENDGRID_FROM_EMAIL =
+  process.env.SENDGRID_FROM_EMAIL || "support@profixiq.com";
+const SENDGRID_FROM_NAME =
+  process.env.SENDGRID_FROM_NAME || "ProFixIQ";
 
 if (!SENDGRID_API_KEY) {
   console.warn("[invoices/send] SENDGRID_API_KEY is not set");
@@ -119,7 +125,7 @@ export async function POST(req: Request) {
           },
         },
       ],
-      from: { email: "no-reply@profixiq.com", name: "ProFixIQ" },
+      from: { email: SENDGRID_FROM_EMAIL, name: SENDGRID_FROM_NAME },
       template_id: SENDGRID_TEMPLATE_ID,
     };
 
@@ -132,10 +138,23 @@ export async function POST(req: Request) {
       body: JSON.stringify(emailPayload),
     });
 
+    const resBody = await sgRes.text().catch(() => "");
+
     if (!sgRes.ok) {
-      const t = await sgRes.text();
-      throw new Error(`SendGrid error: ${t}`);
+      console.error(
+        "[invoices/send] SendGrid error:",
+        sgRes.status,
+        sgRes.statusText,
+        resBody,
+      );
+      throw new Error(`SendGrid error: ${sgRes.status} ${sgRes.statusText}`);
     }
+
+    console.log(
+      "[invoices/send] SendGrid accepted invoice email",
+      sgRes.status,
+      resBody || "<empty body>",
+    );
 
     // ------------------------------------------------------------------
     // 4) Update invoice metadata on the work order
@@ -167,7 +186,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (err) {
+  } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Unknown error sending invoice";
     console.error("[invoices/send] Invoice Send Failed:", message);
