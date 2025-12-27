@@ -1,3 +1,4 @@
+// features/portal/app/quotes/[id]/page.tsx
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -22,11 +23,11 @@ type QuoteLineRow = Pick<
   "id" | "description" | "job_type" | "labor_time" | "price_estimate" | "line_no"
 >;
 
-// 🔑 rename to avoid clashing with Next’s generated PageProps type
-type QuotePageProps = {
-  params: {
-    id: string;
-  };
+type RouteParams = { id: string };
+
+// ⬅️ No PageProps here. Just make sure `params` can be a Promise or plain.
+type QuoteRouteProps = {
+  params: RouteParams | Promise<RouteParams>;
 };
 
 export const dynamic = "force-dynamic";
@@ -47,8 +48,12 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-export default async function PortalQuotePage({ params }: QuotePageProps) {
-  const workOrderId = params.id;
+export default async function PortalQuotePage(props: QuoteRouteProps) {
+  // Next 15 sometimes passes params as a Promise – normalize it.
+  const resolvedParams =
+    props.params instanceof Promise ? await props.params : props.params;
+
+  const workOrderId = resolvedParams.id;
 
   const cookieStore = cookies();
   const supabase = createServerComponentClient<Database>({
