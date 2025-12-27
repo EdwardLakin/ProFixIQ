@@ -1,4 +1,3 @@
-// features/portal/app/quotes/[id]/page.tsx
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -23,7 +22,8 @@ type QuoteLineRow = Pick<
   "id" | "description" | "job_type" | "labor_time" | "price_estimate" | "line_no"
 >;
 
-type PageProps = {
+// 🔑 rename to avoid clashing with Next’s generated PageProps type
+type QuotePageProps = {
   params: {
     id: string;
   };
@@ -47,7 +47,7 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-export default async function PortalQuotePage({ params }: PageProps) {
+export default async function PortalQuotePage({ params }: QuotePageProps) {
   const workOrderId = params.id;
 
   const cookieStore = cookies();
