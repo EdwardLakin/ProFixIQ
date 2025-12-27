@@ -79,11 +79,10 @@ export async function POST(req: NextRequest) {
     const { data } = supabase.storage.from("quotes").getPublicUrl(fileName);
     const publicUrl = data?.publicUrl ?? null;
 
-    // 6) Email the quote (URL + attachment)
+    // 6) Email the quote (URL only – matches sendQuoteEmail type)
     await sendQuoteEmail({
       to: customerEmail,
       workOrderId,
-      pdfBuffer: Buffer.from(pdfBytes).toString("base64"),
       pdfUrl: publicUrl ?? undefined,
     });
 
