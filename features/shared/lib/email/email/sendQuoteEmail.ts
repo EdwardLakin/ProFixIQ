@@ -6,7 +6,7 @@ type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 
-const supabase = createClient<Database>(
+const supabase = createClient<DB>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!, // server-only key
 );
@@ -14,6 +14,12 @@ const supabase = createClient<Database>(
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY ?? "";
 const SENDGRID_QUOTE_TEMPLATE_ID =
   process.env.SENDGRID_QUOTE_TEMPLATE_ID ?? "d-your-quote-template-id";
+
+// ✅ Use the VERIFIED sender you told me about
+const SENDGRID_FROM_EMAIL =
+  process.env.SENDGRID_FROM_EMAIL || "support@profixiq.com";
+const SENDGRID_FROM_NAME =
+  process.env.SENDGRID_FROM_NAME || "ProFixIQ";
 
 if (!SENDGRID_API_KEY) {
   console.warn("[sendQuoteEmail] SENDGRID_API_KEY is not set");
@@ -50,7 +56,9 @@ export type SendQuoteEmailParams = {
   vehicleInfo?: QuoteVehicleInfo | null;
 };
 
-export async function sendQuoteEmail(params: SendQuoteEmailParams): Promise<void> {
+export async function sendQuoteEmail(
+  params: SendQuoteEmailParams,
+): Promise<void> {
   const {
     to,
     workOrderId,
@@ -109,7 +117,10 @@ export async function sendQuoteEmail(params: SendQuoteEmailParams): Promise<void
         dynamic_template_data: dynamicData,
       },
     ],
-    from: { email: "no-reply@profixiq.com", name: "ProFixIQ" },
+    from: {
+      email: SENDGRID_FROM_EMAIL,
+      name: SENDGRID_FROM_NAME,
+    },
     template_id: SENDGRID_QUOTE_TEMPLATE_ID,
   };
 
@@ -122,11 +133,23 @@ export async function sendQuoteEmail(params: SendQuoteEmailParams): Promise<void
     body: JSON.stringify(emailPayload),
   });
 
+  const resBody = await res.text().catch(() => "");
+
   if (!res.ok) {
-    const text = await res.text();
-    console.error("[sendQuoteEmail] SendGrid error:", text);
-    throw new Error(`SendGrid error: ${text}`);
+    console.error(
+      "[sendQuoteEmail] SendGrid error:",
+      res.status,
+      res.statusText,
+      resBody,
+    );
+    throw new Error(`SendGrid error: ${res.status} ${res.statusText}`);
   }
+
+  console.log(
+    "[sendQuoteEmail] SendGrid accepted message",
+    res.status,
+    resBody || "<empty body>",
+  );
 
   // ----------------------- Portal wiring ----------------------- //
   // 1) Attach quote_url to the work order if we have a URL
