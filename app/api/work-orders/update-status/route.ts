@@ -1,6 +1,9 @@
+// app/api/work-orders/update-status/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+
+export const runtime = "nodejs";
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,6 +22,9 @@ type QuoteLineItem = {
   total_price?: number;
 };
 
+type WorkOrderUpdate = Database["public"]["Tables"]["work_orders"]["Update"];
+type QuoteField = WorkOrderUpdate["quote"];
+
 interface RequestBody {
   workOrderId: string;
   command: Command;
@@ -28,7 +34,7 @@ interface RequestBody {
 
 export async function POST(req: NextRequest) {
   try {
-    const body: RequestBody = await req.json();
+    const body = (await req.json()) as RequestBody;
     const { workOrderId, command, quote, summary } = body;
 
     if (!workOrderId || !command) {
@@ -38,27 +44,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let updateFields: Partial<
-      Database["public"]["Tables"]["work_orders"]["Update"]
-    > = {};
+    let updateFields: WorkOrderUpdate = {};
 
     if (command === "punch-in") {
       updateFields = {
         status: "in_progress",
       };
     } else if (command === "complete") {
-      updateFields = {
+      const nextFields: WorkOrderUpdate = {
         status: "completed",
       };
 
       if (quote && summary) {
-        updateFields.quote = {
+        const quotePayload = {
           summary,
           items: quote,
-        } as any; // keep if `quote` column is jsonb; remove `as any` if typed
+        };
+
+        // Cast through QuoteField without using `any`
+        (nextFields as WorkOrderUpdate).quote =
+          quotePayload as unknown as QuoteField;
       }
+
+      updateFields = nextFields;
     } else {
-      return NextResponse.json({ error: "Unknown command" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Unknown command" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabase
@@ -66,12 +79,17 @@ export async function POST(req: NextRequest) {
       .update(updateFields)
       .eq("id", workOrderId);
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({ success: true, updated: updateFields });
-  } catch (err: unknown) {
+  } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Work order update failed:", message);
-    return NextResponse.json({ error: "Update failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Update failed" },
+      { status: 500 },
+    );
   }
 }

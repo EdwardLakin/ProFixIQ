@@ -1,26 +1,30 @@
+// app/api/inspections/submit/pdf/route.ts
 import { NextResponse } from "next/server";
-import { generateInspectionPDF } from "@inspections/lib/inspection/pdf";
 import { headers } from "next/headers";
+import { generateInspectionPDF } from "@inspections/lib/inspection/pdf";
+import type { InspectionSession } from "@inspections/lib/inspection/types";
+
+export const runtime = "nodejs";
+
+type PdfLike =
+  | Uint8Array
+  | ArrayBuffer
+  | ArrayBufferView
+  | number[]
+  | Blob
+  | null
+  | undefined;
 
 export async function POST(req: Request) {
   try {
-    // read JSON body
-    const { summary } = await req.json();
+    const { summary } = (await req.json()) as {
+      summary: InspectionSession;
+    };
 
-    // headers() is async in your runtime – await it
     const h = await headers();
     const filename = h.get("x-filename")?.trim() || "inspection.pdf";
 
-    // Allow a few common shapes, all normalized to Uint8Array
-    const raw = (await generateInspectionPDF(summary)) as
-      | Uint8Array
-      | ArrayBuffer
-      | ArrayBufferView
-      | number[]
-      | Blob
-      | null
-      | undefined;
-
+    const raw = (await generateInspectionPDF(summary)) as PdfLike;
     let bytes: Uint8Array;
 
     if (raw instanceof Uint8Array) {
@@ -28,20 +32,17 @@ export async function POST(req: Request) {
     } else if (raw instanceof ArrayBuffer) {
       bytes = new Uint8Array(raw);
     } else if (ArrayBuffer.isView(raw)) {
-      // Covers DataView and other typed arrays
       bytes = new Uint8Array(raw.buffer);
     } else if (Array.isArray(raw)) {
-      bytes = new Uint8Array(raw as number[]);
-    } else if (raw && typeof (raw as any).arrayBuffer === "function") {
-      // Blob-like
-      const ab = await (raw as Blob).arrayBuffer();
+      bytes = new Uint8Array(raw);
+    } else if (raw instanceof Blob) {
+      const ab = await raw.arrayBuffer();
       bytes = new Uint8Array(ab);
     } else {
       bytes = new Uint8Array(0);
     }
 
-    // Send the bytes directly; no Blob construction needed
-    return new NextResponse(bytes as unknown as BodyInit, {
+    return new NextResponse(bytes as BodyInit, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
+    console.error("Failed to generate PDF:", error);
     return NextResponse.json(
       { error: "Failed to generate PDF" },
       { status: 500 },
