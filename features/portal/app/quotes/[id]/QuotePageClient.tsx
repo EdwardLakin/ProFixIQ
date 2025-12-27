@@ -1,15 +1,11 @@
-// features/portal/app/quotes/[id]/page.tsx
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
-import {
-  requireAuthedUser,
-  requirePortalCustomer,
-  requireWorkOrderOwnedByCustomer,
-} from "@/features/portal/server/portalAuth";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
 
 const COPPER = "#C57A4A";
@@ -23,14 +19,12 @@ type QuoteLineRow = Pick<
   "id" | "description" | "job_type" | "labor_time" | "price_estimate" | "line_no"
 >;
 
-type RouteParams = { id: string };
+type ParamsShape = Record<string, string | string[] | undefined>;
 
-// ⬅️ No PageProps here. Just make sure `params` can be a Promise or plain.
-type QuoteRouteProps = {
-  params: RouteParams | Promise<RouteParams>;
-};
-
-export const dynamic = "force-dynamic";
+function paramToString(value: string | string[] | undefined): string | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
 
 function formatCurrency(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
@@ -48,61 +42,121 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-export default async function PortalQuotePage(props: QuoteRouteProps) {
-  // Next 15 sometimes passes params as a Promise – normalize it.
-  const resolvedParams =
-    props.params instanceof Promise ? await props.params : props.params;
+export default function QuotePageClient() {
+  const router = useRouter();
+  const params = useParams();
 
-  const workOrderId = resolvedParams.id;
+  const workOrderId = useMemo(
+    () => paramToString((params as ParamsShape).id),
+    [params],
+  );
 
-  const cookieStore = cookies();
-  const supabase = createServerComponentClient<Database>({
-    cookies: () => cookieStore,
-  });
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  let workOrder: WorkOrderRow | null = null;
-  let quoteLines: QuoteLineRow[] = [];
+  const [loading, setLoading] = useState(true);
+  const [workOrder, setWorkOrder] = useState<WorkOrderRow | null>(null);
+  const [quoteLines, setQuoteLines] = useState<QuoteLineRow[]>([]);
 
-  try {
-    // -------------------------------------------------------------------
-    // Auth + portal ownership checks
-    // -------------------------------------------------------------------
-    const { id: userId } = await requireAuthedUser(supabase);
-    const customer = await requirePortalCustomer(supabase, userId);
-    workOrder = await requireWorkOrderOwnedByCustomer(
-      supabase,
-      workOrderId,
-      customer.id,
-    );
-
-    // -------------------------------------------------------------------
-    // Load work order lines for quote display
-    // -------------------------------------------------------------------
-    const { data: lineRows } = await supabase
-      .from("work_order_lines")
-      .select(
-        "id, description, job_type, labor_time, price_estimate, line_no",
-      )
-      .eq("work_order_id", workOrderId)
-      .order("line_no", { ascending: true });
-
-    if (lineRows) {
-      quoteLines = lineRows.map((line) => ({
-        id: line.id,
-        description: line.description,
-        job_type: line.job_type,
-        labor_time: line.labor_time,
-        price_estimate: line.price_estimate,
-        line_no: line.line_no,
-      }));
+  // Load quote data on mount
+  useEffect(() => {
+    if (!workOrderId) {
+      router.replace("/portal");
+      return;
     }
-  } catch (err) {
-    console.error("[portal quote] failed:", err);
-    redirect("/portal");
+
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+
+      // 1) Authed user
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
+
+      if (cancelled) return;
+
+      if (userErr || !user) {
+        router.replace("/portal/auth/sign-in");
+        return;
+      }
+
+      // 2) Customer for this user
+      const { data: customer, error: custErr } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (custErr || !customer) {
+        router.replace("/portal");
+        return;
+      }
+
+      // 3) Work order owned by this customer
+      const { data: wo, error: woErr } = await supabase
+        .from("work_orders")
+        .select("*")
+        .eq("id", workOrderId)
+        .eq("customer_id", customer.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (woErr || !wo) {
+        router.replace("/portal");
+        return;
+      }
+
+      setWorkOrder(wo as WorkOrderRow);
+
+      // 4) Quote line items
+      const { data: lineRows } = await supabase
+        .from("work_order_lines")
+        .select(
+          "id, description, job_type, labor_time, price_estimate, line_no",
+        )
+        .eq("work_order_id", workOrderId)
+        .order("line_no", { ascending: true });
+
+      if (cancelled) return;
+
+      const mapped: QuoteLineRow[] =
+        lineRows?.map((line) => ({
+          id: line.id,
+          description: line.description,
+          job_type: line.job_type,
+          labor_time: line.labor_time,
+          price_estimate: line.price_estimate,
+          line_no: line.line_no,
+        })) ?? [];
+
+      setQuoteLines(mapped);
+      setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, router, workOrderId]);
+
+  if (!workOrderId) {
+    return (
+      <div className="min-h-screen px-4 py-10 text-center text-red-300">
+        Missing quote id.
+      </div>
+    );
   }
 
-  if (!workOrder) {
-    redirect("/portal");
+  if (loading || !workOrder) {
+    return (
+      <div className="min-h-screen px-4 py-10 flex items-center justify-center text-neutral-300">
+        Loading quote…
+      </div>
+    );
   }
 
   const titleLabel =
@@ -280,7 +334,7 @@ export default async function PortalQuotePage(props: QuoteRouteProps) {
             )}
           </div>
 
-          {/* ✅ Approval actions (client) */}
+          {/* Approval actions */}
           <div className="mt-6">
             <QuoteApprovalActions
               workOrderId={workOrderId}
