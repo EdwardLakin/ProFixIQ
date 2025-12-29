@@ -206,31 +206,102 @@ export default function AirCornerGrid({
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key !== "Tab") return;
-
       const root = rootRef.current;
-      const all = Array.from(
-        (root ?? document).querySelectorAll<HTMLInputElement>(
-          'input[data-air-grid="true"]',
-        ),
-      );
+      if (!root) return;
 
-      if (!all.length) return;
+      const inputs = Array.from(
+        root.querySelectorAll<HTMLInputElement>('input[data-air-grid="true"]'),
+      );
+      if (!inputs.length) return;
 
       const current = e.currentTarget;
-      const index = all.indexOf(current);
+      const index = inputs.indexOf(current);
       if (index === -1) return;
 
-      const delta = e.shiftKey ? -1 : 1;
-      let nextIndex = index + delta;
+      const columns = 2;
+      const total = inputs.length;
+      const row = Math.floor(index / columns);
+      const col = index % columns;
 
-      // wrap inside grid
-      if (nextIndex < 0) nextIndex = all.length - 1;
-      if (nextIndex >= all.length) nextIndex = 0;
+      let nextIndex = index;
 
-      e.preventDefault();
-      e.stopPropagation();
-      all[nextIndex].focus();
+      switch (e.key) {
+        case "Tab": {
+          const delta = e.shiftKey ? -1 : 1;
+          nextIndex = index + delta;
+
+          // wrap inside this grid only
+          if (nextIndex < 0) nextIndex = total - 1;
+          if (nextIndex >= total) nextIndex = 0;
+
+          e.preventDefault();
+          e.stopPropagation();
+          break;
+        }
+
+        case "ArrowRight": {
+          // move within row, clamp to last input in grid
+          const candidate = index + 1;
+          if (candidate < total && Math.floor(candidate / columns) === row) {
+            nextIndex = candidate;
+          } else {
+            // stay put if no right neighbor in this row
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          break;
+        }
+
+        case "ArrowLeft": {
+          const candidate = index - 1;
+          if (candidate >= 0 && Math.floor(candidate / columns) === row) {
+            nextIndex = candidate;
+          } else {
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          break;
+        }
+
+        case "ArrowDown": {
+          const candidate = (row + 1) * columns + col;
+          if (candidate < total) {
+            nextIndex = candidate;
+          } else {
+            // no row below on this side
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          break;
+        }
+
+        case "ArrowUp": {
+          const candidate = (row - 1) * columns + col;
+          if (candidate >= 0) {
+            nextIndex = candidate;
+          } else {
+            // no row above on this side
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          break;
+        }
+
+        default:
+          return; // let browser handle other keys
+      }
+
+      const target = inputs[nextIndex];
+      if (!target) return;
+
+      target.focus();
+      // optional but nice: select existing value
+      target.select?.();
+      target.scrollIntoView({ block: "nearest", inline: "nearest" });
     };
 
     return (
