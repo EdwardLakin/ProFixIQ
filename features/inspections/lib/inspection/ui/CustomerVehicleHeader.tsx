@@ -1,8 +1,6 @@
 // features/inspections/lib/inspection/ui/CustomerVehicleHeader.tsx
 "use client";
 
-
-
 type Customer = {
   first_name?: string | null;
   last_name?: string | null;

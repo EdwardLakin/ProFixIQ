@@ -1,3 +1,5 @@
+//app/api/ai/quote-suggest/route.ts
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";

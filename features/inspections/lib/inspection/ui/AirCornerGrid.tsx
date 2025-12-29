@@ -10,6 +10,8 @@ type Props = {
   items: InspectionItem[];
   unitHint?: (label: string) => string;
   onAddAxle?: (axleLabel: string) => void;
+  /** Optional: show CVIP spec for a given metric label (e.g. "Tire Pressure"). */
+  onSpecHint?: (metricLabel: string) => void;
 };
 
 export default function AirCornerGrid({
@@ -17,6 +19,7 @@ export default function AirCornerGrid({
   items,
   unitHint,
   onAddAxle,
+  onSpecHint,
 }: Props) {
   const { updateItem } = useInspectionForm();
 
@@ -184,7 +187,7 @@ export default function AirCornerGrid({
     const spanRef = useRef<HTMLSpanElement | null>(null);
 
     const seedText = () => {
-      if (!isPressure) return unit;
+      if (!isPressure) return unit || "";
       const k = kpaFromPsi(defaultValue);
       if (!showKpaHint) return "psi";
       return k != null ? `psi (${k} kPa)` : "psi (— kPa)";
@@ -301,14 +304,28 @@ export default function AirCornerGrid({
                     )}
                   </div>
 
-                  <div
-                    className="min-w-0 truncate text-center text-sm font-semibold text-neutral-100"
-                    style={{
-                      fontFamily: "var(--font-blackops), system-ui, sans-serif",
-                    }}
-                    title={row.metric}
-                  >
-                    {row.metric}
+                  <div className="flex min-w-0 items-center justify-center gap-2">
+                    <span
+                      className="truncate text-center text-sm font-semibold text-neutral-100"
+                      style={{
+                        fontFamily:
+                          "var(--font-blackops), system-ui, sans-serif",
+                      }}
+                      title={row.metric}
+                    >
+                      {row.metric}
+                    </span>
+                    {onSpecHint && (
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => onSpecHint(row.metric)}
+                        className="rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.16em] text-orange-300 hover:bg-orange-500/20"
+                        title="Show CVIP spec"
+                      >
+                        Spec
+                      </button>
+                    )}
                   </div>
 
                   <div className="justify-self-end">

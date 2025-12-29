@@ -1,6 +1,8 @@
+// features/inspections/lib/inspection/StartListeningButton.tsx
+
 "use client";
 
-
+import { Button } from "@shared/components/ui/Button";
 
 interface StartListeningButtonProps {
   isListening: boolean;
@@ -8,23 +10,38 @@ interface StartListeningButtonProps {
   onStart: () => void;
 }
 
-export default function StartListeningButton(props: any) {
-  const { isListening, setIsListening, onStart } =
-    props as StartListeningButtonProps;
-
+export default function StartListeningButton({
+  isListening,
+  setIsListening,
+  onStart,
+}: StartListeningButtonProps) {
   const handleStart = () => {
+    if (isListening) return;
     setIsListening(true);
     onStart(); // Trigger the actual startListening logic from parent
   };
 
   return (
-    <button
+    <Button
       type="button"
       onClick={handleStart}
       disabled={isListening}
-      className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50"
+      variant={isListening ? "outline" : "copper"}
+      size="sm"
+      className={`inline-flex items-center gap-2 rounded-full text-[11px] font-semibold uppercase tracking-[0.18em] ${
+        isListening
+          ? "border-[color:var(--accent-copper-soft,#f97316)] bg-black/70 text-[color:var(--accent-copper,#f97316)]"
+          : "bg-[linear-gradient(to_right,var(--accent-copper-soft,#fb923c),var(--accent-copper,#ea580c))] text-black shadow-[0_0_18px_rgba(234,88,12,0.6)]"
+      }`}
     >
-      {isListening ? "Listening..." : "Start Listening"}
-    </button>
+      <span
+        className={`inline-block h-2 w-2 rounded-full ${
+          isListening
+            ? "bg-[color:var(--accent-copper,#f97316)] animate-pulse"
+            : "bg-black/80"
+        }`}
+      />
+      {isListening ? "Listening…" : "Start Listening"}
+    </Button>
   );
 }

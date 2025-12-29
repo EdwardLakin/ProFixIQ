@@ -16,6 +16,15 @@ export interface InspectionItem {
   dutyClasses?: DutyClass[]; // new: "light" | "medium" | "heavy"
   required?: boolean; // always include when matching
   priority?: number; // 1..100 (higher picked first)
+
+  /**
+   * Optional CVIP spec code – links an item to public.cvip_specs.code so
+   * we can:
+   * - enforce numeric thresholds (min/max)
+   * - show “what is a fail” hints
+   * - auto-reason about FAIL/RECOMMEND with measurements
+   */
+  specCode?: string | null;
 }
 
 export interface InspectionCategory {
@@ -30,7 +39,7 @@ export interface InspectionCategory {
  * - if it applies only to truck/bus/trailer → heavy
  */
 function inferredDutyFromVehicles(
-  v?: VehicleType[]
+  v?: VehicleType[],
 ): DutyClass[] | undefined {
   if (!v || v.length === 0) return undefined;
 
@@ -55,10 +64,6 @@ function inferredDutyFromVehicles(
 /**
  * Base list + Alberta CVIP (truck/tractor, trailer/dolly, bus/motorcoach)
  * added in the closest matching sections.
- * Sources:
- * - Truck & truck-tractor CVIP: Section 1–10 (power train, suspension, 3H, 3A, steering, instruments, lamps, electrical, body, tires, couplers)  [oai_citation:0‡trans-roi-truck-tractor-form.pdf](sediment://file_0000000054c0722f880a68b4f7d1b4e8)
- * - Trailer/semi/C-dolly CVIP: Section 1–4, 3H trailer specifics, 3A trailer specifics, steering, lamps/electrical via base form.  [oai_citation:1‡trans-roi-trailer-dolly-form.pdf](sediment://file_00000000fc9c71f5a1e80faec3a8ddec)
- * - Bus/motorcoach CVIP: same structure + bus-only 5.x and 8.28–8.34, plus 6.6–6.7, 7.4.
  */
 export const masterInspectionList: InspectionCategory[] = [
   /* ----------------------------- BRAKES ----------------------------- */
@@ -74,6 +79,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         required: true,
         priority: 90,
+        specCode: "brake_lining_front_disc",
       },
       {
         item: "Rear brake pads",
@@ -82,6 +88,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        specCode: "brake_lining_other",
       },
       {
         item: "Brake rotors (condition/thickness)",
@@ -90,6 +97,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        specCode: "brake_rotor",
       },
       {
         item: "Brake drums (if equipped)",
@@ -98,6 +106,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
+        specCode: "brake_drum",
       },
       {
         item: "Brake fluid level/condition",
@@ -142,7 +151,6 @@ export const masterInspectionList: InspectionCategory[] = [
       },
 
       // CVIP hydraulic brake block — applies to car/light truck, plus trailers with hyd / surge
-      // 3H.1–3H.6, 3H.11–3H.19 from truck/bus/trailer forms
       {
         item: "Hydraulic system components",
         systems: ["hyd_brake"],
@@ -264,7 +272,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 90,
-      }, // 3H.19,
+      }, // 3H.19
       {
         item: "Trailer breakaway battery condition",
         systems: ["hyd_brake"],
@@ -272,8 +280,8 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         required: false,
         priority: 70,
-      }
-],
+      },
+    ],
   },
   {
     title: "Brakes — Air (Heavy Duty)",
@@ -287,6 +295,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         required: true,
         priority: 95,
+        specCode: "brake_lining_other",
       },
       {
         item: "Brake drums",
@@ -295,6 +304,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 85,
+        specCode: "brake_drum",
       },
       {
         item: "Push rod travel",
@@ -304,6 +314,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         required: true,
         priority: 95,
+        // specCode for push-rod limits can be wired later per chamber size
       },
       {
         item: "Slack adjusters",
@@ -318,6 +329,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        // specCode for S-cam bushings/play can be added when thresholds are finalized
       },
       {
         item: "Clevis pins and cotters",
@@ -729,6 +741,22 @@ export const masterInspectionList: InspectionCategory[] = [
         priority: 90,
       },
       {
+        item: "Kingpin radial play",
+        unit: "mm",
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        priority: 89,
+        specCode: "kingpin_radial",
+      },
+      {
+        item: "Kingpin axial play",
+        unit: "mm",
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        priority: 88,
+        specCode: "kingpin_axial",
+      },
+      {
         item: "Drag link",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
@@ -770,6 +798,14 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 70,
       }, // trailer 4.4
+      {
+        item: "Steering wheel free play at rim",
+        unit: "mm",
+        vehicleTypes: ["truck", "bus"],
+        dutyClasses: ["heavy"],
+        priority: 87,
+        specCode: "steering_freeplay_max",
+      },
     ],
   },
 
@@ -827,8 +863,6 @@ export const masterInspectionList: InspectionCategory[] = [
   {
     title: "Tires & Wheels",
     items: [
-      // from your original
-      
       {
         item: "Sidewall damage/bulges",
         vehicleTypes: ["car", "truck", "bus", "trailer"],
@@ -856,9 +890,11 @@ export const masterInspectionList: InspectionCategory[] = [
       },
       {
         item: "Wheel bearings/play",
+        unit: "mm",
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        specCode: "wheel_bearing_play_max",
       },
 
       // CVIP tires/wheels extras (9.1–9.11)
@@ -967,12 +1003,14 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        // leak classification specCode can be attached once finalized
       },
       {
         item: "Fuel leaks (lines/injectors)",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        // leak classification specCode can be attached once finalized
       },
       {
         item: "Air filter condition",
@@ -1197,6 +1235,14 @@ export const masterInspectionList: InspectionCategory[] = [
         priority: 70,
       },
       {
+        item: "Windshield crack length (primary field of view)",
+        unit: "mm",
+        vehicleTypes: ["car", "truck", "bus"],
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 72,
+        specCode: "windshield_crack_length_max",
+      },
+      {
         item: "Side windows",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
@@ -1316,6 +1362,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        // leak classification specCode can be attached when finalized
       },
       {
         item: "DPF/DEF/SCR systems (visual)",
@@ -1371,6 +1418,14 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+      },
+      {
+        item: "Fifth wheel vertical play at wheel",
+        unit: "mm",
+        vehicleTypes: ["truck", "trailer"],
+        dutyClasses: ["heavy"],
+        priority: 78,
+        specCode: "fifth_wheel_vertical_play_max",
       },
       {
         item: "Safety chains/hooks (if equipped)",
@@ -1518,7 +1573,11 @@ export const masterInspectionList: InspectionCategory[] = [
         priority: 80,
         dutyClasses: ["light", "medium", "heavy"],
       },
-      { item: "Fuses/fuse block", priority: 60, dutyClasses: ["light", "medium", "heavy"] },
+      {
+        item: "Fuses/fuse block",
+        priority: 60,
+        dutyClasses: ["light", "medium", "heavy"],
+      },
       {
         item: "Wiring harness condition",
         priority: 70,
@@ -1553,27 +1612,114 @@ export const masterInspectionList: InspectionCategory[] = [
   {
     title: "Interior, HVAC & Wipers",
     items: [
-      { item: "HVAC — heat/AC/defrost", priority: 85, dutyClasses: ["light", "medium", "heavy"] },
-      { item: "Windshield wipers & washers", priority: 90, dutyClasses: ["light", "medium", "heavy"] },
-      { item: "Horn operation", priority: 80, dutyClasses: ["light", "medium", "heavy"] },
-      { item: "Dash lights & gauges", priority: 70, dutyClasses: ["light", "medium", "heavy"] },
-      { item: "Seat belts & seats", required: true, priority: 90, dutyClasses: ["light", "medium", "heavy"] },
-      { item: "Mirrors (condition/adjustment)", priority: 80, dutyClasses: ["light", "medium", "heavy"] },
-      { item: "Door latches & hinges", priority: 60, dutyClasses: ["light", "medium", "heavy"] },
-      { item: "Cab mounts", vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], priority: 55 },
+      {
+        item: "HVAC — heat/AC/defrost",
+        priority: 85,
+        dutyClasses: ["light", "medium", "heavy"],
+      },
+      {
+        item: "Windshield wipers & washers",
+        priority: 90,
+        dutyClasses: ["light", "medium", "heavy"],
+      },
+      {
+        item: "Horn operation",
+        priority: 80,
+        dutyClasses: ["light", "medium", "heavy"],
+      },
+      {
+        item: "Dash lights & gauges",
+        priority: 70,
+        dutyClasses: ["light", "medium", "heavy"],
+      },
+      {
+        item: "Seat belts & seats",
+        required: true,
+        priority: 90,
+        dutyClasses: ["light", "medium", "heavy"],
+      },
+      {
+        item: "Mirrors (condition/adjustment)",
+        priority: 80,
+        dutyClasses: ["light", "medium", "heavy"],
+      },
+      {
+        item: "Door latches & hinges",
+        priority: 60,
+        dutyClasses: ["light", "medium", "heavy"],
+      },
+      {
+        item: "Cab mounts",
+        vehicleTypes: ["truck", "bus"],
+        dutyClasses: ["heavy"],
+        priority: 55,
+      },
 
       // CVIP 5.x bus / HD extras
-      { item: "Fire extinguisher (HD/Bus/Trailer)", vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 80 },
-      { item: "Hazard warning kit", vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 75 },
-      { item: "Instruments & gauges on a bus", vehicleTypes: ["bus"], dutyClasses: ["heavy"], priority: 70 },
-      { item: "Speedometer", dutyClasses: ["light", "medium", "heavy"], priority: 70 },
-      { item: "Odometer", dutyClasses: ["light", "medium", "heavy"], priority: 70 },
-      { item: "Heater & windshield defroster (bus)", vehicleTypes: ["bus"], dutyClasses: ["heavy"], priority: 70 },
-      { item: "Fuel-burning auxiliary heater", vehicleTypes: ["bus"], dutyClasses: ["heavy"], priority: 55 },
-      { item: "Auxiliary controls & devices", vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], priority: 55 },
-      { item: "On-board auxiliary equipment on a bus", vehicleTypes: ["bus"], dutyClasses: ["heavy"], priority: 55 },
-      { item: "First aid kit on a bus", vehicleTypes: ["bus"], dutyClasses: ["heavy"], priority: 55 },
-      { item: "Accessibility features & equipment on a bus", vehicleTypes: ["bus"], dutyClasses: ["heavy"], priority: 55 },
+      {
+        item: "Fire extinguisher (HD/Bus/Trailer)",
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        priority: 80,
+      },
+      {
+        item: "Hazard warning kit",
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        priority: 75,
+      },
+      {
+        item: "Instruments & gauges on a bus",
+        vehicleTypes: ["bus"],
+        dutyClasses: ["heavy"],
+        priority: 70,
+      },
+      {
+        item: "Speedometer",
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 70,
+      },
+      {
+        item: "Odometer",
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 70,
+      },
+      {
+        item: "Heater & windshield defroster (bus)",
+        vehicleTypes: ["bus"],
+        dutyClasses: ["heavy"],
+        priority: 70,
+      },
+      {
+        item: "Fuel-burning auxiliary heater",
+        vehicleTypes: ["bus"],
+        dutyClasses: ["heavy"],
+        priority: 55,
+      },
+      {
+        item: "Auxiliary controls & devices",
+        vehicleTypes: ["truck", "bus"],
+        dutyClasses: ["heavy"],
+        priority: 55,
+      },
+      {
+        item: "On-board auxiliary equipment on a bus",
+        vehicleTypes: ["bus"],
+        dutyClasses: ["heavy"],
+        priority: 55,
+      },
+      {
+        item: "First aid kit on a bus",
+        vehicleTypes: ["bus"],
+        dutyClasses: ["heavy"],
+        priority: 55,
+      },
+      {
+        item: "Accessibility features & equipment on a bus",
+        vehicleTypes: ["bus"],
+        dutyClasses: ["heavy"],
+        priority: 55,
+      },
     ],
   },
 
@@ -1605,7 +1751,11 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 50,
       },
-      { item: "Spare fuses & bulbs", dutyClasses: ["light", "medium", "heavy"], priority: 40 },
+      {
+        item: "Spare fuses & bulbs",
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 40,
+      },
     ],
   },
 ];
@@ -1701,12 +1851,25 @@ export function buildFromMaster({
   // Group back into sections (preserve your category titles)
   const byTitle = new Map<
     string,
-    { title: string; items: { item: string; unit?: string | null }[] }
+    {
+      title: string;
+      items: {
+        item: string;
+        unit?: string | null;
+        specCode?: string | null;
+      }[];
+    }
   >();
+
   for (const it of picked) {
-    if (!byTitle.has(it.title))
+    if (!byTitle.has(it.title)) {
       byTitle.set(it.title, { title: it.title, items: [] });
-    byTitle.get(it.title)!.items.push({ item: it.item, unit: it.unit ?? null });
+    }
+    byTitle.get(it.title)!.items.push({
+      item: it.item,
+      unit: it.unit ?? null,
+      specCode: it.specCode ?? null,
+    });
   }
 
   const sections = Array.from(byTitle.values()).map((s) => ({

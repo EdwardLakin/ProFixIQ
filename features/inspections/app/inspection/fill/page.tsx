@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/fill/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,18 +8,21 @@ type Dict = Record<string, string>;
 
 function paramsToObject(sp: URLSearchParams): Dict {
   const out: Dict = {};
-  sp.forEach((v, k) => (out[k] = v));
+  sp.forEach((v, k) => {
+    out[k] = v;
+  });
   return out;
 }
 
 export default function InspectionFillPage() {
   const sp = useSearchParams();
   const router = useRouter();
+
   const [ready, setReady] = useState(false);
   const [template, setTemplate] = useState<string | null>(null);
   const [params, setParams] = useState<Dict>({});
 
-  // Pull from URL first; if missing, use sessionStorage (set by /inspection/run)
+  // Pull from URL first; if missing, fall back to staged sessionStorage values
   useEffect(() => {
     const urlTemplate = sp.get("template");
     const urlParams = paramsToObject(sp);
@@ -30,16 +32,16 @@ export default function InspectionFillPage() {
       nextTemplate = sessionStorage.getItem("inspection:template");
     }
 
-    // Keep everything else that run staged
     const stagedParams =
       typeof window !== "undefined"
-        ? (JSON.parse(sessionStorage.getItem("inspection:params") || "{}") as Dict)
+        ? (JSON.parse(
+            sessionStorage.getItem("inspection:params") || "{}",
+          ) as Dict)
         : {};
 
     const merged: Dict = { ...stagedParams, ...urlParams };
 
     if (!nextTemplate) {
-      // Nothing to render; bounce to a safe location
       router.replace("/inspections");
       return;
     }
@@ -49,18 +51,32 @@ export default function InspectionFillPage() {
     setReady(true);
   }, [sp, router]);
 
+  // Shared glass card style to match work order / run loader
+  const cardBase =
+    "mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+  const cardInner =
+    "rounded-xl border border-slate-700/60 bg-slate-950/80";
+
   if (!ready || !template) {
     return (
-      <div className="p-6 text-sm text-neutral-300">
-        Preparing inspection…
+      <div className="flex min-h-[60vh] items-center justify-center bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
+        <div className={`${cardBase} px-4 py-3 text-sm text-muted-foreground`}>
+          <div className={`${cardInner} px-4 py-3 text-sm`}>
+            Preparing inspection…
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="px-3 py-4 text-white">
-      {/* InspectionHost is your runtime form renderer */}
-      <InspectionHost template={template} embed params={params} />
+    <div className="min-h-[80vh] bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
+      <div className={cardBase}>
+        <div className={`${cardInner} p-3 sm:p-4`}>
+          {/* InspectionHost is the runtime form renderer */}
+          <InspectionHost template={template} embed params={params} />
+        </div>
+      </div>
     </div>
   );
 }

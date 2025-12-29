@@ -1,3 +1,5 @@
+//features/inspections/components/inspection/FinishInspectionButton.tsx
+
 "use client";
 
 import { useMemo, useState } from "react";

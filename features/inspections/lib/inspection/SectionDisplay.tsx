@@ -1,3 +1,5 @@
+//features/inspections/lib/inspection/SectionDisplay.tsx
+
 "use client";
 
 import { useState, useMemo } from "react";

@@ -9,6 +9,8 @@ type Props = {
   sectionIndex: number;
   items: InspectionItem[];
   unitHint?: (label: string) => string;
+  /** Optional: show CVIP spec for a full label like "LF Tire Tread". */
+  onSpecHint?: (fullLabel: string) => void;
 };
 
 type Corner = "LF" | "RF" | "LR" | "RR";
@@ -53,7 +55,12 @@ const metricCompare = (a: string, b: string) => {
   return a.localeCompare(b);
 };
 
-export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
+export default function CornerGrid({
+  sectionIndex,
+  items,
+  unitHint,
+  onSpecHint,
+}: Props) {
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
 
@@ -182,7 +189,23 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
                   {grid.rows.map((row, rowIdx) => (
                     <tr key={`${row.metric}-${rowIdx}`} className="align-middle">
                       <td className="px-3 py-2 text-sm font-semibold text-neutral-100">
-                        {row.metric}
+                        <div className="flex items-center gap-2">
+                          <span>{row.metric}</span>
+                          {onSpecHint && (
+                            <button
+                              type="button"
+                              tabIndex={-1}
+                              onClick={() =>
+                                // pass a generic LF label (caller can just parse by metric)
+                                onSpecHint(row.metric)
+                              }
+                              className="rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.16em] text-orange-300 hover:bg-orange-500/20"
+                              title="Show CVIP spec"
+                            >
+                              Spec
+                            </button>
+                          )}
+                        </div>
                       </td>
                       {grid.corners.map((corner, colIdx) => {
                         const cell = row.cells.find(

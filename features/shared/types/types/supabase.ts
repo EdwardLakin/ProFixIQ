@@ -1991,6 +1991,53 @@ export type Database = {
           },
         ]
       }
+      inspection_signatures: {
+        Row: {
+          id: string
+          inspection_id: string
+          ip_address: string | null
+          role: string
+          signature_hash: string | null
+          signature_image_path: string | null
+          signed_at: string
+          signed_by: string | null
+          signed_name: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          id?: string
+          inspection_id: string
+          ip_address?: string | null
+          role: string
+          signature_hash?: string | null
+          signature_image_path?: string | null
+          signed_at?: string
+          signed_by?: string | null
+          signed_name?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          id?: string
+          inspection_id?: string
+          ip_address?: string | null
+          role?: string
+          signature_hash?: string | null
+          signature_image_path?: string | null
+          signed_at?: string
+          signed_by?: string | null
+          signed_name?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_signatures_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspection_templates: {
         Row: {
           created_at: string | null
@@ -2056,11 +2103,15 @@ export type Database = {
           ai_summary: string | null
           completed: boolean | null
           created_at: string | null
+          finalized_at: string | null
+          finalized_by: string | null
           id: string
           inspection_type: string | null
           is_draft: boolean | null
           location: string | null
+          locked: boolean | null
           notes: string | null
+          pdf_storage_path: string | null
           pdf_url: string | null
           photo_urls: string[] | null
           quote_id: string | null
@@ -2078,11 +2129,15 @@ export type Database = {
           ai_summary?: string | null
           completed?: boolean | null
           created_at?: string | null
+          finalized_at?: string | null
+          finalized_by?: string | null
           id?: string
           inspection_type?: string | null
           is_draft?: boolean | null
           location?: string | null
+          locked?: boolean | null
           notes?: string | null
+          pdf_storage_path?: string | null
           pdf_url?: string | null
           photo_urls?: string[] | null
           quote_id?: string | null
@@ -2100,11 +2155,15 @@ export type Database = {
           ai_summary?: string | null
           completed?: boolean | null
           created_at?: string | null
+          finalized_at?: string | null
+          finalized_by?: string | null
           id?: string
           inspection_type?: string | null
           is_draft?: boolean | null
           location?: string | null
+          locked?: boolean | null
           notes?: string | null
+          pdf_storage_path?: string | null
           pdf_url?: string | null
           photo_urls?: string[] | null
           quote_id?: string | null
@@ -8137,6 +8196,16 @@ export type Database = {
       shop_id_for: { Args: { uid: string }; Returns: string }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      sign_inspection: {
+        Args: {
+          p_inspection_id: string
+          p_role: string
+          p_signature_hash?: string
+          p_signature_image_path?: string
+          p_signed_name: string
+        }
+        Returns: undefined
+      }
       update_part_quote: {
         Args: {
           p_item: string

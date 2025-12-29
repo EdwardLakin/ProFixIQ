@@ -1,6 +1,8 @@
 // features/inspections/screens/GenericInspectionScreen.tsx
 "use client";
 
+// --- Part 1/3 ---
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
@@ -37,6 +39,7 @@ import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionForm
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
+import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 
@@ -233,7 +236,9 @@ function inspectionDraftKey(args: {
 }
 
 /** build cause/correction from session.sections (NOT just quote) so it always works */
-function buildCauseCorrectionFromSession(s: any): { cause: string; correction: string } {
+function buildCauseCorrectionFromSession(
+  s: any,
+): { cause: string; correction: string } {
   const sections: any[] = Array.isArray(s?.sections) ? s.sections : [];
 
   const failed: string[] = [];
@@ -259,7 +264,8 @@ function buildCauseCorrectionFromSession(s: any): { cause: string; correction: s
   if (failed.length === 0 && rec.length === 0) {
     return {
       cause: "Inspection completed.",
-      correction: "Inspection completed. No failed or recommended items were recorded.",
+      correction:
+        "Inspection completed. No failed or recommended items were recorded.",
     };
   }
 
@@ -331,8 +337,9 @@ export default function GenericInspectionScreen(): JSX.Element {
   const showMissingLineWarning = isEmbed && !workOrderLineId;
 
   const templateName =
-    (typeof window !== "undefined" ? sessionStorage.getItem("inspection:title") : null) ||
-    (sp.get("template") || "Inspection");
+    (typeof window !== "undefined"
+      ? sessionStorage.getItem("inspection:title")
+      : null) || sp.get("template") || "Inspection";
 
   const customer: SessionCustomer = {
     first_name: sp.get("first_name") || "",
@@ -416,6 +423,8 @@ export default function GenericInspectionScreen(): JSX.Element {
     [inspectionId, workOrderLineId, workOrderId, templateName],
   );
 
+  const lockKey = `${draftKey}:locked`;
+
   const persistedSession = useMemo(() => {
     if (typeof window === "undefined") return null;
     const raw = localStorage.getItem(draftKey);
@@ -431,13 +440,15 @@ export default function GenericInspectionScreen(): JSX.Element {
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
 
   // 🔹 per-section "add item" state
   const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>({});
   const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
 
   // section collapse state
-  const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
+  const [collapsedSections, setCollapsedSections] =
+    useState<Record<number, boolean>>({});
 
   // 🔴 wake-word state
   const [wakeActive, setWakeActive] = useState(false);
@@ -476,6 +487,24 @@ export default function GenericInspectionScreen(): JSX.Element {
     addQuoteLine,
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
+
+  // hydrate lock from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(lockKey);
+      setIsLocked(raw === "1");
+    } catch {
+      // ignore
+    }
+  }, [lockKey]);
+
+  const guardLocked = (): boolean => {
+    if (!isLocked) return false;
+    toast.error("This inspection is signed and locked. Editing is disabled.");
+    return true;
+  };
+  // --- Part 2/3 ---
 
   // start
   useEffect(() => {
@@ -554,15 +583,24 @@ export default function GenericInspectionScreen(): JSX.Element {
       // clear draft
       try {
         localStorage.removeItem(draftKey);
+        localStorage.removeItem(lockKey);
       } catch {}
     };
 
-    window.addEventListener("inspection:completed", handler as EventListener);
-    return () => window.removeEventListener("inspection:completed", handler as EventListener);
-  }, [session, draftKey]);
+    window.addEventListener(
+      "inspection:completed",
+      handler as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        "inspection:completed",
+        handler as EventListener,
+      );
+  }, [session, draftKey, lockKey]);
 
   // 🔸 turn final text into inspection commands
   const handleTranscript = async (text: string): Promise<void> => {
+    if (!session || guardLocked()) return;
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess = session;
     if (!sess) return;
@@ -607,12 +645,15 @@ export default function GenericInspectionScreen(): JSX.Element {
   // 🔊 openai realtime start (used only when mobile buttons are visible)
   const startListening = async (): Promise<void> => {
     if (isListening) return;
+    if (guardLocked()) return;
     try {
       const res = await fetch("/api/openai/realtime-token");
       const { apiKey } = (await res.json()) as { apiKey: string };
       if (!apiKey) throw new Error("Missing OpenAI key");
 
-      const ws = new WebSocket("wss://api.openai.com/v1/realtime?intent=transcription");
+      const ws = new WebSocket(
+        "wss://api.openai.com/v1/realtime?intent=transcription",
+      );
       wsRef.current = ws;
 
       ws.onopen = async () => {
@@ -710,8 +751,16 @@ export default function GenericInspectionScreen(): JSX.Element {
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
+  const submitAIForItem = async (
+    secIdx: number,
+    itemIdx: number,
+  ): Promise<void> => {
     if (!session) return;
+    if (isLocked) {
+      toast.error("Inspection is locked; AI suggestions are disabled.");
+      return;
+    }
+
     const key = `${secIdx}:${itemIdx}`;
     if (inFlightRef.current.has(key)) return;
 
@@ -855,14 +904,21 @@ export default function GenericInspectionScreen(): JSX.Element {
               return;
             }
 
-            toast.success("Line + parts request created from inspection", { id: toastId });
+            toast.success("Line + parts request created from inspection", {
+              id: toastId,
+            });
           } catch (err) {
             // eslint-disable-next-line no-console
             console.error("Parts request failed", err);
-            toast.error("Line added, but couldn't reach parts request service", { id: toastId });
+            toast.error(
+              "Line added, but couldn't reach parts request service",
+              { id: toastId },
+            );
           }
         } else {
-          toast.success("Added to work order (no parts requested)", { id: toastId });
+          toast.success("Added to work order (no parts requested)", {
+            id: toastId,
+          });
         }
       } else {
         toast.error("Missing work order id — saved locally only", { id: toastId });
@@ -948,7 +1004,9 @@ export default function GenericInspectionScreen(): JSX.Element {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Tab") return;
 
-      const focusables = Array.from(root.querySelectorAll<HTMLElement>(selector)).filter(
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>(selector),
+      ).filter(
         (el) =>
           !el.hasAttribute("disabled") &&
           el.tabIndex !== -1 &&
@@ -993,7 +1051,9 @@ export default function GenericInspectionScreen(): JSX.Element {
 
   // 🔹 helpers that depend on a live session
   const currentSectionIndex =
-    typeof session.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
+    typeof session.currentSectionIndex === "number"
+      ? session.currentSectionIndex
+      : 0;
   const safeSectionIndex =
     currentSectionIndex >= 0 && currentSectionIndex < session.sections.length
       ? currentSectionIndex
@@ -1033,7 +1093,11 @@ export default function GenericInspectionScreen(): JSX.Element {
     });
   }
 
-  function applyStatusToSection(sectionIndex: number, status: InspectionItemStatus): void {
+  function applyStatusToSection(
+    sectionIndex: number,
+    status: InspectionItemStatus,
+  ): void {
+    if (guardLocked()) return;
     const section = session.sections[sectionIndex];
     if (!section) return;
     const nextItems = (section.items ?? []).map((it) => ({
@@ -1055,6 +1119,7 @@ export default function GenericInspectionScreen(): JSX.Element {
   }
 
   const handleStartMobile = (): void => {
+    if (guardLocked()) return;
     setIsPaused(false);
     resumeSession();
     void startListening();
@@ -1090,8 +1155,12 @@ export default function GenericInspectionScreen(): JSX.Element {
       const template_name = `${baseName} (from run)`;
 
       // super simple labor-hours approximation: 0.1h per item
-      const totalItems = cleanedSections.reduce((sum, s) => sum + s.items.length, 0);
-      const labor_hours = totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
+      const totalItems = cleanedSections.reduce(
+        (sum, s) => sum + s.items.length,
+        0,
+      );
+      const labor_hours =
+        totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
 
       const payload: InsertTemplate = {
         template_name,
@@ -1129,6 +1198,8 @@ export default function GenericInspectionScreen(): JSX.Element {
   // 🔸 Add new item inline to a section (non-grid)
   const handleAddCustomItem = (sectionIndex: number): void => {
     if (!session) return;
+    if (guardLocked()) return;
+
     const label = (newItemLabels[sectionIndex] || "").trim();
     if (!label) {
       toast.error("Enter a label for the new item.");
@@ -1150,6 +1221,16 @@ export default function GenericInspectionScreen(): JSX.Element {
 
     setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
     // keep unit selection as-is, so they can add multiple with same unit
+  };
+
+  const handleSigned = (): void => {
+    setIsLocked(true);
+    try {
+      localStorage.setItem(lockKey, "1");
+    } catch {
+      // ignore
+    }
+    toast.success("Inspection snapshot locked by signature.");
   };
 
   // ✅ ensure bottom actions are ALWAYS reachable/visible:
@@ -1174,8 +1255,14 @@ export default function GenericInspectionScreen(): JSX.Element {
 
   const actions = (
     <>
-      <SaveInspectionButton session={session as any} workOrderLineId={workOrderLineId} />
-      <FinishInspectionButton session={session as any} workOrderLineId={workOrderLineId} />
+      <SaveInspectionButton
+        session={session as any}
+        workOrderLineId={workOrderLineId}
+      />
+      <FinishInspectionButton
+        session={session as any}
+        workOrderLineId={workOrderLineId}
+      />
       <Button
         type="button"
         variant="outline"
@@ -1187,6 +1274,7 @@ export default function GenericInspectionScreen(): JSX.Element {
       </Button>
     </>
   );
+  // --- Part 3/3 ---
 
   const body = (
     <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
@@ -1215,33 +1303,42 @@ export default function GenericInspectionScreen(): JSX.Element {
             <div className="mt-0.5 line-clamp-1 text-sm font-semibold text-orange-300">
               {currentSection?.title || "Current section"}
             </div>
+            {isLocked && (
+              <div className="mt-1 inline-flex items-center rounded-full border border-amber-500/80 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200">
+                Locked snapshot
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
             <button
               type="button"
-              className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20"
+              disabled={isLocked}
+              className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => applyStatusToSection(safeSectionIndex, "ok")}
             >
               All OK
             </button>
             <button
               type="button"
-              className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20"
+              disabled={isLocked}
+              className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => applyStatusToSection(safeSectionIndex, "fail")}
             >
               All Fail
             </button>
             <button
               type="button"
-              className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20"
+              disabled={isLocked}
+              className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => applyStatusToSection(safeSectionIndex, "na")}
             >
               All NA
             </button>
             <button
               type="button"
-              className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20"
+              disabled={isLocked}
+              className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => applyStatusToSection(safeSectionIndex, "recommend")}
             >
               All REC
@@ -1279,7 +1376,7 @@ export default function GenericInspectionScreen(): JSX.Element {
         {/* Controls row */}
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {/* Voice only in mobile companion (top buttons) */}
-          {isMobileView && (
+          {isMobileView && !isLocked && (
             <StartListeningButton
               isListening={isListening}
               setIsListening={setIsListening}
@@ -1287,7 +1384,7 @@ export default function GenericInspectionScreen(): JSX.Element {
             />
           )}
 
-          {isMobileView && (
+          {isMobileView && !isLocked && (
             <PauseResumeButton
               isPaused={isPaused}
               isListening={isListening}
@@ -1315,7 +1412,9 @@ export default function GenericInspectionScreen(): JSX.Element {
             type="button"
             variant="outline"
             className="w-full justify-center border-orange-500/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
-            onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
+            onClick={(): void =>
+              setUnit(unit === "metric" ? "imperial" : "metric")
+            }
           >
             Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
           </Button>
@@ -1327,153 +1426,207 @@ export default function GenericInspectionScreen(): JSX.Element {
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
-            totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
+            totalItems={
+              session.sections[session.currentSectionIndex]?.items.length || 0
+            }
           />
         </div>
 
         <InspectionFormCtx.Provider value={{ updateItem }}>
-          {session.sections.map((section: InspectionSection, sectionIndex: number) => {
-            const itemsWithHints = section.items.map((it) => ({
-              ...it,
-              unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-            }));
+          {session.sections.map(
+            (section: InspectionSection, sectionIndex: number) => {
+              const itemsWithHints = section.items.map((it) => ({
+                ...it,
+                unit: it.unit || unitHintGeneric(it.item ?? "", unit),
+              }));
 
-            const batterySection = isBatterySection(section.title, itemsWithHints);
-            const useGrid =
-              batterySection || shouldRenderCornerGrid(section.title, itemsWithHints);
-            const collapsed = collapsedSections[sectionIndex] ?? false;
+              const batterySection = isBatterySection(
+                section.title,
+                itemsWithHints,
+              );
+              const useGrid =
+                batterySection ||
+                shouldRenderCornerGrid(section.title, itemsWithHints);
+              const collapsed = collapsedSections[sectionIndex] ?? false;
 
-            const newLabel = newItemLabels[sectionIndex] ?? "";
-            const newUnit = newItemUnits[sectionIndex] ?? "";
+              const newLabel = newItemLabels[sectionIndex] ?? "";
+              const newUnit = newItemUnits[sectionIndex] ?? "";
 
-            return (
-              <div key={`${section.title}-${sectionIndex}`} className={sectionCard}>
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className={sectionTitle}>{section.title}</h2>
-                  <button
-                    type="button"
-                    className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
-                    onClick={() => toggleSectionCollapsed(sectionIndex)}
-                  >
-                    {collapsed ? "Expand" : "Collapse"}
-                  </button>
-                </div>
+              return (
+                <div
+                  key={`${section.title}-${sectionIndex}`}
+                  className={sectionCard}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className={sectionTitle}>{section.title}</h2>
+                    <button
+                      type="button"
+                      className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+                      onClick={() => toggleSectionCollapsed(sectionIndex)}
+                    >
+                      {collapsed ? "Expand" : "Collapse"}
+                    </button>
+                  </div>
 
-                {collapsed ? (
-                  <p className="mt-2 text-center text-[11px] text-neutral-400">
-                    Section collapsed. Tap <span className="font-semibold">Expand</span>{" "}
-                    or use the sticky header to reopen.
-                  </p>
-                ) : (
-                  <>
-                    {useGrid && (
-                      <span className={hint}>
-                        {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
-                      </span>
-                    )}
+                  {collapsed ? (
+                    <p className="mt-2 text-center text-[11px] text-neutral-400">
+                      Section collapsed. Tap{" "}
+                      <span className="font-semibold">Expand</span> or use the
+                      sticky header to reopen.
+                    </p>
+                  ) : (
+                    <>
+                      {useGrid && (
+                        <span className={hint}>
+                          {unit === "metric"
+                            ? "Enter mm / kPa / N·m"
+                            : "Enter in / psi / ft·lb"}
+                        </span>
+                      )}
 
-                    <div className="mt-3 md:mt-4">
-                      {useGrid ? (
-                        batterySection ? (
-                          <BatteryGrid
-                            sectionIndex={sectionIndex}
-                            items={itemsWithHints}
-                            unitHint={(label) => unitHintGeneric(label, unit)}
-                          />
+                      <div className="mt-3 md:mt-4">
+                        {useGrid ? (
+                          batterySection ? (
+                            <BatteryGrid
+                              sectionIndex={sectionIndex}
+                              items={itemsWithHints}
+                              unitHint={(label) => unitHintGeneric(label, unit)}
+                            />
+                          ) : (
+                            <AxlesCornerGrid
+                              sectionIndex={sectionIndex}
+                              items={itemsWithHints}
+                              unitHint={(label) => unitHintGeneric(label, unit)}
+                            />
+                          )
                         ) : (
-                          <AxlesCornerGrid
-                            sectionIndex={sectionIndex}
-                            items={itemsWithHints}
-                            unitHint={(label) => unitHintGeneric(label, unit)}
-                          />
-                        )
-                      ) : (
-                        <>
-                          <SectionDisplay
-                            title=""
-                            section={{ ...section, items: itemsWithHints }}
-                            sectionIndex={sectionIndex}
-                            showNotes
-                            showPhotos
-                            onUpdateStatus={(secIdx, itemIdx, statusValue) => {
-                              updateItem(secIdx, itemIdx, { status: statusValue });
-                              autoAdvanceFrom(secIdx, itemIdx);
-                            }}
-                            onUpdateNote={(secIdx, itemIdx, note) => {
-                              updateItem(secIdx, itemIdx, { notes: note });
-                            }}
-                            onUpload={(photoUrl, secIdx, itemIdx) => {
-                              const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                              updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
-                            }}
-                            /** 🔹 persist tech-entered parts + labor inside the session item */
-                            onUpdateParts={(secIdx, itemIdx, parts) => {
-                              updateItem(secIdx, itemIdx, { parts });
-                            }}
-                            onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-                              updateItem(secIdx, itemIdx, { laborHours: hours });
-                            }}
-                            requireNoteForAI
-                            onSubmitAI={(secIdx, itemIdx) => {
-                              void submitAIForItem(secIdx, itemIdx);
-                            }}
-                            isSubmittingAI={isSubmittingAI}
-                          />
+                          <>
+                            <SectionDisplay
+                              title=""
+                              section={{ ...section, items: itemsWithHints }}
+                              sectionIndex={sectionIndex}
+                              showNotes
+                              showPhotos
+                              onUpdateStatus={(
+                                secIdx,
+                                itemIdx,
+                                statusValue,
+                              ) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, {
+                                  status: statusValue,
+                                });
+                                autoAdvanceFrom(secIdx, itemIdx);
+                              }}
+                              onUpdateNote={(secIdx, itemIdx, note) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { notes: note });
+                              }}
+                              onUpload={(photoUrl, secIdx, itemIdx) => {
+                                if (guardLocked()) return;
+                                const prev =
+                                  session.sections[secIdx].items[itemIdx]
+                                    .photoUrls ?? [];
+                                updateItem(secIdx, itemIdx, {
+                                  photoUrls: [...prev, photoUrl],
+                                });
+                              }}
+                              /** 🔹 persist tech-entered parts + labor inside the session item */
+                              onUpdateParts={(secIdx, itemIdx, parts) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { parts });
+                              }}
+                              onUpdateLaborHours={(
+                                secIdx,
+                                itemIdx,
+                                hours,
+                              ) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, {
+                                  laborHours: hours,
+                                });
+                              }}
+                              requireNoteForAI
+                              onSubmitAI={(secIdx, itemIdx) => {
+                                void submitAIForItem(secIdx, itemIdx);
+                              }}
+                              isSubmittingAI={isSubmittingAI}
+                            />
 
-                          {/* 🔹 Inline add-item row for this section */}
-                          <div className="mt-4 border-t border-white/10 pt-3">
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                              Add custom item
-                            </div>
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                              <input
-                                className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                                placeholder="Item label (e.g. Rear frame inspection)"
-                                value={newLabel}
-                                onChange={(e) =>
-                                  setNewItemLabels((prev) => ({
-                                    ...prev,
-                                    [sectionIndex]: e.target.value,
-                                  }))
-                                }
-                              />
-                              <div className="flex items-center gap-2 md:w-auto">
-                                <select
-                                  className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                                  value={newUnit}
+                            {/* 🔹 Inline add-item row for this section */}
+                            <div className="mt-4 border-t border-white/10 pt-3">
+                              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                                Add custom item
+                              </div>
+                              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                                <input
+                                  className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                  placeholder="Item label (e.g. Rear frame inspection)"
+                                  value={newLabel}
                                   onChange={(e) =>
-                                    setNewItemUnits((prev) => ({
+                                    setNewItemLabels((prev) => ({
                                       ...prev,
                                       [sectionIndex]: e.target.value,
                                     }))
                                   }
-                                  title="Measurement unit"
-                                >
-                                  {UNIT_OPTIONS.map((u) => (
-                                    <option key={u || "blank"} value={u}>
-                                      {u || "— unit —"}
-                                    </option>
-                                  ))}
-                                </select>
-                                <Button
-                                  type="button"
-                                  className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                                  onClick={() => handleAddCustomItem(sectionIndex)}
-                                >
-                                  + Add Item
-                                </Button>
+                                  disabled={isLocked}
+                                />
+                                <div className="flex items-center gap-2 md:w-auto">
+                                  <select
+                                    className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                    value={newUnit}
+                                    onChange={(e) =>
+                                      setNewItemUnits((prev) => ({
+                                        ...prev,
+                                        [sectionIndex]: e.target.value,
+                                      }))
+                                    }
+                                    title="Measurement unit"
+                                    disabled={isLocked}
+                                  >
+                                    {UNIT_OPTIONS.map((u) => (
+                                      <option key={u || "blank"} value={u}>
+                                        {u || "— unit —"}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <Button
+                                    type="button"
+                                    className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
+                                    onClick={() =>
+                                      handleAddCustomItem(sectionIndex)
+                                    }
+                                    disabled={isLocked}
+                                  >
+                                    + Add Item
+                                  </Button>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            },
+          )}
         </InspectionFormCtx.Provider>
+
+        {/* Signature & lock */}
+        <div className="mt-2">
+          <InspectionSignaturePanel
+            inspectionId={inspectionId}
+            role="customer"
+            defaultName={
+              [customer.first_name, customer.last_name]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
+            onSigned={handleSigned}
+          />
+        </div>
 
         {/* Footer actions (kept for non-embed desktop flows) */}
         <div className="mt-4 md:mt-6 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
@@ -1487,8 +1640,8 @@ export default function GenericInspectionScreen(): JSX.Element {
           </div>
 
           <div className="text-xs text-neutral-400 md:text-right">
-            <span className="font-semibold text-neutral-200">Legend:</span> P = Pass &nbsp;•&nbsp;
-            F = Fail &nbsp;•&nbsp; NA = Not applicable
+            <span className="font-semibold text-neutral-200">Legend:</span> P = Pass
+            &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
           </div>
         </div>
       </div>
@@ -1514,8 +1667,9 @@ export default function GenericInspectionScreen(): JSX.Element {
                 type="button"
                 className="px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
                 onClick={handleStartMobile}
+                disabled={isLocked}
               >
-                Start
+                {isLocked ? "Locked" : "Start"}
               </Button>
               <Button
                 type="button"
@@ -1528,10 +1682,16 @@ export default function GenericInspectionScreen(): JSX.Element {
             </div>
             <div className="flex gap-2">
               <div className="scale-90">
-                <SaveInspectionButton session={session as any} workOrderLineId={workOrderLineId} />
+                <SaveInspectionButton
+                  session={session as any}
+                  workOrderLineId={workOrderLineId}
+                />
               </div>
               <div className="scale-90">
-                <FinishInspectionButton session={session as any} workOrderLineId={workOrderLineId} />
+                <FinishInspectionButton
+                  session={session as any}
+                  workOrderLineId={workOrderLineId}
+                />
               </div>
             </div>
           </div>

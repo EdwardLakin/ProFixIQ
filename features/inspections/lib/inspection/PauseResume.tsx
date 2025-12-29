@@ -1,3 +1,5 @@
+//features/inspections/lib/inspection/PauseResume.tsx
+
 "use client";
 
 import {

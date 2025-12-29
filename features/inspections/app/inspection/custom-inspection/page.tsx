@@ -1,3 +1,4 @@
+// features/inspecctions/app/inspection/custom-inspection/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -6,6 +7,7 @@ import { buildInspectionFromSelections } from "@inspections/lib/inspection/build
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 
 type DutyClass = "light" | "medium" | "heavy";
+type GridMode = "hyd" | "air" | "none";
 
 // Minimal shape we care about when merging
 type Section = {
@@ -145,14 +147,16 @@ function buildBatterySection(): Section {
 /**
  * Deterministic corner-grid injector:
  * - If user/template already has a corner-grid-like title -> leave sections as-is.
- * - Else strip pattern-based corner grids, then inject:
- *   - gridParam = "air" | "hyd" | "none"
- *   - If no gridParam, infer from vehicleType string.
+ * - Else strip pattern-based corner grids, then inject based on gridParam:
+ *   - "air"  → air corner grid
+ *   - "hyd"  → hydraulic corner grid
+ *   - "none" → no corner grid injected
+ *   - "" / null → infer from vehicleType (kept for backward-compat).
  */
 function prepareSectionsWithCornerGrid(
   sections: Section[] | unknown,
   vehicleType: string | null | undefined,
-  gridParam: string | null,
+  gridParam: GridMode | "" | null,
 ): Section[] {
   const s = Array.isArray(sections) ? (sections as Section[]) : [];
 
@@ -162,7 +166,7 @@ function prepareSectionsWithCornerGrid(
 
   // 2) Otherwise, strip out any corner-looking item patterns
   const withoutGrids = stripExistingCornerGrids(s);
-  const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
+  const gridMode = (gridParam || "").toLowerCase() as GridMode | "";
 
   if (gridMode === "none") return withoutGrids;
 
@@ -204,6 +208,11 @@ export default function CustomBuilderPage() {
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
 
+  // Manual corner-grid mode (Hyd / Air / None)
+  const [gridMode, setGridMode] = useState<GridMode>(
+    dutyClass === "heavy" ? "air" : "hyd",
+  );
+
   // Manual builder state
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [includeOil, setIncludeOil] = useState(true);
@@ -221,12 +230,12 @@ export default function CustomBuilderPage() {
 
   /* --------------------------- derived helpers --------------------------- */
 
-  const gridMode: "air" | "hyd" = dutyClass === "heavy" ? "air" : "hyd";
-
   const gridModeLabel =
     gridMode === "air"
       ? "Air brake corner grid (Steer + Drive)"
-      : "Hydraulic brake corner grid (LF / RF / LR / RR)";
+      : gridMode === "hyd"
+        ? "Hydraulic brake corner grid (LF / RF / LR / RR)"
+        : "No corner grid";
 
   const dutyLabel =
     dutyClass === "light"
@@ -280,7 +289,7 @@ export default function CustomBuilderPage() {
     // Inject the appropriate corner grid now, so the runtime just renders it.
     const withGrid = prepareSectionsWithCornerGrid(
       sections,
-      dutyClass, // treat as "vehicle type" string for the helper
+      dutyClass, // still used for inference if gridMode is ""
       gridMode,
     );
 
@@ -300,19 +309,17 @@ export default function CustomBuilderPage() {
       "customInspection:includeOil",
       JSON.stringify(includeOil),
     );
-    sessionStorage.setItem(
-      "customInspection:dutyClass",
-      dutyClass,
-    );
+    sessionStorage.setItem("customInspection:dutyClass", dutyClass);
     sessionStorage.setItem(
       "customInspection:includeBatteryGrid",
       JSON.stringify(includeBatteryGrid),
     );
+    sessionStorage.setItem("customInspection:gridMode", gridMode);
 
     const qs = new URLSearchParams(sp.toString());
     qs.set("template", tplTitle);
     qs.set("dutyClass", dutyClass);
-    qs.set("grid", gridMode); // hint for any downstream grid-aware logic
+    qs.set("grid", gridMode); // explicit hint for any downstream grid-aware logic
 
     router.push(`/inspections/custom-draft?${qs.toString()}`);
   }
@@ -521,7 +528,9 @@ export default function CustomBuilderPage() {
             <select
               className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
               value={dutyClass}
-              onChange={(e) => setDutyClass(e.target.value as DutyClass)}
+              onChange={(e) =>
+                setDutyClass(e.target.value as DutyClass)
+              }
             >
               <option value="light">Light</option>
               <option value="medium">Medium</option>
@@ -529,14 +538,14 @@ export default function CustomBuilderPage() {
             </select>
 
             <span className="mt-1 text-[11px] text-neutral-400">
-              Light / Medium → Hydraulic brake grid. Heavy → Air brake corner
-              grid (Steer + Drive).
+              Duty class influences which CVIP/master items are suggested.
+              Corner grid style is chosen separately below.
             </span>
           </label>
         </div>
 
         {/* Toggles: Oil + Battery */}
-        <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"
             onClick={() => setIncludeOil((v) => !v)}
@@ -568,6 +577,36 @@ export default function CustomBuilderPage() {
           </button>
         </div>
 
+        {/* Corner grid mode selector */}
+        <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
+          <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+            Corner grid mode
+          </span>
+          {([
+            { value: "hyd", label: "Hydraulic" },
+            { value: "air", label: "Air" },
+            { value: "none", label: "None" },
+          ] as const).map((opt) => {
+            const active = gridMode === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setGridMode(opt.value)}
+                className={
+                  "rounded-full px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]" +
+                  " " +
+                  (active
+                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)]"
+                    : "border border-neutral-700 bg-black/70 text-neutral-100 hover:bg-black/80")
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* AI builder */}
         <div className="mb-8 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-4">
           <div className="mb-2 text-center font-semibold text-orange-400">
@@ -575,7 +614,8 @@ export default function CustomBuilderPage() {
           </div>
           <p className="mb-2 text-center text-sm text-neutral-300">
             Describe what you want to inspect. We’ll generate sections &amp; items
-            and send them to the editor. Duty class &amp; grid choice are respected.
+            and send them to the editor. Duty class &amp; corner grid mode are
+            respected.
           </p>
           <textarea
             className="mb-3 min-h-[90px] w-full rounded-xl border border-neutral-700 bg-neutral-900/80 p-3 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
@@ -660,7 +700,9 @@ export default function CustomBuilderPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => selectAllInSection(sec.title, sec.items)}
+                      onClick={() =>
+                        selectAllInSection(sec.title, sec.items as any)
+                      }
                       className="rounded-full bg-zinc-800 px-2 py-1 text-[11px] text-white hover:bg-zinc-700"
                     >
                       Select all
@@ -685,21 +727,22 @@ export default function CustomBuilderPage() {
                 {!collapsed && (
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {sec.items.map((i) => {
+                      const label = i.item;
                       const checked = (selections[sec.title] ?? []).includes(
-                        i.item,
+                        label,
                       );
                       return (
                         <label
-                          key={i.item}
+                          key={label}
                           className="flex items-center gap-2 rounded-lg bg-black/60 px-2 py-1 text-sm text-neutral-100"
                         >
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={() => toggle(sec.title, i.item)}
+                            onChange={() => toggle(sec.title, label)}
                             className="h-4 w-4 accent-orange-500"
                           />
-                          <span className="text-xs sm:text-sm">{i.item}</span>
+                          <span className="text-xs sm:text-sm">{label}</span>
                         </label>
                       );
                     })}

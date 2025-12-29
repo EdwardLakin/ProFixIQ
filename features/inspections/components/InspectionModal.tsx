@@ -14,7 +14,9 @@ type Props = {
 
 function paramsToObject(sp: URLSearchParams) {
   const out: Record<string, string> = {};
-  sp.forEach((v, k) => (out[k] = v));
+  sp.forEach((v, k) => {
+    out[k] = v;
+  });
   return out;
 }
 
@@ -160,27 +162,40 @@ export default function InspectionModal({
   const panelWidth = compact ? "max-w-4xl" : "max-w-6xl";
   const bodyHeight = compact ? "max-h-[80vh]" : "max-h-[92vh]";
 
+  // 🎨 Shared with WorkOrderIdClient
+  const cardBase =
+    "rounded-2xl border border-slate-700/70 " +
+    "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] " +
+    "shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+
+  const innerShell =
+    "rounded-2xl border border-slate-700/70 bg-slate-950/95";
+
   return (
     <Dialog
       open={open}
       onClose={close}
       className="fixed inset-0 z-[300] flex items-center justify-center px-2 py-6 sm:px-4"
     >
-      <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm" aria-hidden />
+      {/* dimmed backdrop, keep it consistent with app */}
+      <div className="fixed inset-0 z-[290] bg-black/70 backdrop-blur-sm" aria-hidden />
 
       <Dialog.Panel
-        className={`relative z-[310] mx-auto w-full ${panelWidth}`}
+        className={`relative z-[310] mx-auto w-full ${panelWidth} ${cardBase}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-2 flex items-start justify-between gap-3 rounded-t-lg border border-b-0 border-orange-500 bg-neutral-950/90 px-4 py-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 rounded-t-2xl border-b border-slate-700/80 bg-slate-950/95 px-4 py-3">
           <div className="space-y-1">
-            <Dialog.Title className="text-base font-blackops tracking-wide text-orange-400 sm:text-lg">
+            <Dialog.Title className="text-base font-semibold tracking-wide text-foreground sm:text-lg">
               {title}
             </Dialog.Title>
             {derived.template && (
-              <p className="text-[11px] text-neutral-400">
+              <p className="text-[11px] text-muted-foreground">
                 Template:{" "}
-                <span className="font-mono text-neutral-200">{derived.template}</span>
+                <span className="font-mono text-[rgba(184,115,51,0.95)]">
+                  {derived.template}
+                </span>
               </p>
             )}
           </div>
@@ -188,35 +203,37 @@ export default function InspectionModal({
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-[11px] text-neutral-100 hover:border-orange-500 hover:bg-neutral-800"
+              className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] text-foreground hover:border-[rgba(184,115,51,0.9)] hover:bg-slate-900/80"
             >
               {compact ? "Expand" : "Shrink"}
             </button>
             <button
               type="button"
               onClick={close}
-              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+              className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-muted-foreground hover:bg-slate-800"
+              aria-label="Close inspection"
             >
               ✕
             </button>
           </div>
         </div>
 
+        {/* Body */}
         <div
           ref={scrollRef}
-          className={`${bodyHeight} overflow-y-auto overscroll-contain rounded-b-lg border border-orange-500 bg-neutral-950 p-4 text-white shadow-xl`}
+          className={`${bodyHeight} overflow-y-auto overscroll-contain ${innerShell} rounded-b-2xl p-4 text-foreground`}
           style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable both-edges" }}
         >
           {derived.missingWOLine && (
-            <div className="mb-3 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
+            <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-100">
               <strong>Heads up:</strong>{" "}
-              <code className="font-mono text-yellow-100">workOrderLineId</code> is
-              missing; save/finish will be blocked.
+              <code className="font-mono text-amber-50">workOrderLineId</code> is missing;
+              save/finish will be blocked.
             </div>
           )}
 
           {!derived.template ? (
-            <div className="rounded border border-neutral-800 bg-neutral-900 px-4 py-6 text-center text-sm text-neutral-400">
+            <div className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-6 text-center text-sm text-muted-foreground">
               No inspection selected.
             </div>
           ) : (
@@ -225,26 +242,27 @@ export default function InspectionModal({
             </div>
           )}
 
-          <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Footer actions */}
+          <div className="mt-4 flex flex-col gap-2 border-t border-slate-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="inline-flex items-center justify-center rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:border-orange-500 hover:bg-neutral-800 sm:text-[11px]"
+              className="inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-muted-foreground hover:border-[rgba(184,115,51,0.9)] hover:text-foreground hover:bg-slate-900/80 sm:text-[11px]"
             >
-              {compact ? "Expand View" : "Shrink View"}
+              {compact ? "Expand view" : "Shrink view"}
             </button>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={close}
-                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-1.5 text-xs sm:text-sm text-neutral-200 hover:bg-neutral-800"
+                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-1.5 text-xs text-muted-foreground hover:bg-slate-800 sm:text-sm"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={close}
-                className="rounded border border-orange-500 bg-orange-500/10 px-4 py-1.5 text-xs sm:text-sm font-medium text-orange-100 hover:bg-orange-500/20"
+                className="rounded-full border border-[rgba(184,115,51,0.9)] bg-[rgba(184,115,51,0.12)] px-4 py-1.5 text-xs font-medium text-[rgba(252,211,77,0.98)] hover:bg-[rgba(184,115,51,0.22)] sm:text-sm"
               >
                 Close
               </button>
