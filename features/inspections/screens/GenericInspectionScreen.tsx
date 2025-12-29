@@ -617,29 +617,64 @@ export default function GenericInspectionScreen(): JSX.Element {
   };
 
   // 🔔 wake-word helper
-  function maybeHandleWakeWord(raw: string): string | null {
-    const lower = raw.toLowerCase().trim();
-    const WAKE_WORDS = ["hey techy", "hey techie", "hey teki", "hey tekky"];
+    function maybeHandleWakeWord(raw: string): string | null {
+    const cleaned = raw.trim();
+    const lower = cleaned.toLowerCase();
 
-    if (!wakeActive) {
-      const hit = WAKE_WORDS.find((w) => lower.startsWith(w));
-      if (hit) {
-        setWakeActive(true);
-        if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
-        wakeTimeoutRef.current = window.setTimeout(() => {
-          setWakeActive(false);
-        }, 8000);
-        return lower.slice(hit.length).trim();
+    // ✅ New wake phrase family – no "hey techy"
+    const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
+
+    // helper: returns [matchedPrefix, remainder] or null
+    const matchPrefix = (): { prefix: string; remainder: string } | null => {
+      for (const prefix of WAKE_PREFIXES) {
+        // "techy add measurement..."
+        if (lower.startsWith(prefix + " ")) {
+          return {
+            prefix,
+            // keep original casing for the command part
+            remainder: cleaned.slice(prefix.length).trimStart(),
+          };
+        }
+
+        // bare "techy" – just arm listening
+        if (lower === prefix) {
+          return { prefix, remainder: "" };
+        }
       }
       return null;
+    };
+
+    if (!wakeActive) {
+      const match = matchPrefix();
+      if (!match) {
+        // Not armed yet → ignore until they actually say "techy ..."
+        return null;
+      }
+
+      setWakeActive(true);
+
+      if (wakeTimeoutRef.current) {
+        window.clearTimeout(wakeTimeoutRef.current);
+      }
+      // 8-second “awake window” after saying Techy…
+      wakeTimeoutRef.current = window.setTimeout(() => {
+        setWakeActive(false);
+      }, 8000);
+
+      // If they said "techy add measurement..." in one breath,
+      // immediately pass *just* the command onwards.
+      return match.remainder;
     }
 
-    if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
+    // Already awake: bump the timer and pass through the text as-is
+    if (wakeTimeoutRef.current) {
+      window.clearTimeout(wakeTimeoutRef.current);
+    }
     wakeTimeoutRef.current = window.setTimeout(() => {
       setWakeActive(false);
     }, 8000);
 
-    return raw;
+    return cleaned;
   }
 
   // 🔊 openai realtime start (used only when mobile buttons are visible)
