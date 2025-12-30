@@ -1,125 +1,193 @@
-// features/shared/components/ui/LandingHero.tsx
+// features/shared/components/ui/PricingSection.tsx
 "use client";
 
-import Link from "next/link";
-import Container from "@shared/components/ui/Container";
+import type { FC } from "react";
+import { Check } from "lucide-react";
+import {
+  PRICE_IDS,
+  type PlanKey,
+} from "@/features/stripe/lib/stripe/constants";
+
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
+
+export type BillingInterval = "monthly" | "yearly";
+
+export type CheckoutPayload = {
+  priceId: string;
+  interval: BillingInterval;
+};
+
+export type PricingSectionProps = {
+  onCheckout: (payload: CheckoutPayload) => void | Promise<void>;
+  onStartFree: () => void;
+};
+
+type PricingPlan = {
+  key: PlanKey;
+  title: string;
+  desc: string;
+  priceLabel: string;
+  features: string[];
+  cta: string;
+  featured: boolean;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Data                                                                       */
+/* -------------------------------------------------------------------------- */
 
 const COPPER = "var(--pfq-copper)";
 
-export default function LandingHero() {
+
+const plans: PricingPlan[] = [
+  {
+    key: "pro30",
+    title: "Shop HD (up to 30 users)",
+    desc: "Perfect for most heavy-duty or mixed shops.",
+    priceLabel: "$300 / month",
+    features: [
+      "All ProFixIQ HD & fleet features included",
+      "Up to 30 users (techs, advisors, parts, admin)",
+      "HD inspections, portal, messaging & AI planner",
+      "Priority support",
+    ],
+    featured: true,
+    cta: "Start HD plan",
+  },
+  {
+    key: "unlimited",
+    title: "Fleet / Multi-location",
+    desc: "Unlimited users — ideal for larger fleets and multi-site operations.",
+    priceLabel: "$500 / month",
+    features: [
+      "Unlimited users across shifts and locations",
+      "All HD inspections, portal, and dispatch tools",
+      "Best for fleets, municipalities, and larger operations",
+      "Priority support",
+    ],
+    featured: false,
+    cta: "Start fleet plan",
+  },
+];
+
+/* -------------------------------------------------------------------------- */
+/* Component                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const PricingSection: FC<PricingSectionProps> = ({
+  onCheckout,
+  onStartFree,
+}) => {
+  const interval: BillingInterval = "monthly";
+
+  const pickPriceId = (key: PlanKey) => PRICE_IDS[key].monthly;
+
   return (
-    <section className="relative overflow-hidden py-16 md:py-20">
-      <Container>
-        {/* Glass hero panel */}
-        <div
-          className="
-            mx-auto max-w-5xl rounded-[32px]
-            border border-white/12
-            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_85%)]
-            px-6 py-10 md:px-10 md:py-14
-            shadow-[0_32px_80px_rgba(0,0,0,0.9)]
-            backdrop-blur-2xl
-          "
+    <div className="w-full">
+      {/* Intro */}
+      <div className="mx-auto mb-8 max-w-3xl text-center">
+        <p className="text-sm text-neutral-300">
+          No feature gating. HD inspections, fleet programs, portal and AI
+          included from day one.
+        </p>
+        <p className="mt-2 text-xs text-neutral-500">
+          Trial & onboarding available — pricing finalizes at checkout.
+        </p>
+
+        <button
+          onClick={onStartFree}
+          className="mt-4 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
         >
-          {/* Label */}
-          <div className="text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
-            Inspections • Work Orders • AI • Portal
-          </div>
+          Start trial / onboarding
+        </button>
+      </div>
 
-          {/* Brand + headline */}
-          <div className="mt-4 text-center">
-            <h1
-              className="text-4xl md:text-5xl lg:text-6xl"
-              style={{
-                fontFamily: "var(--font-blackops)",
-                color: COPPER,
-              }}
-            >
-              ProFixIQ
-            </h1>
-            <p className="mt-3 text-lg md:text-xl text-neutral-100">
-              From bay floor to fleet portal.
-            </p>
-            <p className="mx-auto mt-3 max-w-2xl text-sm md:text-base text-neutral-300">
-              Keep heavy-duty and general repair work flowing — inspections,
-              corner grids, AI suggestions, work orders, and portal approvals
-              all share the same clean record.
-            </p>
-          </div>
+      {/* Plans */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {plans.map((p) => (
+          <div
+            key={p.key}
+            className={[
+              "rounded-3xl border bg-black/30 p-6 backdrop-blur-xl transition",
+              p.featured
+                ? "border-[color:var(--accent-copper)]/45 shadow-[0_0_40px_rgba(212,118,49,0.18)]"
+                : "border-[color:var(--metal-border-soft)]",
+            ].join(" ")}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3
+                  className="text-xl text-white"
+                  style={{ fontFamily: "var(--font-blackops)" }}
+                >
+                  {p.title}
+                </h3>
+                <p className="mt-1 text-sm text-neutral-400">{p.desc}</p>
+              </div>
 
-          {/* CTAs */}
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 md:flex-row">
-            <Link
-              href="/agent/planner"
-              className="
-                inline-flex items-center justify-center
-                rounded-full px-6 py-2.5 text-sm font-semibold text-black
-                shadow-[0_0_30px_rgba(212,118,49,0.85)]
-                transition hover:brightness-110
-              "
-              style={{
-                background:
-                  "linear-gradient(to right,var(--pfq-copper-soft),var(--pfq-copper))",
-                border: "1px solid rgba(255,255,255,0.1)",
-              }}
-            >
-              Try the AI
-            </Link>
+              {p.featured ? (
+                <span
+                  className="rounded-full border px-3 py-1 text-xs font-semibold"
+                  style={{
+                    borderColor: "rgba(255,255,255,0.12)",
+                    backgroundColor: "rgba(193,102,59,0.16)",
+                    color: "var(--accent-copper-light)",
+                  }}
+                >
+                  Most popular
+                </span>
+              ) : null}
+            </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Link
-                href="/portal"
-                className="
-                  inline-flex items-center justify-center
-                  rounded-full border border-white/14
-                  bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-100
-                  backdrop-blur-xl transition hover:bg-neutral-900/60
-                "
+            {/* Price */}
+            <div className="mt-5 flex items-baseline gap-2">
+              <div
+                className="text-3xl font-bold"
+                style={{ color: "var(--accent-copper-light)" }}
               >
-                Customer portal
-              </Link>
-              <Link
-                href="/portal/fleet"
-                className="
-                  inline-flex items-center justify-center
-                  rounded-full border border-white/14
-                  bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-100
-                  backdrop-blur-xl transition hover:bg-neutral-900/60
-                "
-              >
-                Fleet portal
-              </Link>
+                {p.priceLabel}
+              </div>
             </div>
-          </div>
 
-          {/* Mini feature blurbs */}
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 text-[11px] text-neutral-400 md:flex-row">
-            <div className="flex items-center gap-2">
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: COPPER }}
-              />
-              <span>AI planner for jobs, inspections &amp; estimates.</span>
-            </div>
-            <div className="hidden h-px w-8 bg-white/10 md:block" />
-            <div className="flex items-center gap-2">
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: COPPER }}
-              />
-              <span>HD inspections, corner grids &amp; pre-trips.</span>
-            </div>
-            <div className="hidden h-px w-8 bg-white/10 md:block" />
-            <div className="flex items-center gap-2">
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: COPPER }}
-              />
-              <span>Customer &amp; fleet portal with live status.</span>
-            </div>
+            {/* Features */}
+            <ul className="mt-5 space-y-2 text-sm text-neutral-200">
+              {p.features.map((f) => (
+                <li key={f} className="flex items-start gap-2">
+                  <Check
+                    size={16}
+                    className="mt-0.5"
+                    style={{ color: COPPER }}
+                  />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+
+            {/* CTA */}
+            <button
+              onClick={() =>
+                onCheckout({
+                  priceId: pickPriceId(p.key),
+                  interval,
+                })
+              }
+              className="mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold text-black transition hover:opacity-95"
+              style={{ backgroundColor: COPPER }}
+            >
+              {p.cta}
+            </button>
+
+            <p className="mt-3 text-xs text-neutral-500">
+              Taxes billed per your Stripe setup. Cancel anytime.
+            </p>
           </div>
-        </div>
-      </Container>
-    </section>
+        ))}
+      </div>
+    </div>
   );
-}
+};
+
+export default PricingSection;
