@@ -1,101 +1,102 @@
-import { cookies } from "next/headers";
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+// app/api/shop-boost/intakes/run/route.ts
 
+import { NextRequest, NextResponse } from "next/server";
+import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 
 type DB = Database;
+type ShopBoostIntakeInsert =
+  DB["public"]["Tables"]["shop_boost_intakes"]["Insert"];
 
-type IntakeRunBody = {
+type RunIntakeBody = {
   intakeId: string;
-  questionnaire: Record<string, unknown>;
+  shopId: string;
+  questionnaire: unknown; // keep flexible, but NOT any
   customersPath: string | null;
   vehiclesPath: string | null;
   partsPath: string | null;
 };
 
 export async function POST(req: NextRequest) {
-  const cookieStore = cookies();
-  const supabase = createRouteHandlerClient<DB>({ cookies: () => cookieStore });
+  const body = (await req.json().catch(() => null)) as RunIntakeBody | null;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  const { data: profile, error: profErr } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profErr || !profile?.shop_id) {
-    return NextResponse.json(
-      { error: "No shop associated with this user" },
-      { status: 400 },
-    );
-  }
-
-  const shopId = profile.shop_id;
-
-  const body = (await req.json().catch(() => null)) as IntakeRunBody | null;
   if (!body) {
     return NextResponse.json(
-      { error: "Invalid JSON body" },
+      { ok: false, error: "Invalid JSON body" },
       { status: 400 },
     );
   }
 
-  const { intakeId, questionnaire, customersPath, vehiclesPath, partsPath } =
-    body;
+  const {
+    intakeId,
+    shopId,
+    questionnaire,
+    customersPath,
+    vehiclesPath,
+    partsPath,
+  } = body;
 
-  if (!intakeId) {
+  if (!shopId || !intakeId) {
     return NextResponse.json(
-      { error: "intakeId is required" },
+      { ok: false, error: "shopId and intakeId are required" },
       { status: 400 },
     );
   }
 
-  const admin = createAdminSupabase();
+  const supabase = createAdminSupabase();
 
-  const { error: insertErr } = await admin.from("shop_boost_intakes").insert({
+  // 1) Create the intake row (service_role via createAdminSupabase)
+  const intakePayload: ShopBoostIntakeInsert = {
     id: intakeId,
     shop_id: shopId,
-    questionnaire,
+    questionnaire: questionnaire as unknown as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["questionnaire"],
     customers_file_path: customersPath,
     vehicles_file_path: vehiclesPath,
     parts_file_path: partsPath,
     status: "pending",
-  });
+  };
+
+  const { error: insertErr } = await supabase
+    .from("shop_boost_intakes")
+    .insert(intakePayload);
 
   if (insertErr) {
     console.error("Failed to insert shop_boost_intakes", insertErr);
     return NextResponse.json(
-      { error: "Failed to create intake" },
+      { ok: false, error: "Failed to create intake" },
       { status: 500 },
     );
   }
 
-  // Instant WOW: run AI right away
+  // 2) Run the AI pipeline immediately for the WOW moment
   const snapshot = await buildShopBoostProfile({
     shopId,
     intakeId,
   });
 
+  // buildShopBoostProfile:
+  //  - reads the intake row + CSVs
+  //  - writes shop_ai_profiles.summary
+  //  - logs ai_training_events + ai_training_data
+  //  - updates intake status
+
   if (!snapshot) {
     return NextResponse.json(
-      { ok: false, snapshot: null },
+      {
+        ok: false,
+        snapshot: null,
+        error: "Failed to build Shop Health Snapshot",
+      },
       { status: 200 },
     );
   }
 
   return NextResponse.json(
-    { ok: true, snapshot },
+    {
+      ok: true,
+      snapshot,
+    },
     { status: 200 },
   );
 }
