@@ -1,3 +1,5 @@
+//features/inspection/hooks/useVoiceGenerate.ts
+
 "use client";
 
 type SRCons = new () => SpeechRecognition;

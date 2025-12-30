@@ -290,27 +290,27 @@ export default function GenericInspectionScreen(): JSX.Element {
 
   // 🔹 Prefer staged params (set by run loader or WO modal) and merge with real URL params
   const sp = useMemo(() => {
-    const staged = readStaged<Record<string, string>>("inspection:params");
+  const staged = readStaged<Record<string, string>>("inspection:params");
 
-    if (staged && Object.keys(staged).length > 0) {
-      const merged = new URLSearchParams();
+  if (staged && Object.keys(staged).length > 0) {
+    const merged = new URLSearchParams();
 
-      // staged first
-      Object.entries(staged).forEach(([key, value]) => {
-        if (value != null) merged.set(key, String(value));
-      });
+    // 1) Start from staged (so we keep any extra keys)
+    Object.entries(staged).forEach(([key, value]) => {
+      if (value != null) merged.set(key, String(value));
+    });
 
-      // then overlay any URL params that aren't already present
-      routeSp.forEach((value, key) => {
-        if (!merged.has(key)) merged.set(key, value);
-      });
+    // 2) URL ALWAYS WINS (especially workOrderId, workOrderLineId, templateId, view)
+    routeSp.forEach((value, key) => {
+      merged.set(key, value);
+    });
 
-      return merged;
-    }
+    return merged;
+  }
 
-    // fallback: just use the route params (templates page /inspections/fill)
-    return routeSp;
-  }, [routeSp]);
+  // fallback: just use the route params
+  return routeSp;
+}, [routeSp]);
 
   // 🔸 only the mobile companion should use voice
   const isMobileView = (sp.get("view") || "").toLowerCase() === "mobile";
