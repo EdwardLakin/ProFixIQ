@@ -62,8 +62,10 @@ export default function FleetServiceRequestsPage() {
         if (reqErr) throw reqErr;
 
         if (!cancelled) setRequests(data ?? []);
-      } catch (err: any) {
-        if (!cancelled) setError(err?.message || "Failed to load data.");
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to load data.";
+        if (!cancelled) setError(message);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -101,9 +103,7 @@ export default function FleetServiceRequestsPage() {
       </div>
 
       {/* Error state */}
-      {error && (
-        <p className="text-sm text-red-400">Error: {error}</p>
-      )}
+      {error && <p className="text-sm text-red-400">Error: {error}</p>}
 
       {/* Loading */}
       {loading && (
@@ -113,7 +113,8 @@ export default function FleetServiceRequestsPage() {
       {/* Empty */}
       {!loading && requests.length === 0 && (
         <p className="mt-4 text-sm text-neutral-400">
-          No service requests {statusFilter !== "all" ? `(${statusFilter})` : ""}.
+          No service requests{" "}
+          {statusFilter !== "all" ? `(${statusFilter})` : ""}.
         </p>
       )}
 
@@ -127,18 +128,19 @@ export default function FleetServiceRequestsPage() {
             <div className="flex justify-between">
               <div>
                 <p className="font-medium text-white">{req.title}</p>
-                <p className="text-xs text-neutral-400 mt-1">
+                <p className="mt-1 text-xs text-neutral-400">
                   {req.severity.toUpperCase()} •{" "}
                   {new Date(req.created_at).toLocaleString()}
                 </p>
-                <p className="text-sm mt-2 text-neutral-300">
+                <p className="mt-2 text-sm text-neutral-300">
                   {req.summary}
                 </p>
               </div>
-              <span className="rounded-full px-2 py-1 text-[10px] uppercase tracking-wide"
+              <span
+                className="rounded-full px-2 py-1 text-[10px] uppercase tracking-wide"
                 style={{
                   border: "1px solid rgba(255,255,255,0.12)",
-                  backgroundColor: "rgba(193,102,59,0.18)"
+                  backgroundColor: "rgba(193,102,59,0.18)",
                 }}
               >
                 {req.status}
