@@ -1,3 +1,5 @@
+//features/inspections/app/inspection/templates/page.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

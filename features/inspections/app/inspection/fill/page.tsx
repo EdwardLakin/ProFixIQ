@@ -22,7 +22,6 @@ export default function InspectionFillPage() {
   const [template, setTemplate] = useState<string | null>(null);
   const [params, setParams] = useState<Dict>({});
 
-  // Pull from URL first; if missing, fall back to staged sessionStorage values
   useEffect(() => {
     const urlTemplate = sp.get("template");
     const urlParams = paramsToObject(sp);
@@ -34,9 +33,9 @@ export default function InspectionFillPage() {
 
     const stagedParams =
       typeof window !== "undefined"
-        ? (JSON.parse(
+        ? ((JSON.parse(
             sessionStorage.getItem("inspection:params") || "{}",
-          ) as Dict)
+          ) as Dict) || {})
         : {};
 
     const merged: Dict = { ...stagedParams, ...urlParams };
@@ -51,9 +50,25 @@ export default function InspectionFillPage() {
     setReady(true);
   }, [sp, router]);
 
+  // ---- layout flags (driven by params / URL) --------------------------
+
+  const rawView =
+    (params.view ?? sp.get("view") ?? "").toString().toLowerCase();
+  const isMobileView = rawView === "mobile";
+
+  const rawEmbed =
+    (params.embed ?? params.compact ?? sp.get("embed") ?? sp.get("compact") ?? "")
+      .toString()
+      .toLowerCase();
+  const isEmbed =
+    rawEmbed === "1" || rawEmbed === "true" || rawEmbed === "yes";
+
   // Shared glass card style to match work order / run loader
   const cardBase =
-    "mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+    "mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 " +
+    "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] " +
+    "shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+
   const cardInner =
     "rounded-xl border border-slate-700/60 bg-slate-950/80";
 
@@ -69,12 +84,32 @@ export default function InspectionFillPage() {
     );
   }
 
+  // 🔹 MOBILE: let GenericInspectionScreen own the layout completely.
+  // It will see view=mobile in the URL and show the mobile sticky bar
+  // + OpenAI voice controls.
+  if (isMobileView) {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <InspectionHost
+          template={template}
+          embed={isEmbed}
+          params={params}
+        />
+      </div>
+    );
+  }
+
+  // 🔹 DESKTOP full-page (default)
   return (
     <div className="min-h-[80vh] bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
       <div className={cardBase}>
         <div className={`${cardInner} p-3 sm:p-4`}>
           {/* InspectionHost is the runtime form renderer */}
-          <InspectionHost template={template} embed params={params} />
+          <InspectionHost
+            template={template}
+            embed={isEmbed}
+            params={params}
+          />
         </div>
       </div>
     </div>
