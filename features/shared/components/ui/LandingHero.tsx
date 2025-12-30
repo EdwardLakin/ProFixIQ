@@ -35,8 +35,19 @@ export default function LandingHero() {
         />
       </div>
 
+      {/* Big HD shadowed text (desktop) */}
+      <div className="pointer-events-none absolute inset-0 hidden items-center justify-center md:flex">
+        <span
+          className="text-[220px] font-blackops tracking-[0.35em] text-white/4 drop-shadow-[0_0_80px_rgba(0,0,0,0.95)]"
+          style={{ fontFamily: "var(--font-blackops)" }}
+          aria-hidden="true"
+        >
+          HD
+        </span>
+      </div>
+
       <div className="relative mx-auto max-w-7xl px-6 pt-24 pb-16 text-center">
-        <p className="text-xs tracking-[0.22em] text-neutral-400 uppercase">
+        <p className="text-xs uppercase tracking-[0.22em] text-neutral-400">
           Repair smarter • Diagnose faster • Document cleaner
         </p>
 
@@ -58,10 +69,12 @@ export default function LandingHero() {
           ProFixIQ
         </h1>
 
-        <p className="mx-auto mt-5 max-w-3xl text-base sm:text-lg text-neutral-300 leading-relaxed">
+        <p className="mx-auto mt-5 max-w-3xl text-base leading-relaxed text-neutral-300 sm:text-lg">
           From inspections to invoices — ProFixIQ keeps your shop moving.
-          Automate the busywork, capture proof fast, and turn findings into clean
-          work orders and customer-ready approvals.
+          Automate the busywork, capture proof fast, and turn findings into
+          clean work orders and customer-ready approvals. Built for general
+          repair and heavy-duty / fleet programs so every unit has a clear
+          health record.
         </p>
 
         {/* Trust strip */}
@@ -79,14 +92,14 @@ export default function LandingHero() {
                 className="h-2 w-2 rounded-full"
                 style={{ backgroundColor: "var(--accent-copper)" }}
               />
-              Inspections with photos + voice
+              HD inspections, corner grids & pre-trips
             </div>
             <div className="flex items-center gap-2">
               <span
                 className="h-2 w-2 rounded-full"
                 style={{ backgroundColor: "var(--accent-copper)" }}
               />
-              Team chat + customer portal
+              Team chat, customer + fleet portal dispatch
             </div>
           </div>
         </div>
@@ -115,20 +128,20 @@ export default function LandingHero() {
           </a>
         </div>
 
-        {/* Mini “preview” band (no images required) */}
+        {/* Mini preview band */}
         <div className="mt-12 grid gap-4 sm:grid-cols-3">
           {[
             {
               title: "Inspection → Quote",
-              desc: "Turn findings into line items, fast. Evidence stays attached.",
+              desc: "Turn findings into line items, fast. Evidence stays attached to the job.",
             },
             {
-              title: "AI Planner",
-              desc: "Describe the goal. It creates the work order, lines, and updates live.",
+              title: "AI Planner & HD Programs",
+              desc: "Describe the goal. The AI suggests inspections and work for cars, trucks, and fleets.",
             },
             {
-              title: "Customer Portal",
-              desc: "History, booking, vehicle management — clean and simple.",
+              title: "Customer & Fleet Portal",
+              desc: "History, booking, unit management, and approvals — clean and simple for retail or fleet.",
             },
           ].map((b) => (
             <div

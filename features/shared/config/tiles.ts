@@ -1,12 +1,17 @@
 // features/shared/config/tiles.ts
 
+// features/shared/config/tiles.ts
+
 export type Role =
   | "owner"
   | "admin"
   | "manager"
   | "advisor"
   | "mechanic"
-  | "parts";
+  | "parts"
+  | "dispatcher"
+  | "driver"
+  | "fleet_manager";
 
 export type Scope =
   | "work_orders"
@@ -259,4 +264,48 @@ export const TILES: Tile[] = [
     scopes: ["tech", "all"],
     section: "Tech",
   },
+
+    // --- Fleet / HD ---
+  {
+    href: "/fleet/tower",
+    title: "Fleet Control Tower",
+    subtitle: "HD units, issues & health",
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    scopes: ["management", "work_orders", "inspections", "all"],
+    section: "Fleet",
+  },
+  {
+    href: "/fleet/dispatch",
+    title: "Dispatch Board",
+    subtitle: "Assign units & routes",
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    scopes: ["management", "work_orders", "all"],
+    section: "Fleet",
+  },
+  {
+    href: "/fleet/pretrip",
+    title: "Pre-trip Reports",
+    subtitle: "Daily driver checklists",
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    scopes: ["inspections", "management", "all"],
+    section: "Fleet",
+  },
+  {
+    href: "/fleet/units",
+    title: "Fleet Units",
+    subtitle: "HD tractors, trailers, buses",
+    roles: ["owner", "admin", "manager", "fleet_manager"],
+    scopes: ["management", "all"],
+    section: "Fleet",
+  },
+  // features/shared/config/tiles.ts – add under a new "Fleet" section
+{
+  href: "/fleet/service-requests",
+  title: "Fleet Service Requests",
+  subtitle: "From pre-trips & inspections",
+  roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+  scopes: ["work_orders", "management", "all"],
+  section: "Fleet",
+},
+
 ];

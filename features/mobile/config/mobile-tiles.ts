@@ -6,7 +6,10 @@ export type MobileRole =
   | "manager"
   | "advisor"
   | "mechanic"
-  | "parts";
+  | "parts"
+  | "driver"
+  | "dispatcher"
+  | "fleet_manager";
 
 export type MobileScope =
   | "home"
@@ -15,10 +18,11 @@ export type MobileScope =
   | "messages"
   | "planner" // keep in case something else still references it
   | "settings"
-  // extra scopes so mobile dashboards can align with desktop views
+  // align mobile dashboards with desktop views
   | "work_orders"
   | "appointments"
   | "inspections"
+  | "fleet"
   | "all";
 
 export type MobileTile = {
@@ -35,12 +39,7 @@ export const MOBILE_TILES: MobileTile[] = [
     title: "My Jobs",
     subtitle: "Assigned work orders",
     roles: ["mechanic", "manager", "owner", "admin"],
-    scopes: [
-      "home",
-      "jobs",
-      "work_orders",
-      "all", // show up for generic "all" scoped hubs
-    ],
+    scopes: ["home", "jobs", "work_orders", "all"],
   },
   {
     href: "/mobile/inspections",
@@ -89,12 +88,39 @@ export const MOBILE_TILES: MobileTile[] = [
     roles: ["owner", "admin", "manager"],
     scopes: ["home", "jobs", "work_orders", "all"],
   },
-  // features/mobile/config/mobile-tiles.ts
+
+  // 🚚 Fleet – management / dispatch view
+  {
+    href: "/mobile/fleet",
+    title: "Fleet",
+    subtitle: "Units, issues & routes",
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    scopes: ["home", "fleet", "all"],
+  },
+
+  // 📝 Driver daily pre-trip (mobile)
+  {
+    href: "/mobile/fleet/pretrip",
+    title: "Pre-trip",
+    subtitle: "Daily vehicle check",
+    roles: ["driver"],
+    scopes: ["home", "fleet", "inspect", "all"],
+  },
+
+  // 👨‍🔧 Mobile tech self performance
+  {
+    href: "/mobile/tech/performance",
+    title: "My Performance",
+    subtitle: "Jobs, hours & efficiency",
+    roles: ["mechanic", "manager", "owner", "admin"],
+    scopes: ["home", "jobs", "all"],
+  },
+  // features/mobile/config/mobile-tiles.ts – add:
 {
-  href: "/mobile/tech/performance",
-  title: "My Performance",
-  subtitle: "Jobs, hours & efficiency",
-  roles: ["mechanic", "manager", "owner", "admin"],
-  scopes: ["home", "jobs", "all"],
+  href: "/mobile/fleet/service-requests",
+  title: "Service Requests",
+  subtitle: "Fleet issues & follow-up",
+  roles: ["owner", "admin", "manager", "mechanic", "parts"],
+  scopes: ["home", "work_orders", "inspections", "all"],
 },
 ];

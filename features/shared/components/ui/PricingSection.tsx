@@ -27,7 +27,7 @@ type PricingPlan = {
   priceLabel: string;
   features: string[];
   cta: string;
-  featured: boolean; // ✅ make it non-optional to avoid union inference issues
+  featured: boolean;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -38,40 +38,38 @@ export default function PricingSection({
   onCheckout,
   onStartFree,
 }: PricingSectionProps) {
-  // Monthly only for now (future-safe payload)
   const interval: CheckoutPayload["interval"] = "monthly";
 
   const pickPriceId = (key: PlanKey) => PRICE_IDS[key].monthly;
 
-  // ✅ Force the array type + ensure featured exists on ALL items
   const plans: PricingPlan[] = [
     {
       key: "pro30",
-      title: "Shop (Up to 30 users)",
-      desc: "Full access. Built for most repair shops.",
+      title: "Shop HD (up to 30 users)",
+      desc: "Perfect for most heavy-duty or mixed shops.",
       priceLabel: "$300 / month",
       features: [
-        "Unlimited access to all ProFixIQ features",
+        "All ProFixIQ HD & fleet features included",
         "Up to 30 users (techs, advisors, parts, admin)",
-        "AI planner, inspections, portal & messaging",
+        "HD inspections, portal, messaging & AI planner",
         "Priority support",
       ],
       featured: true,
-      cta: "Start",
+      cta: "Start HD plan",
     },
     {
       key: "unlimited",
-      title: "Shop (Unlimited users)",
-      desc: "Full access at scale — no seat math.",
+      title: "Fleet / Multi-location",
+      desc: "Unlimited users — ideal for larger fleets and multi-site operations.",
       priceLabel: "$500 / month",
       features: [
-        "Unlimited access to all ProFixIQ features",
-        "Unlimited users",
-        "Best for multi-shift or multi-location shops",
+        "Unlimited users across shifts and locations",
+        "All HD inspections, portal, and dispatch tools",
+        "Best for fleets, municipalities, and larger operations",
         "Priority support",
       ],
       featured: false,
-      cta: "Start",
+      cta: "Start fleet plan",
     },
   ];
 
@@ -80,7 +78,8 @@ export default function PricingSection({
       {/* Intro */}
       <div className="mx-auto mb-8 max-w-3xl text-center">
         <p className="text-sm text-neutral-300">
-          No feature gating. Full access from day one.
+          No feature gating. HD inspections, fleet programs, portal and AI
+          included from day one.
         </p>
         <p className="mt-2 text-xs text-neutral-500">
           Trial & onboarding available — pricing finalizes at checkout.

@@ -1,3 +1,4 @@
+// features/shared/components/ui/FeaturesSection.tsx
 "use client";
 
 import FeatureCard from "@shared/components/ui/FeatureCard";
@@ -23,44 +24,45 @@ export default function FeaturesSection({
             className="mt-2 text-4xl md:text-5xl text-white"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
-            Built for real shop flow
+            Built for shop & fleet work
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-sm text-neutral-400">
-            Everything you need to run the floor — plus automation that removes
-            the drag.
+            Heavy-duty inspections, fleet programs, dispatch, and AI — all in
+            one workflow instead of five disconnected tools. Works for single
+            bays, busy HD shops, and full fleet operations.
           </p>
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <FeatureCard
-          title="AI-Powered Diagnostics"
-          description="Narrow down likely causes before you touch a tool. Ask follow-ups to confirm symptoms and next steps."
+          title="HD Inspections & Corner Grids"
+          description="Run consistent tire, brake, and measurement grids across every unit. Photos, notes, and voice stay attached."
           available
         />
         <FeatureCard
-          title="Inspections Your Way"
-          description="Photo capture, notes, voice input, tags—everything techs need to document and share clearly."
+          title="Fleet Programs & PM Packs"
+          description="Build programs by fleet, unit, or class. Track due inspections, recurring work, and compliance history in one place."
           available
         />
         <FeatureCard
-          title="Work Orders & Quotes"
-          description="Estimate labor, parts, and taxes; assign jobs; generate shareable quotes and invoices in a click."
+          title="Portal + Fleet Dispatch"
+          description="Let fleets submit units, approve work, and see status. Keep advisors and dispatchers working from one shared board."
           available
         />
         <FeatureCard
-          title="Voice + Photos"
-          description="Add line items by voice, markup images, and keep evidence tidy for customers and insurance."
+          title="AI Planner for Any Job"
+          description="Describe the concern once. The AI suggests inspections, lines, and estimates for cars, trucks, buses, and trailers."
           available
         />
         <FeatureCard
-          title="Team & Roles"
-          description="Owner, Admin, Manager, Advisor, Parts, Tech. Give each role the tools (and permissions) they need."
+          title="Technician Queue & Chat"
+          description="Give techs a clear queue, chat, and media all tied to jobs so they stay under the hoist, not in the office."
           available
         />
         <FeatureCard
-          title="Agent Requests + Live Updates"
-          description="Submit QA/feature requests with context + screenshots. Track what’s happening while the agent runs."
+          title="Evidence, Approvals & Invoices"
+          description="Photos, videos, and measurements roll into approvals and invoices — keeping a defensible trail for customers and fleets."
           available
         />
       </div>

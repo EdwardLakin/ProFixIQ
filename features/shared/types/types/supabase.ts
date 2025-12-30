@@ -1054,6 +1054,187 @@ export type Database = {
           },
         ]
       }
+      cvip_specs: {
+        Row: {
+          component: string
+          created_at: string
+          defect_group: string
+          description: string | null
+          fail_operator: string
+          id: string
+          jurisdiction: string
+          mandatory_measurement: boolean
+          measurement_type: string
+          notes: string | null
+          source_section: string | null
+          source_standard: string
+          spec_code: string
+          threshold_max: number | null
+          threshold_min: number | null
+          title: string
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          component: string
+          created_at?: string
+          defect_group: string
+          description?: string | null
+          fail_operator?: string
+          id?: string
+          jurisdiction?: string
+          mandatory_measurement?: boolean
+          measurement_type: string
+          notes?: string | null
+          source_section?: string | null
+          source_standard?: string
+          spec_code: string
+          threshold_max?: number | null
+          threshold_min?: number | null
+          title: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          component?: string
+          created_at?: string
+          defect_group?: string
+          description?: string | null
+          fail_operator?: string
+          id?: string
+          jurisdiction?: string
+          mandatory_measurement?: boolean
+          measurement_type?: string
+          notes?: string | null
+          source_section?: string | null
+          source_standard?: string
+          spec_code?: string
+          threshold_max?: number | null
+          threshold_min?: number | null
+          title?: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cvip_thresholds: {
+        Row: {
+          axle_position: string | null
+          category: string
+          chamber_size: string | null
+          component: string
+          extra_tag: string | null
+          fail_max: number | null
+          fail_min: number | null
+          id: string
+          jurisdiction_code: string
+          location_code: string | null
+          measurement_type: string
+          spec_code: string
+          unit: string
+          warn_max: number | null
+          warn_min: number | null
+        }
+        Insert: {
+          axle_position?: string | null
+          category: string
+          chamber_size?: string | null
+          component: string
+          extra_tag?: string | null
+          fail_max?: number | null
+          fail_min?: number | null
+          id?: string
+          jurisdiction_code?: string
+          location_code?: string | null
+          measurement_type: string
+          spec_code: string
+          unit: string
+          warn_max?: number | null
+          warn_min?: number | null
+        }
+        Update: {
+          axle_position?: string | null
+          category?: string
+          chamber_size?: string | null
+          component?: string
+          extra_tag?: string | null
+          fail_max?: number | null
+          fail_min?: number | null
+          id?: string
+          jurisdiction_code?: string
+          location_code?: string | null
+          measurement_type?: string
+          spec_code?: string
+          unit?: string
+          warn_max?: number | null
+          warn_min?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cvip_thresholds_spec_code_fkey"
+            columns: ["spec_code"]
+            isOneToOne: false
+            referencedRelation: "cvip_specs"
+            referencedColumns: ["spec_code"]
+          },
+        ]
+      }
+      cvip_thresholds_master: {
+        Row: {
+          code: string
+          description: string | null
+          direction: string
+          fail_max_imperial: number | null
+          fail_max_metric: number | null
+          fail_min_imperial: number | null
+          fail_min_metric: number | null
+          id: string
+          label: string
+          notes: Json | null
+          spec_id: string
+          unit_imperial: string | null
+          unit_metric: string | null
+        }
+        Insert: {
+          code: string
+          description?: string | null
+          direction: string
+          fail_max_imperial?: number | null
+          fail_max_metric?: number | null
+          fail_min_imperial?: number | null
+          fail_min_metric?: number | null
+          id?: string
+          label: string
+          notes?: Json | null
+          spec_id: string
+          unit_imperial?: string | null
+          unit_metric?: string | null
+        }
+        Update: {
+          code?: string
+          description?: string | null
+          direction?: string
+          fail_max_imperial?: number | null
+          fail_max_metric?: number | null
+          fail_min_imperial?: number | null
+          fail_min_metric?: number | null
+          id?: string
+          label?: string
+          notes?: Json | null
+          spec_id?: string
+          unit_imperial?: string | null
+          unit_metric?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cvip_thresholds_master_spec_id_fkey"
+            columns: ["spec_id"]
+            isOneToOne: false
+            referencedRelation: "cvip_specs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       decoded_vins: {
         Row: {
           created_at: string | null
@@ -1406,6 +1587,80 @@ export type Database = {
         }
         Relationships: []
       }
+      fleet_pretrip_reports: {
+        Row: {
+          checklist: Json
+          created_at: string
+          driver_name: string
+          driver_profile_id: string | null
+          has_defects: boolean
+          id: string
+          inspection_date: string
+          notes: string | null
+          odometer_km: number | null
+          shop_id: string
+          source: string
+          vehicle_id: string
+        }
+        Insert: {
+          checklist: Json
+          created_at?: string
+          driver_name: string
+          driver_profile_id?: string | null
+          has_defects?: boolean
+          id?: string
+          inspection_date?: string
+          notes?: string | null
+          odometer_km?: number | null
+          shop_id: string
+          source?: string
+          vehicle_id: string
+        }
+        Update: {
+          checklist?: Json
+          created_at?: string
+          driver_name?: string
+          driver_profile_id?: string | null
+          has_defects?: boolean
+          id?: string
+          inspection_date?: string
+          notes?: string | null
+          odometer_km?: number | null
+          shop_id?: string
+          source?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_pretrip_reports_driver_profile_id_fkey"
+            columns: ["driver_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_reports_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_reports_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_reports_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_program_tasks: {
         Row: {
           created_at: string
@@ -1493,6 +1748,94 @@ export type Database = {
             columns: ["fleet_id"]
             isOneToOne: false
             referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_service_requests: {
+        Row: {
+          created_at: string
+          created_by_profile_id: string | null
+          id: string
+          scheduled_for_date: string | null
+          severity: string
+          shop_id: string
+          source_pretrip_id: string | null
+          status: string
+          summary: string
+          title: string
+          vehicle_id: string
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_profile_id?: string | null
+          id?: string
+          scheduled_for_date?: string | null
+          severity: string
+          shop_id: string
+          source_pretrip_id?: string | null
+          status?: string
+          summary: string
+          title: string
+          vehicle_id: string
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_profile_id?: string | null
+          id?: string
+          scheduled_for_date?: string | null
+          severity?: string
+          shop_id?: string
+          source_pretrip_id?: string | null
+          status?: string
+          summary?: string
+          title?: string
+          vehicle_id?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_service_requests_created_by_profile_id_fkey"
+            columns: ["created_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_requests_source_pretrip_id_fkey"
+            columns: ["source_pretrip_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_pretrip_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_requests_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -7466,6 +7809,7 @@ export type Database = {
           quote: Json | null
           quote_url: string | null
           shop_id: string | null
+          source_fleet_service_request_id: string | null
           status: string | null
           type: string | null
           updated_at: string | null
@@ -7507,6 +7851,7 @@ export type Database = {
           quote?: Json | null
           quote_url?: string | null
           shop_id?: string | null
+          source_fleet_service_request_id?: string | null
           status?: string | null
           type?: string | null
           updated_at?: string | null
@@ -7548,6 +7893,7 @@ export type Database = {
           quote?: Json | null
           quote_url?: string | null
           shop_id?: string | null
+          source_fleet_service_request_id?: string | null
           status?: string | null
           type?: string | null
           updated_at?: string | null
@@ -7579,6 +7925,13 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_source_fleet_service_request_id_fkey"
+            columns: ["source_fleet_service_request_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_service_requests"
             referencedColumns: ["id"]
           },
           {
@@ -8113,6 +8466,7 @@ export type Database = {
           quote: Json | null
           quote_url: string | null
           shop_id: string | null
+          source_fleet_service_request_id: string | null
           status: string | null
           type: string | null
           updated_at: string | null

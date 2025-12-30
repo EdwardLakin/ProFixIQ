@@ -1,18 +1,19 @@
+// features/shared/components/ui/WhySection.tsx
 "use client";
 
 import Section from "./Section";
 
 export default function WhySection() {
   const bullets = [
-    "Cut diagnostic guesswork with AI suggestions and symptom guides.",
-    "Speed up inspections with reusable templates, photos, and voice notes.",
-    "Turn findings into quotes and work orders with consistent labor structure.",
-    "Keep everyone aligned with roles, permissions, and status clarity.",
+    "Keep fleets and retail customers on the road with consistent inspections, measurements, and pre-trips.",
+    "Give techs a clear queue, corner grids, and voice tools that match how they actually work on the floor.",
+    "Turn findings into clean quotes, approvals, and invoices without retyping the same job three times.",
+    "Give fleet managers and owners a portal for status, history, and evidence — without extra admin work for advisors.",
   ];
 
   return (
     <Section id="why" className="bg-transparent text-white">
-      <div className="max-w-5xl mx-auto text-center">
+      <div className="mx-auto max-w-5xl text-center">
         <div
           className="text-xs font-semibold uppercase tracking-[0.22em]"
           style={{ color: "var(--accent-copper)" }}
@@ -21,25 +22,22 @@ export default function WhySection() {
         </div>
 
         <h2
-          className="mt-2 text-3xl md:text-4xl font-blackops text-white"
+          className="mt-2 text-3xl font-blackops text-white md:text-4xl"
           style={{
             textShadow: "0 0 28px rgba(193, 102, 59, 0.18)",
           }}
         >
-          Built for technicians — not committees
+          Built for heavy-duty & fleet life
         </h2>
 
-        <p className="mt-4 text-base md:text-lg text-neutral-300 leading-relaxed">
-          ProFixIQ was built by a technician who lived shop life. The goal is
-          simple:{" "}
-          <em>
-            less screen time, faster answers, cleaner documentation.
-          </em>{" "}
-          From AI-assisted diagnostics to customer-ready approvals, ProFixIQ
-          removes friction for techs and advisors.
+        <p className="mt-4 text-base leading-relaxed text-neutral-300 md:text-lg">
+          ProFixIQ is designed around bays, buses, and trucks — not committee
+          meetings. Less screen time, faster approvals, cleaner documentation
+          for every unit that rolls through, whether it&apos;s one service
+          truck or a national fleet.
         </p>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 text-left">
+        <div className="mt-8 grid gap-4 text-left sm:grid-cols-2">
           {bullets.map((line) => (
             <div
               key={line}
@@ -49,14 +47,16 @@ export default function WhySection() {
                 <span
                   className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full border"
                   style={{
-                    borderColor: "rgba(255,255,255,0.12)",
-                    backgroundColor: "rgba(193,102,59,0.18)",
+                    borderColor: "rgba(255, 255, 255, 0.12)",
+                    backgroundColor: "rgba(193, 102, 59, 0.18)",
                     color: "var(--accent-copper-light)",
                   }}
                 >
                   ✓
                 </span>
-                <span className="text-neutral-200 leading-relaxed">{line}</span>
+                <span className="leading-relaxed text-neutral-200">
+                  {line}
+                </span>
               </div>
             </div>
           ))}
