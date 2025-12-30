@@ -22,6 +22,8 @@ const NON_APP_ROUTES = [
   "/coming-soon",
   "/auth",
   "/mobile",
+  // ✅ Demo funnel is marketing/public, not wrapped in dashboard
+  "/demo",
 ];
 
 const HEADER_OFFSET_DESKTOP = "pt-14"; // keeps sidebar content below fixed desktop header
@@ -46,7 +48,7 @@ const ActionButton = ({
 );
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();
 
@@ -65,7 +67,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const isAppRoute =
     !isPortalRoute &&
-    !NON_APP_ROUTES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+    !NON_APP_ROUTES.some(
+      (p) => pathname === p || pathname.startsWith(p + "/"),
+    );
 
   // load session user once, load role, & subscribe to messages (main app only)
   useEffect(() => {
@@ -166,8 +170,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     !!userRole &&
     ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
 
-  // ✅ Portal (and other NON_APP) routes should not be wrapped by the dashboard shell,
-  // and should NOT get TabsBridge.
+  // ✅ PUBLIC / NON-APP ROUTES:
+  // Landing, demo funnel, portal, etc. — no dashboard shell, no TabsBridge.
   if (!isAppRoute) {
     return (
       <div className="min-h-screen bg-neutral-950 text-foreground">
@@ -177,6 +181,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // ✅ MAIN APP SHELL (dashboard + tabs)
   return (
     <>
       <div className="flex min-h-screen bg-neutral-950 text-foreground">
@@ -190,7 +195,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               : "md:w-0 -translate-x-full pointer-events-none",
           )}
         >
-          {/* Sidebar contents (fade out when closed so nothing lingers) */}
+          {/* Sidebar contents */}
           <div
             className={cn(
               "flex h-full flex-col transition-opacity duration-200",
@@ -316,7 +321,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* content */}
           <main className="flex w-full flex-1 flex-col bg-neutral-950 px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
-            {/* ✅ TabsBridge only for MAIN APP routes when signed in */}
+            {/* TabsBridge only for MAIN APP routes when signed in */}
             {userId ? (
               <TabsBridge>
                 <main className="relative z-0">{children}</main>
@@ -333,7 +338,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <NavItem href="/work-orders" label="Work Orders" />
               <NavItem href="/inspections" label="Inspections" />
               <NavItem href="/chat" label="Messages" />
-              <NavItem href="/mobile/planner" label="Planner" />
+              {/* 🔁 Point to actual mobile appointments route, not /mobile/planner */}
+              <NavItem href="/mobile/appointments" label="Schedule" />
 
               <button
                 type="button"

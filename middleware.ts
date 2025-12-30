@@ -45,10 +45,10 @@ export async function middleware(req: NextRequest) {
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
 
-  // ✅ Portal auth pages
+  // ✅ Portal auth pages (sign-in, confirm, etc)
   const isPortalAuthPage = pathname.startsWith("/portal/auth/");
 
-  // ✅ Legacy confirm paths
+  // ✅ Legacy confirm paths still allowed
   const isLegacyPortalConfirm =
     pathname === "/portal/confirm" ||
     pathname === "/portal/confirm/" ||
@@ -62,8 +62,8 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/mobile/sign-in") ||
-    pathname.startsWith("/instant-shop-analysis") || // 🔓 demo funnel (no login)
-    pathname.startsWith("/demo") || // 🔓 optional demo routes if you add them
+    // ✅ Demo funnel: no login, one free run per email handled in API
+    pathname.startsWith("/demo") ||
     isPortalAuthPage ||
     isLegacyPortalConfirm;
 
@@ -129,8 +129,6 @@ export async function middleware(req: NextRequest) {
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
-    // 👈 Important: for public demo routes like /instant-shop-analysis
-    // we just let them render, no onboarding redirect.
     return res;
   }
 
@@ -170,6 +168,7 @@ export const config = {
     "/confirm",
     "/signup",
     "/sign-in",
+    "/demo/:path*",          // ✅ add demo funnel to middleware
     "/portal/:path*",
     "/mobile/sign-in",
     "/onboarding/:path*",
@@ -179,7 +178,5 @@ export const config = {
     "/mobile/:path*",
     "/parts/:path*",
     "/tech/queue",
-    "/instant-shop-analysis", // 👈 demo funnel page
-    "/demo/:path*", // 👈 optional extra demo routes
   ],
 };
