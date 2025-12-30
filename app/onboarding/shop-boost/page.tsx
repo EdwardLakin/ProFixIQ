@@ -1,140 +1,208 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
+import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
+import ShopHealthSnapshotView from "@/features/shops/components/ShopHealthSnapshot";
+
 type DB = Database;
-type YesNo = "yes" | "no";
+
+type QuestionnaireState = {
+  hasExistingCustomers: boolean;
+  hasRepairHistory: boolean;
+  hasPartsInventory: boolean;
+  hasFleetAccounts: boolean;
+  specialty: "general" | "diesel" | "hd" | "mixed";
+  techCount: string;
+  bayCount: string;
+  averageMonthlyRos: string;
+  wantsPowerAddOns: boolean;
+};
+
+type StepStatus = "idle" | "uploading" | "processing" | "done" | "error";
+
+const SHOP_IMPORT_BUCKET = "shop-imports";
 
 export default function ShopBoostOnboardingPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
 
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [shopId, setShopId] = useState<string | null>(null);
   const [shopName, setShopName] = useState<string | null>(null);
+  const [error, setError] = useState<string>("");
 
-  // questionnaire
-  const [hasCustomers, setHasCustomers] = useState<YesNo>("yes");
-  const [hasRepairHistory, setHasRepairHistory] = useState<YesNo>("yes");
-  const [hasPartsInventory, setHasPartsInventory] = useState<YesNo>("yes");
-  const [hasFleets, setHasFleets] = useState<YesNo>("no");
-  const [specialty, setSpecialty] = useState<
-    "general" | "diesel" | "hd" | "mixed"
-  >("general");
-  const [techCount, setTechCount] = useState<string>("");
-  const [bayCount, setBayCount] = useState<string>("");
-  const [avgMonthlyRos, setAvgMonthlyRos] = useState<string>("");
+  const [questionnaire, setQuestionnaire] = useState<QuestionnaireState>({
+    hasExistingCustomers: true,
+    hasRepairHistory: true,
+    hasPartsInventory: true,
+    hasFleetAccounts: false,
+    specialty: "general",
+    techCount: "",
+    bayCount: "",
+    averageMonthlyRos: "",
+    wantsPowerAddOns: true,
+  });
 
-  // uploads
   const [customersFile, setCustomersFile] = useState<File | null>(null);
   const [vehiclesFile, setVehiclesFile] = useState<File | null>(null);
   const [partsFile, setPartsFile] = useState<File | null>(null);
 
-  // basic guard: ensure user + shop exist
+  const [stepStatus, setStepStatus] = useState<StepStatus>("idle");
+  const [snapshot, setSnapshot] = useState<ShopHealthSnapshot | null>(null);
+
+  // Load profile → shop_id + shop name
   useEffect(() => {
     (async () => {
-      setLoading(true);
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) {
-          router.replace("/sign-in");
-          return;
-        }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-        const { data: profile, error } = await supabase
-          .from("profiles")
-          .select("shop_id, shops(name)")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (error) {
-          console.error(error);
-        }
-
-        if (!profile?.shop_id) {
-          router.replace("/onboarding");
-          return;
-        }
-
-        setShopId(profile.shop_id);
-        const name = (profile as any)?.shops?.name ?? null;
-        if (name) setShopName(name);
-      } finally {
-        setLoading(false);
+      if (!user) {
+        setError("You need to be signed in to use Shop Boost.");
+        setLoadingProfile(false);
+        return;
       }
-    })();
-  }, [router, supabase]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
+      const { data: profile, error: profErr } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profErr || !profile?.shop_id) {
+        setError(
+          "We couldn't find a shop for your profile. Finish owner onboarding first.",
+        );
+        setLoadingProfile(false);
+        return;
+      }
+
+      setShopId(profile.shop_id);
+
+      const { data: shop, error: shopErr } = await supabase
+        .from("shops")
+        .select("name")
+        .eq("id", profile.shop_id)
+        .maybeSingle();
+
+      if (!shopErr && shop?.name) {
+        setShopName(shop.name);
+      }
+
+      setLoadingProfile(false);
+    })();
+  }, [supabase]);
+
+  const handleQuestionToggle =
+    (key: keyof QuestionnaireState) => (value: boolean) => {
+      setQuestionnaire((prev) => ({
+        ...prev,
+        [key]: value,
+      }));
+    };
+
+  const handleSpecialtyChange = (
+    value: QuestionnaireState["specialty"],
+  ) => {
+    setQuestionnaire((prev) => ({
+      ...prev,
+      specialty: value,
+    }));
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    setSnapshot(null);
+
+    if (!shopId) {
+      setError("Shop not loaded yet.");
+      return;
+    }
+
+    if (!customersFile && !vehiclesFile && !partsFile) {
+      setError("Please upload at least one CSV file so we have history to scan.");
+      return;
+    }
+
+    setStepStatus("uploading");
+
+    const intakeId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${shopId}-${Date.now().toString()}`;
+
+    const uploadIfPresent = async (
+      file: File | null,
+      kind: "customers" | "vehicles" | "parts",
+    ): Promise<string | null> => {
+      if (!file) return null;
+
+      const path = `${shopId}/${intakeId}/${kind}-${file.name}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from(SHOP_IMPORT_BUCKET)
+        .upload(path, file, { upsert: true });
+
+      if (uploadErr) {
+        throw new Error(
+          `Failed to upload ${kind} file: ${uploadErr.message}`,
+        );
+      }
+
+      return path;
+    };
 
     try {
-      if (!shopId) {
-        setError("We couldn't find your shop. Please go back and try again.");
-        setSubmitting(false);
-        return;
-      }
+      const [customersPath, vehiclesPath, partsPath] = await Promise.all([
+        uploadIfPresent(customersFile, "customers"),
+        uploadIfPresent(vehiclesFile, "vehicles"),
+        uploadIfPresent(partsFile, "parts"),
+      ]);
 
-      const form = new FormData();
+      setStepStatus("processing");
 
-      form.append("shopId", shopId);
-      form.append(
-        "questionnaire",
-        JSON.stringify({
-          hasCustomers,
-          hasRepairHistory,
-          hasPartsInventory,
-          hasFleets,
-          specialty,
-          techCount: techCount ? Number(techCount) : null,
-          bayCount: bayCount ? Number(bayCount) : null,
-          avgMonthlyRos: avgMonthlyRos ? Number(avgMonthlyRos) : null,
-        }),
-      );
-
-      if (customersFile) form.append("customersFile", customersFile);
-      if (vehiclesFile) form.append("vehiclesFile", vehiclesFile);
-      if (partsFile) form.append("partsFile", partsFile);
-
-      const res = await fetch("/api/onboarding/shop-boost", {
+      const response = await fetch("/api/shop-boost/intakes/run", {
         method: "POST",
-        body: form,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intakeId,
+          questionnaire,
+          customersPath,
+          vehiclesPath,
+          partsPath,
+        }),
       });
 
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        setError(
-          j?.error ||
-            j?.msg ||
-            "We couldn’t start the AI setup yet. Please try again.",
-        );
-        setSubmitting(false);
+      const json = (await response.json()) as {
+        ok?: boolean;
+        snapshot?: ShopHealthSnapshot | null;
+        error?: string;
+      };
+
+      if (!response.ok || !json.ok || !json.snapshot) {
+        setStepStatus("error");
+        setError(json.error || "Failed to analyze shop data.");
         return;
       }
 
-      // After this, your AI pipeline runs off the intake table.
-      // Owners continue to shop-defaults to set tax, labor, etc.
-      router.replace("/onboarding/shop-defaults");
+      setSnapshot(json.snapshot);
+      setStepStatus("done");
     } catch (err) {
-      console.error(err);
-      setError("Something went wrong. Please try again.");
-      setSubmitting(false);
+      const message =
+        err instanceof Error ? err.message : "Unexpected error during upload.";
+      setError(message);
+      setStepStatus("error");
     }
   };
 
-  if (loading) {
+  if (loadingProfile) {
     return (
-      <div className="min-h-screen grid place-items-center bg-black text-white">
+      <div className="grid min-h-screen place-items-center bg-black text-white">
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-neutral-300">
           Loading your shop…
         </div>
@@ -142,8 +210,34 @@ export default function ShopBoostOnboardingPage() {
     );
   }
 
+  if (!shopId) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-black text-white px-6">
+        <div className="max-w-md space-y-4 rounded-xl border border-neutral-800 bg-neutral-950 px-6 py-5">
+          <h1 className="text-2xl font-blackops text-orange-400">
+            Shop Boost needs a shop
+          </h1>
+          <p className="text-sm text-neutral-300">
+            We couldn&apos;t find a shop connected to your profile. Finish owner
+            onboarding and then come back here.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/onboarding")}
+            className="inline-flex items-center justify-center rounded-md border border-orange-500 px-4 py-2 text-sm font-medium text-orange-100 hover:bg-orange-500/10"
+          >
+            Back to onboarding
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isBusy = stepStatus === "uploading" || stepStatus === "processing";
+
   return (
     <div className="min-h-screen bg-black text-white">
+      {/* Header */}
       <header className="border-b border-neutral-900 bg-neutral-950/70 px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-2">
           <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
@@ -160,6 +254,7 @@ export default function ShopBoostOnboardingPage() {
       </header>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
+        {/* Left: questionnaire + uploads */}
         <div className="flex-1 space-y-6">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Questionnaire */}
@@ -187,30 +282,37 @@ export default function ShopBoostOnboardingPage() {
               <div className="space-y-4 text-sm">
                 <YesNoRow
                   label="Do you already have a customer base?"
-                  value={hasCustomers}
-                  onChange={setHasCustomers}
+                  value={questionnaire.hasExistingCustomers}
+                  onChange={handleQuestionToggle("hasExistingCustomers")}
                   helper="If yes, you can upload them below so we can connect vehicles and history."
                 />
 
                 <YesNoRow
                   label="Do you have repair history from another system or spreadsheets?"
-                  value={hasRepairHistory}
-                  onChange={setHasRepairHistory}
+                  value={questionnaire.hasRepairHistory}
+                  onChange={handleQuestionToggle("hasRepairHistory")}
                   helper="This is what we use to find your most common jobs and missed opportunities."
                 />
 
                 <YesNoRow
                   label="Do you have a parts inventory list you want to bring in?"
-                  value={hasPartsInventory}
-                  onChange={setHasPartsInventory}
+                  value={questionnaire.hasPartsInventory}
+                  onChange={handleQuestionToggle("hasPartsInventory")}
                   helper="Even a rough list helps build packages and menu pricing."
                 />
 
                 <YesNoRow
                   label="Do you work with fleets today?"
-                  value={hasFleets}
-                  onChange={setHasFleets}
+                  value={questionnaire.hasFleetAccounts}
+                  onChange={handleQuestionToggle("hasFleetAccounts")}
                   helper="If yes, we’ll emphasize pre-trips, approvals, and downtime metrics."
+                />
+
+                <YesNoRow
+                  label="Do you want ProFixIQ to auto-build menu services and inspection templates for you?"
+                  value={questionnaire.wantsPowerAddOns}
+                  onChange={handleQuestionToggle("wantsPowerAddOns")}
+                  helper="We’ll use your history + these answers to propose ready-to-use menus."
                 />
 
                 {/* specialty */}
@@ -229,10 +331,12 @@ export default function ShopBoostOnboardingPage() {
                         type="button"
                         key={opt.key}
                         onClick={() =>
-                          setSpecialty(opt.key as typeof specialty)
+                          handleSpecialtyChange(
+                            opt.key as QuestionnaireState["specialty"],
+                          )
                         }
                         className={`rounded-md border px-3 py-2 text-left text-xs ${
-                          specialty === opt.key
+                          questionnaire.specialty === opt.key
                             ? "border-orange-500 bg-orange-500/10 text-orange-100"
                             : "border-neutral-700 bg-neutral-900 text-neutral-200 hover:border-neutral-500"
                         }`}
@@ -247,18 +351,33 @@ export default function ShopBoostOnboardingPage() {
                 <div className="grid gap-3 sm:grid-cols-3">
                   <NumberInput
                     label="How many technicians?"
-                    value={techCount}
-                    onChange={setTechCount}
+                    value={questionnaire.techCount}
+                    onChange={(value) =>
+                      setQuestionnaire((prev) => ({
+                        ...prev,
+                        techCount: value,
+                      }))
+                    }
                   />
                   <NumberInput
                     label="How many bays?"
-                    value={bayCount}
-                    onChange={setBayCount}
+                    value={questionnaire.bayCount}
+                    onChange={(value) =>
+                      setQuestionnaire((prev) => ({
+                        ...prev,
+                        bayCount: value,
+                      }))
+                    }
                   />
                   <NumberInput
                     label="Approx. repair orders per month?"
-                    value={avgMonthlyRos}
-                    onChange={setAvgMonthlyRos}
+                    value={questionnaire.averageMonthlyRos}
+                    onChange={(value) =>
+                      setQuestionnaire((prev) => ({
+                        ...prev,
+                        averageMonthlyRos: value,
+                      }))
+                    }
                   />
                 </div>
               </div>
@@ -277,33 +396,33 @@ export default function ShopBoostOnboardingPage() {
                   </p>
                 </div>
                 <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
-                  Recommended, not required
+                  Private to your shop
                 </span>
               </div>
 
               <div className="space-y-4 text-sm">
                 <UploadRow
+                  id="customers-upload"
                   label="Customers"
                   description="Names, phones, emails — we’ll attach vehicles and history where possible."
-                  onFileChange={setCustomersFile}
                   currentFile={customersFile}
-                  id="customers-upload"
+                  onFileChange={setCustomersFile}
                 />
 
                 <UploadRow
+                  id="vehicles-upload"
                   label="Vehicles & repair history"
                   description="VIN/plate, mileage, RO dates, complaint/cause/correction, line items."
-                  onFileChange={setVehiclesFile}
                   currentFile={vehiclesFile}
-                  id="vehicles-upload"
+                  onFileChange={setVehiclesFile}
                 />
 
                 <UploadRow
+                  id="parts-upload"
                   label="Parts inventory"
                   description="Part numbers, descriptions, cost and sell prices, preferred vendors."
-                  onFileChange={setPartsFile}
                   currentFile={partsFile}
-                  id="parts-upload"
+                  onFileChange={setPartsFile}
                 />
 
                 <p className="text-[11px] text-neutral-500">
@@ -317,12 +436,33 @@ export default function ShopBoostOnboardingPage() {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={isBusy}
                 className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {submitting ? "Starting AI setup…" : "Start AI Shop Boost"}
+                {stepStatus === "uploading" && "Uploading files…"}
+                {stepStatus === "processing" && "Analyzing your shop…"}
+                {stepStatus === "idle" && "Start AI Shop Boost"}
+                {stepStatus === "error" && "Try again"}
+                {stepStatus === "done" && "Re-run with new files"}
               </button>
-              {error && <p className="text-xs text-red-400">{error}</p>}
+
+              {stepStatus !== "idle" && (
+                <span className="rounded-full bg-neutral-900 px-3 py-1 text-[11px] text-neutral-400">
+                  {stepStatus === "uploading" && "Step 1 of 2: Uploading…"}
+                  {stepStatus === "processing" &&
+                    "Step 2 of 2: AI is building your snapshot…"}
+                  {stepStatus === "done" &&
+                    "Done. Scroll down to see your Shop Health Snapshot."}
+                  {stepStatus === "error" &&
+                    "Something went wrong. Adjust your files and try again."}
+                </span>
+              )}
+
+              {error && (
+                <p className="text-xs text-red-400">
+                  {error}
+                </p>
+              )}
             </div>
           </form>
         </div>
@@ -352,6 +492,13 @@ export default function ShopBoostOnboardingPage() {
           </div>
         </aside>
       </main>
+
+      {/* Snapshot WOW zone */}
+      {snapshot && (
+        <div className="mx-auto max-w-6xl px-4 pb-10 pt-2 sm:px-6">
+          <ShopHealthSnapshotView snapshot={snapshot} />
+        </div>
+      )}
     </div>
   );
 }
@@ -359,8 +506,8 @@ export default function ShopBoostOnboardingPage() {
 type YesNoRowProps = {
   label: string;
   helper?: string;
-  value: YesNo;
-  onChange: (v: YesNo) => void;
+  value: boolean;
+  onChange: (value: boolean) => void;
 };
 
 function YesNoRow({ label, helper, value, onChange }: YesNoRowProps) {
@@ -371,9 +518,9 @@ function YesNoRow({ label, helper, value, onChange }: YesNoRowProps) {
         <div className="inline-flex gap-1 rounded-full bg-neutral-900 p-1 text-[11px]">
           <button
             type="button"
-            onClick={() => onChange("yes")}
+            onClick={() => onChange(true)}
             className={`rounded-full px-2 py-0.5 ${
-              value === "yes"
+              value
                 ? "bg-orange-500 text-black"
                 : "text-neutral-300 hover:text-white"
             }`}
@@ -382,9 +529,9 @@ function YesNoRow({ label, helper, value, onChange }: YesNoRowProps) {
           </button>
           <button
             type="button"
-            onClick={() => onChange("no")}
+            onClick={() => onChange(false)}
             className={`rounded-full px-2 py-0.5 ${
-              value === "no"
+              !value
                 ? "bg-neutral-800 text-neutral-100"
                 : "text-neutral-300 hover:text-white"
             }`}
@@ -445,6 +592,9 @@ function UploadRow({
           <label className="text-xs text-neutral-300">{label}</label>
           <p className="text-[11px] text-neutral-500">{description}</p>
         </div>
+        <span className="max-w-[140px] truncate text-[10px] text-neutral-400">
+          {currentFile ? currentFile.name : "No file selected"}
+        </span>
       </div>
       <div className="flex items-center gap-3">
         <label
@@ -463,9 +613,6 @@ function UploadRow({
             onFileChange(file);
           }}
         />
-        <span className="text-[11px] text-neutral-400">
-          {currentFile ? currentFile.name : "No file selected"}
-        </span>
       </div>
     </div>
   );
