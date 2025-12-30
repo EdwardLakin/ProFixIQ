@@ -1545,6 +1545,71 @@ export type Database = {
         }
         Relationships: []
       }
+      fleet_dispatch_assignments: {
+        Row: {
+          created_at: string
+          driver_profile_id: string
+          id: string
+          next_pretrip_due: string | null
+          route_label: string | null
+          shop_id: string
+          state: string
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          driver_profile_id: string
+          id?: string
+          next_pretrip_due?: string | null
+          route_label?: string | null
+          shop_id: string
+          state?: string
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          driver_profile_id?: string
+          id?: string
+          next_pretrip_due?: string | null
+          route_label?: string | null
+          shop_id?: string
+          state?: string
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_dispatch_assignments_driver_profile_id_fkey"
+            columns: ["driver_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_dispatch_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_dispatch_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_dispatch_assignments_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_form_uploads: {
         Row: {
           created_at: string | null
