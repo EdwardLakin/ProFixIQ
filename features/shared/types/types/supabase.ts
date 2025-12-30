@@ -1304,6 +1304,93 @@ export type Database = {
           },
         ]
       }
+      demo_shop_boost_leads: {
+        Row: {
+          created_at: string
+          demo_id: string
+          email: string
+          id: string
+          summary: string | null
+        }
+        Insert: {
+          created_at?: string
+          demo_id: string
+          email: string
+          id?: string
+          summary?: string | null
+        }
+        Update: {
+          created_at?: string
+          demo_id?: string
+          email?: string
+          id?: string
+          summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demo_shop_boost_leads_demo_id_fkey"
+            columns: ["demo_id"]
+            isOneToOne: false
+            referencedRelation: "demo_shop_boosts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      demo_shop_boosts: {
+        Row: {
+          country: string
+          created_at: string
+          has_unlocked: boolean
+          id: string
+          intake_id: string | null
+          shop_id: string | null
+          shop_name: string
+          snapshot: Json | null
+        }
+        Insert: {
+          country?: string
+          created_at?: string
+          has_unlocked?: boolean
+          id?: string
+          intake_id?: string | null
+          shop_id?: string | null
+          shop_name: string
+          snapshot?: Json | null
+        }
+        Update: {
+          country?: string
+          created_at?: string
+          has_unlocked?: boolean
+          id?: string
+          intake_id?: string | null
+          shop_id?: string | null
+          shop_name?: string
+          snapshot?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demo_shop_boosts_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "demo_shop_boosts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "demo_shop_boosts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dtc_logs: {
         Row: {
           created_at: string | null

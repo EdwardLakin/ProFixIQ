@@ -115,12 +115,13 @@ export const MOBILE_TILES: MobileTile[] = [
     roles: ["mechanic", "manager", "owner", "admin"],
     scopes: ["home", "jobs", "all"],
   },
-  // features/mobile/config/mobile-tiles.ts – add:
-{
-  href: "/mobile/fleet/service-requests",
-  title: "Service Requests",
-  subtitle: "Fleet issues & follow-up",
-  roles: ["owner", "admin", "manager", "mechanic", "parts"],
-  scopes: ["home", "work_orders", "inspections", "all"],
-},
+
+  // 🚨 Fleet service requests (mobile)
+  {
+    href: "/mobile/fleet/service-requests",
+    title: "Service Requests",
+    subtitle: "Fleet issues & follow-up",
+    roles: ["owner", "admin", "manager", "mechanic", "parts", "fleet_manager", "dispatcher"],
+    scopes: ["home", "work_orders", "inspections", "fleet", "all"],
+  },
 ];

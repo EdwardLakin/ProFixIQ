@@ -276,8 +276,7 @@ export default function ProFixIQLanding() {
                   Ready to see it in motion?
                 </div>
                 <div className="mt-1 text-sm text-neutral-400">
-                  Create a work order, run an inspection, and let the system do
-                  the rest.
+                  Create a work order, run an inspection, or let AI scan your shop&apos;s history.
                 </div>
               </div>
 
@@ -293,10 +292,10 @@ export default function ProFixIQLanding() {
                   Start a work order
                 </Link>
                 <Link
-                  href="/agent/planner"
+                  href="/demo/instant-shop-analysis"
                   className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
                 >
-                  Open AI planner
+                  Run Instant Shop Analysis
                 </Link>
               </div>
             </div>

@@ -6,13 +6,17 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 
 type DB = Database;
+
 type ShopBoostIntakeInsert =
   DB["public"]["Tables"]["shop_boost_intakes"]["Insert"];
+
+type ShopBoostQuestionnaire =
+  DB["public"]["Tables"]["shop_boost_intakes"]["Row"]["questionnaire"];
 
 type RunIntakeBody = {
   intakeId: string;
   shopId: string;
-  questionnaire: unknown; // keep flexible, but NOT any
+  questionnaire: ShopBoostQuestionnaire;
   customersPath: string | null;
   vehiclesPath: string | null;
   partsPath: string | null;
@@ -44,13 +48,37 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (!questionnaire) {
+    return NextResponse.json(
+      { ok: false, error: "questionnaire is required" },
+      { status: 400 },
+    );
+  }
+
   const supabase = createAdminSupabase();
+
+  // 0) Enforce one free run per shop
+  const { count, error: countErr } = await supabase
+    .from("shop_boost_intakes")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", shopId);
+
+  if (!countErr && (count ?? 0) > 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "You’ve already used your free AI Shop Boost for this shop. Sign up for a plan to refresh it anytime.",
+      },
+      { status: 403 },
+    );
+  }
 
   // 1) Create the intake row (service_role via createAdminSupabase)
   const intakePayload: ShopBoostIntakeInsert = {
     id: intakeId,
     shop_id: shopId,
-    questionnaire: questionnaire as unknown as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["questionnaire"],
+    questionnaire,
     customers_file_path: customersPath,
     vehicles_file_path: vehiclesPath,
     parts_file_path: partsPath,

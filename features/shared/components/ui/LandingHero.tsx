@@ -20,17 +20,11 @@ export default function LandingHero() {
           backdrop-blur-2xl
         "
       >
-        {/* subtle inner border glow */}
         <div className="pointer-events-none absolute inset-0 rounded-[32px] border border-white/5" />
 
-        {/* Content */}
         <div className="relative z-10 flex flex-col items-center text-center">
-          {/* Brand heading */}
+          {/* Heading */}
           <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-neutral-400">
-              AI–Native Shop & Fleet OS
-            </p>
-
             <h1
               className="text-4xl leading-tight sm:text-5xl md:text-6xl"
               style={{
@@ -42,30 +36,28 @@ export default function LandingHero() {
             >
               ProFixIQ
             </h1>
-
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-300">
-              Inspections • Work Orders • AI • Shop & Fleet Portals
+              Inspections • Work Orders • AI • Portal
             </p>
           </div>
 
           {/* Main line */}
           <h2 className="mt-6 text-xl font-semibold text-neutral-50 sm:text-2xl md:text-3xl">
-            Upload your shop. Get answers in minutes.
+            From bay floor to fleet portal.
           </h2>
 
           {/* Subcopy */}
           <p className="mt-4 max-w-2xl text-sm leading-relaxed text-neutral-300 sm:text-base">
-            ProFixIQ ingests your customers, vehicles, repair history and parts,
-            then uses AI to surface your most common jobs, build smart menus,
-            and expose instant insights for both bay floor and fleet. One
-            system, tuned to your real-world work on day one.
+            Drop in your existing history and let the AI show you what your shop is
+            already great at — top repairs, missed packages, and ready-to-use menus
+            before you even move your first work order.
           </p>
 
           {/* CTAs */}
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            {/* Primary: scroll to Shop Boost section */}
+            {/* Primary: Instant Shop Analysis demo */}
             <Link
-              href="#shop-boost"
+              href="/demo/instant-shop-analysis"
               className="
                 rounded-full px-5 py-2.5 text-sm font-semibold text-black
                 shadow-[0_0_26px_rgba(212,118,49,0.9)]
@@ -76,12 +68,12 @@ export default function LandingHero() {
                   "linear-gradient(to right,var(--accent-copper-soft),var(--accent-copper))",
               }}
             >
-              Start Shop Boost Setup
+              Run Instant Shop Analysis
             </Link>
 
-            {/* Secondary: AI planner for onboarding */}
+            {/* Keep portals as secondary links */}
             <Link
-              href="/agent/planner"
+              href="/portal"
               className="
                 rounded-full border border-white/12 bg-black/50
                 px-5 py-2.5 text-sm font-semibold text-neutral-100
@@ -89,10 +81,9 @@ export default function LandingHero() {
                 hover:bg-black/70
               "
             >
-              Ask AI about your setup
+              Customer portal
             </Link>
 
-            {/* Tertiary: fleet portal preview */}
             <Link
               href="/portal/fleet"
               className="
@@ -102,14 +93,9 @@ export default function LandingHero() {
                 hover:bg-black/70
               "
             >
-              Preview fleet portal
+              Fleet portal
             </Link>
           </div>
-
-          {/* Social proof / reassurance line */}
-          <p className="mt-4 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-            Built for heavy-duty, mixed fleets, and busy general repair shops.
-          </p>
 
           {/* Mini feature strip */}
           <div className="mt-8 grid w-full gap-3 text-[11px] text-neutral-400 sm:grid-cols-3">
@@ -118,21 +104,21 @@ export default function LandingHero() {
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: COPPER }}
               />
-              AI Shop Boost: instant health report &amp; top repairs
+              Instant Shop Analysis in minutes
             </div>
             <div className="flex items-center justify-center gap-2">
               <span
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: COPPER }}
               />
-              Auto-built menus, inspections &amp; pricing from your history
+              HD inspections, corner grids &amp; pre-trips
             </div>
             <div className="flex items-center justify-center gap-2">
               <span
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: COPPER }}
               />
-              Customer &amp; fleet portal with live status &amp; approvals
+              Customer &amp; fleet portal with live status
             </div>
           </div>
         </div>

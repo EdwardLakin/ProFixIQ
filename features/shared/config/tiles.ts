@@ -1,7 +1,5 @@
 // features/shared/config/tiles.ts
 
-// features/shared/config/tiles.ts
-
 export type Role =
   | "owner"
   | "admin"
@@ -106,8 +104,8 @@ export const TILES: Tile[] = [
   // --- Inspections ---
   {
     href: "/inspections/templates",
-    title: "created inspections",
-    subtitle: "View and Edit",
+    title: "Created Inspections",
+    subtitle: "View and edit",
     roles: ["advisor", "manager", "owner", "admin", "mechanic"],
     scopes: ["inspections", "all"],
     section: "Inspections",
@@ -265,7 +263,7 @@ export const TILES: Tile[] = [
     section: "Tech",
   },
 
-    // --- Fleet / HD ---
+  // --- Fleet / HD ---
   {
     href: "/fleet/tower",
     title: "Fleet Control Tower",
@@ -298,14 +296,12 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
     section: "Fleet",
   },
-  // features/shared/config/tiles.ts – add under a new "Fleet" section
-{
-  href: "/fleet/service-requests",
-  title: "Fleet Service Requests",
-  subtitle: "From pre-trips & inspections",
-  roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
-  scopes: ["work_orders", "management", "all"],
-  section: "Fleet",
-},
-
+  {
+    href: "/fleet/service-requests",
+    title: "Fleet Service Requests",
+    subtitle: "From pre-trips & inspections",
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    scopes: ["work_orders", "management", "all"],
+    section: "Fleet",
+  },
 ];

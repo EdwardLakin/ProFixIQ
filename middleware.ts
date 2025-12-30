@@ -45,10 +45,10 @@ export async function middleware(req: NextRequest) {
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
 
-  // ✅ Anything under /portal/auth is a portal auth page (sign-in, confirm, etc)
+  // ✅ Portal auth pages
   const isPortalAuthPage = pathname.startsWith("/portal/auth/");
 
-  // ✅ Legacy confirm paths still allowed (if you still have them linked anywhere)
+  // ✅ Legacy confirm paths
   const isLegacyPortalConfirm =
     pathname === "/portal/confirm" ||
     pathname === "/portal/confirm/" ||
@@ -62,6 +62,8 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/mobile/sign-in") ||
+    pathname.startsWith("/instant-shop-analysis") || // 🔓 demo funnel (no login)
+    pathname.startsWith("/demo") || // 🔓 optional demo routes if you add them
     isPortalAuthPage ||
     isLegacyPortalConfirm;
 
@@ -96,16 +98,25 @@ export async function middleware(req: NextRequest) {
   // PUBLIC ROUTES
   // ---------------------------------------------------------------------------
   if (isPublic) {
-    const redirectParam = safeRedirectPath(req.nextUrl.searchParams.get("redirect"));
+    const redirectParam = safeRedirectPath(
+      req.nextUrl.searchParams.get("redirect"),
+    );
 
     // Main sign-in routes: signed in → bounce into app
-    const isMainSignIn = pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
+    const isMainSignIn =
+      pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
 
     if (session?.user && (isMainSignIn || isMobileSignIn)) {
       const to =
         redirectParam ??
-        (isMobileSignIn ? (completed ? "/mobile" : "/onboarding") : completed ? "/dashboard" : "/onboarding");
+        (isMobileSignIn
+          ? completed
+            ? "/mobile"
+            : "/onboarding"
+          : completed
+            ? "/dashboard"
+            : "/onboarding");
 
       const target = new URL(to, req.url);
       return withSupabaseCookies(res, NextResponse.redirect(target));
@@ -118,6 +129,8 @@ export async function middleware(req: NextRequest) {
       return withSupabaseCookies(res, NextResponse.redirect(target));
     }
 
+    // 👈 Important: for public demo routes like /instant-shop-analysis
+    // we just let them render, no onboarding redirect.
     return res;
   }
 
@@ -166,5 +179,7 @@ export const config = {
     "/mobile/:path*",
     "/parts/:path*",
     "/tech/queue",
+    "/instant-shop-analysis", // 👈 demo funnel page
+    "/demo/:path*", // 👈 optional extra demo routes
   ],
 };
