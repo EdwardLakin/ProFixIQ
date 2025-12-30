@@ -1548,36 +1548,45 @@ export type Database = {
       fleet_dispatch_assignments: {
         Row: {
           created_at: string
+          driver_name: string | null
           driver_profile_id: string
           id: string
           next_pretrip_due: string | null
           route_label: string | null
           shop_id: string
           state: string
+          unit_label: string | null
           updated_at: string
           vehicle_id: string
+          vehicle_identifier: string | null
         }
         Insert: {
           created_at?: string
+          driver_name?: string | null
           driver_profile_id: string
           id?: string
           next_pretrip_due?: string | null
           route_label?: string | null
           shop_id: string
           state?: string
+          unit_label?: string | null
           updated_at?: string
           vehicle_id: string
+          vehicle_identifier?: string | null
         }
         Update: {
           created_at?: string
+          driver_name?: string | null
           driver_profile_id?: string
           id?: string
           next_pretrip_due?: string | null
           route_label?: string | null
           shop_id?: string
           state?: string
+          unit_label?: string | null
           updated_at?: string
           vehicle_id?: string
+          vehicle_identifier?: string | null
         }
         Relationships: [
           {

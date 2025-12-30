@@ -15,6 +15,19 @@ import type {
 
 type DB = Database;
 
+// Base Supabase rows
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+type FleetDispatchAssignmentRow =
+  DB["public"]["Tables"]["fleet_dispatch_assignments"]["Row"];
+type FleetServiceRequestRow =
+  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
+
+// Profile row with joined shop + optional legacy shop_name
+type ProfileWithShop = ProfileRow & {
+  shops?: { name: string | null } | null;
+  shop_name?: string | null;
+};
+
 export default function FleetPortalPage() {
   const supabase = createClientComponentClient<DB>();
 
@@ -44,12 +57,17 @@ export default function FleetPortalPage() {
         // 🔹 Load profile + shop
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("id, full_name, first_name, last_name, shop_id, shops(name)")
+          .select(
+            "id, full_name, shop_id, shop_name, shops(name)",
+          )
           .eq("id", session.user.id)
-          .maybeSingle();
+          .maybeSingle<ProfileWithShop>();
 
         if (profileError || !profile?.shop_id) {
-          console.error("Unable to resolve fleet portal profile/shop", profileError);
+          console.error(
+            "Unable to resolve fleet portal profile/shop",
+            profileError,
+          );
           if (!cancelled) setLoading(false);
           return;
         }
@@ -57,15 +75,9 @@ export default function FleetPortalPage() {
         if (cancelled) return;
 
         const resolvedFleetName =
-          (profile as any).shops?.name ||
-          (profile as any).shop_name ||
-          "Fleet";
+          profile.shops?.name || profile.shop_name || "Fleet";
 
-        const resolvedContactName =
-          (profile as any).full_name ||
-          (profile as any).first_name ||
-          (profile as any).last_name ||
-          null;
+        const resolvedContactName = profile.full_name ?? null;
 
         setFleetName(resolvedFleetName);
         setContactName(resolvedContactName);
@@ -73,44 +85,41 @@ export default function FleetPortalPage() {
         const shopId = profile.shop_id;
 
         // 🔹 Dispatch assignments for this shop
-        const { data: assignmentRows, error: assignmentError } = await supabase
+        const {
+          data: assignmentRows,
+          error: assignmentError,
+        } = await supabase
           .from("fleet_dispatch_assignments")
           .select(
-            "id, driver_profile_id, driver_name, unit_label, vehicle_identifier, vehicle_id, route_label, next_pretrip_due, state",
+            "id, shop_id, driver_profile_id, driver_name, unit_label, vehicle_identifier, vehicle_id, route_label, next_pretrip_due, state",
           )
           .eq("shop_id", shopId)
-          .order("next_pretrip_due", { ascending: true });
+          .order("next_pretrip_due", { ascending: true })
+          .returns<FleetDispatchAssignmentRow[]>();
 
         if (assignmentError) {
           console.error("Failed to load fleet assignments", assignmentError);
         }
 
-        const mappedAssignments: DispatchAssignment[] =
-          (assignmentRows ?? []).map((row) => {
-            const r = row as typeof row & {
-              driver_name?: string | null;
-              unit_label?: string | null;
-              vehicle_identifier?: string | null;
-            };
-
-            return {
-              id: r.id,
-              driverName:
-                r.driver_name ||
-                resolvedContactName ||
-                "Assigned driver",
-              driverId: r.driver_profile_id,
-              unitLabel:
-                r.unit_label ||
-                r.vehicle_identifier ||
-                `Unit ${r.vehicle_id.slice(0, 8)}`,
-              unitId: r.vehicle_id,
-              routeLabel: r.route_label,
-              nextPreTripDue: r.next_pretrip_due,
-              state:
-                (r.state as DispatchAssignment["state"]) || "pretrip_due",
-            };
-          });
+        const mappedAssignments: DispatchAssignment[] = (assignmentRows ?? []).map(
+          (row) => ({
+            id: row.id,
+            driverName:
+              row.driver_name ||
+              resolvedContactName ||
+              "Assigned driver",
+            driverId: row.driver_profile_id,
+            unitLabel:
+              row.unit_label ||
+              row.vehicle_identifier ||
+              `Unit ${row.vehicle_id.slice(0, 8)}`,
+            unitId: row.vehicle_id,
+            routeLabel: row.route_label,
+            nextPreTripDue: row.next_pretrip_due,
+            state:
+              (row.state as DispatchAssignment["state"]) || "pretrip_due",
+          }),
+        );
 
         // Derive a simple unit list for header count
         const unitMap = new Map<string, FleetUnit>();
@@ -128,16 +137,23 @@ export default function FleetPortalPage() {
         });
 
         // 🔹 Service requests → issues snapshot
-        const { data: requestRows, error: requestError } = await supabase
+        const {
+          data: requestRows,
+          error: requestError,
+        } = await supabase
           .from("fleet_service_requests")
           .select(
-            "id, vehicle_id, title, summary, severity, status, created_at",
+            "id, shop_id, vehicle_id, title, summary, severity, status, created_at",
           )
           .eq("shop_id", shopId)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .returns<FleetServiceRequestRow[]>();
 
         if (requestError) {
-          console.error("Failed to load fleet service requests", requestError);
+          console.error(
+            "Failed to load fleet service requests",
+            requestError,
+          );
         }
 
         const mappedIssues: FleetIssue[] = (requestRows ?? []).map((r) => {
@@ -145,10 +161,10 @@ export default function FleetPortalPage() {
             unitMap.get(r.vehicle_id)?.label ||
             `Unit ${r.vehicle_id.slice(0, 8)}`;
 
-          // map cancelled → completed for simpler wording in the portal
-          const status =
+          // Map cancelled → completed for simpler wording in the portal
+          const status: FleetIssue["status"] =
             r.status === "cancelled"
-              ? ("completed" as FleetIssue["status"])
+              ? "completed"
               : (r.status as FleetIssue["status"]);
 
           return {
@@ -167,7 +183,7 @@ export default function FleetPortalPage() {
           setIssues(mappedIssues);
           setUnits(Array.from(unitMap.values()));
         }
-      } catch (e) {
+      } catch (e: unknown) {
         console.error("Fleet portal load error", e);
       } finally {
         if (!cancelled) setLoading(false);
