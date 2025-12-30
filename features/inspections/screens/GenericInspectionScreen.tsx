@@ -905,7 +905,7 @@ export default function GenericInspectionScreen(): JSX.Element {
             laborHours: laborTime,
           } as any,
           source: "inspection",
-          jobType: "inspection",
+          jobType: "repair",
         })) as any;
 
         createdJobId = (created && created.id) || workOrderLineId || null;
