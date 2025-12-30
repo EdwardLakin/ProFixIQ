@@ -1,4 +1,3 @@
-// features/shared/components/ui/PricingSection.tsx
 "use client";
 
 import type { FC } from "react";
@@ -40,29 +39,28 @@ type PricingPlan = {
 
 const COPPER = "var(--pfq-copper)";
 
-
 const plans: PricingPlan[] = [
   {
     key: "pro30",
-    title: "Shop HD (up to 30 users)",
-    desc: "Perfect for most heavy-duty or mixed shops.",
-    priceLabel: "$300 / month",
+    title: "Shop HD (up to 50 users)",
+    desc: "For most heavy-duty or mixed shops that need HD inspections, portal, and AI in one place.",
+    priceLabel: "$399 / month",
     features: [
       "All ProFixIQ HD & fleet features included",
-      "Up to 30 users (techs, advisors, parts, admin)",
+      "Up to 50 users (techs, advisors, parts, admin)",
       "HD inspections, portal, messaging & AI planner",
       "Priority support",
     ],
     featured: true,
-    cta: "Start HD plan",
+    cta: "Start shop plan",
   },
   {
     key: "unlimited",
     title: "Fleet / Multi-location",
-    desc: "Unlimited users — ideal for larger fleets and multi-site operations.",
-    priceLabel: "$500 / month",
+    desc: "Unlimited users per location — ideal for larger fleets, municipalities, and multi-site operations.",
+    priceLabel: "$599 / month / location",
     features: [
-      "Unlimited users across shifts and locations",
+      "Unlimited users per location",
       "All HD inspections, portal, and dispatch tools",
       "Best for fleets, municipalities, and larger operations",
       "Priority support",
@@ -90,7 +88,7 @@ const PricingSection: FC<PricingSectionProps> = ({
       <div className="mx-auto mb-8 max-w-3xl text-center">
         <p className="text-sm text-neutral-300">
           No feature gating. HD inspections, fleet programs, portal and AI
-          included from day one.
+          are included from day one.
         </p>
         <p className="mt-2 text-xs text-neutral-500">
           Trial & onboarding available — pricing finalizes at checkout.
@@ -98,7 +96,7 @@ const PricingSection: FC<PricingSectionProps> = ({
 
         <button
           onClick={onStartFree}
-          className="mt-4 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
+          className="mt-4 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-black/40"
         >
           Start trial / onboarding
         </button>

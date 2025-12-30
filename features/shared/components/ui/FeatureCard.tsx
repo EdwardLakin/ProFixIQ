@@ -1,7 +1,11 @@
+// features/shared/components/ui/FeatureCard.tsx
 "use client";
 
+import type { CSSProperties } from "react";
 import { CheckCircle2, Lock } from "lucide-react";
 import { cn } from "@shared/lib/utils";
+
+const COPPER = "var(--pfq-copper)";
 
 type BaseProps = {
   title: string;
@@ -24,7 +28,6 @@ type WithContent = BaseProps & {
 type FeatureCardProps = WithDescription | WithContent;
 
 function getBodyText(props: FeatureCardProps): string {
-  // ✅ TS-safe: handle any accidental optional/undefined drift
   if ("content" in props && typeof props.content === "string" && props.content.trim()) {
     return props.content;
   }
@@ -56,7 +59,7 @@ export default function FeatureCard(props: FeatureCardProps) {
   const statusLabel =
     status === "available" ? "Available" : status === "locked" ? "Locked" : null;
 
-  const statusPillStyle: React.CSSProperties =
+  const statusPillStyle: CSSProperties =
     status === "available"
       ? {
           borderColor: "rgba(16,185,129,0.35)",
@@ -80,9 +83,9 @@ export default function FeatureCard(props: FeatureCardProps) {
       aria-label={title}
       className={cn(
         "group relative overflow-hidden rounded-3xl border p-5",
-        "bg-black/30 backdrop-blur-xl",
+        "bg-black/35 backdrop-blur-2xl",
         "transition-transform duration-200 hover:-translate-y-[2px]",
-        "shadow-[0_18px_45px_rgba(0,0,0,0.65)]",
+        "shadow-[0_22px_60px_rgba(0,0,0,0.85)]",
         className,
       )}
       style={{
@@ -107,11 +110,11 @@ export default function FeatureCard(props: FeatureCardProps) {
         />
         <div
           className="absolute -right-24 -top-24 h-56 w-56 rounded-full blur-3xl opacity-0 transition-opacity duration-200 group-hover:opacity-40"
-          style={{ backgroundColor: "rgba(193, 102, 59, 0.28)" }}
+          style={{ backgroundColor: "rgba(193,102,59,0.28)" }}
         />
         <div
           className="absolute -left-28 -bottom-28 h-64 w-64 rounded-full blur-3xl opacity-0 transition-opacity duration-200 group-hover:opacity-25"
-          style={{ backgroundColor: "rgba(227, 154, 110, 0.18)" }}
+          style={{ backgroundColor: "rgba(227,154,110,0.18)" }}
         />
       </div>
 
@@ -140,18 +143,23 @@ export default function FeatureCard(props: FeatureCardProps) {
             ) : (
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: "var(--accent-copper)" }}
+                style={{ backgroundColor: COPPER }}
                 aria-hidden
               />
             )}
 
-            <h3 className="truncate text-lg font-blackops text-white">{title}</h3>
+            <h3
+              className="truncate text-lg text-white"
+              style={{ fontFamily: "var(--font-blackops)" }}
+            >
+              {title}
+            </h3>
           </div>
 
           {subtitle ? (
             <p
               className="mt-1 text-[11px] uppercase tracking-[0.18em]"
-              style={{ color: "rgba(227, 154, 110, 0.85)" }}
+              style={{ color: "rgba(227,154,110,0.85)" }}
             >
               {subtitle}
             </p>
@@ -173,7 +181,7 @@ export default function FeatureCard(props: FeatureCardProps) {
       <div className="relative mt-4 flex items-center gap-2">
         <div
           className="h-[2px] w-10 rounded-full"
-          style={{ backgroundColor: "var(--accent-copper)" }}
+          style={{ backgroundColor: COPPER }}
         />
         <div className="h-px flex-1 bg-white/5" />
       </div>

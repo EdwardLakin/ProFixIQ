@@ -1,5 +1,6 @@
-/// features/shared/components/ui/WhySection.tsx
 "use client";
+
+const COPPER = "var(--pfq-copper)";
 
 export default function WhySection() {
   const bullets = [
@@ -13,7 +14,7 @@ export default function WhySection() {
     <div className="mx-auto max-w-5xl text-center text-white">
       <div
         className="text-xs font-semibold uppercase tracking-[0.22em]"
-        style={{ color: "var(--pfq-copper)" }}
+        style={{ color: COPPER }}
       >
         Why it works
       </div>
@@ -47,7 +48,7 @@ export default function WhySection() {
                 style={{
                   borderColor: "rgba(255, 255, 255, 0.12)",
                   backgroundColor: "rgba(193, 102, 59, 0.18)",
-                  color: "var(--pfq-copper)",
+                  color: COPPER,
                 }}
               >
                 ✓
