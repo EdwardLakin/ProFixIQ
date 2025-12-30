@@ -1,4 +1,4 @@
-// app/page.tsx (or wherever your ProFixIQLanding lives)
+// features/shared/components/ProfixIQLanding.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -145,7 +145,7 @@ export default function ProFixIQLanding() {
 
             <div className="flex items-center gap-2">
               <Link
-                href="/portal"
+                href="/portal/auth/sign-in"
                 className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-1.5 text-sm font-semibold text-neutral-200 hover:bg-neutral-900/40 transition"
               >
                 Customer Portal
