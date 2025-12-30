@@ -2,124 +2,127 @@
 "use client";
 
 import Link from "next/link";
-import Container from "@shared/components/ui/Container";
 
 const COPPER = "var(--pfq-copper)";
 
 export default function LandingHero() {
   return (
-    <section className="relative overflow-hidden py-16 md:py-20">
-      <Container>
-        {/* Glass hero panel */}
-        <div
-          className="
-            mx-auto max-w-5xl rounded-[32px]
-            border border-white/12
-            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_85%)]
-            px-6 py-10 md:px-10 md:py-14
-            shadow-[0_32px_80px_rgba(0,0,0,0.9)]
-            backdrop-blur-2xl
-          "
-        >
-          {/* Label */}
-          <div className="text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
-            Inspections • Work Orders • AI • Portal
-          </div>
+    <section className="relative mx-auto max-w-5xl px-4 py-20 sm:py-24">
+      {/* Glass hero card */}
+      <div
+        className="
+          relative mx-auto max-w-4xl
+          overflow-hidden rounded-[32px]
+          border border-[color:var(--metal-border-soft,#1f2937)]
+          bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.20),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_85%)]
+          px-6 py-8 sm:px-10 sm:py-12
+          shadow-[0_32px_80px_rgba(0,0,0,0.95)]
+          backdrop-blur-2xl
+        "
+      >
+        {/* subtle inner border glow */}
+        <div className="pointer-events-none absolute inset-0 rounded-[32px] border border-white/5" />
 
-          {/* Brand + headline */}
-          <div className="mt-4 text-center">
+        {/* Content */}
+        <div className="relative z-10 flex flex-col items-center text-center">
+          {/* ProFixIQ heading */}
+          <div className="space-y-2">
             <h1
-              className="text-4xl md:text-5xl lg:text-6xl"
+              className="text-4xl leading-tight sm:text-5xl md:text-6xl"
               style={{
                 fontFamily: "var(--font-blackops)",
                 color: COPPER,
+                textShadow:
+                  "0 0 26px rgba(197,122,74,0.75), 0 0 60px rgba(0,0,0,0.85)",
               }}
             >
               ProFixIQ
             </h1>
-            <p className="mt-3 text-lg md:text-xl text-neutral-100">
-              From bay floor to fleet portal.
-            </p>
-            <p className="mx-auto mt-3 max-w-2xl text-sm md:text-base text-neutral-300">
-              Keep heavy-duty and general repair work flowing — inspections,
-              corner grids, AI suggestions, work orders, and portal approvals
-              all share the same clean record.
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-300">
+              Inspections • Work Orders • AI • Portal
             </p>
           </div>
 
+          {/* Main line */}
+          <h2 className="mt-6 text-xl font-semibold text-neutral-50 sm:text-2xl md:text-3xl">
+            From bay floor to fleet portal.
+          </h2>
+
+          {/* Subcopy */}
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-neutral-300 sm:text-base">
+            Keep heavy-duty and general repair work flowing — inspections, corner
+            grids, AI suggestions, work orders, and customer or fleet approvals
+            all share the same clean record instead of five disconnected tools.
+          </p>
+
           {/* CTAs */}
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 md:flex-row">
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
               href="/agent/planner"
               className="
-                inline-flex items-center justify-center
-                rounded-full px-6 py-2.5 text-sm font-semibold text-black
-                shadow-[0_0_30px_rgba(212,118,49,0.85)]
-                transition hover:brightness-110
+                rounded-full px-5 py-2.5 text-sm font-semibold text-black
+                shadow-[0_0_26px_rgba(212,118,49,0.9)]
+                hover:brightness-110
               "
               style={{
                 background:
-                  "linear-gradient(to right,var(--pfq-copper-soft),var(--pfq-copper))",
-                border: "1px solid rgba(255,255,255,0.1)",
+                  "linear-gradient(to right,var(--accent-copper-soft),var(--accent-copper))",
               }}
             >
               Try the AI
             </Link>
 
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Link
-                href="/portal"
-                className="
-                  inline-flex items-center justify-center
-                  rounded-full border border-white/14
-                  bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-100
-                  backdrop-blur-xl transition hover:bg-neutral-900/60
-                "
-              >
-                Customer portal
-              </Link>
-              <Link
-                href="/portal/fleet"
-                className="
-                  inline-flex items-center justify-center
-                  rounded-full border border-white/14
-                  bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-100
-                  backdrop-blur-xl transition hover:bg-neutral-900/60
-                "
-              >
-                Fleet portal
-              </Link>
-            </div>
+            <Link
+              href="/portal"
+              className="
+                rounded-full border border-white/12 bg-black/50
+                px-5 py-2.5 text-sm font-semibold text-neutral-100
+                backdrop-blur-lg transition
+                hover:bg-black/70
+              "
+            >
+              Customer portal
+            </Link>
+
+            <Link
+              href="/portal/fleet"
+              className="
+                rounded-full border border-white/12 bg-black/40
+                px-5 py-2.5 text-sm font-semibold text-neutral-100
+                backdrop-blur-lg transition
+                hover:bg-black/70
+              "
+            >
+              Fleet portal
+            </Link>
           </div>
 
-          {/* Mini feature blurbs */}
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 text-[11px] text-neutral-400 md:flex-row">
-            <div className="flex items-center gap-2">
+          {/* Mini feature strip */}
+          <div className="mt-8 grid w-full gap-3 text-[11px] text-neutral-400 sm:grid-cols-3">
+            <div className="flex items-center justify-center gap-2">
               <span
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: COPPER }}
               />
-              <span>AI planner for jobs, inspections &amp; estimates.</span>
+              AI planner for jobs, inspections & estimates
             </div>
-            <div className="hidden h-px w-8 bg-white/10 md:block" />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <span
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: COPPER }}
               />
-              <span>HD inspections, corner grids &amp; pre-trips.</span>
+              HD inspections, corner grids & pre-trips
             </div>
-            <div className="hidden h-px w-8 bg-white/10 md:block" />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <span
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: COPPER }}
               />
-              <span>Customer &amp; fleet portal with live status.</span>
+              Customer & fleet portal with live status
             </div>
           </div>
         </div>
-      </Container>
+      </div>
     </section>
   );
 }
