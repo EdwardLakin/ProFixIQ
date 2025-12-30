@@ -9,28 +9,31 @@ import type { Database } from "@shared/types/types/supabase";
 
 const COPPER = "#C57A4A";
 
+type PortalType = "customer" | "fleet";
+
 export default function PortalSignInPage() {
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();
 
+  const [portalType, setPortalType] = useState<PortalType>("customer");
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
 
+  // Detect ?portal=fleet or ?portal=customer to pre-select mode
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (cancelled) return;
-      if (data?.user) router.replace("/portal");
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router, supabase]);
+    if (typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      const portalParam = url.searchParams.get("portal");
+      if (portalParam === "fleet" || portalParam === "customer") {
+        setPortalType(portalParam);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const goLanding = () => {
     const href = "/";
@@ -58,8 +61,21 @@ export default function PortalSignInPage() {
       return;
     }
 
-    router.replace("/portal");
+    // 🔀 Route based on selected portal type
+    if (portalType === "fleet") {
+      router.replace("/portal/fleet");
+    } else {
+      router.replace("/portal");
+    }
   };
+
+  const portalLabel =
+    portalType === "fleet" ? "Fleet Portal" : "Customer Portal";
+
+  const helperCopy =
+    portalType === "fleet"
+      ? "Use your fleet login from the shop or dispatch to see assigned units, pre-trips, and service requests."
+      : "Use the email and password you created when you signed up.";
 
   return (
     <div
@@ -100,7 +116,35 @@ export default function PortalSignInPage() {
               Back
             </button>
 
-            <div className="text-[10px] text-neutral-500">Customer portal</div>
+            <div className="text-[10px] text-neutral-500">
+              {portalType === "fleet" ? "Fleet access" : "Customer access"}
+            </div>
+          </div>
+
+          {/* Portal switcher */}
+          <div className="mb-4 flex items-center justify-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-1 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setPortalType("customer")}
+              className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
+                portalType === "customer"
+                  ? "bg-[color:var(--accent-copper)] text-black font-semibold shadow-[0_0_18px_rgba(197,122,74,0.85)]"
+                  : "text-neutral-300 hover:bg-black/60"
+              }`}
+            >
+              Customer
+            </button>
+            <button
+              type="button"
+              onClick={() => setPortalType("fleet")}
+              className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
+                portalType === "fleet"
+                  ? "bg-[color:var(--accent-copper)] text-black font-semibold shadow-[0_0_18px_rgba(197,122,74,0.85)]"
+                  : "text-neutral-300 hover:bg-black/60"
+              }`}
+            >
+              Fleet
+            </button>
           </div>
 
           {/* Brand / title */}
@@ -116,7 +160,7 @@ export default function PortalSignInPage() {
               "
               style={{ color: COPPER }}
             >
-              Customer Portal
+              {portalLabel}
             </div>
 
             <h1
@@ -127,7 +171,7 @@ export default function PortalSignInPage() {
             </h1>
 
             <p className="text-xs text-muted-foreground sm:text-sm">
-              Use the email and password you created when you signed up.
+              {helperCopy}
             </p>
           </div>
 
@@ -205,14 +249,24 @@ export default function PortalSignInPage() {
             </button>
           </form>
 
+          {/* Footer copy differs by portal type */}
           <div className="mt-5 flex items-center justify-between text-sm text-neutral-400">
-            <span>Need an account?</span>
-            <Link
-              href="/portal/auth/sign-up"
-              className="text-[11px] font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline underline-offset-2"
-            >
-              Sign up
-            </Link>
+            {portalType === "customer" ? (
+              <>
+                <span>Need an account?</span>
+                <Link
+                  href="/portal/auth/sign-up"
+                  className="text-[11px] font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline underline-offset-2"
+                >
+                  Sign up
+                </Link>
+              </>
+            ) : (
+              <p className="text-[11px] text-neutral-400">
+                Fleet logins are created by your shop or dispatch. If you need
+                access, contact your shop administrator.
+              </p>
+            )}
           </div>
         </div>
       </div>

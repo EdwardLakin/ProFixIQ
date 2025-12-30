@@ -35,19 +35,44 @@ export default function LandingHero() {
         />
       </div>
 
-      {/* Big HD shadowed text (desktop) */}
-      <div className="pointer-events-none absolute inset-0 hidden items-center justify-center md:flex">
+      {/* Ghost HD / FLEET backdrop */}
+      <div className="pointer-events-none absolute inset-x-0 top-10 flex justify-center">
+        <div className="relative mx-auto w-full max-w-5xl">
+          <span
+            className={[
+              "block text-center font-blackops leading-none",
+              "text-[110px] sm:text-[170px] md:text-[210px]",
+              "tracking-[0.5em]",
+            ].join(" ")}
+            style={{
+              color: "rgba(255,255,255,0.04)",
+              textShadow: "0 0 60px rgba(0,0,0,0.9)",
+            }}
+          >
+            HD · FLEET
+          </span>
+        </div>
+      </div>
+
+      {/* Side rail labels for HD / FLEET (desktop only) */}
+      <div className="pointer-events-none hidden md:block">
         <span
-          className="text-[220px] font-blackops tracking-[0.35em] text-white/4 drop-shadow-[0_0_80px_rgba(0,0,0,0.95)]"
-          style={{ fontFamily: "var(--font-blackops)" }}
-          aria-hidden="true"
+          className="absolute left-6 top-1/2 -translate-y-1/2 -rotate-90 text-[11px] tracking-[0.28em] uppercase text-white/25"
+          style={{ letterSpacing: "0.28em" }}
         >
-          HD
+          Heavy Duty
+        </span>
+        <span
+          className="absolute right-6 top-1/2 -translate-y-1/2 rotate-90 text-[11px] tracking-[0.28em] uppercase text-white/25"
+          style={{ letterSpacing: "0.28em" }}
+        >
+          Fleet
         </span>
       </div>
 
+      {/* Foreground content */}
       <div className="relative mx-auto max-w-7xl px-6 pt-24 pb-16 text-center">
-        <p className="text-xs uppercase tracking-[0.22em] text-neutral-400">
+        <p className="text-xs tracking-[0.22em] text-neutral-400 uppercase">
           Repair smarter • Diagnose faster • Document cleaner
         </p>
 
@@ -69,7 +94,7 @@ export default function LandingHero() {
           ProFixIQ
         </h1>
 
-        <p className="mx-auto mt-5 max-w-3xl text-base leading-relaxed text-neutral-300 sm:text-lg">
+        <p className="mx-auto mt-5 max-w-3xl text-base sm:text-lg text-neutral-300 leading-relaxed">
           From inspections to invoices — ProFixIQ keeps your shop moving.
           Automate the busywork, capture proof fast, and turn findings into
           clean work orders and customer-ready approvals. Built for general
@@ -92,7 +117,7 @@ export default function LandingHero() {
                 className="h-2 w-2 rounded-full"
                 style={{ backgroundColor: "var(--accent-copper)" }}
               />
-              HD inspections, corner grids & pre-trips
+              HD inspections, corner grids &amp; pre-trips
             </div>
             <div className="flex items-center gap-2">
               <span
@@ -128,7 +153,7 @@ export default function LandingHero() {
           </a>
         </div>
 
-        {/* Mini preview band */}
+        {/* Mini “preview” band (no images required) */}
         <div className="mt-12 grid gap-4 sm:grid-cols-3">
           {[
             {

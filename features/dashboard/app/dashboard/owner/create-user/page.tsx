@@ -1,3 +1,4 @@
+// app/admin/users/create/page.tsx (or wherever this lives)
 "use client";
 
 import { useEffect, useState } from "react";
@@ -26,6 +27,7 @@ export default function CreateUserPage(): JSX.Element {
     shop_id: null,
     phone: "",
   });
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -79,6 +81,7 @@ export default function CreateUserPage(): JSX.Element {
     setSubmitting(true);
     setError(null);
     setSuccess(null);
+
     try {
       const body: CreatePayload = {
         username: form.username.trim().toLowerCase(),
@@ -117,7 +120,7 @@ export default function CreateUserPage(): JSX.Element {
             role: body.role ?? "mechanic",
           },
           ...prev,
-        ].slice(0, 5)
+        ].slice(0, 5),
       );
 
       // clear sensitive fields
@@ -142,9 +145,11 @@ export default function CreateUserPage(): JSX.Element {
   async function resetPassword(): Promise<void> {
     setResetBusy(true);
     setResetMsg(null);
+
     try {
       const uname = resetUsername.trim().toLowerCase();
       const tmp = resetPass.trim();
+
       if (!uname || !tmp) {
         throw new Error("Username and new temporary password are required.");
       }
@@ -154,6 +159,7 @@ export default function CreateUserPage(): JSX.Element {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: uname, password: tmp }),
       });
+
       if (!res.ok) {
         const t = await res.text().catch(() => "");
         throw new Error(t || "Failed to reset password.");
@@ -180,9 +186,14 @@ export default function CreateUserPage(): JSX.Element {
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-white">New team member</h2>
             <p className="text-sm text-neutral-400">
-              Create a username-based account for shop staff. They&apos;ll sign in with{" "}
-              <span className="text-orange-300">their username</span> and this temporary
-              password.
+              Create a username-based account for shop staff. They&apos;ll sign in
+              with{" "}
+              <span className="text-orange-300">their username</span> and the
+              temporary password you set here.
+            </p>
+            <p className="text-[11px] text-neutral-500">
+              If they forget it later, an owner or manager can issue a new
+              temporary password from this screen.
             </p>
           </div>
 
@@ -215,8 +226,11 @@ export default function CreateUserPage(): JSX.Element {
                 }
               />
             </div>
+
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-300">Phone</label>
+              <label className="text-xs font-medium text-neutral-300">
+                Phone
+              </label>
               <input
                 className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
                 placeholder="Phone"
@@ -224,6 +238,7 @@ export default function CreateUserPage(): JSX.Element {
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
               />
             </div>
+
             <div className="space-y-1">
               <label className="text-xs font-medium text-neutral-300">
                 Username <span className="text-red-400">*</span>
@@ -232,12 +247,15 @@ export default function CreateUserPage(): JSX.Element {
                 className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
                 placeholder="e.g. jsmith"
                 value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, username: e.target.value })
+                }
               />
               <p className="text-[11px] text-neutral-500">
                 Use lowercase letters / numbers only. This becomes their login.
               </p>
             </div>
+
             <div className="space-y-1">
               <label className="text-xs font-medium text-neutral-300">
                 Temporary password <span className="text-red-400">*</span>
@@ -249,9 +267,16 @@ export default function CreateUserPage(): JSX.Element {
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
               />
+              <p className="text-[11px] text-neutral-500">
+                Share this directly with the user. They can change it later from
+                the Settings screen if you enable that flow.
+              </p>
             </div>
+
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-300">Role</label>
+              <label className="text-xs font-medium text-neutral-300">
+                Role
+              </label>
               <select
                 className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
                 value={form.role ?? ""}
@@ -266,6 +291,7 @@ export default function CreateUserPage(): JSX.Element {
                 <option value="advisor">Advisor</option>
               </select>
             </div>
+
             <div className="space-y-1">
               <label className="text-xs font-medium text-neutral-300">
                 Shop ID{" "}
@@ -289,6 +315,7 @@ export default function CreateUserPage(): JSX.Element {
 
           <div className="flex flex-wrap items-center gap-3">
             <button
+              type="button"
               onClick={() => void submit()}
               disabled={submitting}
               className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
@@ -296,7 +323,8 @@ export default function CreateUserPage(): JSX.Element {
               {submitting ? "Creating…" : "Create user"}
             </button>
             <p className="text-xs text-neutral-500">
-              New users can update their password after they sign in.
+              Share the username and temporary password with the team member
+              when you&apos;re ready for them to sign in.
             </p>
           </div>
         </div>
@@ -342,8 +370,8 @@ export default function CreateUserPage(): JSX.Element {
               Reset password (internal)
             </h2>
             <p className="mb-3 text-xs text-neutral-500">
-              For username-based shop accounts only. This does not email the user; you&apos;ll
-              need to share the new temporary password with them.
+              For username-based shop accounts only. This does not email the user;
+              you&apos;ll need to share the new temporary password with them.
             </p>
             <div className="space-y-2 text-sm">
               <input
@@ -368,7 +396,9 @@ export default function CreateUserPage(): JSX.Element {
                 {resetBusy ? "Updating…" : "Reset password"}
               </button>
               {resetMsg && (
-                <div className="mt-1 text-xs text-neutral-200">{resetMsg}</div>
+                <div className="mt-1 text-xs text-neutral-200">
+                  {resetMsg}
+                </div>
               )}
             </div>
           </div>
