@@ -11,7 +11,7 @@ type Props = {
 };
 
 export default function FleetIssueTables({
-  units,
+  units: _units, // reserved for future use; avoids unused-param error
   issues,
   assignments,
 }: Props) {
@@ -211,13 +211,11 @@ function StatusPill({ status }: { status: FleetIssue["status"] }) {
   > = {
     open: {
       label: "Open",
-      className:
-        "border-red-400/60 bg-red-500/10 text-red-200",
+      className: "border-red-400/60 bg-red-500/10 text-red-200",
     },
     scheduled: {
       label: "Scheduled",
-      className:
-        "border-sky-400/60 bg-sky-500/10 text-sky-100",
+      className: "border-sky-400/60 bg-sky-500/10 text-sky-100",
     },
     completed: {
       label: "Completed",
