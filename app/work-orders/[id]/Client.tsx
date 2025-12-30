@@ -1336,33 +1336,81 @@ export default function WorkOrderIdClient(): JSX.Element {
             )}
           </div>
 
-          {/* Jobs list – full width; JobCard handles its own status pills */}
-          <div className={`${cardBase} p-4`}>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
+                      {/* Jobs list – hero view; JobCard handles status & line details */}
+          <div className={`${cardBase} p-4 sm:p-5`}>
+            {/* Header row + progress */}
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
                 <h2 className="text-sm font-semibold text-foreground sm:text-base">
                   Jobs in this work order
                 </h2>
                 <p className="text-[11px] text-muted-foreground">
-                  Tap a job to open the focused panel with full controls.
+                  Click any card to open the focused panel with full controls, punch
+                  and inspections.
                 </p>
               </div>
 
               {linesNeedingQuote.length > 0 && (
                 <button
                   type="button"
-                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-60"
+                  className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_0_18px_rgba(37,99,235,0.9)] hover:bg-blue-500 disabled:opacity-60"
                   onClick={sendAllPendingToParts}
                   disabled={bulkActive}
                   title="Send all jobs to parts for quoting"
                 >
-                  Quote all lines
+                  ⚡ Quote all lines
                 </button>
               )}
             </div>
 
+            {/* Progress strip (purely visual – uses existing line data) */}
+            {sortedLines.length > 0 && (
+              <div className="mb-4 rounded-xl border border-white/10 bg-black/50 px-3 py-2.5">
+                {(() => {
+                  const total = sortedLines.length;
+                  const done = sortedLines.filter((ln) => {
+                    const s = (ln.status ?? "").toLowerCase();
+                    return (
+                      s === "completed" ||
+                      s === "ready_to_invoice" ||
+                      s === "invoiced"
+                    );
+                  }).length;
+                  const pct = total ? Math.round((done / total) * 100) : 0;
+
+                  return (
+                    <>
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-neutral-300">
+                        <span className="font-medium">
+                          Job progress:{" "}
+                          <span className="text-white">
+                            {done}/{total} done
+                          </span>
+                        </span>
+                        <span className="text-[10px] text-neutral-400">
+                          {pct}% complete
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-neutral-900">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,_rgba(15,118,110,0.9),_rgba(16,185,129,0.9),_rgba(249,115,22,0.95))] transition-[width]"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
             {sortedLines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No lines yet.</p>
+              <p className="text-sm text-muted-foreground">
+                No jobs added yet. Use the{" "}
+                <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">
+                  Add job
+                </span>{" "}
+                actions in the focused panel to start building this work order.
+              </p>
             ) : (
               <div className="space-y-2">
                 {sortedLines.map((ln, idx) => {
@@ -1431,6 +1479,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               </div>
             )}
           </div>
+          
 
           {/* Suggested maintenance / quick add – full-width card */}
           <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>

@@ -57,22 +57,36 @@ type KnownStatus =
   | "ready_to_invoice"
   | "invoiced";
 
-/** EXACTLY the same pill styling as your mobile card */
+/** EXACT same pill basis */
 const BASE_BADGE =
-  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide";
+  "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide";
 
 const BADGE: Record<KnownStatus, string> = {
-  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
-  awaiting: "bg-sky-900/20 border-sky-500/40 text-sky-300",
-  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
-  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
-  on_hold: "bg-amber-900/20 border-amber-500/40 text-amber-300",
-  planned: "bg-purple-900/20 border-purple-500/40 text-purple-300",
-  new: "bg-neutral-800 border-neutral-600 text-neutral-200",
-  completed: "bg-green-900/20 border-green-500/40 text-green-300",
+  awaiting_approval: "bg-blue-900/30 border-blue-400/50 text-blue-100",
+  awaiting: "bg-slate-900/40 border-slate-400/60 text-slate-100",
+  queued: "bg-indigo-900/35 border-indigo-400/55 text-indigo-100",
+  in_progress:
+    "bg-[color:var(--accent-copper,#f97316)]/10 border-[color:var(--accent-copper-soft,#fdba74)] text-[color:var(--accent-copper-light,#fed7aa)]",
+  on_hold: "bg-amber-900/30 border-amber-400/55 text-amber-100",
+  planned: "bg-purple-900/30 border-purple-400/55 text-purple-100",
+  new: "bg-neutral-950/70 border-neutral-600/60 text-neutral-100",
+  completed: "bg-emerald-900/25 border-emerald-400/60 text-emerald-100",
   ready_to_invoice:
-    "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
-  invoiced: "bg-teal-900/20 border-teal-500/40 text-teal-300",
+    "bg-emerald-900/30 border-emerald-400/60 text-emerald-100",
+  invoiced: "bg-teal-900/30 border-teal-400/60 text-teal-100",
+};
+
+const STATUS_ICON: Record<KnownStatus, string> = {
+  awaiting_approval: "⏳",
+  awaiting: "●",
+  queued: "📋",
+  in_progress: "🔧",
+  on_hold: "⏸",
+  planned: "🧩",
+  new: "✨",
+  completed: "✅",
+  ready_to_invoice: "💳",
+  invoiced: "📄",
 };
 
 const statusChip = (s: string | null | undefined): string => {
@@ -82,69 +96,81 @@ const statusChip = (s: string | null | undefined): string => {
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
-/** EXACTLY the same surface system as your mobile card */
+/** EXACT surface system but with stronger hero presence */
 const CARD_SURFACE: Record<
   KnownStatus,
-  { border: string; surface: string; ring: string }
+  { border: string; surface: string; ring: string; rail: string }
 > = {
   awaiting_approval: {
-    border: "border-sky-500/50",
+    border: "border-sky-500/60",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.10),rgba(15,23,42,0.98))]",
+      "bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),rgba(15,23,42,0.98))]",
     ring: "ring-sky-400/70",
+    rail: "from-sky-500/70 via-sky-400/40 to-transparent",
   },
   awaiting: {
     border: "border-slate-600/70",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.12),rgba(15,23,42,0.98))]",
-    ring: "ring-slate-300/80",
+      "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.16),rgba(15,23,42,0.98))]",
+    ring: "ring-slate-300/70",
+    rail: "from-slate-400/70 via-slate-300/40 to-transparent",
   },
   queued: {
     border: "border-indigo-500/70",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.12),rgba(15,23,42,0.98))]",
+      "bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.18),rgba(15,23,42,0.98))]",
     ring: "ring-indigo-400/80",
+    rail: "from-indigo-400/80 via-indigo-300/40 to-transparent",
   },
   in_progress: {
-    border: "border-[color:var(--accent-copper-soft)]",
+    border: "border-[color:var(--accent-copper-soft,#fdba74)]",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.20),rgba(15,23,42,0.98))]",
-    ring: "ring-[color:var(--accent-copper-soft)]/80",
+      "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.28),rgba(15,23,42,0.98))]",
+    ring: "ring-[color:var(--accent-copper-soft,#fdba74)]/80",
+    rail:
+      "from-[color:var(--accent-copper,#f97316)] via-[color:var(--accent-copper-soft,#fdba74)]/60 to-transparent",
   },
   on_hold: {
     border: "border-amber-400/80",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.18),rgba(15,23,42,0.97))]",
+      "bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.24),rgba(15,23,42,0.97))]",
     ring: "ring-amber-300/80",
+    rail: "from-amber-400 via-amber-300/60 to-transparent",
   },
   planned: {
     border: "border-purple-400/80",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(192,132,252,0.16),rgba(15,23,42,0.98))]",
+      "bg-[radial-gradient(circle_at_top,_rgba(192,132,252,0.20),rgba(15,23,42,0.98))]",
     ring: "ring-purple-300/80",
+    rail: "from-purple-400 via-purple-300/60 to-transparent",
   },
   new: {
-    border: "border-neutral-600/80",
-    surface: "bg-neutral-950/90",
+    border: "border-neutral-700/80",
+    surface:
+      "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.12),rgba(15,23,42,0.99))]",
     ring: "ring-neutral-400/80",
+    rail: "from-neutral-500 via-neutral-400/60 to-transparent",
   },
   completed: {
     border: "border-teal-400/80",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.18),rgba(15,23,42,0.97))]",
+      "bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.26),rgba(15,23,42,0.97))]",
     ring: "ring-teal-300/80",
+    rail: "from-teal-400 via-teal-300/60 to-transparent",
   },
   ready_to_invoice: {
     border: "border-emerald-400/80",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.18),rgba(15,23,42,0.97))]",
+      "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.26),rgba(15,23,42,0.96))]",
     ring: "ring-emerald-300/80",
+    rail: "from-emerald-400 via-emerald-300/60 to-transparent",
   },
   invoiced: {
-    border: "border-teal-400/80",
+    border: "border-teal-400/85",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.18),rgba(15,23,42,0.97))]",
+      "bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.30),rgba(15,23,42,0.96))]",
     ring: "ring-teal-300/80",
+    rail: "from-teal-400 via-teal-300/60 to-transparent",
   },
 };
 
@@ -221,24 +247,40 @@ export function JobCard({
     setCollapsed((c) => !c);
   };
 
+  const statusIcon = STATUS_ICON[statusKey] ?? "●";
+
   return (
     <div
       className={[
-        "group cursor-pointer rounded-xl border p-3 transition",
+        "group relative cursor-pointer overflow-hidden rounded-2xl border p-3 md:p-4 transition-transform duration-150",
         surfaceCfg.border,
         surfaceCfg.surface,
-        "shadow-[0_18px_45px_rgba(0,0,0,0.85)] hover:shadow-[0_22px_55px_rgba(0,0,0,0.95)]",
+        "shadow-[0_18px_45px_rgba(0,0,0,0.90)] hover:-translate-y-[1px] hover:shadow-[0_26px_60px_rgba(0,0,0,0.95)]",
         isPunchedIn ? `ring-2 ${surfaceCfg.ring}` : "ring-0",
       ].join(" ")}
       title="Open focused job"
       onClick={handleCardClick}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
+      {/* subtle copper glow on hover */}
+      <div className="pointer-events-none absolute inset-0 opacity-0 mix-blend-screen blur-xl transition-opacity duration-150 group-hover:opacity-70">
+        <div className="absolute inset-x-10 -top-10 h-32 bg-[radial-gradient(circle,_rgba(249,115,22,0.22),transparent_65%)]" />
+      </div>
+
+      {/* left status rail */}
+      <div className="relative z-0 flex gap-3">
+        <div className="mt-1 hidden h-[calc(100%-0.5rem)] w-[3px] rounded-full bg-gradient-to-b from-transparent via-white/30 to-transparent opacity-60 sm:block" />
+
+        <div className="relative z-10 min-w-0 flex-1 space-y-1.5">
+          <div className="flex flex-wrap items-start gap-2">
+            {/* index + title cluster */}
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <div className="truncate text-sm font-medium text-white">
-                {index + 1}. {jobLabel}
+              <div className="inline-flex items-center gap-2">
+                <span className="inline-flex h-6 min-w-[1.75rem] items-center justify-center rounded-full border border-white/15 bg-black/40 text-[11px] font-semibold text-neutral-200 shadow-[0_0_12px_rgba(0,0,0,0.8)]">
+                  {index + 1}
+                </span>
+                <div className="truncate text-sm font-semibold text-white">
+                  {jobLabel}
+                </div>
               </div>
 
               {canAssign && (
@@ -248,9 +290,10 @@ export function JobCard({
                     e.stopPropagation();
                     onAssign?.();
                   }}
-                  className="rounded-md border border-sky-500/70 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
+                  className="inline-flex items-center gap-1 rounded-full border border-sky-500/70 bg-sky-900/20 px-2.5 py-0.5 text-[11px] font-medium text-sky-100 shadow-[0_0_14px_rgba(8,47,73,0.9)] hover:bg-sky-900/40"
                   title="Assign mechanic to this line"
                 >
+                  <span className="h-1.5 w-1.5 rounded-full bg-sky-300" />
                   Assign mechanic
                 </button>
               )}
@@ -262,10 +305,10 @@ export function JobCard({
                     e.stopPropagation();
                     onOpenInspection?.();
                   }}
-                  className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
                     isCompletedLike()
-                      ? "border-teal-400 text-teal-200"
-                      : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
+                      ? "border-teal-400 bg-teal-900/20 text-teal-100 hover:bg-teal-900/35"
+                      : "border-orange-400 bg-orange-900/10 text-orange-100 hover:bg-orange-900/25"
                   }`}
                 >
                   {isCompletedLike() ? "View inspection" : "Open inspection"}
@@ -273,12 +316,13 @@ export function JobCard({
               )}
             </div>
 
+            {/* right-side controls */}
             <div className="ml-auto flex items-center gap-2">
-              {/* keep desktop chevron */}
+              {/* chevron */}
               <button
                 type="button"
                 onClick={toggleCollapsed}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-black/35 text-[11px] text-white/80 shadow-[0_0_14px_rgba(0,0,0,0.55)] hover:border-white/25 hover:bg-black/55 hover:text-white"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-black/40 text-[11px] text-white/80 shadow-[0_0_14px_rgba(0,0,0,0.75)] hover:border-white/25 hover:bg-black/70 hover:text-white"
                 title={collapsed ? "Expand job details" : "Collapse job details"}
               >
                 <span
@@ -290,8 +334,11 @@ export function JobCard({
                 </span>
               </button>
 
-              {/* EXACT mobile status pill */}
-              <span className={statusChip(line.status)}>{statusText}</span>
+              {/* status pill w/ icon */}
+              <span className={statusChip(line.status)}>
+                <span className="mr-1">{statusIcon}</span>
+                {statusText}
+              </span>
 
               {/* desktop add-part */}
               <button
@@ -300,12 +347,13 @@ export function JobCard({
                   e.stopPropagation();
                   onAddPart?.();
                 }}
-                className="hidden rounded-md border border-white/20 bg-black/25 px-2 py-1 text-[11px] font-medium text-white/80 hover:border-white/30 hover:bg-white/5 hover:text-white sm:inline-flex"
+                className="hidden items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1 text-[11px] font-medium text-white/85 shadow-[0_0_14px_rgba(0,0,0,0.8)] hover:border-[color:var(--accent-copper-soft,#fdba74)]/80 hover:bg-white/5 hover:text-white sm:inline-flex"
                 title="Add / use part on this job"
               >
-                Add part
+                ＋ <span className="hidden md:inline">Add part</span>
               </button>
 
+              {/* mobile add-part */}
               <div className="sm:hidden">
                 <UsePartButton
                   workOrderLineId={line.id}
@@ -318,26 +366,46 @@ export function JobCard({
             </div>
           </div>
 
-          <div className="text-[11px] text-neutral-300">
-            {jobTypeText} • {laborText} • Status: {statusText}
+          {/* subline: type, labor, status */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-white/60" />
+              {jobTypeText}
+            </span>
+            <span className="text-neutral-500">•</span>
+            <span>Est. labor: {laborText}</span>
+            <span className="text-neutral-500">•</span>
+            <span className="text-neutral-300/90">
+              Status: <span className="capitalize">{statusText}</span>
+            </span>
+            {isPunchedIn && (
+              <>
+                <span className="text-neutral-500">•</span>
+                <span className="inline-flex items-center gap-1 text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.9)]" />
+                  Punched in
+                </span>
+              </>
+            )}
           </div>
 
           {isCompletedLike() && (
-            <div className="text-[10px] text-teal-200/80">
+            <div className="text-[10px] text-emerald-200/80">
               {collapsed
                 ? "Completed job – use the chevron to view details."
                 : "Completed job – use the chevron to collapse details."}
             </div>
           )}
 
+          {/* expanded details */}
           {!collapsed && (
             <>
               {technicians.length > 0 && (
-                <div className="mt-0.5 flex flex-wrap gap-1">
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {technicians.map((tech) => (
                     <span
                       key={tech.id}
-                      className="inline-flex items-center gap-1 rounded-full bg-sky-900/40 px-2 py-0.5 text-[10px] text-sky-100"
+                      className="inline-flex items-center gap-1 rounded-full bg-sky-900/45 px-2.5 py-0.5 text-[10px] text-sky-100 shadow-[0_0_14px_rgba(8,47,73,0.9)]"
                     >
                       <span className="h-1.5 w-1.5 rounded-full bg-sky-300" />
                       {tech.full_name ?? "Mechanic"}
@@ -347,25 +415,46 @@ export function JobCard({
               )}
 
               {(line.complaint || line.cause || line.correction) && (
-                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
-                  {line.complaint && <span>Cmpl: {line.complaint}</span>}
-                  {line.cause && <span>| Cause: {line.cause}</span>}
-                  {line.correction && <span>| Corr: {line.correction}</span>}
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg bg-black/30 px-2 py-1.5 text-[11px] text-neutral-200">
+                  {line.complaint && (
+                    <span className="font-medium text-neutral-100">
+                      Cmpl:{" "}
+                      <span className="font-normal text-neutral-300">
+                        {line.complaint}
+                      </span>
+                    </span>
+                  )}
+                  {line.cause && (
+                    <span className="text-neutral-400">
+                      | Cause:{" "}
+                      <span className="font-normal text-neutral-200">
+                        {line.cause}
+                      </span>
+                    </span>
+                  )}
+                  {line.correction && (
+                    <span className="text-neutral-400">
+                      | Corr:{" "}
+                      <span className="font-normal text-neutral-200">
+                        {line.correction}
+                      </span>
+                    </span>
+                  )}
                 </div>
               )}
 
-              {/* Parts used (desktop feature) – styled to match mobile vibe */}
-              <div className="mt-2 rounded-lg border border-white/10 bg-black/30">
+              {/* Parts used */}
+              <div className="mt-2 rounded-xl border border-white/10 bg-black/40">
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
+                  className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left"
                   onClick={(e) => {
                     e.stopPropagation();
                     setPartsOpen((open) => !open);
                   }}
                 >
                   <div className="flex flex-col">
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-200">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-200">
                       Parts used
                     </span>
                     <span className="text-[10px] text-neutral-400">
@@ -380,13 +469,13 @@ export function JobCard({
                         e.stopPropagation();
                         onAddPart?.();
                       }}
-                      className="inline-flex items-center rounded-md border border-white/15 bg-black/25 px-2 py-0.5 text-[11px] font-medium text-white/80 hover:border-white/25 hover:bg-white/5 hover:text-white sm:hidden"
+                      className="inline-flex items-center rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[11px] font-medium text-white/85 hover:border-white/25 hover:bg-white/5 hover:text-white sm:hidden"
                     >
-                      Add part
+                      ＋ Part
                     </button>
 
                     <span
-                      className={`text-[10px] text-white/55 transition-transform ${
+                      className={`text-[10px] text-white/60 transition-transform ${
                         partsOpen ? "rotate-90" : ""
                       }`}
                     >
@@ -397,7 +486,7 @@ export function JobCard({
 
                 {partsOpen && (
                   <div
-                    className="border-t border-white/10 px-2 pb-2 pt-1.5"
+                    className="border-t border-white/10 px-2.5 pb-2 pt-1.5"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <PartsUsedList allocations={parts} />
@@ -426,7 +515,7 @@ export function JobCard({
                   {pricing?.lineTotal != null && (
                     <span className="flex items-center gap-1">
                       <span className="text-neutral-400">Line total</span>
-                      <span className="font-semibold text-[color:var(--accent-copper-light)]">
+                      <span className="font-semibold text-[color:var(--accent-copper-light,#fed7aa)]">
                         {formatMoney(pricing.lineTotal)}
                       </span>
                     </span>
