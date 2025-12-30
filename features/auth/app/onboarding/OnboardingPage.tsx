@@ -191,7 +191,13 @@ export default function OnboardingPage() {
         setLoading(false);
         return;
       }
-      if (!businessName || !shopStreet || !shopCity || !shopProvince || !shopPostal) {
+      if (
+        !businessName ||
+        !shopStreet ||
+        !shopCity ||
+        !shopProvince ||
+        !shopPostal
+      ) {
         setError("Please fill all required shop fields.");
         setLoading(false);
         return;
@@ -220,8 +226,8 @@ export default function OnboardingPage() {
         return;
       }
 
-      // Owners go to step 2 to set defaults (labor/tax/etc)
-      router.replace("/onboarding/shop-defaults");
+      // 🔸 NEW: after creating the shop, go to the Shop Boost WOW step
+      router.replace("/onboarding/shop-boost");
       setLoading(false);
       return;
     }
@@ -250,8 +256,9 @@ export default function OnboardingPage() {
             Confirm your email
           </h1>
           <p className="text-sm text-neutral-300">
-            We sent a confirmation link to your email. Once you confirm, we&apos;ll bring you
-            back here automatically to finish setting up your account.
+            We sent a confirmation link to your email. Once you confirm,
+            we&apos;ll bring you back here automatically to finish setting up
+            your account.
           </p>
           <a
             href="/sign-in"
@@ -276,7 +283,7 @@ export default function OnboardingPage() {
               Get your workspace ready
             </h1>
             <p className="text-xs text-neutral-400">
-              Step 1 of 2 for owners (profile + shop).
+              Step 1 of 3 for owners (profile + shop).
             </p>
           </div>
         </div>
@@ -301,7 +308,9 @@ export default function OnboardingPage() {
                   <label className="text-xs text-neutral-300">Country</label>
                   <select
                     value={country}
-                    onChange={(e) => setCountry(e.target.value as "US" | "CA")}
+                    onChange={(e) =>
+                      setCountry(e.target.value as "US" | "CA")
+                    }
                     className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
                   >
                     {NA_COUNTRIES.map((c) => (
@@ -430,7 +439,9 @@ export default function OnboardingPage() {
                     />
                     <span>
                       I&apos;m setting this up for my shop{" "}
-                      <span className="text-neutral-400">(make me the owner)</span>
+                      <span className="text-neutral-400">
+                        (make me the owner)
+                      </span>
                     </span>
                   </label>
                 </div>
@@ -461,7 +472,9 @@ export default function OnboardingPage() {
 
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-xs text-neutral-300">Business name</label>
+                  <label className="text-xs text-neutral-300">
+                    Business name
+                  </label>
                   <input
                     type="text"
                     value={businessName}
@@ -482,7 +495,9 @@ export default function OnboardingPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-neutral-300">Shop address</label>
+                  <label className="text-xs text-neutral-300">
+                    Shop address
+                  </label>
                   <input
                     type="text"
                     value={shopStreet}
@@ -521,7 +536,8 @@ export default function OnboardingPage() {
                 {asOwner && (
                   <div className="space-y-1">
                     <label className="text-xs text-neutral-300">
-                      Owner PIN <span className="text-neutral-400">(min 4 chars)</span>
+                      Owner PIN{" "}
+                      <span className="text-neutral-400">(min 4 chars)</span>
                     </label>
                     <input
                       type="password"
@@ -547,7 +563,7 @@ export default function OnboardingPage() {
                 {loading
                   ? "Saving…"
                   : asOwner
-                  ? "Continue to Step 2"
+                  ? "Continue to Shop Boost"
                   : "Complete onboarding"}
               </button>
               {error && <p className="text-xs text-red-400">{error}</p>}
@@ -561,8 +577,9 @@ export default function OnboardingPage() {
               Next step
             </h3>
             <p className="text-xs text-neutral-400">
-              Owners will set labor rate, tax, and other defaults on Step 2 so invoices,
-              quotes, and totals are correct immediately.
+              Owners will answer a short Shop Boost questionnaire and upload
+              any exports you already have so the AI can build your menus and
+              shop health snapshot.
             </p>
           </div>
         </aside>

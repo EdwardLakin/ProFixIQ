@@ -5110,6 +5110,57 @@ export type Database = {
           },
         ]
       }
+      shop_boost_intakes: {
+        Row: {
+          created_at: string
+          customers_file_path: string | null
+          id: string
+          parts_file_path: string | null
+          processed_at: string | null
+          questionnaire: Json
+          shop_id: string
+          status: string
+          vehicles_file_path: string | null
+        }
+        Insert: {
+          created_at?: string
+          customers_file_path?: string | null
+          id?: string
+          parts_file_path?: string | null
+          processed_at?: string | null
+          questionnaire: Json
+          shop_id: string
+          status?: string
+          vehicles_file_path?: string | null
+        }
+        Update: {
+          created_at?: string
+          customers_file_path?: string | null
+          id?: string
+          parts_file_path?: string | null
+          processed_at?: string | null
+          questionnaire?: Json
+          shop_id?: string
+          status?: string
+          vehicles_file_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_boost_intakes_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_intakes_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_hours: {
         Row: {
           close_time: string

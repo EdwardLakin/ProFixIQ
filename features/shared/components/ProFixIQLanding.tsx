@@ -8,6 +8,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import LandingHero from "@shared/components/ui/LandingHero";
+import LandingShopBoost from "@shared/components/ui/LandingShopBoost";
 import FeaturesSection from "@shared/components/ui/FeaturesSection";
 import WhySection from "@shared/components/ui/WhySection";
 import PricingSection from "@shared/components/ui/PricingSection";
@@ -131,6 +132,11 @@ export default function ProFixIQLanding() {
       {/* 1) HERO */}
       <div className="relative">
         <LandingHero />
+      </div>
+
+      {/* 1B) SHOP BOOST SETUP */}
+      <div className="relative" id="shop-boost">
+        <LandingShopBoost />
       </div>
 
       {/* 2) FEATURES */}
