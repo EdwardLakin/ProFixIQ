@@ -1,3 +1,4 @@
+// features/shared/components/ui/PricingSection.tsx
 "use client";
 
 import { Check } from "lucide-react";
@@ -82,12 +83,12 @@ export default function PricingSection({
           included from day one.
         </p>
         <p className="mt-2 text-xs text-neutral-500">
-          Trial & onboarding available — pricing finalizes at checkout.
+          Trial &amp; onboarding available — pricing finalizes at checkout.
         </p>
 
         <button
           onClick={onStartFree}
-          className="mt-4 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
+          className="mt-4 rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/50"
         >
           Start trial / onboarding
         </button>
@@ -99,10 +100,10 @@ export default function PricingSection({
           <div
             key={p.key}
             className={[
-              "rounded-3xl border bg-black/30 p-6 backdrop-blur-xl transition",
+              "rounded-3xl bg-black/35 p-6 backdrop-blur-xl transition",
               p.featured
-                ? "border-[color:var(--accent-copper)]/45 shadow-[0_0_40px_rgba(212,118,49,0.18)]"
-                : "border-[var(--metal-border-soft)]",
+                ? "border border-[color:var(--pfq-copper)]/55 shadow-[0_0_40px_rgba(212,118,49,0.24)]"
+                : "border border-[color:var(--metal-border-soft,#1f2937)]",
             ].join(" ")}
           >
             {/* Header */}
@@ -121,9 +122,9 @@ export default function PricingSection({
                 <span
                   className="rounded-full border px-3 py-1 text-xs font-semibold"
                   style={{
-                    borderColor: "rgba(255,255,255,0.12)",
-                    backgroundColor: "rgba(193,102,59,0.16)",
-                    color: "var(--accent-copper-light)",
+                    borderColor: "rgba(255,255,255,0.14)",
+                    backgroundColor: "rgba(193,102,59,0.18)",
+                    color: "var(--pfq-copper)",
                   }}
                 >
                   Most popular
@@ -135,7 +136,7 @@ export default function PricingSection({
             <div className="mt-5 flex items-baseline gap-2">
               <div
                 className="text-3xl font-bold"
-                style={{ color: "var(--accent-copper-light)" }}
+                style={{ color: "var(--pfq-copper)" }}
               >
                 {p.priceLabel}
               </div>
@@ -148,7 +149,7 @@ export default function PricingSection({
                   <Check
                     size={16}
                     className="mt-0.5"
-                    style={{ color: "var(--accent-copper)" }}
+                    style={{ color: "var(--pfq-copper)" }}
                   />
                   <span>{f}</span>
                 </li>
@@ -164,7 +165,10 @@ export default function PricingSection({
                 })
               }
               className="mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold text-black transition hover:opacity-95"
-              style={{ backgroundColor: "var(--accent-copper)" }}
+              style={{
+                background:
+                  "linear-gradient(to right,var(--pfq-copper-soft),var(--pfq-copper))",
+              }}
             >
               {p.cta}
             </button>

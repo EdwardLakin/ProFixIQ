@@ -11,24 +11,24 @@ export default function FeaturesSection({
   showHeading = false,
 }: FeaturesSectionProps) {
   return (
-    <div>
+    <div className="space-y-8">
       {showHeading && (
-        <div className="mb-10 text-center">
+        <div className="mb-4 text-center">
           <div
             className="text-xs font-semibold uppercase tracking-[0.22em]"
-            style={{ color: "var(--accent-copper)" }}
+            style={{ color: "var(--pfq-copper)" }}
           >
             Feature set
           </div>
           <h2
-            className="mt-2 text-4xl md:text-5xl text-white"
+            className="mt-2 text-3xl md:text-4xl text-neutral-50"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
-            Built for shop & fleet work
+            Built for shop &amp; fleet work
           </h2>
-          <p className="mx-auto mt-3 max-w-2xl text-sm text-neutral-400">
-            Heavy-duty inspections, fleet programs, dispatch, and AI — all in
-            one workflow instead of five disconnected tools. Works for single
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-neutral-300">
+            Heavy-duty inspections, fleet programs, dispatch, and AI — all in a
+            single workflow instead of five disconnected tools. Works for single
             bays, busy HD shops, and full fleet operations.
           </p>
         </div>

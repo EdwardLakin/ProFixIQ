@@ -1,7 +1,5 @@
-// features/shared/components/ui/WhySection.tsx
+/// features/shared/components/ui/WhySection.tsx
 "use client";
-
-import Section from "./Section";
 
 export default function WhySection() {
   const bullets = [
@@ -12,56 +10,53 @@ export default function WhySection() {
   ];
 
   return (
-    <Section id="why" className="bg-transparent text-white">
-      <div className="mx-auto max-w-5xl text-center">
-        <div
-          className="text-xs font-semibold uppercase tracking-[0.22em]"
-          style={{ color: "var(--accent-copper)" }}
-        >
-          Why it works
-        </div>
-
-        <h2
-          className="mt-2 text-3xl font-blackops text-white md:text-4xl"
-          style={{
-            textShadow: "0 0 28px rgba(193, 102, 59, 0.18)",
-          }}
-        >
-          Built for heavy-duty & fleet life
-        </h2>
-
-        <p className="mt-4 text-base leading-relaxed text-neutral-300 md:text-lg">
-          ProFixIQ is designed around bays, buses, and trucks — not committee
-          meetings. Less screen time, faster approvals, cleaner documentation
-          for every unit that rolls through, whether it&apos;s one service
-          truck or a national fleet.
-        </p>
-
-        <div className="mt-8 grid gap-4 text-left sm:grid-cols-2">
-          {bullets.map((line) => (
-            <div
-              key={line}
-              className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-xl"
-            >
-              <div className="flex items-start gap-3">
-                <span
-                  className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full border"
-                  style={{
-                    borderColor: "rgba(255, 255, 255, 0.12)",
-                    backgroundColor: "rgba(193, 102, 59, 0.18)",
-                    color: "var(--accent-copper-light)",
-                  }}
-                >
-                  ✓
-                </span>
-                <span className="leading-relaxed text-neutral-200">
-                  {line}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+    <div className="mx-auto max-w-5xl text-center text-white">
+      <div
+        className="text-xs font-semibold uppercase tracking-[0.22em]"
+        style={{ color: "var(--pfq-copper)" }}
+      >
+        Why it works
       </div>
-    </Section>
+
+      <h2
+        className="mt-2 text-3xl md:text-4xl text-white"
+        style={{
+          fontFamily: "var(--font-blackops)",
+          textShadow: "0 0 28px rgba(193, 102, 59, 0.18)",
+        }}
+      >
+        Built for heavy-duty &amp; fleet life
+      </h2>
+
+      <p className="mt-4 text-base leading-relaxed text-neutral-300 md:text-lg">
+        ProFixIQ is designed around bays, buses, and trucks — not committee
+        meetings. Less screen time, faster approvals, cleaner documentation
+        for every unit that rolls through, whether it&apos;s one service truck
+        or a national fleet.
+      </p>
+
+      <div className="mt-8 grid gap-4 text-left sm:grid-cols-2">
+        {bullets.map((line) => (
+          <div
+            key={line}
+            className="rounded-2xl border border-white/10 bg-black/35 p-4 backdrop-blur-xl"
+          >
+            <div className="flex items-start gap-3">
+              <span
+                className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px]"
+                style={{
+                  borderColor: "rgba(255, 255, 255, 0.12)",
+                  backgroundColor: "rgba(193, 102, 59, 0.18)",
+                  color: "var(--pfq-copper)",
+                }}
+              >
+                ✓
+              </span>
+              <span className="leading-relaxed text-neutral-200">{line}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
