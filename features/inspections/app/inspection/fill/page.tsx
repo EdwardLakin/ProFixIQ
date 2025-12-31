@@ -1,8 +1,8 @@
+// app/inspections/fill/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import InspectionHost from "@/features/inspections/components/inspectionHost";
 import GenericInspectionScreen from "@/features/inspections/screens/GenericInspectionScreen";
 
 type Dict = Record<string, string>;
@@ -21,42 +21,26 @@ export default function InspectionFillPage() {
 
   const [ready, setReady] = useState(false);
   const [template, setTemplate] = useState<string | null>(null);
-  const [params, setParams] = useState<Dict>({});
 
-  // Pull from URL first; if missing, fall back to staged sessionStorage values
   useEffect(() => {
     const urlTemplate = sp.get("template");
     const urlParams = paramsToObject(sp);
 
+    // fall back to staged template name if needed
     let nextTemplate = urlTemplate;
-    let stagedParams: Dict = {};
+    if (!nextTemplate && typeof window !== "undefined") {
+      nextTemplate = sessionStorage.getItem("inspection:template");
+    }
 
+    // keep staged params in sync so GenericInspectionScreen sees them
     if (typeof window !== "undefined") {
-      if (!nextTemplate) {
-        nextTemplate = sessionStorage.getItem("inspection:template");
-      }
+      const stagedParamsRaw = sessionStorage.getItem("inspection:params");
+      const stagedParams: Dict = stagedParamsRaw
+        ? (JSON.parse(stagedParamsRaw) as Dict)
+        : {};
 
-      try {
-        stagedParams = JSON.parse(
-          sessionStorage.getItem("inspection:params") || "{}",
-        ) as Dict;
-      } catch {
-        stagedParams = {};
-      }
-    }
-
-    // URL params always win over staged
-    const merged: Dict = { ...stagedParams, ...urlParams };
-
-    // 🔹 If the *URL* did not specify view/embed, strip any stale values
-    // left over from a previous run so desktop doesn’t accidentally
-    // think it's "mobile" or "embedded".
-    if (!("view" in urlParams)) {
-      delete merged.view;
-    }
-    if (!("embed" in urlParams) && !("compact" in urlParams)) {
-      delete merged.embed;
-      delete merged.compact;
+      const merged: Dict = { ...stagedParams, ...urlParams };
+      sessionStorage.setItem("inspection:params", JSON.stringify(merged));
     }
 
     if (!nextTemplate) {
@@ -65,11 +49,10 @@ export default function InspectionFillPage() {
     }
 
     setTemplate(nextTemplate);
-    setParams(merged);
     setReady(true);
   }, [sp, router]);
 
-  // Shared glass card style to match work order / run loader (for non-generic templates)
+  // Shared glass card style to match run loader
   const cardBase =
     "mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 " +
     "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] " +
@@ -89,24 +72,13 @@ export default function InspectionFillPage() {
     );
   }
 
-  const templateKey = template.toLowerCase();
-
-  // 🔹 For our new generic runtime (the one you pasted), bypass InspectionHost.
-  // GenericInspectionScreen handles:
-  //   – embed vs full page
-  //   – mobile vs desktop
-  //   – Save / Finish buttons
-  //   – OpenAI voice for mobile
-  if (templateKey === "generic") {
-    return <GenericInspectionScreen />;
-  }
-
-  // 🔹 Any legacy / special templates still go through InspectionHost
+  // 🔑 From this point on we always use the *generic runtime*.
+  // It reads everything it needs from URL search params + sessionStorage.
   return (
     <div className="min-h-[80vh] bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
       <div className={cardBase}>
-        <div className={`${cardInner} p-3 sm:p-4`}>
-          <InspectionHost template={template} embed params={params} />
+        <div className={`${cardInner} p-0 sm:p-0`}>
+          <GenericInspectionScreen />
         </div>
       </div>
     </div>
