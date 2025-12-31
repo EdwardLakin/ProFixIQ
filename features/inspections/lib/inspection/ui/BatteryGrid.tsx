@@ -210,7 +210,7 @@ export default function BatteryGrid({
                         {/* 🔹 Rating row will naturally sort above Tested via METRIC_ORDER */}
                         {row.metric}
                       </td>
-                      {grid.batteries.map((batt,) => {
+                      {grid.batteries.map((batt) => {
                         const cell = row.cells.find(
                           (c) => c.battery === batt,
                         );
