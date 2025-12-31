@@ -1,4 +1,3 @@
-// features/inspections/screens/GenericInspectionScreen.tsx
 "use client";
 
 // --- Part 1/3 ---
@@ -1012,54 +1011,6 @@ export default function GenericInspectionScreen(
     });
 
     return () => obs.disconnect();
-  }, [isEmbed]);
-
-  // focus trap in embed
-  useEffect(() => {
-    if (!isEmbed) return;
-    const root = rootRef.current;
-    if (!root) return;
-
-    const selector =
-      'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])';
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-
-      const focusables = Array.from(
-        root.querySelectorAll<HTMLElement>(selector),
-      ).filter(
-        (el) =>
-          !el.hasAttribute("disabled") &&
-          el.tabIndex !== -1 &&
-          el.getAttribute("aria-hidden") !== "true",
-      );
-
-      if (!focusables.length) return;
-
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-
-      if (!active || !root.contains(active)) {
-        e.preventDefault();
-        first.focus();
-        return;
-      }
-
-      if (e.shiftKey) {
-        if (active === first) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else if (active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    root.addEventListener("keydown", handleKeyDown);
-    return () => root.removeEventListener("keydown", handleKeyDown);
   }, [isEmbed]);
 
   if (!session || !session.sections || session.sections.length === 0) {
