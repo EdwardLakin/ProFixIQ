@@ -1,5 +1,3 @@
-// features/shared/config/tiles.ts
-
 export type Role =
   | "owner"
   | "admin"
@@ -103,8 +101,8 @@ export const TILES: Tile[] = [
 
   // --- Inspections ---
   {
-    href: "/inspections/templates",
-    title: "Created Inspections",
+    href: "/inspection/templates",
+    title: "Inspection Templates",
     subtitle: "View and edit",
     roles: ["advisor", "manager", "owner", "admin", "mechanic"],
     scopes: ["inspections", "all"],
@@ -223,7 +221,7 @@ export const TILES: Tile[] = [
     title: "Billing",
     subtitle: "Subscriptions",
     roles: ["owner", "admin"],
-    scopes: ["settings", "all"],
+    scopes: ["management", "settings", "all"],
     section: "Admin",
   },
 

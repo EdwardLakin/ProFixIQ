@@ -1,5 +1,3 @@
-// features/shared/lib/routeMeta.ts
-
 export type UserRole =
   | "owner"
   | "admin"
@@ -133,9 +131,9 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
   },
 
-  // Created inspections (tiles.ts uses /inspections/templates for this)
-  "/inspections/templates": {
-    title: () => "Created Inspections",
+  // Inspection templates (tiles.ts uses /inspection/templates for this)
+  "/inspection/templates": {
+    title: () => "Inspection Templates",
     icon: "🗂️",
     roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
   },
@@ -245,35 +243,17 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/fleet/tower": {
     title: () => "Fleet Control Tower",
     icon: "🚛",
-    roles: [
-      "owner",
-      "admin",
-      "manager",
-      "fleet_manager",
-      "dispatcher",
-    ],
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
   },
   "/fleet/dispatch": {
     title: () => "Dispatch Board",
     icon: "📍",
-    roles: [
-      "owner",
-      "admin",
-      "manager",
-      "fleet_manager",
-      "dispatcher",
-    ],
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
   },
   "/fleet/pretrip": {
     title: () => "Pre-trip Reports",
     icon: "📋",
-    roles: [
-      "owner",
-      "admin",
-      "manager",
-      "fleet_manager",
-      "dispatcher",
-    ],
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
   },
   "/fleet/units": {
     title: () => "Fleet Units",
@@ -283,13 +263,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/fleet/service-requests": {
     title: () => "Fleet Service Requests",
     icon: "🛠️",
-    roles: [
-      "owner",
-      "admin",
-      "manager",
-      "fleet_manager",
-      "dispatcher",
-    ],
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
   },
 
   // ----------------------------------------------------------------
