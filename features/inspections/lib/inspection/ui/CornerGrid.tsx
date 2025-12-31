@@ -1,7 +1,7 @@
 // features/inspections/lib/inspection/ui/CornerGrid.tsx
 "use client";
 
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -63,9 +63,6 @@ export default function CornerGrid({
 }: Props) {
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
-
-  // 🔁 Focus scoped to this corner grid
-  const rootRef = useRef<HTMLDivElement | null>(null);
 
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
@@ -135,28 +132,12 @@ export default function CornerGrid({
     return { corners, rows };
   }, [items, unitHint]);
 
-  const moveFocus = (
-    sectionIdx: number,
-    rowIndex: number,
-    colIndex: number,
-  ) => {
-    if (rowIndex < 0 || colIndex < 0) return;
-    const root = rootRef.current ?? document;
-    const selector = `input[data-corner-section="${sectionIdx}"][data-row="${rowIndex}"][data-col="${colIndex}"]`;
-    const el = root.querySelector<HTMLInputElement>(selector);
-    if (el) {
-      el.focus();
-      el.select?.();
-      el.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
-  };
-
   if (!grid.rows.length) {
     return null;
   }
 
   return (
-    <div ref={rootRef} className="grid gap-3">
+    <div className="grid gap-3">
       <div className="flex items-center justify-end gap-3 px-1">
         <button
           type="button"
@@ -204,10 +185,7 @@ export default function CornerGrid({
                             <button
                               type="button"
                               tabIndex={-1}
-                              onClick={() =>
-                                // pass metric to spec hint (caller can map per section)
-                                onSpecHint(row.metric)
-                              }
+                              onClick={() => onSpecHint(row.metric)}
                               className="rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.16em] text-orange-300 hover:bg-orange-500/20"
                               title="Show CVIP spec"
                             >
@@ -216,7 +194,7 @@ export default function CornerGrid({
                           )}
                         </div>
                       </td>
-                      {grid.corners.map((corner, colIdx) => {
+                      {grid.corners.map((corner) => {
                         const cell = row.cells.find(
                           (c) => c.corner === corner,
                         );
@@ -232,7 +210,6 @@ export default function CornerGrid({
                             <div className="relative w-full max-w-[9rem]">
                               <input
                                 defaultValue={cell.initial}
-                                tabIndex={0}
                                 className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/80 px-3 py-1.5 pr-12 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
                                 placeholder="Value"
                                 autoComplete="off"
@@ -240,75 +217,9 @@ export default function CornerGrid({
                                 data-corner-grid="true"
                                 data-corner-section={sectionIndex}
                                 data-row={rowIdx}
-                                data-col={colIdx}
                                 onBlur={(e) =>
                                   commit(cell.idx, e.currentTarget)
                                 }
-                                onKeyDown={(e) => {
-                                  const key = e.key;
-
-                                  if (key === "Enter") {
-                                    (e.currentTarget as HTMLInputElement).blur();
-                                    return;
-                                  }
-
-                                  // Arrow keys: move in grid by row/col
-                                  if (key === "ArrowRight") {
-                                    e.preventDefault();
-                                    moveFocus(sectionIndex, rowIdx, colIdx + 1);
-                                    return;
-                                  }
-                                  if (key === "ArrowLeft") {
-                                    e.preventDefault();
-                                    moveFocus(sectionIndex, rowIdx, colIdx - 1);
-                                    return;
-                                  }
-                                  if (key === "ArrowDown") {
-                                    e.preventDefault();
-                                    moveFocus(sectionIndex, rowIdx + 1, colIdx);
-                                    return;
-                                  }
-                                  if (key === "ArrowUp") {
-                                    e.preventDefault();
-                                    moveFocus(sectionIndex, rowIdx - 1, colIdx);
-                                    return;
-                                  }
-
-                                  // Tab: cycle within THIS corner grid (wrap around)
-                                  if (key === "Tab") {
-                                    const root = rootRef.current ?? document;
-                                    const all = Array.from(
-                                      root.querySelectorAll<HTMLInputElement>(
-                                        'input[data-corner-grid="true"]',
-                                      ),
-                                    );
-
-                                    if (!all.length) return;
-
-                                    const current =
-                                      e.currentTarget as HTMLInputElement;
-                                    const index = all.indexOf(current);
-                                    if (index === -1) return;
-
-                                    const delta = e.shiftKey ? -1 : 1;
-                                    let nextIndex = index + delta;
-
-                                    if (nextIndex < 0)
-                                      nextIndex = all.length - 1;
-                                    if (nextIndex >= all.length)
-                                      nextIndex = 0;
-
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    const target = all[nextIndex];
-                                    target.focus();
-                                    target.select?.();
-                                    target.scrollIntoView({
-                                      block: "nearest",
-                                      inline: "nearest",
-                                    });
-                                  }
-                                }}
                               />
                               {cell.unit && (
                                 <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
