@@ -1,111 +1,112 @@
 // app/api/fleet/pretrip/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+type FleetPretripRow =
+  DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
 
-type ChecklistStatus = "ok" | "defect" | "na";
+type DefectState = "ok" | "defect" | "na";
 
-type ChecklistPayload = Record<
-  string,
-  ChecklistStatus
->;
-
-type PretripPayload = {
-  unitId: string; // vehicle_id in DB
-  driverName?: string;
-  date: string; // yyyy-mm-dd
-  odometer?: number | null;
-  checklist: ChecklistPayload;
-  notes?: string | null;
-  hasDefects?: boolean;
+type RequestBody = {
+  unitId: string;
+  driverName: string;
+  odometer: string | null;
+  location: string | null;
+  notes: string | null;
+  defects: Record<string, DefectState>;
 };
 
-export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<DB>({ cookies });
+export async function POST(req: Request) {
+  try {
+    const supabaseUser = createRouteHandlerClient<DB>({ cookies });
+    const supabaseAdmin = createAdminSupabase();
 
-  const {
-    unitId,
-    driverName,
-    date,
-    odometer,
-    checklist,
-    notes,
-    hasDefects,
-  } = (await req.json()) as PretripPayload;
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabaseUser.auth.getUser();
 
-  if (!unitId || !date) {
-    return NextResponse.json(
-      { error: "unitId and date are required." },
-      { status: 400 },
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = (await req.json().catch(() => null)) as RequestBody | null;
+    if (!body || !body.unitId || !body.driverName) {
+      return NextResponse.json(
+        { error: "Missing required fields." },
+        { status: 400 },
+      );
+    }
+
+    const { data: profile, error: profileErr } = await supabaseAdmin
+      .from("profiles")
+      .select("id, shop_id")
+      .eq("user_id", user.id)
+      .maybeSingle<ProfileRow>();
+
+    if (profileErr || !profile?.shop_id) {
+      console.error("[fleet/pretrip] profile error:", profileErr);
+      return NextResponse.json(
+        { error: "Must belong to a shop to submit pre-trips." },
+        { status: 400 },
+      );
+    }
+
+    const odometerKm =
+      body.odometer && body.odometer.trim().length > 0
+        ? Number(body.odometer)
+        : null;
+
+    const hasDefects = Object.values(body.defects || {}).some(
+      (s) => s === "defect",
     );
-  }
 
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+    const combinedNotes = [
+      body.location ? `Location: ${body.location}` : null,
+      body.notes ? `Notes: ${body.notes}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-  if (authError || !user) {
+    const { data, error } = await supabaseAdmin
+      .from("fleet_pretrip_reports")
+      .insert({
+        shop_id: profile.shop_id,
+        vehicle_id: body.unitId,
+        driver_profile_id: profile.id,
+        driver_name: body.driverName,
+        inspection_date: new Date().toISOString(),
+        odometer_km: odometerKm,
+        checklist: body.defects,
+        notes: combinedNotes || null,
+        has_defects: hasDefects,
+        source: "portal_pretrip",
+      })
+      .select("id, has_defects")
+      .maybeSingle<FleetPretripRow>();
+
+    if (error || !data) {
+      console.error("[fleet/pretrip] insert error:", error);
+      return NextResponse.json(
+        { error: "Failed to save pre-trip." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      id: data.id,
+      hasDefects: data.has_defects ?? hasDefects,
+    });
+  } catch (err) {
+    console.error("[fleet/pretrip] unexpected error:", err);
     return NextResponse.json(
-      { error: "Not authenticated." },
-      { status: 401 },
-    );
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, shop_id, full_name")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileError || !profile?.shop_id) {
-    console.error("Profile/shop lookup failed:", profileError);
-    return NextResponse.json(
-      { error: "Unable to resolve shop for user." },
-      { status: 400 },
-    );
-  }
-
-  const effectiveDriverName =
-    driverName && driverName.trim().length > 0
-      ? driverName.trim()
-      : profile.full_name || "Unknown driver";
-
-  const { data, error } = await supabase
-    .from("fleet_pretrip_reports")
-    .insert({
-      shop_id: profile.shop_id,
-      vehicle_id: unitId,
-      driver_profile_id: profile.id,
-      driver_name: effectiveDriverName,
-      inspection_date: date,
-      odometer_km: odometer ?? null,
-      checklist,
-      notes: notes ?? null,
-      has_defects: !!hasDefects,
-      source: "mobile_pretrip",
-    })
-    .select("id, created_at")
-    .single();
-
-  if (error) {
-    console.error("Pretrip insert error:", error);
-    return NextResponse.json(
-      { error: "Failed to create pre-trip record." },
+      { error: "Failed to save pre-trip." },
       { status: 500 },
     );
   }
-
-  // 🔧 FUTURE: if has_defects, create service requests / dispatch tasks here.
-
-  return NextResponse.json(
-    {
-      id: data.id,
-      createdAt: data.created_at,
-    },
-    { status: 201 },
-  );
 }

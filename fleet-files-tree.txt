@@ -1,0 +1,2510 @@
+# Fleet file tree
+
+## Paths under app/fleet
+
+app/fleet/assets/[id]/page.tsx
+app/fleet/dispatch/page.tsx
+app/fleet/page.tsx
+app/fleet/pretrip/page.tsx
+app/fleet/service-requests/page.tsx
+app/fleet/tower/page.tsx
+app/fleet/units/page.tsx
+
+## Paths under features/fleet
+
+features/fleet/components/AssetDetailScreen.tsx
+features/fleet/components/FleetAISummary.tsx
+features/fleet/components/FleetControlTower.tsx
+features/fleet/components/FleetIssueTables.tsx
+features/fleet/components/FleetPortalDashboard.tsx
+features/fleet/components/FleetSummaryCards.tsx
+features/fleet/components/FleetUnitsPage.tsx
+features/fleet/components/PretripForm.tsx
+features/fleet/lib/convertServiceRequestToWorkOrder.ts
+
+================ FULL FILES ================
+
+----------------------------------------
+FILE: app/fleet/assets/[id]/page.tsx
+----------------------------------------
+// app/fleet/assets/[id]/page.tsx
+"use client";
+
+import { useParams } from "next/navigation";
+import Container from "@shared/components/ui/Container";
+import AssetDetailScreen from "@/features/fleet/components/AssetDetailScreen";
+
+export default function AssetDetailPage() {
+  const params = useParams<{ id: string }>();
+  const id = params?.id ? String(params.id) : null;
+
+  if (!id) {
+    return (
+      <main className="flex min-h-[calc(100vh-3rem)] items-center justify-center bg-black px-4 py-6 text-sm text-red-300">
+        Missing fleet unit id.
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-[calc(100vh-3rem)] bg-black text-white">
+      <Container className="py-6">
+        <AssetDetailScreen unitId={id} />
+      </Container>
+    </main>
+  );
+}
+
+----------------------------------------
+FILE: app/fleet/dispatch/page.tsx
+----------------------------------------
+"use client";
+
+export default function FleetDispatchPage() {
+  const card =
+    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
+    "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+
+  return (
+    <div className="px-4 py-6 text-white">
+      <div className="mx-auto w-full max-w-6xl space-y-5">
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+        />
+
+        <div className={card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),transparent_65%)]"
+          />
+          <div className="relative">
+            <h1
+              className="text-xl font-bold tracking-[0.22em] text-[rgba(248,113,22,0.9)] md:text-2xl uppercase"
+              style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+            >
+              Dispatch Board
+            </h1>
+            <p className="mt-1 text-xs text-neutral-300">
+              Assign units, drivers and routes. This is a placeholder shell wired to the correct route
+              so we can layer in the full dispatch UI next.
+            </p>
+          </div>
+        </div>
+
+        <div className={card + " px-4 py-4 md:px-6 md:py-5"}>
+          <p className="text-xs text-neutral-300">
+            • Route: <code className="text-[0.7rem] text-neutral-400">/fleet/dispatch</code> is now live
+            and wrapped in the dashboard shell.
+          </p>
+          <p className="mt-2 text-xs text-neutral-400">
+            Next step will be to plug in the fleet dispatch components (units, drivers, schedule)
+            and hook them to work orders / service requests.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+----------------------------------------
+FILE: app/fleet/page.tsx
+----------------------------------------
+// app/fleet/page.tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+import Container from "@shared/components/ui/Container";
+import FleetControlTower from "@/features/fleet/components/FleetControlTower";
+
+type DB = Database;
+
+type ProfileWithShopName = {
+  shop_id: string | null;
+  shops: { name: string | null } | null;
+};
+
+export default function FleetPage() {
+  const supabase = createClientComponentClient<DB>();
+  const [shopName, setShopName] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session?.user) return;
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("shop_id, shops(name)")
+          .eq("id", session.user.id)
+          .maybeSingle<ProfileWithShopName>();
+
+        const name = profile?.shops?.name ?? null;
+        setShopName(name);
+      } catch (e) {
+        console.error("Failed to load shop name for fleet view", e);
+      }
+    })();
+  }, [supabase]);
+
+  return (
+    <main className="relative min-h-[calc(100vh-3rem)] bg-black text-white">
+      <Container className="py-6">
+        <FleetControlTower shopName={shopName ?? "Fleet"} />
+      </Container>
+    </main>
+  );
+}
+
+----------------------------------------
+FILE: app/fleet/pretrip/page.tsx
+----------------------------------------
+"use client";
+
+import Link from "next/link";
+
+export default function FleetPretripPage() {
+  const card =
+    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
+    "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+
+  return (
+    <div className="px-4 py-6 text-white">
+      <div className="mx-auto w-full max-w-6xl space-y-5">
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+        />
+
+        <div className={card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),transparent_65%)]"
+          />
+          <div className="relative flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1
+                className="text-xl font-bold tracking-[0.22em] text-[rgba(248,113,22,0.9)] md:text-2xl uppercase"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+              >
+                Pre-trip Reports
+              </h1>
+              <p className="mt-1 text-xs text-neutral-300">
+                View and audit daily DVIR / pre-trip reports coming in from drivers.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px] text-neutral-400">
+              <span className="rounded-full border border-neutral-700 bg-black/50 px-3 py-1 uppercase tracking-[0.16em]">
+                Fleet
+              </span>
+              <span className="rounded-full border border-neutral-700 bg-black/50 px-3 py-1 uppercase tracking-[0.16em]">
+                Inspections
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className={card + " px-4 py-4 md:px-6 md:py-5"}>
+          <p className="text-xs text-neutral-300">
+            This page will host filters, tables and AI summaries of pre-trip defects. For now it&apos;s
+            wired so navigation and permissions work cleanly.
+          </p>
+          <p className="mt-3 text-xs text-neutral-400">
+            Drivers can submit pre-trips from{" "}
+            <Link
+              href="/mobile/fleet/pretrip"
+              className="underline decoration-dotted underline-offset-4"
+            >
+              the mobile pre-trip screen
+            </Link>
+            . Those records will surface here once the table view is plugged in.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+----------------------------------------
+FILE: app/fleet/service-requests/page.tsx
+----------------------------------------
+"use client";
+
+import { useEffect, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
+
+type DB = Database;
+
+type FleetServiceRequest =
+  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
+
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+
+export default function FleetServiceRequestsPage() {
+  const [requests, setRequests] = useState<FleetServiceRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] =
+    useState<FleetServiceRequest["status"] | "all">("open");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const client = supabase as SupabaseClient<DB>;
+
+        // 🔐 user
+        const {
+          data: { user },
+          error: userError,
+        } = await client.auth.getUser();
+        if (userError || !user) throw new Error("Not signed in");
+
+        // 🔍 find user's shop
+        const { data: profile, error: profileErr } = await client
+          .from("profiles")
+          .select("id, shop_id")
+          .eq("id", user.id)
+          .maybeSingle<ProfileRow>();
+
+        if (profileErr || !profile?.shop_id) {
+          throw new Error("Must belong to a shop to view fleet requests.");
+        }
+
+        // 🚚 fleet requests by shop
+        let query = client
+          .from("fleet_service_requests")
+          .select("*")
+          .eq("shop_id", profile.shop_id)
+          .order("created_at", { ascending: false });
+
+        if (statusFilter !== "all") {
+          query = query.eq("status", statusFilter);
+        }
+
+        const { data, error: reqErr } = await query;
+        if (reqErr) throw reqErr;
+
+        if (!cancelled) setRequests(data ?? []);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to load data.";
+        if (!cancelled) setError(message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [statusFilter]);
+
+  return (
+    <main className="mx-auto max-w-4xl p-6 text-white">
+      <h1
+        className="mb-6 text-3xl"
+        style={{ fontFamily: "var(--font-blackops)" }}
+      >
+        Fleet Service Requests
+      </h1>
+
+      {/* Status filter */}
+      <div className="mb-4 flex gap-3">
+        {(["all", "open", "scheduled", "completed"] as const).map((st) => (
+          <button
+            key={st}
+            onClick={() => setStatusFilter(st)}
+            className={`rounded-lg px-3 py-1 text-sm transition ${
+              statusFilter === st
+                ? "bg-[var(--accent-copper)] text-black"
+                : "border border-white/10 bg-black/40 text-neutral-300 hover:bg-neutral-900"
+            }`}
+          >
+            {st === "all" ? "All" : st[0].toUpperCase() + st.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {/* Error state */}
+      {error && <p className="text-sm text-red-400">Error: {error}</p>}
+
+      {/* Loading */}
+      {loading && (
+        <p className="text-sm text-neutral-400">Loading requests…</p>
+      )}
+
+      {/* Empty */}
+      {!loading && requests.length === 0 && (
+        <p className="mt-4 text-sm text-neutral-400">
+          No service requests{" "}
+          {statusFilter !== "all" ? `(${statusFilter})` : ""}.
+        </p>
+      )}
+
+      {/* List */}
+      <div className="mt-4 space-y-3">
+        {requests.map((req) => (
+          <div
+            key={req.id}
+            className="rounded-xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl"
+          >
+            <div className="flex justify-between">
+              <div>
+                <p className="font-medium text-white">{req.title}</p>
+                <p className="mt-1 text-xs text-neutral-400">
+                  {req.severity.toUpperCase()} •{" "}
+                  {new Date(req.created_at).toLocaleString()}
+                </p>
+                <p className="mt-2 text-sm text-neutral-300">
+                  {req.summary}
+                </p>
+              </div>
+              <span
+                className="rounded-full px-2 py-1 text-[10px] uppercase tracking-wide"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  backgroundColor: "rgba(193,102,59,0.18)",
+                }}
+              >
+                {req.status}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </main>
+  );
+}
+
+----------------------------------------
+FILE: app/fleet/tower/page.tsx
+----------------------------------------
+// app/fleet/tower/page.tsx
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import FleetControlTower from "@/features/fleet/components/FleetControlTower";
+
+type DB = Database;
+
+export default async function FleetTowerPage() {
+  const supabase = createServerComponentClient<DB>({ cookies });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let shopName = "Fleet";
+  let shopId: string | null = null;
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, shop_id, shops(name)")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (profile?.shop_id) {
+      shopId = profile.shop_id as string;
+    }
+
+    const fromJoin =
+      (profile as any)?.shops?.name ??
+      (profile as any)?.shop_name ??
+      null;
+
+    if (fromJoin && typeof fromJoin === "string") {
+      shopName = fromJoin;
+    }
+  }
+
+  return <FleetControlTower shopName={shopName} shopId={shopId} />;
+}
+
+----------------------------------------
+FILE: app/fleet/units/page.tsx
+----------------------------------------
+// app/fleet/units/page.tsx
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import FleetUnitsPage from "@/features/fleet/components/FleetUnitsPage";
+
+type DB = Database;
+
+export default async function FleetUnitsRoutePage() {
+  const supabase = createServerComponentClient<DB>({ cookies });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let shopId: string | null = null;
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (profile?.shop_id) {
+      shopId = profile.shop_id as string;
+    }
+  }
+
+  return <FleetUnitsPage shopId={shopId} />;
+}
+
+----------------------------------------
+FILE: features/fleet/components/AssetDetailScreen.tsx
+----------------------------------------
+// features/fleet/components/AssetDetailScreen.tsx
+"use client";
+
+import { useMemo } from "react";
+import Link from "next/link";
+import type { FleetUnit, FleetIssue } from "./FleetControlTower";
+
+type AssetDetailScreenProps = {
+  unitId: string;
+};
+
+export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
+  // TODO: Replace with real Supabase queries joining vehicles, inspections, work_orders
+  const mockUnit: FleetUnit = useMemo(
+    () => ({
+      id: unitId,
+      label: "HD-421 Tractor",
+      plate: "ABC-421",
+      vin: "1XPBDP9X3GD123456",
+      class: "Tractor",
+      location: "Calgary Yard A",
+      status: "oos",
+      nextInspectionDate: "2026-01-03",
+    }),
+    [unitId],
+  );
+
+  const mockIssues: FleetIssue[] = useMemo(
+    () => [
+      {
+        id: "issue-asset-1",
+        unitId,
+        unitLabel: mockUnit.label,
+        severity: "safety",
+        summary: "Steer axle brake lining at limit",
+        createdAt: "2025-12-27T09:32:00Z",
+        status: "open",
+      },
+      {
+        id: "issue-asset-2",
+        unitId,
+        unitLabel: mockUnit.label,
+        severity: "compliance",
+        summary: "Annual CVIP due in 3 days",
+        createdAt: "2025-12-28T13:15:00Z",
+        status: "open",
+      },
+      {
+        id: "issue-asset-3",
+        unitId,
+        unitLabel: mockUnit.label,
+        severity: "recommend",
+        summary: "Minor seep at rear differential",
+        createdAt: "2025-12-22T16:05:00Z",
+        status: "scheduled",
+      },
+    ],
+    [unitId, mockUnit.label],
+  );
+
+  const openIssues = mockIssues.filter((i) => i.status !== "completed");
+
+  return (
+    <section className="space-y-6">
+      {/* Top band: unit identity + status */}
+      <header className="metal-card rounded-3xl p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              Fleet unit
+            </p>
+            <h1
+              className="mt-1 text-3xl text-neutral-100"
+              style={{ fontFamily: "var(--font-blackops)" }}
+            >
+              {mockUnit.label}
+            </h1>
+
+            <div className="mt-3 grid gap-2 text-xs text-neutral-300 sm:grid-cols-2">
+              <div>
+                <span className="text-neutral-500">Plate:</span>{" "}
+                <span className="font-mono text-[11px] text-neutral-100">
+                  {mockUnit.plate ?? "—"}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500">VIN:</span>{" "}
+                <span className="font-mono text-[11px] text-neutral-100">
+                  {mockUnit.vin ?? "—"}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500">Class:</span>{" "}
+                <span className="text-neutral-100">
+                  {mockUnit.class ?? "—"}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500">Location:</span>{" "}
+                <span className="text-neutral-100">
+                  {mockUnit.location ?? "—"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-3">
+            <UnitStatusBadge status={mockUnit.status} />
+
+            {mockUnit.nextInspectionDate && (
+              <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-right">
+                <div className="text-[11px] text-neutral-400">
+                  Next inspection / CVIP
+                </div>
+                <div className="text-sm font-semibold text-sky-200">
+                  {new Date(mockUnit.nextInspectionDate).toLocaleDateString()}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-2 text-xs">
+              <Link
+                href={`/mobile/fleet/pretrip/${mockUnit.id}`}
+                className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1.5 font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
+              >
+                Start pre-trip
+              </Link>
+              <Link
+                href={`/portal/fleet/units/${mockUnit.id}`}
+                className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1.5 font-semibold text-neutral-200 hover:bg-neutral-900/50"
+              >
+                Open in fleet portal
+              </Link>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Tabs-style layout (simple): timeline + inspections + work orders */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1.8fr)]">
+        {/* Left column: Issues + inspection summary */}
+        <section className="metal-card rounded-3xl p-4">
+          <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:var(--metal-border-soft)] pb-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                Safety & inspections
+              </p>
+              <p className="mt-1 text-xs text-neutral-500">
+                Most recent failures, recommendations, and inspection history.
+              </p>
+            </div>
+            <Link
+              href={`/inspections?unitId=${encodeURIComponent(unitId)}`}
+              className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
+            >
+              All inspections
+            </Link>
+          </header>
+
+          <div className="space-y-3 text-xs">
+            {openIssues.length === 0 && (
+              <p className="py-4 text-center text-xs text-neutral-500">
+                No open safety or compliance issues for this unit.
+              </p>
+            )}
+
+            {openIssues.map((i) => (
+              <div
+                key={i.id}
+                className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <SeverityChip severity={i.severity} />
+                  <span className="text-[10px] text-neutral-500">
+                    {new Date(i.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-neutral-200">
+                  {i.summary}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Link
+                    href={`/work-orders/create?unitId=${encodeURIComponent(
+                      unitId,
+                    )}`}
+                    className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
+                  >
+                    Create work order
+                  </Link>
+                  <Link
+                    href={`/fleet`}
+                    className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold text-neutral-200 hover:bg-neutral-900/50"
+                  >
+                    Send to dispatch
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Right column: Lifetime metrics (stubbed) */}
+        <section className="metal-card rounded-3xl p-4">
+          <header className="mb-3 border-b border-[color:var(--metal-border-soft)] pb-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              History & cost snapshot
+            </p>
+            <p className="mt-1 text-xs text-neutral-500">
+              High-level unit performance and maintenance at a glance.
+            </p>
+          </header>
+
+          {/* Stubbed stats – wire later to aggregations */}
+          <div className="grid gap-3 text-xs sm:grid-cols-2">
+            <StatBlock label="Lifetime WOs" value="17" />
+            <StatBlock label="Last 12 months spend" value="$14,200" />
+            <StatBlock label="Days since last OOS" value="4" />
+            <StatBlock label="Open approvals" value="2" />
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-[11px] text-neutral-300">
+            <div className="font-semibold text-neutral-100">
+              Fleet note (internal)
+            </div>
+            <p className="mt-1 text-neutral-400">
+              High-mile linehaul tractor. Watch steer axle wear and schedule
+              PMs around nightly downtime windows.
+            </p>
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function UnitStatusBadge({
+  status,
+}: {
+  status: FleetUnit["status"];
+}) {
+  const map: Record<
+    FleetUnit["status"],
+    { label: string; className: string }
+  > = {
+    in_service: {
+      label: "In service",
+      className:
+        "border-emerald-500/70 bg-emerald-500/15 text-emerald-200",
+    },
+    limited: {
+      label: "Limited use",
+      className:
+        "border-amber-400/70 bg-amber-500/15 text-amber-200",
+    },
+    oos: {
+      label: "Out of service",
+      className: "border-red-500/80 bg-red-500/15 text-red-300",
+    },
+  };
+
+  const item = map[status];
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${item.className}`}
+    >
+      {item.label}
+    </span>
+  );
+}
+
+function SeverityChip({ severity }: { severity: FleetIssue["severity"] }) {
+  const map: Record<
+    FleetIssue["severity"],
+    { label: string; className: string }
+  > = {
+    safety: {
+      label: "Safety",
+      className:
+        "border-red-500/60 bg-red-500/10 text-red-300",
+    },
+    compliance: {
+      label: "Compliance",
+      className:
+        "border-amber-400/60 bg-amber-500/10 text-amber-200",
+    },
+    recommend: {
+      label: "Recommend",
+      className:
+        "border-sky-400/60 bg-sky-500/10 text-sky-200",
+    },
+  };
+
+  const item = map[severity];
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.16em] ${item.className}`}
+    >
+      {item.label}
+    </span>
+  );
+}
+
+function StatBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2">
+      <div className="text-[11px] text-neutral-500">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-neutral-100">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+----------------------------------------
+FILE: features/fleet/components/FleetAISummary.tsx
+----------------------------------------
+// app/api/fleet/ai-summary/route.ts
+
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { openai } from "lib/server/openai";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+type FleetServiceRequestRow =
+  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
+type FleetPretripRow =
+  DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
+type FleetDispatchRow =
+  DB["public"]["Tables"]["fleet_dispatch_assignments"]["Row"];
+
+export type SummaryResponse = {
+  summary: string;
+  lastUpdated?: string | null;
+};
+
+export async function POST(req: Request) {
+  try {
+    const supabaseUser = createRouteHandlerClient<DB>({ cookies });
+    const supabaseAdmin = createAdminSupabase();
+
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabaseUser.auth.getUser();
+
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let bodyShopId: string | null = null;
+    try {
+      const body = (await req.json().catch(() => null)) as
+        | { shopId?: string | null }
+        | null;
+      if (body?.shopId && typeof body.shopId === "string") {
+        bodyShopId = body.shopId;
+      }
+    } catch {
+      // ignore
+    }
+
+    const { data: profile, error: profileErr } = await supabaseAdmin
+      .from("profiles")
+      .select("shop_id")
+      .eq("user_id", user.id)
+      .maybeSingle<ProfileRow>();
+
+    if (profileErr) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/ai-summary] profile error:", profileErr);
+      return NextResponse.json(
+        { error: "Could not resolve shop for current user." },
+        { status: 400 },
+      );
+    }
+
+    const shopId = (bodyShopId ?? (profile?.shop_id as string | null)) ?? null;
+
+    if (!shopId) {
+      return NextResponse.json(
+        { error: "No shop associated with current user." },
+        { status: 400 },
+      );
+    }
+
+    const now = new Date();
+    const lookbackDays = 30;
+    const since = new Date(
+      now.getTime() - lookbackDays * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const [serviceRes, pretripRes, dispatchRes] = await Promise.all([
+      supabaseAdmin
+        .from("fleet_service_requests")
+        .select("*")
+        .eq("shop_id", shopId)
+        .gte("created_at", since),
+      supabaseAdmin
+        .from("fleet_pretrip_reports")
+        .select("*")
+        .eq("shop_id", shopId)
+        .gte("inspection_date", since),
+      supabaseAdmin
+        .from("fleet_dispatch_assignments")
+        .select("*")
+        .eq("shop_id", shopId)
+        .gte("created_at", since),
+    ]);
+
+    if (serviceRes.error) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[fleet/ai-summary] service requests error:",
+        serviceRes.error,
+      );
+    }
+    if (pretripRes.error) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/ai-summary] pretrips error:", pretripRes.error);
+    }
+    if (dispatchRes.error) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/ai-summary] dispatch error:", dispatchRes.error);
+    }
+
+    const serviceRequests =
+      (serviceRes.data as FleetServiceRequestRow[] | null) ?? [];
+    const pretrips = (pretripRes.data as FleetPretripRow[] | null) ?? [];
+    const dispatchAssignments =
+      (dispatchRes.data as FleetDispatchRow[] | null) ?? [];
+
+    const openService = serviceRequests.filter(
+      (r) => (r.status as string | null) !== "completed",
+    );
+    const safetyIssues = openService.filter(
+      (r) => (r.severity as string | null) === "safety",
+    );
+    const complianceIssues = openService.filter(
+      (r) => (r.severity as string | null) === "compliance",
+    );
+
+    const todayStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const todayEnd = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1,
+    );
+
+    const pretripsToday = pretrips.filter((p) => {
+      if (!p.inspection_date) return false;
+      const d = new Date(p.inspection_date as string);
+      return d >= todayStart && d < todayEnd;
+    });
+
+    const driversWithAssignments = new Set(
+      dispatchAssignments
+        .map((d) => d.driver_profile_id as string | null)
+        .filter(Boolean) as string[],
+    );
+
+    const sampleIssues = openService.slice(0, 5).map((r) => ({
+      id: r.id,
+      title: r.title,
+      summary: r.summary,
+      severity: r.severity,
+      status: r.status,
+      scheduled_for_date: r.scheduled_for_date,
+    }));
+
+    const stats = {
+      total_open: openService.length,
+      safety_open: safetyIssues.length,
+      compliance_open: complianceIssues.length,
+      pretrips_last_30_days: pretrips.length,
+      pretrips_today: pretripsToday.length,
+      active_drivers_with_assignments: driversWithAssignments.size,
+      lookback_days: lookbackDays,
+    };
+
+    const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+
+    let summaryText =
+      "Fleet data loaded, but AI summary not available. " +
+      `Open issues: ${stats.total_open}, safety: ${stats.safety_open}, ` +
+      `compliance: ${stats.compliance_open}, pre-trips in last ${stats.lookback_days} days: ${stats.pretrips_last_30_days}.`;
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model,
+        temperature: 0.3,
+        messages: [
+          {
+            role: "system",
+            content: [
+              "You are an expert HD fleet maintenance coordinator.",
+              "You speak directly to shop owners in 3–6 concise bullet points.",
+              "Your job is to summarize fleet health and highlight:",
+              "- safety-critical items",
+              "- compliance risk",
+              "- pre-trip and driver behaviour",
+              "- what should be done in the next 24–72 hours.",
+            ].join(" "),
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              stats,
+              sampleIssues,
+            }),
+          },
+        ],
+      });
+
+      const content =
+        completion.choices[0]?.message?.content?.toString().trim();
+      if (content) {
+        summaryText = content;
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/ai-summary] openai error:", err);
+      // fall back to non-AI summaryText defined above
+    }
+
+    const payload: SummaryResponse = {
+      summary: summaryText,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    return NextResponse.json(payload);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[fleet/ai-summary] unexpected error:", err);
+    return NextResponse.json(
+      { error: "Failed to generate fleet summary." },
+      { status: 500 },
+    );
+  }
+}
+
+----------------------------------------
+FILE: features/fleet/components/FleetControlTower.tsx
+----------------------------------------
+// features/fleet/components/FleetControlTower.tsx
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import FleetSummaryCards from "./FleetSummaryCards";
+import FleetIssueTables from "./FleetIssueTables";
+import FleetAISummary from "./FleetAISummary";
+
+export type FleetUnitStatus = "in_service" | "limited" | "oos";
+
+export type FleetUnit = {
+  id: string;
+  label: string;
+  plate?: string | null;
+  vin?: string | null;
+  class?: string | null;
+  location?: string | null;
+  status: FleetUnitStatus;
+  nextInspectionDate?: string | null;
+};
+
+export type FleetIssue = {
+  id: string;
+  unitId: string;
+  unitLabel: string;
+  severity: "safety" | "compliance" | "recommend";
+  summary: string;
+  createdAt: string;
+  status: "open" | "scheduled" | "completed";
+};
+
+export type DispatchAssignment = {
+  id: string;
+  driverName: string;
+  driverId: string;
+  unitLabel: string;
+  unitId: string;
+  routeLabel?: string | null;
+  nextPreTripDue?: string | null;
+  state: "pretrip_due" | "en_route" | "in_shop";
+};
+
+type Props = {
+  shopName: string;
+  shopId?: string | null;
+};
+
+type TowerPayload = {
+  units: FleetUnit[];
+  issues: FleetIssue[];
+  assignments: DispatchAssignment[];
+};
+
+export default function FleetControlTower({ shopName, shopId }: Props) {
+  const [data, setData] = useState<TowerPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [regionFilter, setRegionFilter] = useState<string | "all">("all");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch("/api/fleet/tower", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shopId: shopId ?? null }),
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          if (!cancelled) {
+            setError(
+              (body && body.error) ||
+                "Failed to load fleet data for this shop.",
+            );
+          }
+          return;
+        }
+
+        const body = (await res.json()) as TowerPayload;
+        if (!cancelled) {
+          setData(body);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[FleetControlTower] fetch error:", err);
+        if (!cancelled) {
+          setError("Failed to load fleet data.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId]);
+
+  const units = data?.units ?? [];
+  const issues = data?.issues ?? [];
+  const assignments = data?.assignments ?? [];
+
+  // Regions are inferred from unit.location when present
+  const regions = useMemo(() => {
+    const set = new Set<string>();
+    for (const u of units) {
+      if (u.location && u.location.trim().length > 0) {
+        set.add(u.location.trim());
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [units]);
+
+  const filteredUnits = useMemo(() => {
+    if (regionFilter === "all") return units;
+    return units.filter((u) => (u.location ?? "") === regionFilter);
+  }, [units, regionFilter]);
+
+  return (
+    <section className="space-y-6">
+      {/* Top header */}
+      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+            Fleet Control
+          </p>
+          <h1
+            className="mt-1 text-3xl text-neutral-100 md:text-4xl"
+            style={{ fontFamily: "var(--font-blackops)" }}
+          >
+            {shopName} – Fleet Tower
+          </h1>
+          <p className="mt-2 max-w-xl text-sm text-neutral-400">
+            See out-of-service units, upcoming inspections, pre-trips, and open
+            service requests across the fleet. Dispatch, portal, and drivers
+            stay in sync from one screen.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            value={regionFilter}
+            onChange={(e) =>
+              setRegionFilter(e.target.value as typeof regionFilter)
+            }
+            className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-2 text-xs text-neutral-200 shadow-[0_12px_35px_rgba(0,0,0,0.85)]"
+          >
+            <option value="all">All locations</option>
+            {regions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+
+          <span className="accent-chip px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
+            HD / Fleet Mode
+          </span>
+        </div>
+      </header>
+
+      {/* Error / loading states */}
+      {error && (
+        <div className="rounded-2xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
+          {error}
+        </div>
+      )}
+
+      {loading && !error && (
+        <div className="metal-card rounded-3xl px-4 py-4 text-xs text-neutral-400">
+          Loading fleet data…
+        </div>
+      )}
+
+      {!loading && !error && (
+        <>
+          {/* AI fleet health summary */}
+          <div className="metal-card rounded-3xl p-4">
+            <FleetAISummary shopId={shopId ?? null} />
+          </div>
+
+          {/* Summary cards */}
+          <FleetSummaryCards
+            units={filteredUnits}
+            issues={issues}
+            assignments={assignments}
+          />
+
+          {/* Issues + dispatch tables */}
+          <FleetIssueTables
+            units={filteredUnits}
+            issues={issues}
+            assignments={assignments}
+          />
+        </>
+      )}
+    </section>
+  );
+}
+
+----------------------------------------
+FILE: features/fleet/components/FleetIssueTables.tsx
+----------------------------------------
+// features/fleet/components/FleetIssueTables.tsx
+"use client";
+
+import { FleetUnit, FleetIssue, DispatchAssignment } from "./FleetControlTower";
+import Link from "next/link";
+
+type Props = {
+  units: FleetUnit[];
+  issues: FleetIssue[];
+  assignments: DispatchAssignment[];
+};
+
+export default function FleetIssueTables({
+  units: _units, // reserved for future use; avoids unused-param error
+  issues,
+  assignments,
+}: Props) {
+  const openIssues = issues.filter((i) => i.status !== "completed");
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      {/* Left: Issues & service requests */}
+      <section className="metal-card rounded-3xl p-4">
+        <header className="flex items-center justify-between gap-3 border-b border-[color:var(--metal-border-soft)] pb-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Open fleet issues
+            </p>
+            <p className="mt-1 text-xs text-neutral-500">
+              Pre-trip failures, portal requests, and inspection findings that
+              still need a plan.
+            </p>
+          </div>
+          <Link
+            href="/work-orders/create"
+            className="rounded-xl bg-[color:var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_18px_rgba(193,102,59,0.7)] hover:opacity-95"
+          >
+            New service request
+          </Link>
+        </header>
+
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full border-separate border-spacing-y-1 text-xs">
+            <thead className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+              <tr>
+                <th className="px-3 py-1 text-left">Unit</th>
+                <th className="px-3 py-1 text-left">Issue</th>
+                <th className="px-3 py-1 text-left">Severity</th>
+                <th className="px-3 py-1 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {openIssues.map((issue) => (
+                <tr key={issue.id} className="align-middle">
+                  <td className="px-3 py-1.5 text-[11px] text-neutral-200">
+                    <Link
+                      href={`/fleet/assets/${issue.unitId}`}
+                      className="hover:underline"
+                    >
+                      {issue.unitLabel}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                    {issue.summary}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <SeverityPill severity={issue.severity} />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <StatusPill status={issue.status} />
+                  </td>
+                </tr>
+              ))}
+
+              {openIssues.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-3 py-6 text-center text-[12px] text-neutral-500"
+                  >
+                    No open issues. Fleet is all clear.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Right: Dispatch / drivers / pre-trips */}
+      <section className="metal-card rounded-3xl p-4">
+        <header className="flex items-center justify-between gap-3 border-b border-[color:var(--metal-border-soft)] pb-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Dispatch & pre-trip
+            </p>
+            <p className="mt-1 text-xs text-neutral-500">
+              Who is in which truck, pre-trip status, and quick links back into
+              the portal.
+            </p>
+          </div>
+          <span className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-neutral-300">
+            Syncs with portal
+          </span>
+        </header>
+
+        <div className="mt-3 space-y-2 text-xs">
+          {assignments.map((a) => (
+            <div
+              key={a.id}
+              className="flex flex-col gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-[12px] font-semibold text-neutral-100">
+                    {a.driverName}
+                  </div>
+                  <div className="text-[11px] text-neutral-400">
+                    Assigned to{" "}
+                    <Link
+                      href={`/fleet/assets/${a.unitId}`}
+                      className="font-medium text-neutral-100 hover:underline"
+                    >
+                      {a.unitLabel}
+                    </Link>
+                  </div>
+                </div>
+                <DispatchStateBadge state={a.state} />
+              </div>
+
+              {a.routeLabel && (
+                <div className="text-[11px] text-neutral-400">
+                  Route: {a.routeLabel}
+                </div>
+              )}
+
+              {a.nextPreTripDue && (
+                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                  <span>Next pre-trip</span>
+                  <span className="accent-chip px-2 py-[2px] text-[10px]">
+                    {new Date(a.nextPreTripDue).toLocaleString()}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Link
+                  href={`/mobile/fleet/pretrip/${a.unitId}`}
+                  className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
+                >
+                  Send pre-trip link
+                </Link>
+                <Link
+                  href={`/portal/fleet/units/${a.unitId}`}
+                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold text-neutral-200 hover:bg-neutral-900/50"
+                >
+                  Open in fleet portal
+                </Link>
+              </div>
+            </div>
+          ))}
+
+          {assignments.length === 0 && (
+            <p className="py-4 text-center text-xs text-neutral-500">
+              No active dispatch assignments yet.
+            </p>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SeverityPill({ severity }: { severity: FleetIssue["severity"] }) {
+  const map: Record<
+    FleetIssue["severity"],
+    { label: string; className: string }
+  > = {
+    safety: {
+      label: "Safety",
+      className:
+        "border-red-500/60 bg-red-500/10 text-red-300 shadow-[0_0_14px_rgba(239,68,68,0.6)]",
+    },
+    compliance: {
+      label: "Compliance",
+      className:
+        "border-amber-400/60 bg-amber-500/10 text-amber-200 shadow-[0_0_14px_rgba(251,191,36,0.55)]",
+    },
+    recommend: {
+      label: "Recommend",
+      className:
+        "border-sky-400/60 bg-sky-500/10 text-sky-200 shadow-[0_0_14px_rgba(56,189,248,0.55)]",
+    },
+  };
+
+  const item = map[severity];
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.16em] ${item.className}`}
+    >
+      {item.label}
+    </span>
+  );
+}
+
+function StatusPill({ status }: { status: FleetIssue["status"] }) {
+  const map: Record<
+    FleetIssue["status"],
+    { label: string; className: string }
+  > = {
+    open: {
+      label: "Open",
+      className: "border-red-400/60 bg-red-500/10 text-red-200",
+    },
+    scheduled: {
+      label: "Scheduled",
+      className: "border-sky-400/60 bg-sky-500/10 text-sky-100",
+    },
+    completed: {
+      label: "Completed",
+      className:
+        "border-emerald-500/60 bg-emerald-500/10 text-emerald-200",
+    },
+  };
+
+  const item = map[status];
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.16em] ${item.className}`}
+    >
+      {item.label}
+    </span>
+  );
+}
+
+function DispatchStateBadge({
+  state,
+}: {
+  state: DispatchAssignment["state"];
+}) {
+  const map: Record<
+    DispatchAssignment["state"],
+    { label: string; className: string }
+  > = {
+    pretrip_due: {
+      label: "Pre-trip due",
+      className: "bg-amber-500/15 text-amber-200 border-amber-400/70",
+    },
+    en_route: {
+      label: "En route",
+      className: "bg-sky-500/15 text-sky-100 border-sky-400/70",
+    },
+    in_shop: {
+      label: "In shop",
+      className: "bg-purple-500/15 text-purple-100 border-purple-400/70",
+    },
+  };
+
+  const item = map[state];
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.16em] ${item.className}`}
+    >
+      {item.label}
+    </span>
+  );
+}
+
+----------------------------------------
+FILE: features/fleet/components/FleetPortalDashboard.tsx
+----------------------------------------
+// features/fleet/components/FleetPortalDashboard.tsx
+"use client";
+
+import Link from "next/link";
+import type {
+  FleetUnit,
+  FleetIssue,
+  DispatchAssignment,
+} from "./FleetControlTower";
+
+type Props = {
+  // Optional overrides if you want to pass real data later
+  fleetName?: string | null;
+  contactName?: string | null;
+  units?: FleetUnit[];
+  issues?: FleetIssue[];
+  assignments?: DispatchAssignment[];
+};
+
+export default function FleetPortalDashboard({
+  fleetName,
+  contactName,
+  units,
+  issues,
+  assignments,
+}: Props) {
+  // 🔹 Use real units if provided, otherwise fall back to demo
+  const demoUnits: FleetUnit[] =
+    units ??
+    [
+      {
+        id: "unit-421",
+        label: "HD-421 Tractor",
+        location: "Calgary Yard A",
+        status: "in_service",
+        class: "Tractor",
+        nextInspectionDate: "2026-01-03",
+      },
+      {
+        id: "unit-178",
+        label: "Trailer-178",
+        location: "Calgary Yard A",
+        status: "limited",
+        class: "Dry Van",
+        nextInspectionDate: "2026-01-10",
+      },
+    ];
+
+  const demoAssignments: DispatchAssignment[] =
+    assignments ??
+    [
+      {
+        id: "assign-1",
+        driverName: contactName || "You",
+        driverId: "driver-self",
+        unitLabel: "HD-421 Tractor",
+        unitId: "unit-421",
+        routeLabel: "Calgary ↔ Edmonton Linehaul",
+        nextPreTripDue: "2025-12-30T06:30:00Z",
+        state: "pretrip_due",
+      },
+    ];
+
+  const demoIssues: FleetIssue[] =
+    issues ??
+    [
+      {
+        id: "issue-1",
+        unitId: "unit-421",
+        unitLabel: "HD-421 Tractor",
+        severity: "safety",
+        summary: "Steer axle brake lining at limit (from inspection)",
+        createdAt: "2025-12-27T09:32:00Z",
+        status: "open",
+      },
+      {
+        id: "issue-2",
+        unitId: "unit-178",
+        unitLabel: "Trailer-178",
+        severity: "compliance",
+        summary: "Annual CVIP due in 3 days",
+        createdAt: "2025-12-28T13:15:00Z",
+        status: "open",
+      },
+    ];
+
+  const name = fleetName || "Your fleet";
+
+  return (
+    <section className="space-y-6">
+      {/* Top header */}
+      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+            Fleet Portal
+          </p>
+          <h1
+            className="mt-1 text-3xl md:text-4xl text-neutral-100"
+            style={{ fontFamily: "var(--font-blackops)" }}
+          >
+            {name} – Portal Dispatch
+          </h1>
+          <p className="mt-2 max-w-xl text-sm text-neutral-400">
+            See your assigned units, submit pre-trips, and track open service
+            requests. What your drivers see, your shop and dispatch can see too.
+          </p>
+          {/* ✅ uses demoUnits so TS stops complaining */}
+          <p className="mt-1 text-[11px] text-neutral-500">
+            {demoUnits.length} active units visible in this portal.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="accent-chip px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
+            HD / Fleet Portal
+          </span>
+        </div>
+      </header>
+
+      {/* Assigned units / Start pre-trip */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 metal-card rounded-3xl p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-100">
+                My assigned units
+              </h2>
+              <p className="mt-1 text-xs text-neutral-400">
+                Pick your unit, complete the pre-trip, and send defects back to
+                dispatch.
+              </p>
+            </div>
+
+            <span className="hidden rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-300 md:inline-flex">
+              Daily pre-trip • Compliance
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {demoAssignments.map((assign) => (
+              <div
+                key={assign.id}
+                className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs md:flex-row md:items-center md:justify-between"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="accent-chip px-2 py-0.5 text-[10px]">
+                      {assign.unitLabel}
+                    </span>
+                    {assign.routeLabel && (
+                      <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+                        {assign.routeLabel}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-neutral-300">
+                    Driver:{" "}
+                    <span className="font-medium">{assign.driverName}</span>
+                  </div>
+                  {assign.nextPreTripDue && (
+                    <div className="text-neutral-500">
+                      Next pre-trip due:{" "}
+                      <span className="text-neutral-300">
+                        {assign.nextPreTripDue}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-neutral-300">
+                    {assign.state === "pretrip_due"
+                      ? "Pre-trip required"
+                      : assign.state === "en_route"
+                      ? "En route"
+                      : "In shop"}
+                  </span>
+
+                  <Link
+                    href={`/mobile/fleet/pretrip/${assign.unitId}?driver=${encodeURIComponent(
+                      assign.driverName,
+                    )}`}
+                    className="rounded-xl px-3 py-1.5 text-xs font-semibold text-black"
+                    style={{ backgroundColor: "var(--accent-copper)" }}
+                  >
+                    Start pre-trip
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Quick health snapshot for the portal side */}
+        <div className="metal-card rounded-3xl p-4 text-xs">
+          <h2 className="text-sm font-semibold text-neutral-100">
+            Fleet health snapshot
+          </h2>
+          <p className="mt-1 text-xs text-neutral-400">
+            A quick view of units with open safety or compliance items from
+            inspections and pre-trips.
+          </p>
+
+          <div className="mt-4 space-y-3">
+            { (issues ?? demoIssues).map((issue) => (
+              <div
+                key={issue.id}
+                className="rounded-2xl border border-white/10 bg-black/40 p-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="accent-chip px-2 py-0.5 text-[10px]">
+                    {issue.unitLabel}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                    {issue.severity === "safety"
+                      ? "Safety"
+                      : issue.severity === "compliance"
+                      ? "Compliance"
+                      : "Recommend"}
+                  </span>
+                </div>
+                <p className="mt-2 text-neutral-200">{issue.summary}</p>
+                <p className="mt-1 text-[10px] text-neutral-500">
+                  Status:{" "}
+                  <span className="text-neutral-300">{issue.status}</span>
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-2">
+            <Link
+              href="/fleet/service-requests"
+              className="rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-center text-xs font-semibold text-neutral-100 hover:bg-neutral-900/40"
+            >
+              View service requests in shop
+            </Link>
+            <p className="text-[10px] text-neutral-500">
+              Fleet portal shows what’s open; shop view handles scheduling and
+              work orders.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Pre-trip history placeholder */}
+      <div className="metal-card mt-4 rounded-3xl p-4 text-xs">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-100">
+              Pre-trip history
+            </h2>
+            <p className="mt-1 text-xs text-neutral-400">
+              Track past pre-trips, missed days, and defects for audit and
+              coaching.
+            </p>
+          </div>
+          <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+            Coming from fleet_pretrip_reports
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+----------------------------------------
+FILE: features/fleet/components/FleetSummaryCards.tsx
+----------------------------------------
+// features/fleet/components/FleetSummaryCards.tsx
+"use client";
+
+import { FleetUnit, FleetIssue, DispatchAssignment } from "./FleetControlTower";
+
+type Props = {
+  units: FleetUnit[];
+  issues: FleetIssue[];
+  assignments: DispatchAssignment[];
+};
+
+export default function FleetSummaryCards({
+  units,
+  issues,
+  assignments,
+}: Props) {
+  const oosCount = units.filter((u) => u.status === "oos").length;
+  const limitedCount = units.filter((u) => u.status === "limited").length;
+  const upcomingInspections = units.filter((u) => !!u.nextInspectionDate).length;
+
+  const safetyIssues = issues.filter((i) => i.severity === "safety").length;
+  const complianceIssues = issues.filter(
+    (i) => i.severity === "compliance",
+  ).length;
+
+  const pretripDue = assignments.filter(
+    (a) => a.state === "pretrip_due",
+  ).length;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-4">
+      {/* Units out of service */}
+      <div className="metal-card rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Out of service
+          </p>
+          <span className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)]" />
+        </div>
+        <div className="mt-3 text-3xl font-bold text-red-400">{oosCount}</div>
+        <p className="mt-1 text-xs text-neutral-400">
+          Units not available for dispatch.
+        </p>
+      </div>
+
+      {/* Limited units */}
+      <div className="metal-card rounded-2xl p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          Limited use
+        </p>
+        <div className="mt-3 text-3xl font-bold text-amber-300">
+          {limitedCount}
+        </div>
+        <p className="mt-1 text-xs text-neutral-400">
+          Units with restrictions or minor issues.
+        </p>
+      </div>
+
+      {/* Inspections due */}
+      <div className="metal-card rounded-2xl p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          Inspections in window
+        </p>
+        <div className="mt-3 text-3xl font-bold text-sky-300">
+          {upcomingInspections}
+        </div>
+        <p className="mt-1 text-xs text-neutral-400">
+          Units with an upcoming CVIP / safety check.
+        </p>
+      </div>
+
+      {/* Safety / compliance + pretrip */}
+      <div className="metal-card rounded-2xl p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          Safety & pre-trip
+        </p>
+
+        <div className="mt-3 flex items-baseline gap-4">
+          <div>
+            <div className="text-xl font-semibold text-red-300">
+              {safetyIssues}
+            </div>
+            <div className="text-[11px] text-neutral-400">Open safety items</div>
+          </div>
+          <div>
+            <div className="text-xl font-semibold text-amber-200">
+              {complianceIssues}
+            </div>
+            <div className="text-[11px] text-neutral-400">
+              Compliance reminders
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between">
+          <p className="text-[11px] text-neutral-400">
+            Drivers with a pre-trip due:
+          </p>
+          <span className="accent-chip px-2 py-1 text-[10px] font-semibold">
+            {pretripDue} due today
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+----------------------------------------
+FILE: features/fleet/components/FleetUnitsPage.tsx
+----------------------------------------
+// features/fleet/components/FleetUnitsPage.tsx
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { FleetUnitListItem } from "@/app/api/fleet/units/route";
+
+type Props = {
+  shopId?: string | null;
+};
+
+export default function FleetUnitsPage({ shopId }: Props) {
+  const [units, setUnits] = useState<FleetUnitListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [fleetFilter, setFleetFilter] = useState<string>("all");
+
+  const card =
+    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
+    "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch("/api/fleet/units", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shopId: shopId ?? null }),
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          if (!cancelled) {
+            setError(
+              (body && body.error) ||
+                "Failed to load fleet units for this shop.",
+            );
+          }
+          return;
+        }
+
+        const body = (await res.json()) as { units: FleetUnitListItem[] };
+        if (!cancelled) {
+          setUnits(Array.isArray(body.units) ? body.units : []);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[FleetUnitsPage] fetch error:", err);
+        if (!cancelled) {
+          setError("Failed to load fleet units.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId]);
+
+  const fleets = useMemo(() => {
+    const set = new Set<string>();
+    for (const u of units) {
+      if (u.fleetName && u.fleetName.trim().length > 0) {
+        set.add(u.fleetName.trim());
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [units]);
+
+  const filteredUnits = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return units.filter((u) => {
+      if (fleetFilter !== "all") {
+        if ((u.fleetName ?? "") !== fleetFilter) return false;
+      }
+
+      if (!q) return true;
+
+      const haystack = [
+        u.label,
+        u.fleetName,
+        u.plate,
+        u.vin,
+        u.class,
+        u.location,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+  }, [units, search, fleetFilter]);
+
+  return (
+    <div className="px-4 py-6 text-white">
+      <div className="mx-auto w-full max-w-6xl space-y-5">
+        {/* Copper wash */}
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+        />
+
+        {/* Header */}
+        <div className={card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),transparent_65%)]"
+          />
+          <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1
+                className="text-xl font-bold tracking-[0.22em] text-[rgba(248,113,22,0.9)] md:text-2xl uppercase"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+              >
+                Fleet Units
+              </h1>
+              <p className="mt-1 text-xs text-neutral-300">
+                Master list of tractors, trailers, buses and other HD assets
+                enrolled in fleet programs.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 md:items-end">
+              <label className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Filter by fleet
+              </label>
+              <select
+                value={fleetFilter}
+                onChange={(e) => setFleetFilter(e.target.value)}
+                className="min-w-[180px] rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-xs text-white"
+              >
+                <option value="all">All fleets</option>
+                {fleets.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="relative mt-4 flex flex-col gap-2 md:flex-row md:items-center">
+            <div className="relative flex-1">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by unit, plate, VIN, location…"
+                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(248,113,22,0.55)]"
+              />
+            </div>
+
+            <div className="text-[11px] text-neutral-500 md:pl-3">
+              Units shown are linked from your fleet programs and vehicle list.
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className={card + " px-4 py-4 md:px-6 md:py-5"}>
+          {error && (
+            <div className="rounded-xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
+              {error}
+            </div>
+          )}
+
+          {loading && !error && (
+            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-4 text-sm text-neutral-300">
+              Loading fleet units…
+            </div>
+          )}
+
+          {!loading && !error && filteredUnits.length === 0 && (
+            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-6 text-center text-sm text-neutral-300">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                No fleet units found
+              </div>
+              <p className="mt-2 text-xs text-neutral-400">
+                Add vehicles to a fleet program to see them here.
+              </p>
+            </div>
+          )}
+
+          {!loading && !error && filteredUnits.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-separate border-spacing-y-1 text-xs">
+                <thead className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                  <tr>
+                    <th className="px-3 py-1 text-left">Unit</th>
+                    <th className="px-3 py-1 text-left">Fleet</th>
+                    <th className="px-3 py-1 text-left">Plate</th>
+                    <th className="px-3 py-1 text-left">VIN</th>
+                    <th className="px-3 py-1 text-left">Status</th>
+                    <th className="px-3 py-1 text-left">Next Inspection</th>
+                    <th className="px-3 py-1 text-left">Location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUnits.map((u) => (
+                    <tr key={u.id} className="align-middle">
+                      <td className="px-3 py-1.5 text-[11px] text-neutral-100">
+                        {u.label}
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                        {u.fleetName ?? "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                        {u.plate ?? "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                        {u.vin ? u.vin.slice(0, 11) + "…" : "—"}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <StatusPill status={u.status} />
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                        {u.nextInspectionDate
+                          ? new Date(u.nextInspectionDate).toLocaleDateString()
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                        {u.location ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({
+  status,
+}: {
+  status: "in_service" | "limited" | "oos";
+}) {
+  const map: Record<
+    "in_service" | "limited" | "oos",
+    { label: string; className: string }
+  > = {
+    in_service: {
+      label: "In Service",
+      className:
+        "border-emerald-500/60 bg-emerald-500/10 text-emerald-200",
+    },
+    limited: {
+      label: "Limited",
+      className:
+        "border-amber-400/60 bg-amber-500/10 text-amber-200",
+    },
+    oos: {
+      label: "OOS",
+      className: "border-red-500/60 bg-red-500/10 text-red-300",
+    },
+  };
+
+  const item = map[status];
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.16em] ${item.className}`}
+    >
+      {item.label}
+    </span>
+  );
+}
+
+----------------------------------------
+FILE: features/fleet/components/PretripForm.tsx
+----------------------------------------
+// features/fleet/components/PretripForm.tsx
+"use client";
+
+import { FormEvent, useMemo, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+type Props = {
+  unitId: string;
+  driverHint: string | null;
+  // optional – currently unused, but kept so existing callers compile
+  supabase?: SupabaseClient<DB>;
+};
+
+type DefectKey =
+  | "brakes"
+  | "tires"
+  | "lights"
+  | "steering"
+  | "suspension"
+  | "fluids"
+  | "body"
+  | "safetyEquipment";
+
+type DefectState = "ok" | "defect" | "na";
+
+const DEFECT_ITEMS: { key: DefectKey; label: string }[] = [
+  { key: "brakes", label: "Brakes / air system" },
+  { key: "tires", label: "Tires, wheels & rims" },
+  { key: "lights", label: "Lights & signals" },
+  { key: "steering", label: "Steering" },
+  { key: "suspension", label: "Suspension" },
+  { key: "fluids", label: "Leaks (oil, coolant, fuel)" },
+  { key: "body", label: "Body, mirrors, glass" },
+  { key: "safetyEquipment", label: "Safety equipment" },
+];
+
+export default function PretripForm({ unitId, driverHint }: Props) {
+  const [driverName, setDriverName] = useState(driverHint ?? "");
+  const [odometer, setOdometer] = useState("");
+  const [location, setLocation] = useState("");
+  const [notes, setNotes] = useState("");
+  const [defects, setDefects] = useState<Record<DefectKey, DefectState>>(() =>
+    DEFECT_ITEMS.reduce(
+      (acc, item) => ({ ...acc, [item.key]: "ok" as DefectState }),
+      {} as Record<DefectKey, DefectState>,
+    ),
+  );
+
+  const [submitting, setSubmitting] = useState(false);
+  const [convertBusy, setConvertBusy] = useState(false);
+  const [pretripId, setPretripId] = useState<string | null>(null);
+  const [hasDefects, setHasDefects] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const defectsPresent = useMemo(
+    () => Object.values(defects).some((s) => s === "defect"),
+    [defects],
+  );
+
+  const canSubmit = !!driverName && !submitting;
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+
+    setSubmitting(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await fetch("/api/fleet/pretrip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          unitId,
+          driverName,
+          odometer: odometer || null,
+          location: location || null,
+          notes: notes || null,
+          defects,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || "Failed to save pre-trip");
+      }
+
+      const data: { id: string; hasDefects: boolean } = await res.json();
+
+      setPretripId(data.id);
+      setHasDefects(data.hasDefects ?? defectsPresent);
+      setStatusMessage("Pre-trip saved.");
+
+      // optional: clear form except driver + location
+      setNotes("");
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage(err?.message || "Failed to save pre-trip.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleConvert = async () => {
+    if (!pretripId) return;
+    setConvertBusy(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await fetch(
+        "/api/fleet/pretrip/convert-to-service-request",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pretripId }),
+        },
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || "Failed to create service request");
+      }
+
+      setStatusMessage("Service request created from pre-trip defects.");
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage(err?.message || "Failed to create service request.");
+    } finally {
+      setConvertBusy(false);
+    }
+  };
+
+  const renderDefectPill = (key: DefectKey, label: string) => {
+    const value = defects[key];
+
+    const base =
+      "inline-flex items-center justify-between gap-2 rounded-2xl px-3 py-2 text-xs font-medium border transition shadow-[0_10px_24px_rgba(0,0,0,0.85)]";
+
+    const className =
+      value === "defect"
+        ? `${base} border-[color:var(--accent-copper)]/70 bg-black/70 text-[color:var(--accent-copper-light)]`
+        : value === "na"
+          ? `${base} border-neutral-700 bg-black/30 text-neutral-400`
+          : `${base} border-[color:var(--metal-border-soft)] bg-black/40 text-neutral-300`;
+
+    return (
+      <button
+        key={key}
+        type="button"
+        className={className}
+        onClick={() => {
+          // cycle: ok -> defect -> na -> ok
+          const next: DefectState =
+            value === "ok" ? "defect" : value === "defect" ? "na" : "ok";
+          setDefects((prev) => ({ ...prev, [key]: next }));
+        }}
+      >
+        <span>{label}</span>
+        <span className="rounded-full border border-white/10 bg-black/40 px-2 py-[1px] text-[10px] uppercase tracking-[0.16em]">
+          {value === "defect"
+            ? "DEFECT"
+            : value === "na"
+              ? "N/A"
+              : "OK"}
+        </span>
+      </button>
+    );
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-5 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/70 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl"
+    >
+      {/* Header */}
+      <header className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+            Daily Pre-trip
+          </p>
+          <p className="mt-1 text-sm text-neutral-200">
+            Unit{" "}
+            <span className="font-mono text-xs text-neutral-100">
+              {unitId}
+            </span>
+          </p>
+        </div>
+
+        {defectsPresent ? (
+          <span className="accent-chip px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]">
+            Defects Marked
+          </span>
+        ) : (
+          <span className="rounded-full border border-emerald-500/50 bg-emerald-500/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+            All OK
+          </span>
+        )}
+      </header>
+
+      {/* Driver + basics */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Driver
+          </label>
+          <input
+            type="text"
+            value={driverName}
+            onChange={(e) => setDriverName(e.target.value)}
+            className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
+            placeholder="Driver name"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Odometer
+          </label>
+          <input
+            type="number"
+            value={odometer}
+            onChange={(e) => setOdometer(e.target.value)}
+            className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
+            placeholder="km"
+          />
+        </div>
+
+        <div className="space-y-1.5 sm:col-span-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Location / Route
+          </label>
+          <input
+            type="text"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
+            placeholder="e.g. Calgary Yard A – AM linehaul"
+          />
+        </div>
+      </div>
+
+      {/* Quick defect toggles */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Walk-around checklist
+          </p>
+          <p className="text-[11px] text-neutral-500">
+            Tap items to mark{" "}
+            <span className="text-[color:var(--accent-copper-light)]">
+              DEFECT
+            </span>{" "}
+            or N/A.
+          </p>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          {DEFECT_ITEMS.map((item) =>
+            renderDefectPill(item.key, item.label),
+          )}
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          Notes
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={4}
+          className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
+          placeholder="Anything the shop should know before this unit goes out..."
+        />
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className="inline-flex items-center justify-center rounded-xl bg-[color:var(--accent-copper)] px-4 py-2.5 text-sm font-semibold text-black shadow-[0_0_20px_rgba(193,102,59,0.4)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {submitting ? "Saving pre-trip…" : "Submit pre-trip"}
+        </button>
+
+        {/* Convert → service request */}
+        {pretripId && (hasDefects || defectsPresent) && (
+          <button
+            type="button"
+            onClick={handleConvert}
+            disabled={convertBusy}
+            className="inline-flex items-center justify-center rounded-xl border border-[color:var(--accent-copper-light)] bg-black/70 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper-light)] shadow-[0_0_18px_rgba(193,102,59,0.35)] transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {convertBusy
+              ? "Converting defects…"
+              : "Convert defects → service request"}
+          </button>
+        )}
+
+        {statusMessage && (
+          <p className="text-xs text-neutral-400">{statusMessage}</p>
+        )}
+      </div>
+    </form>
+  );
+}
+
+----------------------------------------
+FILE: features/fleet/lib/convertServiceRequestToWorkOrder.ts
+----------------------------------------
+// features/fleet/lib/convertServiceRequestToWorkOrder.ts
+
+export async function convertServiceRequestToWorkOrder(serviceRequestId: string) {
+  const res = await fetch(
+    "/api/fleet/service-requests/convert-to-work-order",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serviceRequestId }),
+    },
+  );
+
+  const data = await res.json().catch(() => ({} as any));
+
+  if (!res.ok) {
+    throw new Error(data?.error || "Failed to convert service request");
+  }
+
+  return data as { workOrderId: string; status: "converted" | "already_linked" };
+}
+

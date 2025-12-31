@@ -1,7 +1,7 @@
 // features/fleet/components/FleetControlTower.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import FleetSummaryCards from "./FleetSummaryCards";
 import FleetIssueTables from "./FleetIssueTables";
 import FleetAISummary from "./FleetAISummary";
@@ -10,13 +10,13 @@ export type FleetUnitStatus = "in_service" | "limited" | "oos";
 
 export type FleetUnit = {
   id: string;
-  label: string; // e.g. "Truck 421"
+  label: string;
   plate?: string | null;
   vin?: string | null;
-  class?: string | null; // Tractor, Trailer, Straight Truck, Bus
+  class?: string | null;
   location?: string | null;
   status: FleetUnitStatus;
-  nextInspectionDate?: string | null; // ISO
+  nextInspectionDate?: string | null;
 };
 
 export type FleetIssue = {
@@ -25,7 +25,7 @@ export type FleetIssue = {
   unitLabel: string;
   severity: "safety" | "compliance" | "recommend";
   summary: string;
-  createdAt: string; // ISO
+  createdAt: string;
   status: "open" | "scheduled" | "completed";
 };
 
@@ -45,103 +45,82 @@ type Props = {
   shopId?: string | null;
 };
 
+type TowerPayload = {
+  units: FleetUnit[];
+  issues: FleetIssue[];
+  assignments: DispatchAssignment[];
+};
+
 export default function FleetControlTower({ shopName, shopId }: Props) {
-  // TODO: Replace mock data with Supabase-backed hooks
+  const [data, setData] = useState<TowerPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [regionFilter, setRegionFilter] = useState<string | "all">("all");
 
-  const mockUnits: FleetUnit[] = useMemo(
-    () => [
-      {
-        id: "unit-421",
-        label: "HD-421 Tractor",
-        location: "Calgary Yard A",
-        status: "oos",
-        class: "Tractor",
-        nextInspectionDate: "2026-01-03",
-      },
-      {
-        id: "unit-178",
-        label: "Trailer-178",
-        location: "Calgary Yard A",
-        status: "limited",
-        class: "Dry Van",
-        nextInspectionDate: "2026-01-10",
-      },
-      {
-        id: "unit-912",
-        label: "HD-912 Tractor",
-        location: "Edmonton Yard",
-        status: "in_service",
-        class: "Tractor",
-        nextInspectionDate: "2026-01-06",
-      },
-    ],
-    [],
-  );
+  useEffect(() => {
+    let cancelled = false;
 
-  const mockIssues: FleetIssue[] = useMemo(
-    () => [
-      {
-        id: "issue-1",
-        unitId: "unit-421",
-        unitLabel: "HD-421 Tractor",
-        severity: "safety",
-        summary: "Steer axle brake lining at limit",
-        createdAt: "2025-12-27T09:32:00Z",
-        status: "open",
-      },
-      {
-        id: "issue-2",
-        unitId: "unit-178",
-        unitLabel: "Trailer-178",
-        severity: "compliance",
-        summary: "Annual CVIP due in 3 days",
-        createdAt: "2025-12-28T13:15:00Z",
-        status: "open",
-      },
-      {
-        id: "issue-3",
-        unitId: "unit-912",
-        unitLabel: "HD-912 Tractor",
-        severity: "recommend",
-        summary: "Minor seep at rear differential",
-        createdAt: "2025-12-22T16:05:00Z",
-        status: "scheduled",
-      },
-    ],
-    [],
-  );
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-  const mockAssignments: DispatchAssignment[] = useMemo(
-    () => [
-      {
-        id: "assign-1",
-        driverName: "K. Singh",
-        driverId: "driver-1",
-        unitLabel: "HD-421 Tractor",
-        unitId: "unit-421",
-        routeLabel: "Calgary ↔ Edmonton Linehaul",
-        nextPreTripDue: "2025-12-30T06:30:00Z",
-        state: "pretrip_due",
-      },
-      {
-        id: "assign-2",
-        driverName: "M. Alvarez",
-        driverId: "driver-2",
-        unitLabel: "Trailer-178",
-        unitId: "unit-178",
-        routeLabel: "Calgary City P&D",
-        nextPreTripDue: "2025-12-30T07:00:00Z",
-        state: "en_route",
-      },
-    ],
-    [],
-  );
+        const res = await fetch("/api/fleet/tower", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shopId: shopId ?? null }),
+        });
 
-  const filteredUnits =
-    regionFilter === "all"
-      ? mockUnits
-      : mockUnits.filter((u) => u.location === regionFilter);
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          if (!cancelled) {
+            setError(
+              (body && body.error) ||
+                "Failed to load fleet data for this shop.",
+            );
+          }
+          return;
+        }
+
+        const body = (await res.json()) as TowerPayload;
+        if (!cancelled) {
+          setData(body);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[FleetControlTower] fetch error:", err);
+        if (!cancelled) {
+          setError("Failed to load fleet data.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId]);
+
+  const units = data?.units ?? [];
+  const issues = data?.issues ?? [];
+  const assignments = data?.assignments ?? [];
+
+  // Regions are inferred from unit.location when present
+  const regions = useMemo(() => {
+    const set = new Set<string>();
+    for (const u of units) {
+      if (u.location && u.location.trim().length > 0) {
+        set.add(u.location.trim());
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [units]);
+
+  const filteredUnits = useMemo(() => {
+    if (regionFilter === "all") return units;
+    return units.filter((u) => (u.location ?? "") === regionFilter);
+  }, [units, regionFilter]);
 
   return (
     <section className="space-y-6">
@@ -152,7 +131,7 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
             Fleet Control
           </p>
           <h1
-            className="mt-1 text-3xl md:text-4xl text-neutral-100"
+            className="mt-1 text-3xl text-neutral-100 md:text-4xl"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
             {shopName} – Fleet Tower
@@ -173,8 +152,11 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
             className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-2 text-xs text-neutral-200 shadow-[0_12px_35px_rgba(0,0,0,0.85)]"
           >
             <option value="all">All locations</option>
-            <option value="Calgary Yard A">Calgary Yard A</option>
-            <option value="Edmonton Yard">Edmonton Yard</option>
+            {regions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
           </select>
 
           <span className="accent-chip px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
@@ -183,24 +165,41 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
         </div>
       </header>
 
-      {/* AI fleet health summary (HD view) */}
-      <div className="metal-card rounded-3xl p-4">
-        <FleetAISummary shopId={shopId ?? undefined} />
-      </div>
+      {/* Error / loading states */}
+      {error && (
+        <div className="rounded-2xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
+          {error}
+        </div>
+      )}
 
-      {/* Summary cards: OOS, due, approvals, pretrips */}
-      <FleetSummaryCards
-        units={filteredUnits}
-        issues={mockIssues}
-        assignments={mockAssignments}
-      />
+      {loading && !error && (
+        <div className="metal-card rounded-3xl px-4 py-4 text-xs text-neutral-400">
+          Loading fleet data…
+        </div>
+      )}
 
-      {/* Lower layout: left = issues/approvals; right = dispatch + pretrip */}
-      <FleetIssueTables
-        units={filteredUnits}
-        issues={mockIssues}
-        assignments={mockAssignments}
-      />
+      {!loading && !error && (
+        <>
+          {/* AI fleet health summary */}
+          <div className="metal-card rounded-3xl p-4">
+            <FleetAISummary shopId={shopId ?? null} />
+          </div>
+
+          {/* Summary cards */}
+          <FleetSummaryCards
+            units={filteredUnits}
+            issues={issues}
+            assignments={assignments}
+          />
+
+          {/* Issues + dispatch tables */}
+          <FleetIssueTables
+            units={filteredUnits}
+            issues={issues}
+            assignments={assignments}
+          />
+        </>
+      )}
     </section>
   );
 }

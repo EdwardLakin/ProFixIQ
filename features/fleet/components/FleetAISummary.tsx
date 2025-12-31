@@ -8,7 +8,7 @@ type FleetAISummaryProps = {
   shopId?: string | null;
 };
 
-type SummaryResponse = {
+export type SummaryResponse = {
   summary: string;
   lastUpdated?: string | null;
 };
@@ -19,13 +19,13 @@ export default function FleetAISummary({ shopId }: FleetAISummaryProps) {
   const [data, setData] = useState<SummaryResponse | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // 🔧 Implement this on the server using OpenAI + Supabase
-        // e.g. aggregate: pre-trips, inspections, WOs, OOS units and summarize.
         const res = await fetch("/api/fleet/ai-summary", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -34,25 +34,34 @@ export default function FleetAISummary({ shopId }: FleetAISummaryProps) {
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          console.error("AI fleet summary failed:", body);
-          setError(body?.error || "Failed to generate fleet summary.");
-          setLoading(false);
+          if (!cancelled) {
+            console.error("AI fleet summary failed:", body);
+            setError(body?.error || "Failed to generate fleet summary.");
+          }
           return;
         }
 
         const body = (await res.json()) as SummaryResponse;
-        setData(body);
+        if (!cancelled) {
+          setData(body);
+        }
       } catch (err) {
         console.error("AI fleet summary error:", err);
-        setError("Failed to generate fleet summary.");
+        if (!cancelled) {
+          setError("Failed to generate fleet summary.");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [shopId]);
 
   return (
-    <section className="metal-card mt-4 rounded-3xl p-4 text-xs text-neutral-200">
+    <section className="mt-4 rounded-3xl bg-black/60 p-4 text-xs text-neutral-200">
       <header className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-[color:var(--accent-copper)]" />
