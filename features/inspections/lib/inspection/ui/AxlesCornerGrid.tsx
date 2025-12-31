@@ -1,8 +1,12 @@
-//features/inspections/lib/inspection/ui/AxlesCornerGrid.tsx
-
+// features/inspections/lib/inspection/ui/AxlesCornerGrid.tsx
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -337,11 +341,15 @@ export default function AxlesCornerGrid({
     isPressureRow,
     unit,
     defaultValue,
+    inputRef,
+    onKeyDown,
   }: {
     idx: number;
     isPressureRow: boolean;
     unit: string;
     defaultValue: string;
+    inputRef?: (el: HTMLInputElement | null) => void;
+    onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void;
   }) => {
     const spanRef = useRef<HTMLSpanElement | null>(null);
 
@@ -367,6 +375,7 @@ export default function AxlesCornerGrid({
     return (
       <div className="relative w-full max-w-[11rem]">
         <input
+          ref={inputRef}
           defaultValue={defaultValue}
           className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
           placeholder="Value"
@@ -374,6 +383,7 @@ export default function AxlesCornerGrid({
           inputMode="decimal"
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
+          onKeyDown={onKeyDown}
         />
         <span
           ref={spanRef}
@@ -393,67 +403,136 @@ export default function AxlesCornerGrid({
   }: {
     region: Region;
     rows: HydRow[];
-  }) => (
-    <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
-      <div
-        className="mb-3 text-lg font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-        style={{ fontFamily: "var(--font-blackops), system-ui" }}
-      >
-        {region}
-      </div>
+  }) => {
+    // refs[rowIndex][colIndex] where colIndex 0 = Left, 1 = Right
+    const inputRefs = useRef<(HTMLInputElement | null)[][]>([]);
 
-      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-        <div>Left</div>
-        <div className="text-center">Item</div>
-        <div className="text-right">Right</div>
-      </div>
+    const ensureRow = (rowIndex: number) => {
+      if (!inputRefs.current[rowIndex]) {
+        inputRefs.current[rowIndex] = [];
+      }
+      return inputRefs.current[rowIndex];
+    };
 
-      {open && (
-        <div className="space-y-3">
-          {rows.map((row, i) => (
-            <div
-              key={`${region}-${row.metric}-${i}`}
-              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl border border-slate-800/80 bg-neutral-950/80 p-3 shadow-[0_14px_35px_rgba(0,0,0,0.9)]"
-            >
-              <div>
-                {row.left ? (
-                  <InputWithInlineUnit
-                    idx={row.left.idx}
-                    isPressureRow={row.left.isPressure}
-                    unit={row.left.unit}
-                    defaultValue={row.left.initial}
-                  />
-                ) : (
-                  <div className="h-[34px]" />
-                )}
-              </div>
+    const handleKeyDown =
+      (rowIndex: number, colIndex: 0 | 1) =>
+      (e: KeyboardEvent<HTMLInputElement>) => {
+        const refs = inputRefs.current;
+        if (!refs.length) return;
 
-              <div
-                className="min-w-0 truncate text-center text-sm font-semibold text-neutral-100"
-                style={{ fontFamily: "var(--font-blackops), system-ui" }}
-                title={row.metric}
-              >
-                {row.metric}
-              </div>
+        const maxRow = refs.length - 1;
 
-              <div className="justify-self-end">
-                {row.right ? (
-                  <InputWithInlineUnit
-                    idx={row.right.idx}
-                    isPressureRow={row.right.isPressure}
-                    unit={row.right.unit}
-                    defaultValue={row.right.initial}
-                  />
-                ) : (
-                  <div className="h-[34px]" />
-                )}
-              </div>
-            </div>
-          ))}
+        const focusCell = (r: number, c: 0 | 1) => {
+          const row = refs[r];
+          if (!row) return;
+          const next = row[c];
+          if (next) {
+            e.preventDefault();
+            next.focus();
+            next.select?.();
+          }
+        };
+
+        switch (e.key) {
+          case "ArrowRight": {
+            if (colIndex === 0) {
+              focusCell(rowIndex, 1);
+            }
+            break;
+          }
+          case "ArrowLeft": {
+            if (colIndex === 1) {
+              focusCell(rowIndex, 0);
+            }
+            break;
+          }
+          case "ArrowDown": {
+            const nextRow = Math.min(maxRow, rowIndex + 1);
+            focusCell(nextRow, colIndex);
+            break;
+          }
+          case "ArrowUp": {
+            const prevRow = Math.max(0, rowIndex - 1);
+            focusCell(prevRow, colIndex);
+            break;
+          }
+          default:
+            break;
+        }
+      };
+
+    return (
+      <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+        <div
+          className="mb-3 text-lg font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+          style={{ fontFamily: "var(--font-blackops), system-ui" }}
+        >
+          {region}
         </div>
-      )}
-    </div>
-  );
+
+        <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+          <div>Left</div>
+          <div className="text-center">Item</div>
+          <div className="text-right">Right</div>
+        </div>
+
+        {open && (
+          <div className="space-y-3">
+            {rows.map((row, i) => (
+              <div
+                key={`${region}-${row.metric}-${i}`}
+                className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl border border-slate-800/80 bg-neutral-950/80 p-3 shadow-[0_14px_35px_rgba(0,0,0,0.9)]"
+              >
+                <div>
+                  {row.left ? (
+                    <InputWithInlineUnit
+                      idx={row.left.idx}
+                      isPressureRow={row.left.isPressure}
+                      unit={row.left.unit}
+                      defaultValue={row.left.initial}
+                      inputRef={(el) => {
+                        const rowRef = ensureRow(i);
+                        rowRef[0] = el;
+                      }}
+                      onKeyDown={handleKeyDown(i, 0)}
+                    />
+                  ) : (
+                    <div className="h-[34px]" />
+                  )}
+                </div>
+
+                <div
+                  className="min-w-0 truncate text-center text-sm font-semibold text-neutral-100"
+                  style={{ fontFamily: "var(--font-blackops), system-ui" }}
+                  title={row.metric}
+                >
+                  {row.metric}
+                </div>
+
+                <div className="justify-self-end">
+                  {row.right ? (
+                    <InputWithInlineUnit
+                      idx={row.right.idx}
+                      isPressureRow={row.right.isPressure}
+                      unit={row.right.unit}
+                      defaultValue={row.right.initial}
+                      inputRef={(el) => {
+                        const rowRef = ensureRow(i);
+                        rowRef[1] = el;
+                      }}
+                      onKeyDown={handleKeyDown(i, 1)}
+                    />
+                  ) : (
+                    <div className="h-[34px]" />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   /* ----------------------------- AIR UI ----------------------------- */
 
@@ -463,67 +542,136 @@ export default function AxlesCornerGrid({
   }: {
     axle: string;
     rows: AirRow[];
-  }) => (
-    <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
-      <div
-        className="mb-3 text-lg font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-        style={{ fontFamily: "var(--font-blackops), system-ui" }}
-      >
-        {axle}
-      </div>
+  }) => {
+    // refs[rowIndex][colIndex] where colIndex 0 = Left, 1 = Right
+    const inputRefs = useRef<(HTMLInputElement | null)[][]>([]);
 
-      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-        <div>Left</div>
-        <div className="text-center">Item</div>
-        <div className="text-right">Right</div>
-      </div>
+    const ensureRow = (rowIndex: number) => {
+      if (!inputRefs.current[rowIndex]) {
+        inputRefs.current[rowIndex] = [];
+      }
+      return inputRefs.current[rowIndex];
+    };
 
-      {open && (
-        <div className="space-y-3">
-          {rows.map((row, i) => (
-            <div
-              key={`${axle}-${row.metric}-${i}`}
-              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl border border-slate-800/80 bg-neutral-950/80 p-3 shadow-[0_14px_35px_rgba(0,0,0,0.9)]"
-            >
-              <div>
-                {row.left ? (
-                  <InputWithInlineUnit
-                    idx={row.left.idx}
-                    isPressureRow={row.left.isPressure}
-                    unit={row.left.unit}
-                    defaultValue={row.left.initial}
-                  />
-                ) : (
-                  <div className="h-[34px]" />
-                )}
-              </div>
+    const handleKeyDown =
+      (rowIndex: number, colIndex: 0 | 1) =>
+      (e: KeyboardEvent<HTMLInputElement>) => {
+        const refs = inputRefs.current;
+        if (!refs.length) return;
 
-              <div
-                className="min-w-0 truncate text-center text-sm font-semibold text-neutral-100"
-                style={{ fontFamily: "var(--font-blackops), system-ui" }}
-                title={row.metric}
-              >
-                {row.metric}
-              </div>
+        const maxRow = refs.length - 1;
 
-              <div className="justify-self-end">
-                {row.right ? (
-                  <InputWithInlineUnit
-                    idx={row.right.idx}
-                    isPressureRow={row.right.isPressure}
-                    unit={row.right.unit}
-                    defaultValue={row.right.initial}
-                  />
-                ) : (
-                  <div className="h-[34px]" />
-                )}
-              </div>
-            </div>
-          ))}
+        const focusCell = (r: number, c: 0 | 1) => {
+          const row = refs[r];
+          if (!row) return;
+          const next = row[c];
+          if (next) {
+            e.preventDefault();
+            next.focus();
+            next.select?.();
+          }
+        };
+
+        switch (e.key) {
+          case "ArrowRight": {
+            if (colIndex === 0) {
+              focusCell(rowIndex, 1);
+            }
+            break;
+          }
+          case "ArrowLeft": {
+            if (colIndex === 1) {
+              focusCell(rowIndex, 0);
+            }
+            break;
+          }
+          case "ArrowDown": {
+            const nextRow = Math.min(maxRow, rowIndex + 1);
+            focusCell(nextRow, colIndex);
+            break;
+          }
+          case "ArrowUp": {
+            const prevRow = Math.max(0, rowIndex - 1);
+            focusCell(prevRow, colIndex);
+            break;
+          }
+          default:
+            break;
+        }
+      };
+
+    return (
+      <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+        <div
+          className="mb-3 text-lg font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+          style={{ fontFamily: "var(--font-blackops), system-ui" }}
+        >
+          {axle}
         </div>
-      )}
-    </div>
-  );
+
+        <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+          <div>Left</div>
+          <div className="text-center">Item</div>
+          <div className="text-right">Right</div>
+        </div>
+
+        {open && (
+          <div className="space-y-3">
+            {rows.map((row, i) => (
+              <div
+                key={`${axle}-${row.metric}-${i}`}
+                className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl border border-slate-800/80 bg-neutral-950/80 p-3 shadow-[0_14px_35px_rgba(0,0,0,0.9)]"
+              >
+                <div>
+                  {row.left ? (
+                    <InputWithInlineUnit
+                      idx={row.left.idx}
+                      isPressureRow={row.left.isPressure}
+                      unit={row.left.unit}
+                      defaultValue={row.left.initial}
+                      inputRef={(el) => {
+                        const rowRef = ensureRow(i);
+                        rowRef[0] = el;
+                      }}
+                      onKeyDown={handleKeyDown(i, 0)}
+                    />
+                  ) : (
+                    <div className="h-[34px]" />
+                  )}
+                </div>
+
+                <div
+                  className="min-w-0 truncate text-center text-sm font-semibold text-neutral-100"
+                  style={{ fontFamily: "var(--font-blackops), system-ui" }}
+                  title={row.metric}
+                >
+                  {row.metric}
+                </div>
+
+                <div className="justify-self-end">
+                  {row.right ? (
+                    <InputWithInlineUnit
+                      idx={row.right.idx}
+                      isPressureRow={row.right.isPressure}
+                      unit={row.right.unit}
+                      defaultValue={row.right.initial}
+                      inputRef={(el) => {
+                        const rowRef = ensureRow(i);
+                        rowRef[1] = el;
+                      }}
+                      onKeyDown={handleKeyDown(i, 1)}
+                    />
+                  ) : (
+                    <div className="h-[34px]" />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const countFilled = (cells: Array<{ idx: number }>) =>
     cells.reduce((sum, c) => sum + (filledMap[c.idx] ? 1 : 0), 0);

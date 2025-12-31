@@ -109,7 +109,7 @@ function buildAirCornerSection(): Section {
 }
 
 /**
- * Deterministic corner-grid injector:
+ * Deterministic corner-grid injector (for DB-backed templates):
  * - If template already has a corner-grid-style title, keep as-is.
  * - Else strip pattern-based grids, then inject based on ?grid= or vehicle_type.
  * - For air-brake templates, drop any “Hydraulic Brake” section.
@@ -180,11 +180,81 @@ export default function RunInspectionPage() {
     const templateId = sp.get("templateId");
     const gridOverride = sp.get("grid"); // 'air' | 'hyd' | 'none' | null
 
+    // ------------------- MODE 1: Staged (no templateId) -------------------
     if (!templateId) {
-      router.replace("/inspections/templates");
+      if (typeof window === "undefined") {
+        router.replace("/inspections/templates");
+        return;
+      }
+
+      // Prefer the newer staging keys, fall back to legacy custom builder keys
+      const stagedSectionsRaw =
+        sessionStorage.getItem("inspection:sections") ??
+        sessionStorage.getItem("customInspection:sections");
+      const stagedTitle =
+        sessionStorage.getItem("inspection:title") ??
+        sessionStorage.getItem("customInspection:title");
+
+      if (!stagedSectionsRaw || !stagedTitle) {
+        router.replace("/inspections/templates");
+        return;
+      }
+
+      let sections: Section[] = [];
+      try {
+        sections = JSON.parse(stagedSectionsRaw) as Section[];
+      } catch {
+        router.replace("/inspections/templates");
+        return;
+      }
+
+      const title = stagedTitle || "Inspection";
+
+      // Build params from current URL, but allow staged params to win if present
+      const currentParams: Record<string, string> = {};
+      sp.forEach((value, key) => {
+        currentParams[key] = value;
+      });
+
+      const stagedParamsRaw = sessionStorage.getItem("inspection:params");
+      const stagedParams: Record<string, string> = stagedParamsRaw
+        ? (JSON.parse(stagedParamsRaw) as Record<string, string>)
+        : {};
+
+      const mergedParams: Record<string, string> = {
+        ...stagedParams,
+        ...currentParams,
+      };
+
+      // Normalize core fields for the runtime
+      mergedParams.template = mergedParams.template || "generic";
+      mergedParams.mode = mergedParams.mode || "run";
+
+      // Persist for GenericInspectionScreen
+      sessionStorage.setItem(
+        "inspection:sections",
+        JSON.stringify(sections),
+      );
+      sessionStorage.setItem("inspection:title", title);
+      sessionStorage.setItem("inspection:template", mergedParams.template);
+      sessionStorage.setItem(
+        "inspection:params",
+        JSON.stringify(mergedParams),
+      );
+
+      // Legacy keys (kept for backwards compatibility; safe no-op if unused)
+      sessionStorage.setItem(
+        "customInspection:sections",
+        JSON.stringify(sections),
+      );
+      sessionStorage.setItem("customInspection:title", title);
+
+      const next = new URLSearchParams(mergedParams);
+      router.replace(`/inspections/fill?${next.toString()}`);
       return;
     }
 
+    // ------------------- MODE 2: DB template (with templateId) -------------------
     (async () => {
       const { data, error } = await supabase
         .from("inspection_templates")
@@ -210,17 +280,14 @@ export default function RunInspectionPage() {
       );
 
       if (typeof window !== "undefined") {
-        // Start from current URL params
         const params: Record<string, string> = {};
         sp.forEach((value, key) => {
           params[key] = value;
         });
 
-        // Normalize the core fields we want GenericInspectionScreen to see
         params.templateId = data.id;
-        params.template = title;
+        params.template = params.template || "generic";
         params.vehicleType = vehicleType;
-        // 🔑 mark this as a *run* session, not a template builder
         params.mode = params.mode || "run";
 
         sessionStorage.setItem(
@@ -229,10 +296,10 @@ export default function RunInspectionPage() {
         );
         sessionStorage.setItem("inspection:title", title);
         sessionStorage.setItem("inspection:vehicleType", vehicleType);
-        sessionStorage.setItem("inspection:template", "generic");
+        sessionStorage.setItem("inspection:template", params.template);
         sessionStorage.setItem("inspection:params", JSON.stringify(params));
 
-        // Legacy keys used by older flows
+        // Legacy keys
         sessionStorage.setItem(
           "customInspection:sections",
           JSON.stringify(sections),
@@ -242,15 +309,11 @@ export default function RunInspectionPage() {
           "customInspection:includeOil",
           JSON.stringify(false),
         );
+
+        const next = new URLSearchParams(params);
+        next.delete("templateId");
+        router.replace(`/inspections/fill?${next.toString()}`);
       }
-
-      // Forward into the real runtime – preserve WO ids, view=mobile, etc.
-      const next = new URLSearchParams(sp.toString());
-      next.delete("templateId");
-      next.set("template", "generic");
-      next.set("mode", "run");
-
-      router.replace(`/inspections/fill?${next.toString()}`);
     })();
   }, [sp, router, supabase]);
 

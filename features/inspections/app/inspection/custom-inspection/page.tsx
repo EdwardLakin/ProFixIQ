@@ -1,4 +1,3 @@
-// features/inspecctions/app/inspection/custom-inspection/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -123,15 +122,14 @@ function hasBatterySection(sections: Section[] | unknown): boolean {
 /** Canonical battery grid that matches BatteryGrid’s BATTERY_RE pattern */
 function buildBatterySection(): Section {
   const metrics: Array<{ label: string; unit: string | null }> = [
-    { label: "Rating CCA", unit: "CCA" },  // ← will be classified as rating
-    { label: "Tested CCA", unit: "CCA" },  // ← will be classified as tested
+    { label: "Rating CCA", unit: "CCA" },
+    { label: "Tested CCA", unit: "CCA" },
     { label: "Voltage", unit: "V" },
     { label: "State of Health", unit: "%" },
     { label: "State of Charge", unit: "%" },
     { label: "Visual Condition", unit: "" },
   ];
 
-  // Adjust battery count if you want more/less
   const batteries = ["Battery 1", "Battery 2"];
 
   const items: { item: string; unit: string | null }[] = [];
@@ -152,6 +150,8 @@ function buildBatterySection(): Section {
  *   - "hyd"  → hydraulic corner grid
  *   - "none" → no corner grid injected
  *   - "" / null → infer from vehicleType (kept for backward-compat).
+ * - For air mode, drop any standalone "hydraulic + brake" section so you don't
+ *   see a hydraulic-brake block under an air corner grid.
  */
 function prepareSectionsWithCornerGrid(
   sections: Section[] | unknown,
@@ -173,12 +173,9 @@ function prepareSectionsWithCornerGrid(
   // 3) Decide air vs hyd
   let injectAir: boolean;
   if (gridMode === "air" || gridMode === "hyd") {
-    // Explicit override wins
     injectAir = gridMode === "air";
   } else {
     const vt = (vehicleType || "").toLowerCase();
-
-    // Anything clearly heavy / commercial => air brakes
     const isAirByVehicle =
       vt.includes("truck") ||
       vt.includes("bus") ||
@@ -187,7 +184,6 @@ function prepareSectionsWithCornerGrid(
       vt.includes("heavy") ||
       vt.includes("medium-heavy") ||
       vt.includes("air");
-
     injectAir = isAirByVehicle;
   }
 
@@ -195,7 +191,19 @@ function prepareSectionsWithCornerGrid(
     ? buildAirCornerSection()
     : buildHydraulicCornerSection();
 
-  return [injected, ...withoutGrids];
+  // 4) If we're injecting AIR, drop any standalone "hydraulic brakes" section
+  let rest = withoutGrids;
+  if (injectAir) {
+    rest = rest.filter((sec) => {
+      const t = (sec.title || "").toLowerCase();
+      if (!t) return true;
+      const hasHydraulic = t.includes("hydraulic");
+      const hasBrake = t.includes("brake");
+      return !(hasHydraulic && hasBrake);
+    });
+  }
+
+  return [injected, ...rest];
 }
 
 /* ------------------------------------------------------------------ */
@@ -294,10 +302,15 @@ export default function CustomBuilderPage() {
     );
 
     // Optionally inject battery grid (only if there isn't already a battery section)
-    const withBattery =
-      includeBatteryGrid && !hasBatterySection(withGrid)
-        ? [...withGrid, buildBatterySection()]
-        : withGrid;
+    let withBattery = withGrid;
+    if (includeBatteryGrid && !hasBatterySection(withGrid)) {
+      if (withGrid.length > 0 && looksLikeCornerTitle(withGrid[0].title)) {
+        // Put battery grid directly under the corner grid
+        withBattery = [withGrid[0], buildBatterySection(), ...withGrid.slice(1)];
+      } else {
+        withBattery = [...withGrid, buildBatterySection()];
+      }
+    }
 
     // Persist for downstream loaders/runtime
     sessionStorage.setItem(

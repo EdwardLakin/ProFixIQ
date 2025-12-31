@@ -140,10 +140,9 @@ function normalizeSections(input: unknown): InspectionSection[] {
       );
       for (const it of items as any[]) {
         const key = (it.item ?? "").toLowerCase();
-        if (!seen.has(key)) {
-          bucket.items = [...(bucket.items ?? []), it];
-          seen.add(key);
-        }
+        if (seen.has(key)) continue;
+        bucket.items = [...(bucket.items ?? []), it];
+        seen.add(key);
       }
     }
 
@@ -176,7 +175,8 @@ function toTemplateSections(sections: InspectionSection[]): InspectionSection[] 
 
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
-const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const HYD_FULL_RE =
+  /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
 function shouldRenderCornerGrid(
   title: string | undefined,
@@ -1185,6 +1185,57 @@ export default function GenericInspectionScreen(
     setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
   };
 
+  /** Add axle rows to an AIR corner grid section */
+  const handleAddAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
+    if (!session) return;
+    if (guardLocked()) return;
+
+    const section = session.sections[sectionIndex];
+    if (!section) return;
+
+    const existingItems = section.items ?? [];
+
+    // Use the same metric pattern as the canonical AIR corner grid
+    const metrics: Array<{ label: string; unit: string | null }> = [
+      { label: "Tire Pressure", unit: "psi" },
+      { label: "Tread Depth (Outer)", unit: "mm" },
+      { label: "Tread Depth (Inner)", unit: "mm" },
+      { label: "Lining/Shoe", unit: "mm" },
+      { label: "Drum/Rotor", unit: "mm" },
+      { label: "Push Rod Travel", unit: "in" },
+    ];
+
+    const sides: Array<"Left" | "Right"> = ["Left", "Right"];
+
+    const existingLabels = new Set(
+      existingItems.map((it) =>
+        String(it.item ?? (it as any).name ?? "").toLowerCase(),
+      ),
+    );
+
+    const nextItems = [...existingItems];
+
+    for (const side of sides) {
+      for (const m of metrics) {
+        const label = `${axleLabel} ${side} ${m.label}`;
+        const key = label.toLowerCase();
+        if (existingLabels.has(key)) continue;
+
+        nextItems.push({
+          item: label,
+          unit: m.unit,
+          status: "na" as InspectionItemStatus,
+        });
+        existingLabels.add(key);
+      }
+    }
+
+    updateSection(sectionIndex, { ...section, items: nextItems });
+  };
+
   const handleSigned = (): void => {
     setIsLocked(true);
     try {
@@ -1452,6 +1503,9 @@ export default function GenericInspectionScreen(
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
                               unitHint={(label) => unitHintGeneric(label, unit)}
+                              onAddAxle={(axleLabel) =>
+                                handleAddAxleForSection(sectionIndex, axleLabel)
+                              }
                             />
                           )
                         ) : (
