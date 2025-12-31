@@ -210,10 +210,18 @@ export default function RunInspectionPage() {
       );
 
       if (typeof window !== "undefined") {
+        // Start from current URL params
         const params: Record<string, string> = {};
         sp.forEach((value, key) => {
           params[key] = value;
         });
+
+        // Normalize the core fields we want GenericInspectionScreen to see
+        params.templateId = data.id;
+        params.template = title;
+        params.vehicleType = vehicleType;
+        // 🔑 mark this as a *run* session, not a template builder
+        params.mode = params.mode || "run";
 
         sessionStorage.setItem(
           "inspection:sections",
@@ -224,7 +232,7 @@ export default function RunInspectionPage() {
         sessionStorage.setItem("inspection:template", "generic");
         sessionStorage.setItem("inspection:params", JSON.stringify(params));
 
-        // Legacy keys used by some flows
+        // Legacy keys used by older flows
         sessionStorage.setItem(
           "customInspection:sections",
           JSON.stringify(sections),
@@ -240,6 +248,7 @@ export default function RunInspectionPage() {
       const next = new URLSearchParams(sp.toString());
       next.delete("templateId");
       next.set("template", "generic");
+      next.set("mode", "run");
 
       router.replace(`/inspections/fill?${next.toString()}`);
     })();

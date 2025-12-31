@@ -825,132 +825,135 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   // 🔍 open inspection – fetch template, inject corner grid, stage to session, then open generic fill screen
-  const openInspectionForLine = useCallback(
-    async (ln: WorkOrderLine) => {
-      if (!ln?.id) return;
+const openInspectionForLine = useCallback(
+  async (ln: WorkOrderLine) => {
+    if (!ln?.id) return;
 
-      const anyLine = ln as WorkOrderLineWithInspectionMeta;
-      const templateId = extractInspectionTemplateId(anyLine);
+    const anyLine = ln as WorkOrderLineWithInspectionMeta;
+    const templateId = extractInspectionTemplateId(anyLine);
 
-      if (!templateId) {
-        toast.error(
-          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
-        );
-        return;
-      }
-
-      // 1) Load the inspection template for this line
-      const { data, error } = await supabase
-        .from("inspection_templates")
-        .select("template_name, sections, vehicle_type")
-        .eq("id", templateId)
-        .maybeSingle();
-
-      if (error || !data) {
-        toast.error("Unable to load inspection template.");
-        return;
-      }
-
-      const rawSections = (data.sections ?? []) as TemplateSection[];
-      const vehicleType = String(data.vehicle_type ?? "");
-      const sections = prepareSectionsWithCornerGrid(
-        rawSections,
-        vehicleType,
-        null, // no explicit ?grid override from here
+    if (!templateId) {
+      toast.error(
+        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
       );
+      return;
+    }
 
-      const title = data.template_name ?? "Inspection";
+    // 1) Load the inspection template for this line
+    const { data, error } = await supabase
+      .from("inspection_templates")
+      .select("template_name, sections, vehicle_type")
+      .eq("id", templateId)
+      .maybeSingle();
 
-      // 2) Stage into sessionStorage so GenericInspectionScreen can boot in the modal
-      if (typeof window !== "undefined") {
-        const paramsObj: Record<string, string> = {};
+    if (error || !data) {
+      toast.error("Unable to load inspection template.");
+      return;
+    }
 
-        if (wo?.id) {
-          paramsObj.workOrderId = wo.id;
-          paramsObj.work_order_id = wo.id; // ✅ legacy/snake_case
-        }
+    const rawSections = (data.sections ?? []) as TemplateSection[];
+    const vehicleType = String(data.vehicle_type ?? "");
+    const sections = prepareSectionsWithCornerGrid(
+      rawSections,
+      vehicleType,
+      null, // no explicit ?grid override from here
+    );
 
-        paramsObj.workOrderLineId = ln.id;
-        paramsObj.work_order_line_id = ln.id; // ✅ legacy/snake_case
-        paramsObj.lineId = ln.id; // ✅ legacy alias used in some screens
+    const title = data.template_name ?? "Inspection";
 
-        paramsObj.view = "mobile";
-        paramsObj.embed = "1";
-        if (ln.description) paramsObj.seed = String(ln.description);
-
-        // prefill customer / vehicle into params if available
-        if (customer) {
-          if (customer.first_name) paramsObj.first_name = customer.first_name;
-          if (customer.last_name) paramsObj.last_name = customer.last_name;
-          if (customer.phone) paramsObj.phone = customer.phone;
-          if (customer.email) paramsObj.email = customer.email;
-          if (customer.address) paramsObj.address = customer.address;
-          if (customer.city) paramsObj.city = customer.city;
-          if (customer.province) paramsObj.province = customer.province;
-          if (customer.postal_code)
-            paramsObj.postal_code = customer.postal_code;
-        }
-
-        if (vehicle) {
-          if (vehicle.year != null)
-            paramsObj.year = String(vehicle.year as string | number);
-          if (vehicle.make) paramsObj.make = vehicle.make;
-          if (vehicle.model) paramsObj.model = vehicle.model;
-          if (vehicle.vin) paramsObj.vin = vehicle.vin;
-          if (vehicle.license_plate)
-            paramsObj.license_plate = vehicle.license_plate;
-          if (vehicle.mileage != null)
-            paramsObj.mileage = String(vehicle.mileage);
-          if (vehicle.color) paramsObj.color = vehicle.color;
-          if (vehicle.unit_number)
-            paramsObj.unit_number = vehicle.unit_number;
-          if (vehicle.engine_hours != null)
-            paramsObj.engine_hours = String(vehicle.engine_hours);
-        }
-
-        sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
-        sessionStorage.setItem("inspection:title", title);
-        sessionStorage.setItem("inspection:vehicleType", vehicleType);
-        sessionStorage.setItem("inspection:template", "generic");
-        sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
-
-        // Legacy keys for older flows
-        sessionStorage.setItem(
-          "customInspection:sections",
-          JSON.stringify(sections),
-        );
-        sessionStorage.setItem("customInspection:title", title);
-        sessionStorage.setItem(
-          "customInspection:includeOil",
-          JSON.stringify(false),
-        );
-      }
-
-      // 3) Set src for the modal (mainly for debugging / template label)
-      const sp = new URLSearchParams();
-      sp.set("template", "generic");
+    // 2) Stage into sessionStorage so GenericInspectionScreen can boot in the modal
+    if (typeof window !== "undefined") {
+      const paramsObj: Record<string, string> = {};
 
       if (wo?.id) {
-        sp.set("workOrderId", wo.id);
-        sp.set("work_order_id", wo.id); // ✅ legacy/snake_case
+        paramsObj.workOrderId = wo.id;
+        paramsObj.work_order_id = wo.id; // ✅ legacy/snake_case
       }
 
-      sp.set("workOrderLineId", ln.id);
-      sp.set("work_order_line_id", ln.id); // ✅ legacy/snake_case
-      sp.set("lineId", ln.id); // ✅ legacy alias used in some screens
+      paramsObj.workOrderLineId = ln.id;
+      paramsObj.work_order_line_id = ln.id; // ✅ legacy/snake_case
+      paramsObj.lineId = ln.id; // ✅ legacy alias used in some screens
 
-      sp.set("embed", "1");
-      sp.set("view", "mobile");
-      if (ln.description) sp.set("seed", String(ln.description));
+      // ❌ DON'T force mobile view here for the desktop modal
+      // paramsObj.view = "mobile";
+      paramsObj.embed = "1";
 
-      const url = `/inspections/fill?${sp.toString()}`;
+      if (ln.description) paramsObj.seed = String(ln.description);
 
-      setInspectionSrc(url);
-      setInspectionOpen(true);
-      toast.success("Inspection opened");
-    },
-    [wo?.id, customer, vehicle],
-  );
+      // prefill customer / vehicle into params if available
+      if (customer) {
+        if (customer.first_name) paramsObj.first_name = customer.first_name;
+        if (customer.last_name) paramsObj.last_name = customer.last_name;
+        if (customer.phone) paramsObj.phone = customer.phone;
+        if (customer.email) paramsObj.email = customer.email;
+        if (customer.address) paramsObj.address = customer.address;
+        if (customer.city) paramsObj.city = customer.city;
+        if (customer.province) paramsObj.province = customer.province;
+        if (customer.postal_code) paramsObj.postal_code = customer.postal_code;
+      }
+
+      if (vehicle) {
+        if (vehicle.year != null)
+          paramsObj.year = String(vehicle.year as string | number);
+        if (vehicle.make) paramsObj.make = vehicle.make;
+        if (vehicle.model) paramsObj.model = vehicle.model;
+        if (vehicle.vin) paramsObj.vin = vehicle.vin;
+        if (vehicle.license_plate)
+          paramsObj.license_plate = vehicle.license_plate;
+        if (vehicle.mileage != null)
+          paramsObj.mileage = String(vehicle.mileage);
+        if (vehicle.color) paramsObj.color = vehicle.color;
+        if (vehicle.unit_number)
+          paramsObj.unit_number = vehicle.unit_number;
+        if (vehicle.engine_hours != null)
+          paramsObj.engine_hours = String(vehicle.engine_hours);
+      }
+
+      sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
+      sessionStorage.setItem("inspection:title", title);
+      sessionStorage.setItem("inspection:vehicleType", vehicleType);
+      sessionStorage.setItem("inspection:template", "generic");
+      sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
+
+      // Legacy keys for older flows
+      sessionStorage.setItem(
+        "customInspection:sections",
+        JSON.stringify(sections),
+      );
+      sessionStorage.setItem("customInspection:title", title);
+      sessionStorage.setItem(
+        "customInspection:includeOil",
+        JSON.stringify(false),
+      );
+    }
+
+    // 3) Set src for the modal (mainly for debugging / template label)
+    const sp = new URLSearchParams();
+    sp.set("template", "generic");
+
+    if (wo?.id) {
+      sp.set("workOrderId", wo.id);
+      sp.set("work_order_id", wo.id); // ✅ legacy/snake_case
+    }
+
+    sp.set("workOrderLineId", ln.id);
+    sp.set("work_order_line_id", ln.id); // ✅ legacy/snake_case
+    sp.set("lineId", ln.id); // ✅ legacy alias used in some screens
+
+    sp.set("embed", "1");
+    // ❌ do NOT set view=mobile for the desktop modal
+    // sp.set("view", "mobile");
+
+    if (ln.description) sp.set("seed", String(ln.description));
+
+    const url = `/inspections/fill?${sp.toString()}`;
+
+    setInspectionSrc(url);
+    setInspectionOpen(true);
+    toast.success("Inspection opened");
+  },
+  [wo?.id, customer, vehicle],
+);
 
   // parts drawer close / bulk
   useEffect(() => {

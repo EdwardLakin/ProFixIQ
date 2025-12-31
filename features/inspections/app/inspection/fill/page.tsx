@@ -26,21 +26,25 @@ export default function InspectionFillPage() {
     const urlTemplate = sp.get("template");
     const urlParams = paramsToObject(sp);
 
-    // fall back to staged template name if needed
-    let nextTemplate = urlTemplate;
-    if (!nextTemplate && typeof window !== "undefined") {
-      nextTemplate = sessionStorage.getItem("inspection:template");
-    }
+    let nextTemplate = urlTemplate ?? null;
+    let merged: Dict = { ...urlParams };
 
-    // keep staged params in sync so GenericInspectionScreen sees them
     if (typeof window !== "undefined") {
       const stagedParamsRaw = sessionStorage.getItem("inspection:params");
       const stagedParams: Dict = stagedParamsRaw
         ? (JSON.parse(stagedParamsRaw) as Dict)
         : {};
 
-      const merged: Dict = { ...stagedParams, ...urlParams };
+      // staged values (from /inspections/run or WO modal) win, but URL can override
+      merged = { ...stagedParams, ...urlParams };
       sessionStorage.setItem("inspection:params", JSON.stringify(merged));
+
+      if (!nextTemplate) {
+        const stagedTemplate = sessionStorage.getItem("inspection:template");
+        if (stagedTemplate) {
+          nextTemplate = stagedTemplate;
+        }
+      }
     }
 
     if (!nextTemplate) {
@@ -52,7 +56,6 @@ export default function InspectionFillPage() {
     setReady(true);
   }, [sp, router]);
 
-  // Shared glass card style to match run loader
   const cardBase =
     "mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 " +
     "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] " +
@@ -72,8 +75,8 @@ export default function InspectionFillPage() {
     );
   }
 
-  // 🔑 From this point on we always use the *generic runtime*.
-  // It reads everything it needs from URL search params + sessionStorage.
+  // From this point on we always use the generic runtime.
+  // GenericInspectionScreen reads search params + sessionStorage internally.
   return (
     <div className="min-h-[80vh] bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
       <div className={cardBase}>
