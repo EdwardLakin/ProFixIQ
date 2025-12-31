@@ -123,11 +123,11 @@ function hasBatterySection(sections: Section[] | unknown): boolean {
 /** Canonical battery grid that matches BatteryGrid’s BATTERY_RE pattern */
 function buildBatterySection(): Section {
   const metrics: Array<{ label: string; unit: string | null }> = [
+    { label: "Rating CCA", unit: "CCA" },  // ← will be classified as rating
+    { label: "Tested CCA", unit: "CCA" },  // ← will be classified as tested
     { label: "Voltage", unit: "V" },
-    { label: "CCA", unit: "A" },
     { label: "State of Health", unit: "%" },
     { label: "State of Charge", unit: "%" },
-    { label: "Load Test", unit: "" },
     { label: "Visual Condition", unit: "" },
   ];
 

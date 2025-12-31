@@ -213,10 +213,6 @@ export default function CornerGrid({
                                 className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/80 px-3 py-1.5 pr-12 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
                                 placeholder="Value"
                                 autoComplete="off"
-                                inputMode="decimal"
-                                data-corner-grid="true"
-                                data-corner-section={sectionIndex}
-                                data-row={rowIdx}
                                 onBlur={(e) =>
                                   commit(cell.idx, e.currentTarget)
                                 }
