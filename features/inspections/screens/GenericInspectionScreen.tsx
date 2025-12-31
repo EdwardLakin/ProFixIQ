@@ -44,6 +44,18 @@ import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 
 /* -------------------------- helpers -------------------------- */
+// match what inspectionHost passes in
+type GenericInspectionScreenProps = {
+  embed?: boolean;
+  template?: string | null;
+  params?: Record<string, string | number | boolean | null | undefined>;
+  onSpecHint?: (payload: {
+    source: "air_corner" | "corner" | "item" | "battery" | "other";
+    label: string;
+    specCode?: string | null;
+    meta?: Record<string, string | number | boolean | null | undefined>;
+  }) => void;
+};
 
 function toHeaderCustomer(c?: SessionCustomer | null) {
   return {
@@ -173,8 +185,7 @@ function shouldRenderCornerGrid(
 ): boolean {
   const t = (title || "").toLowerCase();
 
-  // 🔒 Never treat "Tires & Wheels" as a corner grid – it should stay
-  // a visual/condition checklist (measurements live in the corner grid).
+  // Never treat "Tires & Wheels" as a corner grid
   if (t.includes("tires & wheels") || t.includes("tires and wheels")) {
     return false;
   }
@@ -191,7 +202,6 @@ function shouldRenderCornerGrid(
 
   if (!items || items.length < 4) return false;
 
-  // Only treat as grid when labels clearly match our LF/RF or Steer/Drive patterns.
   const hasStrongPattern = items.some((it) => {
     const label = it.item ?? "";
     return AIR_RE.test(label) || HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
@@ -235,7 +245,7 @@ function inspectionDraftKey(args: {
   return `inspection-draft:template:${t}:${args.inspectionId}`;
 }
 
-/** build cause/correction from session.sections (NOT just quote) so it always works */
+/** build cause/correction from session.sections */
 function buildCauseCorrectionFromSession(
   s: any,
 ): { cause: string; correction: string } {
@@ -283,36 +293,35 @@ function buildCauseCorrectionFromSession(
 /* Component                                                            */
 /* -------------------------------------------------------------------- */
 
-export default function GenericInspectionScreen(): JSX.Element {
+export default function GenericInspectionScreen(
+  _props: GenericInspectionScreenProps,
+): JSX.Element {
   const routeSp = useSearchParams();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
-  // 🔹 Prefer staged params (set by run loader or WO modal) and merge with real URL params
+  // Prefer staged params + merge with URL params
   const sp = useMemo(() => {
-  const staged = readStaged<Record<string, string>>("inspection:params");
+    const staged = readStaged<Record<string, string>>("inspection:params");
 
-  if (staged && Object.keys(staged).length > 0) {
-    const merged = new URLSearchParams();
+    if (staged && Object.keys(staged).length > 0) {
+      const merged = new URLSearchParams();
 
-    // 1) Start from staged (so we keep any extra keys)
-    Object.entries(staged).forEach(([key, value]) => {
-      if (value != null) merged.set(key, String(value));
-    });
+      Object.entries(staged).forEach(([key, value]) => {
+        if (value != null) merged.set(key, String(value));
+      });
 
-    // 2) URL ALWAYS WINS (especially workOrderId, workOrderLineId, templateId, view)
-    routeSp.forEach((value, key) => {
-      merged.set(key, value);
-    });
+      routeSp.forEach((value, key) => {
+        merged.set(key, value);
+      });
 
-    return merged;
-  }
+      return merged;
+    }
 
-  // fallback: just use the route params
-  return routeSp;
-}, [routeSp]);
+    return routeSp;
+  }, [routeSp]);
 
-  // 🔸 only the mobile companion should use voice
+  // only the mobile companion should use voice
   const isMobileView = (sp.get("view") || "").toLowerCase() === "mobile";
 
   // Embed for iframe/modal
@@ -333,7 +342,7 @@ export default function GenericInspectionScreen(): JSX.Element {
       ? rawVehicleType
       : undefined;
 
-  // 🔹 Only complain about a missing line id when we *know* we're in an embedded WO-line flow
+  // Only complain about missing line id when we're in embedded flow
   const showMissingLineWarning = isEmbed && !workOrderLineId;
 
   const templateName =
@@ -387,9 +396,7 @@ export default function GenericInspectionScreen(): JSX.Element {
   }, [sp]);
 
   /**
-   * ✅ Make inspectionId stable:
-   * - Prefer URL param
-   * - Else reuse a deterministic id stored in sessionStorage based on line/workorder/template
+   * Make inspectionId stable:
    */
   const inspectionId = useMemo(() => {
     const fromUrl = sp.get("inspectionId");
@@ -411,7 +418,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     return created;
   }, [sp, workOrderLineId, workOrderId, templateName]);
 
-  // 🔸 try to hydrate from localStorage (but using stable draft key)
+  // draft key
   const draftKey = useMemo(
     () =>
       inspectionDraftKey({
@@ -442,7 +449,7 @@ export default function GenericInspectionScreen(): JSX.Element {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
-  // 🔹 per-section "add item" state
+  // per-section add item state
   const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>({});
   const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
 
@@ -450,7 +457,7 @@ export default function GenericInspectionScreen(): JSX.Element {
   const [collapsedSections, setCollapsedSections] =
     useState<Record<number, boolean>>({});
 
-  // 🔴 wake-word state
+  // wake-word state
   const [wakeActive, setWakeActive] = useState(false);
   const wakeTimeoutRef = useRef<number | null>(null);
 
@@ -488,7 +495,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
 
-  // hydrate lock from localStorage
+  // hydrate lock
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -504,6 +511,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     toast.error("This inspection is signed and locked. Editing is disabled.");
     return true;
   };
+
   // --- Part 2/3 ---
 
   // start
@@ -522,7 +530,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
   }, [session, bootSections, updateInspection]);
 
-  // ✅ persist draft under stable key
+  // persist draft
   useEffect(() => {
     if (!session) return;
     try {
@@ -553,9 +561,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     };
   }, [session, draftKey, initialSession]);
 
-  // ✅ when FinishInspectionButton fires the completion event, we also:
-  // - auto-open cause/correction modal (if listener exists)
-  // - clear local draft so it doesn't “resume” a completed inspection
+  // when finish fires, prefill cause/correction + clear draft
   useEffect(() => {
     const handler = (evt: Event) => {
       const e = evt as CustomEvent<any>;
@@ -563,7 +569,6 @@ export default function GenericInspectionScreen(): JSX.Element {
       const wol = String(detail.workOrderLineId || "");
       if (!wol) return;
 
-      // ensure cause/correction always has the full inspection-derived text
       const merged =
         detail.cause && detail.correction
           ? { cause: detail.cause, correction: detail.correction }
@@ -580,7 +585,6 @@ export default function GenericInspectionScreen(): JSX.Element {
         }),
       );
 
-      // clear draft
       try {
         localStorage.removeItem(draftKey);
         localStorage.removeItem(lockKey);
@@ -598,7 +602,7 @@ export default function GenericInspectionScreen(): JSX.Element {
       );
   }, [session, draftKey, lockKey]);
 
-  // 🔸 turn final text into inspection commands
+  // transcript handler
   const handleTranscript = async (text: string): Promise<void> => {
     if (!session || guardLocked()) return;
     const commands: ParsedCommand[] = await interpretCommand(text);
@@ -616,27 +620,22 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
   };
 
-  // 🔔 wake-word helper
-    function maybeHandleWakeWord(raw: string): string | null {
+  // wake-word helper
+  function maybeHandleWakeWord(raw: string): string | null {
     const cleaned = raw.trim();
     const lower = cleaned.toLowerCase();
 
-    // ✅ New wake phrase family – no "hey techy"
     const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
 
-    // helper: returns [matchedPrefix, remainder] or null
     const matchPrefix = (): { prefix: string; remainder: string } | null => {
       for (const prefix of WAKE_PREFIXES) {
-        // "techy add measurement..."
         if (lower.startsWith(prefix + " ")) {
           return {
             prefix,
-            // keep original casing for the command part
             remainder: cleaned.slice(prefix.length).trimStart(),
           };
         }
 
-        // bare "techy" – just arm listening
         if (lower === prefix) {
           return { prefix, remainder: "" };
         }
@@ -646,27 +645,20 @@ export default function GenericInspectionScreen(): JSX.Element {
 
     if (!wakeActive) {
       const match = matchPrefix();
-      if (!match) {
-        // Not armed yet → ignore until they actually say "techy ..."
-        return null;
-      }
+      if (!match) return null;
 
       setWakeActive(true);
 
       if (wakeTimeoutRef.current) {
         window.clearTimeout(wakeTimeoutRef.current);
       }
-      // 8-second “awake window” after saying Techy…
       wakeTimeoutRef.current = window.setTimeout(() => {
         setWakeActive(false);
       }, 8000);
 
-      // If they said "techy add measurement..." in one breath,
-      // immediately pass *just* the command onwards.
       return match.remainder;
     }
 
-    // Already awake: bump the timer and pass through the text as-is
     if (wakeTimeoutRef.current) {
       window.clearTimeout(wakeTimeoutRef.current);
     }
@@ -677,7 +669,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     return cleaned;
   }
 
-  // 🔊 openai realtime start (used only when mobile buttons are visible)
+  // realtime start
   const startListening = async (): Promise<void> => {
     if (isListening) return;
     if (guardLocked()) return;
@@ -733,7 +725,7 @@ export default function GenericInspectionScreen(): JSX.Element {
 
           await handleTranscript(maybeText);
         } catch {
-          // ignore parse errors
+          // ignore
         }
       };
 
@@ -781,7 +773,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // AI submit flow (kept EXACT, to preserve quote/fail/recommend logic)
+  // AI submit flow
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
@@ -809,7 +801,6 @@ export default function GenericInspectionScreen(): JSX.Element {
       return;
     }
 
-    // 🔹 pull technician-entered parts + labor from the item
     const manualParts =
       (((it as any).parts ?? []) as { description: string; qty: number }[]) || [];
     const manualLaborHours =
@@ -854,17 +845,15 @@ export default function GenericInspectionScreen(): JSX.Element {
         return;
       }
 
-      // 🔹 merge manual parts into AI suggestion parts for pricing + display
       const mergedParts: any[] = [
         ...(suggestion.parts ?? []),
         ...manualParts.map((p) => ({
           name: p.description,
           qty: p.qty,
-          cost: undefined, // pricing is parts dept's job
+          cost: undefined,
         })),
       ];
 
-      // 🔹 let tech override labor hours if they entered a value
       const laborTime =
         manualLaborHours != null && !Number.isNaN(manualLaborHours)
           ? manualLaborHours
@@ -893,7 +882,6 @@ export default function GenericInspectionScreen(): JSX.Element {
       let createdJobId: string | null = null;
 
       if (workOrderId) {
-        // 🔹 include merged parts + adjusted labor when we create the line
         const created = (await addWorkOrderLineFromSuggestion({
           workOrderId,
           description: desc,
@@ -910,7 +898,6 @@ export default function GenericInspectionScreen(): JSX.Element {
 
         createdJobId = (created && created.id) || workOrderLineId || null;
 
-        // 🔹 create parts request ONLY from the tech-entered parts (no costs)
         const cleanParts = manualParts
           .map((p) => ({
             description: p.description.trim(),
@@ -967,7 +954,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
   };
 
-  // 🧹 embed-safe scrubber (for iframe / modal host)
+  // embed scrubber
   useEffect(() => {
     if (!isEmbed) return;
     const root = rootRef.current;
@@ -1027,7 +1014,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     return () => obs.disconnect();
   }, [isEmbed]);
 
-  // 🔐 Focus trap so Tab stays inside the inspection when embedded in modal
+  // focus trap in embed
   useEffect(() => {
     if (!isEmbed) return;
     const root = rootRef.current;
@@ -1054,7 +1041,6 @@ export default function GenericInspectionScreen(): JSX.Element {
       const last = focusables[focusables.length - 1];
       const active = document.activeElement as HTMLElement | null;
 
-      // If focus is already outside the root, jump to first
       if (!active || !root.contains(active)) {
         e.preventDefault();
         first.focus();
@@ -1062,17 +1048,13 @@ export default function GenericInspectionScreen(): JSX.Element {
       }
 
       if (e.shiftKey) {
-        // Shift+Tab: if we're on first, loop to last
         if (active === first) {
           e.preventDefault();
           last.focus();
         }
-      } else {
-        // Tab forward: if we're on last, loop to first
-        if (active === last) {
-          e.preventDefault();
-          first.focus();
-        }
+      } else if (active === last) {
+        e.preventDefault();
+        first.focus();
       }
     };
 
@@ -1084,7 +1066,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
-  // 🔹 helpers that depend on a live session
+  // helpers that depend on live session
   const currentSectionIndex =
     typeof session.currentSectionIndex === "number"
       ? session.currentSectionIndex
@@ -1093,7 +1075,6 @@ export default function GenericInspectionScreen(): JSX.Element {
     currentSectionIndex >= 0 && currentSectionIndex < session.sections.length
       ? currentSectionIndex
       : 0;
-  const currentSection = session.sections[safeSectionIndex];
 
   function autoAdvanceFrom(secIdx: number, itemIdx: number): void {
     const sections = session.sections;
@@ -1102,7 +1083,6 @@ export default function GenericInspectionScreen(): JSX.Element {
     let sIdx = secIdx;
     let iIdx = itemIdx + 1;
 
-    // walk forward to the next valid item
     while (sIdx < sections.length) {
       const itemsLen = sections[sIdx].items?.length ?? 0;
       if (iIdx < itemsLen) break;
@@ -1111,7 +1091,6 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
 
     if (sIdx >= sections.length) {
-      // at the end – park on the last item
       const lastSectionIndex = sections.length - 1;
       const lastItems = sections[lastSectionIndex].items ?? [];
       const lastItemIndex = Math.max(0, lastItems.length - 1);
@@ -1166,7 +1145,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     stopListening();
   };
 
-  // 🔸 Save current layout as a *new* template
+  // Save current layout as template
   const saveCurrentAsTemplate = async (): Promise<void> => {
     if (!session) return;
     if (savingTemplate) return;
@@ -1189,7 +1168,6 @@ export default function GenericInspectionScreen(): JSX.Element {
       const baseName = session.templateitem || templateName || "Inspection Template";
       const template_name = `${baseName} (from run)`;
 
-      // super simple labor-hours approximation: 0.1h per item
       const totalItems = cleanedSections.reduce(
         (sum, s) => sum + s.items.length,
         0,
@@ -1206,7 +1184,6 @@ export default function GenericInspectionScreen(): JSX.Element {
         tags: ["run_saved", "custom"],
         is_public: false,
         labor_hours,
-        // user_id / shop_id handled by trigger
       };
 
       const { error, data } = await supabase
@@ -1230,7 +1207,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
   };
 
-  // 🔸 Add new item inline to a section (non-grid)
+  // Add new item inline to a section (non-grid)
   const handleAddCustomItem = (sectionIndex: number): void => {
     if (!session) return;
     if (guardLocked()) return;
@@ -1255,7 +1232,6 @@ export default function GenericInspectionScreen(): JSX.Element {
     updateSection(sectionIndex, { ...section, items: nextItems });
 
     setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
-    // keep unit selection as-is, so they can add multiple with same unit
   };
 
   const handleSigned = (): void => {
@@ -1268,9 +1244,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     toast.success("Inspection snapshot locked by signature.");
   };
 
-  // ✅ ensure bottom actions are ALWAYS reachable/visible:
-  // - desktop embed gets a sticky footer bar
-  // - mobile already has fixed bottom bar
+  // shell classes
   const shell =
     isEmbed || isMobileView
       ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
@@ -1309,6 +1283,7 @@ export default function GenericInspectionScreen(): JSX.Element {
       </Button>
     </>
   );
+
   // --- Part 3/3 ---
 
   const body = (
@@ -1327,67 +1302,6 @@ export default function GenericInspectionScreen(): JSX.Element {
         aria-hidden
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
-
-      {/* 🔹 Sticky section header (mobile-first) */}
-      <div className="sticky top-0 z-20 -mx-3 mb-3 border-b border-white/10 bg-black/85 px-3 py-2 backdrop-blur md:mx-0 md:mb-4 md:rounded-2xl md:border md:bg-black/70 md:px-4 md:py-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-              Section {safeSectionIndex + 1} of {session.sections.length}
-            </div>
-            <div className="mt-0.5 line-clamp-1 text-sm font-semibold text-orange-300">
-              {currentSection?.title || "Current section"}
-            </div>
-            {isLocked && (
-              <div className="mt-1 inline-flex items-center rounded-full border border-amber-500/80 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200">
-                Locked snapshot
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
-            <button
-              type="button"
-              disabled={isLocked}
-              className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => applyStatusToSection(safeSectionIndex, "ok")}
-            >
-              All OK
-            </button>
-            <button
-              type="button"
-              disabled={isLocked}
-              className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => applyStatusToSection(safeSectionIndex, "fail")}
-            >
-              All Fail
-            </button>
-            <button
-              type="button"
-              disabled={isLocked}
-              className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => applyStatusToSection(safeSectionIndex, "na")}
-            >
-              All NA
-            </button>
-            <button
-              type="button"
-              disabled={isLocked}
-              className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => applyStatusToSection(safeSectionIndex, "recommend")}
-            >
-              All REC
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
-              onClick={() => toggleSectionCollapsed(safeSectionIndex)}
-            >
-              {collapsedSections[safeSectionIndex] ? "Expand" : "Collapse"}
-            </button>
-          </div>
-        </div>
-      </div>
 
       <div className="relative space-y-4">
         {/* Header card */}
@@ -1410,7 +1324,7 @@ export default function GenericInspectionScreen(): JSX.Element {
 
         {/* Controls row */}
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {/* Voice only in mobile companion (top buttons) */}
+          {/* Voice only in mobile companion */}
           {isMobileView && !isLocked && (
             <StartListeningButton
               isListening={isListening}
@@ -1442,7 +1356,7 @@ export default function GenericInspectionScreen(): JSX.Element {
             />
           )}
 
-          {/* Unit toggle stays on both desktop + mobile */}
+          {/* Unit toggle */}
           <Button
             type="button"
             variant="outline"
@@ -1492,22 +1406,77 @@ export default function GenericInspectionScreen(): JSX.Element {
                   key={`${section.title}-${sectionIndex}`}
                   className={sectionCard}
                 >
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className={sectionTitle}>{section.title}</h2>
-                    <button
-                      type="button"
-                      className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
-                      onClick={() => toggleSectionCollapsed(sectionIndex)}
-                    >
-                      {collapsed ? "Expand" : "Collapse"}
-                    </button>
+
+                    {/* Section-level mass actions for the *current* section */}
+                    {safeSectionIndex === sectionIndex && (
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() =>
+                            applyStatusToSection(sectionIndex, "ok")
+                          }
+                        >
+                          All OK
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() =>
+                            applyStatusToSection(sectionIndex, "fail")
+                          }
+                        >
+                          All Fail
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() =>
+                            applyStatusToSection(sectionIndex, "na")
+                          }
+                        >
+                          All NA
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() =>
+                            applyStatusToSection(sectionIndex, "recommend")
+                          }
+                        >
+                          All REC
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
+                          onClick={() => toggleSectionCollapsed(sectionIndex)}
+                        >
+                          {collapsed ? "Expand" : "Collapse"}
+                        </button>
+                      </div>
+                    )}
+
+                    {safeSectionIndex !== sectionIndex && (
+                      <button
+                        type="button"
+                        className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+                        onClick={() => toggleSectionCollapsed(sectionIndex)}
+                      >
+                        {collapsed ? "Expand" : "Collapse"}
+                      </button>
+                    )}
                   </div>
 
                   {collapsed ? (
                     <p className="mt-2 text-center text-[11px] text-neutral-400">
                       Section collapsed. Tap{" "}
-                      <span className="font-semibold">Expand</span> or use the
-                      sticky header to reopen.
+                      <span className="font-semibold">Expand</span> to reopen.
                     </p>
                   ) : (
                     <>
@@ -1566,7 +1535,6 @@ export default function GenericInspectionScreen(): JSX.Element {
                                   photoUrls: [...prev, photoUrl],
                                 });
                               }}
-                              /** 🔹 persist tech-entered parts + labor inside the session item */
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts });
@@ -1588,7 +1556,7 @@ export default function GenericInspectionScreen(): JSX.Element {
                               isSubmittingAI={isSubmittingAI}
                             />
 
-                            {/* 🔹 Inline add-item row for this section */}
+                            {/* Inline add-item row */}
                             <div className="mt-4 border-t border-white/10 pt-3">
                               <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
                                 Add custom item
@@ -1663,25 +1631,28 @@ export default function GenericInspectionScreen(): JSX.Element {
           />
         </div>
 
-        {/* Footer actions (kept for non-embed desktop flows) */}
-        <div className="mt-4 md:mt-6 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            {actions}
-            {showMissingLineWarning && (
-              <div className="text-xs text-red-400">
-                Missing <code>workOrderLineId</code> — save/finish will be blocked.
-              </div>
-            )}
-          </div>
+        {/* Footer actions – only non-embed desktop */}
+        {!isEmbed && !isMobileView && (
+          <div className="mt-4 md:mt-6 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              {actions}
+              {showMissingLineWarning && (
+                <div className="text-xs text-red-400">
+                  Missing <code>workOrderLineId</code> — save/finish will be
+                  blocked.
+                </div>
+              )}
+            </div>
 
-          <div className="text-xs text-neutral-400 md:text-right">
-            <span className="font-semibold text-neutral-200">Legend:</span> P = Pass
-            &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+            <div className="text-xs text-neutral-400 md:text-right">
+              <span className="font-semibold text-neutral-200">Legend:</span> P =
+              Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* 🔹 Sticky bottom actions for EMBED desktop so Save/Finish never “disappears” */}
+      {/* Sticky bottom actions for EMBED desktop */}
       {isEmbed && !isMobileView && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 py-2 backdrop-blur">
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2">
@@ -1693,7 +1664,7 @@ export default function GenericInspectionScreen(): JSX.Element {
         </div>
       )}
 
-      {/* 🔹 Floating mobile bottom bar */}
+      {/* Mobile bottom bar */}
       {isMobileView && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-black/95 px-3 py-2 backdrop-blur md:hidden">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
@@ -1735,8 +1706,6 @@ export default function GenericInspectionScreen(): JSX.Element {
     </div>
   );
 
-  // If we're embedded (desktop modal) *or* running in the dedicated
-  // mobile inspection route, don't wrap with the desktop PageShell.
   if (isEmbed || isMobileView) {
     return body;
   }
