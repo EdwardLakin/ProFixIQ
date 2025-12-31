@@ -1,5 +1,4 @@
-//features/inspections/app/inspection/templates/page.tsx
-
+// features/inspections/app/inspection/templates/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -57,7 +56,7 @@ export default function InspectionTemplatesPage() {
       }
       setShopId(resolvedShopId);
 
-      // build queries
+      // "My" templates (optionally scoped to shop)
       const minePromise = uid
         ? (() => {
             let q = supabase
@@ -75,6 +74,7 @@ export default function InspectionTemplatesPage() {
             error: null,
           });
 
+      // Shared/public templates (optionally scoped to shop)
       const sharedPromise = (() => {
         let q = supabase
           .from("inspection_templates")
@@ -99,17 +99,36 @@ export default function InspectionTemplatesPage() {
   }, [supabase]);
 
   const rows = useMemo<Template[]>(() => {
-    const pool =
-      scope === "mine" ? mine : scope === "shared" ? shared : [...mine, ...shared];
+    const lowerSearch = search.trim().toLowerCase();
 
-    if (!search.trim()) return pool;
+    let pool: Template[];
+    if (scope === "mine") {
+      pool = mine;
+    } else if (scope === "shared") {
+      pool = shared;
+    } else {
+      // "all" — merge by id to avoid duplicates if a template is both mine + shared
+      const byId = new Map<string, Template>();
+      for (const t of [...mine, ...shared]) {
+        if (!t.id) continue;
+        if (!byId.has(t.id)) {
+          byId.set(t.id, t);
+        }
+      }
+      pool = Array.from(byId.values());
+    }
 
-    const q = search.toLowerCase();
+    if (!lowerSearch) return pool;
+
     return pool.filter((t) => {
       const name = (t.template_name ?? "").toLowerCase();
       const desc = (t.description ?? "").toLowerCase();
       const tags = Array.isArray(t.tags) ? t.tags.join(", ").toLowerCase() : "";
-      return name.includes(q) || desc.includes(q) || tags.includes(q);
+      return (
+        name.includes(lowerSearch) ||
+        desc.includes(lowerSearch) ||
+        tags.includes(lowerSearch)
+      );
     });
   }, [scope, mine, shared, search]);
 
@@ -161,7 +180,11 @@ export default function InspectionTemplatesPage() {
         />
 
         {/* Header + filters */}
-        <div className={headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+        <div
+          className={
+            headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
+          }
+        >
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.2),transparent_65%)]"
@@ -176,7 +199,8 @@ export default function InspectionTemplatesPage() {
                 Inspection Templates
               </h1>
               <p className="mt-1 text-xs text-neutral-300">
-                Build, import, and manage inspection templates for your shop and fleets.
+                Build, import, and manage inspection templates for your shop and
+                fleets.
               </p>
             </div>
 
@@ -200,12 +224,20 @@ export default function InspectionTemplatesPage() {
                       {s === "mine"
                         ? "My Templates"
                         : s === "shared"
-                        ? "Shared"
-                        : "All"}
+                          ? "Shared"
+                          : "All"}
                     </button>
                   );
                 })}
               </div>
+
+              {/* New template CTA */}
+              <Link
+                href="/inspections/custom-inspection"
+                className="mt-1 inline-flex items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#ea580c),var(--accent-copper,#f97316))] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_22px_rgba(248,113,22,0.6)] hover:shadow-[0_0_30px_rgba(248,113,22,0.8)] md:mt-0"
+              >
+                New Template
+              </Link>
             </div>
           </div>
 
@@ -242,7 +274,8 @@ export default function InspectionTemplatesPage() {
                 No templates found
               </div>
               <p className="mt-2 text-xs text-neutral-400">
-                Try adjusting your filters or import a fleet form to generate a template.
+                Try adjusting your filters or import a fleet form to generate a
+                template.
               </p>
             </div>
           ) : (
@@ -321,7 +354,7 @@ export default function InspectionTemplatesPage() {
                           <div className="text-sm font-semibold text-neutral-50">
                             {t.template_name ?? "Untitled Template"}
                           </div>
-                          <div className="mt-1 text-xs text-neutral-400 line-clamp-3">
+                          <div className="mt-1 line-clamp-3 text-xs text-neutral-400">
                             {t.description || "No description provided."}
                           </div>
                         </div>
