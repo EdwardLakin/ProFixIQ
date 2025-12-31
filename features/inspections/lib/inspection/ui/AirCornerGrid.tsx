@@ -168,9 +168,6 @@ export default function AirCornerGrid({
     );
   };
 
-  // 🔁 Focus management scoped to THIS grid
-  const rootRef = useRef<HTMLDivElement | null>(null);
-
   const InputWithInlineUnit = ({
     idx,
     isPressure,
@@ -205,105 +202,6 @@ export default function AirCornerGrid({
       }
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      const root = rootRef.current;
-      if (!root) return;
-
-      const inputs = Array.from(
-        root.querySelectorAll<HTMLInputElement>('input[data-air-grid="true"]'),
-      );
-      if (!inputs.length) return;
-
-      const current = e.currentTarget;
-      const index = inputs.indexOf(current);
-      if (index === -1) return;
-
-      const columns = 2;
-      const total = inputs.length;
-      const row = Math.floor(index / columns);
-      const col = index % columns;
-
-      let nextIndex = index;
-
-      switch (e.key) {
-        case "Tab": {
-          const delta = e.shiftKey ? -1 : 1;
-          nextIndex = index + delta;
-
-          // wrap inside this grid only
-          if (nextIndex < 0) nextIndex = total - 1;
-          if (nextIndex >= total) nextIndex = 0;
-
-          e.preventDefault();
-          e.stopPropagation();
-          break;
-        }
-
-        case "ArrowRight": {
-          // move within row, clamp to last input in grid
-          const candidate = index + 1;
-          if (candidate < total && Math.floor(candidate / columns) === row) {
-            nextIndex = candidate;
-          } else {
-            // stay put if no right neighbor in this row
-            return;
-          }
-          e.preventDefault();
-          e.stopPropagation();
-          break;
-        }
-
-        case "ArrowLeft": {
-          const candidate = index - 1;
-          if (candidate >= 0 && Math.floor(candidate / columns) === row) {
-            nextIndex = candidate;
-          } else {
-            return;
-          }
-          e.preventDefault();
-          e.stopPropagation();
-          break;
-        }
-
-        case "ArrowDown": {
-          const candidate = (row + 1) * columns + col;
-          if (candidate < total) {
-            nextIndex = candidate;
-          } else {
-            // no row below on this side
-            return;
-          }
-          e.preventDefault();
-          e.stopPropagation();
-          break;
-        }
-
-        case "ArrowUp": {
-          const candidate = (row - 1) * columns + col;
-          if (candidate >= 0) {
-            nextIndex = candidate;
-          } else {
-            // no row above on this side
-            return;
-          }
-          e.preventDefault();
-          e.stopPropagation();
-          break;
-        }
-
-        default:
-          return; // let browser handle other keys
-      }
-
-      const target = inputs[nextIndex];
-      if (!target) return;
-
-      target.focus();
-      // optional but nice: select existing value
-      target.select?.();
-      target.scrollIntoView({ block: "nearest", inline: "nearest" });
-    };
-
     return (
       <div className="relative w-full">
         <input
@@ -313,10 +211,8 @@ export default function AirCornerGrid({
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
-          data-air-grid="true"
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
-          onKeyDown={handleKeyDown}
         />
         <span
           ref={spanRef}
@@ -422,11 +318,7 @@ export default function AirCornerGrid({
   };
 
   return (
-    <div
-      ref={rootRef}
-      data-air-grid-root="true"
-      className="grid w-full gap-3"
-    >
+    <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
         <div
           className="hidden text-[11px] uppercase tracking-[0.14em] text-neutral-500 md:block"
