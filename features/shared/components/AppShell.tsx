@@ -184,7 +184,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // ✅ MAIN APP SHELL (dashboard + tabs)
   return (
     <>
-      <div className="flex min-h-screen bg-neutral-950 text-foreground">
+      {/* overflow-x-hidden keeps the whole shell from growing wider than the viewport */}
+      <div className="flex min-h-screen bg-neutral-950 text-foreground overflow-x-hidden">
         {/* Sidebar */}
         <aside
           className={cn(

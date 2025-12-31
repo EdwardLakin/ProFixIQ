@@ -28,53 +28,59 @@ export default function TabsBar() {
 
   return (
     <div className="border-b border-neutral-800 bg-neutral-950/60 px-2 backdrop-blur-sm">
-      {/* min-w-0 keeps this row from forcing the layout wider than the viewport */}
-      <div className="flex min-w-0 items-center gap-2 overflow-x-auto py-1.5 [&::-webkit-scrollbar]:hidden">
-        <AnimatePresence initial={false}>
-          {tabs.map((t) => {
-            const active = t.href === activeHref;
-            const pinned = !!t.pinned;
+      {/* Outer row: tabs scroller on the left, controls on the right */}
+      <div className="flex items-center gap-2 py-1.5">
+        {/* Scrollable tabs area – this is the ONLY thing that scrolls horizontally */}
+        <div className="flex min-w-0 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+          {/* w-max lets the row be wider than viewport without stretching the layout */}
+          <div className="flex w-max items-center gap-2">
+            <AnimatePresence initial={false}>
+              {tabs.map((t) => {
+                const active = t.href === activeHref;
+                const pinned = !!t.pinned;
 
-            return (
-              <motion.div
-                key={t.href}
-                layout
-                className={`group relative inline-flex shrink-0 items-center gap-2 rounded-md border px-3 py-1 text-sm transition
-                  ${
-                    active
-                      ? "border-orange-500 bg-neutral-800 text-white"
-                      : "border-neutral-700 bg-neutral-900/60 text-neutral-300 hover:bg-neutral-900"
-                  }`}
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-              >
-                <button
-                  type="button"
-                  onClick={() => activateTab(t.href)}
-                  className="flex items-center gap-1"
-                >
-                  <span className="max-w-[200px] truncate">{t.title}</span>
-                  {pinned && <span aria-label="Pinned tab">📌</span>}
-                </button>
-
-                {!pinned && (
-                  <button
-                    type="button"
-                    onClick={() => closeTab(t.href)}
-                    className="rounded px-1 text-xs text-neutral-400 hover:text-white"
-                    aria-label="Close tab"
+                return (
+                  <motion.div
+                    key={t.href}
+                    layout
+                    className={`group relative inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm transition
+                      ${
+                        active
+                          ? "border-orange-500 bg-neutral-800 text-white"
+                          : "border-neutral-700 bg-neutral-900/60 text-neutral-300 hover:bg-neutral-900"
+                      }`}
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.96 }}
                   >
-                    ✕
-                  </button>
-                )}
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
+                    <button
+                      type="button"
+                      onClick={() => activateTab(t.href)}
+                      className="flex items-center gap-1"
+                    >
+                      <span className="max-w-[200px] truncate">{t.title}</span>
+                      {pinned && <span aria-label="Pinned tab">📌</span>}
+                    </button>
 
-        {/* Controls row is also shrink-0 so it doesn't stretch the viewport */}
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+                    {!pinned && (
+                      <button
+                        type="button"
+                        onClick={() => closeTab(t.href)}
+                        className="rounded px-1 text-xs text-neutral-400 hover:text-white"
+                        aria-label="Close tab"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Controls – fixed width, never forces layout wider */}
+        <div className="ml-2 flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={() => closeOthers(activeHref)}
