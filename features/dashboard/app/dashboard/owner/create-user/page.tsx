@@ -1,4 +1,3 @@
-// app/admin/users/create/page.tsx (or wherever this lives)
 "use client";
 
 import { useEffect, useState } from "react";
@@ -17,6 +16,8 @@ type CreatePayload = {
   shop_id?: string | null;
   phone?: string | null;
 };
+
+const COPPER = "#C57A4A";
 
 export default function CreateUserPage(): JSX.Element {
   const [form, setForm] = useState<CreatePayload>({
@@ -177,19 +178,21 @@ export default function CreateUserPage(): JSX.Element {
   return (
     <PageShell
       title="Create User"
-      description="Add shop staff with a username and temporary password."
+      description="Add shop and fleet staff with a username and temporary password."
     >
       {/* top 2-column content */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* LEFT: create user */}
-        <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6">
+        <div className="space-y-4 rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_28px_80px_rgba(0,0,0,0.85)] sm:p-6">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-white">New team member</h2>
             <p className="text-sm text-neutral-400">
-              Create a username-based account for shop staff. They&apos;ll sign in
-              with{" "}
-              <span className="text-orange-300">their username</span> and the
-              temporary password you set here.
+              Create a username-based account for{" "}
+              <span style={{ color: COPPER }}>
+                shop staff, drivers, dispatchers, and fleet managers
+              </span>
+              . They&apos;ll sign in with their username and the temporary
+              password you set here.
             </p>
             <p className="text-[11px] text-neutral-500">
               If they forget it later, an owner or manager can issue a new
@@ -200,12 +203,12 @@ export default function CreateUserPage(): JSX.Element {
           {(error || success) && (
             <div className="space-y-2">
               {error && (
-                <div className="rounded-md border border-red-500/60 bg-red-950/60 px-3 py-2 text-xs text-red-100">
+                <div className="rounded-md border border-red-500/60 bg-red-950/60 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.45)]">
                   {error}
                 </div>
               )}
               {success && (
-                <div className="rounded-md border border-emerald-500/60 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100">
+                <div className="rounded-md border border-emerald-500/60 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100 shadow-[0_0_18px_rgba(6,95,70,0.45)]">
                   {success}
                 </div>
               )}
@@ -214,11 +217,11 @@ export default function CreateUserPage(): JSX.Element {
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-300">
+              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
                 Full name
               </label>
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
                 placeholder="Full name"
                 value={form.full_name ?? ""}
                 onChange={(e) =>
@@ -228,11 +231,11 @@ export default function CreateUserPage(): JSX.Element {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-300">
+              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
                 Phone
               </label>
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
                 placeholder="Phone"
                 value={form.phone ?? ""}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -240,11 +243,11 @@ export default function CreateUserPage(): JSX.Element {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-300">
+              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
                 Username <span className="text-red-400">*</span>
               </label>
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
                 placeholder="e.g. jsmith"
                 value={form.username}
                 onChange={(e) =>
@@ -257,11 +260,11 @@ export default function CreateUserPage(): JSX.Element {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-300">
+              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
                 Temporary password <span className="text-red-400">*</span>
               </label>
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
                 placeholder="Temporary password"
                 type="password"
                 value={form.password}
@@ -274,11 +277,11 @@ export default function CreateUserPage(): JSX.Element {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-300">
+              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
                 Role
               </label>
               <select
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
                 value={form.role ?? ""}
                 onChange={(e) =>
                   setForm({ ...form, role: e.target.value as UserRole })
@@ -287,20 +290,31 @@ export default function CreateUserPage(): JSX.Element {
                 <option value="owner">Owner</option>
                 <option value="admin">Admin</option>
                 <option value="manager">Manager</option>
-                <option value="mechanic">Mechanic</option>
                 <option value="advisor">Advisor</option>
+                <option value="mechanic">Mechanic</option>
+                <option value="parts">Parts</option>
+                <option value="driver">Driver</option>
+                <option value="dispatcher">Dispatcher</option>
+                <option value="fleet_manager">Fleet manager</option>
               </select>
+              <p className="text-[11px] text-neutral-500">
+                Use{" "}
+                <span style={{ color: COPPER }}>
+                  driver / dispatcher / fleet manager
+                </span>{" "}
+                for Fleet Portal accounts.
+              </p>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-neutral-300">
+              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
                 Shop ID{" "}
                 <span className="text-neutral-500">
                   {creatorShopId ? "(auto from your profile)" : "(optional)"}
                 </span>
               </label>
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
                 placeholder="Shop ID"
                 value={form.shop_id ?? ""}
                 onChange={(e) =>
@@ -318,7 +332,7 @@ export default function CreateUserPage(): JSX.Element {
               type="button"
               onClick={() => void submit()}
               disabled={submitting}
-              className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.18em] text-black shadow-[0_0_26px_rgba(197,122,74,0.85)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? "Creating…" : "Create user"}
             </button>
@@ -332,7 +346,7 @@ export default function CreateUserPage(): JSX.Element {
         {/* RIGHT: recents + internal reset */}
         <div className="space-y-6">
           {/* recently created */}
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6">
+          <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.75)] sm:p-6">
             <h2 className="mb-2 text-lg font-semibold text-white">
               Recently created
             </h2>
@@ -345,7 +359,7 @@ export default function CreateUserPage(): JSX.Element {
                 {recentUsers.map((u) => (
                   <li
                     key={u.username}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-neutral-900 px-3 py-2"
+                    className="flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-black/60 px-3 py-2"
                   >
                     <div>
                       <div className="font-medium text-white">
@@ -355,7 +369,7 @@ export default function CreateUserPage(): JSX.Element {
                         @{u.username} • {u.role ?? "mechanic"}
                       </div>
                     </div>
-                    <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-200">
+                    <span className="rounded-full border border-white/16 bg-black/60 px-2 py-0.5 text-[11px] text-neutral-200">
                       temp set
                     </span>
                   </li>
@@ -365,23 +379,24 @@ export default function CreateUserPage(): JSX.Element {
           </div>
 
           {/* reset */}
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6">
+          <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.75)] sm:p-6">
             <h2 className="mb-2 text-lg font-semibold text-white">
               Reset password (internal)
             </h2>
             <p className="mb-3 text-xs text-neutral-500">
-              For username-based shop accounts only. This does not email the user;
-              you&apos;ll need to share the new temporary password with them.
+              For username-based shop and fleet accounts only. This does not
+              email the user; you&apos;ll need to share the new temporary
+              password with them.
             </p>
             <div className="space-y-2 text-sm">
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
                 placeholder="Username to reset"
                 value={resetUsername}
                 onChange={(e) => setResetUsername(e.target.value)}
               />
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
                 placeholder="New temporary password"
                 type="password"
                 value={resetPass}
@@ -391,14 +406,12 @@ export default function CreateUserPage(): JSX.Element {
                 type="button"
                 onClick={() => void resetPassword()}
                 disabled={resetBusy}
-                className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-1 inline-flex w-full items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.18em] text-black shadow-[0_0_26px_rgba(197,122,74,0.85)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {resetBusy ? "Updating…" : "Reset password"}
               </button>
               {resetMsg && (
-                <div className="mt-1 text-xs text-neutral-200">
-                  {resetMsg}
-                </div>
+                <div className="mt-1 text-xs text-neutral-200">{resetMsg}</div>
               )}
             </div>
           </div>
@@ -406,7 +419,7 @@ export default function CreateUserPage(): JSX.Element {
       </div>
 
       {/* USERS LIST (full width, own card) */}
-      <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6">
+      <div className="mt-6 rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_24px_70px_rgba(0,0,0,0.85)] sm:p-6">
         <h2 className="mb-3 text-lg font-semibold text-white">All users</h2>
         <p className="mb-3 text-xs text-neutral-500">
           This is the full list of users for your shop. New accounts appear here
