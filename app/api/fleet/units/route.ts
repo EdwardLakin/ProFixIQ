@@ -30,6 +30,14 @@ type ResponseBody = {
   units: FleetUnitListItem[];
 };
 
+function getStringField(
+  row: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = row[key];
+  return typeof value === "string" ? value : null;
+}
+
 export async function POST(req: Request) {
   try {
     const supabaseUser = createRouteHandlerClient<DB>({ cookies });
@@ -53,7 +61,7 @@ export async function POST(req: Request) {
         bodyShopId = body.shopId;
       }
     } catch {
-      // ignore
+      // ignore malformed body
     }
 
     const { data: profile, error: profileErr } = await supabaseAdmin
@@ -63,6 +71,7 @@ export async function POST(req: Request) {
       .maybeSingle<ProfileRow>();
 
     if (profileErr) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/units] profile error:", profileErr);
       return NextResponse.json(
         { error: "Could not resolve shop for current user." },
@@ -85,6 +94,7 @@ export async function POST(req: Request) {
       .eq("shop_id", shopId);
 
     if (fleetsErr) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/units] fleets error:", fleetsErr);
       return NextResponse.json(
         { error: "Failed to load fleets." },
@@ -107,6 +117,7 @@ export async function POST(req: Request) {
       .in("fleet_id", fleetIds);
 
     if (fvErr) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/units] fleet_vehicles error:", fvErr);
       return NextResponse.json(
         { error: "Failed to load fleet vehicles." },
@@ -119,25 +130,31 @@ export async function POST(req: Request) {
       new Set(
         fvRows
           .map((fv) => fv.vehicle_id as string | null)
-          .filter(Boolean) as string[],
+          .filter((id): id is string => Boolean(id)),
       ),
     );
 
-    // Vehicles (minimal columns we know we'll use)
+    // Vehicles – we treat as generic records so we don't fight the exact schema
     const { data: vehiclesData, error: vehiclesErr } = await supabaseAdmin
       .from("vehicles")
-      .select("id, vin, plate")
+      .select("*")
       .in("id", vehicleIds);
 
     if (vehiclesErr) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/units] vehicles error:", vehiclesErr);
       // Don't hard fail – we can still show units with less detail
     }
 
-    const vehiclesById = new Map<string, any>();
-    (vehiclesData ?? []).forEach((v: any) => {
-      vehiclesById.set(v.id, v);
-    });
+    const vehiclesById = new Map<string, Record<string, unknown>>();
+    ((vehiclesData as Record<string, unknown>[] | null) ?? []).forEach(
+      (v) => {
+        const idVal = v.id;
+        if (typeof idVal === "string") {
+          vehiclesById.set(idVal, v);
+        }
+      },
+    );
 
     // Service requests to determine status / next inspection date
     const { data: serviceData, error: serviceErr } = await supabaseAdmin
@@ -146,6 +163,7 @@ export async function POST(req: Request) {
       .eq("shop_id", shopId);
 
     if (serviceErr) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/units] service requests error:", serviceErr);
     }
 
@@ -156,26 +174,25 @@ export async function POST(req: Request) {
       const vid = fv.vehicle_id as string;
       const fid = fv.fleet_id as string;
       const fleet = fleetRows.find((f) => f.id === fid);
-      const vehicle = vehiclesById.get(vid) as
-        | { id: string; vin?: string | null; plate?: string | null }
-        | undefined;
+      const vehicle = vehiclesById.get(vid);
 
       const nickname = fv.nickname as string | null;
-      const labelBase =
-        nickname ||
-        (vehicle?.plate as string | null) ||
-        (vehicle?.vin as string | null) ||
-        vid;
+      const plate = vehicle ? getStringField(vehicle, "plate") : null;
+      const vin = vehicle ? getStringField(vehicle, "vin") : null;
+
+      const labelBase = nickname || plate || vin || vid;
 
       const unitRequests = serviceRequests.filter(
         (r) => (r.vehicle_id as string | null) === vid,
       );
       const hasSafety = unitRequests.some(
-        (r) => (r.severity as string | null) === "safety" &&
+        (r) =>
+          (r.severity as string | null) === "safety" &&
           (r.status as string | null) !== "completed",
       );
       const hasCompliance = unitRequests.some(
-        (r) => (r.severity as string | null) === "compliance" &&
+        (r) =>
+          (r.severity as string | null) === "compliance" &&
           (r.status as string | null) !== "completed",
       );
 
@@ -188,16 +205,14 @@ export async function POST(req: Request) {
         .map((r) => r.scheduled_for_date as string);
 
       const nextInspectionDate =
-        scheduledDates.length > 0
-          ? scheduledDates.sort()[0]
-          : undefined;
+        scheduledDates.length > 0 ? scheduledDates.sort()[0] : undefined;
 
       const item: FleetUnitListItem = {
         id: vid,
         label: labelBase,
         fleetName: fleet?.name ?? null,
-        plate: (vehicle?.plate as string | null) ?? null,
-        vin: (vehicle?.vin as string | null) ?? null,
+        plate,
+        vin,
         class: null,
         location: null,
         status,
@@ -210,6 +225,7 @@ export async function POST(req: Request) {
     const body: ResponseBody = { units };
     return NextResponse.json(body);
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error("[fleet/units] unexpected error:", err);
     return NextResponse.json(
       { error: "Failed to load fleet units." },

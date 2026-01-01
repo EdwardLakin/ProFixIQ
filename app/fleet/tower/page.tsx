@@ -5,6 +5,12 @@ import type { Database } from "@shared/types/types/supabase";
 import FleetControlTower from "@/features/fleet/components/FleetControlTower";
 
 type DB = Database;
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+
+type ProfileWithShop = ProfileRow & {
+  shops?: { name: string | null } | null;
+  shop_name?: string | null;
+};
 
 export default async function FleetTowerPage() {
   const supabase = createServerComponentClient<DB>({ cookies });
@@ -21,16 +27,14 @@ export default async function FleetTowerPage() {
       .from("profiles")
       .select("id, shop_id, shops(name)")
       .eq("user_id", user.id)
-      .maybeSingle();
+      .maybeSingle<ProfileWithShop>();
 
     if (profile?.shop_id) {
       shopId = profile.shop_id as string;
     }
 
     const fromJoin =
-      (profile as any)?.shops?.name ??
-      (profile as any)?.shop_name ??
-      null;
+      profile?.shops?.name ?? profile?.shop_name ?? null;
 
     if (fromJoin && typeof fromJoin === "string") {
       shopName = fromJoin;

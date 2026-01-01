@@ -7,6 +7,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
+type WoRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 type FleetServiceRequestRow =
   DB["public"]["Tables"]["fleet_service_requests"]["Row"];
@@ -36,6 +37,13 @@ type FleetIssue = {
   status: "open" | "scheduled" | "completed";
 };
 
+type UnitStats = {
+  lifetimeWorkOrders: number;
+  last12MonthsSpend: number; // shop currency
+  daysSinceLastOos: number | null;
+  openApprovals: number;
+};
+
 type RequestBody = {
   unitId: string;
 };
@@ -43,7 +51,35 @@ type RequestBody = {
 type ResponseBody = {
   unit: FleetUnit | null;
   issues: FleetIssue[];
+  stats: UnitStats;
 };
+
+// ---- small helpers so we don't fight Supabase types ----
+function getStringField(
+  row: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = row[key];
+  return typeof value === "string" ? value : null;
+}
+
+function getNumberField(
+  row: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = row[key];
+
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+
+  return null;
+}
 
 export async function POST(req: Request) {
   try {
@@ -69,7 +105,7 @@ export async function POST(req: Request) {
 
     const unitId = body.unitId;
 
-    // Resolve shop
+    // Resolve shop for current user
     const { data: profile, error: profileErr } = await supabaseAdmin
       .from("profiles")
       .select("id, shop_id")
@@ -77,6 +113,7 @@ export async function POST(req: Request) {
       .maybeSingle<ProfileRow>();
 
     if (profileErr || !profile?.shop_id) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/asset-detail] profile error:", profileErr);
       return NextResponse.json(
         { error: "Must belong to a shop to view fleet assets." },
@@ -86,7 +123,7 @@ export async function POST(req: Request) {
 
     const shopId = profile.shop_id as string;
 
-    // Find fleets and junction row for this unit (to get nickname / label)
+    // Look up any fleets + fleet_vehicles junction rows for this unit
     const [
       { data: fleetsData, error: fleetsErr },
       { data: fvData, error: fvErr },
@@ -102,9 +139,11 @@ export async function POST(req: Request) {
     ]);
 
     if (fleetsErr) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/asset-detail] fleets error:", fleetsErr);
     }
     if (fvErr) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/asset-detail] fleet_vehicles error:", fvErr);
     }
 
@@ -120,9 +159,10 @@ export async function POST(req: Request) {
       .from("vehicles")
       .select("id, vin, plate")
       .eq("id", unitId)
-      .maybeSingle<any>();
+      .maybeSingle<{ id: string; vin: string | null; plate: string | null }>();
 
     if (vehicleErr) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/asset-detail] vehicles error:", vehicleErr);
     }
 
@@ -134,13 +174,14 @@ export async function POST(req: Request) {
       .eq("vehicle_id", unitId);
 
     if (srErr) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/asset-detail] service requests error:", srErr);
     }
 
     const serviceRequests =
       (srData as FleetServiceRequestRow[] | null) ?? [];
 
-    // Build issues
+    // Build issues list
     const issues: FleetIssue[] = serviceRequests.map((r) => ({
       id: r.id,
       unitId,
@@ -158,7 +199,7 @@ export async function POST(req: Request) {
       status: (r.status as FleetIssue["status"] | null) ?? "open",
     }));
 
-    // Derive status
+    // Derive live status
     const hasSafety = issues.some(
       (i) => i.severity === "safety" && i.status !== "completed",
     );
@@ -199,13 +240,108 @@ export async function POST(req: Request) {
       nextInspectionDate,
     };
 
+    // ===== History & cost snapshot stats =====
+    const now = new Date();
+
+    const { data: woData, error: woErr } = await supabaseAdmin
+      .from("work_orders")
+      .select("*")
+      .eq("shop_id", shopId)
+      .eq("vehicle_id", unitId);
+
+    if (woErr) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/asset-detail] work_orders error:", woErr);
+    }
+
+    const workOrders = (woData as WoRow[] | null) ?? [];
+    const lifetimeWorkOrders = workOrders.length;
+
+    const oneYearAgoIso = new Date(
+      now.getFullYear() - 1,
+      now.getMonth(),
+      now.getDate(),
+    ).toISOString();
+
+    let last12MonthsSpend = 0;
+
+    for (const wo of workOrders) {
+      const row = wo as unknown as Record<string, unknown>;
+
+      const completedAt =
+        getStringField(row, "completed_at") ??
+        getStringField(row, "closed_at") ??
+        getStringField(row, "updated_at") ??
+        getStringField(row, "created_at");
+
+      if (!completedAt || completedAt < oneYearAgoIso) continue;
+
+      let amount =
+        getNumberField(row, "grand_total") ??
+        getNumberField(row, "total") ??
+        getNumberField(row, "grand_total_cents") ??
+        getNumberField(row, "total_cents");
+
+      if (amount == null) {
+        const labor = getNumberField(row, "labor_total") ?? 0;
+        const parts = getNumberField(row, "parts_total") ?? 0;
+        amount = labor + parts;
+      }
+
+      if (amount != null) {
+        last12MonthsSpend += amount;
+      }
+    }
+
+    const openApprovals = workOrders.filter((wo) => {
+      const row = wo as unknown as Record<string, unknown>;
+
+      const approval =
+        getStringField(row, "approval_status") ??
+        getStringField(row, "approval_state") ??
+        "";
+
+      const statusStr = (wo.status as string | null) ?? "";
+
+      return (
+        approval === "awaiting_approval" ||
+        approval === "pending_approval" ||
+        statusStr === "awaiting_approval" ||
+        statusStr === "estimate_sent"
+      );
+    }).length;
+
+    const lastOosIssue = issues
+      .filter((i) => i.severity === "safety")
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+
+    let daysSinceLastOos: number | null = null;
+    if (lastOosIssue) {
+      const last = new Date(lastOosIssue.createdAt);
+      daysSinceLastOos = Math.max(
+        0,
+        Math.floor(
+          (now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24),
+        ),
+      );
+    }
+
+    const stats: UnitStats = {
+      lifetimeWorkOrders,
+      last12MonthsSpend,
+      daysSinceLastOos,
+      openApprovals,
+    };
+
     const payload: ResponseBody = {
       unit,
       issues,
+      stats,
     };
 
     return NextResponse.json(payload);
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error("[fleet/asset-detail] unexpected error:", err);
     return NextResponse.json(
       { error: "Failed to load asset detail." },
