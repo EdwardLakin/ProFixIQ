@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
+import Container from "@shared/components/ui/Container";
 
 type DB = Database;
 
@@ -77,78 +78,88 @@ export default function FleetServiceRequestsPage() {
   }, [statusFilter]);
 
   return (
-    <main className="mx-auto max-w-4xl p-6 text-white">
-      <h1
-        className="mb-6 text-3xl"
-        style={{ fontFamily: "var(--font-blackops)" }}
-      >
-        Fleet Service Requests
-      </h1>
+    <main className="relative min-h-[calc(100vh-3rem)] bg-black text-white">
+      {/* Copper wash background */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+      />
 
-      {/* Status filter */}
-      <div className="mb-4 flex gap-3">
-        {(["all", "open", "scheduled", "completed"] as const).map((st) => (
-          <button
-            key={st}
-            onClick={() => setStatusFilter(st)}
-            className={`rounded-lg px-3 py-1 text-sm transition ${
-              statusFilter === st
-                ? "bg-[var(--accent-copper)] text-black"
-                : "border border-white/10 bg-black/40 text-neutral-300 hover:bg-neutral-900"
-            }`}
+      <Container className="py-6">
+        <div className="mx-auto w-full max-w-4xl">
+          <h1
+            className="mb-6 text-3xl"
+            style={{ fontFamily: "var(--font-blackops)" }}
           >
-            {st === "all" ? "All" : st[0].toUpperCase() + st.slice(1)}
-          </button>
-        ))}
-      </div>
+            Fleet Service Requests
+          </h1>
 
-      {/* Error state */}
-      {error && <p className="text-sm text-red-400">Error: {error}</p>}
-
-      {/* Loading */}
-      {loading && (
-        <p className="text-sm text-neutral-400">Loading requests…</p>
-      )}
-
-      {/* Empty */}
-      {!loading && requests.length === 0 && (
-        <p className="mt-4 text-sm text-neutral-400">
-          No service requests{" "}
-          {statusFilter !== "all" ? `(${statusFilter})` : ""}.
-        </p>
-      )}
-
-      {/* List */}
-      <div className="mt-4 space-y-3">
-        {requests.map((req) => (
-          <div
-            key={req.id}
-            className="rounded-xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl"
-          >
-            <div className="flex justify-between">
-              <div>
-                <p className="font-medium text-white">{req.title}</p>
-                <p className="mt-1 text-xs text-neutral-400">
-                  {req.severity.toUpperCase()} •{" "}
-                  {new Date(req.created_at).toLocaleString()}
-                </p>
-                <p className="mt-2 text-sm text-neutral-300">
-                  {req.summary}
-                </p>
-              </div>
-              <span
-                className="rounded-full px-2 py-1 text-[10px] uppercase tracking-wide"
-                style={{
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  backgroundColor: "rgba(193,102,59,0.18)",
-                }}
+          {/* Status filter */}
+          <div className="mb-4 flex gap-3">
+            {(["all", "open", "scheduled", "completed"] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className={`rounded-lg px-3 py-1 text-sm transition ${
+                  statusFilter === st
+                    ? "bg-[var(--accent-copper)] text-black"
+                    : "border border-white/10 bg-black/40 text-neutral-300 hover:bg-neutral-900"
+                }`}
               >
-                {req.status}
-              </span>
-            </div>
+                {st === "all" ? "All" : st[0].toUpperCase() + st.slice(1)}
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
+
+          {/* Error state */}
+          {error && <p className="text-sm text-red-400">Error: {error}</p>}
+
+          {/* Loading */}
+          {loading && (
+            <p className="text-sm text-neutral-400">Loading requests…</p>
+          )}
+
+          {/* Empty */}
+          {!loading && requests.length === 0 && (
+            <p className="mt-4 text-sm text-neutral-400">
+              No service requests{" "}
+              {statusFilter !== "all" ? `(${statusFilter})` : ""}.
+            </p>
+          )}
+
+          {/* List */}
+          <div className="mt-4 space-y-3">
+            {requests.map((req) => (
+              <div
+                key={req.id}
+                className="rounded-xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl"
+              >
+                <div className="flex justify-between">
+                  <div>
+                    <p className="font-medium text-white">{req.title}</p>
+                    <p className="mt-1 text-xs text-neutral-400">
+                      {req.severity.toUpperCase()} •{" "}
+                      {new Date(req.created_at).toLocaleString()}
+                    </p>
+                    <p className="mt-2 text-sm text-neutral-300">
+                      {req.summary}
+                    </p>
+                  </div>
+                  <span
+                    className="rounded-full px-2 py-1 text-[10px] uppercase tracking-wide"
+                    style={{
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      backgroundColor: "rgba(193,102,59,0.18)",
+                    }}
+                  >
+                    {req.status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Container>
     </main>
   );
 }
