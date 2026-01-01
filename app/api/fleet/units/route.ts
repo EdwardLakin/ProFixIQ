@@ -23,6 +23,8 @@ type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type FleetServiceRequestRow =
   DB["public"]["Tables"]["fleet_service_requests"]["Row"];
+type FleetInspectionScheduleRow =
+  DB["public"]["Tables"]["fleet_inspection_schedules"]["Row"];
 
 type FleetVehicleJoinedRow = FleetVehicleRow & {
   fleets: Pick<FleetRow, "id" | "shop_id" | "name"> | null;
@@ -35,6 +37,11 @@ type FleetVehicleJoinedRow = FleetVehicleRow & {
 type ServiceRequestSelect = Pick<
   FleetServiceRequestRow,
   "id" | "vehicle_id" | "severity" | "status"
+>;
+
+type InspectionScheduleSelect = Pick<
+  FleetInspectionScheduleRow,
+  "vehicle_id" | "next_inspection_date"
 >;
 
 type UnitsBody = {
@@ -79,10 +86,11 @@ async function resolveShopId(
  * - Else any open/scheduled request (maintenance / recommend) → LIMITED
  * - Else → IN SERVICE
  */
-function deriveUnitStatus(requests: ServiceRequestSelect[]): FleetUnitListItem["status"] {
+function deriveUnitStatus(
+  requests: ServiceRequestSelect[],
+): FleetUnitListItem["status"] {
   if (!requests || requests.length === 0) return "in_service";
 
-  // Normalize enums to lowercase just in case
   const severe = requests.some((r) => {
     const sev = (r.severity ?? "").toLowerCase();
     const st = (r.status ?? "").toLowerCase();
@@ -163,10 +171,15 @@ export async function POST(req: NextRequest) {
 
     const vehicleIds = joinedRows.map((row) => row.vehicle_id);
 
+    // Short-circuit if no fleet units
+    if (vehicleIds.length === 0) {
+      return NextResponse.json({ units: [] as FleetUnitListItem[] });
+    }
+
     // 2) Open/scheduled service requests for those units
     let serviceRequestsByVehicle = new Map<string, ServiceRequestSelect[]>();
 
-    if (vehicleIds.length > 0) {
+    {
       const { data: serviceRequests, error: srError } = await supabase
         .from("fleet_service_requests")
         .select(
@@ -178,7 +191,8 @@ export async function POST(req: NextRequest) {
         `,
         )
         .eq("shop_id", shopId)
-        .in("vehicle_id", vehicleIds);
+        .in("vehicle_id", vehicleIds)
+        .neq("status", "cancelled");
 
       if (srError) {
         // eslint-disable-next-line no-console
@@ -203,7 +217,41 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3) Build unit list items
+    // 3) Inspection schedules (CVIP) for those units
+    let inspectionByVehicle = new Map<string, string | null>();
+
+    {
+      const { data: schedules, error: scheduleError } = await supabase
+        .from("fleet_inspection_schedules")
+        .select("vehicle_id, next_inspection_date")
+        .eq("shop_id", shopId)
+        .in("vehicle_id", vehicleIds);
+
+      if (scheduleError) {
+        // eslint-disable-next-line no-console
+        console.error(
+          "[fleet/units] inspection_schedules error",
+          scheduleError,
+        );
+        return NextResponse.json(
+          { error: "Failed to load fleet inspection schedules." },
+          { status: 500 },
+        );
+      }
+
+      const typedSchedules =
+        (schedules ?? []) as unknown as InspectionScheduleSelect[];
+
+      inspectionByVehicle = typedSchedules.reduce(
+        (map, row) => {
+          map.set(row.vehicle_id, row.next_inspection_date ?? null);
+          return map;
+        },
+        new Map<string, string | null>(),
+      );
+    }
+
+    // 4) Build unit list items
     const units: FleetUnitListItem[] = joinedRows.map((row) => {
       const fleet = row.fleets;
       const vehicle = row.vehicles;
@@ -220,6 +268,9 @@ export async function POST(req: NextRequest) {
 
       const status = deriveUnitStatus(requestsForUnit);
 
+      const nextInspectionDate =
+        inspectionByVehicle.get(row.vehicle_id) ?? null;
+
       return {
         id: row.vehicle_id,
         label,
@@ -227,7 +278,7 @@ export async function POST(req: NextRequest) {
         plate: vehicle?.license_plate ?? null,
         vin: vehicle?.vin ?? null,
         status,
-        nextInspectionDate: null, // TODO: wire from schedule later
+        nextInspectionDate,
         location: null, // TODO: region / yard once stored
       };
     });

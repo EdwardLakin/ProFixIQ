@@ -1,4 +1,3 @@
-// features/fleet/components/FleetSummaryCards.tsx
 "use client";
 
 import { FleetUnit, FleetIssue, DispatchAssignment } from "./FleetControlTower";
@@ -16,7 +15,28 @@ export default function FleetSummaryCards({
 }: Props) {
   const oosCount = units.filter((u) => u.status === "oos").length;
   const limitedCount = units.filter((u) => u.status === "limited").length;
-  const upcomingInspections = units.filter((u) => !!u.nextInspectionDate).length;
+
+  // --- Inspections in 30-day window ---
+  const upcomingInspections = (() => {
+    const today = new Date();
+    const startOfToday = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+    const msPerDay = 1000 * 60 * 60 * 24;
+
+    return units.filter((u) => {
+      if (!u.nextInspectionDate) return false;
+
+      const next = new Date(u.nextInspectionDate);
+      const diffMs = next.getTime() - startOfToday.getTime();
+      const diffDays = Math.floor(diffMs / msPerDay);
+
+      // Only count units whose CVIP / safety is due in the next 30 days
+      return diffDays >= 0 && diffDays <= 30;
+    }).length;
+  })();
 
   const safetyIssues = issues.filter((i) => i.severity === "safety").length;
   const complianceIssues = issues.filter(
@@ -56,7 +76,7 @@ export default function FleetSummaryCards({
         </p>
       </div>
 
-      {/* Inspections due */}
+      {/* Inspections due (30-day window) */}
       <div className="metal-card rounded-2xl p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
           Inspections in window
@@ -65,7 +85,7 @@ export default function FleetSummaryCards({
           {upcomingInspections}
         </div>
         <p className="mt-1 text-xs text-neutral-400">
-          Units with an upcoming CVIP / safety check.
+          Units with CVIP / safety due in the next 30 days.
         </p>
       </div>
 
@@ -80,7 +100,9 @@ export default function FleetSummaryCards({
             <div className="text-xl font-semibold text-red-300">
               {safetyIssues}
             </div>
-            <div className="text-[11px] text-neutral-400">Open safety items</div>
+            <div className="text-[11px] text-neutral-400">
+              Open safety items
+            </div>
           </div>
           <div>
             <div className="text-xl font-semibold text-amber-200">
