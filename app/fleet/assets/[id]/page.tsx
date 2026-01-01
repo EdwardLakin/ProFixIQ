@@ -1,28 +1,24 @@
-// app/fleet/layout.tsx
-import type { ReactNode } from "react";
-import AppShell from "@/features/shared/components/AppShell";
-import FleetTabs from "@/features/fleet/components/FleetTabs";
-
-type Props = {
-  children: ReactNode;
-};
+// app/fleet/assets/[id]/page.tsx
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default function FleetLayout({ children }: Props) {
-  return (
-    <AppShell>
-      {/* Shared fleet chrome */}
-      <div className="px-4 py-6 text-white">
-        <div className="mx-auto w-full max-w-6xl">
-          {/* Fleet-level tab bar (Tower / Units / Pre-trip / Requests / Dispatch) */}
-          <FleetTabs />
+import AssetDetailScreen from "@/features/fleet/components/AssetDetailScreen";
 
-          {/* Page content goes here */}
-          <div className="mt-4">{children}</div>
-        </div>
-      </div>
-    </AppShell>
-  );
+type PageProps = {
+  params: {
+    id: string;
+  };
+};
+
+export default function FleetAssetDetailPage({ params }: PageProps) {
+  const unitId = params.id;
+
+  // Basic guard – if somehow there's no id, we just don't render anything meaningful.
+  // (You could swap this for notFound() if you prefer a 404.)
+  if (!unitId) {
+    return null;
+  }
+
+  return <AssetDetailScreen unitId={unitId} />;
 }
