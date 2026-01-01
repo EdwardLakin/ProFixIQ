@@ -294,12 +294,30 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
     section: "Fleet",
   },
+  // ✅ NEW: Add Fleet Unit
+  {
+    href: "/fleet/units/new",
+    title: "Add Fleet Unit",
+    subtitle: "Enroll units into programs",
+    roles: ["owner", "admin", "manager", "fleet_manager"],
+    scopes: ["management", "inspections", "all"],
+    section: "Fleet",
+  },
   {
     href: "/fleet/service-requests",
     title: "Fleet Service Requests",
     subtitle: "From pre-trips & inspections",
     roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
     scopes: ["work_orders", "management", "all"],
+    section: "Fleet",
+  },
+  // ✅ NEW: Fleet Programs / Groups
+  {
+    href: "/fleet/programs",
+    title: "Fleet Programs",
+    subtitle: "Groups, contacts & notes",
+    roles: ["owner", "admin", "manager", "fleet_manager"],
+    scopes: ["management", "settings", "all"],
     section: "Fleet",
   },
 ];
