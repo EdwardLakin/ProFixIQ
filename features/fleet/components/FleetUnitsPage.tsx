@@ -88,7 +88,6 @@ export default function FleetUnitsPage({ shopId }: Props) {
         u.fleetName,
         u.plate,
         u.vin,
-        u.class,
         u.location,
       ]
         .filter(Boolean)

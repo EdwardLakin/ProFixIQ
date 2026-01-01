@@ -1,35 +1,19 @@
-// app/api/fleet/service-requests/convert-to-work-order/route.ts
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-type FleetServiceRequestRow =
-  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
-type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-
-type RequestBody = {
+type ConvertBody = {
   serviceRequestId: string;
 };
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const supabaseUser = createRouteHandlerClient<DB>({ cookies });
-    const supabaseAdmin = createAdminSupabase();
+    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const body = (await req.json().catch(() => null)) as ConvertBody | null;
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseUser.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = (await req.json().catch(() => null)) as RequestBody | null;
     if (!body?.serviceRequestId) {
       return NextResponse.json(
         { error: "serviceRequestId is required." },
@@ -39,14 +23,24 @@ export async function POST(req: Request) {
 
     const serviceRequestId = body.serviceRequestId;
 
-    const { data: sr, error: srErr } = await supabaseAdmin
+    // Load the service request
+    const { data: sr, error: srError } = await supabase
       .from("fleet_service_requests")
-      .select("*")
+      .select(
+        `
+        id,
+        shop_id,
+        vehicle_id,
+        status,
+        work_order_id,
+        title,
+        summary
+      `,
+      )
       .eq("id", serviceRequestId)
-      .maybeSingle<FleetServiceRequestRow>();
+      .single();
 
-    if (srErr || !sr) {
-      console.error("[sr→wo] service request error:", srErr);
+    if (srError || !sr) {
       return NextResponse.json(
         { error: "Service request not found." },
         { status: 404 },
@@ -55,50 +49,62 @@ export async function POST(req: Request) {
 
     if (sr.work_order_id) {
       return NextResponse.json({
-        status: "already_linked",
         workOrderId: sr.work_order_id,
+        status: "already_linked",
       });
     }
 
-    // Create a minimal work order linked back to this fleet request.
-    const { data: wo, error: woErr } = await supabaseAdmin
+    // Create a new work order sourced from this service request
+    const { data: workOrder, error: woError } = await supabase
       .from("work_orders")
       .insert({
         shop_id: sr.shop_id,
         vehicle_id: sr.vehicle_id,
+        status: "awaiting_approval",
+        approval_state: "pending",
         source_fleet_service_request_id: sr.id,
+        // other totals & timestamps will use defaults
       })
       .select("id")
-      .maybeSingle<WorkOrderRow>();
+      .single();
 
-    if (woErr || !wo) {
-      console.error("[sr→wo] work order create error:", woErr);
+    if (woError || !workOrder) {
+      console.error(
+        "[service-requests/convert-to-work-order] insert error",
+        woError,
+      );
       return NextResponse.json(
-        { error: "Failed to create work order." },
+        { error: "Failed to create work order from service request." },
         { status: 500 },
       );
     }
 
-    // Link back on the service request side
-    const { error: linkErr } = await supabaseAdmin
+    // Link back on the service request
+    const { error: linkError } = await supabase
       .from("fleet_service_requests")
       .update({
-        work_order_id: wo.id,
+        work_order_id: workOrder.id,
         status: "scheduled",
       })
-      .eq("id", serviceRequestId);
+      .eq("id", sr.id);
 
-    if (linkErr) {
-      console.error("[sr→wo] link update error:", linkErr);
-      // We still return the WO ID; caller can repair link if needed.
+    if (linkError) {
+      console.error(
+        "[service-requests/convert-to-work-order] link error",
+        linkError,
+      );
+      // We still return the WO id, but you might want to reconcile manually
     }
 
     return NextResponse.json({
+      workOrderId: workOrder.id,
       status: "converted",
-      workOrderId: wo.id,
     });
   } catch (err) {
-    console.error("[sr→wo] unexpected error:", err);
+    console.error(
+      "[service-requests/convert-to-work-order] unexpected error",
+      err,
+    );
     return NextResponse.json(
       { error: "Failed to convert service request to work order." },
       { status: 500 },

@@ -1,36 +1,19 @@
-// app/api/fleet/pretrip/convert-to-service-request/route.ts
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-type FleetPretripRow =
-  DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
-type FleetServiceRequestRow =
-  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
-
-type RequestBody = {
+type ConvertBody = {
   pretripId: string;
 };
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const supabaseUser = createRouteHandlerClient<DB>({ cookies });
-    const supabaseAdmin = createAdminSupabase();
+    const supabase = createRouteHandlerClient<DB>({ cookies });
+    const body = (await req.json().catch(() => null)) as ConvertBody | null;
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseUser.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = (await req.json().catch(() => null)) as RequestBody | null;
     if (!body?.pretripId) {
       return NextResponse.json(
         { error: "pretripId is required." },
@@ -40,97 +23,151 @@ export async function POST(req: Request) {
 
     const pretripId = body.pretripId;
 
-    const { data: pretrip, error: pretripErr } = await supabaseAdmin
+    // Load the pretrip
+    const { data: pretrip, error: pretripError } = await supabase
       .from("fleet_pretrip_reports")
-      .select("*")
+      .select(
+        `
+        id,
+        shop_id,
+        vehicle_id,
+        driver_name,
+        has_defects,
+        inspection_date,
+        checklist,
+        notes,
+        vehicles!inner (
+          unit_number,
+          license_plate,
+          vin
+        )
+      `,
+      )
       .eq("id", pretripId)
-      .maybeSingle<FleetPretripRow>();
+      .single();
 
-    if (pretripErr || !pretrip) {
-      console.error("[pretrip→sr] pretrip error:", pretripErr);
+    if (pretripError || !pretrip) {
       return NextResponse.json(
-        { error: "Pre-trip not found." },
+        { error: "Pre-trip report not found." },
         { status: 404 },
       );
     }
 
-    // If already linked, short-circuit
-    const { data: existing, error: existingErr } = await supabaseAdmin
+    // Check if already linked
+    const { data: existing, error: existingError } = await supabase
       .from("fleet_service_requests")
       .select("id")
       .eq("source_pretrip_id", pretripId)
-      .maybeSingle<FleetServiceRequestRow>();
+      .maybeSingle();
 
-    if (existingErr) {
-      console.error("[pretrip→sr] existing error:", existingErr);
+    if (existingError) {
+      console.error(
+        "[pretrip/convert-to-service-request] existing check error",
+        existingError,
+      );
+      return NextResponse.json(
+        { error: "Failed to check existing service request." },
+        { status: 500 },
+      );
     }
 
-    if (existing) {
+    if (existing?.id) {
       return NextResponse.json({
-        status: "already_linked",
         serviceRequestId: existing.id,
+        status: "already_linked",
       });
     }
 
-    const checklist = (pretrip.checklist as Record<string, string> | null) || {};
+    const vehicle = (pretrip as any).vehicles as {
+      unit_number: string | null;
+      license_plate: string | null;
+      vin: string | null;
+    } | null;
 
-    const criticalKeys = ["brakes", "steering", "suspension", "tires"];
-    const hasCritical = criticalKeys.some(
-      (k) => checklist[k] && checklist[k] === "defect",
-    );
+    const unitLabel =
+      vehicle?.unit_number ||
+      vehicle?.license_plate ||
+      vehicle?.vin ||
+      pretrip.vehicle_id;
 
-    const severity: FleetServiceRequestRow["severity"] =
-      (hasCritical ? "safety" : "compliance") as FleetServiceRequestRow["severity"];
+    const checklist = (pretrip.checklist as any) ?? {};
+    const defects = (checklist.defects as Record<
+      string,
+      "ok" | "defect" | "na"
+    > | null) ?? {};
 
-    const defectLines = Object.entries(checklist)
+    const defectKeys = Object.entries(defects)
       .filter(([, v]) => v === "defect")
-      .map(([k]) => `• ${k}`);
+      .map(([k]) => k);
 
-    const title =
-      defectLines.length > 0
-        ? "Pre-trip defects reported"
-        : "Pre-trip concern";
-
-    const summaryParts: string[] = [];
-    if (defectLines.length > 0) {
-      summaryParts.push("Defects:\n" + defectLines.join("\n"));
+    // Pick a dominant severity
+    let severity: "safety" | "compliance" | "maintenance" | "recommend" =
+      "recommend";
+    if (defectKeys.some((k) => k === "brakes" || k === "steering")) {
+      severity = "safety";
+    } else if (
+      defectKeys.some(
+        (k) => k === "suspension" || k === "tires" || k === "lights",
+      )
+    ) {
+      severity = "compliance";
+    } else if (defectKeys.length > 0) {
+      severity = "maintenance";
     }
-    if (pretrip.notes) summaryParts.push(`Notes:\n${pretrip.notes}`);
 
-    const summary =
-      summaryParts.join("\n\n") || "Defects / concerns from pre-trip.";
+    const title = `Pre-trip defects – ${unitLabel}`;
+    const summaryParts: string[] = [];
 
-    const { data: created, error: createErr } = await supabaseAdmin
+    if (defectKeys.length > 0) {
+      summaryParts.push(
+        `Driver ${pretrip.driver_name ?? "unknown"} reported defects on: ${defectKeys.join(", ")}.`,
+      );
+    } else {
+      summaryParts.push(
+        `Pre-trip from driver ${pretrip.driver_name ?? "unknown"} with no specific systems flagged, but a service request was requested.`,
+      );
+    }
+
+    if (pretrip.notes) {
+      summaryParts.push(`Driver notes: ${pretrip.notes}`);
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { data: inserted, error: insertError } = await supabase
       .from("fleet_service_requests")
       .insert({
         shop_id: pretrip.shop_id,
         vehicle_id: pretrip.vehicle_id,
         source_pretrip_id: pretrip.id,
         title,
-        summary,
+        summary: summaryParts.join(" "),
         severity,
         status: "open",
-        scheduled_for_date: null,
-        work_order_id: null,
-        created_by_profile_id: pretrip.driver_profile_id,
+        created_by_profile_id: user?.id ?? null,
       })
       .select("id")
-      .maybeSingle<FleetServiceRequestRow>();
+      .single();
 
-    if (createErr || !created) {
-      console.error("[pretrip→sr] create error:", createErr);
+    if (insertError || !inserted) {
+      console.error(
+        "[pretrip/convert-to-service-request] insert error",
+        insertError,
+      );
       return NextResponse.json(
-        { error: "Failed to create service request." },
+        { error: "Failed to create service request from pre-trip." },
         { status: 500 },
       );
     }
 
     return NextResponse.json({
+      serviceRequestId: inserted.id,
       status: "created",
-      serviceRequestId: created.id,
     });
   } catch (err) {
-    console.error("[pretrip→sr] unexpected error:", err);
+    console.error("[pretrip/convert-to-service-request] error", err);
     return NextResponse.json(
       { error: "Failed to convert pre-trip to service request." },
       { status: 500 },

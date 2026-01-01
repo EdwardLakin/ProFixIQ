@@ -1,248 +1,252 @@
-// app/api/fleet/tower/route.ts
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
+import type {
+  FleetUnit,
+  FleetIssue,
+  DispatchAssignment,
+} from "@/features/fleet/components/FleetControlTower";
 
 type DB = Database;
 
-type FleetServiceRequestRow =
-  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
-type FleetPretripRow =
-  DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
-type FleetDispatchRow =
-  DB["public"]["Tables"]["fleet_dispatch_assignments"]["Row"];
-type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+async function resolveShopId(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  explicitShopId: string | null,
+) {
+  if (explicitShopId) return explicitShopId;
 
-type FleetUnitStatus = "in_service" | "limited" | "oos";
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
-type FleetUnit = {
-  id: string;
-  label: string;
-  plate?: string | null;
-  vin?: string | null;
-  class?: string | null;
-  location?: string | null;
-  status: FleetUnitStatus;
-  nextInspectionDate?: string | null;
-};
+  if (userError || !user) {
+    return null;
+  }
 
-type FleetIssue = {
-  id: string;
-  unitId: string;
-  unitLabel: string;
-  severity: "safety" | "compliance" | "recommend";
-  summary: string;
-  createdAt: string;
-  status: "open" | "scheduled" | "completed";
-};
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", user.id)
+    .single();
 
-type DispatchAssignment = {
-  id: string;
-  driverName: string;
-  driverId: string;
-  unitLabel: string;
-  unitId: string;
-  routeLabel?: string | null;
-  nextPreTripDue?: string | null;
-  state: "pretrip_due" | "en_route" | "in_shop";
-};
+  if (profileError || !profile?.shop_id) {
+    return null;
+  }
 
-type TowerPayload = {
-  units: FleetUnit[];
-  issues: FleetIssue[];
-  assignments: DispatchAssignment[];
-};
+  return profile.shop_id;
+}
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const supabaseUser = createRouteHandlerClient<DB>({ cookies });
-    const supabaseAdmin = createAdminSupabase();
+    const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseUser.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    let bodyShopId: string | null = null;
-    try {
-      const body = (await req.json().catch(() => null)) as
-        | { shopId?: string | null }
-        | null;
-      if (body?.shopId && typeof body.shopId === "string") {
-        bodyShopId = body.shopId;
-      }
-    } catch {
-      // ignore
-    }
-
-    const { data: profile, error: profileErr } = await supabaseAdmin
-      .from("profiles")
-      .select("id, shop_id")
-      .eq("user_id", user.id)
-      .maybeSingle<ProfileRow>();
-
-    if (profileErr) {
-      console.error("[fleet/tower] profile error:", profileErr);
-      return NextResponse.json(
-        { error: "Could not resolve shop for current user." },
-        { status: 400 },
-      );
-    }
-
-    const shopId = (bodyShopId ?? (profile?.shop_id as string | null)) ?? null;
-    if (!shopId) {
-      return NextResponse.json(
-        { error: "No shop associated with current user." },
-        { status: 400 },
-      );
-    }
-
-    const [serviceRes, pretripRes, dispatchRes] = await Promise.all([
-      supabaseAdmin
-        .from("fleet_service_requests")
-        .select("*")
-        .eq("shop_id", shopId),
-      supabaseAdmin
-        .from("fleet_pretrip_reports")
-        .select("*")
-        .eq("shop_id", shopId),
-      supabaseAdmin
-        .from("fleet_dispatch_assignments")
-        .select("*")
-        .eq("shop_id", shopId),
-    ]);
-
-    if (serviceRes.error) {
-      console.error("[fleet/tower] service requests error:", serviceRes.error);
-    }
-    if (pretripRes.error) {
-      console.error("[fleet/tower] pretrips error:", pretripRes.error);
-    }
-    if (dispatchRes.error) {
-      console.error("[fleet/tower] dispatch error:", dispatchRes.error);
-    }
-
-    const serviceRequests =
-      (serviceRes.data as FleetServiceRequestRow[] | null) ?? [];
-    const pretrips = (pretripRes.data as FleetPretripRow[] | null) ?? [];
-    const dispatchAssignments =
-      (dispatchRes.data as FleetDispatchRow[] | null) ?? [];
-
-    // Map dispatch rows → front-end assignments
-    const assignments: DispatchAssignment[] = dispatchAssignments.map((d) => ({
-      id: d.id,
-      driverName: (d.driver_name as string | null) ?? "Unassigned",
-      driverId: (d.driver_profile_id as string | null) ?? "unknown-driver",
-      unitLabel:
-        (d.unit_label as string | null) ??
-        (d.vehicle_identifier as string | null) ??
-        "Unit",
-      unitId: (d.vehicle_id as string | null) ?? "unknown-vehicle",
-      routeLabel: d.route_label as string | null,
-      nextPreTripDue: d.next_pretrip_due as string | null,
-      state: (d.state as DispatchAssignment["state"]) ?? "pretrip_due",
-    }));
-
-    // Map service requests → issues
-    const issues: FleetIssue[] = serviceRequests.map((r) => ({
-      id: r.id,
-      unitId: (r.vehicle_id as string | null) ?? "unknown-vehicle",
-      unitLabel:
-        (r.title as string | null) ??
-        (r.vehicle_id as string | null) ??
-        "Unit",
-      severity:
-        (r.severity as FleetIssue["severity"] | null) ?? "recommend",
-      summary:
-        (r.summary as string | null) ??
-        (r.title as string | null) ??
-        "No summary",
-      createdAt: (r.created_at as string) ?? new Date().toISOString(),
-      status: (r.status as FleetIssue["status"] | null) ?? "open",
-    }));
-
-    // Build unit map from everything we know about vehicles
-    const unitMap = new Map<string, FleetUnit>();
-
-    const ensureUnit = (vehicleId: string, label?: string | null) => {
-      if (!vehicleId) return;
-      if (!unitMap.has(vehicleId)) {
-        unitMap.set(vehicleId, {
-          id: vehicleId,
-          label: label || vehicleId,
-          plate: null,
-          vin: null,
-          class: null,
-          location: null,
-          status: "in_service",
-          nextInspectionDate: undefined,
-        });
-      } else if (label) {
-        const existing = unitMap.get(vehicleId)!;
-        if (!existing.label || existing.label === vehicleId) {
-          existing.label = label;
-        }
-      }
+    const body = (await req.json().catch(() => ({}))) as {
+      shopId?: string | null;
     };
 
-    assignments.forEach((a) => {
-      ensureUnit(a.unitId, a.unitLabel);
-    });
+    const shopId = await resolveShopId(
+      supabase,
+      body.shopId ?? null,
+    );
 
-    issues.forEach((i) => {
-      ensureUnit(i.unitId, i.unitLabel);
-    });
-
-    pretrips.forEach((p) => {
-      const vid = p.vehicle_id as string | null;
-      if (vid) ensureUnit(vid, null);
-    });
-
-    const units = Array.from(unitMap.values());
-
-    // Derive status & next inspection date from issues / scheduling info
-    for (const unit of units) {
-      const unitIssues = issues.filter((i) => i.unitId === unit.id);
-      const hasSafety = unitIssues.some(
-        (i) => i.severity === "safety" && i.status !== "completed",
+    if (!shopId) {
+      return NextResponse.json(
+        { error: "Unable to resolve shop for fleet tower." },
+        { status: 400 },
       );
-      const hasCompliance = unitIssues.some(
-        (i) => i.severity === "compliance" && i.status !== "completed",
-      );
-
-      if (hasSafety) {
-        unit.status = "oos";
-      } else if (hasCompliance) {
-        unit.status = "limited";
-      } else {
-        unit.status = "in_service";
-      }
-
-      const scheduledDates = serviceRequests
-        .filter((r) => r.vehicle_id === unit.id && r.scheduled_for_date)
-        .map((r) => r.scheduled_for_date as string);
-
-      if (scheduledDates.length > 0) {
-        const next = scheduledDates.sort()[0];
-        unit.nextInspectionDate = next;
-      }
     }
 
-    const payload: TowerPayload = {
+    // Active fleet vehicles + their vehicle records
+    const { data: fleetRows, error: fleetError } = await supabase
+      .from("fleet_vehicles")
+      .select(
+        `
+        vehicle_id,
+        active,
+        nickname,
+        custom_interval_days,
+        fleets!inner (
+          shop_id
+        ),
+        vehicles!inner (
+          id,
+          unit_number,
+          license_plate,
+          vin,
+          make,
+          model,
+          year
+        )
+      `,
+      )
+      .eq("active", true)
+      .eq("fleets.shop_id", shopId);
+
+    if (fleetError) {
+      console.error("[fleet/tower] fleet_vehicles error", fleetError);
+      return NextResponse.json(
+        { error: "Failed to load fleet units." },
+        { status: 500 },
+      );
+    }
+
+    const vehicleIds =
+      fleetRows?.map((row) => row.vehicle_id).filter(Boolean) ?? [];
+
+    // Open / scheduled service requests for these vehicles
+    const { data: serviceRequests, error: srError } = await supabase
+      .from("fleet_service_requests")
+      .select("id, vehicle_id, title, summary, severity, status, created_at")
+      .eq("shop_id", shopId)
+      .in("vehicle_id", vehicleIds);
+
+    if (srError) {
+      console.error("[fleet/tower] service_requests error", srError);
+      return NextResponse.json(
+        { error: "Failed to load fleet service requests." },
+        { status: 500 },
+      );
+    }
+
+    // Dispatch assignments
+    const { data: dispatchRows, error: dispatchError } = await supabase
+      .from("fleet_dispatch_assignments")
+      .select(
+        "id, shop_id, vehicle_id, driver_profile_id, driver_name, route_label, next_pretrip_due, state, unit_label, vehicle_identifier",
+      )
+      .eq("shop_id", shopId);
+
+    if (dispatchError) {
+      console.error("[fleet/tower] dispatch_assignments error", dispatchError);
+      return NextResponse.json(
+        { error: "Failed to load dispatch assignments." },
+        { status: 500 },
+      );
+    }
+
+    // Map of vehicle_id -> basic label info
+    const vehicleMeta = new Map<
+      string,
+      {
+        label: string;
+        plate: string | null;
+        vin: string | null;
+      }
+    >();
+
+    for (const row of fleetRows ?? []) {
+      const vehicle = (row as any).vehicles as {
+        unit_number: string | null;
+        license_plate: string | null;
+        vin: string | null;
+      } | null;
+
+      if (!vehicle) continue;
+
+      const label =
+        row.nickname ||
+        vehicle.unit_number ||
+        vehicle.license_plate ||
+        vehicle.vin ||
+        "Unit";
+
+      vehicleMeta.set(row.vehicle_id, {
+        label,
+        plate: vehicle.license_plate,
+        vin: vehicle.vin,
+      });
+    }
+
+    // Build units with derived status
+    const units: FleetUnit[] = (fleetRows ?? []).map((row) => {
+      const meta = vehicleMeta.get(row.vehicle_id);
+      const relatedRequests = (serviceRequests ?? []).filter(
+        (sr) => sr.vehicle_id === row.vehicle_id,
+      );
+
+      let status: FleetUnit["status"] = "in_service";
+
+      const hasSafety = relatedRequests.some(
+        (sr) => sr.status !== "completed" && sr.severity === "safety",
+      );
+      const hasComplianceOrMaint = relatedRequests.some(
+        (sr) =>
+          sr.status !== "completed" &&
+          (sr.severity === "compliance" ||
+            sr.severity === "maintenance"),
+      );
+
+      if (hasSafety) status = "oos";
+      else if (hasComplianceOrMaint) status = "limited";
+
+      return {
+        id: row.vehicle_id,
+        label: meta?.label ?? "Unit",
+        plate: meta?.plate ?? null,
+        vin: meta?.vin ?? null,
+        class: null,
+        location: null,
+        status,
+        nextInspectionDate: null, // TODO: wire to CVIP / interval logic
+      };
+    });
+
+    // Build issues from service requests
+    const issues: FleetIssue[] = (serviceRequests ?? [])
+      .filter((sr) => sr.status !== "cancelled")
+      .map((sr) => {
+        const meta = vehicleMeta.get(sr.vehicle_id);
+        const severity: FleetIssue["severity"] =
+          sr.severity === "safety" || sr.severity === "compliance"
+            ? (sr.severity as FleetIssue["severity"])
+            : "recommend"; // map maintenance/recommend -> recommend bucket
+
+        let status: FleetIssue["status"] = "open";
+        if (sr.status === "scheduled") status = "scheduled";
+        if (sr.status === "completed") status = "completed";
+
+        return {
+          id: sr.id,
+          unitId: sr.vehicle_id,
+          unitLabel: meta?.label ?? "Unit",
+          severity,
+          summary: sr.summary ?? sr.title ?? "",
+          createdAt: sr.created_at,
+          status,
+        };
+      });
+
+    // Build assignments
+    const assignments: DispatchAssignment[] = (dispatchRows ?? []).map(
+      (row) => {
+        const meta = vehicleMeta.get(row.vehicle_id);
+        const state: DispatchAssignment["state"] =
+          row.state === "completed"
+            ? "in_shop"
+            : (row.state as DispatchAssignment["state"]);
+
+        return {
+          id: row.id,
+          driverName: row.driver_name ?? "Unassigned",
+          driverId: row.driver_profile_id,
+          unitLabel: row.unit_label ?? meta?.label ?? "Unit",
+          unitId: row.vehicle_id,
+          routeLabel: row.route_label,
+          nextPreTripDue: row.next_pretrip_due,
+          state,
+        };
+      },
+    );
+
+    return NextResponse.json({
       units,
       issues,
       assignments,
-    };
-
-    return NextResponse.json(payload);
+    });
   } catch (err) {
-    console.error("[fleet/tower] unexpected error:", err);
+    console.error("[fleet/tower] error", err);
     return NextResponse.json(
       { error: "Failed to load fleet tower data." },
       { status: 500 },
