@@ -1,5 +1,9 @@
 import AssetDetailScreen from "@/features/fleet/components/AssetDetailScreen";
 
-export default function Page({ params }: { params: { id: string } }) {
+interface FleetAssetPageProps {
+  params: { id: string };
+}
+
+export default function FleetAssetPage({ params }: FleetAssetPageProps) {
   return <AssetDetailScreen unitId={params.id} />;
 }
