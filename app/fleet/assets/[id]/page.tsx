@@ -1,9 +1,13 @@
+// app/fleet/assets/[id]/page.tsx
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import AssetDetailScreen from "@/features/fleet/components/AssetDetailScreen";
 
-interface FleetAssetPageProps {
+export default function FleetAssetPage({
+  params,
+}: {
   params: { id: string };
-}
-
-export default function FleetAssetPage({ params }: FleetAssetPageProps) {
+}) {
   return <AssetDetailScreen unitId={params.id} />;
 }
