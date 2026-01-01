@@ -12,7 +12,11 @@ const FLEET_ROLES: ProfileRow["role"][] = [
   "driver",
   "dispatcher",
   "fleet_manager",
-  // add "owner" / "admin" here if shop staff should also see fleet portal
+  "owner",
+  "admin",
+  "manager",
+  // include this if you want advisors to see the fleet portal too:
+  // "advisor",
 ];
 
 export default async function FleetPortalLayout({
@@ -27,6 +31,7 @@ export default async function FleetPortalLayout({
   } = await supabase.auth.getUser();
 
   if (!user) {
+    // not signed in at all → fleet sign-in
     redirect("/portal/auth/sign-in?portal=fleet");
   }
 
@@ -36,10 +41,16 @@ export default async function FleetPortalLayout({
     .eq("id", user.id)
     .maybeSingle();
 
-  if (profileError || !profile || !FLEET_ROLES.includes(profile.role)) {
-    // No fleet access → send them to normal customer portal or back to sign-in
+  if (profileError || !profile) {
+    // no matching profile → kick to generic portal sign-in
+    redirect("/portal/auth/sign-in?portal=fleet");
+  }
+
+  if (!FLEET_ROLES.includes(profile.role)) {
+    // logged in but not a fleet-capable role → send to normal customer portal home
     redirect("/portal");
   }
 
+  // ✅ user is allowed into fleet portal
   return <>{children}</>;
 }
