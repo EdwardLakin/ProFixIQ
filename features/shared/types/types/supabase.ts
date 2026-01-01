@@ -1761,6 +1761,7 @@ export type Database = {
           odometer_km: number | null
           shop_id: string
           source: string
+          status: string
           vehicle_id: string
         }
         Insert: {
@@ -1775,6 +1776,7 @@ export type Database = {
           odometer_km?: number | null
           shop_id: string
           source?: string
+          status?: string
           vehicle_id: string
         }
         Update: {
@@ -1789,6 +1791,7 @@ export type Database = {
           odometer_km?: number | null
           shop_id?: string
           source?: string
+          status?: string
           vehicle_id?: string
         }
         Relationships: [
@@ -8787,7 +8790,7 @@ export type Database = {
           p_location_id: string
           p_request_item_id: string
         }
-        Returns: undefined
+        Returns: Json
       }
       wo_release_parts_holds_for_part: {
         Args: { p_part_id: string }

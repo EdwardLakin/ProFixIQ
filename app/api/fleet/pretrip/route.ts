@@ -1,3 +1,4 @@
+// app/api/fleet/pretrip/route.ts
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     .json()
     .catch(() => ({}))) as Partial<CreatePretripBody & ListPretripBody>;
 
-  // Creation mode (mobile / portal pre-trip)
+  // ───────── Creation mode (mobile / portal pre-trip) ─────────
   if (typeof raw.unitId === "string") {
     const body: CreatePretripBody = {
       unitId: raw.unitId,
@@ -110,6 +111,11 @@ export async function POST(req: NextRequest) {
         source: "mobile_pretrip_v1",
       };
 
+      // Persist status based on defects
+      const status: FleetPretripReportRow["status"] = hasDefects
+        ? "open"
+        : "reviewed";
+
       const { data: inserted, error: insertError } = await supabase
         .from("fleet_pretrip_reports")
         .insert({
@@ -121,8 +127,9 @@ export async function POST(req: NextRequest) {
           checklist,
           notes: body.notes,
           has_defects: hasDefects,
+          status,
         })
-        .select("id, has_defects")
+        .select("id, has_defects, status")
         .single();
 
       if (insertError || !inserted) {
@@ -137,6 +144,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         id: inserted.id,
         hasDefects: inserted.has_defects ?? hasDefects,
+        status: inserted.status ?? status,
       });
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -148,7 +156,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Listing mode (shop dashboard)
+  // ───────── Listing mode (shop dashboard) ─────────
   const body: ListPretripBody = {
     shopId: raw.shopId ?? null,
   };
@@ -177,6 +185,7 @@ export async function POST(req: NextRequest) {
         has_defects,
         inspection_date,
         created_at,
+        status,
         vehicles!inner (
           unit_number,
           license_plate,
@@ -209,10 +218,10 @@ export async function POST(req: NextRequest) {
         row.vehicle_id ||
         null;
 
-      // Simple derived status until you add an explicit status column:
-      // - with defects = "open"
-      // - clear = "reviewed"
-      const status = row.has_defects ? "open" : "reviewed";
+      // Fallback to derived status if null (for legacy rows)
+      const derivedStatus =
+        row.status ??
+        (row.has_defects ? "open" : "reviewed");
 
       return {
         id: row.id,
@@ -224,7 +233,7 @@ export async function POST(req: NextRequest) {
         has_defects: row.has_defects,
         inspection_date: row.inspection_date,
         created_at: row.created_at,
-        status,
+        status: derivedStatus,
       };
     });
 

@@ -1,3 +1,4 @@
+// app/api/fleet/units/route.ts
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -20,6 +21,8 @@ export type FleetUnitListItem = {
 type FleetVehicleRow = DB["public"]["Tables"]["fleet_vehicles"]["Row"];
 type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+type FleetServiceRequestRow =
+  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
 
 type FleetVehicleJoinedRow = FleetVehicleRow & {
   fleets: Pick<FleetRow, "id" | "shop_id" | "name"> | null;
@@ -28,6 +31,17 @@ type FleetVehicleJoinedRow = FleetVehicleRow & {
     "id" | "unit_number" | "license_plate" | "vin" | "make" | "model" | "year"
   > | null;
 };
+
+type ServiceRequestSelect = Pick<
+  FleetServiceRequestRow,
+  "id" | "vehicle_id" | "severity" | "status"
+>;
+
+type UnitsBody = {
+  shopId?: string | null;
+};
+
+// ───────────────── helpers ─────────────────
 
 async function resolveShopId(
   supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
@@ -57,18 +71,48 @@ async function resolveShopId(
   return profile.shop_id;
 }
 
+/**
+ * Derive a unit's status from its open / scheduled fleet service requests.
+ *
+ * Rules:
+ * - Any open/scheduled SAFETY or COMPLIANCE request → OOS
+ * - Else any open/scheduled request (maintenance / recommend) → LIMITED
+ * - Else → IN SERVICE
+ */
+function deriveUnitStatus(requests: ServiceRequestSelect[]): FleetUnitListItem["status"] {
+  if (!requests || requests.length === 0) return "in_service";
+
+  // Normalize enums to lowercase just in case
+  const severe = requests.some((r) => {
+    const sev = (r.severity ?? "").toLowerCase();
+    const st = (r.status ?? "").toLowerCase();
+    return (
+      (st === "open" || st === "scheduled") &&
+      (sev === "safety" || sev === "compliance")
+    );
+  });
+
+  if (severe) return "oos";
+
+  const anyLimited = requests.some((r) => {
+    const st = (r.status ?? "").toLowerCase();
+    return st === "open" || st === "scheduled";
+  });
+
+  if (anyLimited) return "limited";
+
+  return "in_service";
+}
+
+// ───────────────── route ─────────────────
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    const body = (await req.json().catch(() => ({}))) as {
-      shopId?: string | null;
-    };
+    const body = (await req.json().catch(() => ({}))) as UnitsBody;
 
-    const shopId = await resolveShopId(
-      supabase,
-      body.shopId ?? null,
-    );
+    const shopId = await resolveShopId(supabase, body.shopId ?? null);
 
     if (!shopId) {
       return NextResponse.json(
@@ -77,6 +121,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 1) Base fleet_vehicles + vehicles + fleets
     const { data: rows, error } = await supabase
       .from("fleet_vehicles")
       .select(
@@ -116,6 +161,49 @@ export async function POST(req: NextRequest) {
     const joinedRows =
       (rows ?? []) as unknown as FleetVehicleJoinedRow[];
 
+    const vehicleIds = joinedRows.map((row) => row.vehicle_id);
+
+    // 2) Open/scheduled service requests for those units
+    let serviceRequestsByVehicle = new Map<string, ServiceRequestSelect[]>();
+
+    if (vehicleIds.length > 0) {
+      const { data: serviceRequests, error: srError } = await supabase
+        .from("fleet_service_requests")
+        .select(
+          `
+          id,
+          vehicle_id,
+          severity,
+          status
+        `,
+        )
+        .eq("shop_id", shopId)
+        .in("vehicle_id", vehicleIds);
+
+      if (srError) {
+        // eslint-disable-next-line no-console
+        console.error("[fleet/units] service_requests error", srError);
+        return NextResponse.json(
+          { error: "Failed to load fleet units." },
+          { status: 500 },
+        );
+      }
+
+      const typedRequests =
+        (serviceRequests ?? []) as unknown as ServiceRequestSelect[];
+
+      serviceRequestsByVehicle = typedRequests.reduce(
+        (map, sr) => {
+          const arr = map.get(sr.vehicle_id) ?? [];
+          arr.push(sr);
+          map.set(sr.vehicle_id, arr);
+          return map;
+        },
+        new Map<string, ServiceRequestSelect[]>(),
+      );
+    }
+
+    // 3) Build unit list items
     const units: FleetUnitListItem[] = joinedRows.map((row) => {
       const fleet = row.fleets;
       const vehicle = row.vehicles;
@@ -127,15 +215,20 @@ export async function POST(req: NextRequest) {
         vehicle?.vin ||
         "Unit";
 
+      const requestsForUnit =
+        serviceRequestsByVehicle.get(row.vehicle_id) ?? [];
+
+      const status = deriveUnitStatus(requestsForUnit);
+
       return {
         id: row.vehicle_id,
         label,
         fleetName: fleet?.name ?? null,
         plate: vehicle?.license_plate ?? null,
         vin: vehicle?.vin ?? null,
-        status: "in_service",
-        nextInspectionDate: null,
-        location: null,
+        status,
+        nextInspectionDate: null, // TODO: wire from schedule later
+        location: null, // TODO: region / yard once stored
       };
     });
 
