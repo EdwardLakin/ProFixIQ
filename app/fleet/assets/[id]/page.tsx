@@ -5,6 +5,10 @@ export const revalidate = 0;
 
 import AssetDetailScreen from "@/features/fleet/components/AssetDetailScreen";
 
-export default function Page({ params }: any) {
-  return <AssetDetailScreen unitId={params?.id} />;
+type PageProps = {
+  params: { id: string };
+};
+
+export default function Page({ params }: PageProps) {
+  return <AssetDetailScreen unitId={params.id} />;
 }
