@@ -4,10 +4,13 @@ export const revalidate = 0;
 
 import AssetDetailScreen from "@/features/fleet/components/AssetDetailScreen";
 
-export default function FleetAssetPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  return <AssetDetailScreen unitId={params.id} />;
+interface FleetAssetPageProps {
+  // Vercel's generated PageProps wants `params` to be a Promise-like type.
+  params: Promise<{ id: string }>;
+}
+
+export default async function FleetAssetPage({ params }: FleetAssetPageProps) {
+  const { id } = await params;
+
+  return <AssetDetailScreen unitId={id} />;
 }
