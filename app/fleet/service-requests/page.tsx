@@ -1,13 +1,13 @@
 // app/fleet/service-requests/page.tsx
 "use client";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 type DB = Database;
 
@@ -40,11 +40,11 @@ export default function FleetServiceRequestsPage() {
         } = await client.auth.getUser();
         if (userError || !user) throw new Error("Not signed in");
 
-        // 🔍 find user's shop
+        // 🔍 find user's shop (use user_id, not id)
         const { data: profile, error: profileErr } = await client
           .from("profiles")
           .select("id, shop_id")
-          .eq("user_id", user.id) // ✅ correct column for profile lookup
+          .eq("user_id", user.id)
           .maybeSingle<ProfileRow>();
 
         if (profileErr || !profile?.shop_id) {
@@ -65,7 +65,7 @@ export default function FleetServiceRequestsPage() {
         const { data, error: reqErr } = await query;
         if (reqErr) throw reqErr;
 
-        if (!cancelled) setRequests(data ?? []);
+        if (!cancelled) setRequests((data as FleetServiceRequest[]) ?? []);
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Failed to load data.";
@@ -108,17 +108,11 @@ export default function FleetServiceRequestsPage() {
         </div>
 
         {/* Error state */}
-        {error && (
-          <p className="text-sm text-red-400">
-            Error: {error}
-          </p>
-        )}
+        {error && <p className="text-sm text-red-400">Error: {error}</p>}
 
         {/* Loading */}
         {loading && (
-          <p className="text-sm text-neutral-400">
-            Loading requests…
-          </p>
+          <p className="text-sm text-neutral-400">Loading requests…</p>
         )}
 
         {/* Empty */}
