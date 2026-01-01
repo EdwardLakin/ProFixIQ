@@ -1,12 +1,29 @@
 import { cookies } from "next/headers";
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+type FleetPretripReportRow =
+  DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
+type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+
+type PretripWithVehicle = FleetPretripReportRow & {
+  vehicles: Pick<VehicleRow, "unit_number" | "license_plate" | "vin"> | null;
+};
 
 type ConvertBody = {
   pretripId: string;
+};
+
+type DefectState = "ok" | "defect" | "na";
+
+type ChecklistPayload = {
+  defects?: Record<string, DefectState>;
+  // allow other keys without caring about their shape
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 };
 
 export async function POST(req: NextRequest) {
@@ -24,7 +41,7 @@ export async function POST(req: NextRequest) {
     const pretripId = body.pretripId;
 
     // Load the pretrip
-    const { data: pretrip, error: pretripError } = await supabase
+    const { data: pretripRow, error: pretripError } = await supabase
       .from("fleet_pretrip_reports")
       .select(
         `
@@ -44,14 +61,17 @@ export async function POST(req: NextRequest) {
       `,
       )
       .eq("id", pretripId)
-      .single();
+      .maybeSingle();
 
-    if (pretripError || !pretrip) {
+    if (pretripError || !pretripRow) {
       return NextResponse.json(
         { error: "Pre-trip report not found." },
         { status: 404 },
       );
     }
+
+    // Bridge through unknown so TS is happy with the join shape
+    const pretrip = pretripRow as unknown as PretripWithVehicle;
 
     // Check if already linked
     const { data: existing, error: existingError } = await supabase
@@ -61,6 +81,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (existingError) {
+      // eslint-disable-next-line no-console
       console.error(
         "[pretrip/convert-to-service-request] existing check error",
         existingError,
@@ -78,11 +99,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const vehicle = (pretrip as any).vehicles as {
-      unit_number: string | null;
-      license_plate: string | null;
-      vin: string | null;
-    } | null;
+    const vehicle = pretrip.vehicles;
 
     const unitLabel =
       vehicle?.unit_number ||
@@ -90,11 +107,8 @@ export async function POST(req: NextRequest) {
       vehicle?.vin ||
       pretrip.vehicle_id;
 
-    const checklist = (pretrip.checklist as any) ?? {};
-    const defects = (checklist.defects as Record<
-      string,
-      "ok" | "defect" | "na"
-    > | null) ?? {};
+    const checklist = (pretrip.checklist ?? {}) as ChecklistPayload;
+    const defects = checklist.defects ?? {};
 
     const defectKeys = Object.entries(defects)
       .filter(([, v]) => v === "defect")
@@ -152,6 +166,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (insertError || !inserted) {
+      // eslint-disable-next-line no-console
       console.error(
         "[pretrip/convert-to-service-request] insert error",
         insertError,
@@ -167,6 +182,7 @@ export async function POST(req: NextRequest) {
       status: "created",
     });
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error("[pretrip/convert-to-service-request] error", err);
     return NextResponse.json(
       { error: "Failed to convert pre-trip to service request." },

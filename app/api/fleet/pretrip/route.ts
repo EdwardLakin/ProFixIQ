@@ -1,11 +1,19 @@
 import { cookies } from "next/headers";
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-// Shape expected by PretripReportsPage
+type FleetPretripReportRow =
+  DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
+type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+
+type PretripJoinedRow = FleetPretripReportRow & {
+  vehicles: Pick<VehicleRow, "unit_number" | "license_plate" | "vin"> | null;
+};
+
 type PretripReport = {
   id: string;
   shop_id: string | null;
@@ -63,11 +71,20 @@ async function resolveShopIdForListing(
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const raw = await req.json().catch(() => ({}));
+  const raw = (await req
+    .json()
+    .catch(() => ({}))) as Partial<CreatePretripBody & ListPretripBody>;
 
   // Creation mode (mobile / portal pre-trip)
-  if (raw && typeof raw.unitId === "string") {
-    const body = raw as CreatePretripBody;
+  if (typeof raw.unitId === "string") {
+    const body: CreatePretripBody = {
+      unitId: raw.unitId,
+      driverName: raw.driverName ?? "",
+      odometer: raw.odometer ?? null,
+      location: raw.location ?? null,
+      notes: raw.notes ?? null,
+      defects: raw.defects ?? {},
+    };
 
     try {
       // Look up vehicle to get shop_id
@@ -104,12 +121,12 @@ export async function POST(req: NextRequest) {
           checklist,
           notes: body.notes,
           has_defects: hasDefects,
-          // inspection_date, source, created_at use defaults
         })
         .select("id, has_defects")
         .single();
 
       if (insertError || !inserted) {
+        // eslint-disable-next-line no-console
         console.error("[fleet/pretrip] insert error", insertError);
         return NextResponse.json(
           { error: "Failed to save pre-trip report." },
@@ -122,6 +139,7 @@ export async function POST(req: NextRequest) {
         hasDefects: inserted.has_defects ?? hasDefects,
       });
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/pretrip] create error", err);
       return NextResponse.json(
         { error: "Failed to save pre-trip report." },
@@ -131,7 +149,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Listing mode (shop dashboard)
-  const body = raw as ListPretripBody;
+  const body: ListPretripBody = {
+    shopId: raw.shopId ?? null,
+  };
 
   try {
     const shopId = await resolveShopIdForListing(
@@ -169,6 +189,7 @@ export async function POST(req: NextRequest) {
       .limit(250);
 
     if (error) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/pretrip] list error", error);
       return NextResponse.json(
         { error: "Failed to load pre-trip reports." },
@@ -176,12 +197,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const reports: PretripReport[] = (rows ?? []).map((row) => {
-      const vehicle = (row as any).vehicles as {
-        unit_number: string | null;
-        license_plate: string | null;
-        vin: string | null;
-      } | null;
+    const typedRows = (rows ?? []) as unknown as PretripJoinedRow[];
+
+    const reports: PretripReport[] = typedRows.map((row) => {
+      const vehicle = row.vehicles;
 
       const unitLabel =
         vehicle?.unit_number ||
@@ -211,6 +230,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ reports });
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error("[fleet/pretrip] list error", err);
     return NextResponse.json(
       { error: "Failed to load pre-trip reports." },

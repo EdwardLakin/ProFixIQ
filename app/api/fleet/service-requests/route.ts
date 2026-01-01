@@ -27,20 +27,27 @@ export type PortalServiceRequest = {
 
 export async function POST(req: Request) {
   try {
-    // shopId is accepted for future scoping, but currently unused because
-    // fleet_service_requests already link to vehicles and shops.
-    const body = await req.json().catch(() => ({ shopId: null }));
-    const _shopId = (body as { shopId?: string | null }).shopId ?? null;
+    const body = (await req
+      .json()
+      .catch(() => ({ shopId: null as string | null }))) as {
+      shopId: string | null;
+    };
 
-    const { data: baseRequests, error: requestError } =
-      await supabaseAdmin
-        .from("fleet_service_requests")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(200);
+    const shopId = body.shopId;
+
+    let baseQuery = supabaseAdmin
+      .from("fleet_service_requests")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (shopId) {
+      baseQuery = baseQuery.eq("shop_id", shopId);
+    }
+
+    const { data: baseRequests, error: requestError } = await baseQuery;
 
     if (requestError) {
-      // eslint-disable-next-line no-console
       console.error(
         "[fleet/service-requests] base query error:",
         requestError,
@@ -69,7 +76,6 @@ export async function POST(req: Request) {
           .in("id", vehicleIds);
 
       if (vehiclesError) {
-        // eslint-disable-next-line no-console
         console.error(
           "[fleet/service-requests] vehicles query error:",
           vehiclesError,
@@ -115,7 +121,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ requests: payload });
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error("[fleet/service-requests] unexpected error:", error);
     return NextResponse.json(
       { error: "Failed to load service requests." },

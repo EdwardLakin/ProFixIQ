@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -14,6 +15,18 @@ export type FleetUnitListItem = {
   status: "in_service" | "limited" | "oos";
   nextInspectionDate?: string | null;
   location?: string | null;
+};
+
+type FleetVehicleRow = DB["public"]["Tables"]["fleet_vehicles"]["Row"];
+type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
+type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+
+type FleetVehicleJoinedRow = FleetVehicleRow & {
+  fleets: Pick<FleetRow, "id" | "shop_id" | "name"> | null;
+  vehicles: Pick<
+    VehicleRow,
+    "id" | "unit_number" | "license_plate" | "vin" | "make" | "model" | "year"
+  > | null;
 };
 
 async function resolveShopId(
@@ -92,6 +105,7 @@ export async function POST(req: NextRequest) {
       .eq("fleets.shop_id", shopId);
 
     if (error) {
+      // eslint-disable-next-line no-console
       console.error("[fleet/units] fleet_vehicles error", error);
       return NextResponse.json(
         { error: "Failed to load fleet units." },
@@ -99,15 +113,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const units: FleetUnitListItem[] = (rows ?? []).map((row) => {
-      const fleet = (row as any).fleets as {
-        name: string | null;
-      } | null;
-      const vehicle = (row as any).vehicles as {
-        unit_number: string | null;
-        license_plate: string | null;
-        vin: string | null;
-      } | null;
+    const joinedRows =
+      (rows ?? []) as unknown as FleetVehicleJoinedRow[];
+
+    const units: FleetUnitListItem[] = joinedRows.map((row) => {
+      const fleet = row.fleets;
+      const vehicle = row.vehicles;
 
       const label =
         row.nickname ||
@@ -116,7 +127,6 @@ export async function POST(req: NextRequest) {
         vehicle?.vin ||
         "Unit";
 
-      // TODO: nextInspectionDate can later be calculated from CVIP / custom intervals
       return {
         id: row.vehicle_id,
         label,
@@ -131,6 +141,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ units });
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error("[fleet/units] error", err);
     return NextResponse.json(
       { error: "Failed to load fleet units." },
