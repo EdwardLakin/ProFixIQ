@@ -21,7 +21,7 @@ export default function AuthPage() {
   const [notice, setNotice] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
-  // are we in "mobile companion" sign-in mode?
+  // Are we in "mobile companion" sign-in mode?
   const isMobileMode =
     (sp.get("mode") || "").toLowerCase() === "mobile" ||
     (sp.get("redirect") || "") === "/mobile";
@@ -50,50 +50,7 @@ export default function AuthPage() {
     }, 60);
   };
 
-  // where to go *after* auth, based on profile + mode
-  const routeAfterAuth = async (
-    profile: { completed_onboarding?: boolean | null; shop_id?: string | null } | null,
-  ) => {
-    const redirectParam = sp.get("redirect");
-    const hasShop = !!profile?.shop_id;
-    const isOnboarded = !!profile?.completed_onboarding || hasShop;
-
-    // special case: mobile mode always wins if user is allowed in
-    if (isMobileMode && isOnboarded) {
-      router.replace("/mobile");
-      return;
-    }
-
-    if (redirectParam && isOnboarded) {
-      router.replace(redirectParam);
-      return;
-    }
-
-    if (isOnboarded) {
-      router.replace("/dashboard");
-    } else {
-      router.replace("/onboarding");
-    }
-  };
-
-  // already signed in → kick out of sign-in
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
-      if (!session?.user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("completed_onboarding, shop_id")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      await routeAfterAuth(profile ?? null);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // shared helper to push a route after auth
   const go = async (href: string) => {
     await supabase.auth.getSession();
     router.refresh();
@@ -108,6 +65,37 @@ export default function AuthPage() {
     }, 60);
   };
 
+  // If already signed in, route to dashboard / mobile / onboarding
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      if (!session?.user) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("completed_onboarding, shop_id")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      const hasShop = !!profile?.shop_id;
+      const isOnboarded = !!profile?.completed_onboarding || hasShop;
+
+      if (isMobileMode && isOnboarded) {
+        await go("/mobile");
+        return;
+      }
+
+      if (isOnboarded) {
+        const redirectParam = sp.get("redirect");
+        await go(redirectParam || "/dashboard");
+      } else {
+        await go("/onboarding");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -117,6 +105,7 @@ export default function AuthPage() {
     const raw = identifier.trim();
     let emailToUse = raw;
 
+    // Allow username-only for shop staff: username@SHOP_USER_DOMAIN
     if (!raw.includes("@")) {
       emailToUse = `${raw.toLowerCase()}@${SHOP_USER_DOMAIN}`;
     }
@@ -150,7 +139,6 @@ export default function AuthPage() {
     const hasShop = !!profile?.shop_id;
     const isOnboarded = !!profile?.completed_onboarding || hasShop;
 
-    // explicit handling for mobile mode
     if (isMobileMode && isOnboarded) {
       await go("/mobile");
     } else if (isOnboarded) {
@@ -182,7 +170,9 @@ export default function AuthPage() {
     }
 
     if (!data.session) {
-      setNotice("Check your inbox to confirm your email. We’ll continue after that.");
+      setNotice(
+        "Check your inbox to confirm your email. We’ll continue after that.",
+      );
       setLoading(false);
       return;
     }
@@ -230,9 +220,8 @@ export default function AuthPage() {
               Back
             </button>
 
-            {/* tiny spacer / optional right-side label */}
             <div className="text-[10px] text-neutral-500">
-              {isMobileMode ? "Mobile sign-in" : " "}
+              {isMobileMode ? "Mobile companion" : "Shop access"}
             </div>
           </div>
 
@@ -255,7 +244,9 @@ export default function AuthPage() {
                 ProFixIQ
               </span>
               <span className="h-1 w-1 rounded-full bg-[var(--accent-copper-light)]" />
-              <span>Portal{isMobileMode ? " • Mobile" : ""}</span>
+              <span>
+                {isMobileMode ? "Shop • Mobile" : "Shop Dashboard"}
+              </span>
             </div>
 
             <h1
@@ -267,8 +258,8 @@ export default function AuthPage() {
 
             <p className="text-xs text-muted-foreground sm:text-sm">
               {isSignIn
-                ? "Use your shop username or email to access your dashboard."
-                : "Create an account with your email to get started."}
+                ? "Use your shop username or email to access the ProFixIQ dashboard."
+                : "Create a shop account with your email to get started."}
             </p>
           </div>
 
@@ -322,14 +313,21 @@ export default function AuthPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={isSignIn ? handleSignIn : handleSignUp} className="space-y-4">
+          <form
+            onSubmit={isSignIn ? handleSignIn : handleSignUp}
+            className="space-y-4"
+          >
             <div className="space-y-1 text-sm">
               <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
                 {isSignIn ? "Email or username" : "Email"}
               </label>
               <input
                 type={isSignIn ? "text" : "email"}
-                placeholder={isSignIn ? "jane@shop.com or shop username" : "you@example.com"}
+                placeholder={
+                  isSignIn
+                    ? "jane@shop.com or shop username"
+                    : "you@example.com"
+                }
                 autoComplete={isSignIn ? "username" : "email"}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
@@ -346,7 +344,8 @@ export default function AuthPage() {
               />
               {isSignIn && (
                 <p className="text-[11px] text-muted-foreground">
-                  Shop accounts can sign in using the username provided by your admin.
+                  Shop accounts can sign in using the username provided by your
+                  admin.
                 </p>
               )}
             </div>
@@ -399,7 +398,7 @@ export default function AuthPage() {
             </button>
           </form>
 
-          {/* Mobile companion link – just sets mode=mobile */}
+          {/* Mobile companion deep link */}
           {isSignIn && !isMobileMode && (
             <div className="mt-4 text-center">
               <button
