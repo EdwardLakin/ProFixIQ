@@ -1,0 +1,17 @@
+tree not installed; using find instead
+app/fleet/dispatch/page.tsx
+app/fleet/layout.tsx
+app/fleet/assets/[id]/page.tsx
+app/fleet/service-requests/page.tsx
+app/fleet/pretrip/page.tsx
+app/fleet/units/page.tsx
+app/fleet/tower/page.tsx
+app/fleet/page.tsx
+app/api/fleet/forms/upload/route.ts
+app/api/fleet/asset-detail/route.ts
+app/api/fleet/service-requests/convert-to-work-order/route.ts
+app/api/fleet/pretrip/convert-to-service-request/route.ts
+app/api/fleet/pretrip/route.ts
+app/api/fleet/units/route.ts
+app/api/fleet/ai-summary/route.ts
+app/api/fleet/tower/route.ts
