@@ -8346,6 +8346,32 @@ export type Database = {
           },
         ]
       }
+      v_fleet_inspection_buckets: {
+        Row: {
+          due_14_days: number | null
+          due_30_days: number | null
+          due_7_days: number | null
+          shop_id: string | null
+          shop_name: string | null
+          total_due_30_days: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_inspection_schedules_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_inspection_schedules_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_fleet_inspections_due_30: {
         Row: {
           days_until_due: number | null
