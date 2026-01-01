@@ -5,17 +5,16 @@ export const revalidate = 0;
 
 import AssetDetailScreen from "@/features/fleet/components/AssetDetailScreen";
 
-type PageProps = {
+type AssetDetailPageProps = {
   params: {
     id: string;
   };
 };
 
-export default function FleetAssetDetailPage({ params }: PageProps) {
+export default function Page({ params }: AssetDetailPageProps) {
   const unitId = params.id;
 
-  // Basic guard – if somehow there's no id, we just don't render anything meaningful.
-  // (You could swap this for notFound() if you prefer a 404.)
+  // If somehow there's no id, render nothing (or you could throw notFound()).
   if (!unitId) {
     return null;
   }
