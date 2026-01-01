@@ -1,12 +1,14 @@
+// app/api/fleet/tower/route.ts
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 import type {
-  DispatchAssignment,
-  FleetIssue,
   FleetUnit,
+  FleetIssue,
+  DispatchAssignment,
 } from "@/features/fleet/components/FleetControlTower";
 
 type DB = Database;
@@ -48,7 +50,7 @@ type DispatchSelect = Pick<
 async function resolveShopId(
   supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
   explicitShopId: string | null,
-) {
+): Promise<string | null> {
   if (explicitShopId) return explicitShopId;
 
   const {
@@ -81,10 +83,7 @@ export async function POST(req: NextRequest) {
       shopId?: string | null;
     };
 
-    const shopId = await resolveShopId(
-      supabase,
-      body.shopId ?? null,
-    );
+    const shopId = await resolveShopId(supabase, body.shopId ?? null);
 
     if (!shopId) {
       return NextResponse.json(
@@ -93,14 +92,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Active fleet vehicles + their vehicle records
-    const { data: fleetRows, error: fleetError } = await supabase
+    // -----------------------------------------------------------------------
+    // 1) Active fleet vehicles for this shop (joined to fleets + vehicles)
+    // -----------------------------------------------------------------------
+    const { data: fleetRowsRaw, error: fleetError } = await supabase
       .from("fleet_vehicles")
       .select(
         `
+        fleet_id,
         vehicle_id,
         active,
         nickname,
+        custom_interval_km,
+        custom_interval_hours,
         custom_interval_days,
         fleets!inner (
           shop_id
@@ -128,32 +132,66 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const fleetJoinedRows =
-      (fleetRows ?? []) as unknown as FleetVehicleJoinedRow[];
+    const fleetRows: FleetVehicleJoinedRow[] =
+      (fleetRowsRaw ?? []) as unknown as FleetVehicleJoinedRow[];
 
-    const vehicleIds = fleetJoinedRows.map((row) => row.vehicle_id);
+    const vehicleIds = fleetRows.map((row) => row.vehicle_id);
 
-    // Open / scheduled service requests for these vehicles
-    const { data: serviceRequests, error: srError } = await supabase
-      .from("fleet_service_requests")
-      .select("id, vehicle_id, title, summary, severity, status, created_at")
-      .eq("shop_id", shopId)
-      .in("vehicle_id", vehicleIds);
+    // Map of vehicle_id -> label/plate/vin
+    const vehicleMeta = new Map<
+      string,
+      { label: string; plate: string | null; vin: string | null }
+    >();
 
-    if (srError) {
-      // eslint-disable-next-line no-console
-      console.error("[fleet/tower] service_requests error", srError);
-      return NextResponse.json(
-        { error: "Failed to load fleet service requests." },
-        { status: 500 },
-      );
+    for (const row of fleetRows) {
+      const vehicle = row.vehicles;
+
+      const label =
+        row.nickname ||
+        vehicle?.unit_number ||
+        vehicle?.license_plate ||
+        vehicle?.vin ||
+        "Unit";
+
+      vehicleMeta.set(row.vehicle_id, {
+        label,
+        plate: vehicle?.license_plate ?? null,
+        vin: vehicle?.vin ?? null,
+      });
     }
 
-    const serviceRequestsTyped =
-      (serviceRequests ?? []) as unknown as ServiceRequestSelect[];
+    // -----------------------------------------------------------------------
+    // 2) Service requests for these vehicles (open/scheduled/completed)
+    // -----------------------------------------------------------------------
+    let serviceRequestsTyped: ServiceRequestSelect[] = [];
 
-    // Dispatch assignments
-    const { data: dispatchRows, error: dispatchError } = await supabase
+    if (vehicleIds.length > 0) {
+      const { data: serviceRequests, error: srError } = await supabase
+        .from("fleet_service_requests")
+        .select(
+          "id, vehicle_id, title, summary, severity, status, created_at",
+        )
+        .eq("shop_id", shopId)
+        .in("vehicle_id", vehicleIds)
+        .neq("status", "cancelled"); // we never show cancelled
+
+      if (srError) {
+        // eslint-disable-next-line no-console
+        console.error("[fleet/tower] service_requests error", srError);
+        return NextResponse.json(
+          { error: "Failed to load fleet service requests." },
+          { status: 500 },
+        );
+      }
+
+      serviceRequestsTyped =
+        (serviceRequests ?? []) as unknown as ServiceRequestSelect[];
+    }
+
+    // -----------------------------------------------------------------------
+    // 3) Dispatch assignments for these vehicles
+    // -----------------------------------------------------------------------
+    const { data: dispatchRaw, error: dispatchError } = await supabase
       .from("fleet_dispatch_assignments")
       .select(
         "id, shop_id, vehicle_id, driver_profile_id, driver_name, route_label, next_pretrip_due, state, unit_label, vehicle_identifier",
@@ -169,41 +207,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const dispatchTyped =
-      (dispatchRows ?? []) as unknown as DispatchSelect[];
+    const dispatchRows: DispatchSelect[] =
+      (dispatchRaw ?? []) as unknown as DispatchSelect[];
 
-    // Map of vehicle_id -> basic label info
-    const vehicleMeta = new Map<
-      string,
-      {
-        label: string;
-        plate: string | null;
-        vin: string | null;
-      }
-    >();
+    // -----------------------------------------------------------------------
+    // 4) Build units payload
+    // -----------------------------------------------------------------------
+    const units: FleetUnit[] = fleetRows.map((row) => {
+      const meta = vehicleMeta.get(row.vehicle_id) ?? {
+        label: "Unit",
+        plate: null,
+        vin: null,
+      };
 
-    for (const row of fleetJoinedRows) {
-      const vehicle = row.vehicles;
-
-      if (!vehicle) continue;
-
-      const label =
-        row.nickname ||
-        vehicle.unit_number ||
-        vehicle.license_plate ||
-        vehicle.vin ||
-        "Unit";
-
-      vehicleMeta.set(row.vehicle_id, {
-        label,
-        plate: vehicle.license_plate,
-        vin: vehicle.vin,
-      });
-    }
-
-    // Build units with derived status
-    const units: FleetUnit[] = fleetJoinedRows.map((row) => {
-      const meta = vehicleMeta.get(row.vehicle_id);
       const relatedRequests = serviceRequestsTyped.filter(
         (sr) => sr.vehicle_id === row.vehicle_id,
       );
@@ -213,11 +229,11 @@ export async function POST(req: NextRequest) {
       const hasSafety = relatedRequests.some(
         (sr) => sr.status !== "completed" && sr.severity === "safety",
       );
+
       const hasComplianceOrMaint = relatedRequests.some(
         (sr) =>
           sr.status !== "completed" &&
-          (sr.severity === "compliance" ||
-            sr.severity === "maintenance"),
+          (sr.severity === "compliance" || sr.severity === "maintenance"),
       );
 
       if (hasSafety) status = "oos";
@@ -225,58 +241,81 @@ export async function POST(req: NextRequest) {
 
       return {
         id: row.vehicle_id,
-        label: meta?.label ?? "Unit",
-        plate: meta?.plate ?? null,
-        vin: meta?.vin ?? null,
-        class: null,
-        location: null,
+        label: meta.label,
+        plate: meta.plate,
+        vin: meta.vin,
+        class: null, // can be wired later
+        location: null, // can be wired later (yard / region)
         status,
-        nextInspectionDate: null, // TODO: wire to CVIP / interval logic
+        nextInspectionDate: null, // hook to CVIP / interval logic later
       };
     });
 
-    // Build issues from service requests
-    const issues: FleetIssue[] = serviceRequestsTyped
-      .filter((sr) => sr.status !== "cancelled")
-      .map((sr) => {
-        const meta = vehicleMeta.get(sr.vehicle_id);
-        const severity: FleetIssue["severity"] =
-          sr.severity === "safety" || sr.severity === "compliance"
-            ? (sr.severity as FleetIssue["severity"])
-            : "recommend"; // map maintenance/recommend -> recommend bucket
+    // -----------------------------------------------------------------------
+    // 5) Build issues payload
+    // -----------------------------------------------------------------------
+    const issues: FleetIssue[] = serviceRequestsTyped.map((sr) => {
+      const meta = vehicleMeta.get(sr.vehicle_id) ?? {
+        label: "Unit",
+        plate: null,
+        vin: null,
+      };
 
-        let status: FleetIssue["status"] = "open";
-        if (sr.status === "scheduled") status = "scheduled";
-        if (sr.status === "completed") status = "completed";
+      // Map DB severity -> UI buckets
+      let severity: FleetIssue["severity"] = "recommend";
+      if (sr.severity === "safety" || sr.severity === "compliance") {
+        severity = sr.severity;
+      }
 
-        return {
-          id: sr.id,
-          unitId: sr.vehicle_id,
-          unitLabel: meta?.label ?? "Unit",
-          severity,
-          summary: sr.summary ?? sr.title ?? "",
-          createdAt: sr.created_at,
-          status,
-        };
-      });
+      let status: FleetIssue["status"] = "open";
+      if (sr.status === "scheduled") status = "scheduled";
+      if (sr.status === "completed") status = "completed";
 
-    // Build assignments
-    const assignments: DispatchAssignment[] = dispatchTyped.map((row) => {
-      const meta = vehicleMeta.get(row.vehicle_id);
-      const state: DispatchAssignment["state"] =
-        row.state === "completed"
-          ? "in_shop"
-          : (row.state as DispatchAssignment["state"]);
+      return {
+        id: sr.id,
+        unitId: sr.vehicle_id,
+        unitLabel: meta.label,
+        severity,
+        summary: sr.summary || sr.title,
+        createdAt: sr.created_at,
+        status,
+      };
+    });
+
+    // -----------------------------------------------------------------------
+    // 6) Build assignments payload
+    // -----------------------------------------------------------------------
+    const assignments: DispatchAssignment[] = dispatchRows.map((row) => {
+      const meta = vehicleMeta.get(row.vehicle_id) ?? {
+        label: "Unit",
+        plate: null,
+        vin: null,
+      };
+
+      // Normalize DB state -> UI state union
+      let uiState: DispatchAssignment["state"];
+      if (row.state === "completed") {
+        uiState = "in_shop";
+      } else if (
+        row.state === "pretrip_due" ||
+        row.state === "en_route" ||
+        row.state === "in_shop"
+      ) {
+        uiState = row.state;
+      } else {
+        // Fallback for any unexpected value
+        uiState = "pretrip_due";
+      }
 
       return {
         id: row.id,
         driverName: row.driver_name ?? "Unassigned",
         driverId: row.driver_profile_id,
-        unitLabel: row.unit_label ?? meta?.label ?? "Unit",
+        unitLabel: row.unit_label || meta.label,
         unitId: row.vehicle_id,
         routeLabel: row.route_label,
         nextPreTripDue: row.next_pretrip_due,
-        state,
+        state: uiState,
       };
     });
 
