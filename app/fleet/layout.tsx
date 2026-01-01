@@ -13,13 +13,9 @@ export const revalidate = 0;
 export default function FleetLayout({ children }: Props) {
   return (
     <AppShell>
-      {/* Shared fleet chrome */}
       <div className="px-4 py-6 text-white">
         <div className="mx-auto w-full max-w-6xl">
-          {/* Fleet-level tab bar (Tower / Units / Pre-trip / Requests / Dispatch) */}
           <FleetTabs />
-
-          {/* Page content goes here */}
           <div className="mt-4">{children}</div>
         </div>
       </div>
