@@ -218,7 +218,7 @@ export default function PortalHomePage() {
       </div>
 
       {/* Primary actions */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Link
           href="/portal/request/when"
           className="rounded-2xl border border-white/12 bg-black/25 p-4 text-sm font-semibold text-neutral-100 backdrop-blur-md shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition hover:bg-black/35"
@@ -244,19 +244,48 @@ export default function PortalHomePage() {
             Add VIN, plate, mileage, and details.
           </div>
         </Link>
+
+        <Link
+          href="/portal/fleet"
+          className="rounded-2xl border border-white/12 bg-black/25 p-4 text-sm font-semibold text-neutral-100 backdrop-blur-md shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition hover:bg-black/35"
+        >
+          <div className="flex items-center justify-between">
+            <span>Fleet portal</span>
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
+          </div>
+          <div className="mt-1 text-xs font-normal text-neutral-400">
+            Pre-trips, service requests, assignments.
+          </div>
+        </Link>
       </div>
 
-      {/* Recent activity + deep links to new pages */}
+      {/* Recent activity + deep links */}
       <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-neutral-50">Recent activity</h2>
-          <Link
-            href="/portal/customer-appointments"
-            className="text-xs text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
-            style={{ textDecorationColor: "rgba(197,122,74,0.65)" }}
-          >
-            View appointments
-          </Link>
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <Link
+              href="/portal/customer-appointments"
+              className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
+              style={{ textDecorationColor: "rgba(197,122,74,0.65)" }}
+            >
+              View appointments
+            </Link>
+            <Link
+              href="/portal/fleet/service-requests"
+              className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
+              style={{ textDecorationColor: "rgba(197,122,74,0.65)" }}
+            >
+              Fleet service
+            </Link>
+            <Link
+              href="/portal/fleet/pretrip-history"
+              className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
+              style={{ textDecorationColor: "rgba(197,122,74,0.65)" }}
+            >
+              Pre-trip history
+            </Link>
+          </div>
         </div>
 
         <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-black/20 p-3 text-sm text-neutral-400">
