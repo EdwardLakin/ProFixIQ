@@ -1,7 +1,8 @@
-// app/portal/fleet/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import FleetShell from "./FleetShell";
+
+import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -28,8 +29,13 @@ type ProfileWithShop = ProfileRow & {
   shop_name?: string | null;
 };
 
+const COPPER = "#C57A4A";
+const CARD =
+  "rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md " +
+  "shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]";
+
 export default function FleetPortalPage() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [loading, setLoading] = useState(true);
   const [fleetName, setFleetName] = useState<string | null>(null);
@@ -54,16 +60,15 @@ export default function FleetPortalPage() {
           return;
         }
 
-        // 🔹 Load profile + shop
+        // Profile + shop
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select(
-            "id, full_name, shop_id, shop_name, shops(name)",
-          )
+          .select("id, full_name, shop_id, shop_name, shops(name)")
           .eq("id", session.user.id)
           .maybeSingle<ProfileWithShop>();
 
         if (profileError || !profile?.shop_id) {
+          // eslint-disable-next-line no-console
           console.error(
             "Unable to resolve fleet portal profile/shop",
             profileError,
@@ -76,7 +81,6 @@ export default function FleetPortalPage() {
 
         const resolvedFleetName =
           profile.shops?.name || profile.shop_name || "Fleet";
-
         const resolvedContactName = profile.full_name ?? null;
 
         setFleetName(resolvedFleetName);
@@ -84,11 +88,8 @@ export default function FleetPortalPage() {
 
         const shopId = profile.shop_id;
 
-        // 🔹 Dispatch assignments for this shop
-        const {
-          data: assignmentRows,
-          error: assignmentError,
-        } = await supabase
+        // Dispatch assignments
+        const { data: assignmentRows, error: assignmentError } = await supabase
           .from("fleet_dispatch_assignments")
           .select(
             "id, shop_id, driver_profile_id, driver_name, unit_label, vehicle_identifier, vehicle_id, route_label, next_pretrip_due, state",
@@ -98,16 +99,14 @@ export default function FleetPortalPage() {
           .returns<FleetDispatchAssignmentRow[]>();
 
         if (assignmentError) {
+          // eslint-disable-next-line no-console
           console.error("Failed to load fleet assignments", assignmentError);
         }
 
         const mappedAssignments: DispatchAssignment[] = (assignmentRows ?? []).map(
           (row) => ({
             id: row.id,
-            driverName:
-              row.driver_name ||
-              resolvedContactName ||
-              "Assigned driver",
+            driverName: row.driver_name || resolvedContactName || "Assigned driver",
             driverId: row.driver_profile_id,
             unitLabel:
               row.unit_label ||
@@ -116,14 +115,13 @@ export default function FleetPortalPage() {
             unitId: row.vehicle_id,
             routeLabel: row.route_label,
             nextPreTripDue: row.next_pretrip_due,
-            state:
-              (row.state as DispatchAssignment["state"]) || "pretrip_due",
+            state: (row.state as DispatchAssignment["state"]) || "pretrip_due",
           }),
         );
 
-        // Derive a simple unit list for header count
+        // Units derived from assignments (portal view)
         const unitMap = new Map<string, FleetUnit>();
-        mappedAssignments.forEach((a) => {
+        for (const a of mappedAssignments) {
           if (!unitMap.has(a.unitId)) {
             unitMap.set(a.unitId, {
               id: a.unitId,
@@ -134,13 +132,10 @@ export default function FleetPortalPage() {
               nextInspectionDate: null,
             });
           }
-        });
+        }
 
-        // 🔹 Service requests → issues snapshot
-        const {
-          data: requestRows,
-          error: requestError,
-        } = await supabase
+        // Service requests snapshot
+        const { data: requestRows, error: requestError } = await supabase
           .from("fleet_service_requests")
           .select(
             "id, shop_id, vehicle_id, title, summary, severity, status, created_at",
@@ -150,18 +145,14 @@ export default function FleetPortalPage() {
           .returns<FleetServiceRequestRow[]>();
 
         if (requestError) {
-          console.error(
-            "Failed to load fleet service requests",
-            requestError,
-          );
+          // eslint-disable-next-line no-console
+          console.error("Failed to load fleet service requests", requestError);
         }
 
         const mappedIssues: FleetIssue[] = (requestRows ?? []).map((r) => {
           const unitLabel =
-            unitMap.get(r.vehicle_id)?.label ||
-            `Unit ${r.vehicle_id.slice(0, 8)}`;
+            unitMap.get(r.vehicle_id)?.label || `Unit ${r.vehicle_id.slice(0, 8)}`;
 
-          // Map cancelled → completed for simpler wording in the portal
           const status: FleetIssue["status"] =
             r.status === "cancelled"
               ? "completed"
@@ -184,6 +175,7 @@ export default function FleetPortalPage() {
           setUnits(Array.from(unitMap.values()));
         }
       } catch (e: unknown) {
+        // eslint-disable-next-line no-console
         console.error("Fleet portal load error", e);
       } finally {
         if (!cancelled) setLoading(false);
@@ -196,20 +188,47 @@ export default function FleetPortalPage() {
   }, [supabase]);
 
   return (
-    <main className="relative min-h-[calc(100vh-3rem)] bg-black text-white">
-      <Container className="py-6">
-        {loading ? (
-          <div className="text-sm text-neutral-400">Loading fleet portal…</div>
-        ) : (
-          <FleetPortalDashboard
-            fleetName={fleetName ?? undefined}
-            contactName={contactName ?? undefined}
-            units={units ?? undefined}
-            assignments={assignments ?? undefined}
-            issues={issues ?? undefined}
-          />
-        )}
-      </Container>
-    </main>
+    <FleetShell>
+      <main className="relative min-h-[calc(100vh-3rem)] bg-black text-white">
+        {/* same copper wash vibe as /portal */}
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),#020617_78%)]"
+        />
+
+        <Container className="py-6">
+          <div className="space-y-5">
+            <div className={CARD}>
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
+                Fleet portal
+              </div>
+              <div
+                className="mt-2 text-2xl font-blackops"
+                style={{ color: COPPER }}
+              >
+                {fleetName ?? "Fleet"}
+              </div>
+              <div className="mt-1 text-xs text-neutral-500">
+                {contactName ? `Signed in as ${contactName}` : " "}
+              </div>
+            </div>
+
+            {loading ? (
+              <div className={CARD + " text-sm text-neutral-400"}>
+                Loading fleet portal…
+              </div>
+            ) : (
+              <FleetPortalDashboard
+                fleetName={fleetName ?? undefined}
+                contactName={contactName ?? undefined}
+                units={units ?? undefined}
+                assignments={assignments ?? undefined}
+                issues={issues ?? undefined}
+              />
+            )}
+          </div>
+        </Container>
+      </main>
+    </FleetShell>
   );
 }

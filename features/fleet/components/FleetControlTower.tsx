@@ -51,11 +51,28 @@ type TowerPayload = {
   assignments: DispatchAssignment[];
 };
 
+type FocusFilter = "all" | "inspection_due_30";
+
+function isDueInNextDays(nextInspectionDate?: string | null, days = 30) {
+  if (!nextInspectionDate) return false;
+
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const next = new Date(nextInspectionDate);
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const diffDays = Math.floor((next.getTime() - startOfToday.getTime()) / msPerDay);
+
+  return diffDays >= 0 && diffDays <= days;
+}
+
 export default function FleetControlTower({ shopName, shopId }: Props) {
   const [data, setData] = useState<TowerPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [regionFilter, setRegionFilter] = useState<string | "all">("all");
+  const [focusFilter, setFocusFilter] = useState<FocusFilter>("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -75,8 +92,7 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
           const body = await res.json().catch(() => ({}));
           if (!cancelled) {
             setError(
-              (body && body.error) ||
-                "Failed to load fleet data for this shop.",
+              (body && body.error) || "Failed to load fleet data for this shop.",
             );
           }
           return;
@@ -118,9 +134,22 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
   }, [units]);
 
   const filteredUnits = useMemo(() => {
-    if (regionFilter === "all") return units;
-    return units.filter((u) => (u.location ?? "") === regionFilter);
-  }, [units, regionFilter]);
+    let list = units;
+
+    if (regionFilter !== "all") {
+      list = list.filter((u) => (u.location ?? "") === regionFilter);
+    }
+
+    if (focusFilter === "inspection_due_30") {
+      list = list.filter((u) => isDueInNextDays(u.nextInspectionDate, 30));
+    }
+
+    return list;
+  }, [units, regionFilter, focusFilter]);
+
+  const handleInspectionWindowClick = () => {
+    setFocusFilter((prev) => (prev === "inspection_due_30" ? "all" : "inspection_due_30"));
+  };
 
   return (
     <section className="space-y-6">
@@ -141,6 +170,19 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
             service requests across the fleet. Dispatch, portal, and drivers
             stay in sync from one screen.
           </p>
+
+          {focusFilter === "inspection_due_30" && (
+            <p className="mt-2 text-[11px] text-neutral-400">
+              Filter: <span className="text-neutral-200">Inspections due in next 30 days</span>{" "}
+              <button
+                type="button"
+                onClick={() => setFocusFilter("all")}
+                className="ml-2 underline decoration-neutral-600 underline-offset-2 hover:text-neutral-200"
+              >
+                Clear
+              </button>
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -190,6 +232,8 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
             units={filteredUnits}
             issues={issues}
             assignments={assignments}
+            onClickInspectionWindow={handleInspectionWindowClick}
+            inspectionWindowActive={focusFilter === "inspection_due_30"}
           />
 
           {/* Issues + dispatch tables */}

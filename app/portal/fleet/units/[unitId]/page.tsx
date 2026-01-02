@@ -1,13 +1,16 @@
 "use client";
 
+import FleetShell from "app/portal/fleet/FleetShell";
+
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { FleetUnitListItem } from "app/api/fleet/units/route";
 
-const card =
-  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-  "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+const COPPER = "#C57A4A";
+const CARD =
+  "rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md " +
+  "shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]";
 
 export default function PortalFleetUnitPage() {
   const params = useParams<{ unitId: string }>();
@@ -37,8 +40,7 @@ export default function PortalFleetUnitPage() {
           const body = await res.json().catch(() => ({}));
           if (!cancelled) {
             setError(
-              (body && (body.error as string)) ||
-                "Failed to load unit details.",
+              (body && (body.error as string)) || "Failed to load unit details.",
             );
           }
           return;
@@ -48,9 +50,7 @@ export default function PortalFleetUnitPage() {
         const found = body.units.find((u) => u.id === unitId) ?? null;
 
         if (!cancelled) {
-          if (!found) {
-            setError("Unit not found or not assigned to this fleet.");
-          }
+          if (!found) setError("Unit not found or not assigned to this fleet.");
           setUnit(found);
         }
       } catch (err) {
@@ -70,125 +70,114 @@ export default function PortalFleetUnitPage() {
   const title = unit?.label ?? "Fleet unit";
 
   return (
-    <div className="px-4 py-6 text-white">
-      <div className="mx-auto w-full max-w-3xl space-y-5">
-        {/* Copper wash */}
+    <FleetShell>
+      <div className="px-4 py-6 text-white">
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),#020617_78%)]"
         />
 
-        {/* Header */}
-        <div
-          className={
-            card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
-          }
-        >
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),transparent_65%)]"
-          />
-          <div className="relative flex flex-col gap-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
-              Fleet Portal
+        <div className="mx-auto w-full max-w-3xl space-y-5">
+          {/* Header */}
+          <div className={CARD}>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
+              Fleet portal
             </p>
-            <h1
-              className="text-2xl text-neutral-100 md:text-3xl"
-              style={{ fontFamily: "var(--font-blackops)" }}
-            >
+            <h1 className="mt-2 text-2xl font-blackops" style={{ color: COPPER }}>
               {title}
             </h1>
-            <p className="text-xs text-neutral-400">
-              {driverName}, this is the unit linked to your pre-trips and
-              service requests.
+            <p className="mt-1 text-xs text-neutral-500">
+              {driverName}, this unit is linked to your assignments, pre-trips,
+              and service requests.
             </p>
           </div>
-        </div>
 
-        {/* Content */}
-        <div className={card + " px-4 py-4 md:px-6 md:py-5"}>
-          {error && (
-            <div className="rounded-xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
-              {error}
-            </div>
-          )}
+          {/* Content */}
+          <div className={CARD}>
+            {error && (
+              <div className="mb-3 rounded-xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
+                {error}
+              </div>
+            )}
 
-          {loading && !error && (
-            <div className="text-sm text-neutral-300">
-              Loading unit information…
-            </div>
-          )}
+            {loading && !error && (
+              <div className="text-sm text-neutral-300">
+                Loading unit information…
+              </div>
+            )}
 
-          {!loading && !error && unit && (
-            <div className="space-y-4 text-sm">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                    Unit
-                  </div>
-                  <div className="mt-1 text-neutral-100">{unit.label}</div>
+            {!loading && !error && unit && (
+              <div className="space-y-4 text-sm">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <KV label="Unit" value={unit.label} />
+                  <KV label="Plate" value={unit.plate ?? "—"} />
+                  <KV label="VIN" value={unit.vin ?? "—"} />
+                  <KV label="Fleet" value={unit.fleetName ?? "—"} />
+                  <KV
+                    label="Next inspection"
+                    value={
+                      unit.nextInspectionDate
+                        ? new Date(unit.nextInspectionDate).toLocaleDateString()
+                        : "—"
+                    }
+                  />
+                  <KV
+                    label="Status"
+                    value={unit.status?.replace(/_/g, " ") ?? "—"}
+                  />
                 </div>
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                    Plate
-                  </div>
-                  <div className="mt-1 text-neutral-200">
-                    {unit.plate ?? "—"}
-                  </div>
+
+                <div className="mt-2 text-xs text-neutral-500">
+                  Any defects you mark in a pre-trip can be converted into a
+                  service request by the shop.
                 </div>
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                    VIN
-                  </div>
-                  <div className="mt-1 text-neutral-200">
-                    {unit.vin ? unit.vin : "—"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                    Fleet
-                  </div>
-                  <div className="mt-1 text-neutral-200">
-                    {unit.fleetName ?? "—"}
-                  </div>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link
+                    href={
+                      "/portal/fleet/pretrip/" +
+                      encodeURIComponent(unit.id) +
+                      "?driver=" +
+                      encodeURIComponent(driverName)
+                    }
+                    className="rounded-2xl border border-white/12 bg-black/25 px-4 py-2 text-xs font-semibold text-neutral-100 backdrop-blur-md transition hover:bg-black/35"
+                  >
+                    Start pre-trip
+                    <span
+                      className="ml-2 inline-block h-2 w-2 rounded-full"
+                      style={{ backgroundColor: COPPER }}
+                    />
+                  </Link>
+
+                  <Link
+                    href="/portal/fleet"
+                    className="rounded-2xl border border-white/12 bg-black/25 px-4 py-2 text-xs font-semibold text-neutral-100 backdrop-blur-md transition hover:bg-black/35"
+                  >
+                    Back to fleet portal
+                  </Link>
                 </div>
               </div>
+            )}
 
-              <div className="mt-2 text-[11px] text-neutral-500">
-                Any defects or notes you mark in your pre-trips for this unit
-                will be sent straight to the shop as a service request.
+            {!loading && !error && !unit && (
+              <div className="text-sm text-neutral-300">
+                No details available for this unit.
               </div>
-
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Link
-                  href={
-                    "/mobile/fleet/pretrip/" +
-                    encodeURIComponent(unit.id) +
-                    "?driver=" +
-                    encodeURIComponent(driverName)
-                  }
-                  className="rounded-xl bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold text-black shadow-[0_0_18px_rgba(193,102,59,0.6)] hover:opacity-95"
-                >
-                  Start pre-trip
-                </Link>
-
-                <Link
-                  href="/portal/fleet"
-                  className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/70 px-4 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-900/70"
-                >
-                  Back to fleet portal
-                </Link>
-              </div>
-            </div>
-          )}
-
-          {!loading && !error && !unit && (
-            <div className="text-sm text-neutral-300">
-              No details available for this unit.
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
+    </FleetShell>
+  );
+}
+
+function KV({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500">
+        {label}
+      </div>
+      <div className="mt-1 text-neutral-100">{value}</div>
     </div>
   );
 }

@@ -18,6 +18,10 @@ export type FleetUnitListItem = {
   location?: string | null;
 };
 
+type UnitsBody = {
+  shopId?: string | null;
+};
+
 type FleetVehicleRow = DB["public"]["Tables"]["fleet_vehicles"]["Row"];
 type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
@@ -26,17 +30,9 @@ type FleetServiceRequestRow =
 type FleetInspectionScheduleRow =
   DB["public"]["Tables"]["fleet_inspection_schedules"]["Row"];
 
-type FleetVehicleJoinedRow = FleetVehicleRow & {
-  fleets: Pick<FleetRow, "id" | "shop_id" | "name"> | null;
-  vehicles: Pick<
-    VehicleRow,
-    "id" | "unit_number" | "license_plate" | "vin" | "make" | "model" | "year"
-  > | null;
-};
-
 type ServiceRequestSelect = Pick<
   FleetServiceRequestRow,
-  "id" | "vehicle_id" | "severity" | "status"
+  "vehicle_id" | "severity" | "status"
 >;
 
 type InspectionScheduleSelect = Pick<
@@ -44,16 +40,10 @@ type InspectionScheduleSelect = Pick<
   "vehicle_id" | "next_inspection_date"
 >;
 
-type UnitsBody = {
-  shopId?: string | null;
-};
-
-// ───────────────── helpers ─────────────────
-
 async function resolveShopId(
   supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
   explicitShopId: string | null,
-) {
+): Promise<string | null> {
   if (explicitShopId) return explicitShopId;
 
   const {
@@ -61,9 +51,7 @@ async function resolveShopId(
     error: userError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) {
-    return null;
-  }
+  if (userError || !user) return null;
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
@@ -71,19 +59,15 @@ async function resolveShopId(
     .eq("id", user.id)
     .single();
 
-  if (profileError || !profile?.shop_id) {
-    return null;
-  }
+  if (profileError || !profile?.shop_id) return null;
 
   return profile.shop_id;
 }
 
 /**
- * Derive a unit's status from its open / scheduled fleet service requests.
- *
- * Rules:
+ * Status rules:
  * - Any open/scheduled SAFETY or COMPLIANCE request → OOS
- * - Else any open/scheduled request (maintenance / recommend) → LIMITED
+ * - Else any open/scheduled request → LIMITED
  * - Else → IN SERVICE
  */
 function deriveUnitStatus(
@@ -112,14 +96,11 @@ function deriveUnitStatus(
   return "in_service";
 }
 
-// ───────────────── route ─────────────────
-
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
     const body = (await req.json().catch(() => ({}))) as UnitsBody;
-
     const shopId = await resolveShopId(supabase, body.shopId ?? null);
 
     if (!shopId) {
@@ -129,157 +110,156 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1) Base fleet_vehicles + vehicles + fleets
-    const { data: rows, error } = await supabase
-      .from("fleet_vehicles")
-      .select(
-        `
-        vehicle_id,
-        active,
-        nickname,
-        custom_interval_days,
-        fleets!inner (
-          id,
-          shop_id,
-          name
-        ),
-        vehicles!inner (
-          id,
-          unit_number,
-          license_plate,
-          vin,
-          make,
-          model,
-          year
-        )
-      `,
-      )
-      .eq("active", true)
-      .eq("fleets.shop_id", shopId);
+    // 1) Find fleets for this shop (authoritative scoping)
+    const { data: fleets, error: fleetsError } = await supabase
+      .from("fleets")
+      .select("id, shop_id, name")
+      .eq("shop_id", shopId);
 
-    if (error) {
+    if (fleetsError) {
       // eslint-disable-next-line no-console
-      console.error("[fleet/units] fleet_vehicles error", error);
+      console.error("[fleet/units] fleets error", fleetsError);
       return NextResponse.json(
-        { error: "Failed to load fleet units." },
+        { error: "Failed to load fleets." },
         { status: 500 },
       );
     }
 
-    const joinedRows =
-      (rows ?? []) as unknown as FleetVehicleJoinedRow[];
+    const fleetRows = (fleets ?? []) as Pick<FleetRow, "id" | "shop_id" | "name">[];
+    const fleetIds = fleetRows.map((f) => f.id);
 
-    const vehicleIds = joinedRows.map((row) => row.vehicle_id);
-
-    // Short-circuit if no fleet units
-    if (vehicleIds.length === 0) {
+    if (fleetIds.length === 0) {
       return NextResponse.json({ units: [] as FleetUnitListItem[] });
     }
 
-    // 2) Open/scheduled service requests for those units
-    let serviceRequestsByVehicle = new Map<string, ServiceRequestSelect[]>();
+    const fleetsById = new Map<string, { name: string | null }>();
+    for (const f of fleetRows) {
+      fleetsById.set(f.id, { name: f.name ?? null });
+    }
 
-    {
-      const { data: serviceRequests, error: srError } = await supabase
-        .from("fleet_service_requests")
-        .select(
-          `
-          id,
-          vehicle_id,
-          severity,
-          status
-        `,
-        )
-        .eq("shop_id", shopId)
-        .in("vehicle_id", vehicleIds)
-        .neq("status", "cancelled");
+    // 2) Get fleet_vehicles for those fleets.
+    // IMPORTANT: treat active NULL as active (common in seeds) + active true.
+    const { data: fleetVehiclesRaw, error: fvError } = await supabase
+      .from("fleet_vehicles")
+      .select("fleet_id, vehicle_id, active, nickname, custom_interval_days")
+      .in("fleet_id", fleetIds)
+      .or("active.is.null,active.eq.true");
 
-      if (srError) {
-        // eslint-disable-next-line no-console
-        console.error("[fleet/units] service_requests error", srError);
-        return NextResponse.json(
-          { error: "Failed to load fleet units." },
-          { status: 500 },
-        );
-      }
-
-      const typedRequests =
-        (serviceRequests ?? []) as unknown as ServiceRequestSelect[];
-
-      serviceRequestsByVehicle = typedRequests.reduce(
-        (map, sr) => {
-          const arr = map.get(sr.vehicle_id) ?? [];
-          arr.push(sr);
-          map.set(sr.vehicle_id, arr);
-          return map;
-        },
-        new Map<string, ServiceRequestSelect[]>(),
+    if (fvError) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/units] fleet_vehicles error", fvError);
+      return NextResponse.json(
+        { error: "Failed to load fleet vehicles." },
+        { status: 500 },
       );
     }
 
-    // 3) Inspection schedules (CVIP) for those units
-    let inspectionByVehicle = new Map<string, string | null>();
+    const fleetVehicles = (fleetVehiclesRaw ?? []) as Pick<
+      FleetVehicleRow,
+      "fleet_id" | "vehicle_id" | "active" | "nickname" | "custom_interval_days"
+    >[];
 
-    {
-      const { data: schedules, error: scheduleError } = await supabase
-        .from("fleet_inspection_schedules")
-        .select("vehicle_id, next_inspection_date")
-        .eq("shop_id", shopId)
-        .in("vehicle_id", vehicleIds);
+    if (fleetVehicles.length === 0) {
+      return NextResponse.json({ units: [] as FleetUnitListItem[] });
+    }
 
-      if (scheduleError) {
-        // eslint-disable-next-line no-console
-        console.error(
-          "[fleet/units] inspection_schedules error",
-          scheduleError,
-        );
-        return NextResponse.json(
-          { error: "Failed to load fleet inspection schedules." },
-          { status: 500 },
-        );
-      }
+    const vehicleIds = Array.from(
+      new Set(fleetVehicles.map((r) => r.vehicle_id).filter(Boolean)),
+    );
 
-      const typedSchedules =
-        (schedules ?? []) as unknown as InspectionScheduleSelect[];
+    // 3) Load vehicles
+    const { data: vehiclesRaw, error: vError } = await supabase
+      .from("vehicles")
+      .select("id, unit_number, license_plate, vin, make, model, year")
+      .in("id", vehicleIds);
 
-      inspectionByVehicle = typedSchedules.reduce(
-        (map, row) => {
-          map.set(row.vehicle_id, row.next_inspection_date ?? null);
-          return map;
-        },
-        new Map<string, string | null>(),
+    if (vError) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/units] vehicles error", vError);
+      return NextResponse.json(
+        { error: "Failed to load vehicles." },
+        { status: 500 },
       );
     }
 
-    // 4) Build unit list items
-    const units: FleetUnitListItem[] = joinedRows.map((row) => {
-      const fleet = row.fleets;
-      const vehicle = row.vehicles;
+    const vehicles = (vehiclesRaw ?? []) as Pick<
+      VehicleRow,
+      "id" | "unit_number" | "license_plate" | "vin" | "make" | "model" | "year"
+    >[];
+
+    const vehiclesById = new Map<string, typeof vehicles[number]>();
+    for (const v of vehicles) vehiclesById.set(v.id, v);
+
+    // 4) Load service requests (for status)
+    const { data: srsRaw, error: srError } = await supabase
+      .from("fleet_service_requests")
+      .select("vehicle_id, severity, status")
+      .eq("shop_id", shopId)
+      .in("vehicle_id", vehicleIds)
+      .neq("status", "cancelled");
+
+    if (srError) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/units] service_requests error", srError);
+      return NextResponse.json(
+        { error: "Failed to load service requests." },
+        { status: 500 },
+      );
+    }
+
+    const srs = (srsRaw ?? []) as ServiceRequestSelect[];
+    const srsByVehicle = new Map<string, ServiceRequestSelect[]>();
+    for (const sr of srs) {
+      const arr = srsByVehicle.get(sr.vehicle_id) ?? [];
+      arr.push(sr);
+      srsByVehicle.set(sr.vehicle_id, arr);
+    }
+
+    // 5) Load inspection schedules (CVIP)
+    const { data: schedRaw, error: schedError } = await supabase
+      .from("fleet_inspection_schedules")
+      .select("vehicle_id, next_inspection_date")
+      .eq("shop_id", shopId)
+      .in("vehicle_id", vehicleIds);
+
+    if (schedError) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/units] inspection_schedules error", schedError);
+      return NextResponse.json(
+        { error: "Failed to load inspection schedules." },
+        { status: 500 },
+      );
+    }
+
+    const scheds = (schedRaw ?? []) as InspectionScheduleSelect[];
+    const nextByVehicle = new Map<string, string | null>();
+    for (const row of scheds) {
+      nextByVehicle.set(row.vehicle_id, row.next_inspection_date ?? null);
+    }
+
+    // 6) Build units
+    const units: FleetUnitListItem[] = fleetVehicles.map((fv) => {
+      const vehicle = vehiclesById.get(fv.vehicle_id);
+      const fleetName = fleetsById.get(fv.fleet_id)?.name ?? null;
 
       const label =
-        row.nickname ||
+        fv.nickname ||
         vehicle?.unit_number ||
         vehicle?.license_plate ||
         vehicle?.vin ||
         "Unit";
 
-      const requestsForUnit =
-        serviceRequestsByVehicle.get(row.vehicle_id) ?? [];
-
-      const status = deriveUnitStatus(requestsForUnit);
-
-      const nextInspectionDate =
-        inspectionByVehicle.get(row.vehicle_id) ?? null;
+      const status = deriveUnitStatus(srsByVehicle.get(fv.vehicle_id) ?? []);
 
       return {
-        id: row.vehicle_id,
+        id: fv.vehicle_id,
         label,
-        fleetName: fleet?.name ?? null,
+        fleetName,
         plate: vehicle?.license_plate ?? null,
         vin: vehicle?.vin ?? null,
         status,
-        nextInspectionDate,
-        location: null, // TODO: region / yard once stored
+        nextInspectionDate: nextByVehicle.get(fv.vehicle_id) ?? null,
+        location: null,
       };
     });
 

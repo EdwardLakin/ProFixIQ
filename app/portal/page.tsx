@@ -1,10 +1,15 @@
 // app/portal/page.tsx
+// ✅ Gate portal home: fleet users -> /portal/fleet, customers stay here
 "use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+
+// ✅ you added this
+import { resolvePortalMode } from "@/features/portal/lib/resolvePortalMode";
 
 const COPPER = "#C57A4A";
 
@@ -59,7 +64,8 @@ function formatWoRef(
 }
 
 export default function PortalHomePage() {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [, setCustomer] = useState<Customer | null>(null);
@@ -79,6 +85,7 @@ export default function PortalHomePage() {
     (async () => {
       setLoading(true);
 
+      // ✅ 1) resolve auth
       const {
         data: { user },
         error: userErr,
@@ -95,6 +102,17 @@ export default function PortalHomePage() {
         return;
       }
 
+      // ✅ 2) mode gate (fleet users should never render customer home)
+      const mode = await resolvePortalMode(supabase, user.id);
+
+      if (!mounted) return;
+
+      if (mode === "fleet") {
+        router.replace("/portal/fleet");
+        return;
+      }
+
+      // ✅ 3) customer data load continues as before
       const { data: cust, error: custErr } = await supabase
         .from("customers")
         .select("*")
@@ -167,21 +185,28 @@ export default function PortalHomePage() {
     return () => {
       mounted = false;
     };
-  }, [supabase]);
+  }, [supabase, router]);
 
-  const upcomingValue = loading
-    ? "…"
-    : nextBookingAt
-      ? formatWhen(nextBookingAt)
-      : "—";
+  // If we are redirecting, keep a clean loading state (prevents flash)
+  if (loading) {
+    return (
+      <div className="space-y-6 text-white">
+        <div>
+          <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
+            Home
+          </h1>
+          <p className="mt-1 text-sm text-neutral-400">Loading…</p>
+        </div>
+      </div>
+    );
+  }
 
-  const vehiclesValue = loading
-    ? "…"
-    : vehiclesCount == null
-      ? "—"
-      : String(vehiclesCount);
+  const upcomingValue = nextBookingAt ? formatWhen(nextBookingAt) : "—";
 
-  const activeReqValue = loading ? "…" : formatWoRef(activeWo);
+  const vehiclesValue =
+    vehiclesCount == null ? "—" : String(vehiclesCount);
+
+  const activeReqValue = formatWoRef(activeWo);
 
   const hasInvoice =
     !!activeWo &&
@@ -289,9 +314,7 @@ export default function PortalHomePage() {
         </div>
 
         <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-black/20 p-3 text-sm text-neutral-400">
-          {loading ? (
-            "Loading…"
-          ) : hasInvoice && activeWo ? (
+          {hasInvoice && activeWo ? (
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">

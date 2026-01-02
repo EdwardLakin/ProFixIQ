@@ -6,17 +6,23 @@ type Props = {
   units: FleetUnit[];
   issues: FleetIssue[];
   assignments: DispatchAssignment[];
+
+  /** Optional: enables click-through from "Inspections in window" */
+  onClickInspectionWindow?: () => void;
+  inspectionWindowActive?: boolean;
 };
 
 export default function FleetSummaryCards({
   units,
   issues,
   assignments,
+  onClickInspectionWindow,
+  inspectionWindowActive = false,
 }: Props) {
   const oosCount = units.filter((u) => u.status === "oos").length;
   const limitedCount = units.filter((u) => u.status === "limited").length;
 
-  // --- Inspections in 30-day window ---
+  // --- Inspections due in next 30 days ---
   const upcomingInspections = (() => {
     const today = new Date();
     const startOfToday = new Date(
@@ -30,10 +36,10 @@ export default function FleetSummaryCards({
       if (!u.nextInspectionDate) return false;
 
       const next = new Date(u.nextInspectionDate);
-      const diffMs = next.getTime() - startOfToday.getTime();
-      const diffDays = Math.floor(diffMs / msPerDay);
+      const diffDays = Math.floor(
+        (next.getTime() - startOfToday.getTime()) / msPerDay,
+      );
 
-      // Only count units whose CVIP / safety is due in the next 30 days
       return diffDays >= 0 && diffDays <= 30;
     }).length;
   })();
@@ -49,7 +55,7 @@ export default function FleetSummaryCards({
 
   return (
     <div className="grid gap-4 md:grid-cols-4">
-      {/* Units out of service */}
+      {/* Out of service */}
       <div className="metal-card rounded-2xl p-4">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
@@ -57,13 +63,15 @@ export default function FleetSummaryCards({
           </p>
           <span className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)]" />
         </div>
-        <div className="mt-3 text-3xl font-bold text-red-400">{oosCount}</div>
+        <div className="mt-3 text-3xl font-bold text-red-400">
+          {oosCount}
+        </div>
         <p className="mt-1 text-xs text-neutral-400">
           Units not available for dispatch.
         </p>
       </div>
 
-      {/* Limited units */}
+      {/* Limited use */}
       <div className="metal-card rounded-2xl p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
           Limited use
@@ -76,8 +84,16 @@ export default function FleetSummaryCards({
         </p>
       </div>
 
-      {/* Inspections due (30-day window) */}
-      <div className="metal-card rounded-2xl p-4">
+      {/* Inspections in window (clickable) */}
+      <button
+        type="button"
+        onClick={onClickInspectionWindow}
+        disabled={!onClickInspectionWindow}
+        className={`metal-card rounded-2xl p-4 text-left transition
+          ${onClickInspectionWindow ? "hover:ring-2 hover:ring-sky-400/40" : ""}
+          ${inspectionWindowActive ? "ring-2 ring-sky-400/60" : ""}
+        `}
+      >
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
           Inspections in window
         </p>
@@ -87,9 +103,9 @@ export default function FleetSummaryCards({
         <p className="mt-1 text-xs text-neutral-400">
           Units with CVIP / safety due in the next 30 days.
         </p>
-      </div>
+      </button>
 
-      {/* Safety / compliance + pretrip */}
+      {/* Safety & pre-trip */}
       <div className="metal-card rounded-2xl p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
           Safety & pre-trip

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -22,14 +22,68 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/mobile/settings", label: "Me" },
 ];
 
+const PORTAL_ITEMS: NavItem[] = [
+  { href: "/portal", label: "Portal Home" },
+  { href: "/portal/fleet", label: "Fleet Portal" },
+  { href: "/portal/fleet/service-requests", label: "Fleet Service" },
+  { href: "/portal/fleet/pretrip-history", label: "Pre-trip History" },
+];
+
 type Props = {
   open: boolean;
   onClose: () => void;
 };
 
+function isActivePath(pathname: string, href: string) {
+  const isRoot = href === "/mobile" || href === "/portal";
+  if (isRoot) return pathname === href;
+  return pathname.startsWith(href);
+}
+
+function NavSection({
+  title,
+  items,
+  pathname,
+  onClose,
+}: {
+  title: string;
+  items: NavItem[];
+  pathname: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="mb-3">
+      <div className="px-2 pb-2 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+        {title}
+      </div>
+
+      <div className="space-y-1">
+        {items.map((item) => {
+          const active = isActivePath(pathname, item.href);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onClose}
+              className={`metal-card block rounded-xl px-3 py-2 text-sm transition ${
+                active
+                  ? "border-[var(--accent-copper)] text-white"
+                  : "border-[var(--metal-border-soft)] text-neutral-200 hover:border-[var(--accent-copper-light)]"
+              }`}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function MobileBottomNav({ open, onClose }: Props) {
   const pathname = usePathname();
-  const supabase = createClientComponentClient<DB>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -102,29 +156,21 @@ export function MobileBottomNav({ open, onClose }: Props) {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-2 py-3">
-          <div className="space-y-1">
-            {NAV_ITEMS.map((item) => {
-              const isRoot = item.href === "/mobile";
-              const active = isRoot
-                ? pathname === "/mobile"
-                : pathname.startsWith(item.href);
+          <NavSection
+            title="Mobile"
+            items={NAV_ITEMS}
+            pathname={pathname}
+            onClose={onClose}
+          />
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onClose}
-                  className={`metal-card block rounded-xl px-3 py-2 text-sm transition ${
-                    active
-                      ? "border-[var(--accent-copper)] text-white"
-                      : "border-[var(--metal-border-soft)] text-neutral-200 hover:border-[var(--accent-copper-light)]"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
+          <div className="my-3 border-t border-[var(--metal-border-soft)] opacity-70" />
+
+          <NavSection
+            title="Portal"
+            items={PORTAL_ITEMS}
+            pathname={pathname}
+            onClose={onClose}
+          />
         </nav>
 
         {/* Footer */}
