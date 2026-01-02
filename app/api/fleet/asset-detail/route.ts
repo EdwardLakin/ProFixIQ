@@ -2,17 +2,16 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
 type WoRow = DB["public"]["Tables"]["work_orders"]["Row"];
-type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 type FleetServiceRequestRow =
   DB["public"]["Tables"]["fleet_service_requests"]["Row"];
 type FleetVehicleRow = DB["public"]["Tables"]["fleet_vehicles"]["Row"];
 type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
+type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 
 type FleetUnitStatus = "in_service" | "limited" | "oos";
 
@@ -46,15 +45,64 @@ type UnitStats = {
 
 type RequestBody = {
   unitId: string;
+  fleetId?: string | null; // optional for future fleet switching
 };
 
 type ResponseBody = {
   unit: FleetUnit | null;
   issues: FleetIssue[];
   stats: UnitStats;
+  fleetId: string;
 };
 
-// ---- small helpers so we don't fight Supabase types ----
+type Junction = Pick<FleetVehicleRow, "fleet_id" | "vehicle_id" | "nickname" | "active">;
+
+type VehicleMeta = Pick<VehicleRow, "id" | "vin" | "unit_number" | "license_plate">;
+
+async function requireUser(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+) {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) return null;
+  return user;
+}
+
+async function resolveFleetIdForUser(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  explicitFleetId?: string | null,
+): Promise<string | null> {
+  const user = await requireUser(supabase);
+  if (!user) return null;
+
+  if (explicitFleetId) {
+    const { data, error } = await supabase
+      .from("fleet_members")
+      .select("fleet_id")
+      .eq("fleet_id", explicitFleetId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (error || !data?.fleet_id) return null;
+    return data.fleet_id;
+  }
+
+  const { data, error } = await supabase
+    .from("fleet_members")
+    .select("fleet_id")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data?.fleet_id) return null;
+  return data.fleet_id;
+}
+
+// ---- helpers so we don't fight Supabase loose row typing ----
 function getStringField(
   row: Record<string, unknown>,
   key: string,
@@ -68,138 +116,140 @@ function getNumberField(
   key: string,
 ): number | null {
   const value = row[key];
-
-  if (typeof value === "number" && !Number.isNaN(value)) {
-    return value;
-  }
-
+  if (typeof value === "number" && !Number.isNaN(value)) return value;
   if (typeof value === "string") {
     const parsed = Number(value);
     if (!Number.isNaN(parsed)) return parsed;
   }
-
   return null;
+}
+
+function normalizeIssueStatus(st: string | null): FleetIssue["status"] {
+  const s = (st ?? "").toLowerCase();
+  if (s === "scheduled") return "scheduled";
+  if (s === "completed") return "completed";
+  return "open";
 }
 
 export async function POST(req: Request) {
   try {
-    const supabaseUser = createRouteHandlerClient<DB>({ cookies });
-    const supabaseAdmin = createAdminSupabase();
+    const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseUser.auth.getUser();
-
-    if (userErr || !user) {
+    const user = await requireUser(supabase);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = (await req.json().catch(() => null)) as RequestBody | null;
     if (!body?.unitId) {
-      return NextResponse.json(
-        { error: "unitId is required." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "unitId is required." }, { status: 400 });
     }
 
     const unitId = body.unitId;
 
-    // Resolve shop for current user
-    const { data: profile, error: profileErr } = await supabaseAdmin
-      .from("profiles")
-      .select("id, shop_id")
-      .eq("user_id", user.id)
-      .maybeSingle<ProfileRow>();
-
-    if (profileErr || !profile?.shop_id) {
-      // eslint-disable-next-line no-console
-      console.error("[fleet/asset-detail] profile error:", profileErr);
+    // Resolve fleet for this account (membership = source of truth)
+    const fleetId = await resolveFleetIdForUser(supabase, body.fleetId ?? null);
+    if (!fleetId) {
       return NextResponse.json(
-        { error: "Must belong to a shop to view fleet assets." },
-        { status: 400 },
+        { error: "No fleet access for this account." },
+        { status: 403 },
       );
     }
 
-    const shopId = profile.shop_id as string;
+    // Ensure this unit belongs to this fleet (and load nickname)
+    const { data: junctionRaw, error: junctionErr } = await supabase
+      .from("fleet_vehicles")
+      .select("fleet_id, vehicle_id, nickname, active")
+      .eq("fleet_id", fleetId)
+      .eq("vehicle_id", unitId)
+      .maybeSingle();
 
-    // Look up any fleets + fleet_vehicles junction rows for this unit
-    const [
-      { data: fleetsData, error: fleetsErr },
-      { data: fvData, error: fvErr },
-    ] = await Promise.all([
-      supabaseAdmin
-        .from("fleets")
-        .select("id, name, shop_id")
-        .eq("shop_id", shopId),
-      supabaseAdmin
-        .from("fleet_vehicles")
-        .select("*")
-        .eq("vehicle_id", unitId),
-    ]);
-
-    if (fleetsErr) {
+    if (junctionErr) {
       // eslint-disable-next-line no-console
-      console.error("[fleet/asset-detail] fleets error:", fleetsErr);
-    }
-    if (fvErr) {
-      // eslint-disable-next-line no-console
-      console.error("[fleet/asset-detail] fleet_vehicles error:", fvErr);
+      console.error("[fleet/asset-detail] fleet_vehicles error:", junctionErr);
+      return NextResponse.json(
+        { error: "Failed to load unit enrollment." },
+        { status: 500 },
+      );
     }
 
-    const fleets = (fleetsData as FleetRow[] | null) ?? [];
-    const fvRows = (fvData as FleetVehicleRow[] | null) ?? [];
+    const junction = (junctionRaw ?? null) as unknown as Junction | null;
 
-    const junction = fvRows[0] ?? null;
-    const fleetForUnit =
-      (junction && fleets.find((f) => f.id === junction.fleet_id)) ?? null;
+    if (!junction) {
+      return NextResponse.json(
+        { error: "Unit not found in this fleet." },
+        { status: 404 },
+      );
+    }
 
-    // Vehicle record (VIN / plate)
-    const { data: vehicleData, error: vehicleErr } = await supabaseAdmin
+    // Fleet info (name)
+    const { data: fleetRaw, error: fleetErr } = await supabase
+      .from("fleets")
+      .select("id, name")
+      .eq("id", fleetId)
+      .maybeSingle();
+
+    if (fleetErr) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/asset-detail] fleets error:", fleetErr);
+    }
+
+    const fleetRow = (fleetRaw ?? null) as unknown as Pick<FleetRow, "id" | "name"> | null;
+
+    // Vehicle identity (VIN / license_plate / unit_number)
+    // IMPORTANT: your vehicles table uses `license_plate` (NOT `plate`)
+    const { data: vehicleRaw, error: vehicleErr } = await supabase
       .from("vehicles")
-      .select("id, vin, plate")
+      .select("id, vin, unit_number, license_plate")
       .eq("id", unitId)
-      .maybeSingle<{ id: string; vin: string | null; plate: string | null }>();
+      .maybeSingle();
 
     if (vehicleErr) {
       // eslint-disable-next-line no-console
       console.error("[fleet/asset-detail] vehicles error:", vehicleErr);
     }
 
-    // Service requests for this unit to build issues + status
-    const { data: srData, error: srErr } = await supabaseAdmin
+    const vehicleData = (vehicleRaw ?? null) as unknown as VehicleMeta | null;
+
+    // Service requests for this unit (fleet-scoped)
+    const { data: srData, error: srErr } = await supabase
       .from("fleet_service_requests")
       .select("*")
-      .eq("shop_id", shopId)
+      .eq("fleet_id", fleetId)
       .eq("vehicle_id", unitId);
 
     if (srErr) {
       // eslint-disable-next-line no-console
       console.error("[fleet/asset-detail] service requests error:", srErr);
+      return NextResponse.json(
+        { error: "Failed to load service requests." },
+        { status: 500 },
+      );
     }
 
-    const serviceRequests =
-      (srData as FleetServiceRequestRow[] | null) ?? [];
+    const serviceRequests = (srData as FleetServiceRequestRow[] | null) ?? [];
 
-    // Build issues list
+    const unitLabelBase =
+      (junction.nickname as string | null) ??
+      vehicleData?.unit_number ??
+      vehicleData?.license_plate ??
+      vehicleData?.vin ??
+      "Unit";
+
     const issues: FleetIssue[] = serviceRequests.map((r) => ({
       id: r.id,
       unitId,
-      unitLabel:
-        (junction?.nickname as string | null) ??
-        (r.title as string | null) ??
-        "Unit",
-      severity:
-        (r.severity as FleetIssue["severity"] | null) ?? "recommend",
+      unitLabel: unitLabelBase,
+      severity: (r.severity as FleetIssue["severity"] | null) ?? "recommend",
       summary:
         (r.summary as string | null) ??
         (r.title as string | null) ??
         "No summary",
       createdAt: (r.created_at as string) ?? new Date().toISOString(),
-      status: (r.status as FleetIssue["status"] | null) ?? "open",
+      status: normalizeIssueStatus(r.status as string | null),
     }));
 
-    // Derive live status
+    // Derive status
     const hasSafety = issues.some(
       (i) => i.severity === "safety" && i.status !== "completed",
     );
@@ -218,16 +268,15 @@ export async function POST(req: Request) {
     const nextInspectionDate =
       scheduledDates.length > 0 ? scheduledDates.sort()[0] : null;
 
-    // Resolve label & basic identity
-    const plate = (vehicleData?.plate as string | null) ?? null;
-    const vin = (vehicleData?.vin as string | null) ?? null;
-    const nickname = (junction?.nickname as string | null) ?? null;
+    const plate = vehicleData?.license_plate ?? null;
+    const vin = vehicleData?.vin ?? null;
 
     const label =
-      nickname ||
+      (junction.nickname as string | null) ||
+      vehicleData?.unit_number ||
       plate ||
       vin ||
-      ((fleetForUnit?.name as string | null) ?? unitId);
+      (fleetRow?.name ?? unitId);
 
     const unit: FleetUnit = {
       id: unitId,
@@ -241,12 +290,12 @@ export async function POST(req: Request) {
     };
 
     // ===== History & cost snapshot stats =====
+    // NOTE: work_orders are still shop-scoped in your schema.
+    // If fleet members can't read these via RLS, you'll want an RPC.
     const now = new Date();
-
-    const { data: woData, error: woErr } = await supabaseAdmin
+    const { data: woData, error: woErr } = await supabase
       .from("work_orders")
       .select("*")
-      .eq("shop_id", shopId)
       .eq("vehicle_id", unitId);
 
     if (woErr) {
@@ -288,9 +337,7 @@ export async function POST(req: Request) {
         amount = labor + parts;
       }
 
-      if (amount != null) {
-        last12MonthsSpend += amount;
-      }
+      if (amount != null) last12MonthsSpend += amount;
     }
 
     const openApprovals = workOrders.filter((wo) => {
@@ -337,6 +384,7 @@ export async function POST(req: Request) {
       unit,
       issues,
       stats,
+      fleetId,
     };
 
     return NextResponse.json(payload);

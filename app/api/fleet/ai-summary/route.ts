@@ -1,5 +1,7 @@
+// app/api/fleet/ai-summary/route.ts
 import { cookies } from "next/headers";
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -8,70 +10,81 @@ type DB = Database;
 export type SummaryResponse = {
   summary: string;
   lastUpdated: string;
+  fleetId: string;
 };
 
-async function resolveShopId(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
-  explicitShopId: string | null,
-) {
-  if (explicitShopId) return explicitShopId;
+type Body = {
+  fleetId?: string | null;
+};
 
+async function requireUser(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+) {
   const {
     data: { user },
-    error: userError,
+    error,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) {
-    return null;
+  if (error || !user) return null;
+  return user;
+}
+
+async function resolveFleetIdForUser(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  explicitFleetId?: string | null,
+): Promise<string | null> {
+  const user = await requireUser(supabase);
+  if (!user) return null;
+
+  if (explicitFleetId) {
+    const { data, error } = await supabase
+      .from("fleet_members")
+      .select("fleet_id")
+      .eq("fleet_id", explicitFleetId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (error || !data?.fleet_id) return null;
+    return data.fleet_id;
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .single();
+  const { data, error } = await supabase
+    .from("fleet_members")
+    .select("fleet_id")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-  if (profileError || !profile?.shop_id) {
-    return null;
-  }
-
-  return profile.shop_id;
+  if (error || !data?.fleet_id) return null;
+  return data.fleet_id;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    const body = (await req.json().catch(() => ({}))) as {
-      shopId?: string | null;
-    };
+    const body = (await req.json().catch(() => ({}))) as Body;
 
-    const shopId = await resolveShopId(
-      supabase,
-      body.shopId ?? null,
-    );
+    const user = await requireUser(supabase);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    if (!shopId) {
+    const fleetId = await resolveFleetIdForUser(supabase, body.fleetId ?? null);
+    if (!fleetId) {
       return NextResponse.json(
-        { error: "Unable to resolve shop for AI summary." },
-        { status: 400 },
+        { error: "No fleet access for this account." },
+        { status: 403 },
       );
     }
 
-    // Active fleet units for the shop
+    // Active fleet units for the fleet
     const { data: fleetUnits, error: fleetError } = await supabase
       .from("fleet_vehicles")
-      .select(
-        `
-        vehicle_id,
-        active,
-        fleets!inner (
-          shop_id
-        )
-      `,
-      )
-      .eq("active", true)
-      .eq("fleets.shop_id", shopId);
+      .select("vehicle_id, active")
+      .eq("fleet_id", fleetId)
+      .or("active.is.null,active.eq.true");
 
     if (fleetError) {
       return NextResponse.json(
@@ -83,11 +96,11 @@ export async function POST(req: NextRequest) {
     const vehicleIds =
       fleetUnits?.map((fv) => fv.vehicle_id).filter(Boolean) ?? [];
 
-    // Open / scheduled service requests
+    // Open / scheduled service requests (fleet scoped)
     const { data: serviceRequests, error: srError } = await supabase
       .from("fleet_service_requests")
       .select("id, severity, status, vehicle_id")
-      .eq("shop_id", shopId)
+      .eq("fleet_id", fleetId)
       .in("status", ["open", "scheduled"]);
 
     if (srError) {
@@ -102,11 +115,11 @@ export async function POST(req: NextRequest) {
     sevenDaysAgo.setDate(today.getDate() - 7);
     const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
 
-    // Recent pre-trips
+    // Recent pre-trips (fleet scoped)
     const { data: pretrips, error: pretripError } = await supabase
       .from("fleet_pretrip_reports")
       .select("id, has_defects, inspection_date")
-      .eq("shop_id", shopId)
+      .eq("fleet_id", fleetId)
       .gte("inspection_date", sevenDaysAgoStr);
 
     if (pretripError) {
@@ -121,8 +134,7 @@ export async function POST(req: NextRequest) {
     const safetyRequests =
       serviceRequests?.filter((sr) => sr.severity === "safety").length ?? 0;
     const complianceRequests =
-      serviceRequests?.filter((sr) => sr.severity === "compliance").length ??
-      0;
+      serviceRequests?.filter((sr) => sr.severity === "compliance").length ?? 0;
 
     const totalPretrips = pretrips?.length ?? 0;
     const defectPretrips =
@@ -138,7 +150,11 @@ export async function POST(req: NextRequest) {
       lines.push("No open or scheduled fleet service requests right now.");
     } else {
       lines.push(
-        `${openRequests} service request${openRequests === 1 ? " is" : "s are"} open or scheduled, including ${safetyRequests} safety and ${complianceRequests} compliance item${complianceRequests === 1 ? "" : "s"}.`,
+        `${openRequests} service request${
+          openRequests === 1 ? " is" : "s are"
+        } open or scheduled, including ${safetyRequests} safety and ${complianceRequests} compliance item${
+          complianceRequests === 1 ? "" : "s"
+        }.`,
       );
     }
 
@@ -148,7 +164,9 @@ export async function POST(req: NextRequest) {
       );
     } else {
       lines.push(
-        `${totalPretrips} pre-trip report${totalPretrips === 1 ? "" : "s"} logged in the last 7 days; ${defectPretrips} had reported defects.`,
+        `${totalPretrips} pre-trip report${
+          totalPretrips === 1 ? "" : "s"
+        } logged in the last 7 days; ${defectPretrips} had reported defects.`,
       );
     }
 
@@ -157,12 +175,14 @@ export async function POST(req: NextRequest) {
     );
 
     const summary: SummaryResponse = {
+      fleetId,
       summary: lines.join("\n"),
       lastUpdated: new Date().toISOString(),
     };
 
     return NextResponse.json(summary);
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error("[fleet/ai-summary] error", err);
     return NextResponse.json(
       { error: "Failed to generate fleet AI summary." },

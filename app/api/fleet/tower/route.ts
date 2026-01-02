@@ -22,8 +22,17 @@ type DispatchRow = DB["public"]["Tables"]["fleet_dispatch_assignments"]["Row"];
 type FleetInspectionScheduleRow =
   DB["public"]["Tables"]["fleet_inspection_schedules"]["Row"];
 
+/**
+ * NOTE (post-RLS pivot):
+ * - fleet_dispatch_assignments / fleet_service_requests / fleet_pretrip_reports / fleet_inspection_schedules
+ *   are now fleet-scoped via fleet_id (NOT NULL) and membership-based RLS.
+ * - These routes should therefore stop relying on shop_id filtering as the primary authorization path.
+ */
+
 type FleetVehicleJoinedRow = FleetVehicleRow & {
-  fleets: Pick<FleetRow, "shop_id"> | null;
+  // keep this type for backwards compatibility with older joins if you re-add them,
+  // but we no longer rely on fleets.shop_id for auth/scoping
+  fleets?: Pick<FleetRow, "id" | "shop_id" | "name"> | null;
   vehicles: Pick<
     VehicleRow,
     "id" | "unit_number" | "license_plate" | "vin" | "make" | "model" | "year"
@@ -38,6 +47,7 @@ type ServiceRequestSelect = Pick<
 type DispatchSelect = Pick<
   DispatchRow,
   | "id"
+  | "fleet_id"
   | "shop_id"
   | "vehicle_id"
   | "driver_profile_id"
@@ -54,33 +64,65 @@ type InspectionScheduleSelect = Pick<
   "vehicle_id" | "next_inspection_date"
 >;
 
-async function resolveShopId(
-  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
-  explicitShopId: string | null,
-): Promise<string | null> {
-  if (explicitShopId) return explicitShopId;
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth + fleet scoping helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
+async function requireUser(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+) {
   const {
     data: { user },
-    error: userError,
+    error,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) return null;
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .single();
-
-  if (profileError || !profile?.shop_id) return null;
-
-  return profile.shop_id;
+  if (error || !user) return null;
+  return user;
 }
 
-function normalizeSeverity(
-  sev: string | null,
-): FleetIssue["severity"] | null {
+/**
+ * Resolve a fleet_id that the current user is a member of.
+ * - If explicitFleetId is provided, we verify membership.
+ * - Otherwise we pick the earliest membership as a stable default.
+ *
+ * If you later add a fleet switcher in the UI, pass fleetId in body.
+ */
+async function resolveFleetIdForUser(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  explicitFleetId: string | null,
+): Promise<string | null> {
+  const user = await requireUser(supabase);
+  if (!user) return null;
+
+  if (explicitFleetId) {
+    const { data, error } = await supabase
+      .from("fleet_members")
+      .select("fleet_id")
+      .eq("fleet_id", explicitFleetId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (error || !data?.fleet_id) return null;
+    return data.fleet_id;
+  }
+
+  const { data, error } = await supabase
+    .from("fleet_members")
+    .select("fleet_id")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data?.fleet_id) return null;
+  return data.fleet_id;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Normalizers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function normalizeSeverity(sev: string | null): FleetIssue["severity"] | null {
   const s = (sev ?? "").toLowerCase();
   if (s === "safety") return "safety";
   if (s === "compliance") return "compliance";
@@ -88,18 +130,14 @@ function normalizeSeverity(
   return "recommend";
 }
 
-function normalizeIssueStatus(
-  st: string | null,
-): FleetIssue["status"] {
+function normalizeIssueStatus(st: string | null): FleetIssue["status"] {
   const s = (st ?? "").toLowerCase();
   if (s === "scheduled") return "scheduled";
   if (s === "completed") return "completed";
   return "open";
 }
 
-function normalizeDispatchState(
-  st: string | null,
-): DispatchAssignment["state"] {
+function normalizeDispatchState(st: string | null): DispatchAssignment["state"] {
   const s = (st ?? "").toLowerCase();
   if (s === "en_route") return "en_route";
   if (s === "in_shop") return "in_shop";
@@ -107,25 +145,52 @@ function normalizeDispatchState(
   return "pretrip_due";
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Route
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
+    const user = await requireUser(supabase);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await req.json().catch(() => ({}))) as {
+      // New: fleet scoped (membership-based)
+      fleetId?: string | null;
+
+      // Legacy: callers might still send shopId. We ignore it for auth/scoping now.
       shopId?: string | null;
     };
 
-    const shopId = await resolveShopId(supabase, body.shopId ?? null);
+    const fleetId = await resolveFleetIdForUser(supabase, body.fleetId ?? null);
 
-    if (!shopId) {
+    if (!fleetId) {
       return NextResponse.json(
-        { error: "Unable to resolve shop for fleet tower." },
-        { status: 400 },
+        { error: "No fleet access for this account." },
+        { status: 403 },
       );
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // 1) Fleet vehicles (enrolled units) for this shop
+    // 0) Fleet meta (name) – optional, but nice for UI
+    // ────────────────────────────────────────────────────────────────────────
+    const { data: fleetMeta, error: fleetMetaErr } = await supabase
+      .from("fleets")
+      .select("id, name")
+      .eq("id", fleetId)
+      .maybeSingle();
+
+    if (fleetMetaErr) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/tower] fleets meta error", fleetMetaErr);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 1) Fleet vehicles (enrolled units) for this fleet
     // ────────────────────────────────────────────────────────────────────────
     const { data: fleetRowsRaw, error: fleetError } = await supabase
       .from("fleet_vehicles")
@@ -138,9 +203,6 @@ export async function POST(req: NextRequest) {
         custom_interval_km,
         custom_interval_hours,
         custom_interval_days,
-        fleets!inner (
-          shop_id
-        ),
         vehicles!inner (
           id,
           unit_number,
@@ -152,8 +214,9 @@ export async function POST(req: NextRequest) {
         )
       `,
       )
-      .eq("active", true)
-      .eq("fleets.shop_id", shopId);
+      .eq("fleet_id", fleetId)
+      // IMPORTANT: treat active NULL as active (common in seeds) + active true
+      .or("active.is.null,active.eq.true");
 
     if (fleetError) {
       // eslint-disable-next-line no-console
@@ -197,16 +260,13 @@ export async function POST(req: NextRequest) {
 
     // ────────────────────────────────────────────────────────────────────────
     // 2) Dispatch assignments (pre-trip & who’s where)
-    //
-    // IMPORTANT: Do not let enrollment filtering kill dispatch data.
-    // We load by shop_id first; later we union vehicle ids.
     // ────────────────────────────────────────────────────────────────────────
     const { data: dispatchRaw, error: dispatchError } = await supabase
       .from("fleet_dispatch_assignments")
       .select(
-        "id, shop_id, vehicle_id, driver_profile_id, driver_name, route_label, next_pretrip_due, state, unit_label, vehicle_identifier",
+        "id, fleet_id, shop_id, vehicle_id, driver_profile_id, driver_name, route_label, next_pretrip_due, state, unit_label, vehicle_identifier",
       )
-      .eq("shop_id", shopId);
+      .eq("fleet_id", fleetId);
 
     if (dispatchError) {
       // eslint-disable-next-line no-console
@@ -230,65 +290,56 @@ export async function POST(req: NextRequest) {
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // 3) Service requests (issues)
-    //
-    // We try shop-scoped first. If there are no enrolled vehicleIds,
-    // we still show shop issues.
+    // 3) Service requests (issues) – fleet scoped
     // ────────────────────────────────────────────────────────────────────────
-    let serviceRequestsTyped: ServiceRequestSelect[] = [];
+    const { data: serviceRequests, error: srError } = await supabase
+      .from("fleet_service_requests")
+      .select("id, vehicle_id, title, summary, severity, status, created_at")
+      .eq("fleet_id", fleetId)
+      .neq("status", "cancelled");
 
-    {
-      const { data: serviceRequests, error: srError } = await supabase
-        .from("fleet_service_requests")
-        .select("id, vehicle_id, title, summary, severity, status, created_at")
-        .eq("shop_id", shopId)
-        .neq("status", "cancelled");
-
-      if (srError) {
-        // eslint-disable-next-line no-console
-        console.error("[fleet/tower] service_requests error", srError);
-        return NextResponse.json(
-          { error: "Failed to load fleet service requests." },
-          { status: 500 },
-        );
-      }
-
-      serviceRequestsTyped =
-        (serviceRequests ?? []) as unknown as ServiceRequestSelect[];
+    if (srError) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/tower] service_requests error", srError);
+      return NextResponse.json(
+        { error: "Failed to load fleet service requests." },
+        { status: 500 },
+      );
     }
+
+    const serviceRequestsTyped: ServiceRequestSelect[] =
+      (serviceRequests ?? []) as unknown as ServiceRequestSelect[];
 
     for (const sr of serviceRequestsTyped) {
       if (sr.vehicle_id) vehicleIdSet.add(sr.vehicle_id);
       if (sr.vehicle_id && !vehicleMeta.has(sr.vehicle_id)) {
-        vehicleMeta.set(sr.vehicle_id, { label: "Unit", plate: null, vin: null });
+        vehicleMeta.set(sr.vehicle_id, {
+          label: "Unit",
+          plate: null,
+          vin: null,
+        });
       }
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // 4) Inspection schedules (CVIP)
-    //
-    // Query schedules by shop_id. Then we’ll map by vehicle_id.
+    // 4) Inspection schedules (CVIP) – fleet scoped
     // ────────────────────────────────────────────────────────────────────────
-    let scheduleRowsTyped: InspectionScheduleSelect[] = [];
+    const { data: scheduleRows, error: scheduleError } = await supabase
+      .from("fleet_inspection_schedules")
+      .select("vehicle_id, next_inspection_date")
+      .eq("fleet_id", fleetId);
 
-    {
-      const { data: scheduleRows, error: scheduleError } = await supabase
-        .from("fleet_inspection_schedules")
-        .select("vehicle_id, next_inspection_date")
-        .eq("shop_id", shopId);
-
-      if (scheduleError) {
-        // eslint-disable-next-line no-console
-        console.error("[fleet/tower] inspection_schedules error", scheduleError);
-        return NextResponse.json(
-          { error: "Failed to load inspection schedules." },
-          { status: 500 },
-        );
-      }
-
-      scheduleRowsTyped =
-        (scheduleRows ?? []) as unknown as InspectionScheduleSelect[];
+    if (scheduleError) {
+      // eslint-disable-next-line no-console
+      console.error("[fleet/tower] inspection_schedules error", scheduleError);
+      return NextResponse.json(
+        { error: "Failed to load inspection schedules." },
+        { status: 500 },
+      );
     }
+
+    const scheduleRowsTyped: InspectionScheduleSelect[] =
+      (scheduleRows ?? []) as unknown as InspectionScheduleSelect[];
 
     const inspectionByVehicle = new Map<string, string | null>();
     for (const row of scheduleRowsTyped) {
@@ -296,7 +347,11 @@ export async function POST(req: NextRequest) {
       vehicleIdSet.add(row.vehicle_id);
       inspectionByVehicle.set(row.vehicle_id, row.next_inspection_date ?? null);
       if (!vehicleMeta.has(row.vehicle_id)) {
-        vehicleMeta.set(row.vehicle_id, { label: "Unit", plate: null, vin: null });
+        vehicleMeta.set(row.vehicle_id, {
+          label: "Unit",
+          plate: null,
+          vin: null,
+        });
       }
     }
 
@@ -370,9 +425,7 @@ export async function POST(req: NextRequest) {
         vin: null,
       };
 
-      const severity =
-        normalizeSeverity(sr.severity) ?? ("recommend" as const);
-
+      const severity = normalizeSeverity(sr.severity) ?? ("recommend" as const);
       const status = normalizeIssueStatus(sr.status);
 
       return {
@@ -422,6 +475,11 @@ export async function POST(req: NextRequest) {
       });
 
     return NextResponse.json({
+      // helpful for the client if you add fleet switching later
+      fleet: {
+        id: fleetId,
+        name: (fleetMeta as Pick<FleetRow, "name"> | null)?.name ?? null,
+      },
       units,
       issues,
       assignments,

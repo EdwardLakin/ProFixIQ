@@ -1,3 +1,4 @@
+// app/api/fleet/pretrip/convert-to-service/route.ts
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -8,6 +9,8 @@ type DB = Database;
 type FleetPretripReportRow =
   DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+type FleetServiceRequestRow =
+  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
 
 type PretripWithVehicle = FleetPretripReportRow & {
   vehicles: Pick<VehicleRow, "unit_number" | "license_plate" | "vin"> | null;
@@ -26,6 +29,24 @@ type ChecklistPayload = {
   [key: string]: any;
 };
 
+function normalizeSeverity(
+  defectKeys: string[],
+): FleetServiceRequestRow["severity"] {
+  // Pick a dominant severity
+  if (defectKeys.some((k) => k === "brakes" || k === "steering")) {
+    return "safety";
+  }
+  if (
+    defectKeys.some(
+      (k) => k === "suspension" || k === "tires" || k === "lights",
+    )
+  ) {
+    return "compliance";
+  }
+  if (defectKeys.length > 0) return "maintenance";
+  return "recommend";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
@@ -40,13 +61,13 @@ export async function POST(req: NextRequest) {
 
     const pretripId = body.pretripId;
 
-    // Load the pretrip
+    // Load the pretrip (fleet_id is now NOT NULL and authoritative)
     const { data: pretripRow, error: pretripError } = await supabase
       .from("fleet_pretrip_reports")
       .select(
         `
         id,
-        shop_id,
+        fleet_id,
         vehicle_id,
         driver_name,
         has_defects,
@@ -70,7 +91,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Bridge through unknown so TS is happy with the join shape
     const pretrip = pretripRow as unknown as PretripWithVehicle;
 
     // Check if already linked
@@ -114,20 +134,7 @@ export async function POST(req: NextRequest) {
       .filter(([, v]) => v === "defect")
       .map(([k]) => k);
 
-    // Pick a dominant severity
-    let severity: "safety" | "compliance" | "maintenance" | "recommend" =
-      "recommend";
-    if (defectKeys.some((k) => k === "brakes" || k === "steering")) {
-      severity = "safety";
-    } else if (
-      defectKeys.some(
-        (k) => k === "suspension" || k === "tires" || k === "lights",
-      )
-    ) {
-      severity = "compliance";
-    } else if (defectKeys.length > 0) {
-      severity = "maintenance";
-    }
+    const severity = normalizeSeverity(defectKeys);
 
     const title = `Pre-trip defects – ${unitLabel}`;
     const summaryParts: string[] = [];
@@ -150,10 +157,13 @@ export async function POST(req: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
+    // NOTE: created_by_profile_id should be a profile id. If your schema uses
+    // profiles.id = auth.uid(), this is correct. If you have profiles.user_id,
+    // adjust accordingly.
     const { data: inserted, error: insertError } = await supabase
       .from("fleet_service_requests")
       .insert({
-        shop_id: pretrip.shop_id,
+        fleet_id: (pretrip as any).fleet_id, // present in select above
         vehicle_id: pretrip.vehicle_id,
         source_pretrip_id: pretrip.id,
         title,

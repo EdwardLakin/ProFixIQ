@@ -219,9 +219,7 @@ export async function POST(req: NextRequest) {
         null;
 
       // Fallback to derived status if null (for legacy rows)
-      const derivedStatus =
-        row.status ??
-        (row.has_defects ? "open" : "reviewed");
+      const derivedStatus = row.status ?? (row.has_defects ? "open" : "reviewed");
 
       return {
         id: row.id,

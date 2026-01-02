@@ -1,3 +1,4 @@
+// app/api/fleet/service-requests/convert-to-work-order/route.ts
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -23,12 +24,13 @@ export async function POST(req: NextRequest) {
 
     const serviceRequestId = body.serviceRequestId;
 
-    // Load the service request
+    // Load the service request (fleet-scoped row; RLS enforces membership)
     const { data: sr, error: srError } = await supabase
       .from("fleet_service_requests")
       .select(
         `
         id,
+        fleet_id,
         shop_id,
         vehicle_id,
         status,
@@ -55,6 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create a new work order sourced from this service request
+    // NOTE: work_orders are still shop-scoped in your current schema.
     const { data: workOrder, error: woError } = await supabase
       .from("work_orders")
       .insert({
@@ -63,12 +66,12 @@ export async function POST(req: NextRequest) {
         status: "awaiting_approval",
         approval_state: "pending",
         source_fleet_service_request_id: sr.id,
-        // other totals & timestamps will use defaults
       })
       .select("id")
       .single();
 
     if (woError || !workOrder) {
+      // eslint-disable-next-line no-console
       console.error(
         "[service-requests/convert-to-work-order] insert error",
         woError,
@@ -89,11 +92,12 @@ export async function POST(req: NextRequest) {
       .eq("id", sr.id);
 
     if (linkError) {
+      // eslint-disable-next-line no-console
       console.error(
         "[service-requests/convert-to-work-order] link error",
         linkError,
       );
-      // We still return the WO id, but you might want to reconcile manually
+      // still return the WO id
     }
 
     return NextResponse.json({
@@ -101,6 +105,7 @@ export async function POST(req: NextRequest) {
       status: "converted",
     });
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error(
       "[service-requests/convert-to-work-order] unexpected error",
       err,
