@@ -166,6 +166,7 @@ export async function POST(req: NextRequest) {
 
     // -----------------------------------------------------------------------
     // 2) CVIP / inspection schedules (per vehicle) → nextInspectionDate
+    //    (only if we actually have vehicles)
     // -----------------------------------------------------------------------
     let scheduleRowsTyped: InspectionScheduleSelect[] = [];
 
@@ -173,7 +174,7 @@ export async function POST(req: NextRequest) {
       const { data: scheduleRows, error: scheduleError } = await supabase
         .from("fleet_inspection_schedules")
         .select("vehicle_id, next_inspection_date")
-        .eq("shop_id", shopId)
+        // rely on RLS + vehicle_id, don't over-filter by shop_id
         .in("vehicle_id", vehicleIds);
 
       if (scheduleError) {
@@ -272,18 +273,22 @@ export async function POST(req: NextRequest) {
 
       let status: FleetUnit["status"] = "in_service";
 
-      const hasSafety = relatedRequests.some(
-        (sr) => sr.status !== "completed" && sr.severity === "safety",
-      );
+      const hasSafety = relatedRequests.some((sr) => {
+        const st = (sr.status ?? "").toLowerCase();
+        const sev = (sr.severity ?? "").toLowerCase();
+        return (
+          (st === "open" || st === "scheduled") &&
+          (sev === "safety" || sev === "compliance")
+        );
+      });
 
-      const hasComplianceOrMaint = relatedRequests.some(
-        (sr) =>
-          sr.status !== "completed" &&
-          (sr.severity === "compliance" || sr.severity === "maintenance"),
-      );
+      const hasOther = relatedRequests.some((sr) => {
+        const st = (sr.status ?? "").toLowerCase();
+        return st === "open" || st === "scheduled";
+      });
 
       if (hasSafety) status = "oos";
-      else if (hasComplianceOrMaint) status = "limited";
+      else if (hasOther) status = "limited";
 
       const nextInspectionDate = inspectionByVehicle.get(row.vehicle_id) ?? null;
 
@@ -309,14 +314,16 @@ export async function POST(req: NextRequest) {
         vin: null,
       };
 
+      const sevLower = (sr.severity ?? "").toLowerCase();
       let severity: FleetIssue["severity"] = "recommend";
-      if (sr.severity === "safety" || sr.severity === "compliance") {
-        severity = sr.severity;
+      if (sevLower === "safety" || sevLower === "compliance") {
+        severity = sevLower as FleetIssue["severity"];
       }
 
+      const stLower = (sr.status ?? "").toLowerCase();
       let status: FleetIssue["status"] = "open";
-      if (sr.status === "scheduled") status = "scheduled";
-      if (sr.status === "completed") status = "completed";
+      if (stLower === "scheduled") status = "scheduled";
+      if (stLower === "completed") status = "completed";
 
       return {
         id: sr.id,
@@ -339,16 +346,17 @@ export async function POST(req: NextRequest) {
         vin: null,
       };
 
-      // Normalize DB state -> UI state union
+      const stateLower = (row.state ?? "").toLowerCase();
+
       let uiState: DispatchAssignment["state"];
-      if (row.state === "completed") {
+      if (stateLower === "completed") {
         uiState = "in_shop";
       } else if (
-        row.state === "pretrip_due" ||
-        row.state === "en_route" ||
-        row.state === "in_shop"
+        stateLower === "pretrip_due" ||
+        stateLower === "en_route" ||
+        stateLower === "in_shop"
       ) {
-        uiState = row.state;
+        uiState = stateLower as DispatchAssignment["state"];
       } else {
         uiState = "pretrip_due";
       }
