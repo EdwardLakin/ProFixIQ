@@ -18,8 +18,7 @@ type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type FleetServiceRequestRow =
   DB["public"]["Tables"]["fleet_service_requests"]["Row"];
-type DispatchRow =
-  DB["public"]["Tables"]["fleet_dispatch_assignments"]["Row"];
+type DispatchRow = DB["public"]["Tables"]["fleet_dispatch_assignments"]["Row"];
 type FleetInspectionScheduleRow =
   DB["public"]["Tables"]["fleet_inspection_schedules"]["Row"];
 
@@ -66,7 +65,9 @@ async function resolveShopId(
     error: userError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) return null;
+  if (userError || !user) {
+    return null;
+  }
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
@@ -74,7 +75,9 @@ async function resolveShopId(
     .eq("id", user.id)
     .single();
 
-  if (profileError || !profile?.shop_id) return null;
+  if (profileError || !profile?.shop_id) {
+    return null;
+  }
 
   return profile.shop_id;
 }
@@ -96,9 +99,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // -----------------------------------------------------------------------
     // 1) Active fleet vehicles for this shop (joined to fleets + vehicles)
-    // -----------------------------------------------------------------------
     const { data: fleetRowsRaw, error: fleetError } = await supabase
       .from("fleet_vehicles")
       .select(
@@ -164,18 +165,22 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // -----------------------------------------------------------------------
-    // 2) CVIP / inspection schedules (per vehicle) → nextInspectionDate
-    //    (only if we actually have vehicles)
-    // -----------------------------------------------------------------------
+    if (vehicleIds.length === 0) {
+      return NextResponse.json({
+        units: [] as FleetUnit[],
+        issues: [] as FleetIssue[],
+        assignments: [] as DispatchAssignment[],
+      });
+    }
+
+    // 2) CVIP / inspection schedules (per vehicle)
     let scheduleRowsTyped: InspectionScheduleSelect[] = [];
 
-    if (vehicleIds.length > 0) {
+    {
       const { data: scheduleRows, error: scheduleError } = await supabase
         .from("fleet_inspection_schedules")
         .select("vehicle_id, next_inspection_date")
-        // rely on RLS + vehicle_id, don't over-filter by shop_id
-        .in("vehicle_id", vehicleIds);
+        .eq("shop_id", shopId);
 
       if (scheduleError) {
         // eslint-disable-next-line no-console
@@ -201,18 +206,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // -----------------------------------------------------------------------
     // 3) Service requests for these vehicles (open/scheduled/completed)
-    // -----------------------------------------------------------------------
     let serviceRequestsTyped: ServiceRequestSelect[] = [];
 
-    if (vehicleIds.length > 0) {
+    {
       const { data: serviceRequests, error: srError } = await supabase
         .from("fleet_service_requests")
         .select(
           "id, vehicle_id, title, summary, severity, status, created_at",
         )
-        .eq("shop_id", shopId)
+        // NOTE: rely on vehicle_ids (which are already scoped to this shop's fleets)
         .in("vehicle_id", vehicleIds)
         .neq("status", "cancelled");
 
@@ -229,17 +232,7 @@ export async function POST(req: NextRequest) {
         (serviceRequests ?? []) as unknown as ServiceRequestSelect[];
     }
 
-    // Group service requests by vehicle for quick lookup
-    const requestsByVehicle = new Map<string, ServiceRequestSelect[]>();
-    for (const sr of serviceRequestsTyped) {
-      const arr = requestsByVehicle.get(sr.vehicle_id) ?? [];
-      arr.push(sr);
-      requestsByVehicle.set(sr.vehicle_id, arr);
-    }
-
-    // -----------------------------------------------------------------------
-    // 4) Dispatch assignments (independent of whether units exist)
-    // -----------------------------------------------------------------------
+    // 4) Dispatch assignments for these vehicles
     const { data: dispatchRaw, error: dispatchError } = await supabase
       .from("fleet_dispatch_assignments")
       .select(
@@ -259,9 +252,15 @@ export async function POST(req: NextRequest) {
     const dispatchRows: DispatchSelect[] =
       (dispatchRaw ?? []) as unknown as DispatchSelect[];
 
-    // -----------------------------------------------------------------------
+    // Group service requests by vehicle for quick lookup
+    const requestsByVehicle = new Map<string, ServiceRequestSelect[]>();
+    for (const sr of serviceRequestsTyped) {
+      const arr = requestsByVehicle.get(sr.vehicle_id) ?? [];
+      arr.push(sr);
+      requestsByVehicle.set(sr.vehicle_id, arr);
+    }
+
     // 5) Build units payload (status + nextInspectionDate)
-    // -----------------------------------------------------------------------
     const units: FleetUnit[] = fleetRows.map((row) => {
       const meta = vehicleMeta.get(row.vehicle_id) ?? {
         label: "Unit",
@@ -273,22 +272,18 @@ export async function POST(req: NextRequest) {
 
       let status: FleetUnit["status"] = "in_service";
 
-      const hasSafety = relatedRequests.some((sr) => {
-        const st = (sr.status ?? "").toLowerCase();
-        const sev = (sr.severity ?? "").toLowerCase();
-        return (
-          (st === "open" || st === "scheduled") &&
-          (sev === "safety" || sev === "compliance")
-        );
-      });
+      const hasSafety = relatedRequests.some(
+        (sr) => sr.status !== "completed" && sr.severity === "safety",
+      );
 
-      const hasOther = relatedRequests.some((sr) => {
-        const st = (sr.status ?? "").toLowerCase();
-        return st === "open" || st === "scheduled";
-      });
+      const hasComplianceOrMaint = relatedRequests.some(
+        (sr) =>
+          sr.status !== "completed" &&
+          (sr.severity === "compliance" || sr.severity === "maintenance"),
+      );
 
       if (hasSafety) status = "oos";
-      else if (hasOther) status = "limited";
+      else if (hasComplianceOrMaint) status = "limited";
 
       const nextInspectionDate = inspectionByVehicle.get(row.vehicle_id) ?? null;
 
@@ -304,9 +299,7 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // -----------------------------------------------------------------------
     // 6) Build issues payload
-    // -----------------------------------------------------------------------
     const issues: FleetIssue[] = serviceRequestsTyped.map((sr) => {
       const meta = vehicleMeta.get(sr.vehicle_id) ?? {
         label: "Unit",
@@ -314,16 +307,14 @@ export async function POST(req: NextRequest) {
         vin: null,
       };
 
-      const sevLower = (sr.severity ?? "").toLowerCase();
       let severity: FleetIssue["severity"] = "recommend";
-      if (sevLower === "safety" || sevLower === "compliance") {
-        severity = sevLower as FleetIssue["severity"];
+      if (sr.severity === "safety" || sr.severity === "compliance") {
+        severity = sr.severity;
       }
 
-      const stLower = (sr.status ?? "").toLowerCase();
       let status: FleetIssue["status"] = "open";
-      if (stLower === "scheduled") status = "scheduled";
-      if (stLower === "completed") status = "completed";
+      if (sr.status === "scheduled") status = "scheduled";
+      if (sr.status === "completed") status = "completed";
 
       return {
         id: sr.id,
@@ -336,9 +327,7 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // -----------------------------------------------------------------------
     // 7) Build assignments payload
-    // -----------------------------------------------------------------------
     const assignments: DispatchAssignment[] = dispatchRows.map((row) => {
       const meta = vehicleMeta.get(row.vehicle_id) ?? {
         label: "Unit",
@@ -346,17 +335,15 @@ export async function POST(req: NextRequest) {
         vin: null,
       };
 
-      const stateLower = (row.state ?? "").toLowerCase();
-
       let uiState: DispatchAssignment["state"];
-      if (stateLower === "completed") {
+      if (row.state === "completed") {
         uiState = "in_shop";
       } else if (
-        stateLower === "pretrip_due" ||
-        stateLower === "en_route" ||
-        stateLower === "in_shop"
+        row.state === "pretrip_due" ||
+        row.state === "en_route" ||
+        row.state === "in_shop"
       ) {
-        uiState = stateLower as DispatchAssignment["state"];
+        uiState = row.state;
       } else {
         uiState = "pretrip_due";
       }
