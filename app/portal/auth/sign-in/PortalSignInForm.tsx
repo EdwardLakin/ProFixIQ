@@ -1,19 +1,40 @@
 // app/portal/auth/sign-in/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+
+// ✅ you said you added this already
+import {
+  resolvePortalMode,
+  type PortalMode,
+} from "@/features/portal/lib/resolvePortalMode";
 
 const COPPER = "#C57A4A";
 
 type PortalType = "customer" | "fleet";
 
+function safeRedirectPath(v: string | null): string | null {
+  // only allow internal redirects
+  if (!v) return null;
+  if (!v.startsWith("/")) return null;
+  if (v.startsWith("//")) return null;
+  return v;
+}
+
+function isAllowedRedirectForMode(path: string, mode: PortalMode) {
+  if (mode === "fleet") return path.startsWith("/portal/fleet");
+  // customer portal: allow /portal/* BUT NOT /portal/fleet/*
+  return path.startsWith("/portal") && !path.startsWith("/portal/fleet");
+}
+
 export default function PortalSignInPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient<Database>();
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [portalType, setPortalType] = useState<PortalType>("customer");
   const [email, setEmail] = useState<string>("");
@@ -23,17 +44,11 @@ export default function PortalSignInPage() {
 
   // Detect ?portal=fleet or ?portal=customer to pre-select mode
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const url = new URL(window.location.href);
-      const portalParam = url.searchParams.get("portal");
-      if (portalParam === "fleet" || portalParam === "customer") {
-        setPortalType(portalParam);
-      }
-    } catch {
-      // ignore
+    const portalParam = searchParams.get("portal");
+    if (portalParam === "fleet" || portalParam === "customer") {
+      setPortalType(portalParam);
     }
-  }, []);
+  }, [searchParams]);
 
   const goLanding = () => {
     const href = "/";
@@ -47,6 +62,8 @@ export default function PortalSignInPage() {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setLoading(true);
     setError("");
 
@@ -61,16 +78,44 @@ export default function PortalSignInPage() {
       return;
     }
 
-    // 🔀 Route based on selected portal type
-    if (portalType === "fleet") {
-      router.replace("/portal/fleet");
-    } else {
-      router.replace("/portal");
+    // ✅ Determine actual portal mode for this account (source of truth = DB)
+    let mode: PortalMode = "customer";
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) throw new Error("No authenticated user after sign-in");
+
+      mode = await resolvePortalMode(supabase, user.id);
+    } catch {
+      mode = "customer";
     }
+
+    // If user selected Fleet but their account isn't fleet-enabled, block + sign out
+    if (portalType === "fleet" && mode !== "fleet") {
+      await supabase.auth.signOut().catch(() => null);
+      setError(
+        "This account doesn't have Fleet Portal access. Switch to Customer, or contact your shop/dispatch to enable fleet access.",
+      );
+      setLoading(false);
+      return;
+    }
+
+    // Respect middleware redirect param if it matches the resolved mode
+    const redirectParam = safeRedirectPath(searchParams.get("redirect"));
+    const fallback = mode === "fleet" ? "/portal/fleet" : "/portal";
+
+    const to =
+      redirectParam && isAllowedRedirectForMode(redirectParam, mode)
+        ? redirectParam
+        : fallback;
+
+    router.replace(to);
   };
 
-  const portalLabel =
-    portalType === "fleet" ? "Fleet Portal" : "Customer Portal";
+  const portalLabel = portalType === "fleet" ? "Fleet Portal" : "Customer Portal";
 
   const helperCopy =
     portalType === "fleet"
@@ -170,9 +215,7 @@ export default function PortalSignInPage() {
               Sign in
             </h1>
 
-            <p className="text-xs text-muted-foreground sm:text-sm">
-              {helperCopy}
-            </p>
+            <p className="text-xs text-muted-foreground sm:text-sm">{helperCopy}</p>
           </div>
 
           {/* Error */}
@@ -263,8 +306,8 @@ export default function PortalSignInPage() {
               </>
             ) : (
               <p className="text-[11px] text-neutral-400">
-                Fleet logins are created by your shop or dispatch. If you need
-                access, contact your shop administrator.
+                Fleet logins are created by your shop or dispatch. If you need access,
+                contact your shop administrator.
               </p>
             )}
           </div>

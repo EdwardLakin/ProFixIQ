@@ -1637,6 +1637,7 @@ export type Database = {
           created_at: string
           driver_name: string | null
           driver_profile_id: string
+          fleet_id: string
           id: string
           next_pretrip_due: string | null
           route_label: string | null
@@ -1651,6 +1652,7 @@ export type Database = {
           created_at?: string
           driver_name?: string | null
           driver_profile_id: string
+          fleet_id: string
           id?: string
           next_pretrip_due?: string | null
           route_label?: string | null
@@ -1665,6 +1667,7 @@ export type Database = {
           created_at?: string
           driver_name?: string | null
           driver_profile_id?: string
+          fleet_id?: string
           id?: string
           next_pretrip_due?: string | null
           route_label?: string | null
@@ -1681,6 +1684,13 @@ export type Database = {
             columns: ["driver_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_dispatch_assignments_fleet_fk"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
             referencedColumns: ["id"]
           },
           {
@@ -1751,6 +1761,7 @@ export type Database = {
       fleet_inspection_schedules: {
         Row: {
           created_at: string
+          fleet_id: string
           id: string
           interval_days: number
           last_inspection_date: string | null
@@ -1761,6 +1772,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          fleet_id: string
           id?: string
           interval_days?: number
           last_inspection_date?: string | null
@@ -1771,6 +1783,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          fleet_id?: string
           id?: string
           interval_days?: number
           last_inspection_date?: string | null
@@ -1780,6 +1793,13 @@ export type Database = {
           vehicle_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fleet_inspection_schedules_fleet_fk"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fleet_inspection_schedules_shop_id_fkey"
             columns: ["shop_id"]
@@ -1803,12 +1823,55 @@ export type Database = {
           },
         ]
       }
+      fleet_members: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          fleet_id: string
+          role: string
+          shop_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          fleet_id: string
+          role: string
+          shop_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          fleet_id?: string
+          role?: string
+          shop_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_members_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_members_user_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_pretrip_reports: {
         Row: {
           checklist: Json
           created_at: string
           driver_name: string
           driver_profile_id: string | null
+          fleet_id: string
           has_defects: boolean
           id: string
           inspection_date: string
@@ -1824,6 +1887,7 @@ export type Database = {
           created_at?: string
           driver_name: string
           driver_profile_id?: string | null
+          fleet_id: string
           has_defects?: boolean
           id?: string
           inspection_date?: string
@@ -1839,6 +1903,7 @@ export type Database = {
           created_at?: string
           driver_name?: string
           driver_profile_id?: string | null
+          fleet_id?: string
           has_defects?: boolean
           id?: string
           inspection_date?: string
@@ -1855,6 +1920,13 @@ export type Database = {
             columns: ["driver_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_reports_fleet_fk"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
             referencedColumns: ["id"]
           },
           {
@@ -1975,6 +2047,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by_profile_id: string | null
+          fleet_id: string
           id: string
           scheduled_for_date: string | null
           severity: string
@@ -1989,6 +2062,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by_profile_id?: string | null
+          fleet_id: string
           id?: string
           scheduled_for_date?: string | null
           severity: string
@@ -2003,6 +2077,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by_profile_id?: string | null
+          fleet_id?: string
           id?: string
           scheduled_for_date?: string | null
           severity?: string
@@ -2020,6 +2095,13 @@ export type Database = {
             columns: ["created_by_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_requests_fleet_fk"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
             referencedColumns: ["id"]
           },
           {
@@ -8372,7 +8454,83 @@ export type Database = {
           },
         ]
       }
+      v_fleet_inspections_due_14: {
+        Row: {
+          days_until_due: number | null
+          interval_days: number | null
+          last_inspection_date: string | null
+          next_inspection_date: string | null
+          notes: string | null
+          schedule_id: string | null
+          shop_id: string | null
+          shop_name: string | null
+          unit_number: string | null
+          vehicle_id: string | null
+          vin: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_inspection_schedules_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_inspection_schedules_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_inspection_schedules_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: true
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_fleet_inspections_due_30: {
+        Row: {
+          days_until_due: number | null
+          interval_days: number | null
+          last_inspection_date: string | null
+          next_inspection_date: string | null
+          notes: string | null
+          schedule_id: string | null
+          shop_id: string | null
+          shop_name: string | null
+          unit_number: string | null
+          vehicle_id: string | null
+          vin: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_inspection_schedules_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_inspection_schedules_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_inspection_schedules_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: true
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_fleet_inspections_due_7: {
         Row: {
           days_until_due: number | null
           interval_days: number | null
@@ -8872,6 +9030,10 @@ export type Database = {
       recompute_work_order_status: {
         Args: { p_wo: string }
         Returns: undefined
+      }
+      resolve_fleet_id_from_vehicle: {
+        Args: { p_vehicle_id: string }
+        Returns: string
       }
       seed_default_hours: { Args: { shop_id: string }; Returns: undefined }
       send_for_approval: {
