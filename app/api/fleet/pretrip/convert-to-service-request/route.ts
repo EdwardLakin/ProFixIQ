@@ -6,15 +6,12 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+
 type FleetPretripReportRow =
   DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type FleetServiceRequestRow =
   DB["public"]["Tables"]["fleet_service_requests"]["Row"];
-
-type PretripWithVehicle = FleetPretripReportRow & {
-  vehicles: Pick<VehicleRow, "unit_number" | "license_plate" | "vin"> | null;
-};
 
 type ConvertBody = {
   pretripId: string;
@@ -22,17 +19,28 @@ type ConvertBody = {
 
 type DefectState = "ok" | "defect" | "na";
 
+// Allow extra keys without using `any`
 type ChecklistPayload = {
   defects?: Record<string, DefectState>;
-  // allow other keys without caring about their shape
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any;
+} & Record<string, unknown>;
+
+type PretripWithVehicle = Pick<
+  FleetPretripReportRow,
+  | "id"
+  | "fleet_id"
+  | "vehicle_id"
+  | "driver_name"
+  | "has_defects"
+  | "inspection_date"
+  | "checklist"
+  | "notes"
+> & {
+  vehicles: Pick<VehicleRow, "unit_number" | "license_plate" | "vin"> | null;
 };
 
 function normalizeSeverity(
   defectKeys: string[],
 ): FleetServiceRequestRow["severity"] {
-  // Pick a dominant severity
   if (defectKeys.some((k) => k === "brakes" || k === "steering")) {
     return "safety";
   }
@@ -61,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     const pretripId = body.pretripId;
 
-    // Load the pretrip (fleet_id is now NOT NULL and authoritative)
+    // Load the pretrip (fleet_id is authoritative)
     const { data: pretripRow, error: pretripError } = await supabase
       .from("fleet_pretrip_reports")
       .select(
@@ -157,13 +165,11 @@ export async function POST(req: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    // NOTE: created_by_profile_id should be a profile id. If your schema uses
-    // profiles.id = auth.uid(), this is correct. If you have profiles.user_id,
-    // adjust accordingly.
+    // created_by_profile_id should be a profile id; if your schema uses profiles.id = auth.uid(), this is correct.
     const { data: inserted, error: insertError } = await supabase
       .from("fleet_service_requests")
       .insert({
-        fleet_id: (pretrip as any).fleet_id, // present in select above
+        fleet_id: pretrip.fleet_id,
         vehicle_id: pretrip.vehicle_id,
         source_pretrip_id: pretrip.id,
         title,
