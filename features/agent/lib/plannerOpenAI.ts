@@ -217,6 +217,11 @@ export async function runOpenAIPlanner(
 
   const mode = getPlannerMode(context);
 
+  // NEW: default “existing database mode”
+  const allowCreate =
+    get<boolean>(context, "allowCreate") === true ||
+    get<boolean>(context, "allow_create") === true;
+
   // 0) Parse with LLM (best-effort)
   let parsed: ParsedPlan = {};
   try {
@@ -261,89 +266,111 @@ export async function runOpenAIPlanner(
     customerId = customerId ?? found.customerId;
     vehicleId = vehicleId ?? found.vehicleId;
 
-    // 1a) If customer missing, create one (or recover from unique user constraint)
-    if (!customerId) {
-      const name = (customerQuery ?? "").trim() || "Default Customer";
+    // EXISTING-DB MODE: never create customer/vehicle automatically
+    if (!customerId || !vehicleId) {
+      if (!allowCreate) {
+        const whyParts: string[] = [];
+        if (!plateOrVin) whyParts.push("Missing Plate/VIN.");
+        if (!customerQuery) whyParts.push("Missing customer name/query.");
 
-      await onEvent?.({
-        kind: "tool_call",
-        name: "create_customer",
-        input: { name },
-      });
-
-      try {
-        const createdC = await runCreateCustomer({ name }, ctx);
-        customerId = createdC.customerId;
+        const hint = whyParts.length > 0 ? `${whyParts.join(" ")} ` : "";
 
         await onEvent?.({
-          kind: "tool_result",
-          name: "create_customer",
-          output: createdC,
+          kind: "final",
+          text:
+            hint +
+            "Could not resolve an existing customer+vehicle. " +
+            "Please select an existing customer/vehicle (or create them in the UI) and rerun. " +
+            "If you intentionally want auto-creation, rerun with allowCreate=true.",
         });
-      } catch (err) {
-        const msg = toMsg(err);
+        return;
+      }
 
-        if (msg.toLowerCase().includes("customers_user_id_uq")) {
+      // SETUP MODE ONLY (allowCreate=true): permit creation paths below
+      // 1a) If customer missing, create one (or recover from unique user constraint)
+      if (!customerId) {
+        const name = (customerQuery ?? "").trim() || "Default Customer";
+
+        await onEvent?.({
+          kind: "tool_call",
+          name: "create_customer",
+          input: { name },
+        });
+
+        try {
+          const createdC = await runCreateCustomer({ name }, ctx);
+          customerId = createdC.customerId;
+
           await onEvent?.({
             kind: "tool_result",
             name: "create_customer",
-            output: { skipped: true, reason: "customer already exists for user" },
+            output: createdC,
           });
+        } catch (err) {
+          const msg = toMsg(err);
 
-          const retry = await runFindCustomerVehicle(
-            { customerQuery: name, plateOrVin },
-            ctx,
-          );
+          if (msg.toLowerCase().includes("customers_user_id_uq")) {
+            await onEvent?.({
+              kind: "tool_result",
+              name: "create_customer",
+              output: { skipped: true, reason: "customer already exists for user" },
+            });
 
-          await onEvent?.({
-            kind: "tool_result",
-            name: "find_customer_vehicle",
-            output: retry,
-          });
+            const retry = await runFindCustomerVehicle(
+              { customerQuery: name, plateOrVin },
+              ctx,
+            );
 
-          customerId = retry.customerId ?? customerId;
-          vehicleId = retry.vehicleId ?? vehicleId;
-        } else {
-          await onEvent?.({
-            kind: "final",
-            text: `Create customer failed: ${msg}`,
-          });
-          return;
+            await onEvent?.({
+              kind: "tool_result",
+              name: "find_customer_vehicle",
+              output: retry,
+            });
+
+            customerId = retry.customerId ?? customerId;
+            vehicleId = retry.vehicleId ?? vehicleId;
+          } else {
+            await onEvent?.({
+              kind: "final",
+              text: `Create customer failed: ${msg}`,
+            });
+            return;
+          }
         }
       }
-    }
 
-    // 1b) If vehicle missing, create a MINIMAL vehicle record if we have plate/VIN
-    if (!vehicleId && customerId && plateOrVin) {
-      const vehicleInput = {
-        customerId,
-        vin: plateOrVin.length > 10 ? plateOrVin : undefined,
-        license_plate: plateOrVin.length <= 10 ? plateOrVin : undefined,
-      };
+      // 1b) If vehicle missing, create a MINIMAL vehicle record if we have plate/VIN
+      if (!vehicleId && customerId && plateOrVin) {
+        const vehicleInput = {
+          customerId,
+          vin: plateOrVin.length > 10 ? plateOrVin : undefined,
+          license_plate: plateOrVin.length <= 10 ? plateOrVin : undefined,
+        };
 
-      await onEvent?.({
-        kind: "tool_call",
-        name: "create_vehicle",
-        input: vehicleInput,
-      });
+        await onEvent?.({
+          kind: "tool_call",
+          name: "create_vehicle",
+          input: vehicleInput,
+        });
 
-      const createdV = await runCreateVehicle(vehicleInput, ctx);
-      vehicleId = createdV.vehicleId;
+        const createdV = await runCreateVehicle(vehicleInput, ctx);
+        vehicleId = createdV.vehicleId;
 
-      await onEvent?.({
-        kind: "tool_result",
-        name: "create_vehicle",
-        output: createdV,
-      });
-    }
+        await onEvent?.({
+          kind: "tool_result",
+          name: "create_vehicle",
+          output: createdV,
+        });
+      }
 
-    if (!customerId || !vehicleId) {
-      const why =
-        !plateOrVin
-          ? "Missing plate/VIN. Enter Plate/VIN (or use Scan VIN) so I can attach/create the vehicle."
-          : "Need a specific customer and vehicle to proceed.";
-      await onEvent?.({ kind: "final", text: why });
-      return;
+      if (!customerId || !vehicleId) {
+        const why =
+          !plateOrVin
+            ? "Missing plate/VIN. Enter Plate/VIN (or use Scan VIN) so I can attach/create the vehicle."
+            : "Need a specific customer and vehicle to proceed.";
+        await onEvent?.({ kind: "final", text: why });
+        return;
+      }
     }
   }
 

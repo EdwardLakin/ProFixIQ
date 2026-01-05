@@ -60,7 +60,7 @@ function asString(v: unknown): string | null {
 function toMsg(e: unknown): string {
   if (typeof e === "string") return e;
   if (isObj(e)) {
-    const m = asString(e.message);
+    const m = asString((e as AnyObj).message);
     if (m) return m;
   }
   try {
@@ -71,11 +71,6 @@ function toMsg(e: unknown): string {
 }
 
 function extractToolName(evt: AgentEvent): string | null {
-  // Common shapes:
-  // { kind:"tool_call", name:"create_work_order" }
-  // { kind:"tool_call", tool:{ name:"create_work_order" } }
-  // { kind:"tool_call", tool_name:"create_work_order" }
-  // { kind:"tool_result", name:"create_work_order", output:{...} }
   const direct =
     asString(getField(evt, "name")) ??
     asString(getField(evt, "tool_name")) ??
@@ -100,16 +95,18 @@ function extractWorkOrderId(evt: AgentEvent): string | null {
   const out = getField(evt, "output");
   if (isObj(out)) {
     const nested =
-      asString(out.workOrderId) ?? asString(out.work_order_id) ?? asString(out.id);
+      asString((out as AnyObj).workOrderId) ??
+      asString((out as AnyObj).work_order_id) ??
+      asString((out as AnyObj).id);
     if (nested) return nested;
   }
 
   const result = getField(evt, "result");
   if (isObj(result)) {
     const nested =
-      asString(result.workOrderId) ??
-      asString(result.work_order_id) ??
-      asString(result.id);
+      asString((result as AnyObj).workOrderId) ??
+      asString((result as AnyObj).work_order_id) ??
+      asString((result as AnyObj).id);
     if (nested) return nested;
   }
 
@@ -196,9 +193,14 @@ function labelFor(evt: AgentEvent): string | null {
 export default function PlannerPage() {
   const [goal, setGoal] = useState("");
   const [planner, setPlanner] = useState<PlannerKind>("openai");
+
+  // NEW: default to existing DB mode (no auto-creation)
+  const [allowCreate, setAllowCreate] = useState(false);
+
   const [customerQuery, setCustomerQuery] = useState("");
   const [plateOrVin, setPlateOrVin] = useState("");
   const [emailInvoiceTo, setEmailInvoiceTo] = useState("");
+
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
@@ -256,14 +258,17 @@ export default function PlannerPage() {
 
   async function uploadPhotoIfAny(): Promise<string | undefined> {
     if (!photo) return undefined;
+
     const path = `agent-uploads/${crypto
       .randomUUID()
       .replace(/-/g, "")}-${photo.name.replace(/[^a-zA-Z0-9.\-_]/g, "_")}`;
+
     const up = await supabase.storage.from("agent-uploads").upload(path, photo, {
       cacheControl: "3600",
       upsert: false,
     });
     if (up.error) throw new Error(`Upload failed: ${up.error.message}`);
+
     const pub = supabase.storage.from("agent-uploads").getPublicUrl(path);
     if (!pub.data?.publicUrl) throw new Error("Could not resolve public URL");
     return pub.data.publicUrl;
@@ -299,6 +304,26 @@ export default function PlannerPage() {
     esRef.current = null;
 
     try {
+      // existing-db mode sanity: don’t even start if missing both key selectors
+      if (!allowCreate) {
+        const hasCustomer = customerQuery.trim().length > 0;
+        const hasPlateVin =
+          plateOrVin.trim().length > 0 || (draft?.vehicle?.vin ?? "").trim().length > 0;
+
+        if (!hasCustomer || !hasPlateVin) {
+          const missing: string[] = [];
+          if (!hasCustomer) missing.push("Customer");
+          if (!hasPlateVin) missing.push("Plate/VIN");
+          appendStep(
+            `Missing required fields (${missing.join(
+              " + ",
+            )}). Existing DB mode won’t auto-create records.`,
+          );
+          setRunning(false);
+          return;
+        }
+      }
+
       const imageUrl = await uploadPhotoIfAny();
       if (imageUrl && photoPreview) URL.revokeObjectURL(photoPreview);
       if (imageUrl) {
@@ -315,9 +340,11 @@ export default function PlannerPage() {
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ imageUrl }),
           });
+
           if (res.ok) {
             const j = (await res.json()) as { fields?: OcrFields | null };
             const f = j?.fields || {};
+
             setVehicleDraft({
               vin: f.vin ?? undefined,
               plate: f.plate ?? undefined,
@@ -327,15 +354,17 @@ export default function PlannerPage() {
               trim: f.trim ?? undefined,
               engine: f.engine ?? undefined,
             });
+
             setCustomerDraft({
               first_name: f.first_name ?? undefined,
               last_name: f.last_name ?? undefined,
               phone: f.phone ?? undefined,
               email: f.email ?? undefined,
             });
-            if (!plateOrVin && (f.vin || f.plate))
-              setPlateOrVin(f.vin || f.plate || "");
+
+            if (!plateOrVin && (f.vin || f.plate)) setPlateOrVin(f.vin || f.plate || "");
             if (!emailInvoiceTo && f.email) setEmailInvoiceTo(f.email || "");
+
             const quickBits = [
               f.vin ? `VIN ${String(f.vin).slice(0, 8)}…` : null,
               f.plate ? `Plate ${f.plate}` : null,
@@ -343,6 +372,7 @@ export default function PlannerPage() {
             ]
               .filter(Boolean)
               .join(" • ");
+
             appendStep(`OCR parsed: ${quickBits || "basic details"}`);
             ocrFields = f;
           } else {
@@ -354,6 +384,7 @@ export default function PlannerPage() {
       }
 
       const vinFromDraft = (draft?.vehicle?.vin ?? "").trim() || undefined;
+
       const decodedVehicle =
         draft?.vehicle &&
         (draft.vehicle.year ||
@@ -370,14 +401,19 @@ export default function PlannerPage() {
             }
           : undefined;
 
+      // NEW: include allowCreate flag so plannerOpenAI behaves in “existing DB mode”
       const ctx = {
+        allowCreate,
+
         customerQuery: customerQuery || undefined,
         plateOrVin: plateOrVin || vinFromDraft || undefined,
         emailInvoiceTo: emailInvoiceTo || undefined,
+
         imageUrl,
         vin: vinFromDraft || (plateOrVin?.length === 17 ? plateOrVin : undefined),
         decodedVehicle,
         ocr: ocrFields || undefined,
+
         lineDescription: goal?.trim() || undefined,
         jobType: "repair" as const,
         laborHours: 1,
@@ -396,9 +432,7 @@ export default function PlannerPage() {
 
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: unknown };
-        throw new Error(
-          typeof j?.error === "string" ? j.error : `HTTP ${res.status}`,
-        );
+        throw new Error(typeof j?.error === "string" ? j.error : `HTTP ${res.status}`);
       }
 
       const out = (await res.json()) as AgentStartOut;
@@ -486,6 +520,53 @@ export default function PlannerPage() {
               {m.label}
             </Button>
           ))}
+        </div>
+
+        {/* NEW: existing-db mode toggle */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
+          <div className="min-w-[220px]">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Data mode
+            </div>
+            <div className="mt-1 text-sm text-neutral-100">
+              {allowCreate ? "Setup mode (allow auto-create)" : "Existing DB mode (no auto-create)"}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={allowCreate ? "ghost" : "outline"}
+              className={
+                allowCreate ? "opacity-80 hover:opacity-100" : "ring-2 ring-orange-400/60 bg-orange-500/10"
+              }
+              onClick={() => setAllowCreate(false)}
+              disabled={running}
+              title="Require existing customer + vehicle (no auto-create)"
+            >
+              Existing DB
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={allowCreate ? "outline" : "ghost"}
+              className={
+                allowCreate ? "ring-2 ring-orange-400/60 bg-orange-500/10" : "opacity-80 hover:opacity-100"
+              }
+              onClick={() => setAllowCreate(true)}
+              disabled={running}
+              title="Allow the planner to create missing customer/vehicle"
+            >
+              Setup
+            </Button>
+          </div>
+
+          {!allowCreate ? (
+            <div className="w-full text-xs text-neutral-400">
+              Tip: Existing DB mode requires a customer query + plate/VIN so the planner can match records.
+            </div>
+          ) : null}
         </div>
 
         <textarea

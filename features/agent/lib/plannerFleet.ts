@@ -20,6 +20,7 @@ type ParsedFleetPlan = {
   contactName?: string;
   baseTemplateSlug?: string;
   includeCustomInspection?: boolean;
+  allowCreate?: boolean; // NEW
 };
 
 /**
@@ -38,6 +39,10 @@ function buildFleetPlan(goal: string, context: Record<string, unknown>): ParsedF
   const baseTemplateSlugCtx = get<string>(context, "baseTemplateSlug");
   const includeCustomInspectionCtx = get<boolean>(context, "includeCustomInspection");
 
+  const allowCreate =
+    get<boolean>(context, "allowCreate") === true ||
+    get<boolean>(context, "allow_create") === true;
+
   const trimmedGoal = goal.trim();
   const fallbackFleetName =
     fleetNameCtx || (trimmedGoal.length > 0 ? trimmedGoal.slice(0, 80) : undefined);
@@ -51,9 +56,8 @@ function buildFleetPlan(goal: string, context: Record<string, unknown>): ParsedF
     contactName: contactNameCtx ?? undefined,
     baseTemplateSlug: baseTemplateSlugCtx ?? undefined,
     includeCustomInspection:
-      typeof includeCustomInspectionCtx === "boolean"
-        ? includeCustomInspectionCtx
-        : undefined,
+      typeof includeCustomInspectionCtx === "boolean" ? includeCustomInspectionCtx : undefined,
+    allowCreate,
   };
 }
 
@@ -71,6 +75,18 @@ export async function runFleetPlanner(
     await onEvent?.({
       kind: "final",
       text: "Fleet planner needs at least a fleet name in goal or context.fleetName.",
+    });
+    return;
+  }
+
+  // IMPORTANT: default behavior is “NO DB creation”.
+  // You must explicitly pass context.allowCreate=true to create fleets/programs.
+  if (!plan.allowCreate) {
+    await onEvent?.({
+      kind: "final",
+      text:
+        "Fleet planner is in existing-data mode (allowCreate=false). " +
+        "Select an existing fleet/program in the Fleet UI, or rerun with allowCreate=true for setup.",
     });
     return;
   }
@@ -129,8 +145,6 @@ export async function runFleetPlanner(
     output: programOut,
   });
 
-  // Not strictly required for WO generation (since generate tool can find/create too),
-  // but helps confirm program exists & gives you an ID to display/log later.
   const programId = programOut?.programId;
 
   // 3) Generate work orders for the fleet / program
