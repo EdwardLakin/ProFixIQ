@@ -4806,6 +4806,80 @@ export type Database = {
           },
         ]
       }
+      planner_events: {
+        Row: {
+          content: Json
+          created_at: string
+          id: string
+          kind: string
+          run_id: string
+          step: number
+        }
+        Insert: {
+          content: Json
+          created_at?: string
+          id?: string
+          kind: string
+          run_id: string
+          step: number
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          id?: string
+          kind?: string
+          run_id?: string
+          step?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planner_events_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "planner_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      planner_runs: {
+        Row: {
+          context: Json
+          created_at: string
+          goal: string
+          id: string
+          idempotency_key: string | null
+          planner_kind: string
+          shop_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          context?: Json
+          created_at?: string
+          goal: string
+          id?: string
+          idempotency_key?: string | null
+          planner_kind: string
+          shop_id: string
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          context?: Json
+          created_at?: string
+          goal?: string
+          id?: string
+          idempotency_key?: string | null
+          planner_kind?: string
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       portal_notifications: {
         Row: {
           body: string | null
@@ -9017,6 +9091,7 @@ export type Database = {
         Returns: undefined
       }
       is_admin: { Args: never; Returns: boolean }
+      is_agent_developer: { Args: never; Returns: boolean }
       is_customer: { Args: { _customer: string }; Returns: boolean }
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }

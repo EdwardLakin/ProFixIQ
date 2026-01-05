@@ -17,35 +17,24 @@ type ParsedApprovalPlan = {
 
 /**
  * Tiny parser for approvals.
- * You can later swap this to an LLM if you want “natural language approvals”.
  */
 function buildApprovalPlan(
   goal: string,
   context: Record<string, unknown>,
 ): ParsedApprovalPlan {
-  const raw =
-    (
-      get<string>(context, "action") ??
-      get<string>(context, "decision") ??
-      get<string>(context, "state") ??
-      goal ??
-      ""
-    ).toLowerCase();
+  const rawAction = (get<string>(context, "action") ?? goal ?? "").toLowerCase();
 
   const lineId =
     get<string>(context, "lineId") ??
     get<string>(context, "workOrderLineId") ??
-    get<string>(context, "work_order_line_id") ??
     undefined;
 
-  const limitRaw = get<number>(context, "limit");
-  const limit = Number(limitRaw ?? 25);
+  const limit = Number(get<number>(context, "limit") ?? 25);
 
   let action: ApprovalAction = "list";
-  if (raw.includes("reject") || raw.includes("declin")) action = "reject";
-  else if (raw.includes("approve") || raw.includes("accept")) action = "approve";
+  if (rawAction.includes("reject")) action = "reject";
+  else if (rawAction.includes("approve")) action = "approve";
 
-  // If they passed a lineId but no obvious action, default to approve
   if (lineId && action === "list") action = "approve";
 
   return {
@@ -55,78 +44,43 @@ function buildApprovalPlan(
   };
 }
 
-type ToolFn = (
-  input: Record<string, unknown>,
-  ctx: ToolContext,
-) => Promise<unknown>;
-
-function asToolFn(fn: unknown): ToolFn {
-  return fn as ToolFn;
-}
-
 export async function runApprovalPlanner(
   goal: string,
   context: Record<string, unknown>,
   ctx: ToolContext,
   onEvent?: (e: PlannerEvent) => Promise<void> | void,
 ) {
-  const plan: ParsedApprovalPlan = buildApprovalPlan(goal, context);
+  const plan = buildApprovalPlan(goal, context);
 
-  await onEvent?.({
-    kind: "plan",
-    text: `Approval goal: ${goal}`,
-  });
+  await onEvent?.({ kind: "plan", text: `Approval goal: ${goal}` });
 
-  // 1) Always list current pending approvals first (advisor sees summary)
+  // 1) Always list pending approvals first
   const listInput: Record<string, unknown> = { limit: plan.limit };
 
-  await onEvent?.({
-    kind: "tool_call",
-    name: "list_pending_approvals",
-    input: listInput,
-  });
+  await onEvent?.({ kind: "tool_call", name: "list_pending_approvals", input: listInput });
+  const pending = await runListPendingApprovals(listInput, ctx);
+  await onEvent?.({ kind: "tool_result", name: "list_pending_approvals", output: pending });
 
-  const pending = await asToolFn(runListPendingApprovals)(listInput, ctx);
-
-  await onEvent?.({
-    kind: "tool_result",
-    name: "list_pending_approvals",
-    output: pending,
-  });
-
-  // 2) Optionally approve / reject a single line
+  // 2) Optional: approve / reject a single line
   if (plan.action === "list" || !plan.lineId) {
-    await onEvent?.({
-      kind: "final",
-      text: "Listed pending approvals.",
-    });
+    await onEvent?.({ kind: "final", text: "Listed pending approvals." });
     return;
   }
 
-  // ✅ Tool expects `state`, not `decision`
+  // IMPORTANT: tool expects state: approved | declined
   const state = plan.action === "approve" ? "approved" : "declined";
 
-  const setInput: Record<string, unknown> = {
-    lineId: plan.lineId,
-    state,
-  };
+  const setInput = {
+  lineId: plan.lineId,
+  state,
+} satisfies {
+  lineId: string;
+  state: "approved" | "declined";
+};
 
-  await onEvent?.({
-    kind: "tool_call",
-    name: "set_line_approval",
-    input: setInput,
-  });
+  await onEvent?.({ kind: "tool_call", name: "set_line_approval", input: setInput });
+  const setResult = await runSetLineApproval(setInput, ctx);
+  await onEvent?.({ kind: "tool_result", name: "set_line_approval", output: setResult });
 
-  const setResult = await asToolFn(runSetLineApproval)(setInput, ctx);
-
-  await onEvent?.({
-    kind: "tool_result",
-    name: "set_line_approval",
-    output: setResult,
-  });
-
-  await onEvent?.({
-    kind: "final",
-    text: `Line ${plan.lineId} marked ${state}.`,
-  });
+  await onEvent?.({ kind: "final", text: `Line ${plan.lineId} marked ${state}.` });
 }
