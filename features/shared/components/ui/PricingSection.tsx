@@ -76,7 +76,6 @@ const plans: PricingPlan[] = [
 
 const PricingSection: FC<PricingSectionProps> = ({
   onCheckout,
-  onStartFree,
 }) => {
   const interval: BillingInterval = "monthly";
 
@@ -91,15 +90,10 @@ const PricingSection: FC<PricingSectionProps> = ({
           are included from day one.
         </p>
         <p className="mt-2 text-xs text-neutral-500">
-          Trial & onboarding available — pricing finalizes at checkout.
+          Onboarding available — pricing finalizes at checkout.
         </p>
 
-        <button
-          onClick={onStartFree}
-          className="mt-4 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-black/40"
-        >
-          Start trial / onboarding
-        </button>
+        
       </div>
 
       {/* Plans */}

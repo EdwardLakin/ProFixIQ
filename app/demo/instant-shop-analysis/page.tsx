@@ -74,6 +74,12 @@ export default function InstantShopAnalysisPage() {
       }));
     };
 
+  const goToPlans = () => {
+    const base = "/compare-plans";
+    const url = demoId ? `${base}?demoId=${encodeURIComponent(demoId)}` : base;
+    window.location.href = url;
+  };
+
   const handleRun = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setRunError(null);
@@ -470,7 +476,7 @@ export default function InstantShopAnalysisPage() {
               )}
             </div>
 
-            {/* Post-unlock CTAs */}
+            {/* Post-unlock CTAs (PLAN-GATED) */}
             {step === "unlocked" && (
               <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3">
                 <div className="flex-1 text-[11px] text-neutral-300">
@@ -478,28 +484,23 @@ export default function InstantShopAnalysisPage() {
                     Want this live inside ProFixIQ?
                   </p>
                   <p className="mt-0.5 text-[11px] text-neutral-400">
-                    Create your account with this shop and we&apos;ll turn these
-                    insights into live menus, inspections, and fleet dashboards.
+                    Choose a plan to continue — we don&apos;t create accounts without a plan.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      window.location.href = "/onboarding";
-                    }}
+                    onClick={goToPlans}
                     className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-1.5 text-xs font-semibold text-black shadow-sm transition hover:bg-orange-400"
                   >
-                    Create my account with this shop
+                    Choose a plan to continue
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      window.location.href = "/coming-soon/compare-plans";
-                    }}
+                    onClick={goToPlans}
                     className="inline-flex items-center justify-center rounded-md border border-neutral-700 bg-neutral-950 px-4 py-1.5 text-xs font-semibold text-neutral-100 hover:border-orange-500"
                   >
-                    See plans &amp; pricing
+                    View plans &amp; pricing
                   </button>
                 </div>
               </div>
@@ -607,7 +608,9 @@ function FileRow({ id, label, description, file, accept, onChange }: FileRowProp
           }}
         />
         {!file && (
-          <span className="text-[10px] text-neutral-500">Optional, but highly recommended</span>
+          <span className="text-[10px] text-neutral-500">
+            Optional, but highly recommended
+          </span>
         )}
       </div>
     </div>
