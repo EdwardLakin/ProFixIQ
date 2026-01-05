@@ -78,6 +78,12 @@ function coerceApprovalMethod(
   return "other";
 }
 
+function normalizePlateOrVin(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  return s ? s : undefined;
+}
+
 /* -------------------------------------------------------------------------- */
 /* LLM parsing                                                                */
 /* -------------------------------------------------------------------------- */
@@ -155,13 +161,15 @@ async function llmParseGoal(
 
   if (!res.ok) return {};
   const j = (await res.json().catch(() => null)) as unknown;
+
   const text =
     typeof j === "object" &&
     j !== null &&
     "choices" in j &&
-    Array.isArray((j as any).choices) &&
-    (j as any).choices[0]?.message?.content
-      ? String((j as any).choices[0].message.content)
+    Array.isArray((j as { choices?: unknown }).choices) &&
+    typeof (j as { choices: Array<{ message?: { content?: unknown } }> }).choices[0]?.message
+      ?.content === "string"
+      ? (j as { choices: Array<{ message: { content: string } }> }).choices[0].message.content
       : undefined;
 
   if (!text) return {};
@@ -198,11 +206,22 @@ export async function runOpenAIPlanner(
   let customerId = get<string>(context, "customerId");
   let vehicleId = get<string>(context, "vehicleId");
 
+  const plateOrVin =
+    normalizePlateOrVin(parsed.plateOrVin) ??
+    normalizePlateOrVin(get<string>(context, "plateOrVin"));
+
+  const customerQuery =
+    normalizePlateOrVin(parsed.customerQuery) ??
+    normalizePlateOrVin(get<string>(context, "customerQuery"));
+
   const findIn = {
-    customerQuery: parsed.customerQuery ?? get<string>(context, "customerQuery"),
-    plateOrVin: parsed.plateOrVin ?? get<string>(context, "plateOrVin"),
+    customerQuery,
+    plateOrVin,
   };
 
+  // If neither customer nor vehicle is provided, we can still proceed ONLY if we have
+  // a plate/VIN (to create a minimal vehicle record) and at least a customer name
+  // (or we create a default customer).
   if (!customerId || !vehicleId) {
     await onEvent?.({
       kind: "tool_call",
@@ -221,11 +240,9 @@ export async function runOpenAIPlanner(
     customerId = customerId ?? found.customerId;
     vehicleId = vehicleId ?? found.vehicleId;
 
-    // 1a) If customer missing, try create_customer.
-    // If the DB has a unique constraint on customers.user_id, we gracefully recover
-    // by re-running find_customer_vehicle (which should now be able to find the existing row).
+    // 1a) If customer missing, create one (or recover from unique user constraint)
     if (!customerId) {
-      const name = (findIn.customerQuery ?? "").trim() || "Default Customer";
+      const name = (customerQuery ?? "").trim() || "Default Customer";
 
       await onEvent?.({
         kind: "tool_call",
@@ -245,7 +262,7 @@ export async function runOpenAIPlanner(
       } catch (err) {
         const msg = toMsg(err);
 
-        // Most common: duplicate key value violates unique constraint "customers_user_id_uq"
+        // Common: duplicate key value violates unique constraint "customers_user_id_uq"
         if (msg.toLowerCase().includes("customers_user_id_uq")) {
           await onEvent?.({
             kind: "tool_result",
@@ -255,7 +272,7 @@ export async function runOpenAIPlanner(
 
           // Re-try find to fetch the existing customerId
           const retry = await runFindCustomerVehicle(
-            { customerQuery: name, plateOrVin: findIn.plateOrVin },
+            { customerQuery: name, plateOrVin },
             ctx,
           );
 
@@ -277,14 +294,12 @@ export async function runOpenAIPlanner(
       }
     }
 
-    // 1b) If vehicle missing, create it (based on plate/vin)
-    if (!vehicleId && customerId && findIn.plateOrVin) {
-      const vinOrPlate = findIn.plateOrVin;
-
+    // 1b) If vehicle missing, we can create a MINIMAL vehicle record if we have a plate/VIN
+    if (!vehicleId && customerId && plateOrVin) {
       const vehicleInput = {
         customerId,
-        vin: vinOrPlate && vinOrPlate.length > 10 ? vinOrPlate : undefined,
-        license_plate: vinOrPlate && vinOrPlate.length <= 10 ? vinOrPlate : undefined,
+        vin: plateOrVin.length > 10 ? plateOrVin : undefined,
+        license_plate: plateOrVin.length <= 10 ? plateOrVin : undefined,
       };
 
       await onEvent?.({
@@ -303,10 +318,17 @@ export async function runOpenAIPlanner(
       });
     }
 
+    // If we STILL don't have vehicleId, we cannot safely proceed.
+    // This is what makes it usable: clear “missing required info” message.
     if (!customerId || !vehicleId) {
+      const why =
+        !plateOrVin
+          ? "Missing plate/VIN. Enter Plate/VIN (or use Scan VIN) so I can attach/create the vehicle."
+          : "Need a specific customer and vehicle to proceed.";
+
       await onEvent?.({
         kind: "final",
-        text: "Need a specific customer and vehicle to proceed.",
+        text: why,
       });
       return;
     }
