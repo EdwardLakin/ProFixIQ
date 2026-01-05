@@ -1,3 +1,4 @@
+// features/agent/lib/plannerOpenAI.ts
 import type { ToolContext } from "./toolTypes";
 import type { PlannerEvent } from "./plannerSimple"; // includes "wo.created"
 
@@ -23,8 +24,9 @@ const JOB_TYPES = new Set(["maintenance", "repair", "diagnosis", "inspection"] a
 function coerceJobType(x: unknown): "maintenance" | "repair" | "diagnosis" | "inspection" {
   return typeof x === "string" && JOB_TYPES.has(x as never) ? (x as never) : "repair";
 }
+
 function coerceOrderType(
-  x: unknown
+  x: unknown,
 ): "inspection" | "maintenance" | "repair" | "diagnosis" {
   const v = typeof x === "string" ? x.toLowerCase() : "";
   return (["inspection", "maintenance", "repair", "diagnosis"].includes(v)
@@ -42,6 +44,22 @@ function getPlannerMode(context: Record<string, unknown>): PlannerMode {
   if (v === "fleet") return "fleet";
   if (v === "approvals") return "approvals";
   return "openai";
+}
+
+function coerceApprovalMethod(
+  x: unknown,
+  mode: PlannerMode,
+): "fleet" | "advisor" | "customer" | "other" {
+  if (typeof x === "string") {
+    const v = x.toLowerCase();
+    if (v.includes("fleet")) return "fleet";
+    if (v.includes("advisor")) return "advisor";
+    if (v.includes("customer")) return "customer";
+    return "other";
+  }
+  if (mode === "fleet") return "fleet";
+  if (mode === "approvals") return "advisor";
+  return "other";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -82,7 +100,7 @@ type ParsedPlan = {
 
 async function llmParseGoal(
   goal: string,
-  context: Record<string, unknown>
+  context: Record<string, unknown>,
 ): Promise<ParsedPlan> {
   const hints = {
     customerQuery: get<string>(context, "customerQuery"),
@@ -140,7 +158,7 @@ export async function runOpenAIPlanner(
   goal: string,
   context: Record<string, unknown>,
   ctx: ToolContext,
-  onEvent?: (e: PlannerEvent) => Promise<void> | void
+  onEvent?: (e: PlannerEvent) => Promise<void> | void,
 ) {
   await onEvent?.({ kind: "plan", text: `Goal: ${goal}` });
 
@@ -169,7 +187,9 @@ export async function runOpenAIPlanner(
       name: "find_customer_vehicle",
       input: findIn,
     });
+
     const found = await runFindCustomerVehicle(findIn, ctx);
+
     await onEvent?.({
       kind: "tool_result",
       name: "find_customer_vehicle",
@@ -182,6 +202,11 @@ export async function runOpenAIPlanner(
     if (!customerId) {
       const name = findIn.customerQuery?.trim();
       if (name) {
+        await onEvent?.({
+          kind: "tool_call",
+          name: "create_customer",
+          input: { name },
+        });
         const createdC = await runCreateCustomer({ name }, ctx);
         customerId = createdC.customerId;
         await onEvent?.({
@@ -191,18 +216,25 @@ export async function runOpenAIPlanner(
         });
       }
     }
+
     if (!vehicleId && customerId && findIn.plateOrVin) {
       const vinOrPlate = findIn.plateOrVin;
-      const createdV = await runCreateVehicle(
-        {
-          customerId,
-          vin: vinOrPlate && vinOrPlate.length > 10 ? vinOrPlate : undefined,
-          license_plate:
-            vinOrPlate && vinOrPlate.length <= 10 ? vinOrPlate : undefined,
-        },
-        ctx
-      );
+
+      const vehicleInput = {
+        customerId,
+        vin: vinOrPlate && vinOrPlate.length > 10 ? vinOrPlate : undefined,
+        license_plate: vinOrPlate && vinOrPlate.length <= 10 ? vinOrPlate : undefined,
+      };
+
+      await onEvent?.({
+        kind: "tool_call",
+        name: "create_vehicle",
+        input: vehicleInput,
+      });
+
+      const createdV = await runCreateVehicle(vehicleInput, ctx);
       vehicleId = createdV.vehicleId;
+
       await onEvent?.({
         kind: "tool_result",
         name: "create_vehicle",
@@ -224,15 +256,17 @@ export async function runOpenAIPlanner(
     customerId,
     vehicleId,
     type: coerceOrderType(parsed.orderType ?? get<string>(context, "type")),
-    notes:
-      (parsed.notes ?? get<string>(context, "notes") ?? undefined) || undefined,
+    notes: (parsed.notes ?? get<string>(context, "notes") ?? undefined) || undefined,
   };
+
   await onEvent?.({
     kind: "tool_call",
     name: "create_work_order",
     input: createInput,
   });
+
   const created = await runCreateWorkOrder(createInput, ctx);
+
   await onEvent?.({
     kind: "tool_result",
     name: "create_work_order",
@@ -252,6 +286,7 @@ export async function runOpenAIPlanner(
     for (const L of lines) {
       const desc = (L?.description ?? "").trim();
       if (!desc) continue;
+
       const addInput = {
         workOrderId: created.workOrderId,
         description: desc,
@@ -259,12 +294,15 @@ export async function runOpenAIPlanner(
         laborHours: Number(L?.laborHours ?? 1),
         notes: typeof L?.notes === "string" ? L.notes : undefined,
       };
+
       await onEvent?.({
         kind: "tool_call",
         name: "add_work_order_line",
         input: addInput,
       });
+
       const added = await runAddWorkOrderLine(addInput, ctx);
+
       await onEvent?.({
         kind: "tool_result",
         name: "add_work_order_line",
@@ -281,12 +319,15 @@ export async function runOpenAIPlanner(
         laborHours: Number(get<number>(context, "laborHours") ?? 1),
         notes: get<string>(context, "lineNotes") ?? undefined,
       };
+
       await onEvent?.({
         kind: "tool_call",
         name: "add_work_order_line",
         input: addInput,
       });
+
       const added = await runAddWorkOrderLine(addInput, ctx);
+
       await onEvent?.({
         kind: "tool_result",
         name: "add_work_order_line",
@@ -303,12 +344,15 @@ export async function runOpenAIPlanner(
       imageUrl: photoUrl,
       kind: "photo" as const,
     };
+
     await onEvent?.({
       kind: "tool_call",
       name: "attach_photo_to_work_order",
       input: attachInput,
     });
+
     const attached = await runAttachPhoto(attachInput, ctx);
+
     await onEvent?.({
       kind: "tool_result",
       name: "attach_photo_to_work_order",
@@ -319,14 +363,8 @@ export async function runOpenAIPlanner(
   // 5) 🔶 Optional: custom inspection
   const insp =
     parsed.inspection ??
-    (get<Record<string, unknown>>(
-      context,
-      "inspection"
-    ) as ParsedPlan["inspection"]) ??
-    (get<Record<string, unknown>>(
-      context,
-      "customInspection"
-    ) as ParsedPlan["inspection"]);
+    (get<Record<string, unknown>>(context, "inspection") as ParsedPlan["inspection"]) ??
+    (get<Record<string, unknown>>(context, "customInspection") as ParsedPlan["inspection"]);
 
   if (insp) {
     const input = {
@@ -334,20 +372,19 @@ export async function runOpenAIPlanner(
       title: insp.title ?? "Custom Inspection",
       selections: insp.selections ?? {},
       services: Array.isArray(insp.services) ? insp.services : [],
-      vehicleType: (insp.vehicleType ?? "truck") as
-        | "car"
-        | "truck"
-        | "bus"
-        | "trailer",
+      vehicleType: (insp.vehicleType ?? "truck") as "car" | "truck" | "bus" | "trailer",
       includeAxle: insp.includeAxle ?? true,
       includeOil: insp.includeOil ?? false,
     };
+
     await onEvent?.({
       kind: "tool_call",
       name: "create_custom_inspection",
       input,
     });
+
     const out = await runCreateCustomInspection(input, ctx);
+
     await onEvent?.({
       kind: "tool_result",
       name: "create_custom_inspection",
@@ -356,16 +393,18 @@ export async function runOpenAIPlanner(
   }
 
   // 6) Optional: invoice + email
-  const emailTo =
-    parsed.emailInvoiceTo ?? get<string>(context, "emailInvoiceTo");
+  const emailTo = parsed.emailInvoiceTo ?? get<string>(context, "emailInvoiceTo");
   if (emailTo) {
     const genInput = { workOrderId: created.workOrderId };
+
     await onEvent?.({
       kind: "tool_call",
       name: "generate_invoice_html",
       input: genInput,
     });
+
     const gen = await runGenerateInvoiceHtml(genInput, ctx);
+
     await onEvent?.({
       kind: "tool_result",
       name: "generate_invoice_html",
@@ -374,17 +413,18 @@ export async function runOpenAIPlanner(
 
     const emailInput = {
       toEmail: emailTo,
-      subject:
-        parsed.emailSubject ??
-        (get<string>(context, "emailSubject") ?? "Your invoice"),
+      subject: parsed.emailSubject ?? (get<string>(context, "emailSubject") ?? "Your invoice"),
       html: gen.html,
     };
+
     await onEvent?.({
       kind: "tool_call",
       name: "email_invoice",
       input: emailInput,
     });
+
     const sent = await runEmailInvoice(emailInput, ctx);
+
     await onEvent?.({
       kind: "tool_result",
       name: "email_invoice",
@@ -393,34 +433,29 @@ export async function runOpenAIPlanner(
   }
 
   // 7) 🔶 Optional: record work-order level approval
-  //
-  // We treat "approvals" mode OR autoApprove hints as permission to write
-  // into work_order_approvals via the new tool.
   const autoApprove =
     parsed.autoApprove === true ||
     get<boolean>(context, "autoApprove") === true ||
     mode === "approvals";
 
   if (autoApprove) {
-    const method =
+    const rawMethod =
       parsed.approvalMethod ??
-      get<string>(context, "approvalMethod") ??
-      (mode === "approvals" ? "advisor_planner" : "agent_auto");
+      get<string>(context, "approvalMethod");
 
     const approvalInput = {
       workOrderId: created.workOrderId,
-      method,
-    } as any; // align with RecordWorkOrderApprovalIn in your tool file
+      method: coerceApprovalMethod(rawMethod, mode),
+    };
 
     await onEvent?.({
       kind: "tool_call",
       name: "record_work_order_approval",
       input: approvalInput,
     });
-    const approvalResult = await runRecordWorkOrderApproval(
-      approvalInput,
-      ctx
-    );
+
+    const approvalResult = await runRecordWorkOrderApproval(approvalInput, ctx);
+
     await onEvent?.({
       kind: "tool_result",
       name: "record_work_order_approval",
