@@ -78,10 +78,33 @@ function coerceApprovalMethod(
   return "other";
 }
 
-function normalizePlateOrVin(v: unknown): string | undefined {
+function normalizeText(v: unknown): string | undefined {
   if (typeof v !== "string") return undefined;
   const s = v.trim();
   return s ? s : undefined;
+}
+
+/**
+ * Deterministic fallback: extract plate/VIN from the raw goal string.
+ * This makes the system usable even if the UI fields/context aren’t wired perfectly yet.
+ */
+function extractPlateOrVinFromGoal(goal: string): string | undefined {
+  const g = goal.trim();
+  if (!g) return undefined;
+
+  // VIN: 17 chars, excluding I/O/Q, alnum
+  const vinMatch = g.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i);
+  if (vinMatch?.[1]) return vinMatch[1].toUpperCase();
+
+  // Explicit "VIN XXXXX"
+  const vinLabeled = g.match(/\bvin[:\s"']+([A-HJ-NPR-Z0-9]{11,17})\b/i);
+  if (vinLabeled?.[1]) return vinLabeled[1].toUpperCase();
+
+  // Plate: "plate 8ABC123" or plate:"8ABC123"
+  const plateMatch = g.match(/\bplate[:\s"']+([A-Z0-9-]{3,10})\b/i);
+  if (plateMatch?.[1]) return plateMatch[1].toUpperCase();
+
+  return undefined;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -207,21 +230,19 @@ export async function runOpenAIPlanner(
   let vehicleId = get<string>(context, "vehicleId");
 
   const plateOrVin =
-    normalizePlateOrVin(parsed.plateOrVin) ??
-    normalizePlateOrVin(get<string>(context, "plateOrVin"));
+    normalizeText(parsed.plateOrVin) ??
+    normalizeText(get<string>(context, "plateOrVin")) ??
+    extractPlateOrVinFromGoal(goal);
 
   const customerQuery =
-    normalizePlateOrVin(parsed.customerQuery) ??
-    normalizePlateOrVin(get<string>(context, "customerQuery"));
+    normalizeText(parsed.customerQuery) ??
+    normalizeText(get<string>(context, "customerQuery"));
 
   const findIn = {
     customerQuery,
     plateOrVin,
   };
 
-  // If neither customer nor vehicle is provided, we can still proceed ONLY if we have
-  // a plate/VIN (to create a minimal vehicle record) and at least a customer name
-  // (or we create a default customer).
   if (!customerId || !vehicleId) {
     await onEvent?.({
       kind: "tool_call",
@@ -262,7 +283,6 @@ export async function runOpenAIPlanner(
       } catch (err) {
         const msg = toMsg(err);
 
-        // Common: duplicate key value violates unique constraint "customers_user_id_uq"
         if (msg.toLowerCase().includes("customers_user_id_uq")) {
           await onEvent?.({
             kind: "tool_result",
@@ -270,7 +290,6 @@ export async function runOpenAIPlanner(
             output: { skipped: true, reason: "customer already exists for user" },
           });
 
-          // Re-try find to fetch the existing customerId
           const retry = await runFindCustomerVehicle(
             { customerQuery: name, plateOrVin },
             ctx,
@@ -294,7 +313,7 @@ export async function runOpenAIPlanner(
       }
     }
 
-    // 1b) If vehicle missing, we can create a MINIMAL vehicle record if we have a plate/VIN
+    // 1b) If vehicle missing, create a MINIMAL vehicle record if we have plate/VIN
     if (!vehicleId && customerId && plateOrVin) {
       const vehicleInput = {
         customerId,
@@ -318,18 +337,12 @@ export async function runOpenAIPlanner(
       });
     }
 
-    // If we STILL don't have vehicleId, we cannot safely proceed.
-    // This is what makes it usable: clear “missing required info” message.
     if (!customerId || !vehicleId) {
       const why =
         !plateOrVin
           ? "Missing plate/VIN. Enter Plate/VIN (or use Scan VIN) so I can attach/create the vehicle."
           : "Need a specific customer and vehicle to proceed.";
-
-      await onEvent?.({
-        kind: "final",
-        text: why,
-      });
+      await onEvent?.({ kind: "final", text: why });
       return;
     }
   }
