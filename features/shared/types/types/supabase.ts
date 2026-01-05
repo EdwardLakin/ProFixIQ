@@ -8168,6 +8168,7 @@ export type Database = {
           quote: Json | null
           quote_url: string | null
           shop_id: string | null
+          source_fleet_program_id: string | null
           source_fleet_service_request_id: string | null
           status: string | null
           type: string | null
@@ -8210,6 +8211,7 @@ export type Database = {
           quote?: Json | null
           quote_url?: string | null
           shop_id?: string | null
+          source_fleet_program_id?: string | null
           source_fleet_service_request_id?: string | null
           status?: string | null
           type?: string | null
@@ -8252,6 +8254,7 @@ export type Database = {
           quote?: Json | null
           quote_url?: string | null
           shop_id?: string | null
+          source_fleet_program_id?: string | null
           source_fleet_service_request_id?: string | null
           status?: string | null
           type?: string | null
@@ -8284,6 +8287,13 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_source_fleet_program_id_fkey"
+            columns: ["source_fleet_program_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_programs"
             referencedColumns: ["id"]
           },
           {
@@ -8965,6 +8975,7 @@ export type Database = {
           quote: Json | null
           quote_url: string | null
           shop_id: string | null
+          source_fleet_program_id: string | null
           source_fleet_service_request_id: string | null
           status: string | null
           type: string | null

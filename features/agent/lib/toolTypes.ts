@@ -1,3 +1,4 @@
+// features/agent/lib/toolTypes.ts
 import { z } from "zod";
 
 export type ToolContext = { shopId: string; userId: string };

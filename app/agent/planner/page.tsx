@@ -1,4 +1,4 @@
-//app/agent/planner/page.tsx
+// app/agent/planner/page.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -240,7 +240,8 @@ export default function PlannerPage() {
               phone: f.phone ?? undefined,
               email: f.email ?? undefined,
             });
-            if (!plateOrVin && (f.vin || f.plate)) setPlateOrVin(f.vin || f.plate || "");
+            if (!plateOrVin && (f.vin || f.plate))
+              setPlateOrVin(f.vin || f.plate || "");
             if (!emailInvoiceTo && f.email) setEmailInvoiceTo(f.email || "");
             const quickBits = [
               f.vin ? `VIN ${String(f.vin).slice(0, 8)}…` : null,
@@ -302,7 +303,9 @@ export default function PlannerPage() {
 
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: unknown };
-        throw new Error(typeof j?.error === "string" ? j.error : `HTTP ${res.status}`);
+        throw new Error(
+          typeof j?.error === "string" ? j.error : `HTTP ${res.status}`,
+        );
       }
 
       const out = (await res.json()) as AgentStartOut;
@@ -367,7 +370,7 @@ export default function PlannerPage() {
       title="AI Planner"
       description="Describe what you want done — we'll create the work order, add lines, attach photos, and optionally email the invoice."
     >
-      <div className="space-y-4 rounded-lg border border-neutral-800 bg-neutral-950 p-5">
+      <div className="metal-card rounded-3xl p-5 shadow-[0_12px_35px_rgba(0,0,0,0.85)]">
         {/* planner mode buttons */}
         <div className="flex flex-wrap gap-2">
           {plannerModes.map((m) => (
@@ -377,7 +380,7 @@ export default function PlannerPage() {
               size="sm"
               className={
                 planner === m.id
-                  ? "bg-orange-500/10"
+                  ? "ring-2 ring-orange-400/60 bg-orange-500/10"
                   : "opacity-80 hover:opacity-100"
               }
               onClick={() => setPlanner(m.id)}
@@ -393,30 +396,32 @@ export default function PlannerPage() {
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
           placeholder="e.g. Find John Smith, create inspection WO, add note, email invoice"
-          className="w-full min-h-[110px] rounded border border-neutral-800 bg-neutral-900/80 p-3 text-sm text-neutral-100 placeholder:text-neutral-500"
+          className="mt-3 w-full min-h-[120px] rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
         />
 
         {/* secondary inputs */}
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
           <label className="block">
-            <div className="mb-1 text-sm text-neutral-100">
-              Customer query (name)
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Customer
             </div>
             <input
               value={customerQuery}
               onChange={(e) => setCustomerQuery(e.target.value)}
-              className="w-full rounded border border-neutral-800 bg-neutral-900/80 p-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+              className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
               placeholder="e.g. John Smith"
             />
           </label>
 
           <label className="block">
-            <div className="mb-1 text-sm text-neutral-100">Plate or VIN</div>
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Plate / VIN
+            </div>
             <div className="flex gap-2">
               <input
                 value={plateOrVin}
                 onChange={(e) => setPlateOrVin(e.target.value)}
-                className="w-full rounded border border-neutral-800 bg-neutral-900/80 p-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+                className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
                 placeholder="e.g. 8ABC123 or 1FT…"
               />
               <Button
@@ -433,13 +438,13 @@ export default function PlannerPage() {
           </label>
 
           <label className="block">
-            <div className="mb-1 text-sm text-neutral-100">
-              Email invoice to (optional)
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Email invoice to
             </div>
             <input
               value={emailInvoiceTo}
               onChange={(e) => setEmailInvoiceTo(e.target.value)}
-              className="w-full rounded border border-neutral-800 bg-neutral-900/80 p-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+              className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
               placeholder="customer@example.com"
               type="email"
               inputMode="email"
@@ -447,7 +452,7 @@ export default function PlannerPage() {
           </label>
 
           <label className="block">
-            <div className="mb-1 text-sm text-neutral-100">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
               Photo (DL / Registration)
             </div>
             <input
@@ -455,34 +460,39 @@ export default function PlannerPage() {
               accept="image/*"
               capture="environment"
               onChange={(e) => onPickPhoto(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-neutral-100 file:mr-4 file:rounded file:border file:border-orange-400 file:bg-transparent file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-orange-500/10"
+              className="block w-full text-sm text-neutral-100 file:mr-4 file:rounded-xl file:border file:border-[color:var(--metal-border-soft)] file:bg-black/40 file:px-3 file:py-2 file:text-xs file:font-semibold file:uppercase file:tracking-[0.18em] file:text-neutral-100 hover:file:bg-black/60"
             />
             {photoPreview ? (
               <img
                 src={photoPreview}
                 alt="Preview"
-                className="mt-2 max-h-40 rounded border border-neutral-800 object-contain"
+                className="mt-2 max-h-40 rounded-2xl border border-[color:var(--metal-border-soft)] object-contain"
               />
             ) : null}
           </label>
         </div>
 
         {runId && (
-          <div className="text-xs text-neutral-400">
-            Run ID: <code>{runId}</code>
+          <div className="mt-4 text-xs text-neutral-400">
+            Run ID:{" "}
+            <code className="rounded bg-black/40 px-2 py-1 text-[11px] text-neutral-200">
+              {runId}
+            </code>
           </div>
         )}
 
-        {/* stream above buttons */}
-        <div className="rounded border border-neutral-800 bg-neutral-900/80 p-4">
-          <div className="mb-2 text-sm font-medium text-neutral-100">Stream</div>
+        {/* stream */}
+        <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Stream
+          </div>
           {steps.length === 0 ? (
             <div className="text-sm text-neutral-400">Waiting for updates…</div>
           ) : (
             <ul className="space-y-2">
               {steps.map((s, i) => (
                 <li key={`${i}-${s}`} className="flex items-start gap-2">
-                  <span className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-orange-500/80" />
+                  <span className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-orange-400/80" />
                   <span className="text-sm text-neutral-100">{s}</span>
                 </li>
               ))}
@@ -491,7 +501,7 @@ export default function PlannerPage() {
         </div>
 
         {/* centered actions */}
-        <div className="flex items-center justify-center gap-4 pt-1">
+        <div className="mt-4 flex items-center justify-center gap-4">
           <Button
             onClick={start}
             variant="outline"
@@ -561,12 +571,9 @@ export default function PlannerPage() {
       ) : null}
 
       {toast && (
-        <div
-          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded border px-4 py-2 shadow-xl"
-          style={{ borderColor: "#f97316", backgroundColor: "#0a0a0a" }}
-        >
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/80 px-4 py-2 shadow-[0_16px_50px_rgba(0,0,0,0.85)]">
           <div className="flex items-center gap-2 text-sm text-neutral-100">
-            <span className="inline-block h-4 w-4 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" />
             {toast}
           </div>
         </div>
