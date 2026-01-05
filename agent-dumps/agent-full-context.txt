@@ -1,0 +1,3850 @@
+============================================================
+FILE: features/agent/agent-console/app/agent/page.tsx
+============================================================
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
+
+import { Button } from "@shared/components/ui/Button";
+import Card from "@shared/components/ui/Card";
+import { Badge } from "@shared/components/ui/badge";
+import { Separator } from "@shared/components/ui/separator";
+import { cn } from "@shared/lib/utils";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+
+type AgentRequestStatus =
+  | "submitted"
+  | "in_progress"
+  | "awaiting_approval"
+  | "approved"
+  | "rejected"
+  | "failed"
+  | "merged";
+
+type AgentContext = {
+  location?: string | null;
+  steps?: string | null;
+  expected?: string | null;
+  actual?: string | null;
+  device?: string | null;
+  attachmentIds?: string[];
+  // catch-all for anything else the agent stores
+  [key: string]: unknown;
+};
+
+type AgentRequest = {
+  id: string;
+  shop_id: string | null;
+  reporter_id: string | null;
+  reporter_role: string | null;
+  description: string;
+  intent: string | null;
+  normalized_json: AgentContext | null;
+  github_issue_number: number | null;
+  github_issue_url: string | null;
+  github_pr_number: number | null;
+  github_pr_url: string | null;
+  github_branch: string | null;
+  github_commit_sha: string | null;
+  llm_model: string | null;
+  llm_confidence: number | null;
+  llm_notes: string | null;
+  status: AgentRequestStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+function statusClasses(status: AgentRequestStatus) {
+  switch (status) {
+    case "submitted":
+      return "border-neutral-700 bg-neutral-900 text-neutral-200";
+    case "in_progress":
+      return "border-sky-700/70 bg-sky-900/40 text-sky-200";
+    case "awaiting_approval":
+      return "border-amber-700/70 bg-amber-900/40 text-amber-200";
+    case "approved":
+      return "border-emerald-700/70 bg-emerald-900/40 text-emerald-200";
+    case "merged":
+      return "border-green-700/70 bg-green-900/40 text-green-200";
+    case "rejected":
+    case "failed":
+      return "border-red-700/70 bg-red-900/40 text-red-200";
+    default:
+      return "border-neutral-700 bg-neutral-900 text-neutral-200";
+  }
+}
+
+function prettyIntent(intent: string | null): string {
+  if (!intent) return "unknown";
+  return intent.replace(/_/g, " ");
+}
+
+export default function AgentConsolePage() {
+  const [requests, setRequests] = useState<AgentRequest[]>([]);
+  const [selected, setSelected] = useState<AgentRequest | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  // signed URLs for the currently selected request's attachments
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>(
+    {}
+  );
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+
+  // lightbox: which screenshot is open (signed URL)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  const selectedContext: AgentContext | null = selected?.normalized_json ?? null;
+
+  async function loadRequests() {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const res = await fetch("/api/agent/requests");
+      if (!res.ok) {
+        throw new Error(`Failed to load (status ${res.status})`);
+      }
+
+      const json = (await res.json()) as { requests: AgentRequest[] };
+      setRequests(json.requests);
+    } catch (err) {
+      console.error("Failed to load agent requests", err);
+      setError("Failed to load agent requests. Check logs.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    // initial load
+    loadRequests();
+    // polling (30s)
+    const interval = setInterval(loadRequests, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // When selected request changes, fetch signed URLs for its attachments
+  useEffect(() => {
+    const paths =
+      (selectedContext?.attachmentIds ?? []).filter(
+        (p): p is string => Boolean(p)
+      ) || [];
+
+    if (!paths.length) {
+      setAttachmentUrls({});
+      setAttachmentsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchSignedUrls() {
+      try {
+        setAttachmentsLoading(true);
+        const supabase = createBrowserSupabase();
+
+        // @ts-ignore - TS may not know createSignedUrls exists
+        const { data, error } = await supabase.storage
+          .from("agent_uploads")
+          .createSignedUrls(paths, 60 * 60); // 1 hour
+
+        if (error) {
+          console.error("createSignedUrls error for agent_uploads:", error);
+          if (!cancelled) {
+            setAttachmentUrls({});
+          }
+          return;
+        }
+
+        const map: Record<string, string> = {};
+        (data || []).forEach((item: any, idx: number) => {
+          if (item?.signedUrl) {
+            map[paths[idx]] = item.signedUrl;
+          }
+        });
+
+        if (!cancelled) {
+          setAttachmentUrls(map);
+        }
+      } catch (err) {
+        console.error("Error loading signed URLs for agent_uploads:", err);
+        if (!cancelled) {
+          setAttachmentUrls({});
+        }
+      } finally {
+        if (!cancelled) {
+          setAttachmentsLoading(false);
+        }
+      }
+    }
+
+    fetchSignedUrls();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
+
+  async function updateStatus(
+    action: "approve" | "reject",
+    request: AgentRequest
+  ) {
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/agent/requests/${request.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+
+        if (!res.ok) {
+          console.error("Failed to update agent request", await res.text());
+          return;
+        }
+
+        const json = (await res.json()) as { request: AgentRequest };
+
+        setRequests((prev) =>
+          prev.map((r) => (r.id === json.request.id ? json.request : r))
+        );
+        setSelected(json.request);
+      } catch (err) {
+        console.error("Error updating agent request", err);
+      }
+    });
+  }
+
+  async function deleteRequest(request: AgentRequest) {
+    const confirmed = window.confirm(
+      "Delete this agent request and its metadata? This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/agent/requests/${request.id}`, {
+          method: "DELETE",
+        });
+
+        if (!res.ok) {
+          console.error("Failed to delete agent request", await res.text());
+          return;
+        }
+
+        setRequests((prev) => prev.filter((r) => r.id !== request.id));
+        if (selected?.id === request.id) {
+          setSelected(null);
+          setAttachmentUrls({});
+          setLightboxUrl(null);
+        }
+      } catch (err) {
+        console.error("Error deleting agent request", err);
+      }
+    });
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl px-3 py-6 text-white">
+      {/* Header */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+            Agent Console
+          </h1>
+          <p className="mt-1 text-xs text-neutral-400">
+            Review AI-generated issues, pull requests, and catalog changes for
+            ProFixIQ.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-neutral-300 backdrop-blur-md">
+          <div className="flex flex-col">
+            <span className="text-[0.65rem] uppercase tracking-[0.13em] text-neutral-500">
+              Requests
+            </span>
+            <span className="font-semibold">{requests.length} open</span>
+          </div>
+          <Separator orientation="vertical" className="h-6 bg-white/10" />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="border-orange-500/60 bg-black/40 text-xs font-semibold text-orange-400 hover:bg-orange-600 hover:text-black"
+            onClick={() => loadRequests()}
+          >
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* Main layout */}
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
+        {/* Left: list */}
+        <Card className="flex h-[70vh] flex-col rounded-2xl border border-white/10 bg-black/30 p-3 shadow-card backdrop-blur-md">
+          <div className="mb-2 flex items-center justify-between px-1">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">
+              Requests
+            </h2>
+            {isLoading && (
+              <span className="text-[0.7rem] text-neutral-500">Syncing…</span>
+            )}
+          </div>
+
+          <Separator className="mb-2 bg-white/10" />
+
+          <div className="flex-1 space-y-2 overflow-auto">
+            {error && <p className="text-xs text-red-400">{error}</p>}
+
+            {!isLoading && !error && requests.length === 0 && (
+              <p className="text-xs text-neutral-500">No agent requests yet.</p>
+            )}
+
+            {requests.map((req) => (
+              <button
+                key={req.id}
+                type="button"
+                onClick={() => setSelected(req)}
+                className={cn(
+                  "w-full rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-left text-xs text-neutral-100 transition hover:border-orange-500/70 hover:bg-orange-500/5",
+                  selected?.id === req.id &&
+                    "border-orange-500/80 bg-orange-500/10"
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="line-clamp-1 text-[0.8rem] font-medium text-neutral-50">
+                      {req.description}
+                    </span>
+                    <span className="text-[0.7rem] text-neutral-400">
+                      {prettyIntent(req.intent)} •{" "}
+                      {new Date(req.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge
+                      className={cn(
+                        "border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                        statusClasses(req.status)
+                      )}
+                    >
+                      {req.status.replace(/_/g, " ")}
+                    </Badge>
+                    {req.llm_confidence != null && (
+                      <span className="text-[10px] text-neutral-500">
+                        Conf: {req.llm_confidence.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        {/* Right: detail */}
+        <Card className="flex h-[70vh] flex-col rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-md">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">
+              {selected ? "Request Details" : "Select a Request"}
+            </h2>
+          </div>
+
+          <Separator className="mb-3 bg-white/10" />
+
+          <div className="flex-1 space-y-4 overflow-auto text-sm text-neutral-100">
+            {!selected && (
+              <p className="text-xs text-neutral-500">
+                Choose a request on the left to see description, GitHub links,
+                context, and LLM notes.
+              </p>
+            )}
+
+            {selected && (
+              <>
+                {/* Description */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-neutral-50">
+                      Description
+                    </h3>
+                    <Badge
+                      className={cn(
+                        "border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                        statusClasses(selected.status)
+                      )}
+                    >
+                      {selected.status.replace(/_/g, " ")}
+                    </Badge>
+                  </div>
+                  <p className="whitespace-pre-line text-xs text-neutral-200">
+                    {selected.description}
+                  </p>
+                </div>
+
+                <Separator className="bg-white/10" />
+
+                {/* Meta grid */}
+                <div className="grid grid-cols-2 gap-4 text-[0.75rem]">
+                  <div className="space-y-1">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                      Intent
+                    </div>
+                    <div className="text-neutral-100">
+                      {prettyIntent(selected.intent)}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                      LLM Model
+                    </div>
+                    <div className="text-neutral-100">
+                      {selected.llm_model ?? "n/a"}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                      Confidence
+                    </div>
+                    <div className="text-neutral-100">
+                      {selected.llm_confidence != null
+                        ? selected.llm_confidence.toFixed(3)
+                        : "n/a"}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                      Reporter Role
+                    </div>
+                    <div className="text-neutral-100">
+                      {selected.reporter_role ?? "unknown"}
+                    </div>
+                  </div>
+                </div>
+
+                <Separator className="bg-white/10" />
+
+                {/* Context */}
+                {selectedContext && Object.keys(selectedContext).length > 0 && (
+                  <>
+                    <div className="space-y-2 text-[0.75rem]">
+                      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                        Context
+                      </div>
+                      <div className="space-y-1 text-neutral-200">
+                        {selectedContext.location && (
+                          <div>
+                            <span className="text-neutral-500">Location:</span>{" "}
+                            {selectedContext.location}
+                          </div>
+                        )}
+                        {selectedContext.device && (
+                          <div>
+                            <span className="text-neutral-500">Device:</span>{" "}
+                            {selectedContext.device}
+                          </div>
+                        )}
+                        {selectedContext.steps && (
+                          <div>
+                            <div className="text-neutral-500">
+                              Steps to Reproduce:
+                            </div>
+                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
+                              {selectedContext.steps}
+                            </pre>
+                          </div>
+                        )}
+                        {selectedContext.expected && (
+                          <div>
+                            <div className="text-neutral-500">Expected:</div>
+                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
+                              {selectedContext.expected}
+                            </pre>
+                          </div>
+                        )}
+                        {selectedContext.actual && (
+                          <div>
+                            <div className="text-neutral-500">Actual:</div>
+                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
+                              {selectedContext.actual}
+                            </pre>
+                          </div>
+                        )}
+
+                        {Array.isArray(selectedContext.attachmentIds) &&
+                          selectedContext.attachmentIds.length > 0 && (
+                            <div className="space-y-1">
+                              <div className="text-neutral-500">
+                                Attachments:
+                              </div>
+
+                              {attachmentsLoading && (
+                                <div className="text-[0.7rem] text-neutral-500">
+                                  Loading screenshots…
+                                </div>
+                              )}
+
+                              <ul className="mt-0.5 space-y-2 text-[0.7rem]">
+                                {selectedContext.attachmentIds.map(
+                                  (path, idx) => {
+                                    const url = attachmentUrls[path];
+
+                                    return (
+                                      <li
+                                        key={path}
+                                        className="text-neutral-300"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            disabled={!url}
+                                            onClick={() =>
+                                              url && setLightboxUrl(url)
+                                            }
+                                            className={cn(
+                                              "text-left text-orange-400 underline underline-offset-2 hover:text-orange-300",
+                                              !url &&
+                                                "cursor-not-allowed opacity-60"
+                                            )}
+                                          >
+                                            Screenshot {idx + 1}
+                                          </button>
+                                          <span className="text-neutral-500 truncate">
+                                            (
+                                            {
+                                              path.split("/")[
+                                                path.split("/").length - 1
+                                              ]
+                                            }
+                                            )
+                                          </span>
+                                        </div>
+
+                                        {url && (
+                                          <div className="mt-1">
+                                            <img
+                                              src={url}
+                                              alt={`Screenshot ${idx + 1}`}
+                                              onClick={() =>
+                                                setLightboxUrl(url)
+                                              }
+                                              className="max-h-40 w-auto cursor-zoom-in rounded-md border border-white/10 bg-black/40 object-contain"
+                                            />
+                                          </div>
+                                        )}
+                                      </li>
+                                    );
+                                  }
+                                )}
+                              </ul>
+                            </div>
+                          )}
+                      </div>
+                    </div>
+
+                    <Separator className="bg-white/10" />
+                  </>
+                )}
+
+                {/* GitHub */}
+                <div className="space-y-1 text-[0.75rem]">
+                  <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                    GitHub
+                  </div>
+                  <div className="space-y-1 text-neutral-200">
+                    {selected.github_issue_url ? (
+                      <div>
+                        Issue:{" "}
+                        <a
+                          href={selected.github_issue_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-orange-400 underline underline-offset-2 hover:text-orange-300"
+                        >
+                          #{selected.github_issue_number}
+                        </a>
+                      </div>
+                    ) : (
+                      <div>Issue: n/a</div>
+                    )}
+                    {selected.github_pr_url ? (
+                      <div>
+                        PR:{" "}
+                        <a
+                          href={selected.github_pr_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-orange-400 underline underline-offset-2 hover:text-orange-300"
+                        >
+                          #{selected.github_pr_number}
+                        </a>
+                      </div>
+                    ) : (
+                      <div>PR: n/a</div>
+                    )}
+                    {selected.github_branch && (
+                      <div>Branch: {selected.github_branch}</div>
+                    )}
+                    {selected.github_commit_sha && (
+                      <div className="truncate">
+                        Commit: {selected.github_commit_sha}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* LLM notes */}
+                {selected.llm_notes && (
+                  <>
+                    <Separator className="bg-white/10" />
+                    <div className="space-y-1 text-[0.75rem]">
+                      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                        LLM Notes
+                      </div>
+                      <p className="whitespace-pre-line text-neutral-300">
+                        {selected.llm_notes}
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                <Separator className="bg-white/10" />
+
+                {/* Actions */}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selected || isPending}
+                    className={cn(
+                      "border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-black disabled:opacity-50",
+                      isPending && "cursor-wait"
+                    )}
+                    onClick={() =>
+                      selected && updateStatus("approve", selected)
+                    }
+                  >
+                    {isPending ? "Working…" : "Approve"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selected || isPending}
+                    className={cn(
+                      "border-red-500/70 text-xs font-semibold text-red-300 hover:bg-red-600 hover:text-black disabled:opacity-50",
+                      isPending && "cursor-wait"
+                    )}
+                    onClick={() =>
+                      selected && updateStatus("reject", selected)
+                    }
+                  >
+                    {isPending ? "Working…" : "Reject"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selected || isPending}
+                    className={cn(
+                      "border-white/40 text-xs font-semibold text-neutral-300 hover:bg-red-700 hover:text-white disabled:opacity-50",
+                      isPending && "cursor-wait"
+                    )}
+                    onClick={() => selected && deleteRequest(selected)}
+                  >
+                    {isPending ? "Working…" : "Delete"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Lightbox overlay */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-3"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div
+            className="relative max-h-[90vh] max-w-[90vw]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-black"
+              onClick={() => setLightboxUrl(null)}
+            >
+              Close
+            </button>
+            <img
+              src={lightboxUrl}
+              alt="Screenshot"
+              className="max-h-[90vh] max-w-[90vw] rounded-lg border border-white/20 object-contain"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+============================================================
+FILE: features/agent/components/AgentRequestModal.tsx
+============================================================
+"use client";
+
+import { useState, useEffect, ChangeEvent } from "react";
+import { Button } from "@shared/components/ui/Button";
+import { Textarea } from "@shared/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@shared/components/ui/dialog";
+import { toast } from "sonner";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+
+type Props = {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+};
+
+// UI intent values → backend enum-ish strings
+type AgentIntentUi =
+  | "feature_request"
+  | "bug_report"
+  | "inspection_catalog_add"
+  | "service_catalog_add"
+  | "refactor"
+  | "unclear";
+
+export default function AgentRequestModal({ open, onOpenChange }: Props) {
+  const [description, setDescription] = useState("");
+  const [intent, setIntent] = useState<AgentIntentUi>("unclear");
+
+  // v2 structured QA context
+  const [location, setLocation] = useState("");
+  const [steps, setSteps] = useState("");
+  const [expected, setExpected] = useState("");
+  const [actual, setActual] = useState("");
+  const [device, setDevice] = useState("");
+
+  // Local files → uploaded to Supabase on submit
+  const [files, setFiles] = useState<File[]>([]);
+
+  const [loading, setLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Avoid “click before hydration” doing nothing
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const list = e.target.files;
+    if (!list) {
+      setFiles([]);
+      return;
+    }
+    const arr = Array.from(list);
+    setFiles(arr);
+  }
+
+  async function uploadScreenshots(): Promise<string[]> {
+    if (!files.length) return [];
+
+    const supabase = createBrowserSupabase();
+    const uploadedPaths: string[] = [];
+
+    // Grab user id so we can namespace uploads
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userId = user?.id ?? "anonymous";
+
+    for (const file of files) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const timestamp = Date.now();
+      const path = `${userId}/${timestamp}-${safeName}`;
+
+      const { error } = await supabase.storage
+        .from("agent_uploads")
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (error) {
+        console.error("agent_uploads upload error:", error);
+        toast.error(`Failed to upload ${file.name}`);
+        continue;
+      }
+
+      uploadedPaths.push(path);
+    }
+
+    return uploadedPaths;
+  }
+
+  async function submit() {
+    if (!description.trim()) {
+      toast.error("Description is required.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // 1) Upload screenshots first (if any)
+      const attachmentIds = await uploadScreenshots();
+
+      // 2) Build context for v2 route
+      const context: Record<string, unknown> = {};
+      if (location.trim()) context.location = location.trim();
+      if (steps.trim()) context.steps = steps.trim();
+      if (expected.trim()) context.expected = expected.trim();
+      if (actual.trim()) context.actual = actual.trim();
+      if (device.trim()) context.device = device.trim();
+      if (attachmentIds.length) context.attachmentIds = attachmentIds;
+
+      const res = await fetch("/api/agent/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: description.trim(),
+          intent,
+          // these top-level fields match CreateAgentRequestBody
+          location: location.trim() || undefined,
+          steps: steps.trim() || undefined,
+          expected: expected.trim() || undefined,
+          actual: actual.trim() || undefined,
+          device: device.trim() || undefined,
+          attachmentIds: attachmentIds.length ? attachmentIds : undefined,
+          context: Object.keys(context).length ? context : undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error("Agent request POST failed", res.status, text);
+        toast.error("Failed to submit request");
+      } else {
+        toast.success("Request submitted to ProFixIQ-Agent");
+        setDescription("");
+        setIntent("unclear");
+        setLocation("");
+        setSteps("");
+        setExpected("");
+        setActual("");
+        setDevice("");
+        setFiles([]);
+        onOpenChange(false);
+      }
+    } catch (err) {
+      toast.error("Something went wrong.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const canSubmit = hydrated && !!description.trim() && !loading;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-black/80 border border-white/10 text-white backdrop-blur-xl">
+        <DialogHeader>
+          <DialogTitle className="font-blackops tracking-[0.15em] text-neutral-200 uppercase">
+            Submit a Request
+          </DialogTitle>
+          <p className="mt-1 text-xs text-neutral-500">
+            Use this for QA or feature ideas. Be specific so the agent and
+            developers know exactly where to look.
+          </p>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4">
+          {/* INTENT SELECTOR */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-neutral-400 uppercase tracking-wider">
+              Type
+            </label>
+            <select
+              value={intent}
+              onChange={(e) => setIntent(e.target.value as AgentIntentUi)}
+              className="rounded-md bg-neutral-900 text-neutral-200 border border-white/10 px-2 py-1 text-sm"
+            >
+              <option value="feature_request">Feature Request</option>
+              <option value="bug_report">Bug Report</option>
+              <option value="inspection_catalog_add">
+                Add to Inspection Catalog
+              </option>
+              <option value="service_catalog_add">
+                Add to Service Catalog
+              </option>
+              <option value="refactor">Refactor / Cleanup</option>
+              <option value="unclear">Not sure / General feedback</option>
+            </select>
+          </div>
+
+          {/* DESCRIPTION */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-neutral-400 uppercase tracking-wider">
+              Description
+            </label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Example: In inspections > work order #24, the corner grid tabbing jumps out of the grid and moves focus to the footer."
+              className="bg-neutral-900 text-neutral-200 border-white/10 h-32"
+            />
+            <p className="text-[0.7rem] text-neutral-500">
+              Include which screen, what you were doing, and what went wrong.
+              Mention specific grids, buttons, or rows when possible.
+            </p>
+          </div>
+
+          {/* CONTEXT: LOCATION + DEVICE */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-neutral-400 uppercase tracking-wider">
+                Where in the app?
+              </label>
+              <input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Ex: Inspections → Corner grid step, top-right card"
+                className="rounded-md bg-neutral-900 text-neutral-200 border border-white/10 px-2 py-1 text-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-neutral-400 uppercase tracking-wider">
+                Device / Browser
+              </label>
+              <input
+                value={device}
+                onChange={(e) => setDevice(e.target.value)}
+                placeholder="Ex: iPad 11” (Safari), MacBook (Chrome)"
+                className="rounded-md bg-neutral-900 text-neutral-200 border border-white/10 px-2 py-1 text-sm"
+              />
+            </div>
+          </div>
+
+          {/* STEPS */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-neutral-400 uppercase tracking-wider">
+              Steps to Reproduce
+            </label>
+            <Textarea
+              value={steps}
+              onChange={(e) => setSteps(e.target.value)}
+              placeholder={`1. Open work order #...\n2. Go to Inspections tab\n3. Click into corner grids section\n4. Press Tab key from first field...`}
+              className="bg-neutral-900 text-neutral-200 border-white/10 h-28"
+            />
+          </div>
+
+          {/* EXPECTED vs ACTUAL */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-neutral-400 uppercase tracking-wider">
+                Expected
+              </label>
+              <Textarea
+                value={expected}
+                onChange={(e) => setExpected(e.target.value)}
+                placeholder="What you expected to happen."
+                className="bg-neutral-900 text-neutral-200 border-white/10 h-20"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-neutral-400 uppercase tracking-wider">
+                Actual
+              </label>
+              <Textarea
+                value={actual}
+                onChange={(e) => setActual(e.target.value)}
+                placeholder="What actually happened, including any errors."
+                className="bg-neutral-900 text-neutral-200 border-white/10 h-20"
+              />
+            </div>
+          </div>
+
+          {/* Screenshots */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-neutral-400 uppercase tracking-wider">
+              Screenshots
+            </label>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileChange}
+              className="text-xs text-neutral-300"
+            />
+            {files.length > 0 && (
+              <p className="text-[0.7rem] text-neutral-500">
+                {files.length} file{files.length > 1 ? "s" : ""} selected
+              </p>
+            )}
+            <p className="text-[0.7rem] text-neutral-500">
+              Attach clear screenshots of the issue. These will be stored in the
+              secure <code>agent_uploads</code> bucket and linked to this
+              request.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="border-white/20 text-neutral-300"
+          >
+            Cancel
+          </Button>
+
+          <Button
+            type="button"
+            onClick={submit}
+            disabled={!canSubmit}
+            className="bg-orange-600 hover:bg-orange-500 text-black font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "Submitting…" : "Submit"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+============================================================
+FILE: features/agent/components/AgentTriggerButton.tsx
+============================================================
+"use client";
+import { useEffect, useState } from "react";
+
+type StreamEvent = {
+  step: number;
+  kind: "plan" | "tool_call" | "tool_result" | "info" | "error" | "final";
+  content: unknown;
+  created_at: string;
+  id: string;
+};
+
+export default function AgentTriggerButton({
+  defaultGoal,
+  defaultContext
+}: {
+  defaultGoal?: string;
+  defaultContext?: Record<string, unknown>;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [runId, setRunId] = useState<string | null>(null);
+
+  async function handleClick() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          goal: defaultGoal ?? "Create a brake job",
+          context: defaultContext ?? {
+            customerId: "REPLACE-CUSTOMER-UUID",
+            vehicleId: "REPLACE-VEHICLE-UUID",
+            lineDescription: "Front brake pads & rotors",
+            jobType: "repair",
+            laborHours: 3,
+            partCost: 220,
+            emailInvoiceTo: "customer@example.com"
+          },
+          idempotencyKey: crypto.randomUUID()
+        })
+      });
+      const json: { runId?: string; error?: string } = await res.json();
+      if (!res.ok || !json.runId) throw new Error(json.error ?? "Agent failed");
+      setRunId(json.runId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <button onClick={handleClick} disabled={loading} className="btn btn-primary">
+        {loading ? "Running…" : "Run ProFix Agent"}
+      </button>
+      {runId && <AgentEventStream runId={runId} />}
+    </div>
+  );
+}
+
+function AgentEventStream({ runId }: { runId: string }) {
+  const [events, setEvents] = useState<StreamEvent[]>([]);
+
+  useEffect(() => {
+    const url = new URL("/api/agent/events", window.location.origin);
+    url.searchParams.set("runId", runId);
+    const es = new EventSource(url.toString(), { withCredentials: true });
+
+    es.onmessage = (msg: MessageEvent<string>) => {
+      try {
+        const data: StreamEvent = JSON.parse(msg.data) as StreamEvent;
+        setEvents(prev => [...prev, data]);
+      } catch {
+        // ignore bad event
+      }
+    };
+    es.onerror = () => { es.close(); };
+
+    return () => es.close();
+  }, [runId]);
+
+  return (
+    <div className="rounded border p-2 max-h-96 overflow-auto">
+      {events.map((ev) => (
+        <div key={ev.id} className="border-b py-2">
+          <div className="text-xs opacity-70">#{ev.step} — {ev.kind}</div>
+          <pre className="text-sm whitespace-pre-wrap">{JSON.stringify(ev.content, null, 2)}</pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+============================================================
+FILE: features/agent/lib/plannerApprovals.ts
+============================================================
+// features/agent/lib/plannerApprovals.ts
+import type { ToolContext } from "./toolTypes";
+import type { PlannerEvent } from "./plannerSimple";
+import {
+  runListPendingApprovals,
+  runSetLineApproval,
+} from "./toolRegistry";
+
+function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
+  return (obj as Record<string, T | undefined>)[key];
+}
+
+type ApprovalAction = "list" | "approve" | "reject";
+
+type ParsedApprovalPlan = {
+  action: ApprovalAction;
+  limit: number;
+  lineId?: string;
+};
+
+/**
+ * Tiny parser for approvals.
+ * You can later swap this to an LLM if you want “natural language approvals”.
+ */
+function buildApprovalPlan(
+  goal: string,
+  context: Record<string, unknown>,
+): ParsedApprovalPlan {
+  const rawAction =
+    (get<string>(context, "action") ?? goal ?? "").toLowerCase();
+
+  const lineId =
+    get<string>(context, "lineId") ??
+    get<string>(context, "workOrderLineId") ??
+    undefined;
+
+  const limit = Number(get<number>(context, "limit") ?? 25);
+
+  let action: ApprovalAction = "list";
+  if (rawAction.includes("reject")) action = "reject";
+  else if (rawAction.includes("approve")) action = "approve";
+
+  // If they passed a lineId but no obvious action, default to approve
+  if (lineId && action === "list") action = "approve";
+
+  return {
+    action,
+    limit: Number.isFinite(limit) && limit > 0 ? limit : 25,
+    lineId,
+  };
+}
+
+export async function runApprovalPlanner(
+  goal: string,
+  context: Record<string, unknown>,
+  ctx: ToolContext,
+  onEvent?: (e: PlannerEvent) => Promise<void> | void,
+) {
+  const plan: ParsedApprovalPlan = buildApprovalPlan(goal, context);
+
+  await onEvent?.({
+    kind: "plan",
+    text: `Approval goal: ${goal}`,
+  });
+
+  // 1) Always list current pending approvals first (advisor sees summary)
+  const listInput: Record<string, unknown> = { limit: plan.limit };
+
+  await onEvent?.({
+    kind: "tool_call",
+    name: "list_pending_approvals",
+    input: listInput,
+  });
+
+  const pending = await (runListPendingApprovals as any)(listInput, ctx);
+
+  await onEvent?.({
+    kind: "tool_result",
+    name: "list_pending_approvals",
+    output: pending,
+  });
+
+  // 2) Optionally approve / reject a single line
+  if (plan.action === "list" || !plan.lineId) {
+    await onEvent?.({
+      kind: "final",
+      text: "Listed pending approvals.",
+    });
+    return;
+  }
+
+  const decision = plan.action === "approve" ? "approved" : "rejected";
+
+  const setInput: Record<string, unknown> = {
+    lineId: plan.lineId,
+    decision,
+  };
+
+  await onEvent?.({
+    kind: "tool_call",
+    name: "set_line_approval",
+    input: setInput,
+  });
+
+  const setResult = await (runSetLineApproval as any)(setInput, ctx);
+
+  await onEvent?.({
+    kind: "tool_result",
+    name: "set_line_approval",
+    output: setResult,
+  });
+
+  await onEvent?.({
+    kind: "final",
+    text: `Line ${plan.lineId} marked ${decision}.`,
+  });
+}
+
+
+============================================================
+FILE: features/agent/lib/plannerFleet.ts
+============================================================
+// features/agent/lib/plannerFleet.ts
+import type { ToolContext } from "./toolTypes";
+import type { PlannerEvent } from "./plannerSimple";
+import {
+  runFindOrCreateFleet,
+  runFindOrCreateFleetProgram,
+  runGenerateFleetWorkOrders,
+} from "./toolRegistry";
+
+function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
+  return (obj as Record<string, T | undefined>)[key];
+}
+
+type ParsedFleetPlan = {
+  fleetName?: string;
+  programName?: string;
+  label?: string;
+  vehicleIds?: string[];
+  contactEmail?: string;
+  contactName?: string;
+  baseTemplateSlug?: string;
+  includeCustomInspection?: boolean;
+};
+
+/**
+ * Very small helper to build a fleet plan from goal + context.
+ * (You can swap this later for an LLM parser if you want richer behavior.)
+ */
+function buildFleetPlan(goal: string, context: Record<string, unknown>): ParsedFleetPlan {
+  const fleetNameCtx = get<string>(context, "fleetName");
+  const programCtx = get<string>(context, "programName");
+  const labelCtx = get<string>(context, "label");
+  const vehicleIdsCtx = get<string[]>(context, "vehicleIds");
+
+  const contactEmailCtx = get<string>(context, "contactEmail");
+  const contactNameCtx = get<string>(context, "contactName");
+
+  const baseTemplateSlugCtx = get<string>(context, "baseTemplateSlug");
+  const includeCustomInspectionCtx = get<boolean>(context, "includeCustomInspection");
+
+  const trimmedGoal = goal.trim();
+  const fallbackFleetName =
+    fleetNameCtx || (trimmedGoal.length > 0 ? trimmedGoal.slice(0, 80) : undefined);
+
+  return {
+    fleetName: fleetNameCtx ?? fallbackFleetName,
+    programName: programCtx ?? get<string>(context, "program") ?? "Maintenance Program",
+    label: labelCtx ?? undefined,
+    vehicleIds: Array.isArray(vehicleIdsCtx) ? vehicleIdsCtx : undefined,
+    contactEmail: contactEmailCtx ?? undefined,
+    contactName: contactNameCtx ?? undefined,
+    baseTemplateSlug: baseTemplateSlugCtx ?? undefined,
+    includeCustomInspection:
+      typeof includeCustomInspectionCtx === "boolean"
+        ? includeCustomInspectionCtx
+        : undefined,
+  };
+}
+
+export async function runFleetPlanner(
+  goal: string,
+  context: Record<string, unknown>,
+  ctx: ToolContext,
+  onEvent?: (e: PlannerEvent) => Promise<void> | void,
+) {
+  const plan: ParsedFleetPlan = buildFleetPlan(goal, context);
+
+  await onEvent?.({ kind: "plan", text: `Fleet goal: ${goal}` });
+
+  if (!plan.fleetName) {
+    await onEvent?.({
+      kind: "final",
+      text: "Fleet planner needs at least a fleet name in goal or context.fleetName.",
+    });
+    return;
+  }
+
+  // 1) Find or create fleet
+  const findFleetInput = {
+    name: plan.fleetName,
+    contact_email: plan.contactEmail,
+    contact_name: plan.contactName,
+  };
+
+  await onEvent?.({
+    kind: "tool_call",
+    name: "find_or_create_fleet",
+    input: findFleetInput,
+  });
+
+  const fleetOut = await runFindOrCreateFleet(findFleetInput, ctx);
+
+  await onEvent?.({
+    kind: "tool_result",
+    name: "find_or_create_fleet",
+    output: fleetOut,
+  });
+
+  const fleetId = fleetOut?.fleetId;
+
+  if (!fleetId) {
+    await onEvent?.({
+      kind: "final",
+      text: "Could not resolve fleet ID from find_or_create_fleet.",
+    });
+    return;
+  }
+
+  // 2) Find or create fleet program (persist it even if no tasks yet)
+  const programName = plan.programName ?? "Maintenance Program";
+  const findProgramInput = {
+    fleetId,
+    programName,
+    baseTemplateSlug: plan.baseTemplateSlug,
+    includeCustomInspection: plan.includeCustomInspection,
+  };
+
+  await onEvent?.({
+    kind: "tool_call",
+    name: "find_or_create_fleet_program",
+    input: findProgramInput,
+  });
+
+  const programOut = await runFindOrCreateFleetProgram(findProgramInput, ctx);
+
+  await onEvent?.({
+    kind: "tool_result",
+    name: "find_or_create_fleet_program",
+    output: programOut,
+  });
+
+  // Not strictly required for WO generation (since generate tool can find/create too),
+  // but helps confirm program exists & gives you an ID to display/log later.
+  const programId = programOut?.programId;
+
+  // 3) Generate work orders for the fleet / program
+  const generateInput = {
+    fleetId,
+    programName,
+    vehicleIds: plan.vehicleIds,
+    label: plan.label,
+  };
+
+  await onEvent?.({
+    kind: "tool_call",
+    name: "generate_fleet_work_orders",
+    input: generateInput,
+  });
+
+  const generated = await runGenerateFleetWorkOrders(generateInput, ctx);
+
+  await onEvent?.({
+    kind: "tool_result",
+    name: "generate_fleet_work_orders",
+    output: {
+      ...generated,
+      programId: programId ?? null,
+    },
+  });
+
+  await onEvent?.({
+    kind: "final",
+    text: `Fleet work orders generated.${programId ? ` Program ${programId.slice(0, 8)}…` : ""}`,
+  });
+}
+
+
+============================================================
+FILE: features/agent/lib/plannerOpenAI.ts
+============================================================
+// features/agent/lib/plannerOpenAI.ts
+import type { ToolContext } from "./toolTypes";
+import type { PlannerEvent } from "./plannerSimple"; // includes "wo.created"
+
+import {
+  runCreateWorkOrder,
+  runAddWorkOrderLine,
+  runFindCustomerVehicle,
+  runGenerateInvoiceHtml,
+  runEmailInvoice,
+  runCreateCustomer,
+  runCreateVehicle,
+  runAttachPhoto,
+  runCreateCustomInspection,
+  runRecordWorkOrderApproval,
+} from "./toolRegistry";
+
+function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
+  return (obj as Record<string, T | undefined>)[key];
+}
+
+function toMsg(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (
+    e !== null &&
+    typeof e === "object" &&
+    "message" in e &&
+    typeof (e as { message: unknown }).message === "string"
+  ) {
+    return (e as { message: string }).message;
+  }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "Unknown error";
+  }
+}
+
+const JOB_TYPES = new Set(["maintenance", "repair", "diagnosis", "inspection"] as const);
+function coerceJobType(x: unknown): "maintenance" | "repair" | "diagnosis" | "inspection" {
+  return typeof x === "string" && JOB_TYPES.has(x as never) ? (x as never) : "repair";
+}
+
+function coerceOrderType(
+  x: unknown,
+): "inspection" | "maintenance" | "repair" | "diagnosis" {
+  const v = typeof x === "string" ? x.toLowerCase() : "";
+  return (["inspection", "maintenance", "repair", "diagnosis"].includes(v)
+    ? v
+    : "inspection") as "inspection" | "maintenance" | "repair" | "diagnosis";
+}
+
+type PlannerMode = "openai" | "fleet" | "approvals";
+function getPlannerMode(context: Record<string, unknown>): PlannerMode {
+  const raw =
+    (get<string>(context, "plannerKind") ??
+      get<string>(context, "mode") ??
+      "openai") || "openai";
+  const v = raw.toLowerCase();
+  if (v === "fleet") return "fleet";
+  if (v === "approvals") return "approvals";
+  return "openai";
+}
+
+function coerceApprovalMethod(
+  x: unknown,
+  mode: PlannerMode,
+): "fleet" | "advisor" | "customer" | "other" {
+  if (typeof x === "string") {
+    const v = x.toLowerCase();
+    if (v.includes("fleet")) return "fleet";
+    if (v.includes("advisor")) return "advisor";
+    if (v.includes("customer")) return "customer";
+    return "other";
+  }
+  if (mode === "fleet") return "fleet";
+  if (mode === "approvals") return "advisor";
+  return "other";
+}
+
+function normalizeText(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  return s ? s : undefined;
+}
+
+/**
+ * Deterministic fallback: extract plate/VIN from the raw goal string.
+ * This makes the system usable even if the UI fields/context aren’t wired perfectly yet.
+ */
+function extractPlateOrVinFromGoal(goal: string): string | undefined {
+  const g = goal.trim();
+  if (!g) return undefined;
+
+  // VIN: 17 chars, excluding I/O/Q, alnum
+  const vinMatch = g.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i);
+  if (vinMatch?.[1]) return vinMatch[1].toUpperCase();
+
+  // Explicit "VIN XXXXX"
+  const vinLabeled = g.match(/\bvin[:\s"']+([A-HJ-NPR-Z0-9]{11,17})\b/i);
+  if (vinLabeled?.[1]) return vinLabeled[1].toUpperCase();
+
+  // Plate: "plate 8ABC123" or plate:"8ABC123"
+  const plateMatch = g.match(/\bplate[:\s"']+([A-Z0-9-]{3,10})\b/i);
+  if (plateMatch?.[1]) return plateMatch[1].toUpperCase();
+
+  return undefined;
+}
+
+/* -------------------------------------------------------------------------- */
+/* LLM parsing                                                                */
+/* -------------------------------------------------------------------------- */
+
+type ParsedLine = {
+  description: string;
+  jobType?: "maintenance" | "repair" | "diagnosis" | "inspection";
+  laborHours?: number;
+  notes?: string;
+};
+
+type ParsedPlan = {
+  customerQuery?: string;
+  plateOrVin?: string;
+  orderType?: "inspection" | "maintenance" | "repair" | "diagnosis";
+  notes?: string | null;
+  lines?: ParsedLine[];
+  emailInvoiceTo?: string;
+  emailSubject?: string;
+  photoUrl?: string;
+
+  inspection?: {
+    title?: string;
+    vehicleType?: "car" | "truck" | "bus" | "trailer";
+    includeAxle?: boolean;
+    includeOil?: boolean;
+    selections?: Record<string, string[]>;
+    services?: string[];
+  };
+
+  autoApprove?: boolean;
+  approvalMethod?: string;
+};
+
+async function llmParseGoal(
+  goal: string,
+  context: Record<string, unknown>,
+): Promise<ParsedPlan> {
+  const hints = {
+    customerQuery: get<string>(context, "customerQuery"),
+    plateOrVin: get<string>(context, "plateOrVin"),
+    emailInvoiceTo: get<string>(context, "emailInvoiceTo"),
+    photoUrl: get<string>(context, "imageUrl"),
+    mode: get<string>(context, "mode") ?? get<string>(context, "plannerKind"),
+  };
+
+  const system = [
+    "You write strict JSON for auto-repair shop orchestration.",
+    "Output ONLY a JSON object; no prose.",
+    "Keys allowed: customerQuery, plateOrVin, orderType, notes, lines, emailInvoiceTo, emailSubject, photoUrl, inspection, autoApprove, approvalMethod.",
+    "Each line must include: description (required); jobType (maintenance|repair|diagnosis|inspection) if inferable; laborHours number if inferable; notes optional.",
+    "If you cannot infer something, omit it.",
+    "If a custom inspection is implied, set 'inspection' with title, selections{section:[items]}, services[], vehicleType, includeAxle/includeOil.",
+    "If the goal clearly implies advisor/customer approval, you may set autoApprove: true and an approvalMethod string (e.g. 'advisor_auto', 'customer_signed', 'phone_call').",
+  ].join(" ");
+
+  const user = `Goal:\n${goal}\n\nUI hints:\n${JSON.stringify(hints)}`;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      temperature: 0.2,
+    }),
+  });
+
+  if (!res.ok) return {};
+  const j = (await res.json().catch(() => null)) as unknown;
+
+  const text =
+    typeof j === "object" &&
+    j !== null &&
+    "choices" in j &&
+    Array.isArray((j as { choices?: unknown }).choices) &&
+    typeof (j as { choices: Array<{ message?: { content?: unknown } }> }).choices[0]?.message
+      ?.content === "string"
+      ? (j as { choices: Array<{ message: { content: string } }> }).choices[0].message.content
+      : undefined;
+
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as ParsedPlan;
+  } catch {
+    return {};
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* OpenAI Planner                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function runOpenAIPlanner(
+  goal: string,
+  context: Record<string, unknown>,
+  ctx: ToolContext,
+  onEvent?: (e: PlannerEvent) => Promise<void> | void,
+) {
+  await onEvent?.({ kind: "plan", text: `Goal: ${goal}` });
+
+  const mode = getPlannerMode(context);
+
+  // 0) Parse with LLM (best-effort)
+  let parsed: ParsedPlan = {};
+  try {
+    parsed = await llmParseGoal(goal, context);
+  } catch {
+    // ignore parse errors
+  }
+
+  // 1) Resolve customer + vehicle
+  let customerId = get<string>(context, "customerId");
+  let vehicleId = get<string>(context, "vehicleId");
+
+  const plateOrVin =
+    normalizeText(parsed.plateOrVin) ??
+    normalizeText(get<string>(context, "plateOrVin")) ??
+    extractPlateOrVinFromGoal(goal);
+
+  const customerQuery =
+    normalizeText(parsed.customerQuery) ??
+    normalizeText(get<string>(context, "customerQuery"));
+
+  const findIn = {
+    customerQuery,
+    plateOrVin,
+  };
+
+  if (!customerId || !vehicleId) {
+    await onEvent?.({
+      kind: "tool_call",
+      name: "find_customer_vehicle",
+      input: findIn,
+    });
+
+    const found = await runFindCustomerVehicle(findIn, ctx);
+
+    await onEvent?.({
+      kind: "tool_result",
+      name: "find_customer_vehicle",
+      output: found,
+    });
+
+    customerId = customerId ?? found.customerId;
+    vehicleId = vehicleId ?? found.vehicleId;
+
+    // 1a) If customer missing, create one (or recover from unique user constraint)
+    if (!customerId) {
+      const name = (customerQuery ?? "").trim() || "Default Customer";
+
+      await onEvent?.({
+        kind: "tool_call",
+        name: "create_customer",
+        input: { name },
+      });
+
+      try {
+        const createdC = await runCreateCustomer({ name }, ctx);
+        customerId = createdC.customerId;
+
+        await onEvent?.({
+          kind: "tool_result",
+          name: "create_customer",
+          output: createdC,
+        });
+      } catch (err) {
+        const msg = toMsg(err);
+
+        if (msg.toLowerCase().includes("customers_user_id_uq")) {
+          await onEvent?.({
+            kind: "tool_result",
+            name: "create_customer",
+            output: { skipped: true, reason: "customer already exists for user" },
+          });
+
+          const retry = await runFindCustomerVehicle(
+            { customerQuery: name, plateOrVin },
+            ctx,
+          );
+
+          await onEvent?.({
+            kind: "tool_result",
+            name: "find_customer_vehicle",
+            output: retry,
+          });
+
+          customerId = retry.customerId ?? customerId;
+          vehicleId = retry.vehicleId ?? vehicleId;
+        } else {
+          await onEvent?.({
+            kind: "final",
+            text: `Create customer failed: ${msg}`,
+          });
+          return;
+        }
+      }
+    }
+
+    // 1b) If vehicle missing, create a MINIMAL vehicle record if we have plate/VIN
+    if (!vehicleId && customerId && plateOrVin) {
+      const vehicleInput = {
+        customerId,
+        vin: plateOrVin.length > 10 ? plateOrVin : undefined,
+        license_plate: plateOrVin.length <= 10 ? plateOrVin : undefined,
+      };
+
+      await onEvent?.({
+        kind: "tool_call",
+        name: "create_vehicle",
+        input: vehicleInput,
+      });
+
+      const createdV = await runCreateVehicle(vehicleInput, ctx);
+      vehicleId = createdV.vehicleId;
+
+      await onEvent?.({
+        kind: "tool_result",
+        name: "create_vehicle",
+        output: createdV,
+      });
+    }
+
+    if (!customerId || !vehicleId) {
+      const why =
+        !plateOrVin
+          ? "Missing plate/VIN. Enter Plate/VIN (or use Scan VIN) so I can attach/create the vehicle."
+          : "Need a specific customer and vehicle to proceed.";
+      await onEvent?.({ kind: "final", text: why });
+      return;
+    }
+  }
+
+  // 2) Create the work order
+  const createInput = {
+    customerId,
+    vehicleId,
+    type: coerceOrderType(parsed.orderType ?? get<string>(context, "type")),
+    notes: (parsed.notes ?? get<string>(context, "notes") ?? undefined) || undefined,
+  };
+
+  await onEvent?.({
+    kind: "tool_call",
+    name: "create_work_order",
+    input: createInput,
+  });
+
+  const created = await runCreateWorkOrder(createInput, ctx);
+
+  await onEvent?.({
+    kind: "tool_result",
+    name: "create_work_order",
+    output: created,
+  });
+
+  await onEvent?.({
+    kind: "wo.created",
+    workOrderId: created.workOrderId,
+    customerId,
+    vehicleId,
+  });
+
+  // 3) Add lines
+  const lines = Array.isArray(parsed.lines) ? parsed.lines : [];
+  if (lines.length > 0) {
+    for (const L of lines) {
+      const desc = (L?.description ?? "").trim();
+      if (!desc) continue;
+
+      const addInput = {
+        workOrderId: created.workOrderId,
+        description: desc,
+        jobType: coerceJobType(L?.jobType),
+        laborHours: Number(L?.laborHours ?? 1),
+        notes: typeof L?.notes === "string" ? L.notes : undefined,
+      };
+
+      await onEvent?.({
+        kind: "tool_call",
+        name: "add_work_order_line",
+        input: addInput,
+      });
+
+      const added = await runAddWorkOrderLine(addInput, ctx);
+
+      await onEvent?.({
+        kind: "tool_result",
+        name: "add_work_order_line",
+        output: added,
+      });
+    }
+  } else {
+    const legacyDesc = get<string>(context, "lineDescription");
+    if (legacyDesc) {
+      const addInput = {
+        workOrderId: created.workOrderId,
+        description: legacyDesc,
+        jobType: coerceJobType(get<string>(context, "jobType")),
+        laborHours: Number(get<number>(context, "laborHours") ?? 1),
+        notes: get<string>(context, "lineNotes") ?? undefined,
+      };
+
+      await onEvent?.({
+        kind: "tool_call",
+        name: "add_work_order_line",
+        input: addInput,
+      });
+
+      const added = await runAddWorkOrderLine(addInput, ctx);
+
+      await onEvent?.({
+        kind: "tool_result",
+        name: "add_work_order_line",
+        output: added,
+      });
+    }
+  }
+
+  // 4) Optional: attach photo
+  const photoUrl = parsed.photoUrl ?? get<string>(context, "imageUrl");
+  if (photoUrl) {
+    const attachInput = {
+      workOrderId: created.workOrderId,
+      imageUrl: photoUrl,
+      kind: "photo" as const,
+    };
+
+    await onEvent?.({
+      kind: "tool_call",
+      name: "attach_photo_to_work_order",
+      input: attachInput,
+    });
+
+    const attached = await runAttachPhoto(attachInput, ctx);
+
+    await onEvent?.({
+      kind: "tool_result",
+      name: "attach_photo_to_work_order",
+      output: attached,
+    });
+  }
+
+  // 5) Optional: custom inspection
+  const insp =
+    parsed.inspection ??
+    (get<Record<string, unknown>>(context, "inspection") as ParsedPlan["inspection"]) ??
+    (get<Record<string, unknown>>(context, "customInspection") as ParsedPlan["inspection"]);
+
+  if (insp) {
+    const input = {
+      workOrderId: created.workOrderId,
+      title: insp.title ?? "Custom Inspection",
+      selections: insp.selections ?? {},
+      services: Array.isArray(insp.services) ? insp.services : [],
+      vehicleType: (insp.vehicleType ?? "truck") as "car" | "truck" | "bus" | "trailer",
+      includeAxle: insp.includeAxle ?? true,
+      includeOil: insp.includeOil ?? false,
+    };
+
+    await onEvent?.({
+      kind: "tool_call",
+      name: "create_custom_inspection",
+      input,
+    });
+
+    const out = await runCreateCustomInspection(input, ctx);
+
+    await onEvent?.({
+      kind: "tool_result",
+      name: "create_custom_inspection",
+      output: out,
+    });
+  }
+
+  // 6) Optional: invoice + email
+  const emailTo = parsed.emailInvoiceTo ?? get<string>(context, "emailInvoiceTo");
+  if (emailTo) {
+    const genInput = { workOrderId: created.workOrderId };
+
+    await onEvent?.({
+      kind: "tool_call",
+      name: "generate_invoice_html",
+      input: genInput,
+    });
+
+    const gen = await runGenerateInvoiceHtml(genInput, ctx);
+
+    await onEvent?.({
+      kind: "tool_result",
+      name: "generate_invoice_html",
+      output: gen,
+    });
+
+    const emailInput = {
+      toEmail: emailTo,
+      subject: parsed.emailSubject ?? (get<string>(context, "emailSubject") ?? "Your invoice"),
+      html: gen.html,
+    };
+
+    await onEvent?.({
+      kind: "tool_call",
+      name: "email_invoice",
+      input: emailInput,
+    });
+
+    const sent = await runEmailInvoice(emailInput, ctx);
+
+    await onEvent?.({
+      kind: "tool_result",
+      name: "email_invoice",
+      output: sent,
+    });
+  }
+
+  // 7) Optional: record work-order level approval
+  const autoApprove =
+    parsed.autoApprove === true ||
+    get<boolean>(context, "autoApprove") === true ||
+    mode === "approvals";
+
+  if (autoApprove) {
+    const rawMethod = parsed.approvalMethod ?? get<string>(context, "approvalMethod");
+
+    const approvalInput = {
+      workOrderId: created.workOrderId,
+      method: coerceApprovalMethod(rawMethod, mode),
+    };
+
+    await onEvent?.({
+      kind: "tool_call",
+      name: "record_work_order_approval",
+      input: approvalInput,
+    });
+
+    const approvalResult = await runRecordWorkOrderApproval(approvalInput, ctx);
+
+    await onEvent?.({
+      kind: "tool_result",
+      name: "record_work_order_approval",
+      output: approvalResult,
+    });
+  }
+
+  await onEvent?.({ kind: "final", text: "Done." });
+}
+
+
+============================================================
+FILE: features/agent/lib/plannerSimple.ts
+============================================================
+import type { ToolContext } from "./toolTypes";
+
+import {
+  runCreateWorkOrder,
+  runAddWorkOrderLine,
+  runGenerateInvoiceHtml,
+  runEmailInvoice,
+  runAttachPhoto,
+} from "./toolRegistry";
+
+export type PlannerEvent =
+  | { kind: "plan"; text: string }
+  | { kind: "tool_call"; name: string; input: unknown }
+  | { kind: "tool_result"; name: string; output: unknown }
+  | { kind: "wo.created"; workOrderId: string; customerId: string; vehicleId: string } // 👈 NEW event
+  | { kind: "final"; text: string };
+
+function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
+  return (obj as Record<string, T | undefined>)[key];
+}
+
+const JOB_TYPES = new Set(["maintenance", "repair", "diagnosis", "inspection"] as const);
+function coerceJobType(x: unknown): "maintenance" | "repair" | "diagnosis" | "inspection" {
+  return typeof x === "string" && JOB_TYPES.has(x as never) ? (x as never) : "repair";
+}
+
+function coerceOrderType(
+  x: unknown
+): "inspection" | "maintenance" | "repair" | "diagnosis" {
+  const v = typeof x === "string" ? x.toLowerCase() : "";
+  return (["inspection", "maintenance", "repair", "diagnosis"].includes(v)
+    ? v
+    : "inspection") as
+    | "inspection"
+    | "maintenance"
+    | "repair"
+    | "diagnosis";
+}
+
+/**
+ * "Simple" planner — expects resolved customerId + vehicleId in context.
+ * Runs a deterministic sequence with optional steps.
+ */
+export async function runSimplePlan(
+  goal: string,
+  context: Record<string, unknown>,
+  ctx: ToolContext,
+  onEvent?: (e: PlannerEvent) => Promise<void> | void
+) {
+  await onEvent?.({ kind: "plan", text: `Goal: ${goal}` });
+
+  const customerId = get<string>(context, "customerId");
+  const vehicleId = get<string>(context, "vehicleId");
+  if (!customerId || !vehicleId) {
+    await onEvent?.({
+      kind: "final",
+      text: "Need customerId and vehicleId or use find_customer_vehicle first.",
+    });
+    return;
+  }
+
+  // Create work order (type/notes are coerced to expected shapes)
+  const createInput = {
+    customerId,
+    vehicleId,
+    type: coerceOrderType(get<string>(context, "type")),
+    notes: get<string>(context, "notes") ?? undefined,
+  };
+  await onEvent?.({ kind: "tool_call", name: "create_work_order", input: createInput });
+  const created = await runCreateWorkOrder(createInput, ctx);
+  await onEvent?.({ kind: "tool_result", name: "create_work_order", output: created });
+
+  // 👇 Emit a dedicated event your UI can listen for to pop the preview modal
+  await onEvent?.({
+    kind: "wo.created",
+    workOrderId: created.workOrderId,
+    customerId,
+    vehicleId,
+  });
+
+  // Optional: add one line
+  const lineDescription = get<string>(context, "lineDescription");
+  if (lineDescription) {
+    const addInput = {
+      workOrderId: created.workOrderId,
+      description: lineDescription,
+      jobType: coerceJobType(get<string>(context, "jobType")),
+      laborHours: Number(get<number>(context, "laborHours") ?? 1),
+      notes: get<string>(context, "lineNotes") ?? undefined,
+    };
+    await onEvent?.({ kind: "tool_call", name: "add_work_order_line", input: addInput });
+    const added = await runAddWorkOrderLine(addInput, ctx);
+    await onEvent?.({ kind: "tool_result", name: "add_work_order_line", output: added });
+  }
+
+  // Optional: attach photo
+  const photoUrl = get<string>(context, "photoUrl");
+  if (photoUrl) {
+    const attachInput = {
+      workOrderId: created.workOrderId,
+      imageUrl: photoUrl,
+      kind: "photo",
+    };
+    await onEvent?.({ kind: "tool_call", name: "attach_photo_to_work_order", input: attachInput });
+    const attached = await runAttachPhoto(attachInput, ctx);
+    await onEvent?.({ kind: "tool_result", name: "attach_photo_to_work_order", output: attached });
+  }
+
+  // Optional: email invoice
+  const emailTo = get<string>(context, "emailInvoiceTo");
+  if (emailTo) {
+    const genInput = { workOrderId: created.workOrderId };
+    await onEvent?.({ kind: "tool_call", name: "generate_invoice_html", input: genInput });
+    const gen = await runGenerateInvoiceHtml(genInput, ctx);
+    await onEvent?.({ kind: "tool_result", name: "generate_invoice_html", output: gen });
+
+    const emailInput = {
+      toEmail: emailTo,
+      subject: get<string>(context, "emailSubject") ?? "Your invoice",
+      html: gen.html,
+    };
+    await onEvent?.({ kind: "tool_call", name: "email_invoice", input: emailInput });
+    const sent = await runEmailInvoice(emailInput, ctx);
+    await onEvent?.({ kind: "tool_result", name: "email_invoice", output: sent });
+  }
+
+  await onEvent?.({ kind: "final", text: "Done." });
+}
+
+
+============================================================
+FILE: features/agent/lib/toolRegistry.ts
+============================================================
+// features/agent/lib/toolRegistry.ts
+import { z } from "zod";
+import type { ToolContext } from "./toolTypes";
+
+import {
+  toolCreateWorkOrder,
+  type CreateWorkOrderIn,
+  type CreateWorkOrderOut,
+} from "../tools/createWorkOrder";
+
+import {
+  toolAddWorkOrderLine,
+  type AddWorkOrderLineIn,
+  type AddWorkOrderLineOut,
+} from "../tools/addWorkOrderLine";
+
+import {
+  toolFindCustomerVehicle,
+  type FindCustomerVehicleIn,
+  type FindCustomerVehicleOut,
+} from "../tools/findCustomerVehicle";
+
+import {
+  toolGenerateInvoiceHtml,
+  type GenerateInvoiceHtmlIn,
+  type GenerateInvoiceHtmlOut,
+} from "../tools/generateInvoiceHtml";
+
+import {
+  toolEmailInvoice,
+  type EmailInvoiceIn,
+  type EmailInvoiceOut,
+} from "../tools/emailInvoice";
+
+import {
+  toolCreateCustomer,
+  type CreateCustomerIn,
+  type CreateCustomerOut,
+} from "../tools/createCustomer";
+
+import {
+  toolCreateVehicle,
+  type CreateVehicleIn,
+  type CreateVehicleOut,
+} from "../tools/createVehicle";
+
+import {
+  toolAttachPhoto,
+  type AttachPhotoIn,
+  type AttachPhotoOut,
+} from "../tools/toolAttachPhoto";
+
+/* 🔶 Custom inspection tool */
+import {
+  toolCreateCustomInspection,
+  type CreateCustomInspectionIn,
+  type CreateCustomInspectionOut,
+} from "../tools/createCustomInspection";
+
+/* 🔶 Fleet tools */
+import {
+  toolFindOrCreateFleet,
+  type FindOrCreateFleetIn,
+  type FindOrCreateFleetOut,
+} from "../tools/findOrCreateFleet";
+
+import {
+  toolFindOrCreateFleetProgram,
+  type FindOrCreateFleetProgramIn,
+  type FindOrCreateFleetProgramOut,
+} from "../tools/findOrCreateFleetProgram";
+
+import {
+  toolGenerateFleetWorkOrders,
+  type GenerateFleetWorkOrdersIn,
+  type GenerateFleetWorkOrdersOut,
+} from "../tools/generateFleetWorkOrders";
+
+/* 🔶 Approval tools (line-level) */
+import {
+  toolListPendingApprovals,
+  type ListPendingApprovalsIn,
+  type ListPendingApprovalsOut,
+} from "../tools/listPendingApprovals";
+
+import {
+  toolSetLineApproval,
+  type SetLineApprovalIn,
+  type SetLineApprovalOut,
+} from "../tools/setLineApproval";
+
+/* 🔶 Work-order-level approval history tool */
+import {
+  toolRecordWorkOrderApproval,
+  type RecordWorkOrderApprovalIn,
+  type RecordWorkOrderApprovalOut,
+} from "../tools/recordWorkOrderApproval";
+
+/** Register all tools here (order doesn't matter) */
+export const TOOLSET = [
+  toolCreateWorkOrder,
+  toolAddWorkOrderLine,
+  toolFindCustomerVehicle,
+  toolGenerateInvoiceHtml,
+  toolEmailInvoice,
+  toolCreateCustomer,
+  toolCreateVehicle,
+  toolAttachPhoto,
+  toolCreateCustomInspection,
+  // Fleet
+  toolFindOrCreateFleet,
+  toolFindOrCreateFleetProgram,
+  toolGenerateFleetWorkOrders,
+  // Approvals
+  toolListPendingApprovals,
+  toolSetLineApproval,
+  toolRecordWorkOrderApproval,
+] as const;
+
+export type ToolName = (typeof TOOLSET)[number]["name"];
+
+export const TOOL_MAP = Object.fromEntries(
+  TOOLSET.map((t) => [t.name, t]),
+) as Record<ToolName, (typeof TOOLSET)[number]>;
+
+/* -------------------------------------------------------------------------- */
+/* Overloads (kept for external callers)                                      */
+/* -------------------------------------------------------------------------- */
+
+export async function validateAndRun(
+  name: "create_work_order",
+  input: CreateWorkOrderIn,
+  ctx: ToolContext,
+): Promise<CreateWorkOrderOut>;
+
+export async function validateAndRun(
+  name: "add_work_order_line",
+  input: AddWorkOrderLineIn,
+  ctx: ToolContext,
+): Promise<AddWorkOrderLineOut>;
+
+export async function validateAndRun(
+  name: "find_customer_vehicle",
+  input: FindCustomerVehicleIn,
+  ctx: ToolContext,
+): Promise<FindCustomerVehicleOut>;
+
+export async function validateAndRun(
+  name: "generate_invoice_html",
+  input: GenerateInvoiceHtmlIn,
+  ctx: ToolContext,
+): Promise<GenerateInvoiceHtmlOut>;
+
+export async function validateAndRun(
+  name: "email_invoice",
+  input: EmailInvoiceIn,
+  ctx: ToolContext,
+): Promise<EmailInvoiceOut>;
+
+export async function validateAndRun(
+  name: "create_customer",
+  input: CreateCustomerIn,
+  ctx: ToolContext,
+): Promise<CreateCustomerOut>;
+
+export async function validateAndRun(
+  name: "create_vehicle",
+  input: CreateVehicleIn,
+  ctx: ToolContext,
+): Promise<CreateVehicleOut>;
+
+export async function validateAndRun(
+  name: "attach_photo_to_work_order",
+  input: AttachPhotoIn,
+  ctx: ToolContext,
+): Promise<AttachPhotoOut>;
+
+export async function validateAndRun(
+  name: "create_custom_inspection",
+  input: CreateCustomInspectionIn,
+  ctx: ToolContext,
+): Promise<CreateCustomInspectionOut>;
+
+/* 🔶 Fleet */
+export async function validateAndRun(
+  name: "find_or_create_fleet",
+  input: FindOrCreateFleetIn,
+  ctx: ToolContext,
+): Promise<FindOrCreateFleetOut>;
+
+export async function validateAndRun(
+  name: "find_or_create_fleet_program",
+  input: FindOrCreateFleetProgramIn,
+  ctx: ToolContext,
+): Promise<FindOrCreateFleetProgramOut>;
+
+export async function validateAndRun(
+  name: "generate_fleet_work_orders",
+  input: GenerateFleetWorkOrdersIn,
+  ctx: ToolContext,
+): Promise<GenerateFleetWorkOrdersOut>;
+
+/* 🔶 Approvals (line-level) */
+export async function validateAndRun(
+  name: "list_pending_approvals",
+  input: ListPendingApprovalsIn,
+  ctx: ToolContext,
+): Promise<ListPendingApprovalsOut>;
+
+export async function validateAndRun(
+  name: "set_line_approval",
+  input: SetLineApprovalIn,
+  ctx: ToolContext,
+): Promise<SetLineApprovalOut>;
+
+/* 🔶 Work-order-level approvals history */
+export async function validateAndRun(
+  name: "record_work_order_approval",
+  input: RecordWorkOrderApprovalIn,
+  ctx: ToolContext,
+): Promise<RecordWorkOrderApprovalOut>;
+
+/** Generic implementation (types above resolve to this) */
+export async function validateAndRun(
+  name: ToolName,
+  input: unknown,
+  ctx: ToolContext,
+): Promise<unknown> {
+  const tool = TOOL_MAP[name];
+  const parsed = (tool.inputSchema as z.ZodType<unknown>).parse(input);
+  const out = await tool.run(parsed as never, ctx);
+  return (tool.outputSchema as z.ZodType<unknown>).parse(out);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Thin, concrete wrappers (handy inside planners)                            */
+/* -------------------------------------------------------------------------- */
+
+export const runCreateWorkOrder = (input: CreateWorkOrderIn, ctx: ToolContext) =>
+  validateAndRun("create_work_order", input, ctx) as Promise<CreateWorkOrderOut>;
+
+export const runAddWorkOrderLine = (input: AddWorkOrderLineIn, ctx: ToolContext) =>
+  validateAndRun("add_work_order_line", input, ctx) as Promise<AddWorkOrderLineOut>;
+
+export const runFindCustomerVehicle = (input: FindCustomerVehicleIn, ctx: ToolContext) =>
+  validateAndRun("find_customer_vehicle", input, ctx) as Promise<FindCustomerVehicleOut>;
+
+export const runGenerateInvoiceHtml = (input: GenerateInvoiceHtmlIn, ctx: ToolContext) =>
+  validateAndRun("generate_invoice_html", input, ctx) as Promise<GenerateInvoiceHtmlOut>;
+
+export const runEmailInvoice = (input: EmailInvoiceIn, ctx: ToolContext) =>
+  validateAndRun("email_invoice", input, ctx) as Promise<EmailInvoiceOut>;
+
+export const runCreateCustomer = (input: CreateCustomerIn, ctx: ToolContext) =>
+  validateAndRun("create_customer", input, ctx) as Promise<CreateCustomerOut>;
+
+export const runCreateVehicle = (input: CreateVehicleIn, ctx: ToolContext) =>
+  validateAndRun("create_vehicle", input, ctx) as Promise<CreateVehicleOut>;
+
+export const runAttachPhoto = (input: AttachPhotoIn, ctx: ToolContext) =>
+  validateAndRun("attach_photo_to_work_order", input, ctx) as Promise<AttachPhotoOut>;
+
+export const runCreateCustomInspection = (input: CreateCustomInspectionIn, ctx: ToolContext) =>
+  validateAndRun("create_custom_inspection", input, ctx) as Promise<CreateCustomInspectionOut>;
+
+/* 🔶 Fleet wrappers */
+export const runFindOrCreateFleet = (input: FindOrCreateFleetIn, ctx: ToolContext) =>
+  validateAndRun("find_or_create_fleet", input, ctx) as Promise<FindOrCreateFleetOut>;
+
+export const runFindOrCreateFleetProgram = (
+  input: FindOrCreateFleetProgramIn,
+  ctx: ToolContext,
+) =>
+  validateAndRun(
+    "find_or_create_fleet_program",
+    input,
+    ctx,
+  ) as Promise<FindOrCreateFleetProgramOut>;
+
+export const runGenerateFleetWorkOrders = (input: GenerateFleetWorkOrdersIn, ctx: ToolContext) =>
+  validateAndRun("generate_fleet_work_orders", input, ctx) as Promise<GenerateFleetWorkOrdersOut>;
+
+/* 🔶 Approvals wrappers (line-level) */
+export const runListPendingApprovals = (input: ListPendingApprovalsIn, ctx: ToolContext) =>
+  validateAndRun("list_pending_approvals", input, ctx) as Promise<ListPendingApprovalsOut>;
+
+export const runSetLineApproval = (input: SetLineApprovalIn, ctx: ToolContext) =>
+  validateAndRun("set_line_approval", input, ctx) as Promise<SetLineApprovalOut>;
+
+/* 🔶 Work-order-level approvals wrapper */
+export const runRecordWorkOrderApproval = (input: RecordWorkOrderApprovalIn, ctx: ToolContext) =>
+  validateAndRun("record_work_order_approval", input, ctx) as Promise<RecordWorkOrderApprovalOut>;
+
+/* -------------------------------------------------------------------------- */
+
+export const ToolCallSchema = z.object({
+  name: z.enum(Object.keys(TOOL_MAP) as [ToolName, ...ToolName[]]),
+  input: z.unknown(),
+});
+export type ToolCall = z.infer<typeof ToolCallSchema>;
+
+
+============================================================
+FILE: features/agent/lib/toolTypes.ts
+============================================================
+// features/agent/lib/toolTypes.ts
+import { z } from "zod";
+
+export type ToolContext = { shopId: string; userId: string };
+
+export type ToolDef<TIn, TOut> = {
+  name: string;
+  description: string;
+  inputSchema: z.ZodType<TIn>;
+  outputSchema: z.ZodType<TOut>;
+  run: (input: TIn, ctx: ToolContext) => Promise<TOut>;
+};
+
+
+============================================================
+FILE: features/agent/server/log.ts
+============================================================
+import { getServerSupabase } from "./supabase";
+
+export async function appendEvent(runId: string, step: number, kind: string, content: unknown) {
+  const supabase = getServerSupabase();
+  await supabase.from("agent_events").insert({ run_id: runId, step, kind, content });
+}
+
+
+
+============================================================
+FILE: features/agent/server/runAgent.ts
+============================================================
+import { appendEvent } from "./log";
+import { getUserAndShopId } from "./supabase";
+import { runSimplePlan } from "../lib/plannerSimple";
+import { runOpenAIPlanner } from "../lib/plannerOpenAI";
+import { runFleetPlanner } from "../lib/plannerFleet";
+import { runApprovalPlanner } from "../lib/plannerApprovals";
+
+/** All planner modes that can be selected from the UI */
+export type PlannerName = "simple" | "openai" | "fleet" | "approvals";
+
+export type StartAgentOptions = {
+  goal: string;
+  context: Record<string, unknown>;
+  idempotencyKey?: string | null;
+  planner?: PlannerName;
+};
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+export async function startAgent(opts: StartAgentOptions) {
+  const { goal, context, idempotencyKey = null, planner } = opts;
+
+  const defaultPlanner: PlannerName =
+    process.env.OPENAI_API_KEY ? "openai" : "simple";
+
+  // normalize/resolve planner selection, including new modes
+  const effectivePlanner: PlannerName = planner ?? defaultPlanner;
+
+  const { supabase, user, shopId } = await getUserAndShopId();
+
+  const { data: ok } = await supabase.rpc("agent_can_start");
+  if (!ok) throw new Error("Too many requests, try again in a moment.");
+
+  let existing: { id: string } | null = null;
+  if (idempotencyKey) {
+    const { data } = await supabase
+      .from("agent_runs")
+      .select("id,status")
+      .eq("shop_id", shopId)
+      .eq("user_id", user.id)
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+    if (data) existing = { id: data.id };
+  }
+  if (existing) return { runId: existing.id, alreadyExists: true as const };
+
+  const { data: run, error } = await supabase
+    .from("agent_runs")
+    .insert({
+      shop_id: shopId,
+      user_id: user.id,
+      status: "running",
+      goal,
+      idempotency_key: idempotencyKey,
+    })
+    .select("*")
+    .single();
+
+  if (error || !run) {
+    throw new Error(error?.message ?? "Failed to create agent run");
+  }
+
+  let step = 1;
+  const onEvent = async (evt: { kind: string; [k: string]: unknown }) => {
+    await appendEvent(run.id, step++, evt.kind, { ...evt, goal });
+  };
+
+  try {
+    if (effectivePlanner === "simple") {
+      // Always available deterministic path
+      await runSimplePlan(goal, context, { shopId, userId: user.id }, onEvent);
+    } else if (effectivePlanner === "fleet") {
+      // Fleet PM planner (build fleet schedules + WOs)
+      await runFleetPlanner(goal, context, { shopId, userId: user.id }, onEvent);
+    } else if (effectivePlanner === "approvals") {
+      // Advisor approvals / notification planner
+      await runApprovalPlanner(
+        goal,
+        context,
+        { shopId, userId: user.id },
+        onEvent,
+      );
+    } else {
+      // effectivePlanner === "openai"
+      if (!process.env.OPENAI_API_KEY) {
+        // No key → graceful fallback to simple
+        await runSimplePlan(
+          goal,
+          context,
+          { shopId, userId: user.id },
+          onEvent,
+        );
+      } else {
+        // Pass through mode so the OpenAI planner can specialize if needed
+        const enrichedContext = {
+          ...context,
+          plannerKind: effectivePlanner,
+          mode: effectivePlanner,
+        };
+
+        await runOpenAIPlanner(
+          goal,
+          enrichedContext,
+          { shopId, userId: user.id },
+          onEvent,
+        );
+      }
+    }
+
+    await supabase
+      .from("agent_runs")
+      .update({ status: "succeeded", updated_at: new Date().toISOString() })
+      .eq("id", run.id);
+
+    return { runId: run.id, alreadyExists: false as const };
+  } catch (e: unknown) {
+    await appendEvent(run.id, step++, "error", { message: errMsg(e) });
+    await supabase
+      .from("agent_runs")
+      .update({ status: "failed", updated_at: new Date().toISOString() })
+      .eq("id", run.id);
+    throw e;
+  }
+}
+
+
+============================================================
+FILE: features/agent/server/supabase.ts
+============================================================
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+export function getServerSupabase() {
+  return createRouteHandlerClient<Database>({ cookies });
+}
+
+export async function getUserAndShopId() {
+  const supabase = getServerSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("user_id", user.id)
+    .single();
+  if (error || !profile?.shop_id) throw new Error("No active shop");
+  return { supabase, user, shopId: profile.shop_id as string };
+}
+
+
+
+============================================================
+FILE: features/agent/tools/addWorkOrderLine.ts
+============================================================
+// tools/addWorkOrderLine.ts
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+const In = z.object({
+  workOrderId: z.string().uuid(),
+  description: z.string().min(2),
+  jobType: z.enum(["maintenance","repair","diagnosis","inspection"]),
+  laborHours: z.number().min(0).default(0),
+  notes: z.string().optional()
+});
+export type AddWorkOrderLineIn = z.infer<typeof In>;
+
+const Out = z.object({ lineId: z.string().uuid() });
+export type AddWorkOrderLineOut = z.infer<typeof Out>;
+
+export const toolAddWorkOrderLine: ToolDef<AddWorkOrderLineIn, AddWorkOrderLineOut> = {
+  name: "add_work_order_line",
+  description: "Add a line item to an existing work order (maps laborHours → labor_time).",
+  inputSchema: In,
+  outputSchema: Out,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+    const payload = {
+      shop_id: ctx.shopId,
+      work_order_id: input.workOrderId,
+      description: input.description,
+      job_type: input.jobType,
+      labor_time: input.laborHours,
+      notes: input.notes ?? null,
+      status: "awaiting" as const, // ← FIX: was "open"
+    };
+
+    const { data, error } = await supabase
+      .from("work_order_lines")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error || !data) throw new Error(error?.message ?? "add_work_order_line failed");
+    return { lineId: data.id };
+  }
+};
+
+
+============================================================
+FILE: features/agent/tools/createCustomer.ts
+============================================================
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+const In = z.object({
+  name: z.string().min(1),
+  email: z.string().email().optional(),
+  phone: z.string().optional(),
+});
+export type CreateCustomerIn = z.infer<typeof In>;
+
+const Out = z.object({ customerId: z.string().uuid() });
+export type CreateCustomerOut = z.infer<typeof Out>;
+
+export const toolCreateCustomer: ToolDef<CreateCustomerIn, CreateCustomerOut> = {
+  name: "create_customer",
+  description: "Create a customer in the current shop",
+  inputSchema: In,
+  outputSchema: Out,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+
+    const { data, error } = await supabase
+      .from("customers")
+      .insert({
+        name: input.name,
+        email: input.email ?? undefined,
+        phone: input.phone ?? undefined,
+        shop_id: ctx.shopId,          // ← critical for RLS
+        user_id: ctx.userId ?? null,  // ok if nullable in your schema
+      })
+      .select("id")
+      .single();
+
+    if (error || !data) throw new Error(error?.message ?? "Failed to create customer");
+    return { customerId: data.id };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/createCustomInspection.ts
+============================================================
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
+
+const In = z.object({
+  workOrderId: z.string().uuid(),
+  title: z.string().min(1).default("Custom Inspection"),
+  selections: z.record(z.string(), z.array(z.string())).default({}),
+  services: z.array(z.string()).default([]),
+  vehicleType: z.enum(["car", "truck", "bus", "trailer"]).default("truck"),
+  includeAxle: z.boolean().default(true),
+  includeOil: z.boolean().default(false),
+});
+export type CreateCustomInspectionIn = z.infer<typeof In>;
+
+const Out = z.object({
+  inspectionId: z.string().uuid(),
+});
+export type CreateCustomInspectionOut = z.infer<typeof Out>;
+
+export const toolCreateCustomInspection: ToolDef<
+  CreateCustomInspectionIn,
+  CreateCustomInspectionOut
+> = {
+  name: "create_custom_inspection",
+  description: "Build and attach a custom inspection to a work order from user-selected items.",
+  inputSchema: In,
+  outputSchema: Out,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+
+    // ✅ Only pass the supported keys
+    const sections = buildInspectionFromSelections({
+      selections: input.selections,
+      axle: input.includeAxle ? { vehicleType: input.vehicleType } : null,
+      extraServiceItems: input.services,
+    });
+
+    // Persist (adjust table/columns to your schema as needed)
+    const payload = {
+      shop_id: ctx.shopId,
+      work_order_id: input.workOrderId,
+      title: input.title,
+      sections, // JSON
+      vehicle_type: input.vehicleType,
+      include_axle: input.includeAxle,
+      include_oil: input.includeOil,
+      services: input.services, // JSON/text[]
+    };
+
+    const { data, error } = await supabase
+      .from("work_order_inspections")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error || !data) throw new Error(error?.message ?? "create_custom_inspection failed");
+    return { inspectionId: data.id };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/createVehicle.ts
+============================================================
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+const In = z.object({
+  customerId: z.string().uuid(),
+  vin: z.string().min(6).optional(),
+  license_plate: z.string().min(2).optional(),
+  make: z.string().optional(),
+  model: z.string().optional(),
+  year: z.number().int().optional(),
+});
+export type CreateVehicleIn = z.infer<typeof In>;
+
+const Out = z.object({ vehicleId: z.string().uuid() });
+export type CreateVehicleOut = z.infer<typeof Out>;
+
+export const toolCreateVehicle: ToolDef<CreateVehicleIn, CreateVehicleOut> = {
+  name: "create_vehicle",
+  description: "Create a vehicle for a customer in the current shop",
+  inputSchema: In,
+  outputSchema: Out,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+
+    const { data, error } = await supabase
+      .from("vehicles")
+      .insert({
+        customer_id: input.customerId,
+        vin: input.vin ?? undefined,
+        license_plate: input.license_plate ?? undefined,
+        make: input.make ?? undefined,
+        model: input.model ?? undefined,
+        year: input.year ?? undefined,
+        shop_id: ctx.shopId,          // ← critical for RLS
+        user_id: ctx.userId ?? null,  // if present in your schema
+      })
+      .select("id")
+      .single();
+
+    if (error || !data) throw new Error(error?.message ?? "Failed to create vehicle");
+    return { vehicleId: data.id };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/createWorkOrder.ts
+============================================================
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+const In = z.object({
+  customerId: z.string().uuid(),
+  vehicleId: z.string().uuid(),
+  type: z
+    .enum(["maintenance", "repair", "diagnosis", "inspection"])
+    .default("inspection"),
+  notes: z.string().nullable().optional(),
+});
+export type CreateWorkOrderIn = z.infer<typeof In>;
+
+const Out = z.object({
+  workOrderId: z.string().uuid(),
+});
+export type CreateWorkOrderOut = z.infer<typeof Out>;
+
+/**
+ * Create Work Order
+ * -----------------------------------------------------------------------------
+ * Creates a new work order for a given customer + vehicle in the current shop.
+ * Safe for RLS, as it respects shop_id and the "awaiting_approval" status constraint.
+ */
+export const toolCreateWorkOrder: ToolDef<
+  CreateWorkOrderIn,
+  CreateWorkOrderOut
+> = {
+  name: "create_work_order",
+  description: "Create a new work order for a customer+vehicle.",
+  inputSchema: In,
+  outputSchema: Out,
+
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+
+    const payload = {
+      shop_id: ctx.shopId,
+      customer_id: input.customerId,
+      vehicle_id: input.vehicleId,
+      type: input.type,
+      // ✅ Must match allowed enum: ['new','awaiting','awaiting_approval','queued','in_progress','on_hold','planned','completed']
+      status: "awaiting_approval",
+      notes: input.notes ?? null,
+    };
+
+    const { data, error } = await supabase
+      .from("work_orders")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error || !data)
+      throw new Error(error?.message ?? "create_work_order failed");
+
+    return { workOrderId: data.id };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/emailInvoice.ts
+============================================================
+import { z } from "zod";
+import type { ToolDef } from "../lib/toolTypes";
+
+const In = z.object({
+  toEmail: z.string().email(),
+  subject: z.string().min(1),
+  html: z.string().min(1)
+});
+export type EmailInvoiceIn = z.infer<typeof In>;
+
+const Out = z.object({ ok: z.boolean() });
+export type EmailInvoiceOut = z.infer<typeof Out>;
+
+export const toolEmailInvoice: ToolDef<EmailInvoiceIn, EmailInvoiceOut> = {
+  name: "email_invoice",
+  description: "Email HTML invoice using SendGrid (SERVER).",
+  inputSchema: In,
+  outputSchema: Out,
+  async run(input) {
+    const key = process.env.SENDGRID_API_KEY;
+    if (!key) {
+      // In dev, allow running without sending an email.
+      return { ok: true };
+    }
+    const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${key}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: input.toEmail }] }],
+        from: { email: "no-reply@profixiq.app", name: "ProFixIQ" },
+        subject: input.subject,
+        content: [{ type: "text/html", value: input.html }]
+      })
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`SendGrid failed: ${res.status} ${text}`);
+    }
+    return { ok: true };
+  }
+};
+
+
+
+============================================================
+FILE: features/agent/tools/findCustomerVehicle.ts
+============================================================
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+const In = z.object({
+  customerQuery: z.string().min(1).optional(),
+  plateOrVin: z.string().min(2).optional(),
+});
+export type FindCustomerVehicleIn = z.infer<typeof In>;
+
+const Out = z.object({
+  customerId: z.string().uuid().optional(),
+  vehicleId: z.string().uuid().optional(),
+  matches: z.array(z.object({
+    customerId: z.string().uuid(),
+    customerName: z.string(),
+    vehicleId: z.string().uuid(),
+    year: z.number().nullable(),
+    make: z.string().nullable(),
+    model: z.string().nullable(),
+    vin: z.string().nullable(),
+    license_plate: z.string().nullable(),
+  })),
+});
+export type FindCustomerVehicleOut = z.infer<typeof Out>;
+
+type VehicleRow = {
+  id: string;
+  customer_id: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  vin: string | null;
+  license_plate: string | null;
+  customers?: { name: string | null } | null;
+};
+function isVehicleRows(x: unknown): x is VehicleRow[] { return Array.isArray(x); }
+
+type CustomerWithVehicles = {
+  id: string;
+  name: string | null;
+  vehicles: Array<{ id: string | null; year: number | null; make: string | null; model: string | null; vin: string | null; license_plate: string | null }> | null;
+};
+function isCustomerWithVehicles(x: unknown): x is CustomerWithVehicles[] { return Array.isArray(x); }
+
+export const toolFindCustomerVehicle: ToolDef<FindCustomerVehicleIn, FindCustomerVehicleOut> = {
+  name: "find_customer_vehicle",
+  description: "Fuzzy search customers/vehicles by name, plate, or VIN",
+  inputSchema: In,
+  outputSchema: Out,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+
+    if (input.plateOrVin) {
+      const res = await supabase
+        .from("vehicles")
+        .select("id, customer_id, year, make, model, vin, license_plate, customers(name)")
+        .eq("shop_id", ctx.shopId)
+        .or(`license_plate.ilike.%${input.plateOrVin}%,vin.ilike.%${input.plateOrVin}%`)
+        .limit(5);
+
+      if (res.error) throw new Error(res.error.message);
+      const data = isVehicleRows(res.data) ? res.data : [];
+      const matches = data
+        .filter(v => typeof v.id === "string" && typeof v.customer_id === "string")
+        .map(v => {
+          const customerName =
+            v.customers && typeof v.customers === "object" && "name" in v.customers
+              ? ((v.customers as { name: string | null }).name ?? "Customer")
+              : "Customer";
+          return {
+            customerId: v.customer_id as string,
+            customerName,
+            vehicleId: v.id,
+            year: v.year,
+            make: v.make,
+            model: v.model,
+            vin: v.vin,
+            license_plate: v.license_plate,
+          };
+        });
+      return { customerId: matches[0]?.customerId, vehicleId: matches[0]?.vehicleId, matches };
+    }
+
+    if (input.customerQuery) {
+      const res = await supabase
+        .from("customers")
+        .select("id, name, vehicles(id, year, make, model, vin, license_plate)")
+        .ilike("name", `%${input.customerQuery}%`)
+        .limit(5);
+
+      if (res.error) throw new Error(res.error.message);
+      const data = isCustomerWithVehicles(res.data) ? res.data : [];
+      const matches = data.flatMap(c => (c.vehicles ?? []).map(v => ({
+        customerId: c.id,
+        customerName: c.name ?? "Customer",
+        vehicleId: v.id!, year: v.year, make: v.make, model: v.model, vin: v.vin, license_plate: v.license_plate,
+      })));
+      return { customerId: matches[0]?.customerId, vehicleId: matches[0]?.vehicleId, matches };
+    }
+
+    return { matches: [] };
+  }
+};
+
+
+
+============================================================
+FILE: features/agent/tools/findOrCreateFleetProgram.ts
+============================================================
+// features/agent/tools/findOrCreateFleetProgram.ts
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+export const FindOrCreateFleetProgramIn = z.object({
+  fleetId: z.string().uuid(),
+  programName: z.string().min(1),
+  baseTemplateSlug: z.string().optional(),
+  includeCustomInspection: z.boolean().optional(),
+});
+export type FindOrCreateFleetProgramIn = z.infer<typeof FindOrCreateFleetProgramIn>;
+
+export const FindOrCreateFleetProgramOut = z.object({
+  programId: z.string().uuid(),
+  created: z.boolean().optional(),
+});
+export type FindOrCreateFleetProgramOut = z.infer<typeof FindOrCreateFleetProgramOut>;
+
+export const toolFindOrCreateFleetProgram: ToolDef<
+  FindOrCreateFleetProgramIn,
+  FindOrCreateFleetProgramOut
+> = {
+  name: "find_or_create_fleet_program",
+  description:
+    "Finds a fleet program by name (within a fleet) or creates it if it does not exist.",
+  inputSchema: FindOrCreateFleetProgramIn,
+  outputSchema: FindOrCreateFleetProgramOut,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+
+    // Cross-shop guard: verify fleet belongs to this shop
+    const { data: fleet, error: fleetErr } = await supabase
+      .from("fleets")
+      .select("id, shop_id")
+      .eq("id", input.fleetId)
+      .maybeSingle<{ id: string; shop_id: string }>();
+
+    if (fleetErr) throw new Error(fleetErr.message);
+    if (!fleet) throw new Error("Fleet not found");
+    if (fleet.shop_id !== ctx.shopId) throw new Error("Cross-shop access denied");
+
+    // Find existing (case-insensitive)
+    const { data: existing, error: findErr } = await supabase
+      .from("fleet_programs")
+      .select("id")
+      .eq("fleet_id", input.fleetId)
+      .ilike("name", input.programName)
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    if (findErr) throw new Error(findErr.message);
+    if (existing?.id) return { programId: existing.id, created: false };
+
+    // Create
+    const { data: inserted, error: insErr } = await supabase
+      .from("fleet_programs")
+      .insert({
+        fleet_id: input.fleetId,
+        name: input.programName,
+        base_template_slug: input.baseTemplateSlug ?? null,
+        include_custom_inspection: input.includeCustomInspection ?? false,
+      })
+      .select("id")
+      .maybeSingle<{ id: string }>();
+
+    if (insErr) throw new Error(insErr.message);
+    if (!inserted?.id) throw new Error("Failed to create fleet program");
+
+    return { programId: inserted.id, created: true };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/findOrCreateFleet.ts
+============================================================
+// features/agent/tools/findOrCreateFleet.ts
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+export const FindOrCreateFleetIn = z.object({
+  name: z.string().min(1),
+  contact_email: z.string().email().optional(),
+  contact_name: z.string().min(1).optional(),
+});
+export type FindOrCreateFleetIn = z.infer<typeof FindOrCreateFleetIn>;
+
+export const FindOrCreateFleetOut = z.object({
+  fleetId: z.string().uuid(),
+  created: z.boolean().optional(),
+});
+export type FindOrCreateFleetOut = z.infer<typeof FindOrCreateFleetOut>;
+
+export const toolFindOrCreateFleet: ToolDef<
+  FindOrCreateFleetIn,
+  FindOrCreateFleetOut
+> = {
+  name: "find_or_create_fleet",
+  description:
+    "Finds a fleet by name for this shop or creates it if it does not exist.",
+  inputSchema: FindOrCreateFleetIn,
+  outputSchema: FindOrCreateFleetOut,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+
+    const fleetName = input.name.trim();
+
+    // 1) Try find existing fleet (case-insensitive) within this shop
+    const { data: existing, error: findErr } = await supabase
+      .from("fleets")
+      .select("id")
+      .eq("shop_id", ctx.shopId)
+      .ilike("name", fleetName)
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    if (findErr) throw new Error(findErr.message);
+    if (existing?.id) return { fleetId: existing.id, created: false };
+
+    // 2) Insert new fleet
+    const { data: inserted, error: insErr } = await supabase
+      .from("fleets")
+      .insert({
+        shop_id: ctx.shopId,
+        name: fleetName,
+        contact_email: input.contact_email ?? null,
+        contact_name: input.contact_name ?? null,
+      })
+      .select("id")
+      .maybeSingle<{ id: string }>();
+
+    if (insErr) throw new Error(insErr.message);
+    if (!inserted?.id) throw new Error("Failed to create fleet");
+
+    return { fleetId: inserted.id, created: true };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/generateFleetWorkOrders.ts
+============================================================
+// features/agent/tools/generateFleetWorkOrders.ts
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+export const GenerateFleetWorkOrdersIn = z.object({
+  fleetId: z.string().uuid(),
+  programName: z.string().min(1),
+  vehicleIds: z.array(z.string().uuid()).optional(),
+  label: z.string().optional(), // e.g. "Q1 2026 PM"
+});
+export type GenerateFleetWorkOrdersIn = z.infer<typeof GenerateFleetWorkOrdersIn>;
+
+export const GenerateFleetWorkOrdersOut = z.object({
+  created: z.array(
+    z.object({
+      workOrderId: z.string().uuid(),
+      vehicleId: z.string().uuid(),
+      customerId: z.string().uuid().nullable(),
+    }),
+  ),
+});
+export type GenerateFleetWorkOrdersOut = z.infer<typeof GenerateFleetWorkOrdersOut>;
+
+type ProgramRow = {
+  id: string;
+  fleet_id: string;
+  name: string;
+  base_template_slug: string | null;
+  include_custom_inspection: boolean | null;
+};
+
+type TaskRow = {
+  id: string;
+  description: string;
+  job_type: string | null;
+  default_labor_hours: number | null;
+};
+
+export const toolGenerateFleetWorkOrders: ToolDef<
+  GenerateFleetWorkOrdersIn,
+  GenerateFleetWorkOrdersOut
+> = {
+  name: "generate_fleet_work_orders",
+  description:
+    "Generates work orders for a fleet program (find/create by name) for one or more vehicles, including job lines based on program tasks.",
+  inputSchema: GenerateFleetWorkOrdersIn,
+  outputSchema: GenerateFleetWorkOrdersOut,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+
+    // 0) Validate fleet ownership (cross-shop guard)
+    const { data: fleet, error: fleetErr } = await supabase
+      .from("fleets")
+      .select("id, shop_id, name")
+      .eq("id", input.fleetId)
+      .maybeSingle<{ id: string; shop_id: string; name: string }>();
+
+    if (fleetErr) throw new Error(fleetErr.message);
+    if (!fleet) throw new Error("Fleet not found");
+    if (fleet.shop_id !== ctx.shopId) throw new Error("Cross-shop access denied");
+
+    // 1) Find or create program by (fleet_id, name)
+    let program: ProgramRow | null = null;
+
+    const { data: existingProgram, error: findProgErr } = await supabase
+      .from("fleet_programs")
+      .select("id, fleet_id, name, base_template_slug, include_custom_inspection")
+      .eq("fleet_id", input.fleetId)
+      .ilike("name", input.programName) // ilike treats value as pattern if it contains %
+      .limit(1)
+      .maybeSingle<ProgramRow>();
+
+    if (findProgErr) throw new Error(findProgErr.message);
+
+    if (existingProgram?.id) {
+      program = existingProgram;
+    } else {
+      const { data: insertedProgram, error: insProgErr } = await supabase
+        .from("fleet_programs")
+        .insert({
+          fleet_id: input.fleetId,
+          name: input.programName,
+          base_template_slug: null,
+          include_custom_inspection: false,
+        })
+        .select("id, fleet_id, name, base_template_slug, include_custom_inspection")
+        .maybeSingle<ProgramRow>();
+
+      if (insProgErr) throw new Error(insProgErr.message);
+      if (!insertedProgram?.id) throw new Error("Failed to create fleet program");
+      program = insertedProgram;
+    }
+
+    // 2) Vehicles (explicit list, or all active enrolled vehicles)
+    let vehicleIds = input.vehicleIds;
+
+    if (!vehicleIds || vehicleIds.length === 0) {
+      const { data: fv, error: fvErr } = await supabase
+        .from("fleet_vehicles")
+        .select("vehicle_id")
+        .eq("fleet_id", input.fleetId)
+        .eq("active", true);
+
+      if (fvErr) throw new Error(fvErr.message);
+      vehicleIds = (fv ?? [])
+        .map((r) => r.vehicle_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+    }
+
+    if (!vehicleIds || vehicleIds.length === 0) {
+      return { created: [] };
+    }
+
+    // 3) Tasks for the program
+    const { data: tasks, error: tErr } = await supabase
+      .from("fleet_program_tasks")
+      .select("id, description, job_type, default_labor_hours")
+      .eq("program_id", program.id)
+      .order("display_order", { ascending: true });
+
+    if (tErr) throw new Error(tErr.message);
+
+    const taskRows = (tasks ?? []) as TaskRow[];
+
+    // If program has no tasks yet, fallback to a single generic task so planner still works.
+    const effectiveTasks: Array<Pick<TaskRow, "description" | "job_type" | "default_labor_hours">> =
+      taskRows.length > 0
+        ? taskRows.map((t) => ({
+            description: t.description,
+            job_type: t.job_type,
+            default_labor_hours: t.default_labor_hours,
+          }))
+        : [
+            {
+              description: `Fleet program: ${program.name}`,
+              job_type: "maintenance",
+              default_labor_hours: 1,
+            },
+          ];
+
+    // 4) Loop vehicles: create WO + lines
+    const created: GenerateFleetWorkOrdersOut["created"] = [];
+
+    for (const vehicleId of vehicleIds) {
+      // lookup vehicle + customer
+      const { data: veh, error: vErr } = await supabase
+        .from("vehicles")
+        .select("id, customer_id")
+        .eq("id", vehicleId)
+        .maybeSingle<{ id: string; customer_id: string | null }>();
+
+      if (vErr) throw new Error(vErr.message);
+      if (!veh) continue;
+
+      const { data: wo, error: woErr } = await supabase
+        .from("work_orders")
+        .insert({
+          shop_id: ctx.shopId,
+          vehicle_id: veh.id,
+          customer_id: veh.customer_id,
+          user_id: ctx.userId,
+          status: "awaiting_approval",
+          notes: input.label
+            ? `Fleet program: ${program.name} (${input.label})`
+            : `Fleet program: ${program.name}`,
+          source_fleet_program_id: program.id,
+        })
+        .select("id, customer_id")
+        .maybeSingle<{ id: string; customer_id: string | null }>();
+
+      if (woErr) throw new Error(woErr.message);
+      if (!wo?.id) throw new Error("Failed to create work order");
+
+      // lines
+      for (const task of effectiveTasks) {
+        const { error: lineErr } = await supabase.from("work_order_lines").insert({
+          work_order_id: wo.id,
+          shop_id: ctx.shopId,
+          job_type: task.job_type ?? "maintenance",
+          description: task.description,
+          labor_time: task.default_labor_hours ?? 1,
+          status: "awaiting",
+          source: "fleet_program",
+        });
+
+        if (lineErr) throw new Error(lineErr.message);
+      }
+
+      created.push({
+        workOrderId: wo.id,
+        vehicleId: veh.id,
+        customerId: veh.customer_id,
+      });
+    }
+
+    return { created };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/generateInvoiceHtml.ts
+============================================================
+
+
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+const In = z.object({ workOrderId: z.string().uuid() });
+export type GenerateInvoiceHtmlIn = z.infer<typeof In>;
+
+const Out = z.object({ html: z.string() });
+export type GenerateInvoiceHtmlOut = z.infer<typeof Out>;
+
+type WorkOrderRow = { id: string; created_at: string | null; status: string | null; shop_id: string | null; vehicle_id: string | null; customer_id: string | null; };
+type VehicleRow   = { year: number | null; make: string | null; model: string | null; vin: string | null; license_plate: string | null; };
+type CustomerRow  = { name: string | null; email: string | null; };
+type QuoteLineRow = { id: string; title: string | null; description: string | null; labor_rate: number | null; labor_time: number | null; parts_cost: number | null; quantity: number | null; total: number | null; part_price: number | null; name: string | null; };
+
+function isWorkOrderRow(x: unknown): x is WorkOrderRow { return !!x && typeof (x as { id?: unknown }).id === "string"; }
+function isVehicleRow(x: unknown): x is VehicleRow { return !!x && "vin" in (x as object); }
+function isCustomerRow(x: unknown): x is CustomerRow { return !!x && ("name" in (x as object) || "email" in (x as object)); }
+function isQuoteLineArray(x: unknown): x is QuoteLineRow[] { return Array.isArray(x); }
+function fmtDate(iso: string | null): string { if (!iso) return ""; try { return new Date(iso).toLocaleString(); } catch { return ""; } }
+
+export const toolGenerateInvoiceHtml: ToolDef<GenerateInvoiceHtmlIn, GenerateInvoiceHtmlOut> = {
+  name: "generate_invoice_html",
+  description: "Builds a styled HTML invoice for a work order from quote_lines.",
+  inputSchema: In,
+  outputSchema: Out,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+
+    const woRes = await supabase
+      .from("work_orders")
+      .select("id, created_at, status, shop_id, vehicle_id, customer_id")
+      .eq("id", input.workOrderId)
+      .eq("shop_id", ctx.shopId)
+      .single();
+    if (woRes.error || !isWorkOrderRow(woRes.data)) throw new Error(woRes.error?.message ?? "work order not found");
+    const wo = woRes.data;
+
+    let vehicle: VehicleRow | null = null;
+    if (wo.vehicle_id) {
+      const v = await supabase.from("vehicles").select("year, make, model, vin, license_plate").eq("id", wo.vehicle_id).maybeSingle();
+      if (v.error) throw new Error(v.error.message);
+      vehicle = v.data && isVehicleRow(v.data) ? v.data : null;
+    }
+
+    let customer: CustomerRow | null = null;
+    if (wo.customer_id) {
+      const c = await supabase.from("customers").select("name, email").eq("id", wo.customer_id).maybeSingle();
+      if (c.error) throw new Error(c.error.message);
+      customer = c.data && isCustomerRow(c.data) ? c.data : null;
+    }
+
+    const q = await supabase
+      .from("quote_lines")
+      .select("id, title, description, labor_rate, labor_time, parts_cost, quantity, total, part_price, name")
+      .eq("work_order_id", wo.id)
+      .order("created_at", { ascending: true });
+    if (q.error) throw new Error(q.error.message);
+    const lines: QuoteLineRow[] = isQuoteLineArray(q.data) ? q.data : [];
+
+    const num = (x: number | null | undefined) => (typeof x === "number" ? x : 0);
+    const rows = lines.map(l => {
+      const labor = num(l.labor_rate) * num(l.labor_time);
+      const parts = num(l.parts_cost) > 0 ? num(l.parts_cost) : num(l.part_price) * num(l.quantity);
+      const total = typeof l.total === "number" ? l.total : labor + parts;
+      return {
+        title: l.title ?? l.name ?? "Line",
+        description: l.description ?? "",
+        laborHours: num(l.labor_time),
+        laborRate: num(l.labor_rate),
+        partsCost: parts,
+        total
+      };
+    });
+
+    const laborTotal = rows.reduce((s, r) => s + r.laborRate * r.laborHours, 0);
+    const partsTotal = rows.reduce((s, r) => s + r.partsCost, 0);
+    const grandTotal = rows.reduce((s, r) => s + r.total, 0) || (laborTotal + partsTotal);
+
+    const woHeader = (fmtDate(wo.created_at) ? `Work Order: ${wo.id} • ${fmtDate(wo.created_at)}` : `Work Order: ${wo.id}`);
+    const vehicleLine = `${vehicle?.year ?? ""} ${vehicle?.make ?? ""} ${vehicle?.model ?? ""}`.trim();
+
+    const html =
+      '<!doctype html>' +
+      '<html><head><meta charset="utf-8" />' +
+      `<title>Invoice #${wo.id}</title>` +
+      '<style>' +
+      'body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:24px;background:#f6f7f9;}' +
+      '.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;max-width:720px;margin:auto;}' +
+      '.row{display:flex;gap:16px;flex-wrap:wrap}.muted{color:#6b7280;font-size:12px}' +
+      'table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left}.total{font-weight:700}' +
+      '</style></head><body>' +
+      '<div class="card">' +
+      '<h2>Invoice</h2>' +
+      `<div class="muted">${woHeader}</div>` +
+      '<div class="row" style="margin-top:12px">' +
+      `<div><strong>Customer</strong><br/>${customer?.name ?? ""}<br/>${customer?.email ?? ""}</div>` +
+      `<div><strong>Vehicle</strong><br/>${vehicleLine}<br/>VIN: ${vehicle?.vin ?? ""} • Plate: ${vehicle?.license_plate ?? ""}</div>` +
+      '</div>' +
+      '<table><thead><tr><th>Description</th><th>Labor</th><th>Parts</th><th>Line Total</th></tr></thead><tbody>' +
+      rows.map(l =>
+        '<tr>' +
+        `<td><div><strong>${l.title}</strong></div><div class="muted">${l.description}</div></td>` +
+        `<td>${l.laborHours.toFixed(2)}h @ $${l.laborRate.toFixed(2)}/h = $${(l.laborRate*l.laborHours).toFixed(2)}</td>` +
+        `<td>$${l.partsCost.toFixed(2)}</td>` +
+        `<td>$${l.total.toFixed(2)}</td>` +
+        '</tr>'
+      ).join("") +
+      '</tbody><tfoot>' +
+      `<tr><td></td><td class="total">Labor</td><td></td><td class="total">$${laborTotal.toFixed(2)}</td></tr>` +
+      `<tr><td></td><td class="total">Parts</td><td></td><td class="total">$${partsTotal.toFixed(2)}</td></tr>` +
+      `<tr><td></td><td class="total">Total</td><td></td><td class="total">$${grandTotal.toFixed(2)}</td></tr>` +
+      '</tfoot></table>' +
+      `<p class="muted">Status: ${wo.status ?? ""}</p>` +
+      '</div></body></html>';
+
+    return { html };
+  }
+};
+
+
+
+============================================================
+FILE: features/agent/tools/listPendingApprovals.ts
+============================================================
+// features/agent/tools/listPendingApprovals.ts
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+export const ListPendingApprovalsIn = z.object({
+  limit: z.number().int().min(1).max(50).optional(),
+});
+export type ListPendingApprovalsIn = z.infer<typeof ListPendingApprovalsIn>;
+
+export const ListPendingApprovalsOut = z.object({
+  items: z.array(
+    z.object({
+      workOrderId: z.string().uuid(),
+      customId: z.string().nullable(),
+      customerName: z.string().nullable(),
+      vehicleSummary: z.string().nullable(),
+      estimatedTotal: z.number().nullable(),
+      lines: z.array(
+        z.object({
+          id: z.string().uuid(),
+          description: z.string().nullable(),
+          jobType: z.string().nullable(),
+          laborTime: z.number().nullable(),
+          status: z.string().nullable(),
+          approvalState: z.string().nullable(),
+          notes: z.string().nullable(),
+        }),
+      ),
+    }),
+  ),
+});
+export type ListPendingApprovalsOut = z.infer<typeof ListPendingApprovalsOut>;
+
+export const toolListPendingApprovals: ToolDef<
+  ListPendingApprovalsIn,
+  ListPendingApprovalsOut
+> = {
+  name: "list_pending_approvals",
+  description:
+    "Lists work orders and job lines that require advisor approval in this shop.",
+  inputSchema: ListPendingApprovalsIn,
+  outputSchema: ListPendingApprovalsOut,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+    const limit = input.limit ?? 20;
+
+    const { data, error } = await supabase
+      .from("work_order_lines")
+      .select(
+        `
+        id,
+        description,
+        job_type,
+        labor_time,
+        status,
+        approval_state,
+        notes,
+        work_orders!inner (
+          id,
+          custom_id,
+          estimated_total,
+          customer:customers (
+            first_name, last_name
+          ),
+          vehicle:vehicles (
+            year, make, model, unit_number, license_plate
+          )
+        )
+      `,
+      )
+      .eq("work_orders.shop_id", ctx.shopId)
+      .eq("approval_state", "pending")
+      .order("created_at", { ascending: true })
+      .limit(limit);
+
+    if (error) throw new Error(error.message);
+
+    const byWo = new Map<string, ListPendingApprovalsOut["items"][number]>();
+
+    for (const row of data ?? []) {
+      const wo = (row as any).work_orders;
+      if (!byWo.has(wo.id)) {
+        const vehicle = wo.vehicle ?? {};
+        const customer = wo.customer ?? {};
+        const vehicleSummaryParts = [
+          vehicle.year,
+          vehicle.make,
+          vehicle.model,
+          vehicle.unit_number || vehicle.license_plate,
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        const customerName = [customer.first_name, customer.last_name]
+          .filter(Boolean)
+          .join(" ");
+
+        byWo.set(wo.id, {
+          workOrderId: wo.id,
+          customId: wo.custom_id ?? null,
+          customerName: customerName || null,
+          vehicleSummary: vehicleSummaryParts || null,
+          estimatedTotal: wo.estimated_total ?? null,
+          lines: [],
+        });
+      }
+
+      const bucket = byWo.get(wo.id)!;
+      bucket.lines.push({
+        id: row.id,
+        description: row.description ?? null,
+        jobType: row.job_type ?? null,
+        laborTime: row.labor_time ?? null,
+        status: row.status ?? null,
+        approvalState: row.approval_state ?? null,
+        notes: row.notes ?? null,
+      });
+    }
+
+    return { items: Array.from(byWo.values()) };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/recordWorkOrderApproval.ts
+============================================================
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+/**
+ * Approval methods:
+ * - "advisor": internal service writer/advisor approval
+ * - "customer": customer-facing approval (email/text/portal)
+ * - "fleet": fleet manager/central approvals
+ * - "other": catch-all / custom
+ */
+export const RecordWorkOrderApprovalIn = z.object({
+  workOrderId: z.string().uuid(),
+  method: z.enum(["advisor", "customer", "fleet", "other"]).default("advisor"),
+
+  // Optional overrides – we’ll default to the current user + now()
+  approvedBy: z.string().uuid().optional(),
+  approvedAt: z.string().datetime().optional(),
+
+  /**
+   * Optional explicit state to write back onto work_orders.approval_state.
+   * If omitted, we infer a reasonable value from method.
+   */
+  approvalState: z
+    .enum([
+      "pending",
+      "advisor_approved",
+      "customer_approved",
+      "fleet_approved",
+      "fully_approved",
+      "rejected",
+    ])
+    .optional(),
+});
+export type RecordWorkOrderApprovalIn = z.infer<typeof RecordWorkOrderApprovalIn>;
+
+export const RecordWorkOrderApprovalOut = z.object({
+  success: z.boolean(),
+  approvalId: z.string().uuid().optional(),
+  approvalState: z.string().optional(),
+});
+export type RecordWorkOrderApprovalOut = z.infer<typeof RecordWorkOrderApprovalOut>;
+
+export const toolRecordWorkOrderApproval: ToolDef<
+  RecordWorkOrderApprovalIn,
+  RecordWorkOrderApprovalOut
+> = {
+  name: "record_work_order_approval",
+  description:
+    "Records an approval on a work order (advisor / customer / fleet) and updates the work order's approval_state.",
+  inputSchema: RecordWorkOrderApprovalIn,
+  outputSchema: RecordWorkOrderApprovalOut,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+    const nowIso = new Date().toISOString();
+    const approvedBy = input.approvedBy ?? ctx.userId;
+    const approvedAt = input.approvedAt ?? nowIso;
+
+    // 1) Insert into work_order_approvals
+    const { data: approvalRow, error: insErr } = await supabase
+      .from("work_order_approvals")
+      .insert({
+        work_order_id: input.workOrderId,
+        approved_by: approvedBy,
+        approved_at: approvedAt,
+        method: input.method,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (insErr) {
+      throw new Error(insErr.message);
+    }
+
+    // 2) Decide what approval_state we should write
+    const inferredState =
+      input.approvalState ??
+      (input.method === "customer"
+        ? "customer_approved"
+        : input.method === "fleet"
+        ? "fleet_approved"
+        : "advisor_approved");
+
+    // 3) Update work_orders with the new approval state.
+    //    For customer approvals, also stamp the customer_* columns.
+    const updatePayload: Record<string, unknown> = {
+      approval_state: inferredState,
+      updated_at: nowIso,
+    };
+
+    if (input.method === "customer") {
+      updatePayload.customer_approved_by = approvedBy;
+      updatePayload.customer_approval_at = approvedAt;
+    }
+
+    const { error: woErr } = await supabase
+      .from("work_orders")
+      .update(updatePayload)
+      .eq("id", input.workOrderId);
+
+    if (woErr) {
+      throw new Error(woErr.message);
+    }
+
+    return {
+      success: true,
+      approvalId: approvalRow?.id ?? undefined,
+      approvalState: inferredState,
+    };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/setLineApproval.ts
+============================================================
+// features/agent/tools/setLineApproval.ts
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+export const SetLineApprovalIn = z.object({
+  lineId: z.string().uuid(),
+  state: z.enum(["approved", "declined"]),
+});
+export type SetLineApprovalIn = z.infer<typeof SetLineApprovalIn>;
+
+export const SetLineApprovalOut = z.object({
+  success: z.boolean(),
+});
+export type SetLineApprovalOut = z.infer<typeof SetLineApprovalOut>;
+
+export const toolSetLineApproval: ToolDef<
+  SetLineApprovalIn,
+  SetLineApprovalOut
+> = {
+  name: "set_line_approval",
+  description: "Updates approval_state for a single work order line.",
+  inputSchema: SetLineApprovalIn,
+  outputSchema: SetLineApprovalOut,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({ approval_state: input.state })
+      .eq("id", input.lineId)
+      .eq("shop_id", ctx.shopId);
+
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+};
+
+
+============================================================
+FILE: features/agent/tools/toolAttachPhoto.ts
+============================================================
+import { z } from "zod";
+import { getServerSupabase } from "../server/supabase";
+import type { ToolDef } from "../lib/toolTypes";
+
+export const AttachPhotoIn = z.object({
+  workOrderId: z.string().uuid(),
+  imageUrl: z.string().url(),
+  kind: z.string().default("photo"),
+});
+export type AttachPhotoIn = z.infer<typeof AttachPhotoIn>;
+
+export const AttachPhotoOut = z.object({
+  success: z.boolean(),
+  id: z.string().uuid().optional(),
+});
+export type AttachPhotoOut = z.infer<typeof AttachPhotoOut>;
+
+export const toolAttachPhoto: ToolDef<AttachPhotoIn, AttachPhotoOut> = {
+  name: "attach_photo_to_work_order",
+  description:
+    "Attaches an uploaded image (e.g. driver licence or registration) to a work order in Supabase storage.",
+  inputSchema: AttachPhotoIn,
+  outputSchema: AttachPhotoOut,
+  async run(input, ctx) {
+    const supabase = getServerSupabase();
+    const { workOrderId, imageUrl, kind } = input;
+
+    const { data, error } = await supabase
+      .from("work_order_media")
+      .insert({
+        shop_id: ctx.shopId,
+        work_order_id: workOrderId,
+        user_id: ctx.userId,
+        url: imageUrl,
+        kind,
+      })
+      .select("id")
+      .single();
+
+    if (error) throw new Error(error.message);
+    return { success: true, id: data.id };
+  },
+};
+
+

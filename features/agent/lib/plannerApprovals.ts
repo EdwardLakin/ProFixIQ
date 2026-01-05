@@ -1,10 +1,7 @@
 // features/agent/lib/plannerApprovals.ts
 import type { ToolContext } from "./toolTypes";
 import type { PlannerEvent } from "./plannerSimple";
-import {
-  runListPendingApprovals,
-  runSetLineApproval,
-} from "./toolRegistry";
+import { runListPendingApprovals, runSetLineApproval } from "./toolRegistry";
 
 function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
   return (obj as Record<string, T | undefined>)[key];
@@ -26,19 +23,27 @@ function buildApprovalPlan(
   goal: string,
   context: Record<string, unknown>,
 ): ParsedApprovalPlan {
-  const rawAction =
-    (get<string>(context, "action") ?? goal ?? "").toLowerCase();
+  const raw =
+    (
+      get<string>(context, "action") ??
+      get<string>(context, "decision") ??
+      get<string>(context, "state") ??
+      goal ??
+      ""
+    ).toLowerCase();
 
   const lineId =
     get<string>(context, "lineId") ??
     get<string>(context, "workOrderLineId") ??
+    get<string>(context, "work_order_line_id") ??
     undefined;
 
-  const limit = Number(get<number>(context, "limit") ?? 25);
+  const limitRaw = get<number>(context, "limit");
+  const limit = Number(limitRaw ?? 25);
 
   let action: ApprovalAction = "list";
-  if (rawAction.includes("reject")) action = "reject";
-  else if (rawAction.includes("approve")) action = "approve";
+  if (raw.includes("reject") || raw.includes("declin")) action = "reject";
+  else if (raw.includes("approve") || raw.includes("accept")) action = "approve";
 
   // If they passed a lineId but no obvious action, default to approve
   if (lineId && action === "list") action = "approve";
@@ -48,6 +53,15 @@ function buildApprovalPlan(
     limit: Number.isFinite(limit) && limit > 0 ? limit : 25,
     lineId,
   };
+}
+
+type ToolFn = (
+  input: Record<string, unknown>,
+  ctx: ToolContext,
+) => Promise<unknown>;
+
+function asToolFn(fn: unknown): ToolFn {
+  return fn as ToolFn;
 }
 
 export async function runApprovalPlanner(
@@ -72,7 +86,7 @@ export async function runApprovalPlanner(
     input: listInput,
   });
 
-  const pending = await (runListPendingApprovals as any)(listInput, ctx);
+  const pending = await asToolFn(runListPendingApprovals)(listInput, ctx);
 
   await onEvent?.({
     kind: "tool_result",
@@ -89,11 +103,12 @@ export async function runApprovalPlanner(
     return;
   }
 
-  const decision = plan.action === "approve" ? "approved" : "rejected";
+  // ✅ Tool expects `state`, not `decision`
+  const state = plan.action === "approve" ? "approved" : "declined";
 
   const setInput: Record<string, unknown> = {
     lineId: plan.lineId,
-    decision,
+    state,
   };
 
   await onEvent?.({
@@ -102,7 +117,7 @@ export async function runApprovalPlanner(
     input: setInput,
   });
 
-  const setResult = await (runSetLineApproval as any)(setInput, ctx);
+  const setResult = await asToolFn(runSetLineApproval)(setInput, ctx);
 
   await onEvent?.({
     kind: "tool_result",
@@ -112,6 +127,6 @@ export async function runApprovalPlanner(
 
   await onEvent?.({
     kind: "final",
-    text: `Line ${plan.lineId} marked ${decision}.`,
+    text: `Line ${plan.lineId} marked ${state}.`,
   });
 }

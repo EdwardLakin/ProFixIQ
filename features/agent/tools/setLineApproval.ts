@@ -14,23 +14,26 @@ export const SetLineApprovalOut = z.object({
 });
 export type SetLineApprovalOut = z.infer<typeof SetLineApprovalOut>;
 
-export const toolSetLineApproval: ToolDef<
-  SetLineApprovalIn,
-  SetLineApprovalOut
-> = {
-  name: "set_line_approval",
-  description: "Updates approval_state for a single work order line.",
-  inputSchema: SetLineApprovalIn,
-  outputSchema: SetLineApprovalOut,
-  async run(input, ctx) {
-    const supabase = getServerSupabase();
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ approval_state: input.state })
-      .eq("id", input.lineId)
-      .eq("shop_id", ctx.shopId);
+export const toolSetLineApproval: ToolDef<SetLineApprovalIn, SetLineApprovalOut> =
+  {
+    name: "set_line_approval",
+    description: "Updates approval_state for a single work order line.",
+    inputSchema: SetLineApprovalIn,
+    outputSchema: SetLineApprovalOut,
+    async run(input, ctx) {
+      const supabase = getServerSupabase();
 
-    if (error) throw new Error(error.message);
-    return { success: true };
-  },
-};
+      const { data, error } = await supabase
+        .from("work_order_lines")
+        .update({ approval_state: input.state })
+        .eq("id", input.lineId)
+        .eq("shop_id", ctx.shopId)
+        .select("id")
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+
+      // If no row matched (wrong shop or bad id), reflect it
+      return { success: !!data };
+    },
+  };

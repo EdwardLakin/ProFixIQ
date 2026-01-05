@@ -1,0 +1,1043 @@
+============================================================
+FILE: app/api/agent/attachments/route.ts
+============================================================
+// app/api/agent/attachments/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+export async function POST(req: NextRequest) {
+  const cookieStore = cookies();
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: () => cookieStore,
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await req.json().catch(() => null)) as
+    | {
+        agentRequestId: string;
+        storagePath: string;
+        publicUrl: string;
+        kind?: string;
+        caption?: string;
+      }
+    | null;
+
+  if (!body?.agentRequestId || !body.storagePath || !body.publicUrl) {
+    return NextResponse.json(
+      { error: "agentRequestId, storagePath, publicUrl required" },
+      { status: 400 }
+    );
+  }
+
+  const { data: inserted, error } = await supabase
+    .from("agent_attachments")
+    .insert({
+      agent_request_id: body.agentRequestId,
+      storage_path: body.storagePath,
+      public_url: body.publicUrl,
+      kind: body.kind ?? "screenshot",
+      caption: body.caption,
+      created_by: user.id,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("agent_attachments insert error", error);
+    return NextResponse.json(
+      { error: "Failed to register attachment" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ attachment: inserted });
+}
+
+
+============================================================
+FILE: app/api/agent/events/route.ts
+============================================================
+import type { NextRequest } from "next/server";
+import { getServerSupabase } from "@/features/agent/server/supabase";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type AgentEventRow = {
+  step: number;
+  kind: string;
+  content: unknown;
+  created_at: string;
+  id: string;
+};
+
+type AgentEventOut = Record<string, unknown> & {
+  step: number;
+  kind: string;
+  created_at: string;
+  id: string;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function pickWorkOrderId(v: unknown): string | undefined {
+  if (!isRecord(v)) return undefined;
+  const candidates = [
+    v.workOrderId,
+    v.work_order_id,
+    v.wo_id,
+    v.id,
+    isRecord(v.output) ? v.output.workOrderId : undefined,
+    isRecord(v.output) ? v.output.work_order_id : undefined,
+  ];
+
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 0) return c;
+  }
+  return undefined;
+}
+
+function normalizeRowToEvent(row: AgentEventRow): AgentEventOut {
+  const base: AgentEventOut = {
+    step: row.step,
+    kind: row.kind,
+    created_at: row.created_at,
+    id: row.id,
+  };
+
+  const content = row.content;
+
+  // Flatten JSONB content -> top-level fields
+  const merged: AgentEventOut = isRecord(content) ? { ...base, ...content } : base;
+
+  // Normalize tool events so UI can read them consistently
+  if (merged.kind === "tool_call") {
+    // allow either {name} or {tool}
+    const name = typeof merged.name === "string" ? merged.name : undefined;
+    const tool = typeof merged.tool === "string" ? merged.tool : undefined;
+
+    return {
+      ...merged,
+      name: name ?? tool ?? "unknown",
+      tool: tool ?? name ?? "unknown",
+    };
+  }
+
+  if (merged.kind === "tool_result") {
+    const name = typeof merged.name === "string" ? merged.name : undefined;
+    const tool = typeof merged.tool === "string" ? merged.tool : undefined;
+
+    const workOrderId = pickWorkOrderId(merged);
+
+    return {
+      ...merged,
+      name: name ?? tool ?? "unknown",
+      tool: tool ?? name ?? "unknown",
+      ...(workOrderId ? { workOrderId } : {}),
+    };
+  }
+
+  // Normalize wo.created (sometimes content may only contain it nested)
+  if (merged.kind === "wo.created" || merged.kind === "work_order.created") {
+    const workOrderId = pickWorkOrderId(merged);
+    return {
+      ...merged,
+      ...(workOrderId ? { workOrderId } : {}),
+    };
+  }
+
+  return merged;
+}
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const runId = searchParams.get("runId");
+  if (!runId) return new Response("runId required", { status: 400 });
+
+  const supabase = getServerSupabase();
+  const lastEventId = Number(req.headers.get("last-event-id") ?? "0");
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let step = lastEventId || 0;
+      const encoder = new TextEncoder();
+
+      const write = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+      const push = (id: number, data: unknown) => {
+        write(`id: ${id}\n`);
+        write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      // Backfill
+      const initial = await supabase
+        .from("agent_events")
+        .select("step, kind, content, created_at, id")
+        .eq("run_id", runId)
+        .gt("step", step)
+        .order("step", { ascending: true });
+
+      if (initial.error) {
+        write(`event: error\ndata: ${JSON.stringify(initial.error)}\n\n`);
+        controller.close();
+        return;
+      }
+
+      for (const raw of (initial.data ?? []) as unknown[]) {
+        if (!isRecord(raw)) continue;
+
+        const row: AgentEventRow = {
+          step: typeof raw.step === "number" ? raw.step : step,
+          kind: typeof raw.kind === "string" ? raw.kind : "unknown",
+          content: raw.content,
+          created_at: typeof raw.created_at === "string" ? raw.created_at : "",
+          id: typeof raw.id === "string" ? raw.id : "",
+        };
+
+        step = row.step;
+        push(step, normalizeRowToEvent(row));
+      }
+
+      // Polling loop
+      async function loop() {
+        try {
+          const statusRes = await supabase
+            .from("agent_runs")
+            .select("status")
+            .eq("id", runId)
+            .single();
+
+          if (statusRes.error) throw statusRes.error;
+          const status = statusRes.data?.status;
+
+          const more = await supabase
+            .from("agent_events")
+            .select("step, kind, content, created_at, id")
+            .eq("run_id", runId)
+            .gt("step", step)
+            .order("step", { ascending: true });
+
+          if (more.error) throw more.error;
+
+          for (const raw of (more.data ?? []) as unknown[]) {
+            if (!isRecord(raw)) continue;
+
+            const row: AgentEventRow = {
+              step: typeof raw.step === "number" ? raw.step : step,
+              kind: typeof raw.kind === "string" ? raw.kind : "unknown",
+              content: raw.content,
+              created_at: typeof raw.created_at === "string" ? raw.created_at : "",
+              id: typeof raw.id === "string" ? raw.id : "",
+            };
+
+            step = row.step;
+            push(step, normalizeRowToEvent(row));
+          }
+
+          if (status === "running") {
+            setTimeout(loop, 900);
+          } else {
+            controller.close();
+          }
+        } catch (e) {
+          const msg =
+            e instanceof Error ? e.message : typeof e === "string" ? e : "Unknown error";
+          write(`event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`);
+          controller.close();
+        }
+      }
+
+      loop();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    },
+  });
+}
+
+
+============================================================
+FILE: app/api/agent/planner/fleet/route.ts
+============================================================
+// app/api/agent/planner/fleet/route.ts
+import { cookies } from "next/headers";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+
+import type { Database } from "@shared/types/types/supabase";
+import type { ToolContext } from "@/features/agent/lib/toolTypes";
+import { runFleetPlanner } from "@/features/agent/lib/plannerFleet";
+
+type DB = Database;
+
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+
+type Body = {
+  goal: string;
+  fleetName?: string | null;
+  programName?: string | null;
+  label?: string | null;
+  vehicleIds?: string[] | null;
+  contactEmail?: string | null;
+  contactName?: string | null;
+};
+
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = createRouteHandlerClient<DB>({ cookies });
+
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = (await req.json().catch(() => null)) as Body | null;
+    if (!body?.goal || !body.goal.trim()) {
+      return NextResponse.json({ error: "goal is required" }, { status: 400 });
+    }
+
+    // Resolve shopId for ToolContext
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("id, shop_id")
+      .eq("id", user.id)
+      .maybeSingle<Pick<ProfileRow, "id" | "shop_id">>();
+
+    if (profileErr || !profile?.shop_id) {
+      return NextResponse.json(
+        { error: "Unable to resolve shop for this account." },
+        { status: 400 },
+      );
+    }
+
+    const ctx: ToolContext = {
+      shopId: profile.shop_id,
+      userId: user.id,
+    };
+
+    const plannerContext: Record<string, unknown> = {
+      plannerKind: "fleet",
+      fleetName: body.fleetName ?? undefined,
+      programName: body.programName ?? undefined,
+      label: body.label ?? undefined,
+      vehicleIds: Array.isArray(body.vehicleIds) ? body.vehicleIds : undefined,
+      contactEmail: body.contactEmail ?? undefined,
+      contactName: body.contactName ?? undefined,
+    };
+
+    const events: unknown[] = [];
+    await runFleetPlanner(body.goal, plannerContext, ctx, (e) => {
+      events.push(e);
+    });
+
+    return NextResponse.json({ ok: true, events });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[api/agent/planner/fleet] error", err);
+    return NextResponse.json(
+      { error: "Failed to run fleet planner." },
+      { status: 500 },
+    );
+  }
+}
+
+
+============================================================
+FILE: app/api/agent/requests/[id]/route.ts
+============================================================
+// app/api/agent/requests/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+type AgentRequestStatus =
+  | "submitted"
+  | "in_progress"
+  | "awaiting_approval"
+  | "approved"
+  | "rejected"
+  | "failed"
+  | "merged";
+
+type PatchBody = {
+  action?: "approve" | "reject";
+  // optional: allow overriding / adding notes when deciding
+  llm_notes?: string;
+};
+
+const APPROVER_ROLES = ["developer"];
+
+// Same base URL as /app/api/agent/requests/route.ts
+const AGENT_SERVICE_URL =
+  process.env.PROFIXIQ_AGENT_URL?.replace(/\/$/, "") ||
+  "https://obscure-space-guacamole-69pvggxvgrxj2qxr-4001.app.github.dev";
+
+// Helper to extract id from /api/agent/requests/:id
+function getIdFromUrl(req: NextRequest): string | null {
+  const url = new URL(req.url);
+  const pathname = url.pathname.replace(/\/$/, "");
+  const segments = pathname.split("/");
+  const id = segments[segments.length - 1];
+  return id || null;
+}
+
+/**
+ * PATCH /api/agent/requests/:id
+ * - approve / reject a request
+ * - when approving a PR in awaiting_approval, call the agent merge endpoint
+ */
+export async function PATCH(req: NextRequest) {
+  const id = getIdFromUrl(req);
+
+  if (!id) {
+    return NextResponse.json(
+      { error: "Missing agent request id" },
+      { status: 400 }
+    );
+  }
+
+  const body = (await req.json().catch(() => null)) as PatchBody | null;
+
+  if (!body || (body.action !== "approve" && body.action !== "reject")) {
+    return NextResponse.json(
+      {
+        error: "action is required and must be 'approve' or 'reject'",
+        example: { action: "approve" },
+      },
+      { status: 400 }
+    );
+  }
+
+  const cookieStore = cookies();
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: () => cookieStore,
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Load profile to enforce role-based approval
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, role, agent_role")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError || !profile) {
+    console.error("agent_requests PATCH profile error", profileError);
+    return NextResponse.json({ error: "Profile not found" }, { status: 400 });
+  }
+
+  if (!APPROVER_ROLES.includes(profile.agent_role ?? "")) {
+    return NextResponse.json(
+      { error: "Forbidden – insufficient role to approve/reject" },
+      { status: 403 }
+    );
+  }
+
+  // Load current request so we know PR info & current status
+  const {
+    data: existing,
+    error: existingError,
+  } = await supabase
+    .from("agent_requests")
+    .select(
+      "id, status, github_pr_number, github_pr_url, github_branch, github_commit_sha"
+    )
+    .eq("id", id)
+    .single();
+
+  if (existingError || !existing) {
+    console.error("agent_requests PATCH load error", existingError);
+    return NextResponse.json(
+      { error: "Agent request not found" },
+      { status: 404 }
+    );
+  }
+
+  // Default new status based on action
+  let finalStatus: AgentRequestStatus =
+    body.action === "approve" ? "approved" : "rejected";
+
+  // We may update these if merge succeeds
+  let newCommitSha: string | null = existing.github_commit_sha;
+  let newBranch: string | null = existing.github_branch;
+
+  // If approving and we have a PR, ask the Agent service to merge & delete branch
+  if (
+    body.action === "approve" &&
+    existing.github_pr_number != null &&
+    existing.status === "awaiting_approval"
+  ) {
+    try {
+      const mergeRes = await fetch(
+        `${AGENT_SERVICE_URL}/feature-requests/merge`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prNumber: existing.github_pr_number }),
+        }
+      );
+
+      if (!mergeRes.ok) {
+        console.error(
+          "Agent merge endpoint returned non-OK",
+          mergeRes.status,
+          await mergeRes.text()
+        );
+        // mark as failed so you know merge didn't happen
+        finalStatus = "failed";
+      } else {
+        const mergeJson = (await mergeRes.json()) as {
+          merged?: boolean;
+          alreadyMerged?: boolean;
+          branch?: string;
+          sha?: string;
+        };
+
+        if (mergeJson.merged || mergeJson.alreadyMerged) {
+          finalStatus = "merged";
+          newCommitSha = mergeJson.sha ?? newCommitSha;
+          newBranch = mergeJson.branch ?? newBranch;
+        } else {
+          finalStatus = "failed";
+        }
+      }
+    } catch (err) {
+      console.error("Error calling Agent merge endpoint", err);
+      finalStatus = "failed";
+    }
+  }
+
+  // Update row
+  const { data, error } = await supabase
+    .from("agent_requests")
+    .update({
+      status: finalStatus,
+      llm_notes: body.llm_notes,
+      github_commit_sha: newCommitSha,
+      github_branch: newBranch,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    console.error("agent_requests PATCH update error", error);
+    return NextResponse.json(
+      { error: "Failed to update agent request" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ request: data });
+}
+
+/**
+ * DELETE /api/agent/requests/:id
+ * - developer-only
+ * - best-effort cleanup of screenshot files in agent_uploads
+ */
+export async function DELETE(req: NextRequest) {
+  const id = getIdFromUrl(req);
+
+  if (!id) {
+    return NextResponse.json(
+      { error: "Missing agent request id" },
+      { status: 400 }
+    );
+  }
+
+  const cookieStore = cookies();
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: () => cookieStore,
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Same role gate as PATCH: only developer (agent_role) can delete
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, agent_role")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError || !profile) {
+    console.error("agent_requests DELETE profile error", profileError);
+    return NextResponse.json({ error: "Profile not found" }, { status: 400 });
+  }
+
+  if (!APPROVER_ROLES.includes(profile.agent_role ?? "")) {
+    return NextResponse.json(
+      { error: "Forbidden – insufficient role to delete requests" },
+      { status: 403 }
+    );
+  }
+
+  // Fetch the row so we can see any attachmentIds
+  const {
+    data: existing,
+    error: existingError,
+  } = await supabase
+    .from("agent_requests")
+    .select("id, normalized_json")
+    .eq("id", id)
+    .single();
+
+  if (existingError || !existing) {
+    console.error("agent_requests DELETE load error", existingError);
+    return NextResponse.json(
+      { error: "Agent request not found" },
+      { status: 404 }
+    );
+  }
+
+  // Best-effort cleanup of screenshot files in agent_uploads
+  try {
+    const ctx = (existing.normalized_json ?? {}) as {
+      attachmentIds?: string[];
+    };
+
+    if (Array.isArray(ctx.attachmentIds) && ctx.attachmentIds.length > 0) {
+      const { error: storageError } = await supabase.storage
+        .from("agent_uploads")
+        .remove(ctx.attachmentIds);
+
+      if (storageError) {
+        console.error("agent_uploads cleanup error", storageError);
+        // don't fail the whole delete because of storage
+      }
+    }
+  } catch (err) {
+    console.error("Error processing attachmentIds for cleanup", err);
+  }
+
+  // Finally remove the DB row
+  const { error: deleteError } = await supabase
+    .from("agent_requests")
+    .delete()
+    .eq("id", id);
+
+  if (deleteError) {
+    console.error("agent_requests DELETE error", deleteError);
+    return NextResponse.json(
+      { error: "Failed to delete agent request" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true });
+}
+
+
+============================================================
+FILE: app/api/agent/requests/route.ts
+============================================================
+// app/api/agent/requests/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+
+// Normalize URL so we don't get `//feature-requests`
+const AGENT_SERVICE_URL =
+  process.env.PROFIXIQ_AGENT_URL?.replace(/\/$/, "") ||
+  "https://obscure-space-guacamole-69pvggxvgrxj2qxr-4001.app.github.dev";
+
+// Service-role client used ONLY to sign private screenshot URLs
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: { persistSession: false },
+  }
+);
+
+type AgentGithubMeta = {
+  issueNumber?: number | null;
+  issueUrl?: string | null;
+  prNumber?: number | null;
+  prUrl?: string | null;
+  branchName?: string | null;
+  commitSha?: string | null;
+  fileUrl?: string | null;
+};
+
+type AgentLLMMeta = {
+  model?: string | null;
+  confidence?: number | null;
+  notes?: string | null;
+  commentary?: string | null;
+  summary?: string | null;
+};
+
+type AgentServiceResponse = {
+  message?: string;
+  intent?: string | null;
+  request?: Record<string, unknown> | null;
+  github?: AgentGithubMeta | null;
+  llm?: AgentLLMMeta | null;
+};
+
+// DB enum values
+type AgentIntent =
+  | "feature_request"
+  | "bug_report"
+  | "inspection_catalog_add"
+  | "service_catalog_add"
+  | "refactor";
+
+type AgentRequestStatus =
+  | "submitted"
+  | "in_progress"
+  | "awaiting_approval"
+  | "approved"
+  | "rejected"
+  | "failed"
+  | "merged";
+
+const AGENT_INTENTS: AgentIntent[] = [
+  "feature_request",
+  "bug_report",
+  "inspection_catalog_add",
+  "service_catalog_add",
+  "refactor",
+];
+
+function normalizeIntent(raw: unknown): AgentIntent {
+  if (typeof raw === "string") {
+    const match = AGENT_INTENTS.find((v) => v === raw);
+    if (match) return match;
+  }
+  return "feature_request";
+}
+
+type CreateAgentRequestBody = {
+  description?: string;
+  intent?: string;
+  context?: Record<string, unknown>;
+  location?: string;
+  steps?: string;
+  expected?: string;
+  actual?: string;
+  device?: string;
+  attachmentIds?: string[];
+};
+
+export async function GET() {
+  const cookieStore = cookies();
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: () => cookieStore,
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data, error } = await supabase
+    .from("agent_requests")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) {
+    console.error("agent_requests GET error", error);
+    return NextResponse.json(
+      { error: "Failed to load agent requests" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ requests: data });
+}
+
+export async function POST(req: NextRequest) {
+  const cookieStore = cookies();
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: () => cookieStore,
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await req.json().catch(() => null)) as
+    | CreateAgentRequestBody
+    | null;
+
+  if (!body || !body.description || !body.description.trim()) {
+    return NextResponse.json(
+      {
+        error: "description is required",
+        example: {
+          description:
+            "tabbing is not working in corner grids; focus jumps out",
+        },
+      },
+      { status: 400 }
+    );
+  }
+
+  const description = body.description.trim();
+  const intent = normalizeIntent(body.intent);
+
+  // Load profile
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, shop_id, role")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError || !profile) {
+    console.error("agent_requests profile error", profileError);
+    return NextResponse.json({ error: "Profile not found" }, { status: 400 });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Create SHORT-LIVED SIGNED URLS for uploaded screenshots
+  // (bucket `agent_uploads` stays private, RLS unchanged)
+  // ---------------------------------------------------------------------------
+  const attachmentIds = Array.isArray(body.attachmentIds)
+    ? body.attachmentIds
+    : [];
+
+  let signedAttachments: { path: string; url: string; name: string }[] = [];
+
+  if (attachmentIds.length > 0) {
+    const { data, error } = await supabaseAdmin.storage
+      .from("agent_uploads")
+      .createSignedUrls(attachmentIds, 60 * 60 * 24); // 24 hours
+
+    if (error) {
+      console.error("createSignedUrls error for agent_uploads:", error);
+    } else if (data) {
+      signedAttachments = data.map((row, i) => ({
+        path: attachmentIds[i],
+        url: row.signedUrl,
+        name: attachmentIds[i].split("/").pop() ?? attachmentIds[i],
+      }));
+    }
+  }
+
+  // Structured context (what we store in DB)
+  const structuredContext = {
+    location: body.location ?? null,
+    steps: body.steps ?? null,
+    expected: body.expected ?? null,
+    actual: body.actual ?? null,
+    device: body.device ?? null,
+    attachmentIds,
+    attachments: signedAttachments,
+    rawContext: body.context ?? {},
+  };
+
+  // Insert initial request
+  const { data: inserted, error: insertError } = await supabase
+    .from("agent_requests")
+    .insert({
+      shop_id: profile.shop_id,
+      reporter_id: profile.id,
+      reporter_role: profile.role,
+      description,
+      intent,
+      status: "submitted" as AgentRequestStatus,
+      normalized_json: structuredContext,
+    })
+    .select("*")
+    .single();
+
+  if (insertError || !inserted) {
+    console.error("agent_requests insert error", insertError);
+    return NextResponse.json(
+      { error: "Failed to create agent request" },
+      { status: 500 }
+    );
+  }
+
+  // Context we send to the Agent service (includes signed attachment URLs)
+  const contextForAgent = {
+    ...structuredContext,
+  };
+
+  // Call agent service
+  let agentResponse: AgentServiceResponse | null = null;
+  try {
+    const res = await fetch(`${AGENT_SERVICE_URL}/feature-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: profile.role ?? "user",
+        reporterId: profile.id,
+        shopId: profile.shop_id,
+        description,
+        intent,
+        context: contextForAgent,
+      }),
+    });
+
+    if (res.ok) {
+      agentResponse = (await res.json()) as AgentServiceResponse;
+      console.log(
+        "ProFixIQ-Agent response",
+        inserted.id,
+        JSON.stringify(agentResponse, null, 2)
+      );
+    } else {
+      console.error(
+        "ProFixIQ-Agent returned non-OK",
+        res.status,
+        await res.text()
+      );
+    }
+  } catch (err) {
+    console.error("Error calling ProFixIQ-Agent", err);
+  }
+
+  // Extract GitHub + LLM
+  const github = agentResponse?.github ?? null;
+  const llmMeta = agentResponse?.llm ?? null;
+  const llm_confidence = llmMeta?.confidence ?? null;
+
+  const llm_notes =
+    llmMeta?.notes ??
+    llmMeta?.commentary ??
+    llmMeta?.summary ??
+    agentResponse?.message ??
+    null;
+
+  // -----------------------------------------------------
+  // Final intent logic (UI choice wins unless LLM switched
+  // into one of the catalog-add flows)
+  // -----------------------------------------------------
+  let finalIntent: AgentIntent = intent;
+  const agentIntent = agentResponse?.intent as AgentIntent | null | undefined;
+
+  if (
+    agentIntent === "inspection_catalog_add" ||
+    agentIntent === "service_catalog_add"
+  ) {
+    finalIntent = agentIntent;
+  }
+
+  // Status selection
+  const status: AgentRequestStatus =
+    github?.prUrl
+      ? "awaiting_approval"
+      : github?.issueUrl
+      ? "in_progress"
+      : finalIntent === "inspection_catalog_add" ||
+        finalIntent === "service_catalog_add"
+      ? "merged"
+      : "submitted";
+
+  // Update row with agent details
+  const { data: updated, error: updateError } = await supabase
+    .from("agent_requests")
+    .update({
+      intent: finalIntent,
+      normalized_json: {
+        ...structuredContext,
+        agentRequest: agentResponse?.request ?? {},
+      },
+      github_issue_number: github?.issueNumber ?? null,
+      github_issue_url: github?.issueUrl ?? null,
+      github_pr_number: github?.prNumber ?? null,
+      github_pr_url: github?.prUrl ?? null,
+      github_branch: github?.branchName ?? null,
+      github_commit_sha: github?.commitSha ?? null,
+      llm_model: llmMeta?.model ?? null,
+      llm_confidence,
+      llm_notes: llm_notes ?? null,
+      status,
+    })
+    .eq("id", inserted.id)
+    .select("*")
+    .single();
+
+  if (updateError) {
+    console.error("agent_requests update error", updateError);
+  }
+
+  return NextResponse.json({
+    request: updated ?? inserted,
+    agent: agentResponse,
+  });
+}
+
+
+============================================================
+FILE: app/api/agent/route.ts
+============================================================
+import { NextResponse } from "next/server";
+import { startAgent } from "@/features/agent/server/runAgent";
+
+export const runtime = "nodejs";
+
+function toMessage(e: unknown): string {
+  if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string") {
+    return (e as Error).message;
+  }
+  try { return String(e); } catch { return "Unknown error"; }
+}
+
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+
+  const goal = (body.goal as string | undefined) ?? "";
+  const context = (body.context as Record<string, unknown> | undefined) ?? {};
+  const idempotencyKey = (body.idempotencyKey as string | null | undefined) ?? null;
+  const planner = body.planner as ("simple" | "openai" | undefined);
+
+  if (!goal) return NextResponse.json({ error: "goal required" }, { status: 400 });
+
+  try {
+    const out = await startAgent({ goal, context, idempotencyKey, planner });
+    return NextResponse.json(out);
+  } catch (e: unknown) {
+    return NextResponse.json({ error: toMessage(e) }, { status: 500 });
+  }
+}
+
+
+
