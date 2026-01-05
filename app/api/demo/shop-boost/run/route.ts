@@ -8,7 +8,12 @@ import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 type DB = Database;
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
-const DEMO_OWNER_ID = process.env.DEMO_OWNER_ID ?? "";
+
+// ✅ Seeded demo owner (profiles.id / auth.users.id)
+const DEMO_OWNER_ID = "22fab07e-3b6f-432b-9434-e5476a7ade28";
+
+// ✅ shops.plan CHECK allows only: free, diy, pro, pro_plus
+const DEMO_SHOP_PLAN: DB["public"]["Tables"]["shops"]["Insert"]["plan"] = "pro";
 
 type DemoRunSuccessResponse = {
   ok: true;
@@ -23,6 +28,16 @@ type DemoRunErrorResponse = {
 
 type DemoRunResponse = DemoRunSuccessResponse | DemoRunErrorResponse;
 
+function safeShopName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").slice(0, 80);
+}
+
+function makeUniqueName(base: string): string {
+  // Keep it readable but unique for the shops.name UNIQUE constraint
+  const suffix = randomUUID().slice(0, 8);
+  return `${base} (Demo ${suffix})`.slice(0, 80);
+}
+
 export async function POST(
   req: NextRequest,
 ): Promise<NextResponse<DemoRunResponse>> {
@@ -35,7 +50,7 @@ export async function POST(
 
     const shopName =
       typeof rawShopName === "string" && rawShopName.trim().length > 0
-        ? rawShopName.trim()
+        ? safeShopName(rawShopName)
         : null;
 
     if (!shopName) {
@@ -84,46 +99,48 @@ export async function POST(
       );
     }
 
-    if (!DEMO_OWNER_ID) {
-      console.error("[demo/shop-boost/run] DEMO_OWNER_ID is not set");
-      return NextResponse.json(
-        { ok: false, error: "Demo is not configured yet. Please try again later." },
-        { status: 500 },
-      );
-    }
-
     const supabase = createAdminSupabase();
 
-    // Generate intake id BEFORE shop insert so we can guarantee unique shop.name
-    const intakeId = randomUUID();
+    // 1) Create a demo shop row (MUST include owner_id; plan must pass CHECK)
+    const insertShop = async (nameValue: string) => {
+      return supabase
+        .from("shops")
+        .insert({
+          owner_id: DEMO_OWNER_ID,
+          business_name: nameValue,
+          name: nameValue,
+          country: countryValue,
+          plan: DEMO_SHOP_PLAN,
+        } as DB["public"]["Tables"]["shops"]["Insert"])
+        .select("id")
+        .single();
+    };
 
-    // 1) Create a demo shop row
-    // NOTE: shops.plan has a CHECK constraint (free/diy/pro/pro_plus), and owner_id is NOT NULL.
-    const { data: shopRow, error: shopErr } = await supabase
-      .from("shops")
-      .insert({
-        owner_id: DEMO_OWNER_ID,
-        business_name: shopName,
-        // shops.name has UNIQUE constraint
-        name: `${shopName} (Demo ${intakeId.slice(0, 6)})`,
-        country: countryValue,
-        plan: "free",
-        // keep shops_active_user_count_le_max_users happy
-        max_users: 1,
-        active_user_count: 0,
-      } as DB["public"]["Tables"]["shops"]["Insert"])
-      .select("id")
-      .single();
+    // Try base name first, then fallback to unique variant if name is already taken
+    let { data: shopRow, error: shopErr } = await insertShop(shopName);
+
+    if (shopErr) {
+      // If it's the unique constraint on shops.name (or any conflict), retry once with unique name
+      const retryName = makeUniqueName(shopName);
+      const retry = await insertShop(retryName);
+      shopRow = retry.data ?? null;
+      shopErr = retry.error ?? null;
+    }
 
     if (shopErr || !shopRow?.id) {
-      console.error("[demo/shop-boost/run] Failed to create demo shop", shopErr);
+      console.error("Failed to create demo shop", shopErr);
       return NextResponse.json(
-        { ok: false, error: "We couldn't create a demo shop record. Please try again." },
+        {
+          ok: false,
+          error:
+            "We couldn't create a demo shop record. Please try again. (Shop insert failed)",
+        },
         { status: 500 },
       );
     }
 
     const shopId = shopRow.id as string;
+    const intakeId = randomUUID();
 
     // Helper to upload files to the demo folder
     const uploadIfPresent = async (
@@ -173,7 +190,7 @@ export async function POST(
       .insert(intakePayload);
 
     if (intakeErr) {
-      console.error("[demo/shop-boost/run] Failed to insert shop_boost_intakes", intakeErr);
+      console.error("Failed to insert shop_boost_intakes", intakeErr);
       return NextResponse.json(
         { ok: false, error: "We couldn't start the analysis. Please try again." },
         { status: 500 },
@@ -181,7 +198,10 @@ export async function POST(
     }
 
     // 4) Run the AI pipeline for this demo intake
-    const snapshot = await buildShopBoostProfile({ shopId, intakeId });
+    const snapshot = await buildShopBoostProfile({
+      shopId,
+      intakeId,
+    });
 
     if (!snapshot) {
       return NextResponse.json(
@@ -207,17 +227,22 @@ export async function POST(
       .single();
 
     if (demoErr || !demoRow?.id) {
-      console.error("[demo/shop-boost/run] Failed to insert demo_shop_boosts", demoErr);
+      console.error("Failed to insert demo_shop_boosts", demoErr);
       return NextResponse.json(
-        { ok: false, error: "We ran the analysis, but could not save the demo result." },
+        {
+          ok: false,
+          error: "We ran the analysis, but could not save the demo result.",
+        },
         { status: 500 },
       );
     }
 
+    const demoId = demoRow.id as string;
+
     return NextResponse.json(
       {
         ok: true,
-        demoId: demoRow.id as string,
+        demoId,
         snapshot,
       },
       { status: 200 },
@@ -225,7 +250,13 @@ export async function POST(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unexpected error while running demo analysis.";
-    console.error("[demo/shop-boost/run] Demo run error", err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    console.error("Demo run error", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+      },
+      { status: 500 },
+    );
   }
 }
