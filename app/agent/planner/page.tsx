@@ -37,56 +37,6 @@ function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
-function asObj(v: unknown): Record<string, unknown> | null {
-  return v !== null && typeof v === "object" ? (v as Record<string, unknown>) : null;
-}
-
-function extractWorkOrderId(evt: AgentEvent): string | null {
-  return (
-    asString(evt.work_order_id) ??
-    asString(evt.workOrderId) ??
-    asString(evt.wo_id) ??
-    asString(evt.id)
-  );
-}
-
-function extractToolName(evt: AgentEvent): string | null {
-  // common shapes:
-  // { kind:"tool_call", name:"create_work_order", input:{...} }
-  // { kind:"tool_result", name:"create_work_order", output:{...} }
-  // { kind:"tool_call", tool:{ name:"create_work_order" }, input:{...} }
-  // { kind:"tool_call", tool_name:"create_work_order" }
-  const direct =
-    asString(evt.name) ??
-    asString(evt.tool_name) ??
-    asString(evt.toolName) ??
-    asString(evt.tool);
-
-  if (direct) return direct;
-
-  const toolObj = asObj(evt.tool);
-  const n = toolObj ? asString(toolObj.name) : null;
-  return n;
-}
-
-function extractToolPreview(evt: AgentEvent): string | null {
-  // small hint like plate/vin or customer name from input, but keep it short
-  const input = asObj(evt.input) ?? asObj(evt.args) ?? null;
-  if (!input) return null;
-
-  const parts: string[] = [];
-
-  const customerQuery = asString(input.customerQuery) ?? asString(input.customer_query);
-  const plateOrVin = asString(input.plateOrVin) ?? asString(input.plate_or_vin);
-  const woId = asString(input.workOrderId) ?? asString(input.work_order_id);
-
-  if (customerQuery) parts.push(customerQuery.slice(0, 24));
-  if (plateOrVin) parts.push(plateOrVin.slice(0, 24));
-  if (woId) parts.push(woId.slice(0, 8));
-
-  return parts.length ? parts.join(" • ") : null;
-}
-
 function toMsg(e: unknown): string {
   if (typeof e === "string") return e;
   if (
@@ -104,9 +54,67 @@ function toMsg(e: unknown): string {
   }
 }
 
+function extractToolName(evt: AgentEvent): string | null {
+  // Common shapes:
+  // { kind:"tool_call", name:"create_work_order" }
+  // { kind:"tool_call", tool:{ name:"create_work_order" } }
+  // { kind:"tool_call", tool_name:"create_work_order" }
+  // { kind:"tool_result", name:"create_work_order", output:{...} }
+  const direct =
+    asString(evt.name) ??
+    asString((evt as any).tool_name) ??
+    asString((evt as any).toolName) ??
+    asString((evt as any).tool?.name) ??
+    asString((evt as any).tool?.tool_name) ??
+    asString((evt as any).call?.name) ??
+    asString((evt as any).toolCall?.name);
+
+  return direct ?? null;
+}
+
+function extractWorkOrderId(evt: AgentEvent): string | null {
+  // direct fields
+  const direct =
+    asString((evt as any).work_order_id) ??
+    asString((evt as any).workOrderId) ??
+    asString((evt as any).wo_id) ??
+    asString((evt as any).id);
+
+  if (direct) return direct;
+
+  // nested in tool_result output
+  const out = (evt as any).output;
+  if (out && typeof out === "object") {
+    const nested =
+      asString(out.workOrderId) ??
+      asString(out.work_order_id) ??
+      asString(out.id);
+    if (nested) return nested;
+  }
+
+  // sometimes result is under "result"
+  const result = (evt as any).result;
+  if (result && typeof result === "object") {
+    const nested =
+      asString(result.workOrderId) ??
+      asString(result.work_order_id) ??
+      asString(result.id);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
 function labelFor(evt: AgentEvent): string | null {
   const k = (evt.kind ?? "").toString();
+  const toolName = extractToolName(evt);
   const woId = extractWorkOrderId(evt);
+
+  // For plan/final, show the message text if present
+  const text =
+    asString((evt as any).text) ??
+    asString((evt as any).message) ??
+    asString((evt as any).error);
 
   switch (k) {
     case "run.started":
@@ -115,27 +123,28 @@ function labelFor(evt: AgentEvent): string | null {
       return "Resumed previous run…";
 
     case "plan":
-      return "plan";
+      return text ? `Plan: ${text}` : "Plan…";
 
-    case "tool_call": {
-      const tn = extractToolName(evt) ?? "unknown";
-      const hint = extractToolPreview(evt);
-      return `Tool call: ${tn}${hint ? ` (${hint})` : ""}`;
-    }
+    case "tool_call":
+      return `Tool call: ${toolName ?? "unknown"}`;
 
-    case "tool_result": {
-      const tn = extractToolName(evt) ?? "unknown";
-      return `Tool result: ${tn}`;
-    }
+    case "tool_result":
+      // If work order id appears in a tool result, surface it.
+      if (woId && toolName === "create_work_order") {
+        return `Created work order (${woId.slice(0, 8)})`;
+      }
+      return `Tool result: ${toolName ?? "unknown"}`;
 
     case "vin.decoded":
-      return `Decoded VIN${evt.vin ? ` ${String(evt.vin)}` : ""}`;
+      return `Decoded VIN${(evt as any).vin ? ` ${(evt as any).vin}` : ""}`;
 
     case "customer.matched":
-      return `Matched customer${evt.customer_name ? ` ${String(evt.customer_name)}` : ""}`;
+      return `Matched customer${
+        (evt as any).customer_name ? ` ${(evt as any).customer_name}` : ""
+      }`;
 
     case "vehicle.attached":
-      return "Attached vehicle to work order";
+      return "Attached vehicle";
 
     case "wo.created":
     case "work_order.created":
@@ -144,24 +153,27 @@ function labelFor(evt: AgentEvent): string | null {
     case "wo.line.created":
     case "work_order_line.created":
       return `Added job line${
-        evt.description ? ` — ${String(evt.description).slice(0, 80)}` : ""
+        (evt as any).description
+          ? ` — ${String((evt as any).description).slice(0, 80)}`
+          : ""
       }`;
-
-    case "invoice.created":
-      return "Generated invoice";
 
     case "email.sent":
     case "invoice.emailed":
       return "Emailed invoice";
 
+    case "invoice.created":
+      return "Generated invoice";
+
     case "final":
-      return "final";
+      // This is important—show WHY it ended (e.g. “Need a specific customer…”)
+      return text ? `Final: ${text}` : "Final";
 
     case "run.completed":
       return "Completed";
 
     case "run.error":
-      return `Error: ${evt.message ?? "unknown"}`;
+      return `Error: ${text ?? "unknown"}`;
 
     default:
       if (!k) return null;
@@ -390,13 +402,14 @@ export default function PlannerPage() {
 
         try {
           const data = JSON.parse(ev.data) as AgentEvent;
-
           const label = labelFor(data);
           if (label) appendStep(label);
 
           const maybeId = extractWorkOrderId(data);
           if (
-            (data.kind === "wo.created" || data.kind === "work_order.created") &&
+            (data.kind === "wo.created" ||
+              data.kind === "work_order.created" ||
+              (data.kind === "tool_result" && extractToolName(data) === "create_work_order")) &&
             typeof maybeId === "string"
           ) {
             setPreviewWoId(maybeId);
@@ -405,7 +418,12 @@ export default function PlannerPage() {
 
           appendLog(ev.data);
 
-          if (data.kind === "run.completed" || data.kind === "run.error") {
+          // ✅ Treat "final" as end-of-run too (many runs don't emit run.completed)
+          if (
+            data.kind === "run.completed" ||
+            data.kind === "run.error" ||
+            data.kind === "final"
+          ) {
             es.close();
             esRef.current = null;
             setRunning(false);
@@ -442,7 +460,6 @@ export default function PlannerPage() {
       description="Describe what you want done — we'll create the work order, add lines, attach photos, and optionally email the invoice."
     >
       <div className="metal-card rounded-3xl p-5 shadow-[0_12px_35px_rgba(0,0,0,0.85)]">
-        {/* planner mode buttons */}
         <div className="flex flex-wrap gap-2">
           {plannerModes.map((m) => (
             <Button
@@ -462,7 +479,6 @@ export default function PlannerPage() {
           ))}
         </div>
 
-        {/* goal textarea (full width) */}
         <textarea
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
@@ -470,7 +486,6 @@ export default function PlannerPage() {
           className="mt-3 w-full min-h-[120px] rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
         />
 
-        {/* secondary inputs */}
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <label className="block">
             <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
@@ -552,7 +567,6 @@ export default function PlannerPage() {
           </div>
         )}
 
-        {/* stream */}
         <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
           <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
             Stream
@@ -571,7 +585,6 @@ export default function PlannerPage() {
           )}
         </div>
 
-        {/* centered actions */}
         <div className="mt-4 flex items-center justify-center gap-4">
           <Button
             onClick={start}
