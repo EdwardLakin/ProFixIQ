@@ -31,7 +31,15 @@ type PlannerKind = "simple" | "openai" | "fleet" | "approvals";
 
 type AgentStartOut = { runId: string; alreadyExists: boolean };
 
-type AgentEvent = Record<string, unknown> & { kind?: string };
+type AgentEvent = Record<string, unknown> & {
+  kind?: string;
+  text?: unknown;
+  message?: unknown;
+  name?: unknown;
+  vin?: unknown;
+  customer_name?: unknown;
+  description?: unknown;
+};
 
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
@@ -39,10 +47,10 @@ function asString(v: unknown): string | null {
 
 function extractWorkOrderId(evt: AgentEvent): string | null {
   return (
-    asString(evt.work_order_id) ??
-    asString(evt.workOrderId) ??
-    asString(evt.wo_id) ??
-    asString(evt.id)
+    asString((evt as Record<string, unknown>).work_order_id) ??
+    asString((evt as Record<string, unknown>).workOrderId) ??
+    asString((evt as Record<string, unknown>).wo_id) ??
+    asString((evt as Record<string, unknown>).id)
   );
 }
 
@@ -65,16 +73,34 @@ function toMsg(e: unknown): string {
 
 function labelFor(evt: AgentEvent): string | null {
   const k = (evt.kind ?? "").toString();
+
+  // ✅ Show planner text (previously hidden)
+  const text = asString(evt.text);
+  if ((k === "plan" || k === "final") && text) return text;
+
+  // ✅ Show tool call/result with names
+  if (k === "tool_call") {
+    const nm = asString(evt.name) ?? "tool";
+    return `Tool call: ${nm}`;
+  }
+  if (k === "tool_result") {
+    const nm = asString(evt.name) ?? "tool";
+    return `Tool result: ${nm}`;
+  }
+
   const woId = extractWorkOrderId(evt);
+
   switch (k) {
     case "run.started":
       return "Started plan";
     case "run.resumed":
       return "Resumed previous run";
     case "vin.decoded":
-      return `Decoded VIN${evt.vin ? ` ${evt.vin}` : ""}`;
+      return `Decoded VIN${asString(evt.vin) ? ` ${asString(evt.vin)}` : ""}`;
     case "customer.matched":
-      return `Matched customer${evt.customer_name ? ` ${evt.customer_name}` : ""}`;
+      return `Matched customer${
+        asString(evt.customer_name) ? ` ${asString(evt.customer_name)}` : ""
+      }`;
     case "vehicle.attached":
       return "Attached vehicle to work order";
     case "wo.created":
@@ -83,7 +109,7 @@ function labelFor(evt: AgentEvent): string | null {
     case "wo.line.created":
     case "work_order_line.created":
       return `Added job line${
-        evt.description ? ` — ${String(evt.description).slice(0, 80)}` : ""
+        asString(evt.description) ? ` — ${String(evt.description).slice(0, 80)}` : ""
       }`;
     case "email.sent":
     case "invoice.emailed":
@@ -92,11 +118,17 @@ function labelFor(evt: AgentEvent): string | null {
       return "Generated invoice";
     case "run.completed":
       return "Completed";
-    case "run.error":
-      return `Error: ${evt.message ?? "unknown"}`;
-    default:
+    case "run.error": {
+      const msg = asString(evt.message) ?? asString(evt.text);
+      return `Error: ${msg ?? "unknown"}`;
+    }
+    default: {
       if (!k) return null;
+      // ✅ fallback to message if present
+      const msg = asString(evt.message);
+      if (msg) return `${k.replaceAll("_", " ")}: ${msg}`;
       return k.replaceAll("_", " ");
+    }
   }
 }
 
