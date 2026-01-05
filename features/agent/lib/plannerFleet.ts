@@ -1,7 +1,11 @@
 // features/agent/lib/plannerFleet.ts
 import type { ToolContext } from "./toolTypes";
 import type { PlannerEvent } from "./plannerSimple";
-import { runFindOrCreateFleet, runGenerateFleetWorkOrders } from "./toolRegistry";
+import {
+  runFindOrCreateFleet,
+  runFindOrCreateFleetProgram,
+  runGenerateFleetWorkOrders,
+} from "./toolRegistry";
 
 function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
   return (obj as Record<string, T | undefined>)[key];
@@ -14,16 +18,15 @@ type ParsedFleetPlan = {
   vehicleIds?: string[];
   contactEmail?: string;
   contactName?: string;
+  baseTemplateSlug?: string;
+  includeCustomInspection?: boolean;
 };
 
 /**
  * Very small helper to build a fleet plan from goal + context.
  * (You can swap this later for an LLM parser if you want richer behavior.)
  */
-function buildFleetPlan(
-  goal: string,
-  context: Record<string, unknown>,
-): ParsedFleetPlan {
+function buildFleetPlan(goal: string, context: Record<string, unknown>): ParsedFleetPlan {
   const fleetNameCtx = get<string>(context, "fleetName");
   const programCtx = get<string>(context, "programName");
   const labelCtx = get<string>(context, "label");
@@ -32,18 +35,25 @@ function buildFleetPlan(
   const contactEmailCtx = get<string>(context, "contactEmail");
   const contactNameCtx = get<string>(context, "contactName");
 
+  const baseTemplateSlugCtx = get<string>(context, "baseTemplateSlug");
+  const includeCustomInspectionCtx = get<boolean>(context, "includeCustomInspection");
+
   const trimmedGoal = goal.trim();
   const fallbackFleetName =
     fleetNameCtx || (trimmedGoal.length > 0 ? trimmedGoal.slice(0, 80) : undefined);
 
   return {
     fleetName: fleetNameCtx ?? fallbackFleetName,
-    programName:
-      programCtx ?? get<string>(context, "program") ?? "Maintenance Program",
+    programName: programCtx ?? get<string>(context, "program") ?? "Maintenance Program",
     label: labelCtx ?? undefined,
     vehicleIds: Array.isArray(vehicleIdsCtx) ? vehicleIdsCtx : undefined,
     contactEmail: contactEmailCtx ?? undefined,
     contactName: contactNameCtx ?? undefined,
+    baseTemplateSlug: baseTemplateSlugCtx ?? undefined,
+    includeCustomInspection:
+      typeof includeCustomInspectionCtx === "boolean"
+        ? includeCustomInspectionCtx
+        : undefined,
   };
 }
 
@@ -65,8 +75,8 @@ export async function runFleetPlanner(
     return;
   }
 
-  // 1) Find or create fleet (tool expects: name/contact_email/contact_name)
-  const findInput = {
+  // 1) Find or create fleet
+  const findFleetInput = {
     name: plan.fleetName,
     contact_email: plan.contactEmail,
     contact_name: plan.contactName,
@@ -75,10 +85,10 @@ export async function runFleetPlanner(
   await onEvent?.({
     kind: "tool_call",
     name: "find_or_create_fleet",
-    input: findInput,
+    input: findFleetInput,
   });
 
-  const fleetOut = await runFindOrCreateFleet(findInput, ctx);
+  const fleetOut = await runFindOrCreateFleet(findFleetInput, ctx);
 
   await onEvent?.({
     kind: "tool_result",
@@ -96,10 +106,37 @@ export async function runFleetPlanner(
     return;
   }
 
-  // 2) Generate work orders for the fleet / program
+  // 2) Find or create fleet program (persist it even if no tasks yet)
+  const programName = plan.programName ?? "Maintenance Program";
+  const findProgramInput = {
+    fleetId,
+    programName,
+    baseTemplateSlug: plan.baseTemplateSlug,
+    includeCustomInspection: plan.includeCustomInspection,
+  };
+
+  await onEvent?.({
+    kind: "tool_call",
+    name: "find_or_create_fleet_program",
+    input: findProgramInput,
+  });
+
+  const programOut = await runFindOrCreateFleetProgram(findProgramInput, ctx);
+
+  await onEvent?.({
+    kind: "tool_result",
+    name: "find_or_create_fleet_program",
+    output: programOut,
+  });
+
+  // Not strictly required for WO generation (since generate tool can find/create too),
+  // but helps confirm program exists & gives you an ID to display/log later.
+  const programId = programOut?.programId;
+
+  // 3) Generate work orders for the fleet / program
   const generateInput = {
     fleetId,
-    programName: plan.programName ?? "Maintenance Program",
+    programName,
     vehicleIds: plan.vehicleIds,
     label: plan.label,
   };
@@ -115,11 +152,14 @@ export async function runFleetPlanner(
   await onEvent?.({
     kind: "tool_result",
     name: "generate_fleet_work_orders",
-    output: generated,
+    output: {
+      ...generated,
+      programId: programId ?? null,
+    },
   });
 
   await onEvent?.({
     kind: "final",
-    text: "Fleet work orders generated.",
+    text: `Fleet work orders generated.${programId ? ` Program ${programId.slice(0, 8)}…` : ""}`,
   });
 }
