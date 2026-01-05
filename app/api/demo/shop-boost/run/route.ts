@@ -1,6 +1,4 @@
-// TODO Demo Shop Boost runner
 // app/api/demo/shop-boost/run/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import type { Database } from "@shared/types/types/supabase";
@@ -10,6 +8,7 @@ import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 type DB = Database;
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
+const DEMO_OWNER_ID = process.env.DEMO_OWNER_ID ?? "";
 
 type DemoRunSuccessResponse = {
   ok: true;
@@ -24,7 +23,9 @@ type DemoRunErrorResponse = {
 
 type DemoRunResponse = DemoRunSuccessResponse | DemoRunErrorResponse;
 
-export async function POST(req: NextRequest): Promise<NextResponse<DemoRunResponse>> {
+export async function POST(
+  req: NextRequest,
+): Promise<NextResponse<DemoRunResponse>> {
   try {
     const formData = await req.formData();
 
@@ -83,33 +84,46 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
       );
     }
 
+    if (!DEMO_OWNER_ID) {
+      console.error("[demo/shop-boost/run] DEMO_OWNER_ID is not set");
+      return NextResponse.json(
+        { ok: false, error: "Demo is not configured yet. Please try again later." },
+        { status: 500 },
+      );
+    }
+
     const supabase = createAdminSupabase();
 
+    // Generate intake id BEFORE shop insert so we can guarantee unique shop.name
+    const intakeId = randomUUID();
+
     // 1) Create a demo shop row
+    // NOTE: shops.plan has a CHECK constraint (free/diy/pro/pro_plus), and owner_id is NOT NULL.
     const { data: shopRow, error: shopErr } = await supabase
       .from("shops")
       .insert({
+        owner_id: DEMO_OWNER_ID,
         business_name: shopName,
-        name: shopName,
+        // shops.name has UNIQUE constraint
+        name: `${shopName} (Demo ${intakeId.slice(0, 6)})`,
         country: countryValue,
-        plan: "demo",
+        plan: "free",
+        // keep shops_active_user_count_le_max_users happy
+        max_users: 1,
+        active_user_count: 0,
       } as DB["public"]["Tables"]["shops"]["Insert"])
       .select("id")
       .single();
 
     if (shopErr || !shopRow?.id) {
-      console.error("Failed to create demo shop", shopErr);
+      console.error("[demo/shop-boost/run] Failed to create demo shop", shopErr);
       return NextResponse.json(
-        {
-          ok: false,
-          error: "We couldn't create a demo shop record. Please try again.",
-        },
+        { ok: false, error: "We couldn't create a demo shop record. Please try again." },
         { status: 500 },
       );
     }
 
     const shopId = shopRow.id as string;
-    const intakeId = randomUUID();
 
     // Helper to upload files to the demo folder
     const uploadIfPresent = async (
@@ -159,7 +173,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
       .insert(intakePayload);
 
     if (intakeErr) {
-      console.error("Failed to insert shop_boost_intakes", intakeErr);
+      console.error("[demo/shop-boost/run] Failed to insert shop_boost_intakes", intakeErr);
       return NextResponse.json(
         { ok: false, error: "We couldn't start the analysis. Please try again." },
         { status: 500 },
@@ -167,10 +181,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
     }
 
     // 4) Run the AI pipeline for this demo intake
-    const snapshot = await buildShopBoostProfile({
-      shopId,
-      intakeId,
-    });
+    const snapshot = await buildShopBoostProfile({ shopId, intakeId });
 
     if (!snapshot) {
       return NextResponse.json(
@@ -196,22 +207,17 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
       .single();
 
     if (demoErr || !demoRow?.id) {
-      console.error("Failed to insert demo_shop_boosts", demoErr);
+      console.error("[demo/shop-boost/run] Failed to insert demo_shop_boosts", demoErr);
       return NextResponse.json(
-        {
-          ok: false,
-          error: "We ran the analysis, but could not save the demo result.",
-        },
+        { ok: false, error: "We ran the analysis, but could not save the demo result." },
         { status: 500 },
       );
     }
 
-    const demoId = demoRow.id as string;
-
     return NextResponse.json(
       {
         ok: true,
-        demoId,
+        demoId: demoRow.id as string,
         snapshot,
       },
       { status: 200 },
@@ -219,13 +225,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unexpected error while running demo analysis.";
-    console.error("Demo run error", err);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: message,
-      },
-      { status: 500 },
-    );
+    console.error("[demo/shop-boost/run] Demo run error", err);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

@@ -98,12 +98,7 @@ export default function InstantShopAnalysisPage() {
       const form = new FormData();
       form.append("shopName", shopName.trim());
       form.append("country", country);
-      form.append(
-        "questionnaire",
-        JSON.stringify({
-          ...questionnaire,
-        }),
-      );
+      form.append("questionnaire", JSON.stringify({ ...questionnaire }));
       if (customersFile) form.append("customersFile", customersFile);
       if (vehiclesFile) form.append("vehiclesFile", vehiclesFile);
       if (partsFile) form.append("partsFile", partsFile);
@@ -159,10 +154,7 @@ export default function InstantShopAnalysisPage() {
       const res = await fetch("/api/demo/shop-boost/claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          demoId,
-          email: email.trim(),
-        }),
+        body: JSON.stringify({ demoId, email: email.trim() }),
       });
 
       const json = (await res.json()) as ClaimResponse;
@@ -259,9 +251,7 @@ export default function InstantShopAnalysisPage() {
                   </label>
                   <select
                     value={country}
-                    onChange={(event) =>
-                      setCountry(event.target.value as Country)
-                    }
+                    onChange={(event) => setCountry(event.target.value as Country)}
                     className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-white focus:border-orange-500 focus:outline-none"
                   >
                     <option value="US">United States</option>
@@ -395,11 +385,7 @@ export default function InstantShopAnalysisPage() {
                 </span>
               )}
 
-              {runError && (
-                <p className="text-xs text-red-400">
-                  {runError}
-                </p>
-              )}
+              {runError && <p className="text-xs text-red-400">{runError}</p>}
             </div>
           </form>
         </div>
@@ -436,24 +422,6 @@ export default function InstantShopAnalysisPage() {
       {snapshot && (step === "preview" || step === "unlocked") && (
         <div className="mx-auto max-w-6xl px-4 pb-10 pt-2 sm:px-6">
           <section className="space-y-4">
-            <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
-                  Live Shop Health Snapshot
-                </p>
-                {step === "preview" && (
-                  <h2 className="mt-1 text-sm text-neutral-200">
-                    See your strengths — enter email to reveal insights
-                  </h2>
-                )}
-                {step === "unlocked" && (
-                  <h2 className="mt-1 text-sm text-neutral-200">
-                    Your personalized analysis is ready.
-                  </h2>
-                )}
-              </div>
-            </header>
-
             <div className="relative">
               {/* Snapshot itself */}
               <div
@@ -495,9 +463,7 @@ export default function InstantShopAnalysisPage() {
                       </button>
                     </div>
                     {claimError && (
-                      <p className="mt-2 text-[11px] text-red-400">
-                        {claimError}
-                      </p>
+                      <p className="mt-2 text-[11px] text-red-400">{claimError}</p>
                     )}
                   </div>
                 </div>
@@ -520,7 +486,6 @@ export default function InstantShopAnalysisPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      // You can update this route if your onboarding URL changes.
                       window.location.href = "/onboarding";
                     }}
                     className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-1.5 text-xs font-semibold text-black shadow-sm transition hover:bg-orange-400"
@@ -582,9 +547,7 @@ function YesNoRow({ label, value, onChange }: YesNoRowProps) {
           type="button"
           onClick={() => onChange(true)}
           className={`rounded-full px-2 py-0.5 ${
-            value
-              ? "bg-orange-500 text-black"
-              : "text-neutral-300 hover:text-white"
+            value ? "bg-orange-500 text-black" : "text-neutral-300 hover:text-white"
           }`}
         >
           Yes
@@ -593,9 +556,7 @@ function YesNoRow({ label, value, onChange }: YesNoRowProps) {
           type="button"
           onClick={() => onChange(false)}
           className={`rounded-full px-2 py-0.5 ${
-            !value
-              ? "bg-neutral-800 text-neutral-100"
-              : "text-neutral-300 hover:text-white"
+            !value ? "bg-neutral-800 text-neutral-100" : "text-neutral-300 hover:text-white"
           }`}
         >
           No
@@ -614,14 +575,7 @@ type FileRowProps = {
   onChange: (file: File | null) => void;
 };
 
-function FileRow({
-  id,
-  label,
-  description,
-  file,
-  accept,
-  onChange,
-}: FileRowProps) {
+function FileRow({ id, label, description, file, accept, onChange }: FileRowProps) {
   return (
     <div className="space-y-1 rounded-lg bg-neutral-900/70 px-3 py-2">
       <div className="flex items-center justify-between gap-2">
@@ -653,9 +607,7 @@ function FileRow({
           }}
         />
         {!file && (
-          <span className="text-[10px] text-neutral-500">
-            Optional, but highly recommended
-          </span>
+          <span className="text-[10px] text-neutral-500">Optional, but highly recommended</span>
         )}
       </div>
     </div>

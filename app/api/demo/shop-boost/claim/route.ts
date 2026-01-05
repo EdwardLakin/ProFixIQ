@@ -1,6 +1,4 @@
-// TODO Demo Shop Boost claim
 // app/api/demo/shop-boost/claim/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -24,7 +22,9 @@ type ClaimErrorResponse = {
 
 type ClaimResponse = ClaimSuccessResponse | ClaimErrorResponse;
 
-export async function POST(req: NextRequest): Promise<NextResponse<ClaimResponse>> {
+export async function POST(
+  req: NextRequest,
+): Promise<NextResponse<ClaimResponse>> {
   try {
     const body = (await req.json().catch(() => null)) as ClaimBody | null;
 
@@ -33,16 +33,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<ClaimResponse
 
     if (!demoId || !emailRaw) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "demoId and email are required.",
-        },
+        { ok: false, error: "demoId and email are required." },
         { status: 400 },
       );
     }
 
     const emailNormalized = emailRaw.toLowerCase();
-
     const supabase = createAdminSupabase();
 
     // 1) Enforce one free run per email
@@ -71,19 +67,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<ClaimResponse
       .maybeSingle();
 
     if (demoErr || !demoRow || !demoRow.snapshot) {
-      console.error("Demo not found or missing snapshot", demoErr);
+      console.error("[demo/shop-boost/claim] Demo not found or missing snapshot", demoErr);
       return NextResponse.json(
-        {
-          ok: false,
-          error: "We couldn't find that demo analysis. Please run it again.",
-        },
+        { ok: false, error: "We couldn't find that demo analysis. Please run it again." },
         { status: 404 },
       );
     }
 
-    const snapshot = demoRow.snapshot as {
-      narrativeSummary?: string | null;
-    } | null;
+    const snapshot = demoRow.snapshot as { narrativeSummary?: string | null } | null;
 
     const summary =
       snapshot && typeof snapshot.narrativeSummary === "string"
@@ -100,12 +91,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<ClaimResponse
       } as DB["public"]["Tables"]["demo_shop_boost_leads"]["Insert"]);
 
     if (leadErr) {
-      console.error("Failed to insert demo lead", leadErr);
+      console.error("[demo/shop-boost/claim] Failed to insert demo lead", leadErr);
       return NextResponse.json(
-        {
-          ok: false,
-          error: "We couldn't save your email. Please try again.",
-        },
+        { ok: false, error: "We couldn't save your email. Please try again." },
         { status: 500 },
       );
     }
@@ -117,26 +105,17 @@ export async function POST(req: NextRequest): Promise<NextResponse<ClaimResponse
       .eq("id", demoId);
 
     if (updateErr) {
-      console.error("Failed to mark demo as unlocked", updateErr);
+      console.error("[demo/shop-boost/claim] Failed to mark demo as unlocked", updateErr);
     }
 
     return NextResponse.json(
-      {
-        ok: true,
-        snapshot: demoRow.snapshot,
-      },
+      { ok: true, snapshot: demoRow.snapshot },
       { status: 200 },
     );
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unexpected error while claiming demo.";
-    console.error("Demo claim error", err);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: message,
-      },
-      { status: 500 },
-    );
+    console.error("[demo/shop-boost/claim] Demo claim error", err);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
