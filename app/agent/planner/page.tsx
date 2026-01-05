@@ -31,27 +31,49 @@ type PlannerKind = "simple" | "openai" | "fleet" | "approvals";
 
 type AgentStartOut = { runId: string; alreadyExists: boolean };
 
-type AgentEvent = Record<string, unknown> & {
-  kind?: string;
-  text?: unknown;
-  message?: unknown;
-  name?: unknown;
-  vin?: unknown;
-  customer_name?: unknown;
-  description?: unknown;
-};
+type AgentEvent = Record<string, unknown> & { kind?: string };
 
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v !== null && typeof v === "object" ? (v as Record<string, unknown>) : null;
+}
+
 function extractWorkOrderId(evt: AgentEvent): string | null {
-  return (
-    asString((evt as Record<string, unknown>).work_order_id) ??
-    asString((evt as Record<string, unknown>).workOrderId) ??
-    asString((evt as Record<string, unknown>).wo_id) ??
-    asString((evt as Record<string, unknown>).id)
-  );
+  // direct common shapes
+  const direct =
+    asString(evt.work_order_id) ??
+    asString(evt.workOrderId) ??
+    asString(evt.wo_id) ??
+    asString(evt.id);
+
+  if (direct) return direct;
+
+  // nested output shapes (tool_result)
+  const out = asRecord(evt.output);
+  if (out) {
+    return (
+      asString(out.workOrderId) ??
+      asString(out.work_order_id) ??
+      asString(out.wo_id) ??
+      asString(out.id)
+    );
+  }
+
+  // nested data/result shapes (defensive)
+  const data = asRecord(evt.data);
+  if (data) {
+    return (
+      asString(data.workOrderId) ??
+      asString(data.work_order_id) ??
+      asString(data.wo_id) ??
+      asString(data.id)
+    );
+  }
+
+  return null;
 }
 
 function toMsg(e: unknown): string {
@@ -73,34 +95,33 @@ function toMsg(e: unknown): string {
 
 function labelFor(evt: AgentEvent): string | null {
   const k = (evt.kind ?? "").toString();
-
-  // ✅ Show planner text (previously hidden)
-  const text = asString(evt.text);
-  if ((k === "plan" || k === "final") && text) return text;
-
-  // ✅ Show tool call/result with names
-  if (k === "tool_call") {
-    const nm = asString(evt.name) ?? "tool";
-    return `Tool call: ${nm}`;
-  }
-  if (k === "tool_result") {
-    const nm = asString(evt.name) ?? "tool";
-    return `Tool result: ${nm}`;
-  }
-
   const woId = extractWorkOrderId(evt);
+
+  // tool stream fields (planner emits these)
+  const toolName = asString(evt.name) ?? asString(evt.tool) ?? asString(evt.tool_name) ?? null;
+  const text = asString(evt.text) ?? asString(evt.message) ?? null;
 
   switch (k) {
     case "run.started":
       return "Started plan";
     case "run.resumed":
       return "Resumed previous run";
+
+    // ✅ planner stream
+    case "plan":
+      return text ? `Plan: ${text}` : "plan";
+    case "tool_call":
+      return `Tool call: ${toolName ?? "unknown"}`;
+    case "tool_result":
+      return `Tool result: ${toolName ?? "unknown"}`;
+    case "final":
+      return text ? `Final: ${text}` : "final";
+
+    // legacy events (kept)
     case "vin.decoded":
-      return `Decoded VIN${asString(evt.vin) ? ` ${asString(evt.vin)}` : ""}`;
+      return `Decoded VIN${evt.vin ? ` ${String(evt.vin)}` : ""}`;
     case "customer.matched":
-      return `Matched customer${
-        asString(evt.customer_name) ? ` ${asString(evt.customer_name)}` : ""
-      }`;
+      return `Matched customer${evt.customer_name ? ` ${evt.customer_name}` : ""}`;
     case "vehicle.attached":
       return "Attached vehicle to work order";
     case "wo.created":
@@ -109,7 +130,7 @@ function labelFor(evt: AgentEvent): string | null {
     case "wo.line.created":
     case "work_order_line.created":
       return `Added job line${
-        asString(evt.description) ? ` — ${String(evt.description).slice(0, 80)}` : ""
+        evt.description ? ` — ${String(evt.description).slice(0, 80)}` : ""
       }`;
     case "email.sent":
     case "invoice.emailed":
@@ -118,17 +139,11 @@ function labelFor(evt: AgentEvent): string | null {
       return "Generated invoice";
     case "run.completed":
       return "Completed";
-    case "run.error": {
-      const msg = asString(evt.message) ?? asString(evt.text);
-      return `Error: ${msg ?? "unknown"}`;
-    }
-    default: {
+    case "run.error":
+      return `Error: ${evt.message ?? "unknown"}`;
+    default:
       if (!k) return null;
-      // ✅ fallback to message if present
-      const msg = asString(evt.message);
-      if (msg) return `${k.replaceAll("_", " ")}: ${msg}`;
       return k.replaceAll("_", " ");
-    }
   }
 }
 
@@ -310,6 +325,10 @@ export default function PlannerPage() {
           : undefined;
 
       const ctx = {
+        // ✅ let backend planners branch correctly
+        plannerKind: planner,
+        mode: planner,
+
         customerQuery: customerQuery || undefined,
         plateOrVin: plateOrVin || vinFromDraft || undefined,
         emailInvoiceTo: emailInvoiceTo || undefined,
@@ -353,20 +372,33 @@ export default function PlannerPage() {
 
         try {
           const data = JSON.parse(ev.data) as AgentEvent;
+
+          // ✅ fixed stream labels: show tool names + final text
           const label = labelFor(data);
           if (label) appendStep(label);
 
+          // ✅ open preview when we can detect a WO id
           const maybeId = extractWorkOrderId(data);
-          if (
-            (data.kind === "wo.created" || data.kind === "work_order.created") &&
-            typeof maybeId === "string"
-          ) {
+          const kind = (data.kind ?? "").toString();
+          const toolName = asString(data.name);
+
+          const createdViaEvent =
+            (kind === "wo.created" || kind === "work_order.created") && !!maybeId;
+
+          const createdViaToolResult =
+            kind === "tool_result" &&
+            toolName === "create_work_order" &&
+            !!maybeId;
+
+          if ((createdViaEvent || createdViaToolResult) && typeof maybeId === "string") {
             setPreviewWoId(maybeId);
             setPreviewOpen(true);
           }
 
           appendLog(ev.data);
-          if (data.kind === "run.completed" || data.kind === "run.error") {
+
+          // ✅ close on final (your planner emits final)
+          if (kind === "final" || kind === "run.completed" || kind === "run.error") {
             es.close();
             esRef.current = null;
             setRunning(false);
