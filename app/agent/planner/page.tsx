@@ -33,19 +33,35 @@ type AgentStartOut = { runId: string; alreadyExists: boolean };
 
 type AgentEvent = Record<string, unknown> & { kind?: string };
 
+/* -------------------------------------------------------------------------- */
+/* Safe helpers to read unknown-shaped events                                 */
+/* -------------------------------------------------------------------------- */
+
+type AnyObj = Record<string, unknown>;
+
+function isObj(v: unknown): v is AnyObj {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+function getField(obj: unknown, key: string): unknown {
+  return isObj(obj) ? obj[key] : undefined;
+}
+
+function getNested(obj: unknown, path: string[]): unknown {
+  let cur: unknown = obj;
+  for (const p of path) cur = getField(cur, p);
+  return cur;
+}
+
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
 function toMsg(e: unknown): string {
   if (typeof e === "string") return e;
-  if (
-    e !== null &&
-    typeof e === "object" &&
-    "message" in e &&
-    typeof (e as { message: unknown }).message === "string"
-  ) {
-    return (e as { message: string }).message;
+  if (isObj(e)) {
+    const m = asString(e.message);
+    if (m) return m;
   }
   try {
     return JSON.stringify(e);
@@ -61,40 +77,35 @@ function extractToolName(evt: AgentEvent): string | null {
   // { kind:"tool_call", tool_name:"create_work_order" }
   // { kind:"tool_result", name:"create_work_order", output:{...} }
   const direct =
-    asString(evt.name) ??
-    asString((evt as any).tool_name) ??
-    asString((evt as any).toolName) ??
-    asString((evt as any).tool?.name) ??
-    asString((evt as any).tool?.tool_name) ??
-    asString((evt as any).call?.name) ??
-    asString((evt as any).toolCall?.name);
+    asString(getField(evt, "name")) ??
+    asString(getField(evt, "tool_name")) ??
+    asString(getField(evt, "toolName")) ??
+    asString(getNested(evt, ["tool", "name"])) ??
+    asString(getNested(evt, ["tool", "tool_name"])) ??
+    asString(getNested(evt, ["call", "name"])) ??
+    asString(getNested(evt, ["toolCall", "name"]));
 
   return direct ?? null;
 }
 
 function extractWorkOrderId(evt: AgentEvent): string | null {
-  // direct fields
   const direct =
-    asString((evt as any).work_order_id) ??
-    asString((evt as any).workOrderId) ??
-    asString((evt as any).wo_id) ??
-    asString((evt as any).id);
+    asString(getField(evt, "work_order_id")) ??
+    asString(getField(evt, "workOrderId")) ??
+    asString(getField(evt, "wo_id")) ??
+    asString(getField(evt, "id"));
 
   if (direct) return direct;
 
-  // nested in tool_result output
-  const out = (evt as any).output;
-  if (out && typeof out === "object") {
+  const out = getField(evt, "output");
+  if (isObj(out)) {
     const nested =
-      asString(out.workOrderId) ??
-      asString(out.work_order_id) ??
-      asString(out.id);
+      asString(out.workOrderId) ?? asString(out.work_order_id) ?? asString(out.id);
     if (nested) return nested;
   }
 
-  // sometimes result is under "result"
-  const result = (evt as any).result;
-  if (result && typeof result === "object") {
+  const result = getField(evt, "result");
+  if (isObj(result)) {
     const nested =
       asString(result.workOrderId) ??
       asString(result.work_order_id) ??
@@ -110,11 +121,10 @@ function labelFor(evt: AgentEvent): string | null {
   const toolName = extractToolName(evt);
   const woId = extractWorkOrderId(evt);
 
-  // For plan/final, show the message text if present
   const text =
-    asString((evt as any).text) ??
-    asString((evt as any).message) ??
-    asString((evt as any).error);
+    asString(getField(evt, "text")) ??
+    asString(getField(evt, "message")) ??
+    asString(getField(evt, "error"));
 
   switch (k) {
     case "run.started":
@@ -129,19 +139,20 @@ function labelFor(evt: AgentEvent): string | null {
       return `Tool call: ${toolName ?? "unknown"}`;
 
     case "tool_result":
-      // If work order id appears in a tool result, surface it.
       if (woId && toolName === "create_work_order") {
         return `Created work order (${woId.slice(0, 8)})`;
       }
       return `Tool result: ${toolName ?? "unknown"}`;
 
-    case "vin.decoded":
-      return `Decoded VIN${(evt as any).vin ? ` ${(evt as any).vin}` : ""}`;
+    case "vin.decoded": {
+      const vin = asString(getField(evt, "vin"));
+      return `Decoded VIN${vin ? ` ${vin}` : ""}`;
+    }
 
-    case "customer.matched":
-      return `Matched customer${
-        (evt as any).customer_name ? ` ${(evt as any).customer_name}` : ""
-      }`;
+    case "customer.matched": {
+      const name = asString(getField(evt, "customer_name"));
+      return `Matched customer${name ? ` ${name}` : ""}`;
+    }
 
     case "vehicle.attached":
       return "Attached vehicle";
@@ -151,12 +162,10 @@ function labelFor(evt: AgentEvent): string | null {
       return `Created work order${woId ? ` (${woId.slice(0, 8)})` : ""}`;
 
     case "wo.line.created":
-    case "work_order_line.created":
-      return `Added job line${
-        (evt as any).description
-          ? ` — ${String((evt as any).description).slice(0, 80)}`
-          : ""
-      }`;
+    case "work_order_line.created": {
+      const desc = asString(getField(evt, "description"));
+      return `Added job line${desc ? ` — ${desc.slice(0, 80)}` : ""}`;
+    }
 
     case "email.sent":
     case "invoice.emailed":
@@ -166,7 +175,6 @@ function labelFor(evt: AgentEvent): string | null {
       return "Generated invoice";
 
     case "final":
-      // This is important—show WHY it ended (e.g. “Need a specific customer…”)
       return text ? `Final: ${text}` : "Final";
 
     case "run.completed":
@@ -180,6 +188,10 @@ function labelFor(evt: AgentEvent): string | null {
       return k.replaceAll("_", " ");
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Component                                                                  */
+/* -------------------------------------------------------------------------- */
 
 export default function PlannerPage() {
   const [goal, setGoal] = useState("");
@@ -406,10 +418,12 @@ export default function PlannerPage() {
           if (label) appendStep(label);
 
           const maybeId = extractWorkOrderId(data);
+          const tool = extractToolName(data);
+
           if (
             (data.kind === "wo.created" ||
               data.kind === "work_order.created" ||
-              (data.kind === "tool_result" && extractToolName(data) === "create_work_order")) &&
+              (data.kind === "tool_result" && tool === "create_work_order")) &&
             typeof maybeId === "string"
           ) {
             setPreviewWoId(maybeId);
@@ -418,12 +432,7 @@ export default function PlannerPage() {
 
           appendLog(ev.data);
 
-          // ✅ Treat "final" as end-of-run too (many runs don't emit run.completed)
-          if (
-            data.kind === "run.completed" ||
-            data.kind === "run.error" ||
-            data.kind === "final"
-          ) {
+          if (data.kind === "run.completed" || data.kind === "run.error" || data.kind === "final") {
             es.close();
             esRef.current = null;
             setRunning(false);
