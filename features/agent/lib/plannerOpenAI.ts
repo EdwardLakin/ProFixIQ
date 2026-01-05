@@ -11,13 +11,29 @@ import {
   runCreateCustomer,
   runCreateVehicle,
   runAttachPhoto,
-  runCreateCustomInspection, // ← custom inspection
-  // 🔶 approvals / fleet helpers (we only *use* recordWorkOrderApproval here for now)
+  runCreateCustomInspection,
   runRecordWorkOrderApproval,
 } from "./toolRegistry";
 
 function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
   return (obj as Record<string, T | undefined>)[key];
+}
+
+function toMsg(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (
+    e !== null &&
+    typeof e === "object" &&
+    "message" in e &&
+    typeof (e as { message: unknown }).message === "string"
+  ) {
+    return (e as { message: string }).message;
+  }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "Unknown error";
+  }
 }
 
 const JOB_TYPES = new Set(["maintenance", "repair", "diagnosis", "inspection"] as const);
@@ -83,7 +99,6 @@ type ParsedPlan = {
   emailSubject?: string;
   photoUrl?: string;
 
-  // 🔶 optional inspection payload
   inspection?: {
     title?: string;
     vehicleType?: "car" | "truck" | "bus" | "trailer";
@@ -93,7 +108,6 @@ type ParsedPlan = {
     services?: string[];
   };
 
-  // 🔶 approvals-related hints (optional)
   autoApprove?: boolean;
   approvalMethod?: string;
 };
@@ -140,8 +154,16 @@ async function llmParseGoal(
   });
 
   if (!res.ok) return {};
-  const j = (await res.json().catch(() => null)) as any;
-  const text: string | undefined = j?.choices?.[0]?.message?.content;
+  const j = (await res.json().catch(() => null)) as unknown;
+  const text =
+    typeof j === "object" &&
+    j !== null &&
+    "choices" in j &&
+    Array.isArray((j as any).choices) &&
+    (j as any).choices[0]?.message?.content
+      ? String((j as any).choices[0].message.content)
+      : undefined;
+
   if (!text) return {};
   try {
     return JSON.parse(text) as ParsedPlan;
@@ -169,7 +191,7 @@ export async function runOpenAIPlanner(
   try {
     parsed = await llmParseGoal(goal, context);
   } catch {
-    // ignore parse errors, keep parsed = {}
+    // ignore parse errors
   }
 
   // 1) Resolve customer + vehicle
@@ -199,24 +221,63 @@ export async function runOpenAIPlanner(
     customerId = customerId ?? found.customerId;
     vehicleId = vehicleId ?? found.vehicleId;
 
+    // 1a) If customer missing, try create_customer.
+    // If the DB has a unique constraint on customers.user_id, we gracefully recover
+    // by re-running find_customer_vehicle (which should now be able to find the existing row).
     if (!customerId) {
-      const name = findIn.customerQuery?.trim();
-      if (name) {
-        await onEvent?.({
-          kind: "tool_call",
-          name: "create_customer",
-          input: { name },
-        });
+      const name = (findIn.customerQuery ?? "").trim() || "Default Customer";
+
+      await onEvent?.({
+        kind: "tool_call",
+        name: "create_customer",
+        input: { name },
+      });
+
+      try {
         const createdC = await runCreateCustomer({ name }, ctx);
         customerId = createdC.customerId;
+
         await onEvent?.({
           kind: "tool_result",
           name: "create_customer",
           output: createdC,
         });
+      } catch (err) {
+        const msg = toMsg(err);
+
+        // Most common: duplicate key value violates unique constraint "customers_user_id_uq"
+        if (msg.toLowerCase().includes("customers_user_id_uq")) {
+          await onEvent?.({
+            kind: "tool_result",
+            name: "create_customer",
+            output: { skipped: true, reason: "customer already exists for user" },
+          });
+
+          // Re-try find to fetch the existing customerId
+          const retry = await runFindCustomerVehicle(
+            { customerQuery: name, plateOrVin: findIn.plateOrVin },
+            ctx,
+          );
+
+          await onEvent?.({
+            kind: "tool_result",
+            name: "find_customer_vehicle",
+            output: retry,
+          });
+
+          customerId = retry.customerId ?? customerId;
+          vehicleId = retry.vehicleId ?? vehicleId;
+        } else {
+          await onEvent?.({
+            kind: "final",
+            text: `Create customer failed: ${msg}`,
+          });
+          return;
+        }
       }
     }
 
+    // 1b) If vehicle missing, create it (based on plate/vin)
     if (!vehicleId && customerId && findIn.plateOrVin) {
       const vinOrPlate = findIn.plateOrVin;
 
@@ -360,7 +421,7 @@ export async function runOpenAIPlanner(
     });
   }
 
-  // 5) 🔶 Optional: custom inspection
+  // 5) Optional: custom inspection
   const insp =
     parsed.inspection ??
     (get<Record<string, unknown>>(context, "inspection") as ParsedPlan["inspection"]) ??
@@ -432,16 +493,14 @@ export async function runOpenAIPlanner(
     });
   }
 
-  // 7) 🔶 Optional: record work-order level approval
+  // 7) Optional: record work-order level approval
   const autoApprove =
     parsed.autoApprove === true ||
     get<boolean>(context, "autoApprove") === true ||
     mode === "approvals";
 
   if (autoApprove) {
-    const rawMethod =
-      parsed.approvalMethod ??
-      get<string>(context, "approvalMethod");
+    const rawMethod = parsed.approvalMethod ?? get<string>(context, "approvalMethod");
 
     const approvalInput = {
       workOrderId: created.workOrderId,
