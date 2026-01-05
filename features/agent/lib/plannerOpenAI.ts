@@ -490,30 +490,38 @@ export async function runOpenAIPlanner(
     (get<Record<string, unknown>>(context, "customInspection") as ParsedPlan["inspection"]);
 
   if (insp) {
-    const input = {
-      workOrderId: created.workOrderId,
-      title: insp.title ?? "Custom Inspection",
-      selections: insp.selections ?? {},
-      services: Array.isArray(insp.services) ? insp.services : [],
-      vehicleType: (insp.vehicleType ?? "truck") as "car" | "truck" | "bus" | "trailer",
-      includeAxle: insp.includeAxle ?? true,
-      includeOil: insp.includeOil ?? false,
-    };
+  const allowedVehicleTypes = ["car", "truck", "bus", "trailer"] as const;
 
-    await onEvent?.({
-      kind: "tool_call",
-      name: "create_custom_inspection",
-      input,
-    });
+  const vehicleType =
+    typeof insp.vehicleType === "string" &&
+    allowedVehicleTypes.includes(insp.vehicleType as any)
+      ? (insp.vehicleType as (typeof allowedVehicleTypes)[number])
+      : "truck";
 
-    const out = await runCreateCustomInspection(input, ctx);
+  const input = {
+    workOrderId: created.workOrderId,
+    title: insp.title ?? "Custom Inspection",
+    selections: insp.selections ?? {},
+    services: Array.isArray(insp.services) ? insp.services : [],
+    vehicleType,
+    includeAxle: insp.includeAxle ?? true,
+    includeOil: insp.includeOil ?? false,
+  };
 
-    await onEvent?.({
-      kind: "tool_result",
-      name: "create_custom_inspection",
-      output: out,
-    });
-  }
+  await onEvent?.({
+    kind: "tool_call",
+    name: "create_custom_inspection",
+    input,
+  });
+
+  const out = await runCreateCustomInspection(input, ctx);
+
+  await onEvent?.({
+    kind: "tool_result",
+    name: "create_custom_inspection",
+    output: out,
+  });
+}
 
   // 6) Optional: invoice + email
   const emailTo = parsed.emailInvoiceTo ?? get<string>(context, "emailInvoiceTo");
