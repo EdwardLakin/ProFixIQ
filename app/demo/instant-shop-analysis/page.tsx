@@ -1,7 +1,7 @@
 // app/demo/instant-shop-analysis/page.tsx
 "use client";
 
-import React, { useState, FormEvent } from "react";
+import React, { useState, type FormEvent } from "react";
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
 import ShopHealthSnapshotView from "@/features/shops/components/ShopHealthSnapshot";
 
@@ -37,6 +37,21 @@ type ClaimResponse =
       ok: false;
       error: string;
     };
+
+const COPPER = {
+  border: "border-[rgba(150,92,60,0.35)]",
+  borderStrong: "border-[rgba(150,92,60,0.55)]",
+  text: "text-[rgba(214,176,150,0.95)]",
+  textSoft: "text-[rgba(214,176,150,0.75)]",
+  textMuted: "text-[rgba(210,210,210,0.75)]",
+  glass:
+    "bg-white/[0.04] backdrop-blur-xl shadow-[0_18px_45px_rgba(0,0,0,0.85)]",
+  glassInset: "shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+  panelGrad:
+    "bg-[linear-gradient(135deg,rgba(120,70,45,0.20),rgba(255,255,255,0.03))]",
+  btnGrad:
+    "bg-[linear-gradient(180deg,rgba(214,176,150,0.95),rgba(150,92,60,0.95))]",
+};
 
 export default function InstantShopAnalysisPage() {
   const [shopName, setShopName] = useState("");
@@ -192,25 +207,47 @@ export default function InstantShopAnalysisPage() {
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header / hero */}
-      <header className="border-b border-neutral-900 bg-neutral-950/70 px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.25em] text-neutral-500">
-              ProFixIQ Demo
-            </p>
-            <h1
-              className="mt-1 text-2xl text-orange-400 sm:text-3xl"
-              style={{ fontFamily: "var(--font-blackops)" }}
-            >
-              Instant Shop Analysis
-            </h1>
-            <p className="mt-1 text-xs text-neutral-400">
-              Drop in a couple of exports and let AI show you what your shop is
-              already great at — in one live snapshot.
-            </p>
-          </div>
-          <div className="rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-[11px] text-orange-100">
-            No login. One free analysis per email.
+      <header className={`border-b border-neutral-900 bg-black/60 px-4 py-5 sm:px-6`}>
+        <div className="mx-auto max-w-6xl">
+          <div
+            className={[
+              "rounded-2xl",
+              "border",
+              COPPER.border,
+              COPPER.glass,
+              COPPER.glassInset,
+              COPPER.panelGrad,
+              "px-5 py-5",
+            ].join(" ")}
+          >
+            <div className="flex flex-col items-center text-center gap-2">
+              <p className={`text-[11px] uppercase tracking-[0.25em] ${COPPER.textSoft}`}>
+                ProFixIQ Demo
+              </p>
+
+              <h1
+                className={`text-2xl sm:text-3xl ${COPPER.text}`}
+                style={{ fontFamily: "var(--font-blackops)" }}
+              >
+                Instant Shop Analysis
+              </h1>
+
+              <p className={`max-w-2xl text-xs sm:text-sm ${COPPER.textMuted}`}>
+                Drop in a couple of exports and let AI show you what your shop is already great
+                at — in one live snapshot.
+              </p>
+
+              <div
+                className={[
+                  "mt-2 inline-flex items-center rounded-full border px-4 py-2 text-[11px]",
+                  COPPER.border,
+                  "bg-white/[0.03]",
+                  COPPER.textSoft,
+                ].join(" ")}
+              >
+                No login. One free analysis per email.
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -220,45 +257,68 @@ export default function InstantShopAnalysisPage() {
         <div className="flex-1 space-y-6">
           <form onSubmit={handleRun} className="space-y-6">
             {/* Shop basics */}
-            <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+            <section
+              className={[
+                "rounded-2xl border p-4 sm:p-5",
+                COPPER.border,
+                COPPER.glass,
+                COPPER.glassInset,
+                "bg-white/[0.03]",
+              ].join(" ")}
+            >
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text-neutral-100">
+                  <h2 className={`text-sm font-semibold ${COPPER.text}`}>
                     Tell us about your shop
                   </h2>
-                  <p className="text-[11px] text-neutral-500">
-                    Just enough detail so the snapshot feels like it was built
-                    for you, not a template.
+                  <p className={`text-[11px] ${COPPER.textMuted}`}>
+                    Just enough detail so the snapshot feels like it was built for you, not a
+                    template.
                   </p>
                 </div>
-                <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
+                <span
+                  className={[
+                    "rounded-full border px-2 py-0.5 text-[10px]",
+                    COPPER.border,
+                    "bg-white/[0.03]",
+                    COPPER.textSoft,
+                  ].join(" ")}
+                >
                   Step 1 — basics
                 </span>
               </div>
 
               <div className="space-y-3 text-xs">
                 <div className="space-y-1">
-                  <label className="text-[11px] text-neutral-300">
-                    Shop name
-                  </label>
+                  <label className={`text-[11px] ${COPPER.textSoft}`}>Shop name</label>
                   <input
                     type="text"
                     value={shopName}
                     onChange={(event) => setShopName(event.target.value)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    className={[
+                      "w-full rounded-md border px-3 py-2 text-xs text-white placeholder:text-neutral-500 focus:outline-none",
+                      COPPER.border,
+                      "bg-black/40",
+                      "focus:ring-1 focus:ring-[rgba(214,176,150,0.25)]",
+                      "focus:border-[rgba(214,176,150,0.70)]",
+                    ].join(" ")}
                     placeholder="e.g. Lakin Diesel & Fleet"
                     required
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] text-neutral-300">
-                    Country
-                  </label>
+                  <label className={`text-[11px] ${COPPER.textSoft}`}>Country</label>
                   <select
                     value={country}
                     onChange={(event) => setCountry(event.target.value as Country)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-white focus:border-orange-500 focus:outline-none"
+                    className={[
+                      "w-full rounded-md border px-3 py-2 text-xs text-white focus:outline-none",
+                      COPPER.border,
+                      "bg-black/40",
+                      "focus:ring-1 focus:ring-[rgba(214,176,150,0.25)]",
+                      "focus:border-[rgba(214,176,150,0.70)]",
+                    ].join(" ")}
                   >
                     <option value="US">United States</option>
                     <option value="CA">Canada</option>
@@ -267,7 +327,7 @@ export default function InstantShopAnalysisPage() {
 
                 {/* Specialty */}
                 <div className="space-y-1">
-                  <label className="text-[11px] text-neutral-300">
+                  <label className={`text-[11px] ${COPPER.textSoft}`}>
                     What best describes your work?
                   </label>
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -276,24 +336,29 @@ export default function InstantShopAnalysisPage() {
                       { key: "diesel", label: "Diesel-focused" },
                       { key: "hd", label: "Heavy-duty / commercial" },
                       { key: "mixed", label: "Mixed shop + fleet" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.key}
-                        type="button"
-                        onClick={() =>
-                          handleQuestionnaireChange("specialty")(
-                            opt.key as QuestionnaireState["specialty"],
-                          )
-                        }
-                        className={`rounded-md border px-3 py-2 text-left text-[11px] ${
-                          questionnaire.specialty === opt.key
-                            ? "border-orange-500 bg-orange-500/10 text-orange-100"
-                            : "border-neutral-700 bg-neutral-900 text-neutral-200 hover:border-neutral-500"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                    ].map((opt) => {
+                      const active = questionnaire.specialty === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() =>
+                            handleQuestionnaireChange("specialty")(
+                              opt.key as QuestionnaireState["specialty"],
+                            )
+                          }
+                          className={[
+                            "rounded-md border px-3 py-2 text-left text-[11px] transition",
+                            COPPER.border,
+                            active
+                              ? "bg-[rgba(120,70,45,0.25)] text-[rgba(245,245,245,0.92)]"
+                              : "bg-black/40 text-[rgba(230,230,230,0.85)] hover:border-[rgba(214,176,150,0.55)] hover:bg-white/[0.03]",
+                          ].join(" ")}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -326,18 +391,33 @@ export default function InstantShopAnalysisPage() {
             </section>
 
             {/* File uploads */}
-            <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+            <section
+              className={[
+                "rounded-2xl border p-4 sm:p-5",
+                COPPER.border,
+                COPPER.glass,
+                COPPER.glassInset,
+                "bg-white/[0.03]",
+              ].join(" ")}
+            >
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text-neutral-100">
+                  <h2 className={`text-sm font-semibold ${COPPER.text}`}>
                     Upload what you already have (CSV)
                   </h2>
-                  <p className="text-[11px] text-neutral-500">
-                    Even one export is enough for a meaningful snapshot. More
-                    files = better insights.
+                  <p className={`text-[11px] ${COPPER.textMuted}`}>
+                    Even one export is enough for a meaningful snapshot. More files = better
+                    insights.
                   </p>
                 </div>
-                <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
+                <span
+                  className={[
+                    "rounded-full border px-2 py-0.5 text-[10px]",
+                    COPPER.border,
+                    "bg-white/[0.03]",
+                    COPPER.textSoft,
+                  ].join(" ")}
+                >
                   Step 2 — history
                 </span>
               </div>
@@ -368,9 +448,9 @@ export default function InstantShopAnalysisPage() {
                   onChange={setPartsFile}
                 />
 
-                <p className="text-[11px] text-neutral-500">
-                  We use AI to interpret columns, so exports don&apos;t need to be
-                  perfect. Data stays private to your demo shop.
+                <p className={`text-[11px] ${COPPER.textMuted}`}>
+                  We use AI to interpret columns, so exports don&apos;t need to be perfect. Data stays
+                  private to your demo shop.
                 </p>
               </div>
             </section>
@@ -380,13 +460,24 @@ export default function InstantShopAnalysisPage() {
               <button
                 type="submit"
                 disabled={runLoading}
-                className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className={[
+                  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
+                  COPPER.btnGrad,
+                  "hover:brightness-110",
+                ].join(" ")}
               >
                 {isAnalyzing ? "Analyzing your shop…" : "Run Instant Shop Analysis"}
               </button>
 
               {step === "analyzing" && (
-                <span className="rounded-full bg-neutral-900 px-3 py-1 text-[11px] text-neutral-400">
+                <span
+                  className={[
+                    "rounded-full border px-3 py-1 text-[11px]",
+                    COPPER.border,
+                    "bg-white/[0.03]",
+                    COPPER.textSoft,
+                  ].join(" ")}
+                >
                   Reading your files and building a live Shop Health Snapshot…
                 </span>
               )}
@@ -398,11 +489,17 @@ export default function InstantShopAnalysisPage() {
 
         {/* Right column: explainer */}
         <aside className="w-full space-y-4 lg:w-72">
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-neutral-100">
-              How this demo works
-            </h3>
-            <ol className="space-y-1 text-[11px] text-neutral-400">
+          <div
+            className={[
+              "rounded-2xl border p-4",
+              COPPER.border,
+              COPPER.glass,
+              COPPER.glassInset,
+              "bg-white/[0.03]",
+            ].join(" ")}
+          >
+            <h3 className={`mb-2 text-sm font-semibold ${COPPER.text}`}>How this demo works</h3>
+            <ol className={`space-y-1 text-[11px] ${COPPER.textMuted}`}>
               <li>1. You upload a couple of CSV exports (no login).</li>
               <li>2. ProFixIQ analyzes your history with AI.</li>
               <li>3. We build a Shop Health Snapshot just for your shop.</li>
@@ -410,11 +507,17 @@ export default function InstantShopAnalysisPage() {
             </ol>
           </div>
 
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-neutral-100">
-              What you&apos;ll see
-            </h3>
-            <ul className="space-y-1 text-[11px] text-neutral-400">
+          <div
+            className={[
+              "rounded-2xl border p-4",
+              COPPER.border,
+              COPPER.glass,
+              COPPER.glassInset,
+              "bg-white/[0.03]",
+            ].join(" ")}
+          >
+            <h3 className={`mb-2 text-sm font-semibold ${COPPER.text}`}>What you&apos;ll see</h3>
+            <ul className={`space-y-1 text-[11px] ${COPPER.textMuted}`}>
               <li>• Top repairs by volume and revenue</li>
               <li>• Potential comeback / warranty risks</li>
               <li>• Fleet opportunities (if you work on fleets)</li>
@@ -443,31 +546,52 @@ export default function InstantShopAnalysisPage() {
               {/* Overlay for preview state */}
               {step === "preview" && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <div className="pointer-events-auto max-w-md rounded-2xl border border-orange-500/40 bg-black/80 px-5 py-4 text-center shadow-lg">
-                    <p className="text-xs font-semibold text-neutral-100">
+                  <div
+                    className={[
+                      "pointer-events-auto max-w-md rounded-2xl border px-5 py-4 text-center",
+                      COPPER.borderStrong,
+                      COPPER.glass,
+                      COPPER.glassInset,
+                      "bg-black/70",
+                    ].join(" ")}
+                  >
+                    <p className={`text-xs font-semibold ${COPPER.text}`}>
                       See your strengths — enter email to reveal insights
                     </p>
-                    <p className="mt-1 text-[11px] text-neutral-400">
-                      We&apos;ll show your full AI snapshot and send you a copy so
-                      you can revisit it later. One free analysis per email.
+                    <p className={`mt-1 text-[11px] ${COPPER.textMuted}`}>
+                      We&apos;ll show your full AI snapshot and send you a copy so you can revisit it
+                      later. One free analysis per email.
                     </p>
+
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                       <input
                         type="email"
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
                         placeholder="you@example.com"
-                        className="flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                        className={[
+                          "flex-1 rounded-md border px-3 py-1.5 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none",
+                          COPPER.border,
+                          "bg-black/40",
+                          "focus:ring-1 focus:ring-[rgba(214,176,150,0.25)]",
+                          "focus:border-[rgba(214,176,150,0.70)]",
+                        ].join(" ")}
                       />
+
                       <button
                         type="button"
                         onClick={handleClaim}
                         disabled={claimLoading}
-                        className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-1.5 text-xs font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        className={[
+                          "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold text-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
+                          COPPER.btnGrad,
+                          "hover:brightness-110",
+                        ].join(" ")}
                       >
                         {claimLoading ? "Unlocking…" : "Unlock my analysis"}
                       </button>
                     </div>
+
                     {claimError && (
                       <p className="mt-2 text-[11px] text-red-400">{claimError}</p>
                     )}
@@ -478,27 +602,44 @@ export default function InstantShopAnalysisPage() {
 
             {/* Post-unlock CTAs (PLAN-GATED) */}
             {step === "unlocked" && (
-              <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-                <div className="flex-1 text-[11px] text-neutral-300">
-                  <p className="font-semibold text-neutral-100">
-                    Want this live inside ProFixIQ?
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-neutral-400">
+              <div
+                className={[
+                  "mt-4 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3",
+                  COPPER.border,
+                  COPPER.glass,
+                  COPPER.glassInset,
+                  "bg-white/[0.03]",
+                ].join(" ")}
+              >
+                <div className="flex-1 text-[11px]">
+                  <p className={`font-semibold ${COPPER.text}`}>Want this live inside ProFixIQ?</p>
+                  <p className={`mt-0.5 text-[11px] ${COPPER.textMuted}`}>
                     Choose a plan to continue — we don&apos;t create accounts without a plan.
                   </p>
                 </div>
+
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={goToPlans}
-                    className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-1.5 text-xs font-semibold text-black shadow-sm transition hover:bg-orange-400"
+                    className={[
+                      "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold text-black shadow-sm transition",
+                      COPPER.btnGrad,
+                      "hover:brightness-110",
+                    ].join(" ")}
                   >
                     Choose a plan to continue
                   </button>
+
                   <button
                     type="button"
                     onClick={goToPlans}
-                    className="inline-flex items-center justify-center rounded-md border border-neutral-700 bg-neutral-950 px-4 py-1.5 text-xs font-semibold text-neutral-100 hover:border-orange-500"
+                    className={[
+                      "inline-flex items-center justify-center rounded-md border bg-black/40 px-4 py-1.5 text-xs font-semibold transition",
+                      COPPER.border,
+                      COPPER.text,
+                      "hover:border-[rgba(214,176,150,0.55)] hover:bg-white/[0.03]",
+                    ].join(" ")}
                   >
                     View plans &amp; pricing
                   </button>
@@ -521,13 +662,19 @@ type NumberInputProps = {
 function NumberInput({ label, value, onChange }: NumberInputProps) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] text-neutral-300">{label}</label>
+      <label className="text-[11px] text-[rgba(214,176,150,0.75)]">{label}</label>
       <input
         type="number"
         min={0}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+        className={[
+          "w-full rounded-md border px-3 py-2 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none",
+          "border-[rgba(150,92,60,0.35)]",
+          "bg-black/40",
+          "focus:ring-1 focus:ring-[rgba(214,176,150,0.25)]",
+          "focus:border-[rgba(214,176,150,0.70)]",
+        ].join(" ")}
       />
     </div>
   );
@@ -541,24 +688,30 @@ type YesNoRowProps = {
 
 function YesNoRow({ label, value, onChange }: YesNoRowProps) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-neutral-900/70 px-3 py-2">
-      <p className="text-[11px] text-neutral-200">{label}</p>
-      <div className="inline-flex gap-1 rounded-full bg-neutral-950 p-1 text-[10px]">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[rgba(150,92,60,0.25)] bg-white/[0.03] px-3 py-2">
+      <p className="text-[11px] text-[rgba(230,230,230,0.90)]">{label}</p>
+      <div className="inline-flex gap-1 rounded-full border border-[rgba(150,92,60,0.25)] bg-black/40 p-1 text-[10px]">
         <button
           type="button"
           onClick={() => onChange(true)}
-          className={`rounded-full px-2 py-0.5 ${
-            value ? "bg-orange-500 text-black" : "text-neutral-300 hover:text-white"
-          }`}
+          className={[
+            "rounded-full px-2 py-0.5 transition",
+            value
+              ? "bg-[rgba(214,176,150,0.90)] text-black"
+              : "text-[rgba(230,230,230,0.80)] hover:text-white",
+          ].join(" ")}
         >
           Yes
         </button>
         <button
           type="button"
           onClick={() => onChange(false)}
-          className={`rounded-full px-2 py-0.5 ${
-            !value ? "bg-neutral-800 text-neutral-100" : "text-neutral-300 hover:text-white"
-          }`}
+          className={[
+            "rounded-full px-2 py-0.5 transition",
+            !value
+              ? "bg-white/[0.08] text-[rgba(245,245,245,0.92)]"
+              : "text-[rgba(230,230,230,0.80)] hover:text-white",
+          ].join(" ")}
         >
           No
         </button>
@@ -578,22 +731,29 @@ type FileRowProps = {
 
 function FileRow({ id, label, description, file, accept, onChange }: FileRowProps) {
   return (
-    <div className="space-y-1 rounded-lg bg-neutral-900/70 px-3 py-2">
+    <div className="space-y-1 rounded-xl border border-[rgba(150,92,60,0.25)] bg-white/[0.03] px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-[11px] text-neutral-200">{label}</p>
-          <p className="text-[10px] text-neutral-500">{description}</p>
+          <p className="text-[11px] text-[rgba(230,230,230,0.90)]">{label}</p>
+          <p className="text-[10px] text-[rgba(210,210,210,0.70)]">{description}</p>
         </div>
         {file && (
-          <span className="max-w-[160px] truncate text-[10px] text-neutral-400">
+          <span className="max-w-[160px] truncate text-[10px] text-[rgba(214,176,150,0.75)]">
             {file.name}
           </span>
         )}
       </div>
+
       <div className="flex items-center gap-3">
         <label
           htmlFor={id}
-          className="inline-flex cursor-pointer items-center rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 hover:border-orange-500"
+          className={[
+            "inline-flex cursor-pointer items-center rounded-md border px-3 py-1.5 text-[11px] font-semibold transition",
+            "border-[rgba(150,92,60,0.35)]",
+            "bg-black/40",
+            "text-[rgba(214,176,150,0.95)]",
+            "hover:border-[rgba(214,176,150,0.55)] hover:bg-white/[0.03]",
+          ].join(" ")}
         >
           Choose CSV
         </label>
@@ -608,7 +768,7 @@ function FileRow({ id, label, description, file, accept, onChange }: FileRowProp
           }}
         />
         {!file && (
-          <span className="text-[10px] text-neutral-500">
+          <span className="text-[10px] text-[rgba(210,210,210,0.65)]">
             Optional, but highly recommended
           </span>
         )}
