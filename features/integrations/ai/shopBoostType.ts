@@ -1,5 +1,4 @@
-// src/features/integrations/ai/shopBoostTypes.ts
-
+// features/integrations/ai/shopBoostTypes.ts
 export type ShopHealthTopRepair = {
   label: string;
   count: number;

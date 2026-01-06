@@ -1,4 +1,4 @@
-// src/features/integrations/ai/shopBoost.ts
+//features/integrations/ai/shopBoost.ts
 import { randomUUID } from "crypto";
 
 import { openai } from "lib/server/openai";

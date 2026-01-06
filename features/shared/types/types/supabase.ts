@@ -977,8 +977,11 @@ export type Database = {
           city: string | null
           created_at: string | null
           email: string | null
+          external_id: string | null
           first_name: string | null
           id: string
+          import_confidence: number | null
+          import_notes: string | null
           is_fleet: boolean
           last_name: string | null
           name: string | null
@@ -988,6 +991,8 @@ export type Database = {
           postal_code: string | null
           province: string | null
           shop_id: string | null
+          source_intake_id: string | null
+          source_row_id: string | null
           street: string | null
           updated_at: string
           user_id: string | null
@@ -999,8 +1004,11 @@ export type Database = {
           city?: string | null
           created_at?: string | null
           email?: string | null
+          external_id?: string | null
           first_name?: string | null
           id?: string
+          import_confidence?: number | null
+          import_notes?: string | null
           is_fleet?: boolean
           last_name?: string | null
           name?: string | null
@@ -1010,6 +1018,8 @@ export type Database = {
           postal_code?: string | null
           province?: string | null
           shop_id?: string | null
+          source_intake_id?: string | null
+          source_row_id?: string | null
           street?: string | null
           updated_at?: string
           user_id?: string | null
@@ -1021,8 +1031,11 @@ export type Database = {
           city?: string | null
           created_at?: string | null
           email?: string | null
+          external_id?: string | null
           first_name?: string | null
           id?: string
+          import_confidence?: number | null
+          import_notes?: string | null
           is_fleet?: boolean
           last_name?: string | null
           name?: string | null
@@ -1032,6 +1045,8 @@ export type Database = {
           postal_code?: string | null
           province?: string | null
           shop_id?: string | null
+          source_intake_id?: string | null
+          source_row_id?: string | null
           street?: string | null
           updated_at?: string
           user_id?: string | null
@@ -1374,6 +1389,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "shop_boost_intakes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "demo_shop_boosts_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
           },
           {
             foreignKeyName: "demo_shop_boosts_shop_id_fkey"
@@ -2689,6 +2711,71 @@ export type Database = {
           },
         ]
       }
+      inspection_template_suggestions: {
+        Row: {
+          applies_to: string
+          confidence: number
+          created_at: string
+          id: string
+          intake_id: string | null
+          items: Json
+          name: string
+          shop_id: string
+          template_key: string | null
+        }
+        Insert: {
+          applies_to?: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          items?: Json
+          name: string
+          shop_id: string
+          template_key?: string | null
+        }
+        Update: {
+          applies_to?: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          items?: Json
+          name?: string
+          shop_id?: string
+          template_key?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_template_suggestions_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_template_suggestions_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "inspection_template_suggestions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_template_suggestions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspection_templates: {
         Row: {
           created_at: string | null
@@ -3310,6 +3397,74 @@ export type Database = {
           },
           {
             foreignKeyName: "menu_item_parts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_item_suggestions: {
+        Row: {
+          category: string | null
+          confidence: number
+          created_at: string
+          id: string
+          intake_id: string | null
+          labor_hours_suggestion: number | null
+          price_suggestion: number | null
+          reason: string | null
+          shop_id: string
+          title: string
+        }
+        Insert: {
+          category?: string | null
+          confidence?: number
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          labor_hours_suggestion?: number | null
+          price_suggestion?: number | null
+          reason?: string | null
+          shop_id: string
+          title: string
+        }
+        Update: {
+          category?: string | null
+          confidence?: number
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          labor_hours_suggestion?: number | null
+          price_suggestion?: number | null
+          reason?: string | null
+          shop_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_item_suggestions_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_suggestions_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "menu_item_suggestions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_item_suggestions_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
@@ -5421,34 +5576,43 @@ export type Database = {
       shop_boost_intakes: {
         Row: {
           created_at: string
+          created_by: string | null
           customers_file_path: string | null
           id: string
+          intake_basics: Json | null
           parts_file_path: string | null
           processed_at: string | null
           questionnaire: Json
           shop_id: string
+          source: string | null
           status: string
           vehicles_file_path: string | null
         }
         Insert: {
           created_at?: string
+          created_by?: string | null
           customers_file_path?: string | null
           id?: string
+          intake_basics?: Json | null
           parts_file_path?: string | null
           processed_at?: string | null
           questionnaire: Json
           shop_id: string
+          source?: string | null
           status?: string
           vehicles_file_path?: string | null
         }
         Update: {
           created_at?: string
+          created_by?: string | null
           customers_file_path?: string | null
           id?: string
+          intake_basics?: Json | null
           parts_file_path?: string | null
           processed_at?: string | null
           questionnaire?: Json
           shop_id?: string
+          source?: string | null
           status?: string
           vehicles_file_path?: string | null
         }
@@ -5462,6 +5626,71 @@ export type Database = {
           },
           {
             foreignKeyName: "shop_boost_intakes_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_health_snapshots: {
+        Row: {
+          created_at: string
+          id: string
+          intake_id: string | null
+          metrics: Json
+          narrative_summary: string | null
+          period_end: string | null
+          period_start: string | null
+          scores: Json
+          shop_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          metrics?: Json
+          narrative_summary?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          scores?: Json
+          shop_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          metrics?: Json
+          narrative_summary?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          scores?: Json
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_health_snapshots_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_health_snapshots_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_health_snapshots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_health_snapshots_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
@@ -5505,6 +5734,115 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_import_files: {
+        Row: {
+          created_at: string
+          id: string
+          intake_id: string
+          kind: string
+          original_filename: string | null
+          parsed_row_count: number | null
+          sha256: string | null
+          status: string
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          intake_id: string
+          kind: string
+          original_filename?: string | null
+          parsed_row_count?: number | null
+          sha256?: string | null
+          status?: string
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          intake_id?: string
+          kind?: string
+          original_filename?: string | null
+          parsed_row_count?: number | null
+          sha256?: string | null
+          status?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_import_files_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_import_files_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+        ]
+      }
+      shop_import_rows: {
+        Row: {
+          created_at: string
+          entity_type: string | null
+          errors: string[]
+          file_id: string | null
+          id: string
+          intake_id: string
+          normalized: Json
+          raw: Json
+          row_number: number | null
+        }
+        Insert: {
+          created_at?: string
+          entity_type?: string | null
+          errors?: string[]
+          file_id?: string | null
+          id?: string
+          intake_id: string
+          normalized?: Json
+          raw?: Json
+          row_number?: number | null
+        }
+        Update: {
+          created_at?: string
+          entity_type?: string | null
+          errors?: string[]
+          file_id?: string | null
+          id?: string
+          intake_id?: string
+          normalized?: Json
+          raw?: Json
+          row_number?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_import_rows_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "shop_import_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_import_rows_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_import_rows_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
           },
         ]
       }
@@ -6093,6 +6431,65 @@ export type Database = {
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_invite_suggestions: {
+        Row: {
+          count_suggested: number
+          created_at: string
+          id: string
+          intake_id: string | null
+          notes: string | null
+          role: string
+          shop_id: string
+        }
+        Insert: {
+          count_suggested?: number
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          notes?: string | null
+          role: string
+          shop_id: string
+        }
+        Update: {
+          count_suggested?: number
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          notes?: string | null
+          role?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_invite_suggestions_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_invite_suggestions_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "staff_invite_suggestions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_invite_suggestions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -7090,13 +7487,18 @@ export type Database = {
           engine_family: string | null
           engine_hours: number | null
           engine_type: string | null
+          external_id: string | null
           fuel_type: string | null
           id: string
+          import_confidence: number | null
+          import_notes: string | null
           license_plate: string | null
           make: string | null
           mileage: string | null
           model: string | null
           shop_id: string | null
+          source_intake_id: string | null
+          source_row_id: string | null
           submodel: string | null
           transmission: string | null
           transmission_type: string | null
@@ -7114,13 +7516,18 @@ export type Database = {
           engine_family?: string | null
           engine_hours?: number | null
           engine_type?: string | null
+          external_id?: string | null
           fuel_type?: string | null
           id?: string
+          import_confidence?: number | null
+          import_notes?: string | null
           license_plate?: string | null
           make?: string | null
           mileage?: string | null
           model?: string | null
           shop_id?: string | null
+          source_intake_id?: string | null
+          source_row_id?: string | null
           submodel?: string | null
           transmission?: string | null
           transmission_type?: string | null
@@ -7138,13 +7545,18 @@ export type Database = {
           engine_family?: string | null
           engine_hours?: number | null
           engine_type?: string | null
+          external_id?: string | null
           fuel_type?: string | null
           id?: string
+          import_confidence?: number | null
+          import_notes?: string | null
           license_plate?: string | null
           make?: string | null
           mileage?: string | null
           model?: string | null
           shop_id?: string | null
+          source_intake_id?: string | null
+          source_row_id?: string | null
           submodel?: string | null
           transmission?: string | null
           transmission_type?: string | null
@@ -7517,6 +7929,108 @@ export type Database = {
           },
         ]
       }
+      work_order_line_ai: {
+        Row: {
+          confidence: number
+          created_at: string
+          id: string
+          intake_id: string | null
+          job_scope: string | null
+          primary_category: string | null
+          secondary_categories: string[]
+          shop_id: string
+          signals: string[]
+          summary: string | null
+          work_order_id: string | null
+          work_order_line_id: string | null
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          job_scope?: string | null
+          primary_category?: string | null
+          secondary_categories?: string[]
+          shop_id: string
+          signals?: string[]
+          summary?: string | null
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          id?: string
+          intake_id?: string | null
+          job_scope?: string | null
+          primary_category?: string | null
+          secondary_categories?: string[]
+          shop_id?: string
+          signals?: string[]
+          summary?: string | null
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_line_ai_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_ai_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_ai_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_ai_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_ai_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_ai_work_order_line_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_ai_work_order_line_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_ai_work_order_line_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_order_line_history: {
         Row: {
           created_at: string
@@ -7649,8 +8163,11 @@ export type Database = {
           correction: string | null
           created_at: string | null
           description: string | null
+          external_id: string | null
           hold_reason: string | null
           id: string
+          import_confidence: number | null
+          import_notes: string | null
           inspection_session_id: string | null
           inspection_template_id: string | null
           job_type: string | null
@@ -7673,6 +8190,8 @@ export type Database = {
           quoted_at: string | null
           service_code: string | null
           shop_id: string | null
+          source_intake_id: string | null
+          source_row_id: string | null
           status: string | null
           template_id: string | null
           tools: string | null
@@ -7694,8 +8213,11 @@ export type Database = {
           correction?: string | null
           created_at?: string | null
           description?: string | null
+          external_id?: string | null
           hold_reason?: string | null
           id?: string
+          import_confidence?: number | null
+          import_notes?: string | null
           inspection_session_id?: string | null
           inspection_template_id?: string | null
           job_type?: string | null
@@ -7718,6 +8240,8 @@ export type Database = {
           quoted_at?: string | null
           service_code?: string | null
           shop_id?: string | null
+          source_intake_id?: string | null
+          source_row_id?: string | null
           status?: string | null
           template_id?: string | null
           tools?: string | null
@@ -7739,8 +8263,11 @@ export type Database = {
           correction?: string | null
           created_at?: string | null
           description?: string | null
+          external_id?: string | null
           hold_reason?: string | null
           id?: string
+          import_confidence?: number | null
+          import_notes?: string | null
           inspection_session_id?: string | null
           inspection_template_id?: string | null
           job_type?: string | null
@@ -7763,6 +8290,8 @@ export type Database = {
           quoted_at?: string | null
           service_code?: string | null
           shop_id?: string | null
+          source_intake_id?: string | null
+          source_row_id?: string | null
           status?: string | null
           template_id?: string | null
           tools?: string | null
@@ -8224,7 +8753,10 @@ export type Database = {
           customer_approved_by: string | null
           customer_id: string | null
           customer_name: string | null
+          external_id: string | null
           id: string
+          import_confidence: number | null
+          import_notes: string | null
           inspection_id: string | null
           inspection_pdf_url: string | null
           inspection_type: string | null
@@ -8244,6 +8776,8 @@ export type Database = {
           shop_id: string | null
           source_fleet_program_id: string | null
           source_fleet_service_request_id: string | null
+          source_intake_id: string | null
+          source_row_id: string | null
           status: string | null
           type: string | null
           updated_at: string | null
@@ -8267,7 +8801,10 @@ export type Database = {
           customer_approved_by?: string | null
           customer_id?: string | null
           customer_name?: string | null
+          external_id?: string | null
           id?: string
+          import_confidence?: number | null
+          import_notes?: string | null
           inspection_id?: string | null
           inspection_pdf_url?: string | null
           inspection_type?: string | null
@@ -8287,6 +8824,8 @@ export type Database = {
           shop_id?: string | null
           source_fleet_program_id?: string | null
           source_fleet_service_request_id?: string | null
+          source_intake_id?: string | null
+          source_row_id?: string | null
           status?: string | null
           type?: string | null
           updated_at?: string | null
@@ -8310,7 +8849,10 @@ export type Database = {
           customer_approved_by?: string | null
           customer_id?: string | null
           customer_name?: string | null
+          external_id?: string | null
           id?: string
+          import_confidence?: number | null
+          import_notes?: string | null
           inspection_id?: string | null
           inspection_pdf_url?: string | null
           inspection_type?: string | null
@@ -8330,6 +8872,8 @@ export type Database = {
           shop_id?: string | null
           source_fleet_program_id?: string | null
           source_fleet_service_request_id?: string | null
+          source_intake_id?: string | null
+          source_row_id?: string | null
           status?: string | null
           type?: string | null
           updated_at?: string | null
@@ -8891,6 +9435,97 @@ export type Database = {
           },
         ]
       }
+      v_shop_boost_overview: {
+        Row: {
+          import_file_count: number | null
+          import_row_count: number | null
+          intake_created_at: string | null
+          intake_id: string | null
+          intake_processed_at: string | null
+          intake_source: string | null
+          intake_status: string | null
+          latest_metrics: Json | null
+          latest_scores: Json | null
+          latest_snapshot_created_at: string | null
+          latest_snapshot_id: string | null
+          shop_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_boost_intakes_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_boost_intakes_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_shop_boost_suggestions: {
+        Row: {
+          category: string | null
+          confidence: number | null
+          created_at: string | null
+          id: string | null
+          intake_id: string | null
+          labor_hours_suggestion: number | null
+          name: string | null
+          price_suggestion: number | null
+          reason: string | null
+          shop_id: string | null
+          suggestion_type: string | null
+        }
+        Relationships: []
+      }
+      v_shop_health_latest: {
+        Row: {
+          intake_id: string | null
+          metrics: Json | null
+          narrative_summary: string | null
+          period_end: string | null
+          period_start: string | null
+          scores: Json | null
+          shop_id: string | null
+          snapshot_created_at: string | null
+          snapshot_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_health_snapshots_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_health_snapshots_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "shop_health_snapshots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_health_snapshots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_vehicle_service_history: {
         Row: {
           created_at: string | null
@@ -9031,7 +9666,10 @@ export type Database = {
           customer_approved_by: string | null
           customer_id: string | null
           customer_name: string | null
+          external_id: string | null
           id: string
+          import_confidence: number | null
+          import_notes: string | null
           inspection_id: string | null
           inspection_pdf_url: string | null
           inspection_type: string | null
@@ -9051,6 +9689,8 @@ export type Database = {
           shop_id: string | null
           source_fleet_program_id: string | null
           source_fleet_service_request_id: string | null
+          source_intake_id: string | null
+          source_row_id: string | null
           status: string | null
           type: string | null
           updated_at: string | null

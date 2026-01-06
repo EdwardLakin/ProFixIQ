@@ -33,7 +33,6 @@ function safeShopName(name: string): string {
 }
 
 function makeUniqueName(base: string): string {
-  // Keep it readable but unique for the shops.name UNIQUE constraint
   const suffix = randomUUID().slice(0, 8);
   return `${base} (Demo ${suffix})`.slice(0, 80);
 }
@@ -101,7 +100,7 @@ export async function POST(
 
     const supabase = createAdminSupabase();
 
-    // 1) Create a demo shop row (MUST include owner_id; plan must pass CHECK)
+    // 1) Create a demo shop row
     const insertShop = async (nameValue: string) => {
       return supabase
         .from("shops")
@@ -116,11 +115,9 @@ export async function POST(
         .single();
     };
 
-    // Try base name first, then fallback to unique variant if name is already taken
     let { data: shopRow, error: shopErr } = await insertShop(shopName);
 
     if (shopErr) {
-      // If it's the unique constraint on shops.name (or any conflict), retry once with unique name
       const retryName = makeUniqueName(shopName);
       const retry = await insertShop(retryName);
       shopRow = retry.data ?? null;
@@ -142,7 +139,6 @@ export async function POST(
     const shopId = shopRow.id as string;
     const intakeId = randomUUID();
 
-    // Helper to upload files to the demo folder
     const uploadIfPresent = async (
       file: File | null,
       kind: "customers" | "vehicles" | "parts",
@@ -154,10 +150,7 @@ export async function POST(
 
       const { error: uploadErr } = await supabase.storage
         .from(SHOP_IMPORT_BUCKET)
-        .upload(path, file, {
-          cacheControl: "3600",
-          upsert: true,
-        });
+        .upload(path, file, { cacheControl: "3600", upsert: true });
 
       if (uploadErr) {
         throw new Error(`Failed to upload ${kind} file: ${uploadErr.message}`);
@@ -166,14 +159,14 @@ export async function POST(
       return path;
     };
 
-    // 2) Upload any CSVs they provided
+    // 2) Upload CSVs
     const [customersPath, vehiclesPath, partsPath] = await Promise.all([
       uploadIfPresent(customersFile, "customers"),
       uploadIfPresent(vehiclesFile, "vehicles"),
       uploadIfPresent(partsFile, "parts"),
     ]);
 
-    // 3) Create the intake row
+    // 3) Create intake row
     const intakePayload: DB["public"]["Tables"]["shop_boost_intakes"]["Insert"] = {
       id: intakeId,
       shop_id: shopId,
@@ -197,7 +190,7 @@ export async function POST(
       );
     }
 
-    // 4) Run the AI pipeline for this demo intake
+    // 4) Run pipeline
     const snapshot = await buildShopBoostProfile({
       shopId,
       intakeId,
@@ -213,7 +206,7 @@ export async function POST(
       );
     }
 
-    // 5) Store the snapshot in demo_shop_boosts for later unlock + CRM usage
+    // 5) Store snapshot in demo_shop_boosts for later unlock + CRM usage
     const { data: demoRow, error: demoErr } = await supabase
       .from("demo_shop_boosts")
       .insert({
@@ -237,26 +230,14 @@ export async function POST(
       );
     }
 
-    const demoId = demoRow.id as string;
-
     return NextResponse.json(
-      {
-        ok: true,
-        demoId,
-        snapshot,
-      },
+      { ok: true, demoId: demoRow.id as string, snapshot },
       { status: 200 },
     );
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unexpected error while running demo analysis.";
     console.error("Demo run error", err);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: message,
-      },
-      { status: 500 },
-    );
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

@@ -1,10 +1,11 @@
-// app/dashboard/page.tsx
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
+
+import ShopBoostWidget from "@/features/shared/components/ui/ShopBoostWidget";
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -18,11 +19,15 @@ type CountState = {
 };
 
 export default function DashboardPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = useMemo(
+    () => createClientComponentClient<Database>(),
+    [],
+  );
 
   const [name, setName] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [shopId, setShopId] = useState<string | null>(null);
 
   const [counts, setCounts] = useState<CountState>({
     appointments: null,
@@ -51,12 +56,13 @@ export default function DashboardPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("full_name, role")
+        .select("full_name, role, shop_id")
         .eq("id", uid)
         .maybeSingle();
 
       setName(profile?.full_name ?? null);
       setRole(profile?.role ?? null);
+      setShopId(profile?.shop_id ?? null);
     })();
   }, [supabase]);
 
@@ -99,17 +105,16 @@ export default function DashboardPage() {
       setLoadingCurrentJob(true);
       try {
         const { data, error } = await supabase
-  .from("work_order_lines")
-  .select(
-    "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_to",
-  )
-  .eq("assigned_to", uid)
-  .not("punched_in_at", "is", null)
-  .is("punched_out_at", null)
-  .order("punched_in_at", { ascending: false })
-  .limit(1)
-  .maybeSingle();
-         
+          .from("work_order_lines")
+          .select(
+            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_to",
+          )
+          .eq("assigned_to", uid)
+          .not("punched_in_at", "is", null)
+          .is("punched_out_at", null)
+          .order("punched_in_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
         if (error) {
           // eslint-disable-next-line no-console
@@ -178,6 +183,10 @@ export default function DashboardPage() {
   const isTechRole =
     role === "tech" || role === "mechanic" || role === "technician";
 
+  // Who can see shop-level health snapshot on dashboard
+  const canViewShopHealth =
+    role === "owner" || role === "admin" || role === "advisor" || role === "manager";
+
   return (
     <div className="relative space-y-8 fade-in">
       {/* soft gradient background for this page (extra metal wash) */}
@@ -198,6 +207,9 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {/* Shop Boost / Health Snapshot (owner/admin/advisor/manager) */}
+      <ShopBoostWidget shopId={shopId} canViewShopHealth={canViewShopHealth} />
+
       {/* active job pill – only for tech/mechanic roles */}
       {isTechRole && (
         <section>
@@ -214,9 +226,7 @@ export default function DashboardPage() {
       <section className="grid gap-4 md:grid-cols-4">
         <OverviewCard
           title="Today’s appointments"
-          value={
-            counts.appointments === null ? "…" : String(counts.appointments)
-          }
+          value={counts.appointments === null ? "…" : String(counts.appointments)}
           href="/portal/appointments"
         />
         <OverviewCard
@@ -226,9 +236,7 @@ export default function DashboardPage() {
         />
         <OverviewCard
           title="Parts requests"
-          value={
-            counts.partsRequests === null ? "…" : String(counts.partsRequests)
-          }
+          value={counts.partsRequests === null ? "…" : String(counts.partsRequests)}
           href="/parts/requests"
         />
         <OverviewCard title="Team chat" value="Open" href="/chat" />
@@ -238,15 +246,11 @@ export default function DashboardPage() {
       <section className="space-y-3">
         <h2 className="text-sm font-medium text-neutral-300">Quick actions</h2>
         <div className="flex flex-wrap gap-3">
-          <QuickButton href="/work-orders/create?autostart=1">
-            New work order
-          </QuickButton>
+          <QuickButton href="/work-orders/create?autostart=1">New work order</QuickButton>
           <QuickButton href="/portal/appointments">Appointments</QuickButton>
           <QuickButton href="/ai/assistant">AI assistant</QuickButton>
           {role === "owner" || role === "admin" ? (
-            <QuickButton href="/dashboard/owner/reports">
-              Reports
-            </QuickButton>
+            <QuickButton href="/dashboard/owner/reports">Reports</QuickButton>
           ) : null}
         </div>
       </section>
@@ -292,9 +296,7 @@ function ActiveJobCard({
             <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
               Active job
             </p>
-            <p className="mt-1 text-sm text-neutral-400">
-              No active job punch.
-            </p>
+            <p className="mt-1 text-sm text-neutral-400">No active job punch.</p>
           </div>
         </div>
       </div>
@@ -302,9 +304,7 @@ function ActiveJobCard({
   }
 
   const jobLabel =
-    job.description ||
-    job.complaint ||
-    String(job.job_type ?? "Job in progress");
+    job.description || job.complaint || String(job.job_type ?? "Job in progress");
 
   const vehicleLabel = vehicle
     ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
@@ -314,7 +314,7 @@ function ActiveJobCard({
 
   const woLabel = workOrder.custom_id || workOrder.id.slice(0, 8);
 
-  // 🔗 Include the line id so the job page can focus that line
+  // include line id so the job page can focus that line
   const href = `/work-orders/${workOrder.id}?focus=${job.id}`;
 
   return (
