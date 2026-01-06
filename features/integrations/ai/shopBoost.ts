@@ -12,8 +12,7 @@ import {
 } from "@/features/integrations/ai/shopBoostType";
 
 type DB = Database;
-type ShopBoostIntakeRow =
-  DB["public"]["Tables"]["shop_boost_intakes"]["Row"];
+type ShopBoostIntakeRow = DB["public"]["Tables"]["shop_boost_intakes"]["Row"];
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
 
@@ -163,9 +162,139 @@ type DerivedStats = {
   fleetMetrics: ShopHealthFleetMetric[];
 };
 
-async function deriveStatsFromCsvs(
-  input: CsvStatsInput,
-): Promise<DerivedStats> {
+function splitCsvLine(line: string): string[] {
+  // Minimal CSV splitter that respects simple quoted commas
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      // toggle quotes (handles doubled quotes poorly but better than raw split)
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (ch === "," && !inQuotes) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+
+function normHeader(h: string): string {
+  return h.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function headerLooksLikePersonField(h: string): boolean {
+  // These fields commonly contain staff/customer names, not repair descriptions
+  return /(tech|technician|advisor|writer|service writer|employee|staff|name|customer|driver)/i.test(
+    h,
+  );
+}
+
+function headerLooksLikeRepairTextField(h: string): boolean {
+  // Favor true job/line text fields
+  return /(complaint|concern|cause|correction|operation|op|job|service|work performed|work_performed|description|line)/i.test(
+    h,
+  );
+}
+
+function headerLooksLikeBadTextField(h: string): boolean {
+  // Explicitly avoid columns that are “notes” but actually names/metadata
+  return /(phone|email|address|vin|plate|license|unit|stock|fleet|company|location|city|state|zip)/i.test(
+    h,
+  );
+}
+
+function chooseBestDescriptionColumn(headers: string[]): number {
+  // Score each header; pick highest score; avoid person-name columns.
+  let bestIdx = -1;
+  let bestScore = -1;
+
+  for (let i = 0; i < headers.length; i += 1) {
+    const h = normHeader(headers[i]);
+    if (!h) continue;
+
+    // hard rejects
+    if (headerLooksLikePersonField(h)) continue;
+    if (headerLooksLikeBadTextField(h)) continue;
+
+    let score = 0;
+
+    // strong positives
+    if (/(line description|job description|work performed|description)/i.test(h)) score += 7;
+    if (/(complaint|concern|cause|correction)/i.test(h)) score += 6;
+    if (/(service|job|operation|op)/i.test(h)) score += 4;
+    if (headerLooksLikeRepairTextField(h)) score += 2;
+
+    // mild negatives
+    if (/(note|notes|memo|comment)/i.test(h)) score -= 1;
+    if (/(id|number|no\.|ro|invoice)/i.test(h)) score -= 2;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+
+  // fallback: original behavior, but still avoid person fields if possible
+  if (bestIdx === -1) {
+    const loose = headers.findIndex((h) => /description|job|service/i.test(h));
+    if (loose >= 0 && !headerLooksLikePersonField(headers[loose])) return loose;
+    return headers.findIndex((h) => /description|job|service/i.test(h));
+  }
+
+  return bestIdx;
+}
+
+function chooseBestTotalColumn(headers: string[]): number {
+  // prefer totals that represent invoice/grand/line totals
+  let bestIdx = -1;
+  let bestScore = -1;
+
+  for (let i = 0; i < headers.length; i += 1) {
+    const h = normHeader(headers[i]);
+    if (!h) continue;
+
+    let score = 0;
+    if (/(grand total|invoice total|total)/i.test(h)) score += 6;
+    if (/(line_total|line total|amount|price|extended)/i.test(h)) score += 4;
+    if (/(labor|parts)/i.test(h)) score += 1;
+
+    // avoid misleading fields
+    if (/(rate|tax|qty|quantity|cost)/i.test(h)) score -= 3;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+
+  return bestIdx;
+}
+
+function cleanDesc(raw: string): string {
+  const s = raw.replace(/\s+/g, " ").trim();
+
+  // If it’s basically “a name” (single token / two tokens), treat as low quality.
+  // Not perfect, but helps stop “Lucas” from becoming top repair.
+  const tokens = s.split(" ").filter(Boolean);
+  if (tokens.length <= 2 && /^[a-zA-Z.'-]+$/.test(s)) return "General Repair";
+
+  // strip leading tech labels like "Tech: Bob"
+  const stripped = s.replace(/^(tech|technician|advisor|writer)\s*[:\-]\s*/i, "").trim();
+  if (!stripped) return "General Repair";
+
+  // cap length
+  return stripped.slice(0, 90);
+}
+
+async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> {
   const empty: DerivedStats = {
     totalRepairOrders: 0,
     totalRevenue: 0,
@@ -178,26 +307,28 @@ async function deriveStatsFromCsvs(
 
   if (!input.vehiclesCsv) return empty;
 
-  const lines = input.vehiclesCsv.split(/\r?\n/).filter((line) => line.length);
+  const lines = input.vehiclesCsv
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((line) => line.length);
+
   if (lines.length < 2) return empty;
 
-  const header = lines[0].split(",");
-  const idxDescription = header.findIndex((h) =>
-    /description|job|service/i.test(h),
-  );
-  const idxTotal = header.findIndex((h) =>
-    /total|amount|line_total|price/i.test(h),
-  );
+  const header = splitCsvLine(lines[0]);
+  const idxDescription = chooseBestDescriptionColumn(header);
+  const idxTotal = chooseBestTotalColumn(header);
 
   const repairMap = new Map<string, { count: number; revenue: number }>();
 
   for (let i = 1; i < lines.length; i += 1) {
-    const cols = lines[i].split(",");
-    const desc =
-      (idxDescription >= 0 ? cols[idxDescription] : undefined)?.trim() ??
-      "Unknown job";
-    const rawTotal = idxTotal >= 0 ? cols[idxTotal] : "0";
-    const total = Number(rawTotal.replace(/[^0-9.]/g, "")) || 0;
+    const cols = splitCsvLine(lines[i]);
+
+    const rawDesc =
+      idxDescription >= 0 ? (cols[idxDescription] ?? "").trim() : "";
+    const desc = cleanDesc(rawDesc || "General Repair");
+
+    const rawTotal = idxTotal >= 0 ? (cols[idxTotal] ?? "0") : "0";
+    const total = Number(String(rawTotal).replace(/[^0-9.]/g, "")) || 0;
 
     const existing = repairMap.get(desc) ?? { count: 0, revenue: 0 };
     existing.count += 1;
@@ -205,9 +336,7 @@ async function deriveStatsFromCsvs(
     repairMap.set(desc, existing);
   }
 
-  const mostCommonRepairs: ShopHealthTopRepair[] = Array.from(
-    repairMap.entries(),
-  )
+  const mostCommonRepairs: ShopHealthTopRepair[] = Array.from(repairMap.entries())
     .map(([label, value]) => ({
       label,
       count: value.count,
@@ -216,7 +345,7 @@ async function deriveStatsFromCsvs(
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
-  const highValueRepairs = [...mostCommonRepairs]
+  const highValueRepairs: ShopHealthTopRepair[] = [...mostCommonRepairs]
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 
@@ -247,7 +376,6 @@ async function deriveStatsFromDatabase(
   shopId: string,
 ): Promise<DerivedStats> {
   // TODO: enrich from work_orders + work_order_lines if desired.
-  // Mark parameters as used so TypeScript / ESLint stay happy.
   void supabase;
   void shopId;
 
@@ -265,17 +393,13 @@ async function deriveStatsFromDatabase(
 function mergeStats(a: DerivedStats, b: DerivedStats): DerivedStats {
   const totalRepairOrders = a.totalRepairOrders + b.totalRepairOrders;
   const totalRevenue = a.totalRevenue + b.totalRevenue;
-  const averageRo =
-    totalRepairOrders > 0 ? totalRevenue / totalRepairOrders : 0;
+  const averageRo = totalRepairOrders > 0 ? totalRevenue / totalRepairOrders : 0;
 
   return {
     totalRepairOrders,
     totalRevenue,
     averageRo,
-    mostCommonRepairs: mergeRepairLists(
-      a.mostCommonRepairs,
-      b.mostCommonRepairs,
-    ),
+    mostCommonRepairs: mergeRepairLists(a.mostCommonRepairs, b.mostCommonRepairs),
     highValueRepairs: mergeRepairLists(a.highValueRepairs, b.highValueRepairs),
     comebackRisks: [...a.comebackRisks, ...b.comebackRisks],
     fleetMetrics: [...a.fleetMetrics, ...b.fleetMetrics],
@@ -324,37 +448,15 @@ async function generateSnapshotWithAI(
     totalRevenue: 0,
     averageRo: 0,
     mostCommonRepairs: [
-      {
-        label: "<string>",
-        count: 0,
-        revenue: 0,
-        averageLaborHours: 0,
-      },
+      { label: "<string>", count: 0, revenue: 0, averageLaborHours: 0 },
     ],
     highValueRepairs: [
-      {
-        label: "<string>",
-        count: 0,
-        revenue: 0,
-        averageLaborHours: 0,
-      },
+      { label: "<string>", count: 0, revenue: 0, averageLaborHours: 0 },
     ],
     comebackRisks: [
-      {
-        label: "<string>",
-        count: 0,
-        estimatedLostHours: 0,
-        note: "<string>",
-      },
+      { label: "<string>", count: 0, estimatedLostHours: 0, note: "<string>" },
     ],
-    fleetMetrics: [
-      {
-        label: "<string>",
-        value: 0,
-        unit: "<string>",
-        note: "<string>",
-      },
-    ],
+    fleetMetrics: [{ label: "<string>", value: 0, unit: "<string>", note: "<string>" }],
     menuSuggestions: [
       {
         id: "<uuid-string>",
@@ -367,12 +469,7 @@ async function generateSnapshotWithAI(
       },
     ],
     inspectionSuggestions: [
-      {
-        id: "<uuid-string>",
-        name: "<string>",
-        usageContext: "retail",
-        note: "<string>",
-      },
+      { id: "<uuid-string>", name: "<string>", usageContext: "retail", note: "<string>" },
     ],
     narrativeSummary:
       "<short paragraph summarizing what this shop is good at, and 2–3 clear next steps>",
@@ -415,10 +512,7 @@ async function generateSnapshotWithAI(
     parsed.menuSuggestions =
       parsed.menuSuggestions?.map((menu) => ({
         ...menu,
-        id:
-          menu.id && menu.id !== "<uuid-string>"
-            ? menu.id
-            : randomUUID(),
+        id: menu.id && menu.id !== "<uuid-string>" ? menu.id : randomUUID(),
       })) ?? [];
 
     parsed.inspectionSuggestions =
@@ -441,10 +535,7 @@ async function logTrainingEvents(
   supabase: ReturnType<typeof createAdminSupabase>,
   snapshot: ShopHealthSnapshot,
 ): Promise<void> {
-  const content = [
-    "Shop Health Snapshot:",
-    JSON.stringify(snapshot, null, 2),
-  ].join("\n");
+  const content = ["Shop Health Snapshot:", JSON.stringify(snapshot, null, 2)].join("\n");
 
   const { data: eventRows, error: eventErr } = await supabase
     .from("ai_training_events")
@@ -465,14 +556,12 @@ async function logTrainingEvents(
   const sourceEventId = eventRows?.[0]?.id;
   if (!sourceEventId) return;
 
-  const { error: trainingErr } = await supabase
-    .from("ai_training_data")
-    .insert({
-      shop_id: snapshot.shopId,
-      source_event_id: sourceEventId,
-      content,
-      embedding: null,
-    });
+  const { error: trainingErr } = await supabase.from("ai_training_data").insert({
+    shop_id: snapshot.shopId,
+    source_event_id: sourceEventId,
+    content,
+    embedding: null,
+  });
 
   if (trainingErr) {
     console.error("Failed to insert ai_training_data", trainingErr);
