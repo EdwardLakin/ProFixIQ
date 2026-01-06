@@ -1,5 +1,3 @@
-// @shared/lib/stats/getTechLeaderboard.ts
-
 import {
   startOfMonth,
   endOfMonth,
@@ -15,7 +13,6 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import type { TimeRange } from "./getShopStats";
 
-type DB = Database;
 
 type SlimProfile = {
   id: string;
@@ -24,7 +21,6 @@ type SlimProfile = {
   shop_id: string | null;
 };
 
-// Narrow row shapes that match the select() projections
 type InvoiceSlim = {
   id: string;
   tech_id: string | null;
@@ -50,14 +46,14 @@ export type TechLeaderboardRow = {
   role: string | null;
 
   jobs: number;
-  revenue: number; // invoices.total
-  laborCost: number; // invoices.labor_cost
-  profit: number; // revenue - laborCost
+  revenue: number;
+  laborCost: number;
+  profit: number;
 
   billedHours: number;
-  clockedHours: number; // payroll_timecards.hours_worked
-  revenuePerHour: number; // revenue / clockedHours
-  efficiencyPct: number; // revenue / laborCost * 100 (if laborCost > 0)
+  clockedHours: number;
+  revenuePerHour: number;
+  efficiencyPct: number;
 };
 
 export type TechLeaderboardResult = {
@@ -72,11 +68,22 @@ function toIso(d: Date): string {
 }
 
 /**
- * Per-tech leaderboard for a shop over a time window.
- * Pulls from:
- *   - public.invoices            (revenue, labor_cost, tech_id)
- *   - public.payroll_timecards   (hours_worked, user_id)
+ * Normalize role strings so "Technician", "tech", "Lead Tech", etc all match.
  */
+function isTechRole(role: string | null): boolean {
+  const r = (role ?? "").trim().toLowerCase();
+  if (!r) return false;
+
+  // match common variants
+  if (r === "tech" || r === "technician" || r === "mechanic") return true;
+
+  // match phrases
+  if (r.includes("tech")) return true; // e.g. "lead tech", "diesel tech"
+  if (r.includes("mechanic")) return true;
+
+  return false;
+}
+
 export async function getTechLeaderboard(
   shopId: string,
   timeRange: TimeRange,
@@ -107,35 +114,29 @@ export async function getTechLeaderboard(
       break;
   }
 
-  // Use an exclusive end bound to avoid timestamp edge cases.
-  // (e.g., rows at 23:59:59.999Z)
+  // exclusive end bound
   const endExclusive = new Date(end.getTime() + 1);
 
   const startIso = toIso(start);
   const endIso = toIso(end);
   const endExclusiveIso = toIso(endExclusive);
 
-  // 1) Tech profiles in this shop
-  type ProfileRole = DB["public"]["Tables"]["profiles"]["Row"]["role"];
-
-  // ✅ Include all tech variants used in the app
-  // (you used "technician" elsewhere)
-  const TECH_ROLES = ["tech", "mechanic", "technician"] as const;
-
+  // 1) Pull ALL profiles in shop, then filter in JS (prevents role-case/variant mismatch)
   const { data: profiles, error: profErr } = await supabase
     .from("profiles")
     .select("id, full_name, role, shop_id")
-    .eq("shop_id", shopId)
-    .in("role", TECH_ROLES as unknown as ProfileRole[]);
+    .eq("shop_id", shopId);
 
   if (profErr) throw profErr;
 
-  const techProfiles: SlimProfile[] = (profiles ?? []).map((p) => ({
-    id: p.id,
-    full_name: p.full_name ?? null,
-    role: p.role ?? null,
-    shop_id: p.shop_id ?? null,
-  }));
+  const techProfiles: SlimProfile[] = (profiles ?? [])
+    .map((p) => ({
+      id: p.id,
+      full_name: p.full_name ?? null,
+      role: p.role ?? null,
+      shop_id: p.shop_id ?? null,
+    }))
+    .filter((p) => isTechRole(p.role));
 
   const techIds = techProfiles.map((p) => p.id).filter(Boolean);
 
@@ -148,7 +149,7 @@ export async function getTechLeaderboard(
     };
   }
 
-  // 2) Invoices + timecards in range, for this shop + these techs
+  // 2) Invoices + timecards in range
   const [invoicesRes, timecardsRes] = await Promise.all([
     supabase
       .from("invoices")
@@ -160,9 +161,7 @@ export async function getTechLeaderboard(
 
     supabase
       .from("payroll_timecards")
-      .select(
-        "id, user_id, shop_id, clock_in, clock_out, hours_worked, created_at",
-      )
+      .select("id, user_id, shop_id, clock_in, clock_out, hours_worked, created_at")
       .eq("shop_id", shopId)
       .in("user_id", techIds)
       .gte("clock_in", startIso)
@@ -173,13 +172,12 @@ export async function getTechLeaderboard(
   if (timecardsRes.error) throw timecardsRes.error;
 
   const invoices: InvoiceSlim[] = (invoicesRes.data as InvoiceSlim[]) ?? [];
-  const timecards: TimecardSlim[] =
-    (timecardsRes.data as TimecardSlim[]) ?? [];
+  const timecards: TimecardSlim[] = (timecardsRes.data as TimecardSlim[]) ?? [];
 
   // 3) Aggregate per tech
   const byTech = new Map<string, TechLeaderboardRow>();
 
-  // Seed with zero rows for each tech so they always show
+  // seed rows so techs show even with 0 activity
   for (const prof of techProfiles) {
     if (!prof.id) continue;
     byTech.set(prof.id, {
@@ -190,18 +188,16 @@ export async function getTechLeaderboard(
       revenue: 0,
       laborCost: 0,
       profit: 0,
-      billedHours: 0, // TODO: wire if you add invoice labor hours later
+      billedHours: 0,
       clockedHours: 0,
       revenuePerHour: 0,
       efficiencyPct: 0,
     });
   }
 
-  // Aggregate invoices
   for (const inv of invoices) {
     const techId = inv.tech_id;
     if (!techId) continue;
-
     const row = byTech.get(techId);
     if (!row) continue;
 
@@ -213,11 +209,9 @@ export async function getTechLeaderboard(
     row.laborCost += Number.isFinite(laborCost) ? laborCost : 0;
   }
 
-  // Aggregate timecards
   for (const tc of timecards) {
     const techId = tc.user_id;
     if (!techId) continue;
-
     const row = byTech.get(techId);
     if (!row) continue;
 
@@ -225,20 +219,13 @@ export async function getTechLeaderboard(
     row.clockedHours += Number.isFinite(hours) ? hours : 0;
   }
 
-  // 4) Finalize profit / ratios
   for (const row of byTech.values()) {
     row.profit = row.revenue - row.laborCost;
-
-    row.efficiencyPct =
-      row.laborCost > 0 ? (row.revenue / row.laborCost) * 100 : 0;
-
-    row.revenuePerHour =
-      row.clockedHours > 0 ? row.revenue / row.clockedHours : 0;
+    row.efficiencyPct = row.laborCost > 0 ? (row.revenue / row.laborCost) * 100 : 0;
+    row.revenuePerHour = row.clockedHours > 0 ? row.revenue / row.clockedHours : 0;
   }
 
-  const rows = Array.from(byTech.values()).sort(
-    (a, b) => b.revenue - a.revenue,
-  );
+  const rows = Array.from(byTech.values()).sort((a, b) => b.revenue - a.revenue);
 
   return {
     shop_id: shopId,
