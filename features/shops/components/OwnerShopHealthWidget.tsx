@@ -1,47 +1,70 @@
-// features/shops/components/OwnerShopHealthWidget.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
 import ShopHealthSnapshotView from "@/features/shops/components/ShopHealthSnapshot";
 
 type DB = Database;
 type ShopAiProfileRow = DB["public"]["Tables"]["shop_ai_profiles"]["Row"];
+type ShopHealthSnapshotRow = DB["public"]["Tables"]["shop_health_snapshots"]["Row"];
 
 type Props = {
   shopId: string;
 };
 
+// Theme tokens (new glass + slate + orange)
+const cardBase =
+  "rounded-3xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/60";
+
 export default function OwnerShopHealthWidget({ shopId }: Props) {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [aiProfile, setAiProfile] = useState<ShopAiProfileRow | null>(null);
   const [snapshot, setSnapshot] = useState<ShopHealthSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
+  const [bootLoading, setBootLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load existing AI profile (summary) for this shop
+  // Load existing AI profile summary + latest stored snapshot (if any)
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
-      const { data, error: profileErr } = await supabase
-        .from("shop_ai_profiles")
-        .select("*")
-        .eq("shop_id", shopId)
-        .maybeSingle();
+      setBootLoading(true);
 
-      if (cancelled) return;
+      try {
+        const [profileRes, snapRes] = await Promise.all([
+          supabase.from("shop_ai_profiles").select("*").eq("shop_id", shopId).maybeSingle(),
+          supabase
+            .from("shop_health_snapshots")
+            .select("*")
+            .eq("shop_id", shopId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
 
-      if (profileErr) {
-        console.error("Failed to load shop_ai_profiles", profileErr);
-        return;
-      }
+        if (cancelled) return;
 
-      if (data) {
-        setAiProfile(data);
+        if (!profileRes.error && profileRes.data) {
+          setAiProfile(profileRes.data as ShopAiProfileRow);
+        }
+
+        // If you have a latest snapshot stored in DB, map it into the UI snapshot type.
+        if (!snapRes.error && snapRes.data) {
+          const row = snapRes.data as ShopHealthSnapshotRow;
+          const mapped = mapSnapshotRowToUi(row);
+          if (mapped) setSnapshot(mapped);
+        }
+      } catch (e) {
+        // non-fatal
+        console.warn("[OwnerShopHealthWidget] boot load failed", e);
+      } finally {
+        if (!cancelled) setBootLoading(false);
       }
     })();
 
@@ -88,17 +111,13 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
           prev
             ? {
                 ...prev,
-                // summary is a JSON column; store plain string narrative
                 summary: newSnapshot.narrativeSummary as unknown as ShopAiProfileRow["summary"],
               }
             : prev,
         );
       }
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Unexpected error during refresh.";
+      const message = err instanceof Error ? err.message : "Unexpected error during refresh.";
       setError(message);
     } finally {
       setLoading(false);
@@ -110,42 +129,49 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
     "Run Shop Boost once you’ve uploaded history to see what your shop already excels at.";
 
   return (
-    <section className="space-y-3 rounded-3xl border border-white/10 bg-black/40 p-4 sm:p-5">
+    <section className={`space-y-3 p-4 sm:p-5 ${cardBase}`}>
       <header className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-300/70">
             Shop Health
           </p>
           <h2
-            className="mt-1 text-lg text-neutral-100"
+            className="mt-1 text-lg text-white"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
             AI view of your shop
           </h2>
         </div>
+
         <button
           type="button"
           onClick={handleRefresh}
           disabled={loading}
-          className="rounded-md bg-orange-500 px-3 py-1.5 text-[11px] font-semibold text-black hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className={[
+            "rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition",
+            "border-orange-500/40 bg-orange-500/15 text-orange-100 hover:bg-orange-500/20",
+            "disabled:cursor-not-allowed disabled:opacity-60",
+          ].join(" ")}
         >
           {loading ? "Refreshing…" : "Refresh with AI"}
         </button>
       </header>
 
-      <p className="mt-3 text-[11px] text-neutral-300">{displaySummary}</p>
+      <div className={`${cardInner} px-3 py-3`}>
+        <p className="text-[11px] text-slate-200/80">{displaySummary}</p>
 
-      {error && (
-        <p className="mt-2 text-[11px] text-red-400">
-          {error}
-        </p>
-      )}
+        {bootLoading ? (
+          <p className="mt-2 text-[11px] text-slate-300/70">Loading latest snapshot…</p>
+        ) : null}
 
-      {snapshot && (
+        {error ? <p className="mt-2 text-[11px] text-rose-300">{error}</p> : null}
+      </div>
+
+      {snapshot ? (
         <div className="pt-3">
           <ShopHealthSnapshotView snapshot={snapshot} />
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -153,13 +179,22 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
 /**
  * Normalize the JSON `summary` column into a plain string for React.
  */
-function normalizeSummary(
-  summary: ShopAiProfileRow["summary"] | undefined,
-): string {
+function normalizeSummary(summary: ShopAiProfileRow["summary"] | undefined): string {
   if (summary === null || summary === undefined) return "";
   if (typeof summary === "string") return summary;
-  if (typeof summary === "number" || typeof summary === "boolean") {
-    return String(summary);
+  if (typeof summary === "number" || typeof summary === "boolean") return String(summary);
+
+  // If it's a JSON object/array, try to extract a useful string first.
+  if (typeof summary === "object") {
+    try {
+      // common shapes: { text: "..." } or { summary: "..." }
+      const s = summary as Record<string, unknown>;
+      const maybe = (k: string) => (typeof s[k] === "string" ? String(s[k]) : "");
+      const picked = maybe("text") || maybe("summary") || maybe("narrative") || "";
+      if (picked) return picked;
+    } catch {
+      // ignore
+    }
   }
 
   try {
@@ -167,4 +202,43 @@ function normalizeSummary(
   } catch {
     return "";
   }
+}
+
+/**
+ * Map a stored DB snapshot row (metrics/scores/narrative) into the UI snapshot type.
+ * If you later store the full UI snapshot JSON, you can simplify this.
+ */
+function mapSnapshotRowToUi(row: ShopHealthSnapshotRow): ShopHealthSnapshot | null {
+  // This is best-effort: we only have some fields in the DB table.
+  // The demo API returns a fuller snapshot; refresh will replace this with complete data.
+  const metrics = (row.metrics ?? {}) as Record<string, unknown>;
+
+  const totals = (metrics["totals"] ?? {}) as Record<string, unknown>;
+  const totalRepairOrders =
+    typeof totals["totalRepairOrders"] === "number" ? totals["totalRepairOrders"] : 0;
+  const totalRevenue = typeof totals["totalRevenue"] === "number" ? totals["totalRevenue"] : 0;
+  const averageRo = typeof totals["averageRo"] === "number" ? totals["averageRo"] : 0;
+
+  return {
+    shopId: row.shop_id as string,
+    timeRangeDescription: buildTimeRangeDescription(row.period_start, row.period_end),
+    totalRepairOrders,
+    totalRevenue,
+    averageRo,
+    mostCommonRepairs: [],
+    highValueRepairs: [],
+    comebackRisks: [],
+    fleetMetrics: [],
+    menuSuggestions: [],
+    inspectionSuggestions: [],
+    narrativeSummary: row.narrative_summary ?? "",
+  };
+}
+
+function buildTimeRangeDescription(start: string | null, end: string | null): string {
+  if (!start || !end) return "Recent history";
+  const a = new Date(start);
+  const b = new Date(end);
+  if (!Number.isFinite(a.getTime()) || !Number.isFinite(b.getTime())) return "Recent history";
+  return `${a.toLocaleDateString()} – ${b.toLocaleDateString()}`;
 }

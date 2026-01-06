@@ -49,6 +49,11 @@ type Props = {
   shopId: string | null;
 };
 
+// Theme tokens (same style as newer app)
+const cardBase =
+  "rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/60";
+
 export default function ReportsShopHealthPanel({ shopId }: Props) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
@@ -68,11 +73,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
       try {
         const [latestRes, overviewRes, suggRes] = await Promise.all([
-          supabase
-            .from("v_shop_health_latest")
-            .select("*")
-            .eq("shop_id", shopId)
-            .maybeSingle(),
+          supabase.from("v_shop_health_latest").select("*").eq("shop_id", shopId).maybeSingle(),
           supabase
             .from("v_shop_boost_overview")
             .select("*")
@@ -107,17 +108,21 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
     })();
   }, [shopId, supabase]);
 
-  const scores = (latest?.scores ?? overview?.latest_scores ?? null) as
-    | Record<string, unknown>
-    | null;
-
+  const scores = (latest?.scores ?? overview?.latest_scores ?? null) as Record<string, unknown> | null;
   const normalized = normalizeScores(scores);
 
   const overall = normalized.overall ?? null;
-  const status = overall === null ? "unknown" : overall >= 80 ? "good" : overall >= 55 ? "watch" : "risk";
+  const status =
+    overall === null ? "unknown" : overall >= 80 ? "good" : overall >= 55 ? "watch" : "risk";
 
   const statusLabel =
-    status === "good" ? "Healthy" : status === "watch" ? "Needs attention" : status === "risk" ? "At risk" : "No score yet";
+    status === "good"
+      ? "Healthy"
+      : status === "watch"
+        ? "Needs attention"
+        : status === "risk"
+          ? "At risk"
+          : "No score yet";
 
   const statusClass =
     status === "good"
@@ -142,15 +147,14 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Loading / error */}
       {loading ? (
-        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-6 text-sm text-neutral-300 backdrop-blur">
+        <div className={`${cardInner} px-4 py-6 text-sm text-neutral-300`}>
           Loading Shop Health…
         </div>
       ) : null}
 
       {err ? (
-        <div className="rounded-2xl border border-red-500/40 bg-red-950/40 px-4 py-4 text-sm text-red-100">
+        <div className="rounded-2xl border border-rose-500/40 bg-rose-950/40 px-4 py-4 text-sm text-rose-100">
           {err}
         </div>
       ) : null}
@@ -158,16 +162,14 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
       {!loading && !err ? (
         <>
           {/* Top summary */}
-          <section className="rounded-2xl border border-white/10 bg-black/35 p-4 backdrop-blur">
+          <section className={`${cardBase} p-4`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-300/70">
                   Shop Health
                 </div>
-                <h2 className="mt-1 text-lg font-semibold text-white">
-                  Overall health score
-                </h2>
-                <p className="mt-1 text-xs text-neutral-400">
+                <h2 className="mt-1 text-lg font-semibold text-white">Overall health score</h2>
+                <p className="mt-1 text-xs text-slate-300/70">
                   This snapshot drives “ready in minutes” onboarding: menu items, inspections, and staff invites.
                 </p>
               </div>
@@ -184,8 +186,8 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 hint={snapshotAge ? `Latest snapshot ${snapshotAge}` : "No snapshot yet"}
               />
               <HealthScoreCard
-                title="Intake"
-                value={normalized.intake}
+                title="Completeness"
+                value={normalized.dataCompleteness}
                 hint={
                   overview
                     ? `${overview.import_file_count} file(s) • ${overview.import_row_count} row(s)`
@@ -193,35 +195,31 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 }
               />
               <HealthScoreCard
-                title="Ops & profitability"
-                value={normalized.ops}
-                hint="Built from work order patterns, labor/parts signals, and consistency"
+                title="History volume"
+                value={normalized.historyVolume}
+                hint="More history → better menus, inspections, and pricing"
               />
             </div>
 
-            {/* Breakdown bars */}
             <div className="mt-5 grid gap-3 md:grid-cols-2">
               <ScoreBar label="Data completeness" value={normalized.dataCompleteness} />
               <ScoreBar label="Job classification confidence" value={normalized.classification} />
-              <ScoreBar label="Tech consistency" value={normalized.techConsistency} />
+              <ScoreBar label="History volume" value={normalized.historyVolume} />
               <ScoreBar label="Comeback / risk signals" value={normalized.risk} invert />
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <MetaCard label="Latest intake" value={intakeAge ?? "—"} />
               <MetaCard label="Latest snapshot" value={snapshotAge ?? "—"} />
-              <MetaCard
-                label="Source"
-                value={overview?.intake_source ? String(overview.intake_source) : "—"}
-              />
+              <MetaCard label="Source" value={overview?.intake_source ? String(overview.intake_source) : "—"} />
             </div>
           </section>
 
           {/* Narrative summary */}
-          <section className="rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur">
+          <section className={`${cardBase} p-4`}>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-300/70">
                   Summary
                 </div>
                 <h3 className="mt-1 text-sm font-semibold text-white">
@@ -230,34 +228,33 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               </div>
             </div>
 
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-4">
+            <div className={`mt-3 ${cardInner} p-4`}>
               {narrative ? (
                 <p className="whitespace-pre-wrap text-sm text-neutral-100">{narrative}</p>
               ) : (
-                <p className="text-sm text-neutral-400">
-                  No narrative summary yet. (Once your API stores `narrative_summary` on `shop_health_snapshots`,
-                  this becomes the “wow” section.)
+                <p className="text-sm text-slate-300/70">
+                  No narrative summary yet.
                 </p>
               )}
             </div>
           </section>
 
           {/* Suggestions */}
-          <section className="rounded-2xl border border-white/10 bg-black/35 p-4 backdrop-blur">
+          <section className={`${cardBase} p-4`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-300/70">
                   Onboarding Automation
                 </div>
                 <h3 className="mt-1 text-sm font-semibold text-white">
                   Suggested setup (menus, inspections, staff)
                 </h3>
-                <p className="mt-1 text-xs text-neutral-400">
+                <p className="mt-1 text-xs text-slate-300/70">
                   These are the items we can auto-create after signup so the shop is usable immediately.
                 </p>
               </div>
 
-              <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[11px] text-neutral-300">
+              <div className="rounded-full border border-slate-700/60 bg-slate-950/40 px-3 py-1.5 text-[11px] text-slate-200">
                 {suggestions.length} suggestion(s)
               </div>
             </div>
@@ -281,7 +278,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
             </div>
 
             {suggestions.length === 0 ? (
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-neutral-400">
+              <div className={`mt-4 ${cardInner} px-4 py-3 text-sm text-slate-300/70`}>
                 No suggestions yet. Once your analysis pipeline writes to the suggestion tables, they’ll show here.
               </div>
             ) : null}
@@ -294,36 +291,69 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
 /* -------------------------------- helpers -------------------------------- */
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function readNum(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  return null;
+}
+
+function getPathNum(obj: unknown, path: string[]): number | null {
+  let cur: unknown = obj;
+  for (const p of path) {
+    if (!isRecord(cur)) return null;
+    cur = cur[p];
+  }
+  return readNum(cur);
+}
+
 function normalizeScores(
   scores: Record<string, unknown> | null,
 ): {
   overall: number | null;
-  intake: number | null;
-  ops: number | null;
   dataCompleteness: number | null;
   classification: number | null;
-  techConsistency: number | null;
+  historyVolume: number | null;
   risk: number | null;
 } {
-  // We intentionally support multiple key names so you can evolve the schema
-  // without breaking the UI.
-  const get = (keys: string[]): number | null => {
-    if (!scores) return null;
-    for (const k of keys) {
-      const v = scores[k];
-      if (typeof v === "number" && Number.isFinite(v)) return clamp01to100(v);
-    }
-    return null;
-  };
+  if (!scores) {
+    return {
+      overall: null,
+      dataCompleteness: null,
+      classification: null,
+      historyVolume: null,
+      risk: null,
+    };
+  }
+
+  // Current schema from your healthScoring.ts:
+  // scores = { overall, status, components: { completeness: {score}, classification: {score}, historyVolume: {score} } }
+  const overall = getPathNum(scores, ["overall"]);
+
+  const dataCompleteness =
+    getPathNum(scores, ["components", "completeness", "score"]) ??
+    getPathNum(scores, ["dataCompleteness"]);
+
+  const classification =
+    getPathNum(scores, ["components", "classification", "score"]) ??
+    getPathNum(scores, ["classification"]);
+
+  const historyVolume =
+    getPathNum(scores, ["components", "historyVolume", "score"]) ??
+    getPathNum(scores, ["historyVolume"]);
+
+  // Risk is not yet produced by your scorer (you only produce comebackRisks list).
+  // Keep it null until you add a risk component.
+  const risk = getPathNum(scores, ["risk"]);
 
   return {
-    overall: get(["overall", "overallScore", "health", "health_score"]),
-    intake: get(["intake", "intakeScore", "data_intake", "import_quality"]),
-    ops: get(["ops", "opsScore", "operations", "profitability"]),
-    dataCompleteness: get(["dataCompleteness", "completeness", "data_completeness"]),
-    classification: get(["classification", "jobClassification", "classification_confidence"]),
-    techConsistency: get(["techConsistency", "tech_consistency"]),
-    risk: get(["risk", "riskScore", "comebackRisk", "comeback_risk"]),
+    overall: overall === null ? null : clamp01to100(overall),
+    dataCompleteness: dataCompleteness === null ? null : clamp01to100(dataCompleteness),
+    classification: classification === null ? null : clamp01to100(classification),
+    historyVolume: historyVolume === null ? null : clamp01to100(historyVolume),
+    risk: risk === null ? null : clamp01to100(risk),
   };
 }
 
@@ -367,7 +397,7 @@ function labelClass(tone: ReturnType<typeof scoreTone>): string {
   if (tone === "good") return "text-emerald-200";
   if (tone === "watch") return "text-amber-200";
   if (tone === "risk") return "text-rose-200";
-  return "text-neutral-400";
+  return "text-slate-300/70";
 }
 
 function HealthScoreCard({
@@ -381,20 +411,19 @@ function HealthScoreCard({
 }) {
   const tone = scoreTone(value);
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+    <div className={cardInner + " p-4"}>
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">{title}</div>
+        <div className="text-[10px] uppercase tracking-[0.2em] text-slate-300/70">
+          {title}
+        </div>
         <div className={`text-[11px] font-semibold ${labelClass(tone)}`}>
           {value === null ? "—" : `${value}/100`}
         </div>
       </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full border border-white/10 bg-black/30">
-        <div
-          className={`h-full ${barClass(tone)}`}
-          style={{ width: `${value ?? 0}%` }}
-        />
+      <div className="mt-3 h-2 overflow-hidden rounded-full border border-slate-700/60 bg-slate-950/50">
+        <div className={`h-full ${barClass(tone)}`} style={{ width: `${value ?? 0}%` }} />
       </div>
-      <div className="mt-2 text-[11px] text-neutral-400">{hint}</div>
+      <div className="mt-2 text-[11px] text-slate-300/70">{hint}</div>
     </div>
   );
 }
@@ -409,7 +438,6 @@ function ScoreBar({
   invert?: boolean;
 }) {
   const safe = value === null ? null : clamp01to100(value);
-  // For “risk”, higher is worse, so invert mapping for tone display.
   const tone = invert
     ? safe === null
       ? "none"
@@ -424,14 +452,14 @@ function ScoreBar({
   const width = shown ?? 0;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 px-4 py-3">
+    <div className={cardInner + " px-4 py-3"}>
       <div className="flex items-center justify-between gap-3">
         <div className="text-[11px] font-semibold text-neutral-200">{label}</div>
         <div className={`text-[11px] font-semibold ${labelClass(tone)}`}>
           {shown === null ? "—" : `${shown}%`}
         </div>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/10 bg-black/30">
+      <div className="mt-2 h-2 overflow-hidden rounded-full border border-slate-700/60 bg-slate-950/50">
         <div className={`h-full ${barClass(tone)}`} style={{ width: `${width}%` }} />
       </div>
     </div>
@@ -440,8 +468,10 @@ function ScoreBar({
 
 function MetaCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-      <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">{label}</div>
+    <div className={cardInner + " px-4 py-3"}>
+      <div className="text-[10px] uppercase tracking-[0.2em] text-slate-300/70">
+        {label}
+      </div>
       <div className="mt-1 text-sm font-semibold text-neutral-100">{value}</div>
     </div>
   );
@@ -464,66 +494,68 @@ function SuggestionColumn({
   items: ShopBoostSuggestionRow[];
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+    <div className={cardBase + " p-4"}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-white">{title}</div>
-          <div className="mt-1 text-[11px] text-neutral-400">{subtitle}</div>
+          <div className="mt-1 text-[11px] text-slate-300/70">{subtitle}</div>
         </div>
-        <div className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] text-neutral-300">
+        <div className="rounded-full border border-slate-700/60 bg-slate-950/40 px-2 py-0.5 text-[10px] text-slate-200">
           {items.length}
         </div>
       </div>
 
       <div className="mt-3 space-y-2">
-        {items.slice(0, 10).map((s) => (
-          <div key={s.id} className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-[11px] font-semibold text-neutral-100">
-                  {s.name ?? "Untitled"}
+        {items.slice(0, 10).map((s) => {
+          const conf = typeof s.confidence === "number" ? clamp01to100(s.confidence) : null;
+
+          return (
+            <div key={s.id} className={cardInner + " px-3 py-2"}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-[11px] font-semibold text-neutral-100">
+                    {s.name ?? "Untitled"}
+                  </div>
+                  {s.category ? (
+                    <div className="mt-0.5 text-[10px] text-slate-300/70">{s.category}</div>
+                  ) : null}
                 </div>
-                {s.category ? (
-                  <div className="mt-0.5 text-[10px] text-neutral-500">{s.category}</div>
+
+                {conf !== null ? (
+                  <span className="rounded-full border border-slate-700/60 bg-slate-950/40 px-2 py-0.5 text-[10px] text-slate-200">
+                    {conf}%
+                  </span>
                 ) : null}
               </div>
 
-              {typeof s.confidence === "number" ? (
-                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] text-neutral-300">
-                  {Math.round(clamp01to100(s.confidence))}%
-                </span>
+              {s.price_suggestion !== null || s.labor_hours_suggestion !== null ? (
+                <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-200">
+                  {s.price_suggestion !== null ? (
+                    <span className="rounded-full border border-slate-700/60 bg-slate-950/40 px-2 py-0.5">
+                      ${Number(s.price_suggestion).toFixed(0)}
+                    </span>
+                  ) : null}
+                  {s.labor_hours_suggestion !== null ? (
+                    <span className="rounded-full border border-slate-700/60 bg-slate-950/40 px-2 py-0.5">
+                      {Number(s.labor_hours_suggestion).toFixed(1)} hr
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {s.reason ? (
+                <div className="mt-2 line-clamp-2 text-[10px] text-slate-300/70">{s.reason}</div>
               ) : null}
             </div>
-
-            {(s.price_suggestion !== null || s.labor_hours_suggestion !== null) ? (
-              <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-neutral-300">
-                {s.price_suggestion !== null ? (
-                  <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5">
-                    ${Number(s.price_suggestion).toFixed(0)}
-                  </span>
-                ) : null}
-                {s.labor_hours_suggestion !== null ? (
-                  <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5">
-                    {Number(s.labor_hours_suggestion).toFixed(1)} hr
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-
-            {s.reason ? (
-              <div className="mt-2 line-clamp-2 text-[10px] text-neutral-400">{s.reason}</div>
-            ) : null}
-          </div>
-        ))}
+          );
+        })}
 
         {items.length > 10 ? (
-          <div className="text-[11px] text-neutral-500">
-            +{items.length - 10} more…
-          </div>
+          <div className="text-[11px] text-slate-300/70">+{items.length - 10} more…</div>
         ) : null}
 
         {items.length === 0 ? (
-          <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-[11px] text-neutral-400">
+          <div className={cardInner + " px-3 py-3 text-[11px] text-slate-300/70"}>
             No suggestions yet.
           </div>
         ) : null}
