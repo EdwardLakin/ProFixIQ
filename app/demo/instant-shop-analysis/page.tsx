@@ -1,7 +1,7 @@
 // app/demo/instant-shop-analysis/page.tsx
 "use client";
 
-import React, { useState, type FormEvent } from "react";
+import React, { useMemo, useState, type FormEvent } from "react";
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
 import ShopHealthSnapshotView from "@/features/shops/components/ShopHealthSnapshot";
 
@@ -38,19 +38,41 @@ type ClaimResponse =
       error: string;
     };
 
-const COPPER = {
-  border: "border-[rgba(150,92,60,0.35)]",
-  borderStrong: "border-[rgba(150,92,60,0.55)]",
-  text: "text-[rgba(214,176,150,0.95)]",
-  textSoft: "text-[rgba(214,176,150,0.75)]",
-  textMuted: "text-[rgba(210,210,210,0.75)]",
-  glass:
-    "bg-white/[0.04] backdrop-blur-xl shadow-[0_18px_45px_rgba(0,0,0,0.85)]",
-  glassInset: "shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-  panelGrad:
-    "bg-[linear-gradient(135deg,rgba(120,70,45,0.20),rgba(255,255,255,0.03))]",
-  btnGrad:
-    "bg-[linear-gradient(180deg,rgba(214,176,150,0.95),rgba(150,92,60,0.95))]",
+/**
+ * Theme rules for this page:
+ * - Light borders + glass cards
+ * - Burnt copper accent ONLY for CTAs + small title accents
+ * - No orange 400/500 classes
+ */
+const THEME = {
+  page: "min-h-screen bg-black text-white",
+  header: "border-b border-white/5 bg-black/60 px-4 py-5 sm:px-6",
+  max: "mx-auto max-w-6xl",
+  glassCard:
+    "rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-[0_18px_45px_rgba(0,0,0,0.75)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+  glassCardSoft:
+    "rounded-2xl border border-white/10 bg-black/35 backdrop-blur shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+  glassRow:
+    "rounded-xl border border-white/10 bg-white/[0.03] backdrop-blur shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+  label: "text-[11px] font-medium text-neutral-300",
+  help: "text-[11px] text-neutral-400",
+  input:
+    "w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20",
+  select:
+    "w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20",
+  badge:
+    "inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] text-neutral-300",
+  // Burnt copper CTA gradient (only place we use the accent heavily)
+  cta:
+    "bg-[linear-gradient(180deg,rgba(214,176,150,0.95),rgba(150,92,60,0.95))] text-black",
+  ctaHover: "hover:brightness-110",
+  ctaDisabled: "disabled:cursor-not-allowed disabled:opacity-60",
+  subtleBtn:
+    "inline-flex items-center justify-center rounded-md border border-white/10 bg-black/40 px-4 py-1.5 text-xs font-semibold text-neutral-200 transition hover:bg-white/[0.04] hover:border-white/20",
+  // Copper text accent (small usage: titles / emphasis)
+  copperText: "text-[rgba(214,176,150,0.95)]",
+  copperSoft: "text-[rgba(214,176,150,0.75)]",
+  copperMuted: "text-[rgba(210,210,210,0.75)]",
 };
 
 export default function InstantShopAnalysisPage() {
@@ -204,49 +226,40 @@ export default function InstantShopAnalysisPage() {
 
   const isAnalyzing = step === "analyzing" && runLoading;
 
+  const specialtyOptions = useMemo(
+    () => [
+      { key: "general", label: "General repair / tires" },
+      { key: "diesel", label: "Diesel-focused" },
+      { key: "hd", label: "Heavy-duty / commercial" },
+      { key: "mixed", label: "Mixed shop + fleet" },
+    ],
+    [],
+  );
+
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className={THEME.page}>
       {/* Header / hero */}
-      <header className={`border-b border-neutral-900 bg-black/60 px-4 py-5 sm:px-6`}>
-        <div className="mx-auto max-w-6xl">
-          <div
-            className={[
-              "rounded-2xl",
-              "border",
-              COPPER.border,
-              COPPER.glass,
-              COPPER.glassInset,
-              COPPER.panelGrad,
-              "px-5 py-5",
-            ].join(" ")}
-          >
-            <div className="flex flex-col items-center text-center gap-2">
-              <p className={`text-[11px] uppercase tracking-[0.25em] ${COPPER.textSoft}`}>
+      <header className={THEME.header}>
+        <div className={THEME.max}>
+          <div className={[THEME.glassCard, "px-5 py-5"].join(" ")}>
+            <div className="flex flex-col items-center gap-2 text-center">
+              <p className="text-[11px] uppercase tracking-[0.25em] text-neutral-300">
                 ProFixIQ Demo
               </p>
 
               <h1
-                className={`text-2xl sm:text-3xl ${COPPER.text}`}
+                className="text-2xl sm:text-3xl text-white"
                 style={{ fontFamily: "var(--font-blackops)" }}
               >
-                Instant Shop Analysis
+                Instant <span className={THEME.copperText}>Shop Analysis</span>
               </h1>
 
-              <p className={`max-w-2xl text-xs sm:text-sm ${COPPER.textMuted}`}>
+              <p className={`max-w-2xl text-xs sm:text-sm ${THEME.copperMuted}`}>
                 Drop in a couple of exports and let AI show you what your shop is already great
                 at — in one live snapshot.
               </p>
 
-              <div
-                className={[
-                  "mt-2 inline-flex items-center rounded-full border px-4 py-2 text-[11px]",
-                  COPPER.border,
-                  "bg-white/[0.03]",
-                  COPPER.textSoft,
-                ].join(" ")}
-              >
-                No login. One free analysis per email.
-              </div>
+              <div className={THEME.badge}>No login. One free analysis per email.</div>
             </div>
           </div>
         </div>
@@ -257,68 +270,42 @@ export default function InstantShopAnalysisPage() {
         <div className="flex-1 space-y-6">
           <form onSubmit={handleRun} className="space-y-6">
             {/* Shop basics */}
-            <section
-              className={[
-                "rounded-2xl border p-4 sm:p-5",
-                COPPER.border,
-                COPPER.glass,
-                COPPER.glassInset,
-                "bg-white/[0.03]",
-              ].join(" ")}
-            >
+            <section className={[THEME.glassCard, "p-4 sm:p-5"].join(" ")}>
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className={`text-sm font-semibold ${COPPER.text}`}>
-                    Tell us about your shop
+                  <h2 className="text-sm font-semibold text-white">
+                    Tell us about your{" "}
+                    <span className={THEME.copperText}>shop</span>
                   </h2>
-                  <p className={`text-[11px] ${COPPER.textMuted}`}>
+                  <p className={THEME.help}>
                     Just enough detail so the snapshot feels like it was built for you, not a
                     template.
                   </p>
                 </div>
-                <span
-                  className={[
-                    "rounded-full border px-2 py-0.5 text-[10px]",
-                    COPPER.border,
-                    "bg-white/[0.03]",
-                    COPPER.textSoft,
-                  ].join(" ")}
-                >
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-neutral-300">
                   Step 1 — basics
                 </span>
               </div>
 
               <div className="space-y-3 text-xs">
                 <div className="space-y-1">
-                  <label className={`text-[11px] ${COPPER.textSoft}`}>Shop name</label>
+                  <label className={THEME.label}>Shop name</label>
                   <input
                     type="text"
                     value={shopName}
                     onChange={(event) => setShopName(event.target.value)}
-                    className={[
-                      "w-full rounded-md border px-3 py-2 text-xs text-white placeholder:text-neutral-500 focus:outline-none",
-                      COPPER.border,
-                      "bg-black/40",
-                      "focus:ring-1 focus:ring-[rgba(214,176,150,0.25)]",
-                      "focus:border-[rgba(214,176,150,0.70)]",
-                    ].join(" ")}
+                    className={THEME.input}
                     placeholder="e.g. Lakin Diesel & Fleet"
                     required
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className={`text-[11px] ${COPPER.textSoft}`}>Country</label>
+                  <label className={THEME.label}>Country</label>
                   <select
                     value={country}
                     onChange={(event) => setCountry(event.target.value as Country)}
-                    className={[
-                      "w-full rounded-md border px-3 py-2 text-xs text-white focus:outline-none",
-                      COPPER.border,
-                      "bg-black/40",
-                      "focus:ring-1 focus:ring-[rgba(214,176,150,0.25)]",
-                      "focus:border-[rgba(214,176,150,0.70)]",
-                    ].join(" ")}
+                    className={THEME.select}
                   >
                     <option value="US">United States</option>
                     <option value="CA">Canada</option>
@@ -327,16 +314,9 @@ export default function InstantShopAnalysisPage() {
 
                 {/* Specialty */}
                 <div className="space-y-1">
-                  <label className={`text-[11px] ${COPPER.textSoft}`}>
-                    What best describes your work?
-                  </label>
+                  <label className={THEME.label}>What best describes your work?</label>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { key: "general", label: "General repair / tires" },
-                      { key: "diesel", label: "Diesel-focused" },
-                      { key: "hd", label: "Heavy-duty / commercial" },
-                      { key: "mixed", label: "Mixed shop + fleet" },
-                    ].map((opt) => {
+                    {specialtyOptions.map((opt) => {
                       const active = questionnaire.specialty === opt.key;
                       return (
                         <button
@@ -349,10 +329,11 @@ export default function InstantShopAnalysisPage() {
                           }
                           className={[
                             "rounded-md border px-3 py-2 text-left text-[11px] transition",
-                            COPPER.border,
+                            "border-white/10",
+                            "bg-black/40",
                             active
-                              ? "bg-[rgba(120,70,45,0.25)] text-[rgba(245,245,245,0.92)]"
-                              : "bg-black/40 text-[rgba(230,230,230,0.85)] hover:border-[rgba(214,176,150,0.55)] hover:bg-white/[0.03]",
+                              ? "border-[rgba(150,92,60,0.55)] bg-white/[0.05] text-white"
+                              : "text-neutral-200 hover:border-white/20 hover:bg-white/[0.04]",
                           ].join(" ")}
                         >
                           {opt.label}
@@ -391,33 +372,19 @@ export default function InstantShopAnalysisPage() {
             </section>
 
             {/* File uploads */}
-            <section
-              className={[
-                "rounded-2xl border p-4 sm:p-5",
-                COPPER.border,
-                COPPER.glass,
-                COPPER.glassInset,
-                "bg-white/[0.03]",
-              ].join(" ")}
-            >
+            <section className={[THEME.glassCard, "p-4 sm:p-5"].join(" ")}>
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className={`text-sm font-semibold ${COPPER.text}`}>
-                    Upload what you already have (CSV)
+                  <h2 className="text-sm font-semibold text-white">
+                    Upload what you already have{" "}
+                    <span className={THEME.copperText}>(CSV)</span>
                   </h2>
-                  <p className={`text-[11px] ${COPPER.textMuted}`}>
+                  <p className={THEME.help}>
                     Even one export is enough for a meaningful snapshot. More files = better
                     insights.
                   </p>
                 </div>
-                <span
-                  className={[
-                    "rounded-full border px-2 py-0.5 text-[10px]",
-                    COPPER.border,
-                    "bg-white/[0.03]",
-                    COPPER.textSoft,
-                  ].join(" ")}
-                >
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-neutral-300">
                   Step 2 — history
                 </span>
               </div>
@@ -448,9 +415,9 @@ export default function InstantShopAnalysisPage() {
                   onChange={setPartsFile}
                 />
 
-                <p className={`text-[11px] ${COPPER.textMuted}`}>
-                  We use AI to interpret columns, so exports don&apos;t need to be perfect. Data stays
-                  private to your demo shop.
+                <p className={THEME.help}>
+                  We use AI to interpret columns, so exports don&apos;t need to be perfect. Data
+                  stays private to your demo shop.
                 </p>
               </div>
             </section>
@@ -461,45 +428,34 @@ export default function InstantShopAnalysisPage() {
                 type="submit"
                 disabled={runLoading}
                 className={[
-                  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
-                  COPPER.btnGrad,
-                  "hover:brightness-110",
+                  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold shadow-sm transition",
+                  THEME.cta,
+                  THEME.ctaHover,
+                  THEME.ctaDisabled,
                 ].join(" ")}
               >
                 {isAnalyzing ? "Analyzing your shop…" : "Run Instant Shop Analysis"}
               </button>
 
               {step === "analyzing" && (
-                <span
-                  className={[
-                    "rounded-full border px-3 py-1 text-[11px]",
-                    COPPER.border,
-                    "bg-white/[0.03]",
-                    COPPER.textSoft,
-                  ].join(" ")}
-                >
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-neutral-300">
                   Reading your files and building a live Shop Health Snapshot…
                 </span>
               )}
 
-              {runError && <p className="text-xs text-red-400">{runError}</p>}
+              {runError ? <p className="text-xs text-red-400">{runError}</p> : null}
             </div>
           </form>
         </div>
 
         {/* Right column: explainer */}
         <aside className="w-full space-y-4 lg:w-72">
-          <div
-            className={[
-              "rounded-2xl border p-4",
-              COPPER.border,
-              COPPER.glass,
-              COPPER.glassInset,
-              "bg-white/[0.03]",
-            ].join(" ")}
-          >
-            <h3 className={`mb-2 text-sm font-semibold ${COPPER.text}`}>How this demo works</h3>
-            <ol className={`space-y-1 text-[11px] ${COPPER.textMuted}`}>
+          <div className={[THEME.glassCard, "p-4"].join(" ")}>
+            <h3 className="mb-2 text-sm font-semibold text-white">
+              How this demo{" "}
+              <span className={THEME.copperText}>works</span>
+            </h3>
+            <ol className="space-y-1 text-[11px] text-neutral-400">
               <li>1. You upload a couple of CSV exports (no login).</li>
               <li>2. ProFixIQ analyzes your history with AI.</li>
               <li>3. We build a Shop Health Snapshot just for your shop.</li>
@@ -507,17 +463,12 @@ export default function InstantShopAnalysisPage() {
             </ol>
           </div>
 
-          <div
-            className={[
-              "rounded-2xl border p-4",
-              COPPER.border,
-              COPPER.glass,
-              COPPER.glassInset,
-              "bg-white/[0.03]",
-            ].join(" ")}
-          >
-            <h3 className={`mb-2 text-sm font-semibold ${COPPER.text}`}>What you&apos;ll see</h3>
-            <ul className={`space-y-1 text-[11px] ${COPPER.textMuted}`}>
+          <div className={[THEME.glassCard, "p-4"].join(" ")}>
+            <h3 className="mb-2 text-sm font-semibold text-white">
+              What you&apos;ll{" "}
+              <span className={THEME.copperText}>see</span>
+            </h3>
+            <ul className="space-y-1 text-[11px] text-neutral-400">
               <li>• Top repairs by volume and revenue</li>
               <li>• Potential comeback / warranty risks</li>
               <li>• Fleet opportunities (if you work on fleets)</li>
@@ -548,19 +499,18 @@ export default function InstantShopAnalysisPage() {
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                   <div
                     className={[
-                      "pointer-events-auto max-w-md rounded-2xl border px-5 py-4 text-center",
-                      COPPER.borderStrong,
-                      COPPER.glass,
-                      COPPER.glassInset,
-                      "bg-black/70",
+                      "pointer-events-auto max-w-md rounded-2xl border border-white/15 bg-black/70 px-5 py-4 text-center backdrop-blur-xl",
+                      "shadow-[0_18px_45px_rgba(0,0,0,0.75)]",
+                      "shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
                     ].join(" ")}
                   >
-                    <p className={`text-xs font-semibold ${COPPER.text}`}>
-                      See your strengths — enter email to reveal insights
+                    <p className="text-xs font-semibold text-white">
+                      See your strengths —{" "}
+                      <span className={THEME.copperText}>enter email</span> to reveal insights
                     </p>
-                    <p className={`mt-1 text-[11px] ${COPPER.textMuted}`}>
-                      We&apos;ll show your full AI snapshot and send you a copy so you can revisit it
-                      later. One free analysis per email.
+                    <p className="mt-1 text-[11px] text-neutral-400">
+                      We&apos;ll show your full AI snapshot and send you a copy so you can revisit
+                      it later. One free analysis per email.
                     </p>
 
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -570,11 +520,7 @@ export default function InstantShopAnalysisPage() {
                         onChange={(event) => setEmail(event.target.value)}
                         placeholder="you@example.com"
                         className={[
-                          "flex-1 rounded-md border px-3 py-1.5 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none",
-                          COPPER.border,
-                          "bg-black/40",
-                          "focus:ring-1 focus:ring-[rgba(214,176,150,0.25)]",
-                          "focus:border-[rgba(214,176,150,0.70)]",
+                          "flex-1 rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20",
                         ].join(" ")}
                       />
 
@@ -583,18 +529,19 @@ export default function InstantShopAnalysisPage() {
                         onClick={handleClaim}
                         disabled={claimLoading}
                         className={[
-                          "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold text-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
-                          COPPER.btnGrad,
-                          "hover:brightness-110",
+                          "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
+                          THEME.cta,
+                          THEME.ctaHover,
+                          THEME.ctaDisabled,
                         ].join(" ")}
                       >
                         {claimLoading ? "Unlocking…" : "Unlock my analysis"}
                       </button>
                     </div>
 
-                    {claimError && (
+                    {claimError ? (
                       <p className="mt-2 text-[11px] text-red-400">{claimError}</p>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -602,18 +549,13 @@ export default function InstantShopAnalysisPage() {
 
             {/* Post-unlock CTAs (PLAN-GATED) */}
             {step === "unlocked" && (
-              <div
-                className={[
-                  "mt-4 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3",
-                  COPPER.border,
-                  COPPER.glass,
-                  COPPER.glassInset,
-                  "bg-white/[0.03]",
-                ].join(" ")}
-              >
+              <div className={[THEME.glassCard, "mt-4 flex flex-wrap items-center gap-3 px-4 py-3"].join(" ")}>
                 <div className="flex-1 text-[11px]">
-                  <p className={`font-semibold ${COPPER.text}`}>Want this live inside ProFixIQ?</p>
-                  <p className={`mt-0.5 text-[11px] ${COPPER.textMuted}`}>
+                  <p className="font-semibold text-white">
+                    Want this live inside{" "}
+                    <span className={THEME.copperText}>ProFixIQ</span>?
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-neutral-400">
                     Choose a plan to continue — we don&apos;t create accounts without a plan.
                   </p>
                 </div>
@@ -623,24 +565,15 @@ export default function InstantShopAnalysisPage() {
                     type="button"
                     onClick={goToPlans}
                     className={[
-                      "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold text-black shadow-sm transition",
-                      COPPER.btnGrad,
-                      "hover:brightness-110",
+                      "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
+                      THEME.cta,
+                      THEME.ctaHover,
                     ].join(" ")}
                   >
                     Choose a plan to continue
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={goToPlans}
-                    className={[
-                      "inline-flex items-center justify-center rounded-md border bg-black/40 px-4 py-1.5 text-xs font-semibold transition",
-                      COPPER.border,
-                      COPPER.text,
-                      "hover:border-[rgba(214,176,150,0.55)] hover:bg-white/[0.03]",
-                    ].join(" ")}
-                  >
+                  <button type="button" onClick={goToPlans} className={THEME.subtleBtn}>
                     View plans &amp; pricing
                   </button>
                 </div>
@@ -662,19 +595,13 @@ type NumberInputProps = {
 function NumberInput({ label, value, onChange }: NumberInputProps) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] text-[rgba(214,176,150,0.75)]">{label}</label>
+      <label className="text-[11px] font-medium text-neutral-300">{label}</label>
       <input
         type="number"
         min={0}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={[
-          "w-full rounded-md border px-3 py-2 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none",
-          "border-[rgba(150,92,60,0.35)]",
-          "bg-black/40",
-          "focus:ring-1 focus:ring-[rgba(214,176,150,0.25)]",
-          "focus:border-[rgba(214,176,150,0.70)]",
-        ].join(" ")}
+        className="w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20"
       />
     </div>
   );
@@ -688,9 +615,9 @@ type YesNoRowProps = {
 
 function YesNoRow({ label, value, onChange }: YesNoRowProps) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-[rgba(150,92,60,0.25)] bg-white/[0.03] px-3 py-2">
-      <p className="text-[11px] text-[rgba(230,230,230,0.90)]">{label}</p>
-      <div className="inline-flex gap-1 rounded-full border border-[rgba(150,92,60,0.25)] bg-black/40 p-1 text-[10px]">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+      <p className="text-[11px] text-neutral-200">{label}</p>
+      <div className="inline-flex gap-1 rounded-full border border-white/10 bg-black/40 p-1 text-[10px]">
         <button
           type="button"
           onClick={() => onChange(true)}
@@ -698,7 +625,7 @@ function YesNoRow({ label, value, onChange }: YesNoRowProps) {
             "rounded-full px-2 py-0.5 transition",
             value
               ? "bg-[rgba(214,176,150,0.90)] text-black"
-              : "text-[rgba(230,230,230,0.80)] hover:text-white",
+              : "text-neutral-300 hover:text-white",
           ].join(" ")}
         >
           Yes
@@ -709,8 +636,8 @@ function YesNoRow({ label, value, onChange }: YesNoRowProps) {
           className={[
             "rounded-full px-2 py-0.5 transition",
             !value
-              ? "bg-white/[0.08] text-[rgba(245,245,245,0.92)]"
-              : "text-[rgba(230,230,230,0.80)] hover:text-white",
+              ? "bg-white/[0.08] text-white"
+              : "text-neutral-300 hover:text-white",
           ].join(" ")}
         >
           No
@@ -731,17 +658,17 @@ type FileRowProps = {
 
 function FileRow({ id, label, description, file, accept, onChange }: FileRowProps) {
   return (
-    <div className="space-y-1 rounded-xl border border-[rgba(150,92,60,0.25)] bg-white/[0.03] px-3 py-2">
+    <div className="space-y-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-[11px] text-[rgba(230,230,230,0.90)]">{label}</p>
-          <p className="text-[10px] text-[rgba(210,210,210,0.70)]">{description}</p>
+          <p className="text-[11px] text-neutral-200">{label}</p>
+          <p className="text-[10px] text-neutral-400">{description}</p>
         </div>
-        {file && (
+        {file ? (
           <span className="max-w-[160px] truncate text-[10px] text-[rgba(214,176,150,0.75)]">
             {file.name}
           </span>
-        )}
+        ) : null}
       </div>
 
       <div className="flex items-center gap-3">
@@ -749,10 +676,8 @@ function FileRow({ id, label, description, file, accept, onChange }: FileRowProp
           htmlFor={id}
           className={[
             "inline-flex cursor-pointer items-center rounded-md border px-3 py-1.5 text-[11px] font-semibold transition",
-            "border-[rgba(150,92,60,0.35)]",
-            "bg-black/40",
-            "text-[rgba(214,176,150,0.95)]",
-            "hover:border-[rgba(214,176,150,0.55)] hover:bg-white/[0.03]",
+            "border-white/10 bg-black/40 text-[rgba(214,176,150,0.95)]",
+            "hover:border-white/20 hover:bg-white/[0.04]",
           ].join(" ")}
         >
           Choose CSV
@@ -767,11 +692,11 @@ function FileRow({ id, label, description, file, accept, onChange }: FileRowProp
             onChange(selectedFile);
           }}
         />
-        {!file && (
-          <span className="text-[10px] text-[rgba(210,210,210,0.65)]">
+        {!file ? (
+          <span className="text-[10px] text-neutral-500">
             Optional, but highly recommended
           </span>
-        )}
+        ) : null}
       </div>
     </div>
   );
