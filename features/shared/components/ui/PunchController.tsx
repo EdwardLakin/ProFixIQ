@@ -11,6 +11,7 @@ type DB = Database;
 
 type TechShiftRow = DB["public"]["Tables"]["tech_shifts"]["Row"];
 type TechShiftInsert = DB["public"]["Tables"]["tech_shifts"]["Insert"];
+type TechShiftUpdate = DB["public"]["Tables"]["tech_shifts"]["Update"];
 
 type PunchEventInsert = DB["public"]["Tables"]["punch_events"]["Insert"];
 type WorkOrderLineUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
@@ -89,7 +90,8 @@ export default function PunchController(): JSX.Element {
       .from("tech_shifts")
       .select("*")
       .eq("user_id", uid)
-      .eq("status", "open" as unknown as PunchType) // cast to avoid enum/type mismatch in generated types
+      // NOTE: avoid incorrect cast to PunchType (was a bug)
+      .eq("status", "open" as unknown as TechShiftRow["status"])
       .order("start_time", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -185,6 +187,7 @@ export default function PunchController(): JSX.Element {
       }
 
       // ✅ DB constraint expects status: 'open' | 'closed'
+      // ✅ and type: 'shift' | 'break' | 'lunch'
       const base: TechShiftInsert = {
         user_id: userId,
         start_time: nowIso, // ok even if DB has default now()
@@ -201,7 +204,7 @@ export default function PunchController(): JSX.Element {
         return;
       }
 
-      // Retry without type (in case column name differs or doesn't exist)
+      // Retry without type (in case column differs or doesn't exist)
       const retryNoType = { ...base } as Record<string, unknown>;
       delete retryNoType.type;
 
@@ -243,12 +246,14 @@ export default function PunchController(): JSX.Element {
       await punchOutOfActiveJobsForTech(userId);
 
       // ✅ DB constraint expects 'closed' on punch out
+      const update: TechShiftUpdate = {
+        end_time: nowIso,
+        status: "closed" as unknown as ShiftStatusDb,
+      };
+
       const { error: updErr } = await supabase
         .from("tech_shifts")
-        .update({
-          end_time: nowIso,
-          status: "closed" as unknown as ShiftStatusDb,
-        })
+        .update(update)
         .eq("id", activeShift.id);
 
       if (updErr) throw new Error(updErr.message);
