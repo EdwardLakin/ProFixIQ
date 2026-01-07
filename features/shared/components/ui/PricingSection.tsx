@@ -1,11 +1,9 @@
 "use client";
 
 import type { FC } from "react";
+import { useState } from "react";
 import { Check } from "lucide-react";
-import {
-  PRICE_IDS,
-  type PlanKey,
-} from "@/features/stripe/lib/stripe/constants";
+import { PRICE_IDS, type PlanKey } from "@/features/stripe/lib/stripe/constants";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -74,109 +72,124 @@ const plans: PricingPlan[] = [
 /* Component                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const PricingSection: FC<PricingSectionProps> = ({
-  onCheckout,
-}) => {
+const PricingSection: FC<PricingSectionProps> = ({ onCheckout }) => {
   const interval: BillingInterval = "monthly";
+  const [busyKey, setBusyKey] = useState<PlanKey | null>(null);
 
   const pickPriceId = (key: PlanKey) => PRICE_IDS[key].monthly;
+
+  async function handlePlanClick(key: PlanKey) {
+    if (busyKey) return;
+    setBusyKey(key);
+
+    try {
+      await onCheckout({
+        priceId: pickPriceId(key),
+        interval,
+      });
+    } catch (err) {
+      // Make failures visible during testing instead of “nothing happens”
+      console.error("[PricingSection] checkout failed", err);
+      alert("Checkout failed. Check console/network for details.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   return (
     <div className="w-full">
       {/* Intro */}
       <div className="mx-auto mb-8 max-w-3xl text-center">
         <p className="text-sm text-neutral-300">
-          No feature gating. HD inspections, fleet programs, portal and AI
-          are included from day one.
+          No feature gating. HD inspections, fleet programs, portal and AI are
+          included from day one.
         </p>
         <p className="mt-2 text-xs text-neutral-500">
           Onboarding available — pricing finalizes at checkout.
         </p>
-
-        
       </div>
 
       {/* Plans */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {plans.map((p) => (
-          <div
-            key={p.key}
-            className={[
-              "rounded-3xl border bg-black/30 p-6 backdrop-blur-xl transition",
-              p.featured
-                ? "border-[color:var(--accent-copper)]/45 shadow-[0_0_40px_rgba(212,118,49,0.18)]"
-                : "border-[color:var(--metal-border-soft)]",
-            ].join(" ")}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3
-                  className="text-xl text-white"
-                  style={{ fontFamily: "var(--font-blackops)" }}
-                >
-                  {p.title}
-                </h3>
-                <p className="mt-1 text-sm text-neutral-400">{p.desc}</p>
-              </div>
+        {plans.map((p) => {
+          const isBusy = busyKey === p.key;
 
-              {p.featured ? (
-                <span
-                  className="rounded-full border px-3 py-1 text-xs font-semibold"
-                  style={{
-                    borderColor: "rgba(255,255,255,0.12)",
-                    backgroundColor: "rgba(193,102,59,0.16)",
-                    color: "var(--accent-copper-light)",
-                  }}
-                >
-                  Most popular
-                </span>
-              ) : null}
-            </div>
-
-            {/* Price */}
-            <div className="mt-5 flex items-baseline gap-2">
-              <div
-                className="text-3xl font-bold"
-                style={{ color: "var(--accent-copper-light)" }}
-              >
-                {p.priceLabel}
-              </div>
-            </div>
-
-            {/* Features */}
-            <ul className="mt-5 space-y-2 text-sm text-neutral-200">
-              {p.features.map((f) => (
-                <li key={f} className="flex items-start gap-2">
-                  <Check
-                    size={16}
-                    className="mt-0.5"
-                    style={{ color: COPPER }}
-                  />
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-
-            {/* CTA */}
-            <button
-              onClick={() =>
-                onCheckout({
-                  priceId: pickPriceId(p.key),
-                  interval,
-                })
-              }
-              className="mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold text-black transition hover:opacity-95"
-              style={{ backgroundColor: COPPER }}
+          return (
+            <div
+              key={p.key}
+              className={[
+                "rounded-3xl border bg-black/30 p-6 backdrop-blur-xl transition",
+                p.featured
+                  ? "border-[color:var(--accent-copper)]/45 shadow-[0_0_40px_rgba(212,118,49,0.18)]"
+                  : "border-[color:var(--metal-border-soft)]",
+              ].join(" ")}
             >
-              {p.cta}
-            </button>
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3
+                    className="text-xl text-white"
+                    style={{ fontFamily: "var(--font-blackops)" }}
+                  >
+                    {p.title}
+                  </h3>
+                  <p className="mt-1 text-sm text-neutral-400">{p.desc}</p>
+                </div>
 
-            <p className="mt-3 text-xs text-neutral-500">
-              Taxes billed per your Stripe setup. Cancel anytime.
-            </p>
-          </div>
-        ))}
+                {p.featured ? (
+                  <span
+                    className="rounded-full border px-3 py-1 text-xs font-semibold"
+                    style={{
+                      borderColor: "rgba(255,255,255,0.12)",
+                      backgroundColor: "rgba(193,102,59,0.16)",
+                      color: "var(--accent-copper-light)",
+                    }}
+                  >
+                    Most popular
+                  </span>
+                ) : null}
+              </div>
+
+              {/* Price */}
+              <div className="mt-5 flex items-baseline gap-2">
+                <div
+                  className="text-3xl font-bold"
+                  style={{ color: "var(--accent-copper-light)" }}
+                >
+                  {p.priceLabel}
+                </div>
+              </div>
+
+              {/* Features */}
+              <ul className="mt-5 space-y-2 text-sm text-neutral-200">
+                {p.features.map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <Check size={16} className="mt-0.5" style={{ color: COPPER }} />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* CTA */}
+              <button
+                type="button"
+                onClick={() => void handlePlanClick(p.key)}
+                disabled={Boolean(busyKey)}
+                className={[
+                  "mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold text-black transition hover:opacity-95",
+                  "disabled:opacity-60 disabled:cursor-not-allowed",
+                ].join(" ")}
+                style={{ backgroundColor: COPPER }}
+              >
+                {isBusy ? "Starting…" : p.cta}
+              </button>
+
+              <p className="mt-3 text-xs text-neutral-500">
+                Taxes billed per your Stripe setup. Cancel anytime.
+              </p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
