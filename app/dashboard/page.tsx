@@ -1,3 +1,5 @@
+//app/dashboard/page.tsx
+
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -18,11 +20,20 @@ type CountState = {
   partsRequests: number | null;
 };
 
+const CLOSED_PART_STATUSES = ["fulfilled", "rejected", "cancelled"] as const;
+
+function isTechRole(role: string | null): boolean {
+  const r = (role ?? "").toLowerCase();
+  return r === "tech" || r === "mechanic" || r === "technician";
+}
+
+function canViewShopHealth(role: string | null): boolean {
+  const r = (role ?? "").toLowerCase();
+  return r === "owner" || r === "admin" || r === "advisor" || r === "manager";
+}
+
 export default function DashboardPage() {
-  const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
-    [],
-  );
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [name, setName] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
@@ -39,8 +50,9 @@ export default function DashboardPage() {
   const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
   const [currentJobWorkOrder, setCurrentJobWorkOrder] =
     useState<WorkOrder | null>(null);
-  const [currentJobVehicle, setCurrentJobVehicle] =
-    useState<Vehicle | null>(null);
+  const [currentJobVehicle, setCurrentJobVehicle] = useState<Vehicle | null>(
+    null,
+  );
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
 
   // fetch profile + user id
@@ -66,19 +78,66 @@ export default function DashboardPage() {
     })();
   }, [supabase]);
 
-  // fetch the 3 counts
+  /* ---------------------------------------------------------------------- */
+  /* Counts (role-aware + shop-aware)                                       */
+  /* ---------------------------------------------------------------------- */
+
   useEffect(() => {
+    if (!userId) return;
+    if (!shopId) return;
+
     (async () => {
+      const tech = isTechRole(role);
+
+      // Default "…" while loading
+      setCounts({
+        appointments: null,
+        workOrders: null,
+        partsRequests: null,
+      });
+
+      if (tech) {
+        // TECH DASHBOARD COUNTS
+        // - workOrders: count of non-completed assigned lines
+        // - partsRequests: count of open part requests involving me (requested_by OR assigned_to)
+        const [myJobs, myParts] = await Promise.all([
+          supabase
+            .from("work_order_lines")
+            .select("id", { count: "exact", head: true })
+            .eq("assigned_to", userId)
+            .not("status", "in", "(completed,ready_to_invoice,invoiced)"),
+          supabase
+            .from("part_requests")
+            .select("id", { count: "exact", head: true })
+            .eq("shop_id", shopId)
+            .not("status", "in", `(${CLOSED_PART_STATUSES.join(",")})`)
+            .or(`requested_by.eq.${userId},assigned_to.eq.${userId}`),
+        ]);
+
+        setCounts({
+          appointments: 0, // tech doesn't need appointment count; keep simple
+          workOrders: myJobs.error ? 0 : myJobs.count ?? 0,
+          partsRequests: myParts.error ? 0 : myParts.count ?? 0,
+        });
+
+        return;
+      }
+
+      // SHOP DASHBOARD COUNTS (owner/admin/advisor/manager)
       const [appt, wo, parts] = await Promise.all([
         supabase
           .from("bookings")
-          .select("id", { count: "exact", head: true }),
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", shopId),
         supabase
           .from("work_orders")
-          .select("id", { count: "exact", head: true }),
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", shopId),
         supabase
-          .from("parts_requests")
-          .select("id", { count: "exact", head: true }),
+          .from("part_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", shopId)
+          .not("status", "in", `(${CLOSED_PART_STATUSES.join(",")})`),
       ]);
 
       setCounts({
@@ -87,7 +146,7 @@ export default function DashboardPage() {
         partsRequests: parts.error ? 0 : parts.count ?? 0,
       });
     })();
-  }, [supabase]);
+  }, [supabase, userId, shopId, role]);
 
   /* ---------------------------------------------------------------------- */
   /* Current job – job this user is actively punched in on                  */
@@ -107,7 +166,7 @@ export default function DashboardPage() {
         const { data, error } = await supabase
           .from("work_order_lines")
           .select(
-            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_to",
+            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_to, status",
           )
           .eq("assigned_to", uid)
           .not("punched_in_at", "is", null)
@@ -117,7 +176,6 @@ export default function DashboardPage() {
           .maybeSingle();
 
         if (error) {
-          // eslint-disable-next-line no-console
           console.error("[Dashboard] current job load error:", error);
           setCurrentJob(null);
           setCurrentJobWorkOrder(null);
@@ -180,12 +238,8 @@ export default function DashboardPage() {
 
   const firstName = name ? name.split(" ")[0] : null;
 
-  const isTechRole =
-    role === "tech" || role === "mechanic" || role === "technician";
-
-  // Who can see shop-level health snapshot on dashboard
-  const canViewShopHealth =
-    role === "owner" || role === "admin" || role === "advisor" || role === "manager";
+  const tech = isTechRole(role);
+  const showShopHealth = canViewShopHealth(role);
 
   return (
     <div className="relative space-y-8 fade-in">
@@ -202,16 +256,16 @@ export default function DashboardPage() {
             {firstName ? `Welcome back, ${firstName} 👋` : "Welcome 👋"}
           </h1>
           <p className="mt-1 text-sm text-neutral-400">
-            Here’s a quick view of what matters today in your shop.
+            Here’s a quick view of what matters today.
           </p>
         </div>
       </section>
 
       {/* Shop Boost / Health Snapshot (owner/admin/advisor/manager) */}
-      <ShopBoostWidget shopId={shopId} canViewShopHealth={canViewShopHealth} />
+      <ShopBoostWidget shopId={shopId} canViewShopHealth={showShopHealth} />
 
       {/* active job pill – only for tech/mechanic roles */}
-      {isTechRole && (
+      {tech && (
         <section>
           <ActiveJobCard
             loading={loadingCurrentJob}
@@ -224,34 +278,71 @@ export default function DashboardPage() {
 
       {/* overview cards */}
       <section className="grid gap-4 md:grid-cols-4">
-        <OverviewCard
-          title="Today’s appointments"
-          value={counts.appointments === null ? "…" : String(counts.appointments)}
-          href="/portal/appointments"
-        />
-        <OverviewCard
-          title="Open work orders"
-          value={counts.workOrders === null ? "…" : String(counts.workOrders)}
-          href="/work-orders/view"
-        />
-        <OverviewCard
-          title="Parts requests"
-          value={counts.partsRequests === null ? "…" : String(counts.partsRequests)}
-          href="/parts/requests"
-        />
-        <OverviewCard title="Team chat" value="Open" href="/chat" />
+        {tech ? (
+          <>
+            <OverviewCard
+              title="My assigned jobs"
+              value={counts.workOrders === null ? "…" : String(counts.workOrders)}
+              href="/tech/queue"
+            />
+            <OverviewCard
+              title="My parts requests"
+              value={
+                counts.partsRequests === null ? "…" : String(counts.partsRequests)
+              }
+              href="/parts/requests?mine=1"
+            />
+            <OverviewCard title="Team chat" value="Open" href="/chat" />
+            <OverviewCard title="AI assistant" value="Open" href="/ai/assistant" />
+          </>
+        ) : (
+          <>
+            <OverviewCard
+              title="Today’s appointments"
+              value={
+                counts.appointments === null ? "…" : String(counts.appointments)
+              }
+              href="/portal/appointments"
+            />
+            <OverviewCard
+              title="Open work orders"
+              value={counts.workOrders === null ? "…" : String(counts.workOrders)}
+              href="/work-orders/view"
+            />
+            <OverviewCard
+              title="Parts requests"
+              value={
+                counts.partsRequests === null ? "…" : String(counts.partsRequests)
+              }
+              href="/parts/requests"
+            />
+            <OverviewCard title="Team chat" value="Open" href="/chat" />
+          </>
+        )}
       </section>
 
       {/* quick actions */}
       <section className="space-y-3">
         <h2 className="text-sm font-medium text-neutral-300">Quick actions</h2>
         <div className="flex flex-wrap gap-3">
-          <QuickButton href="/work-orders/create?autostart=1">New work order</QuickButton>
-          <QuickButton href="/portal/appointments">Appointments</QuickButton>
-          <QuickButton href="/ai/assistant">AI assistant</QuickButton>
-          {role === "owner" || role === "admin" ? (
-            <QuickButton href="/dashboard/owner/reports">Reports</QuickButton>
-          ) : null}
+          {tech ? (
+            <>
+              <QuickButton href="/tech/queue">My job queue</QuickButton>
+              <QuickButton href="/parts/requests?mine=1">My parts requests</QuickButton>
+              <QuickButton href="/ai/assistant">AI assistant</QuickButton>
+            </>
+          ) : (
+            <>
+              <QuickButton href="/work-orders/create?autostart=1">
+                New work order
+              </QuickButton>
+              <QuickButton href="/portal/appointments">Appointments</QuickButton>
+              <QuickButton href="/ai/assistant">AI assistant</QuickButton>
+              {role === "owner" || role === "admin" ? (
+                <QuickButton href="/dashboard/owner/reports">Reports</QuickButton>
+              ) : null}
+            </>
+          )}
         </div>
       </section>
     </div>
@@ -314,8 +405,8 @@ function ActiveJobCard({
 
   const woLabel = workOrder.custom_id || workOrder.id.slice(0, 8);
 
-  // include line id so the job page can focus that line
-  const href = `/work-orders/${workOrder.id}?focus=${job.id}`;
+  // always use the UUID id route
+  const href = `/work-orders/${workOrder.id}?focus=${job.id}&mode=tech`;
 
   return (
     <Link

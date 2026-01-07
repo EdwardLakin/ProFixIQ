@@ -10,17 +10,24 @@ type DB = Database;
 
 export const runtime = "nodejs";
 
-/* ------------------------- GET ------------------------- */
+type PostBody = {
+  workOrderId?: string;
+};
 
+function normalizeWorkOrderId(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length > 0 ? t : null;
+}
+
+/* ------------------------- GET ------------------------- */
+/** Fetch cached suggestions */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const workOrderId = url.searchParams.get("workOrderId");
+  const workOrderId = normalizeWorkOrderId(url.searchParams.get("workOrderId"));
 
   if (!workOrderId) {
-    return NextResponse.json(
-      { error: "Missing workOrderId" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Missing workOrderId" }, { status: 400 });
   }
 
   const supabase = createServerComponentClient<DB>({ cookies });
@@ -40,16 +47,13 @@ export async function GET(req: Request) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   if (!data) {
     return NextResponse.json(
       { status: "empty", suggestions: [] },
-      { status: 200 }
+      { status: 200 },
     );
   }
 
@@ -58,37 +62,26 @@ export async function GET(req: Request) {
     suggestions: data.suggestions ?? [],
     mileage_km: data.mileage_km,
     error_message: data.error_message,
+    created_at: data.created_at,
+    updated_at: data.updated_at,
   });
 }
 
 /* ------------------------- POST ------------------------- */
-
-type PostBody = {
-  workOrderId?: string;
-};
-
+/** Compute + cache suggestions */
 export async function POST(req: Request) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
   let body: PostBody = {};
-
-  // Safely parse once
   try {
     body = (await req.json()) as PostBody;
   } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const workOrderId = body.workOrderId;
-
+  const workOrderId = normalizeWorkOrderId(body.workOrderId);
   if (!workOrderId) {
-    return NextResponse.json(
-      { error: "Missing workOrderId" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Missing workOrderId" }, { status: 400 });
   }
 
   const {
@@ -100,7 +93,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Mark as pending
+    // mark pending (best effort)
     const { error: upsertErr } = await supabase
       .from("maintenance_suggestions")
       .upsert(
@@ -109,32 +102,23 @@ export async function POST(req: Request) {
           status: "pending",
           error_message: null,
         },
-        { onConflict: "work_order_id" }
+        { onConflict: "work_order_id" },
       );
 
     if (upsertErr) {
-      return NextResponse.json(
-        { error: upsertErr.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: upsertErr.message }, { status: 500 });
     }
 
-    // Compute immediately
-    const { suggestions } =
-      await computeMaintenanceSuggestionsForWorkOrder({
-        supabase,
-        workOrderId,
-      });
-
-    return NextResponse.json({
-      status: "ready",
-      suggestions,
+    const { suggestions } = await computeMaintenanceSuggestionsForWorkOrder({
+      supabase,
+      workOrderId,
     });
+
+    return NextResponse.json({ status: "ready", suggestions });
   } catch (e) {
     const errorMessage =
       e instanceof Error ? e.message : "Failed to compute suggestions";
 
-    // Best effort update
     await supabase
       .from("maintenance_suggestions")
       .upsert(
@@ -143,12 +127,9 @@ export async function POST(req: Request) {
           status: "error",
           error_message: errorMessage,
         },
-        { onConflict: "work_order_id" }
+        { onConflict: "work_order_id" },
       );
 
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

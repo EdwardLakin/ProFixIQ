@@ -48,7 +48,6 @@ export default function JobPunchButton({
     const msg = String(err.message ?? "");
     const msgLc = msg.toLowerCase();
 
-    // PostgREST schema cache / function signature mismatch
     if (
       msgLc.includes("schema cache") ||
       msgLc.includes("could not find the function")
@@ -57,11 +56,8 @@ export default function JobPunchButton({
       return true;
     }
 
-    // Auth / permission style errors
     if (err.code === "28000" || msgLc.includes("not assigned")) {
-      toast.error(
-        "This job is assigned to another tech. Ask a manager to reassign it.",
-      );
+      toast.error("This job is assigned to another tech. Ask a manager to reassign it.");
       return true;
     }
     if (msgLc.includes("forbidden") || msgLc.includes("not allowed")) {
@@ -69,7 +65,6 @@ export default function JobPunchButton({
       return true;
     }
 
-    // One-active-job constraint (if you enforce it)
     if (
       err.code === "23505" ||
       msgLc.includes("another active job") ||
@@ -82,36 +77,46 @@ export default function JobPunchButton({
     return false;
   };
 
+  async function rpcAnyArgs(
+    fn: string,
+    args: Record<string, unknown>,
+  ): Promise<{ error?: RpcErrorLike | null }> {
+    // typed call first
+    const res = await (supabase as unknown as { rpc: Function }).rpc(fn, args);
+    return res ?? { error: { message: "RPC call failed" } };
+  }
+
   async function punchInRpc(): Promise<
     { ok: true } | { ok: false; error: RpcErrorLike }
   > {
-    /**
-     * ✅ Fix for Vercel build error:
-     * Your generated Supabase types currently expect the argument name `p_line_id`
-     * (not `line_id`). So we call with `p_line_id` first (typed), then fall back
-     * to `line_id` (untyped) in case PostgREST is temporarily out of sync.
-     */
-    const first = await supabase.rpc("punch_in", { p_line_id: lineId });
-
-    if (!first.error) return { ok: true };
-
-    const msg = String(first.error.message ?? "").toLowerCase();
-    const looksLikeArgMismatch =
-      msg.includes("schema cache") ||
-      msg.includes("could not find the function") ||
-      msg.includes("function public.punch_in") ||
-      msg.includes("does not exist");
-
-    if (!looksLikeArgMismatch) return { ok: false, error: first.error };
-
-    // Fallback attempt (ignore TS on purpose)
-    const second = await (supabase as unknown as { rpc: Function }).rpc(
-      "punch_in",
+    // Try common arg names in order (handles schema drift)
+    const tries: Record<string, unknown>[] = [
+      { p_line_id: lineId },
       { line_id: lineId },
-    );
+      { p_job_id: lineId },
+      { job_id: lineId },
+    ];
 
-    if (!second?.error) return { ok: true };
-    return { ok: false, error: second.error as RpcErrorLike };
+    let lastErr: RpcErrorLike = { message: "Start failed" };
+
+    for (const args of tries) {
+      const res = await rpcAnyArgs("punch_in", args);
+      if (!res.error) return { ok: true };
+
+      lastErr = res.error ?? lastErr;
+
+      // If it’s a “hard” error (permission/constraint), don’t keep retrying
+      const msgLc = String(lastErr.message ?? "").toLowerCase();
+      const hard =
+        msgLc.includes("not allowed") ||
+        msgLc.includes("forbidden") ||
+        msgLc.includes("not assigned") ||
+        msgLc.includes("permission") ||
+        msgLc.includes("rls");
+      if (hard) break;
+    }
+
+    return { ok: false, error: lastErr };
   }
 
   const start = async () => {
@@ -167,7 +172,11 @@ export default function JobPunchButton({
     if (busy || effectiveDisabled) return;
 
     if (isStarted) {
-      onFinishRequested?.();
+      if (!onFinishRequested) {
+        toast.error("Finish flow is not wired on this page.");
+        return;
+      }
+      onFinishRequested();
       showFlash("finished");
       return;
     }
@@ -183,7 +192,6 @@ export default function JobPunchButton({
         ? "On hold"
         : "Start job";
 
-  // ✅ Force visible styles for Start (green), without depending on Button variants
   const startClasses =
     "bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500 hover:border-emerald-400 focus-visible:ring-emerald-400";
   const finishClasses =

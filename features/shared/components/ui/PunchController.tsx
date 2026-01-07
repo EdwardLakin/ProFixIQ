@@ -26,6 +26,8 @@ export default function PunchController(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [shopId, setShopId] = useState<string | null>(null);
+
   const [activeShift, setActiveShift] = useState<TechShiftRow | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -33,11 +35,10 @@ export default function PunchController(): JSX.Element {
   useEffect(() => {
     if (activeShift) document.body.classList.add("on-shift");
     else document.body.classList.remove("on-shift");
-
     return () => document.body.classList.remove("on-shift");
   }, [activeShift]);
 
-  // bootstrap: auth + current open shift
+  // bootstrap: auth + shop + current open shift
   useEffect(() => {
     (async () => {
       const {
@@ -48,13 +49,38 @@ export default function PunchController(): JSX.Element {
       if (error || !user) return;
 
       setUserId(user.id);
+
+      // load shop_id (needed for RLS scoping + tech_shifts insert)
+      const { data: profile, error: profErr } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profErr) {
+        console.error("[PunchController] profile load error:", profErr);
+      }
+
+      const sid = (profile?.shop_id as string | null) ?? null;
+      setShopId(sid);
+
+      if (sid) {
+        // ensure session shop scope (if your RLS depends on it)
+        const { error: scopeErr } = await supabase.rpc("set_current_shop_id", {
+          p_shop_id: sid,
+        });
+        if (scopeErr) {
+          // non-fatal, but punch-in may fail if RLS requires scope
+          console.warn("[PunchController] set_current_shop_id failed:", scopeErr);
+        }
+      }
+
       await refreshShift(user.id);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function refreshShift(uid: string): Promise<void> {
-    // Primary: status = active
     const { data, error } = await supabase
       .from("tech_shifts")
       .select("*")
@@ -69,7 +95,6 @@ export default function PunchController(): JSX.Element {
       return;
     }
 
-    // Fallback: end_time IS NULL
     const { data: fallback, error: fbErr } = await supabase
       .from("tech_shifts")
       .select("*")
@@ -98,12 +123,11 @@ export default function PunchController(): JSX.Element {
     const { error } = await supabase
       .from("work_order_lines")
       .update(update)
-      .or(`assigned_tech_id.eq.${uid},assigned_to.eq.${uid}`)
-      .eq("status", "in_progress")
+      .eq("assigned_to", uid)
+      .not("punched_in_at", "is", null)
       .is("punched_out_at", null);
 
     if (error) {
-      // log but don't block shift punch-out
       console.error("[PunchController] failed to punch out active jobs:", error);
     }
   }
@@ -117,14 +141,25 @@ export default function PunchController(): JSX.Element {
       shift_id: shiftId,
       event_type: type,
       timestamp: tsIso,
-
-      // Your schema has BOTH; keeping them in sync is safe.
       profile_id: userId ?? null,
       user_id: userId ?? null,
     };
 
     const { error } = await supabase.from("punch_events").insert(ev);
     if (error) console.error("[PunchController] insertPunch failed:", error);
+  }
+
+  async function tryInsertShift(
+    payload: TechShiftInsert,
+  ): Promise<{ ok: true; shift: TechShiftRow } | { ok: false; message: string }> {
+    const { data, error } = await supabase
+      .from("tech_shifts")
+      .insert(payload)
+      .select("*")
+      .single();
+
+    if (!error && data) return { ok: true, shift: data };
+    return { ok: false, message: error?.message ?? "Failed to start shift." };
   }
 
   async function onPunchIn(): Promise<void> {
@@ -134,29 +169,45 @@ export default function PunchController(): JSX.Element {
     try {
       const nowIso = new Date().toISOString();
 
-      // Your tech_shifts has a type CHECK constraint in DB (per your earlier error),
-      // but generated types don’t encode the allowed values.
-      // Send a known-good value:
-      const shiftPayload: TechShiftInsert = {
+      // If your RLS depends on shop scope, do it every time (safe + cheap).
+      if (shopId) {
+        const { error: scopeErr } = await supabase.rpc("set_current_shop_id", {
+          p_shop_id: shopId,
+        });
+        if (scopeErr) {
+          console.warn("[PunchController] set_current_shop_id failed:", scopeErr);
+        }
+      }
+
+      // Attempt #1: include type + shop_id (most common real schema)
+      const base: TechShiftInsert = {
         user_id: userId,
         start_time: nowIso,
         end_time: null,
         status: "active" as ShiftStatus,
         type: "shift",
+        ...(shopId ? { shop_id: shopId } : {}),
       };
 
-      const { data: shift, error: shiftErr } = await supabase
-        .from("tech_shifts")
-        .insert(shiftPayload)
-        .select("*")
-        .single();
-
-      if (shiftErr || !shift) {
-        throw new Error(shiftErr?.message ?? "Failed to start shift.");
+      const first = await tryInsertShift(base);
+      if (first.ok) {
+        await insertPunch(first.shift.id, "start", nowIso);
+        await refreshShift(userId);
+        return;
       }
 
-      await insertPunch(shift.id, "start", nowIso);
-      await refreshShift(userId);
+      // Attempt #2: some DBs reject `type`; retry without it.
+      const retryNoType = { ...base } as Record<string, unknown>;
+      delete retryNoType.type;
+
+      const second = await tryInsertShift(retryNoType as TechShiftInsert);
+      if (second.ok) {
+        await insertPunch(second.shift.id, "start", nowIso);
+        await refreshShift(userId);
+        return;
+      }
+
+      console.error("[PunchController] onPunchIn failed:", first.message);
     } catch (e) {
       console.error("[PunchController] onPunchIn:", safeMsg(e, "Failed to punch in."));
     } finally {

@@ -7,9 +7,7 @@ interface CauseCorrectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   jobId: string;
-  /** Complete job – usually updates cause, correction, status, punched_out_at, etc. */
   onSubmit: (cause: string, correction: string) => Promise<void>;
-  /** Optional: save cause/correction without completing the job */
   onSaveDraft?: (cause: string, correction: string) => Promise<void>;
   initialCause?: string;
   initialCorrection?: string;
@@ -28,12 +26,14 @@ export default function CauseCorrectionModal({
   const [correction, setCorrection] = useState(initialCorrection);
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const causeRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setCause(initialCause);
       setCorrection(initialCorrection);
+      setError(null);
       setTimeout(() => causeRef.current?.focus(), 50);
     }
   }, [isOpen, initialCause, initialCorrection]);
@@ -41,9 +41,12 @@ export default function CauseCorrectionModal({
   const handleSubmit = async () => {
     if (submitting || savingDraft) return;
     setSubmitting(true);
+    setError(null);
     try {
       await onSubmit(cause.trim(), correction.trim());
       onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to complete job.");
     } finally {
       setSubmitting(false);
     }
@@ -52,9 +55,11 @@ export default function CauseCorrectionModal({
   const handleSaveDraft = async () => {
     if (!onSaveDraft || submitting || savingDraft) return;
     setSavingDraft(true);
+    setError(null);
     try {
       await onSaveDraft(cause.trim(), correction.trim());
-      // keep modal open so they can continue / complete later
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save draft.");
     } finally {
       setSavingDraft(false);
     }
@@ -63,34 +68,27 @@ export default function CauseCorrectionModal({
   const busy = submitting || savingDraft;
 
   return (
-    <ModalShell
-      isOpen={isOpen}
-      onClose={onClose}
-      title="COMPLETE JOB"
-      size="md"
-      hideFooter
-    >
-      {/* 🔹 Make inner content scrollable, not the whole screen */}
+    <ModalShell isOpen={isOpen} onClose={onClose} title="COMPLETE JOB" size="md" hideFooter>
       <div
         className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
-        {/* Job meta */}
         <div className="flex items-center justify-between text-[0.7rem] text-neutral-400">
           <div className="flex flex-col gap-0.5">
-            <span className="font-semibold uppercase tracking-[0.18em]">
-              Job ID
-            </span>
-            <span className="font-mono text-[0.7rem] text-neutral-200">
-              {jobId}
-            </span>
+            <span className="font-semibold uppercase tracking-[0.18em]">Job ID</span>
+            <span className="font-mono text-[0.7rem] text-neutral-200">{jobId}</span>
           </div>
           <span className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
             Cause / Correction
           </span>
         </div>
 
-        {/* Cause */}
+        {error && (
+          <div className="rounded-lg border border-red-500/40 bg-red-950/35 px-3 py-2 text-xs text-red-100">
+            {error}
+          </div>
+        )}
+
         <div className="space-y-1">
           <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
             Cause
@@ -105,7 +103,6 @@ export default function CauseCorrectionModal({
           />
         </div>
 
-        {/* Correction */}
         <div className="space-y-1">
           <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
             Correction
@@ -124,23 +121,12 @@ export default function CauseCorrectionModal({
             }}
           />
           <p className="mt-1 text-[0.7rem] text-neutral-500">
-            Press{" "}
-            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
-              Ctrl
-            </kbd>{" "}
-            /{" "}
-            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
-              ⌘
-            </kbd>{" "}
-            +{" "}
-            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
-              Enter
-            </kbd>{" "}
-            to complete the job.
+            Press <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">Ctrl</kbd> /
+            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">⌘</kbd> +
+            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">Enter</kbd> to complete.
           </p>
         </div>
 
-        {/* Footer actions (custom, since we need two primary actions) */}
         <div className="mt-2 flex flex-col gap-2 border-t border-[var(--metal-border-soft)] pt-3 sm:flex-row sm:items-center sm:justify-between">
           <button
             type="button"

@@ -7,7 +7,7 @@ import type { Database } from "@shared/types/types/supabase";
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
 type TechPrefs = {
-  defaultBucket: "awaiting" | "in_progress" | "on_hold" | "completed";
+  defaultBucket: "awaiting" | "in_progress" | "on_hold";
   showUnassigned: boolean;
   compactCards: boolean;
   autoRefresh: boolean;
@@ -26,7 +26,7 @@ export default function TechSettingsPage() {
   const [shopId, setShopId] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState(""); // <- user asked to include email
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [street, setStreet] = useState("");
   const [city, setCity] = useState("");
@@ -47,7 +47,6 @@ export default function TechSettingsPage() {
       setLoading(true);
       setError(null);
 
-      // 1) auth user
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -58,7 +57,6 @@ export default function TechSettingsPage() {
         return;
       }
 
-      // 2) profile
       const { data: profile, error: profErr } = await supabase
         .from("profiles")
         .select(
@@ -86,17 +84,25 @@ export default function TechSettingsPage() {
         setPostal(profile.postal_code ?? "");
       }
 
-      // 3) local prefs
-      if (typeof window !== "undefined") {
-        try {
-          const raw = localStorage.getItem(PREFS_KEY);
-          if (raw) {
-            const parsed = JSON.parse(raw) as TechPrefs;
-            setPrefs((prev) => ({ ...prev, ...parsed }));
-          }
-        } catch {
-          // ignore
+      // local prefs
+      try {
+        const raw = localStorage.getItem(PREFS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<TechPrefs>;
+          setPrefs((prev) => ({
+            ...prev,
+            ...parsed,
+            // guard: never allow completed
+            defaultBucket:
+              parsed.defaultBucket === "awaiting" ||
+              parsed.defaultBucket === "in_progress" ||
+              parsed.defaultBucket === "on_hold"
+                ? parsed.defaultBucket
+                : prev.defaultBucket,
+          }));
         }
+      } catch {
+        // ignore
       }
 
       setLoading(false);
@@ -106,9 +112,7 @@ export default function TechSettingsPage() {
   // helper to persist prefs to localStorage
   const savePrefs = (next: TechPrefs) => {
     setPrefs(next);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(PREFS_KEY, JSON.stringify(next));
-    }
+    localStorage.setItem(PREFS_KEY, JSON.stringify(next));
   };
 
   const handleSaveProfile = async () => {
@@ -116,8 +120,8 @@ export default function TechSettingsPage() {
     setSaving(true);
     setError(null);
     setOk(null);
+
     try {
-      // NOTE: this updates the *profiles* table email, not auth.users email
       const { error: updErr } = await supabase
         .from("profiles")
         .update({
@@ -173,7 +177,6 @@ export default function TechSettingsPage() {
         ) : null}
       </div>
 
-      {/* 2-column layout */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* LEFT: profile */}
         <div className="space-y-6">
@@ -204,6 +207,7 @@ export default function TechSettingsPage() {
                   placeholder="Jane Tech"
                 />
               </div>
+
               <div className="space-y-1">
                 <label className="text-[11px] text-neutral-300">
                   Email (profile only)
@@ -219,6 +223,7 @@ export default function TechSettingsPage() {
                   Changing this won’t change your login email.
                 </p>
               </div>
+
               <div className="space-y-1">
                 <label className="text-[11px] text-neutral-300">Phone</label>
                 <input
@@ -242,6 +247,7 @@ export default function TechSettingsPage() {
                   placeholder="123 Fleet Ave."
                 />
               </div>
+
               <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-1">
                   <label className="text-[11px] text-neutral-300">City</label>
@@ -251,6 +257,7 @@ export default function TechSettingsPage() {
                     className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm focus:border-orange-500 outline-none"
                   />
                 </div>
+
                 <div className="space-y-1">
                   <label className="text-[11px] text-neutral-300">
                     Province
@@ -261,15 +268,14 @@ export default function TechSettingsPage() {
                     className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm focus:border-orange-500 outline-none"
                   />
                 </div>
+
                 <div className="space-y-1">
-                    <label className="text-[11px] text-neutral-300">
-                      Postal
-                    </label>
-                    <input
-                      value={postal}
-                      onChange={(e) => setPostal(e.target.value)}
-                      className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm focus:border-orange-500 outline-none"
-                    />
+                  <label className="text-[11px] text-neutral-300">Postal</label>
+                  <input
+                    value={postal}
+                    onChange={(e) => setPostal(e.target.value)}
+                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm focus:border-orange-500 outline-none"
+                  />
                 </div>
               </div>
             </div>
@@ -300,6 +306,7 @@ export default function TechSettingsPage() {
             <p className="text-xs text-neutral-400">
               These are per-device; your manager controls shop-wide emails.
             </p>
+
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -311,6 +318,7 @@ export default function TechSettingsPage() {
               />
               Auto-refresh tech queue
             </label>
+
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -354,23 +362,15 @@ export default function TechSettingsPage() {
                 <option value="awaiting">Awaiting</option>
                 <option value="in_progress">In progress</option>
                 <option value="on_hold">On hold</option>
-                <option value="completed">Completed</option>
               </select>
-              <p className="text-[10px] text-neutral-500">
-                We can read this on the queue page to preselect your tab.
-              </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-[11px] text-neutral-300">
-                Card layout
-              </label>
+              <label className="text-[11px] text-neutral-300">Card layout</label>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    savePrefs({ ...prefs, compactCards: false })
-                  }
+                  onClick={() => savePrefs({ ...prefs, compactCards: false })}
                   className={`rounded border px-3 py-2 text-sm ${
                     !prefs.compactCards
                       ? "border-orange-500 bg-orange-500/10"
@@ -381,9 +381,7 @@ export default function TechSettingsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    savePrefs({ ...prefs, compactCards: true })
-                  }
+                  onClick={() => savePrefs({ ...prefs, compactCards: true })}
                   className={`rounded border px-3 py-2 text-sm ${
                     prefs.compactCards
                       ? "border-orange-500 bg-orange-500/10"
@@ -393,17 +391,11 @@ export default function TechSettingsPage() {
                   Compact
                 </button>
               </div>
-              <p className="text-[10px] text-neutral-500">
-                Compact is better on small screens.
-              </p>
             </div>
           </section>
 
-          {/* account info */}
           <section className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-neutral-100">
-              Account
-            </h2>
+            <h2 className="text-sm font-semibold text-neutral-100">Account</h2>
             <p className="text-xs text-neutral-400">
               Username and shop are managed by your owner/admin.
             </p>
@@ -417,10 +409,6 @@ export default function TechSettingsPage() {
                 <dd>{shopId || "—"}</dd>
               </div>
             </dl>
-            <p className="text-[10px] text-neutral-500">
-              Need a password reset? Ask your manager or owner — they can set a
-              new temporary password from the admin screen.
-            </p>
           </section>
         </div>
       </div>

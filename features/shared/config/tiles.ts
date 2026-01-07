@@ -26,11 +26,57 @@ export type Tile = {
   cta?: string;
   roles: Role[];
   scopes: Scope[];
-  section?: string; // optional grouping hint
+  section?: string; // sidebar grouping label
 };
 
 export const TILES: Tile[] = [
-  // --- Work Orders ---
+  /* ---------------------------------------------------------------------- */
+  /* TECH (mechanic)                                                        */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/dashboard",
+    title: "Dashboard",
+    subtitle: "Today at a glance",
+    roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver"],
+    scopes: ["all"],
+    section: "Tech",
+  },
+  {
+    href: "/tech/queue",
+    title: "Tech Job Queue",
+    subtitle: "My assigned work",
+    roles: ["mechanic", "manager", "owner", "admin"],
+    scopes: ["tech", "all"],
+    section: "Tech",
+  },
+  {
+    href: "/parts/requests?mine=1",
+    title: "My Parts Requests",
+    subtitle: "Requests involving me",
+    roles: ["mechanic", "manager", "owner", "admin"],
+    scopes: ["parts", "tech", "all"],
+    section: "Tech",
+  },
+  {
+    href: "/chat",
+    title: "Team Chat",
+    subtitle: "Messages & updates",
+    roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver"],
+    scopes: ["all"],
+    section: "Tech",
+  },
+  {
+    href: "/dashboard/tech/settings",
+    title: "Tech Settings",
+    subtitle: "Profile & preferences",
+    roles: ["mechanic", "manager", "owner", "admin"],
+    scopes: ["settings", "tech", "all"],
+    section: "Tech",
+  },
+
+  /* ---------------------------------------------------------------------- */
+  /* OPERATIONS (work orders / advisors)                                     */
+  /* ---------------------------------------------------------------------- */
   {
     href: "/work-orders/create?autostart=1",
     title: "Create Work Order",
@@ -53,7 +99,7 @@ export const TILES: Tile[] = [
     title: "Job Queue",
     subtitle: "Active & in-progress",
     roles: ["advisor", "manager", "owner", "admin"],
-    scopes: ["work_orders", "tech", "all"],
+    scopes: ["work_orders", "all"],
     section: "Operations",
   },
   {
@@ -65,9 +111,9 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
   {
-    href: "/menu",
-    title: "Service Menu",
-    subtitle: "Saved services & presets",
+    href: "/billing",
+    title: "Billing",
+    subtitle: "Ready to invoice",
     roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["work_orders", "all"],
     section: "Operations",
@@ -80,16 +126,10 @@ export const TILES: Tile[] = [
     scopes: ["work_orders", "all"],
     section: "Operations",
   },
-  {
-    href: "/billing",
-    title: "Billing",
-    subtitle: "Ready to invoice",
-    roles: ["advisor", "manager", "owner", "admin"],
-    scopes: ["work_orders", "all"],
-    section: "Operations",
-  },
 
-  // --- Appointments ---
+  /* ---------------------------------------------------------------------- */
+  /* APPOINTMENTS                                                            */
+  /* ---------------------------------------------------------------------- */
   {
     href: "/portal/appointments",
     title: "Appointments",
@@ -99,14 +139,16 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
 
-  // --- Inspections ---
+  /* ---------------------------------------------------------------------- */
+  /* INSPECTIONS (no mechanic/tech sidebar access)                           */
+  /* ---------------------------------------------------------------------- */
   {
     href: "/inspection/templates",
     title: "Inspection Templates",
     subtitle: "View and edit",
-    roles: ["advisor", "manager", "owner", "admin", "mechanic"],
+    roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["inspections", "all"],
-    section: "Inspections",
+    section: "Tools",
   },
   {
     href: "/inspections/custom-inspection",
@@ -114,15 +156,15 @@ export const TILES: Tile[] = [
     subtitle: "Design your own",
     roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["inspections", "all"],
-    section: "Inspections",
+    section: "Tools",
   },
   {
     href: "/inspections/fleet-import",
     title: "Fleet Form Import",
-    subtitle: "Scan & convert fleet inspection sheets",
-    roles: ["advisor", "manager", "owner"],
+    subtitle: "Scan & convert fleet sheets",
+    roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["inspections", "all"],
-    section: "Inspections",
+    section: "Tools",
   },
   {
     href: "/inspections/saved",
@@ -130,10 +172,12 @@ export const TILES: Tile[] = [
     subtitle: "Recent & drafts",
     roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["inspections", "all"],
-    section: "Inspections",
+    section: "Tools",
   },
 
-  // --- Parts ---
+  /* ---------------------------------------------------------------------- */
+  /* PARTS                                                                   */
+  /* ---------------------------------------------------------------------- */
   {
     href: "/parts",
     title: "Parts Dashboard",
@@ -175,93 +219,9 @@ export const TILES: Tile[] = [
     section: "Parts",
   },
 
-  // --- Admin / Management ---
-  {
-    href: "/dashboard/owner/create-user",
-    title: "Create User",
-    subtitle: "Add team members",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Admin",
-  },
-  {
-    href: "/dashboard/owner/settings",
-    title: "Settings",
-    subtitle: "Adjust shop settings",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Admin",
-  },
-  {
-    href: "/dashboard/owner/reports/technicians",
-    title: "Technicians",
-    subtitle: "Roster & performance",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "all"],
-    section: "Admin",
-  },
-  {
-  href: "/dashboard/owner/reports",
-  title: "Shop Health",
-  subtitle: "AI snapshot, suggestions, onboarding readiness",
-  roles: ["owner", "admin", "manager"],
-  scopes: ["management", "tech", "all"],
-  section: "Tools",
-},
-  {
-    href: "/dashboard/admin/scheduling",
-    title: "Scheduling",
-    subtitle: "Calendar & bookings",
-    roles: ["owner", "admin", "manager", "advisor"],
-    scopes: ["management", "all"],
-    section: "Admin",
-  },
-  {
-    href: "/dashboard/admin/billing",
-    title: "Billing",
-    subtitle: "Subscriptions",
-    roles: ["owner", "admin"],
-    scopes: ["management", "settings", "all"],
-    section: "Admin",
-  },
-
-  // ✅ NEW: Payments audit
-  {
-    href: "/dashboard/owner/payments",
-    title: "Payments",
-    subtitle: "Customer payments & fees",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["settings", "work_orders", "all"],
-    section: "Admin",
-  },
-
-  // --- AI & Tech ---
-  {
-    href: "/ai/assistant",
-    title: "AI Assistant",
-    subtitle: "Help & automation",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "parts"],
-    scopes: ["tech", "all"],
-    section: "Tools",
-  },
-  {
-    href: "/tech/queue",
-    title: "Tech Job Queue",
-    subtitle: "My assigned work",
-    roles: ["mechanic", "manager", "owner", "admin"],
-    scopes: ["tech", "all"],
-    section: "Tech",
-  },
-  {
-    href: "/tech/performance",
-    title: "My Performance",
-    subtitle: "Jobs, hours & efficiency",
-    roles: ["mechanic", "manager", "owner", "admin"],
-    scopes: ["tech", "all"],
-    section: "Tech",
-  },
-
-  // --- Fleet / HD ---
+  /* ---------------------------------------------------------------------- */
+  /* FLEET                                                                   */
+  /* ---------------------------------------------------------------------- */
   {
     href: "/fleet/tower",
     title: "Fleet Control Tower",
@@ -279,22 +239,13 @@ export const TILES: Tile[] = [
     section: "Fleet",
   },
   {
-    href: "/fleet/pretrip",
-    title: "Pre-trip Reports",
-    subtitle: "Daily driver checklists",
-    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
-    scopes: ["inspections", "management", "all"],
-    section: "Fleet",
-  },
-  {
     href: "/fleet/units",
     title: "Fleet Units",
-    subtitle: "HD tractors, trailers, buses",
+    subtitle: "Tractors, trailers, buses",
     roles: ["owner", "admin", "manager", "fleet_manager"],
     scopes: ["management", "all"],
     section: "Fleet",
   },
-  // ✅ NEW: Add Fleet Unit
   {
     href: "/fleet/units/new",
     title: "Add Fleet Unit",
@@ -304,20 +255,79 @@ export const TILES: Tile[] = [
     section: "Fleet",
   },
   {
-    href: "/fleet/service-requests",
-    title: "Fleet Service Requests",
-    subtitle: "From pre-trips & inspections",
-    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
-    scopes: ["work_orders", "management", "all"],
-    section: "Fleet",
-  },
-  // ✅ NEW: Fleet Programs / Groups
-  {
     href: "/fleet/programs",
     title: "Fleet Programs",
     subtitle: "Groups, contacts & notes",
     roles: ["owner", "admin", "manager", "fleet_manager"],
     scopes: ["management", "settings", "all"],
     section: "Fleet",
+  },
+
+  /* ---------------------------------------------------------------------- */
+  /* TOOLS                                                                   */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/ai/assistant",
+    title: "AI Assistant",
+    subtitle: "Help & automation",
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "parts"],
+    scopes: ["tech", "all"],
+    section: "Tools",
+  },
+  {
+    href: "/dashboard/owner/reports",
+    title: "Shop Health",
+    subtitle: "AI snapshot & readiness",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["management", "all"],
+    section: "Tools",
+  },
+
+  /* ---------------------------------------------------------------------- */
+  /* ADMIN                                                                   */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/dashboard/owner/create-user",
+    title: "Create User",
+    subtitle: "Add team members",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
+    href: "/dashboard/owner/settings",
+    title: "Owner Settings",
+    subtitle: "Adjust shop settings",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
+    href: "/dashboard/admin/scheduling",
+    title: "Scheduling",
+    subtitle: "Calendar & bookings",
+    roles: ["owner", "admin", "manager", "advisor"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+
+  /* ---------------------------------------------------------------------- */
+  /* BILLING                                                                 */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/compare-plans",
+    title: "Plan & Billing",
+    subtitle: "Subscription",
+    roles: ["owner", "admin"],
+    scopes: ["settings", "all"],
+    section: "Billing",
+  },
+  {
+    href: "/dashboard/owner/payments",
+    title: "Payments",
+    subtitle: "Customer payments & fees",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["settings", "work_orders", "all"],
+    section: "Billing",
   },
 ];

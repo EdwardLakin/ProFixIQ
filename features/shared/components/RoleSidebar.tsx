@@ -1,4 +1,3 @@
-// features/shared/components/RoleSidebar.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -15,8 +14,24 @@ import {
 import { cn } from "@/features/shared/utils/cn";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+function normalizeRole(raw: string | null | undefined): Role | null {
+  const r = String(raw ?? "").toLowerCase().trim();
+  if (!r) return null;
+
+  // Map common synonyms into your canonical Role union.
+  if (r === "tech" || r === "technician") return "mechanic";
+  if (r === "fleet pm" || r === "fleet_pm") return "fleet_manager";
+
+  // Trust if it already matches a known role string.
+  return r as Role;
+}
+
 export default function RoleSidebar() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = useMemo(
+    () => createClientComponentClient<Database>(),
+    [],
+  );
+
   const pathname = usePathname();
 
   const [role, setRole] = useState<Role | null>(null);
@@ -31,45 +46,53 @@ export default function RoleSidebar() {
       } = await supabase.auth.getSession();
       const uid = session?.user?.id;
       if (!uid) return;
+
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", uid)
         .single();
-      setRole((profile?.role as Role) ?? null);
+
+      setRole(normalizeRole(profile?.role ?? null));
     })();
   }, [supabase]);
 
-  // all tiles for this role
+  // tiles for this role
   const tiles = useMemo(() => {
     if (!role) return [] as Tile[];
+
     return TILES.filter((t) => t.roles.includes(role)).filter(
       (t) => t.scopes.includes("all") || t.scopes.includes(scopeFilter),
     );
   }, [role, scopeFilter]);
 
-  // group tiles by first segment
+  /**
+   * Grouping:
+   * - Prefer explicit `tile.section`
+   * - Fallback to first URL segment
+   */
   const groups = useMemo(() => {
-    const g = tiles.reduce<Record<string, Tile[]>>((acc, tile) => {
-      const parts = tile.href.split("/").filter(Boolean);
-      const key = parts[0] || "general";
+    return tiles.reduce<Record<string, Tile[]>>((acc, tile) => {
+      const key =
+        tile.section?.trim() ||
+        tile.href.split("/").filter(Boolean)[0] ||
+        "General";
       (acc[key] ||= []).push(tile);
       return acc;
     }, {});
-    return g;
   }, [tiles]);
 
-  // desired display order
+  // desired display order (sections)
   const order = [
-    "dashboard",
-    "work-orders",
-    "inspections",
-    "parts",
-    "tech",
-    "ai",
-    "compare-plans",
-    "settings",
-    "general",
+    "Tech",
+    "Operations",
+    "Parts",
+    "Fleet",
+    "Tools",
+    "Admin",
+    "Billing",
+    "Settings",
+    "General",
   ];
 
   const sortedGroups = useMemo(
@@ -85,6 +108,7 @@ export default function RoleSidebar() {
   // open the section that contains the current page
   useEffect(() => {
     if (!sortedGroups.length) return;
+
     const next: Record<string, boolean> = {};
     for (const [group, groupTiles] of sortedGroups) {
       const hasActive = groupTiles.some(
@@ -92,6 +116,7 @@ export default function RoleSidebar() {
       );
       next[group] = hasActive;
     }
+
     setOpenSections((prev) =>
       Object.fromEntries(
         Object.entries(next).map(([k, v]) => [k, prev[k] ?? v ?? false]),
@@ -100,7 +125,9 @@ export default function RoleSidebar() {
   }, [pathname, sortedGroups]);
 
   if (!role) {
-    return <div className="p-4 text-xs text-neutral-400">Loading navigation…</div>;
+    return (
+      <div className="p-4 text-xs text-neutral-400">Loading navigation…</div>
+    );
   }
 
   const toggleSection = (key: string) => {
@@ -141,7 +168,7 @@ export default function RoleSidebar() {
                 {hasActive && (
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent-copper)] shadow-[0_0_14px_rgba(212,118,49,0.75)]" />
                 )}
-                <span>{labelForGroup(group)}</span>
+                <span>{group}</span>
               </span>
               {open ? (
                 <ChevronDown className="h-3.5 w-3.5 text-neutral-500" />
@@ -156,6 +183,7 @@ export default function RoleSidebar() {
                 {groupTiles.map((t) => {
                   const active =
                     pathname === t.href || pathname.startsWith(t.href + "/");
+
                   return (
                     <Link
                       key={t.href}
@@ -184,29 +212,4 @@ export default function RoleSidebar() {
       })}
     </nav>
   );
-}
-
-function labelForGroup(group: string): string {
-  switch (group) {
-    case "dashboard":
-      return "Management";
-    case "work-orders":
-      return "Work Orders";
-    case "inspections":
-      return "Inspections";
-    case "parts":
-      return "Parts";
-    case "tech":
-      return "Tech";
-    case "ai":
-      return "AI";
-    case "compare-plans":
-      return "Billing";
-    case "settings":
-      return "Settings";
-    case "general":
-      return "General";
-    default:
-      return group.charAt(0).toUpperCase() + group.slice(1);
-  }
 }

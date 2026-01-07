@@ -16,15 +16,8 @@ type Props = {
 };
 
 export default function AddJobModal(props: Props) {
-  const {
-    isOpen,
-    onClose,
-    workOrderId,
-    vehicleId,
-    techId,
-    onJobAdded,
-    shopId,
-  } = props;
+  const { isOpen, onClose, workOrderId, vehicleId, techId, onJobAdded, shopId } =
+    props;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const lastSetShopId = useRef<string | null>(null);
@@ -40,10 +33,12 @@ export default function AddJobModal(props: Props) {
   async function ensureShopContext(id: string | null) {
     if (!id) return;
     if (lastSetShopId.current === id) return;
+
     const { error } = await supabase.rpc("set_current_shop_id", {
       p_shop_id: id,
     });
     if (error) throw error;
+
     lastSetShopId.current = id;
   }
 
@@ -69,12 +64,10 @@ export default function AddJobModal(props: Props) {
         if (woErr) throw woErr;
         useShopId = (wo?.shop_id as string | null) ?? null;
       }
-      if (!useShopId)
-        throw new Error("Couldn’t resolve shop for this work order");
+      if (!useShopId) throw new Error("Couldn’t resolve shop for this work order");
 
       await ensureShopContext(useShopId);
 
-      // get current user for user_id if your RLS expects it
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -88,21 +81,23 @@ export default function AddJobModal(props: Props) {
         correction: notes.trim() || null,
         labor_time: labor ? Number(labor) : null,
         parts: parts.trim() || null,
-        status: "awaiting" as const,
+
+        // ✅ IMPORTANT: new job should land in "awaiting approval"
+        status: "awaiting_approval" as const,
+
         job_type: "repair" as const,
         shop_id: useShopId,
+
         ...(user?.id ? { user_id: user.id } : {}),
         ...(techId && techId !== "system" ? { assigned_to: techId } : {}),
         ...(urgency ? { urgency } : {}),
       };
 
       const { error } = await supabase.from("work_order_lines").insert(payload);
+
       if (error) {
-        // handle common RLS / check errors a bit nicer
         if (/row-level security/i.test(error.message)) {
-          setErr(
-            "Access denied (RLS). Check that your session is scoped to this shop.",
-          );
+          setErr("Access denied (RLS). Check that your session is scoped to this shop.");
           lastSetShopId.current = null;
         } else if (/status.*check/i.test(error.message)) {
           setErr("This status isn’t allowed by the database.");
@@ -117,7 +112,6 @@ export default function AddJobModal(props: Props) {
       onJobAdded?.();
       onClose();
 
-      // reset fields
       setJobName("");
       setNotes("");
       setLabor("");
@@ -190,9 +184,7 @@ export default function AddJobModal(props: Props) {
             <select
               className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
               value={urgency}
-              onChange={(e) =>
-                setUrgency(e.target.value as "low" | "medium" | "high")
-              }
+              onChange={(e) => setUrgency(e.target.value as "low" | "medium" | "high")}
             >
               <option value="low">Low urgency</option>
               <option value="medium">Medium urgency</option>
@@ -208,7 +200,7 @@ export default function AddJobModal(props: Props) {
           <textarea
             rows={2}
             className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
-            placeholder="Comma-separated list or short notes (e.g. rear pads, serp belt, brake cleaner)"
+            placeholder="Comma-separated list or short notes..."
             value={parts}
             onChange={(e) => setParts(e.target.value)}
           />
