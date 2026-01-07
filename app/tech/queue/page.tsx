@@ -1,4 +1,3 @@
-// app/tech/queue/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,7 +8,6 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 type WorkOrderSlim = Pick<
   DB["public"]["Tables"]["work_orders"]["Row"],
   "id" | "custom_id"
@@ -104,9 +102,6 @@ export default function TechQueuePage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
 
-  const [_userId, setUserId] = useState<string | null>(null);
-  const [_profile, setProfile] = useState<Profile | null>(null);
-
   const [prefs, setPrefs] = useState<TechPrefs>({
     defaultBucket: "awaiting",
     showUnassigned: false,
@@ -155,9 +150,7 @@ export default function TechQueuePage() {
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
-      if (!opts?.silent) {
-        setLoading(true);
-      }
+      if (!opts?.silent) setLoading(true);
       setErr(null);
 
       // 1) auth
@@ -171,7 +164,6 @@ export default function TechQueuePage() {
         setLoading(false);
         return;
       }
-      setUserId(user.id);
 
       // 2) profile (for shop_id)
       const { data: prof, error: profErr } = await supabase
@@ -190,13 +182,8 @@ export default function TechQueuePage() {
         setLoading(false);
         return;
       }
-      setProfile(prof);
 
       // 3) fetch work-order lines
-      // - assigned to me always
-      // - optionally include unassigned (assigned_to is null)
-      // NOTE: If you want strict shop scoping here, we can add .eq("shop_id", prof.shop_id)
-      // as long as work_order_lines has shop_id. (Not assumed here.)
       const baseQuery = supabase
         .from("work_order_lines")
         .select("*")
@@ -217,7 +204,6 @@ export default function TechQueuePage() {
       setLines(activeQueue);
 
       // 4) determine active punched-in line (strong highlight)
-      // Prefer punched_in_at != null && punched_out_at == null if those fields exist.
       const punched = activeQueue.find((l) => {
         const anyLine = l as unknown as {
           punched_in_at?: string | null;
@@ -258,7 +244,9 @@ export default function TechQueuePage() {
       // 6) fetch open part requests for this tech in this shop (involved)
       const { data: prs, error: prErr } = await supabase
         .from("part_requests")
-        .select("id, shop_id, work_order_id, job_id, requested_by, assigned_to, status")
+        .select(
+          "id, shop_id, work_order_id, job_id, requested_by, assigned_to, status",
+        )
         .eq("shop_id", prof.shop_id)
         .not("status", "in", `(${CLOSED_PART_STATUSES.join(",")})`)
         .or(`requested_by.eq.${user.id},assigned_to.eq.${user.id}`);
@@ -273,13 +261,9 @@ export default function TechQueuePage() {
 
         (prs ?? []).forEach((p) => {
           const row = p as PartRequest;
-
-          if (row.job_id) {
-            jobMap[row.job_id] = (jobMap[row.job_id] ?? 0) + 1;
-          }
-          if (row.work_order_id) {
+          if (row.job_id) jobMap[row.job_id] = (jobMap[row.job_id] ?? 0) + 1;
+          if (row.work_order_id)
             woMap[row.work_order_id] = (woMap[row.work_order_id] ?? 0) + 1;
-          }
         });
 
         setPartsByJobId(jobMap);
@@ -326,7 +310,8 @@ export default function TechQueuePage() {
     return lines.filter((l) => toBucket(l.status) === activeFilter);
   }, [lines, activeFilter]);
 
-  if (loading) return <div className="p-6 text-white">Loading assigned jobs…</div>;
+  if (loading)
+    return <div className="p-6 text-white">Loading assigned jobs…</div>;
   if (err) return <div className="p-6 text-red-200">{err}</div>;
 
   const compact = prefs.compactCards;
@@ -382,7 +367,13 @@ export default function TechQueuePage() {
               <div className="text-xs uppercase tracking-wide text-neutral-300">
                 {STATUS_LABELS[s]}
               </div>
-              <div className={compact ? "mt-1 text-2xl font-semibold" : "mt-1 text-3xl font-semibold"}>
+              <div
+                className={
+                  compact
+                    ? "mt-1 text-2xl font-semibold"
+                    : "mt-1 text-3xl font-semibold"
+                }
+              >
                 {counts[s]}
               </div>
               {isActive && (
@@ -399,13 +390,15 @@ export default function TechQueuePage() {
       <div className="space-y-2">
         {filteredLines.map((line) => {
           const bucket = toBucket(line.status);
-          const wo = line.work_order_id ? workOrderMap[line.work_order_id] : null;
+          const wo = line.work_order_id
+            ? workOrderMap[line.work_order_id]
+            : null;
 
           const woLabel = wo?.custom_id
             ? wo.custom_id
             : line.work_order_id
-            ? `WO #${line.work_order_id.slice(0, 8)}`
-            : "Work order";
+              ? `WO #${line.work_order_id.slice(0, 8)}`
+              : "Work order";
 
           const title = (line.description || line.complaint || "Untitled job").trim();
 
@@ -431,18 +424,15 @@ export default function TechQueuePage() {
               className={[
                 "relative overflow-hidden rounded-2xl border shadow-[0_18px_45px_rgba(0,0,0,0.75)]",
                 compact ? "p-3" : "p-4",
-                // base surface by bucket (matches JobCard palette)
                 bucket === "in_progress"
                   ? "border-[color:var(--accent-copper-soft,#fdba74)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),rgba(15,23,42,0.98))]"
                   : bucket === "on_hold"
-                  ? "border-amber-400/70 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.18),rgba(15,23,42,0.98))]"
-                  : "border-slate-600/60 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.12),rgba(15,23,42,0.98))]",
-                // highlights
+                    ? "border-amber-400/70 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.18),rgba(15,23,42,0.98))]"
+                    : "border-slate-600/60 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.12),rgba(15,23,42,0.98))]",
                 isActiveJob ? ACTIVE_RING : "",
                 isSameWorkOrder ? SAME_WO_RING : "",
               ].join(" ")}
             >
-              {/* subtle rail on the left like JobCard energy */}
               <div className="pointer-events-none absolute inset-y-2 left-2 w-[3px] rounded-full bg-gradient-to-b from-transparent via-white/20 to-transparent opacity-70" />
 
               <div className="flex items-center justify-between gap-3 pl-3">
@@ -461,7 +451,13 @@ export default function TechQueuePage() {
                     ) : null}
                   </div>
 
-                  <div className={compact ? "mt-1 truncate text-sm font-semibold text-white" : "mt-1 truncate text-base font-semibold text-white"}>
+                  <div
+                    className={
+                      compact
+                        ? "mt-1 truncate text-sm font-semibold text-white"
+                        : "mt-1 truncate text-base font-semibold text-white"
+                    }
+                  >
                     {title}
                   </div>
 
@@ -472,11 +468,14 @@ export default function TechQueuePage() {
 
                     {partsCount > 0 ? (
                       <span className={PARTS_BADGE}>
-                        🧾 Parts <span className="text-sky-200/90">({partsCount})</span>
+                        🧾 Parts{" "}
+                        <span className="text-sky-200/90">({partsCount})</span>
                       </span>
                     ) : null}
 
-                    {bucket === "on_hold" ? <span className={HOLD_BADGE}>⏸ Hold</span> : null}
+                    {bucket === "on_hold" ? (
+                      <span className={HOLD_BADGE}>⏸ Hold</span>
+                    ) : null}
                   </div>
                 </div>
 
