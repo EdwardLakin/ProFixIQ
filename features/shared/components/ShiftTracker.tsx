@@ -9,7 +9,7 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 
 type ShiftType = "shift" | "break" | "lunch";
-type LiveStatus = "none" | "active" | "break" | "lunch" | "ended";
+type LiveStatus = "none" | "shift" | "break" | "lunch" | "ended";
 
 function toShiftType(input: unknown, fallback: ShiftType): ShiftType {
   const v = String(input ?? "").toLowerCase().trim();
@@ -17,18 +17,6 @@ function toShiftType(input: unknown, fallback: ShiftType): ShiftType {
   return fallback;
 }
 
-/**
- * Shift tracker writes to:
- *  - tech_shifts(id, user_id, start_time, end_time, type, status, created_at)
- *  - punch_events(id, shift_id, user_id, event_type, timestamp, note, created_at, profile_id)
- *
- * tech_shifts CHECK constraints (your DB):
- *   type    IN ('shift','break','lunch')
- *   status  IN ('active','completed')
- *
- * punch_events CHECK constraint (your DB):
- *   event_type IN ('start_shift','end_shift','break_start','break_end','lunch_start','lunch_end')
- */
 export default function ShiftTracker({
   userId,
   defaultShiftType = "shift",
@@ -40,7 +28,7 @@ export default function ShiftTracker({
 
   const [shiftId, setShiftId] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
-  const [status, setStatus] = useState<LiveStatus>("none");
+  const [mode, setMode] = useState<LiveStatus>("none");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -49,16 +37,18 @@ export default function ShiftTracker({
     [defaultShiftType],
   );
 
-  /** Load currently active shift (status='active') and derive live status from latest punch. */
-  const loadActiveShift = useCallback(async () => {
+  /** Load currently open shift (status='open' OR end_time IS NULL fallback). */
+  const loadOpenShift = useCallback(async () => {
+    if (!userId) return;
+
     setErr(null);
 
-    // Primary: status = 'active' (your DB truth)
+    // Primary: status = 'open' (DB truth)
     const { data: shift, error: sErr } = await supabase
       .from("tech_shifts")
-      .select("id, start_time, status, end_time")
+      .select("id, start_time, type, status, end_time")
       .eq("user_id", userId)
-      .eq("status", "active")
+      .eq("status", "open")
       .order("start_time", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -67,17 +57,17 @@ export default function ShiftTracker({
       setErr(`${sErr.code ?? "load_error"}: ${sErr.message}`);
       setShiftId(null);
       setStartTime(null);
-      setStatus("none");
+      setMode("none");
       return;
     }
 
-    // Fallback: older rows might not have status set correctly but still show as open
-    let active = shift ?? null;
+    let open = shift ?? null;
 
-    if (!active) {
+    // Fallback: end_time is null (handles legacy rows if any)
+    if (!open) {
       const { data: fb, error: fbErr } = await supabase
         .from("tech_shifts")
-        .select("id, start_time, status, end_time")
+        .select("id, start_time, type, status, end_time")
         .eq("user_id", userId)
         .is("end_time", null)
         .order("start_time", { ascending: false })
@@ -88,92 +78,44 @@ export default function ShiftTracker({
         setErr(`${fbErr.code ?? "load_error"}: ${fbErr.message}`);
         setShiftId(null);
         setStartTime(null);
-        setStatus("none");
+        setMode("none");
         return;
       }
 
-      active = fb ?? null;
+      open = fb ?? null;
     }
 
-    if (!active) {
+    if (!open) {
       setShiftId(null);
       setStartTime(null);
-      setStatus("none");
+      setMode("none");
       return;
     }
 
-    setShiftId(active.id);
-    setStartTime(active.start_time ?? null);
+    setShiftId(open.id);
+    setStartTime(open.start_time ?? null);
 
-    // derive break/lunch state from last punch event
-    const { data: lastPunch, error: pErr } = await supabase
-      .from("punch_events")
-      .select("event_type")
-      .eq("shift_id", active.id)
-      .order("timestamp", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (pErr) {
-      // non-fatal; assume active
-      setStatus("active");
-      return;
-    }
-
-    const computed: LiveStatus =
-      lastPunch?.event_type === "break_start"
-        ? "break"
-        : lastPunch?.event_type === "lunch_start"
-          ? "lunch"
-          : "active";
-
-    setStatus(computed);
+    // If you want “break/lunch” UI state, derive it from the shift.type.
+    const t = toShiftType(open.type, "shift");
+    setMode(t);
   }, [supabase, userId]);
 
   useEffect(() => {
-    if (!userId) return;
-    void loadActiveShift();
-  }, [userId, loadActiveShift]);
-
-  /** Insert a punch event (matches punch_events schema). */
-  const insertPunch = useCallback(
-    async (
-      event:
-        | "start_shift"
-        | "end_shift"
-        | "break_start"
-        | "break_end"
-        | "lunch_start"
-        | "lunch_end",
-      sid?: string,
-    ) => {
-      const useShiftId = sid ?? shiftId;
-      if (!useShiftId) return;
-
-      const { error } = await supabase.from("punch_events").insert({
-        shift_id: useShiftId,
-        user_id: userId,
-        event_type: event,
-        timestamp: new Date().toISOString(),
-      });
-
-      if (error) setErr(`${error.code ?? "punch_error"}: ${error.message}`);
-    },
-    [supabase, shiftId, userId],
-  );
+    void loadOpenShift();
+  }, [loadOpenShift]);
 
   const startShift = useCallback(async () => {
-    if (busy) return;
+    if (busy || !userId) return;
     setBusy(true);
     setErr(null);
 
     try {
-      // If an active shift already exists, hydrate and stop.
+      // hydrate if already open
       const { data: existing, error: exErr } = await supabase
         .from("tech_shifts")
-        .select("id, start_time")
+        .select("id, start_time, type")
         .eq("user_id", userId)
-        .eq("status", "active")
+        .eq("status", "open")
         .order("start_time", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -183,38 +125,35 @@ export default function ShiftTracker({
       if (existing) {
         setShiftId(existing.id);
         setStartTime(existing.start_time ?? null);
-        setStatus("active");
+        setMode(toShiftType(existing.type, "shift"));
         return;
       }
 
       const now = new Date().toISOString();
-      const typeToUse = safeDefaultType;
 
       const { data, error } = await supabase
         .from("tech_shifts")
         .insert({
           user_id: userId,
           start_time: now,
-          type: typeToUse,
-          status: "active",
+          type: safeDefaultType,
+          status: "open",
           end_time: null,
         })
-        .select("id, start_time")
+        .select("id, start_time, type")
         .single();
 
       if (error) throw error;
 
       setShiftId(data.id);
       setStartTime(data.start_time ?? now);
-      setStatus("active");
-      await insertPunch("start_shift", data.id);
+      setMode(toShiftType(data.type, "shift"));
     } catch (e: any) {
       const msg = `${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to start shift"}`;
 
-      // surface constraint hint clearly
       if (String(e?.message ?? "").toLowerCase().includes("check constraint")) {
         setErr(
-          `Shift type/status failed a DB check. type must be one of ('shift','break','lunch'); status must be one of ('active','completed'). Tried type="${safeDefaultType}" status="active".`,
+          `Shift type/status failed a DB check. type must be one of ('shift','break','lunch'); status must be one of ('open','closed'). Tried type="${safeDefaultType}" status="open".`,
         );
       } else {
         setErr(msg);
@@ -222,7 +161,7 @@ export default function ShiftTracker({
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, userId, safeDefaultType, insertPunch]);
+  }, [busy, supabase, userId, safeDefaultType]);
 
   const endShift = useCallback(async () => {
     if (busy || !shiftId) return;
@@ -234,77 +173,64 @@ export default function ShiftTracker({
 
       const { error } = await supabase
         .from("tech_shifts")
-        .update({ end_time: now, status: "completed" })
+        .update({ end_time: now, status: "closed", type: "shift" })
         .eq("id", shiftId);
 
       if (error) throw error;
 
-      await insertPunch("end_shift");
       setShiftId(null);
       setStartTime(null);
-      setStatus("ended");
+      setMode("ended");
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to end shift"}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, shiftId, insertPunch]);
+  }, [busy, supabase, shiftId]);
 
-  const handleBreak = useCallback(async () => {
+  const toggleBreak = useCallback(async () => {
     if (busy || !shiftId) return;
     setBusy(true);
     setErr(null);
 
     try {
-      if (status === "break") {
-        await insertPunch("break_end");
-        await supabase
-          .from("tech_shifts")
-          .update({ type: "shift", status: "active" })
-          .eq("id", shiftId);
-        setStatus("active");
-      } else {
-        await insertPunch("break_start");
-        await supabase
-          .from("tech_shifts")
-          .update({ type: "break", status: "active" })
-          .eq("id", shiftId);
-        setStatus("break");
-      }
+      const next: ShiftType = mode === "break" ? "shift" : "break";
+
+      const { error } = await supabase
+        .from("tech_shifts")
+        .update({ type: next, status: "open" })
+        .eq("id", shiftId);
+
+      if (error) throw error;
+      setMode(next);
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle break"}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, shiftId, status, insertPunch]);
+  }, [busy, supabase, shiftId, mode]);
 
-  const handleLunch = useCallback(async () => {
+  const toggleLunch = useCallback(async () => {
     if (busy || !shiftId) return;
     setBusy(true);
     setErr(null);
 
     try {
-      if (status === "lunch") {
-        await insertPunch("lunch_end");
-        await supabase
-          .from("tech_shifts")
-          .update({ type: "shift", status: "active" })
-          .eq("id", shiftId);
-        setStatus("active");
-      } else {
-        await insertPunch("lunch_start");
-        await supabase
-          .from("tech_shifts")
-          .update({ type: "lunch", status: "active" })
-          .eq("id", shiftId);
-        setStatus("lunch");
-      }
+      const next: ShiftType = mode === "lunch" ? "shift" : "lunch";
+
+      const { error } = await supabase
+        .from("tech_shifts")
+        .update({ type: next, status: "open" })
+        .eq("id", shiftId);
+
+      if (error) throw error;
+      setMode(next);
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle lunch"}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, shiftId, status, insertPunch]);
+  }, [busy, supabase, shiftId, mode]);
 
   const btnBase =
     "rounded border px-4 py-2 text-white transition-colors bg-transparent hover:bg-white/5 focus:outline-none";
@@ -313,6 +239,9 @@ export default function ShiftTracker({
     orange: `${btnBase} border-orange-500`,
     red: `${btnBase} border-red-500`,
   };
+
+  const niceStatus =
+    mode === "none" ? "Off shift" : mode === "ended" ? "Shift ended" : mode;
 
   return (
     <div className="text-sm mt-4 space-y-2">
@@ -324,17 +253,17 @@ export default function ShiftTracker({
 
       <p>
         <strong>Status:</strong>{" "}
-        <span className="capitalize">{status.replace("_", " ")}</span>
+        <span className="capitalize">{niceStatus}</span>
       </p>
 
-      {status !== "none" && startTime && status !== "ended" && (
+      {mode !== "none" && startTime && mode !== "ended" && (
         <p>
           <strong>Shift Duration:</strong>{" "}
           {formatDistanceToNow(new Date(startTime), { includeSeconds: true })}
         </p>
       )}
 
-      {status === "none" && (
+      {mode === "none" && (
         <button
           className={`${btnOutline.yellow} w-full py-3 text-base`}
           onClick={startShift}
@@ -344,23 +273,23 @@ export default function ShiftTracker({
         </button>
       )}
 
-      {status !== "none" && status !== "ended" && (
+      {mode !== "none" && mode !== "ended" && (
         <div className="space-y-3">
           <div className="flex gap-3">
             <button
               className={`${btnOutline.yellow} flex-1 py-3 text-base`}
-              onClick={handleBreak}
+              onClick={toggleBreak}
               disabled={busy}
             >
-              {status === "break" ? "End Break" : "Break"}
+              {mode === "break" ? "End Break" : "Break"}
             </button>
 
             <button
               className={`${btnOutline.orange} flex-1 py-3 text-base`}
-              onClick={handleLunch}
+              onClick={toggleLunch}
               disabled={busy}
             >
-              {status === "lunch" ? "End Lunch" : "Lunch"}
+              {mode === "lunch" ? "End Lunch" : "Lunch"}
             </button>
           </div>
 

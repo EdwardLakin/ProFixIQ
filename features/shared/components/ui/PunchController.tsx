@@ -16,6 +16,8 @@ type TechShiftUpdate = DB["public"]["Tables"]["tech_shifts"]["Update"];
 type PunchEventInsert = DB["public"]["Tables"]["punch_events"]["Insert"];
 type WorkOrderLineUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
 
+// NOTE: your DB uses text CHECK for punch_events.event_type, but your generated types
+// might still expose it as an enum. Keep this as-is:
 type PunchType = DB["public"]["Enums"]["punch_event_type"];
 
 function safeMsg(e: unknown, fallback: string): string {
@@ -38,7 +40,7 @@ export default function PunchController(): JSX.Element {
     return () => document.body.classList.remove("on-shift");
   }, [activeShift]);
 
-  // bootstrap: auth + shop + current active shift
+  // bootstrap: auth + shop + current open shift
   useEffect(() => {
     (async () => {
       const {
@@ -50,16 +52,13 @@ export default function PunchController(): JSX.Element {
 
       setUserId(user.id);
 
-      // load shop_id (needed for RLS scoping + tech_shifts insert)
       const { data: profile, error: profErr } = await supabase
         .from("profiles")
         .select("shop_id")
         .eq("id", user.id)
         .maybeSingle();
 
-      if (profErr) {
-        console.error("[PunchController] profile load error:", profErr);
-      }
+      if (profErr) console.error("[PunchController] profile load error:", profErr);
 
       const sid = (profile?.shop_id as string | null) ?? null;
       setShopId(sid);
@@ -79,12 +78,12 @@ export default function PunchController(): JSX.Element {
   }, []);
 
   async function refreshShift(uid: string): Promise<void> {
-    // Primary: DB status = 'active'
+    // Primary: status = 'open'
     const { data, error } = await supabase
       .from("tech_shifts")
       .select("*")
       .eq("user_id", uid)
-      .eq("status", "active" as TechShiftRow["status"])
+      .eq("status", "open" as TechShiftRow["status"])
       .order("start_time", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -94,7 +93,7 @@ export default function PunchController(): JSX.Element {
       return;
     }
 
-    // Fallback: active = end_time is null (handles older rows / drift)
+    // Fallback: end_time is null (older rows / drift)
     const { data: fallback, error: fbErr } = await supabase
       .from("tech_shifts")
       .select("*")
@@ -132,11 +131,7 @@ export default function PunchController(): JSX.Element {
     }
   }
 
-  async function insertPunch(
-    shiftId: string,
-    type: PunchType,
-    tsIso: string,
-  ): Promise<void> {
+  async function insertPunch(shiftId: string, type: PunchType, tsIso: string): Promise<void> {
     const ev: PunchEventInsert = {
       shift_id: shiftId,
       event_type: type,
@@ -151,9 +146,7 @@ export default function PunchController(): JSX.Element {
 
   async function tryInsertShift(
     payload: TechShiftInsert,
-  ): Promise<
-    { ok: true; shift: TechShiftRow } | { ok: false; message: string }
-  > {
+  ): Promise<{ ok: true; shift: TechShiftRow } | { ok: false; message: string }> {
     const { data, error } = await supabase
       .from("tech_shifts")
       .insert(payload)
@@ -171,51 +164,45 @@ export default function PunchController(): JSX.Element {
     try {
       const nowIso = new Date().toISOString();
 
-      // If your RLS depends on shop scope, do it every time.
       if (shopId) {
         const { error: scopeErr } = await supabase.rpc("set_current_shop_id", {
           p_shop_id: shopId,
         });
-        if (scopeErr) {
-          console.warn("[PunchController] set_current_shop_id failed:", scopeErr);
-        }
+        if (scopeErr) console.warn("[PunchController] set_current_shop_id failed:", scopeErr);
       }
 
-      // ✅ DB constraint expects status: 'active' | 'completed'
-      // ✅ and type: 'shift' | 'break' | 'lunch'
+      // ✅ DB CHECK: status in ('open','closed'), type in ('shift','break','lunch')
       const base: TechShiftInsert = {
         user_id: userId,
-        start_time: nowIso, // ok even if DB has default now()
+        start_time: nowIso,
         end_time: null,
-        status: "active" as TechShiftInsert["status"],
+        status: "open" as TechShiftInsert["status"],
         type: "shift" as TechShiftInsert["type"],
         ...(shopId ? { shop_id: shopId } : {}),
       };
 
       const first = await tryInsertShift(base);
       if (first.ok) {
-        await insertPunch(first.shift.id, "start", nowIso);
+        // NOTE: if your punch_events CHECK expects 'start_shift', change this accordingly.
+        await insertPunch(first.shift.id, "start" as PunchType, nowIso);
         await refreshShift(userId);
         return;
       }
 
-      // Retry without type (in case column differs or doesn't exist)
+      // Retry without type (only if your DB does not actually have a `type` column)
       const retryNoType = { ...base } as Record<string, unknown>;
       delete retryNoType.type;
 
       const second = await tryInsertShift(retryNoType as TechShiftInsert);
       if (second.ok) {
-        await insertPunch(second.shift.id, "start", nowIso);
+        await insertPunch(second.shift.id, "start" as PunchType, nowIso);
         await refreshShift(userId);
         return;
       }
 
       console.error("[PunchController] onPunchIn failed:", first.message);
     } catch (e) {
-      console.error(
-        "[PunchController] onPunchIn:",
-        safeMsg(e, "Failed to punch in."),
-      );
+      console.error("[PunchController] onPunchIn:", safeMsg(e, "Failed to punch in."));
     } finally {
       setLoading(false);
     }
@@ -228,22 +215,18 @@ export default function PunchController(): JSX.Element {
     try {
       const nowIso = new Date().toISOString();
 
-      // If your RLS depends on shop scope, do it here too.
       if (shopId) {
         const { error: scopeErr } = await supabase.rpc("set_current_shop_id", {
           p_shop_id: shopId,
         });
-        if (scopeErr) {
-          console.warn("[PunchController] set_current_shop_id failed:", scopeErr);
-        }
+        if (scopeErr) console.warn("[PunchController] set_current_shop_id failed:", scopeErr);
       }
 
       await punchOutOfActiveJobsForTech(userId);
 
-      // ✅ DB constraint expects 'completed' on punch out
       const update: TechShiftUpdate = {
         end_time: nowIso,
-        status: "completed" as TechShiftUpdate["status"],
+        status: "closed" as TechShiftUpdate["status"],
       };
 
       const { error: updErr } = await supabase
@@ -253,13 +236,10 @@ export default function PunchController(): JSX.Element {
 
       if (updErr) throw new Error(updErr.message);
 
-      await insertPunch(activeShift.id, "end", nowIso);
+      await insertPunch(activeShift.id, "end" as PunchType, nowIso);
       await refreshShift(userId);
     } catch (e) {
-      console.error(
-        "[PunchController] onPunchOut:",
-        safeMsg(e, "Failed to punch out."),
-      );
+      console.error("[PunchController] onPunchOut:", safeMsg(e, "Failed to punch out."));
     } finally {
       setLoading(false);
     }
