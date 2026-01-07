@@ -2,13 +2,13 @@
 
 import { Button } from "@shared/components/ui/Button";
 
-export interface JobLine {
+export interface ActiveShift {
   id: string;
-  vehicle: string;
+  label?: string;
 }
 
 interface PunchInOutButtonProps {
-  activeJob: JobLine | null;
+  activeJob: ActiveShift | null; // active shift, not job
   onPunchIn: () => void;
   onPunchOut: () => void;
   isLoading?: boolean;
@@ -20,22 +20,27 @@ const PunchInOutButton: React.FC<PunchInOutButtonProps> = ({
   onPunchOut,
   isLoading = false,
 }) => {
-  const isPunchedIn = !!activeJob;
+  const isOnShift = Boolean(activeJob);
 
   return (
     <div className="mt-4 w-full">
       <Button
         type="button"
         size="lg"
-        variant={isPunchedIn ? "outline" : "copper"}
-        className="flex w-full justify-center text-sm tracking-[0.16em] uppercase"
-        onClick={isPunchedIn ? onPunchOut : onPunchIn}
+        variant={isOnShift ? "outline" : "copper"}
+        className="flex w-full justify-center text-sm font-blackops tracking-[0.16em] uppercase"
+        onClick={isOnShift ? onPunchOut : onPunchIn}
         isLoading={isLoading}
+        aria-busy={isLoading}
       >
-        {isPunchedIn
-          ? `Punch Out of ${activeJob?.vehicle}`
-          : "Punch In to Job"}
+        {isOnShift ? "Punch Out (End Shift)" : "Punch In (Start Shift)"}
       </Button>
+
+      {isOnShift && (
+        <div className="mt-2 text-center text-[11px] uppercase tracking-[0.14em] text-emerald-400">
+          ● On Shift
+        </div>
+      )}
     </div>
   );
 };

@@ -71,6 +71,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       (p) => pathname === p || pathname.startsWith(p + "/"),
     );
 
+  // ✅ Only hide Planner / AI Planner for tech role (everyone else keeps them)
+  const isTech = (userRole ?? "").toLowerCase() === "tech";
+
   // load session user once, load role, & subscribe to messages (main app only)
   useEffect(() => {
     if (!isAppRoute) return;
@@ -272,19 +275,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </ActionButton>
               )}
 
-              <ActionButton
-                onClick={() => router.push("/portal/appointments")}
-                title="Planner / appointments"
-              >
-                📅 <span className="hidden lg:inline">Planner</span>
-              </ActionButton>
+              {/* ✅ Hide Planner + AI Planner ONLY for tech */}
+              {!isTech && (
+                <ActionButton
+                  onClick={() => router.push("/portal/appointments")}
+                  title="Planner / appointments"
+                >
+                  📅 <span className="hidden lg:inline">Planner</span>
+                </ActionButton>
+              )}
 
-              <ActionButton
-                onClick={() => router.push("/agent/planner")}
-                title="AI Planner"
-              >
-                ⚡ <span className="hidden lg:inline">AI Planner</span>
-              </ActionButton>
+              {!isTech && (
+                <ActionButton
+                  onClick={() => router.push("/agent/planner")}
+                  title="AI Planner"
+                >
+                  ⚡ <span className="hidden lg:inline">AI Planner</span>
+                </ActionButton>
+              )}
 
               {userId && canSeeAgentConsole && (
                 <ActionButton
