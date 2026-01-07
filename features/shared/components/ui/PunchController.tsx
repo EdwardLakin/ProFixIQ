@@ -18,12 +18,6 @@ type WorkOrderLineUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
 
 type PunchType = DB["public"]["Enums"]["punch_event_type"];
 
-// IMPORTANT:
-// Your actual DB constraint is: status IN ('open','closed')
-// and type IN ('shift','break','lunch')
-type ShiftStatusDb = "open" | "closed";
-type ShiftTypeDb = "shift" | "break" | "lunch";
-
 function safeMsg(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
@@ -44,7 +38,7 @@ export default function PunchController(): JSX.Element {
     return () => document.body.classList.remove("on-shift");
   }, [activeShift]);
 
-  // bootstrap: auth + shop + current open shift
+  // bootstrap: auth + shop + current active shift
   useEffect(() => {
     (async () => {
       const {
@@ -85,13 +79,12 @@ export default function PunchController(): JSX.Element {
   }, []);
 
   async function refreshShift(uid: string): Promise<void> {
-    // Primary: DB status = 'open'
+    // Primary: DB status = 'active'
     const { data, error } = await supabase
       .from("tech_shifts")
       .select("*")
       .eq("user_id", uid)
-      // NOTE: avoid incorrect cast to PunchType (was a bug)
-      .eq("status", "open" as unknown as TechShiftRow["status"])
+      .eq("status", "active" as TechShiftRow["status"])
       .order("start_time", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -101,7 +94,7 @@ export default function PunchController(): JSX.Element {
       return;
     }
 
-    // Fallback: open = end_time is null
+    // Fallback: active = end_time is null (handles older rows / drift)
     const { data: fallback, error: fbErr } = await supabase
       .from("tech_shifts")
       .select("*")
@@ -158,7 +151,9 @@ export default function PunchController(): JSX.Element {
 
   async function tryInsertShift(
     payload: TechShiftInsert,
-  ): Promise<{ ok: true; shift: TechShiftRow } | { ok: false; message: string }> {
+  ): Promise<
+    { ok: true; shift: TechShiftRow } | { ok: false; message: string }
+  > {
     const { data, error } = await supabase
       .from("tech_shifts")
       .insert(payload)
@@ -186,14 +181,14 @@ export default function PunchController(): JSX.Element {
         }
       }
 
-      // ✅ DB constraint expects status: 'open' | 'closed'
+      // ✅ DB constraint expects status: 'active' | 'completed'
       // ✅ and type: 'shift' | 'break' | 'lunch'
       const base: TechShiftInsert = {
         user_id: userId,
         start_time: nowIso, // ok even if DB has default now()
         end_time: null,
-        status: "open" as unknown as ShiftStatusDb,
-        type: "shift" as unknown as ShiftTypeDb,
+        status: "active" as TechShiftInsert["status"],
+        type: "shift" as TechShiftInsert["type"],
         ...(shopId ? { shop_id: shopId } : {}),
       };
 
@@ -245,10 +240,10 @@ export default function PunchController(): JSX.Element {
 
       await punchOutOfActiveJobsForTech(userId);
 
-      // ✅ DB constraint expects 'closed' on punch out
+      // ✅ DB constraint expects 'completed' on punch out
       const update: TechShiftUpdate = {
         end_time: nowIso,
-        status: "closed" as unknown as ShiftStatusDb,
+        status: "completed" as TechShiftUpdate["status"],
       };
 
       const { error: updErr } = await supabase
