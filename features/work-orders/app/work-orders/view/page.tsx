@@ -3,13 +3,19 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
-import InvoicePreviewModal from "@/features/shared/components/InvoicePreviewModal";
+
+// ✅ IMPORTANT: lazy-load PDF modal to avoid “Something went wrong” crash
+const InvoicePreviewModal = dynamic(
+  () => import("@work-orders/components/InvoicePreviewModal"),
+  { ssr: false },
+);
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -21,6 +27,10 @@ type Row = WorkOrder & {
   customers: Pick<Customer, "first_name" | "last_name" | "phone" | "email"> | null;
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
 };
+
+/* --------------------------- Invoice Review Types --------------------------- */
+type ReviewIssue = { kind: string; lineId?: string; message: string };
+type ReviewResponse = { ok: boolean; issues: ReviewIssue[] };
 
 /* --------------------------- Status badges --------------------------- */
 type StatusKey =
@@ -82,10 +92,6 @@ const BUTTON_MUTED =
   "rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 shadow-[0_0_14px_rgba(0,0,0,0.7)] " +
   "transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15 hover:text-white active:opacity-80";
 
-/* --------------------------- Review result types --------------------------- */
-type ReviewIssue = { kind: string; lineId?: string; message: string };
-type ReviewResponse = { ok: boolean; issues: ReviewIssue[] };
-
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -97,9 +103,9 @@ export default function WorkOrdersView(): JSX.Element {
 
   // assigning
   const [assigningFor, setAssigningFor] = useState<string | null>(null);
-  const [techs, setTechs] = useState<
-    Array<Pick<Profile, "id" | "full_name" | "role">>
-  >([]);
+  const [techs, setTechs] = useState<Array<Pick<Profile, "id" | "full_name" | "role">>>(
+    [],
+  );
   const [selectedTechId, setSelectedTechId] = useState<string>("");
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
@@ -110,12 +116,12 @@ export default function WorkOrdersView(): JSX.Element {
   // ✅ invoice review loading indicator per row
   const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
 
-  // Store last review results per WO so you can show indicators + gate send
-  const [reviewByWo, setReviewByWo] = useState<
-    Record<string, ReviewResponse | undefined>
-  >({});
+  // ✅ store review result per work order (gate + indicators)
+  const [reviewByWo, setReviewByWo] = useState<Record<string, ReviewResponse | undefined>>(
+    {},
+  );
 
-  // Preview modal wiring
+  // ✅ Preview modal state
   const [previewWo, setPreviewWo] = useState<Row | null>(null);
 
   // -------------------------------------------------------------------
@@ -185,17 +191,17 @@ export default function WorkOrdersView(): JSX.Element {
   }, [q, status, supabase]);
 
   // -------------------------------------------------------------------
-  // Invoice review (AI gate) – stores results for indicators + send gating
+  // Invoice review gate (AI)
   // -------------------------------------------------------------------
   const runInvoiceReview = useCallback(async (woId: string) => {
     try {
       setReviewLoadingId(woId);
 
       const res = await fetch(`/api/work-orders/${woId}/invoice`, { method: "POST" });
-      const json = (await res.json()) as ReviewResponse;
+      const json = (await res.json().catch(() => null)) as ReviewResponse | null;
 
-      if (!res.ok) {
-        toast.error(json?.issues?.[0]?.message ?? "Invoice review failed");
+      if (!res.ok || !json) {
+        toast.error("Invoice review failed");
         return;
       }
 
@@ -244,9 +250,11 @@ export default function WorkOrdersView(): JSX.Element {
         if (res.ok) {
           setTechs(json.data ?? []);
         } else {
+          // eslint-disable-next-line no-console
           console.warn("Failed to load mechanics:", json);
         }
       } catch (e) {
+        // eslint-disable-next-line no-console
         console.warn("Failed to load mechanics:", e);
       }
     })();
@@ -254,22 +262,16 @@ export default function WorkOrdersView(): JSX.Element {
 
   const canAssign = currentRole ? ASSIGN_ROLES.has(currentRole) : false;
 
-  // initial load
   useEffect(() => {
     void load();
   }, [load]);
 
-  // realtime refresh
   useEffect(() => {
     const ch = supabase
       .channel("work_orders:list")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders" },
-        () => {
-          setTimeout(() => void load(), 60);
-        },
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => {
+        setTimeout(() => void load(), 60);
+      })
       .subscribe();
 
     return () => {
@@ -292,6 +294,7 @@ export default function WorkOrdersView(): JSX.Element {
         .from("work_order_lines")
         .delete()
         .eq("work_order_id", id);
+
       if (lineErr) {
         alert("Failed to delete job lines: " + lineErr.message);
         setRows(prev);
@@ -352,10 +355,7 @@ export default function WorkOrdersView(): JSX.Element {
     [rows],
   );
   const awaitingApprovalCount = useMemo(
-    () =>
-      rows.filter(
-        (r) => (r.status ?? "").toLowerCase() === "awaiting_approval",
-      ).length,
+    () => rows.filter((r) => (r.status ?? "").toLowerCase() === "awaiting_approval").length,
     [rows],
   );
 
@@ -430,28 +430,20 @@ export default function WorkOrdersView(): JSX.Element {
 
         <div className="flex items-center gap-4 text-[0.7rem] text-neutral-300">
           <div className="flex flex-col">
-            <span className="uppercase tracking-[0.13em] text-neutral-500">
-              Total
-            </span>
+            <span className="uppercase tracking-[0.13em] text-neutral-500">Total</span>
             <span className="text-sm font-semibold text-white">{total}</span>
           </div>
           <div className="h-7 w-px bg-white/10" />
           <div className="flex flex-col">
-            <span className="uppercase tracking-[0.13em] text-neutral-500">
-              Active
-            </span>
-            <span className="text-sm font-semibold text-sky-200">
-              {activeCount}
-            </span>
+            <span className="uppercase tracking-[0.13em] text-neutral-500">Active</span>
+            <span className="text-sm font-semibold text-sky-200">{activeCount}</span>
           </div>
           <div className="h-7 w-px bg-white/10" />
           <div className="flex flex-col">
             <span className="uppercase tracking-[0.13em] text-neutral-500">
               Awaiting approval
             </span>
-            <span className="text-sm font-semibold text-blue-200">
-              {awaitingApprovalCount}
-            </span>
+            <span className="text-sm font-semibold text-blue-200">{awaitingApprovalCount}</span>
           </div>
         </div>
       </section>
@@ -491,22 +483,17 @@ export default function WorkOrdersView(): JSX.Element {
                 : "";
 
               const vehicleLabel = r.vehicles
-                ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${
-                    r.vehicles.model ?? ""
-                  }`.trim()
+                ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""}`.trim()
                 : "";
 
               const plate = r.vehicles?.license_plate ?? "";
 
               const statusLower = String(r.status ?? "").toLowerCase();
-              const isReadyToInvoice =
-                statusLower === "ready_to_invoice" || statusLower === "completed";
+              const isReadyToInvoice = statusLower === "ready_to_invoice" || statusLower === "completed";
 
               const review = reviewByWo[r.id];
+              const reviewedOk = Boolean(review?.ok);
               const issueCount = review?.issues?.length ?? 0;
-              const reviewedOk = review?.ok === true;
-
-              const canSend = isReadyToInvoice && reviewedOk;
 
               return (
                 <div
@@ -518,7 +505,7 @@ export default function WorkOrdersView(): JSX.Element {
                     {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
                   </div>
 
-                  {/* Main */}
+                  {/* Main: id, status, customer + vehicle */}
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
@@ -538,9 +525,9 @@ export default function WorkOrdersView(): JSX.Element {
                         {(r.status ?? "awaiting").replaceAll("_", " ")}
                       </span>
 
-                      {/* ✅ review indicator pill (shows after review ran) */}
+                      {/* ✅ Review result pill */}
                       {review ? (
-                        review.ok ? (
+                        reviewedOk ? (
                           <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[0.65rem] text-emerald-200">
                             Reviewed ✓
                           </span>
@@ -556,9 +543,7 @@ export default function WorkOrdersView(): JSX.Element {
                       {customerName || "No customer"}{" "}
                       <span className="mx-1 text-neutral-600">•</span>
                       {vehicleLabel || "No vehicle"}
-                      {plate ? (
-                        <span className="ml-1 text-neutral-400">({plate})</span>
-                      ) : null}
+                      {plate ? <span className="ml-1 text-neutral-400">({plate})</span> : null}
                     </div>
                   </div>
 
@@ -576,46 +561,40 @@ export default function WorkOrdersView(): JSX.Element {
                       Open
                     </Link>
 
-                    {/* ✅ Invoice review button (AI gate) */}
+                    {/* ✅ Invoice review button (AI) */}
                     {isReadyToInvoice && (
                       <button
                         onClick={() => void runInvoiceReview(r.id)}
                         disabled={reviewLoadingId === r.id || reviewedOk}
                         className={
-                          "rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 " +
-                          (reviewedOk
-                            ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-200"
-                            : "border-emerald-500/60 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20")
+                          reviewedOk
+                            ? "rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100 opacity-70"
+                            : "rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
                         }
                         title={
                           reviewedOk
-                            ? "Already reviewed ✓"
+                            ? "Already reviewed"
                             : "Check required fields before invoicing"
                         }
                       >
-                        {reviewLoadingId === r.id
-                          ? "Reviewing…"
-                          : reviewedOk
-                          ? "Reviewed"
-                          : "Invoice review"}
+                        {reviewedOk ? "Reviewed" : reviewLoadingId === r.id ? "Reviewing…" : "Invoice review"}
                       </button>
                     )}
 
-                    {/* ✅ Send invoice now opens preview modal (only after review passes) */}
+                    {/* ✅ Send invoice (opens preview modal; gated by review pass) */}
                     {isReadyToInvoice && (
                       <button
                         onClick={() => setPreviewWo(r)}
-                        disabled={!canSend}
+                        disabled={!reviewedOk}
                         className={
-                          "rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 " +
-                          (canSend
-                            ? "border-[var(--accent-copper-light)] bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/25"
-                            : "border-white/15 bg-white/5 text-neutral-300")
+                          reviewedOk
+                            ? "rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper)]/15 px-2.5 py-1 text-xs text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/25"
+                            : "rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-neutral-500 opacity-60"
                         }
                         title={
-                          canSend
-                            ? "Preview + send invoice email"
-                            : "Run invoice review and fix issues first"
+                          reviewedOk
+                            ? "Preview + review gate + email invoice"
+                            : "Run invoice review first"
                         }
                       >
                         Send invoice
@@ -633,9 +612,7 @@ export default function WorkOrdersView(): JSX.Element {
                       <>
                         {!isAssigning ? (
                           <button
-                            onClick={() => {
-                              setAssigningFor(r.id);
-                            }}
+                            onClick={() => setAssigningFor(r.id)}
                             className="rounded-full border border-sky-500/60 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-100 transition hover:bg-sky-500/25"
                           >
                             Assign
@@ -645,16 +622,12 @@ export default function WorkOrdersView(): JSX.Element {
                             <select
                               value={selectedTechId}
                               onChange={(e) => setSelectedTechId(e.target.value)}
-                              className={
-                                SELECT_DARK +
-                                " h-8 min-w-[150px] px-2 py-1 text-[0.7rem]"
-                              }
+                              className={SELECT_DARK + " h-8 min-w-[150px] px-2 py-1 text-[0.7rem]"}
                             >
                               <option value="">Pick mechanic…</option>
                               {techs.map((t) => (
                                 <option key={t.id} value={t.id}>
-                                  {t.full_name ?? "(no name)"}{" "}
-                                  {t.role ? `(${t.role})` : ""}
+                                  {t.full_name ?? "(no name)"} {t.role ? `(${t.role})` : ""}
                                 </option>
                               ))}
                             </select>
@@ -682,7 +655,7 @@ export default function WorkOrdersView(): JSX.Element {
         </section>
       )}
 
-      {/* ✅ Invoice preview modal (email send happens inside this modal) */}
+      {/* ✅ Invoice preview modal (only mounts when opened) */}
       {previewWo && (
         <InvoicePreviewModal
           isOpen={!!previewWo}
