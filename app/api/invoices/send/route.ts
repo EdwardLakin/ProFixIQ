@@ -19,11 +19,9 @@ const SENDGRID_TEMPLATE_ID =
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
 
-// ✅ Use the same verified sender that worked in your debug route
 const SENDGRID_FROM_EMAIL =
   process.env.SENDGRID_FROM_EMAIL || "support@profixiq.com";
-const SENDGRID_FROM_NAME =
-  process.env.SENDGRID_FROM_NAME || "ProFixIQ";
+const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || "ProFixIQ";
 
 if (!SENDGRID_API_KEY) {
   console.warn("[invoices/send] SENDGRID_API_KEY is not set");
@@ -32,20 +30,154 @@ if (!SENDGRID_TEMPLATE_ID) {
   console.warn("[invoices/send] SENDGRID_INVOICE_TEMPLATE_ID is not set");
 }
 
+/* ------------------------------------------------------------------ */
+/* Types + runtime guards (no `unknown` leakage) */
+/* ------------------------------------------------------------------ */
+
+type VehicleInfo = { year?: string; make?: string; model?: string; vin?: string };
+
+type InvoiceLinePayload = {
+  complaint?: string | null;
+  cause?: string | null;
+  correction?: string | null;
+  labor_time?: string | number | null;
+  lineId?: string | null;
+};
+
 type RequestBody = {
   workOrderId: string;
   customerEmail: string;
   invoiceTotal?: number;
   customerName?: string;
   shopName?: string;
-  // Optional extras to feed into SendGrid template
-  lines?: unknown;
-  vehicleInfo?: unknown;
+  lines?: InvoiceLinePayload[];
+  vehicleInfo?: VehicleInfo;
 };
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+function asString(x: unknown): string | undefined {
+  if (typeof x === "string") return x;
+  if (typeof x === "number") return String(x);
+  return undefined;
+}
+
+function asNumber(x: unknown): number | undefined {
+  if (typeof x === "number" && Number.isFinite(x)) return x;
+  if (typeof x === "string") {
+    const n = Number(x);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+function sanitizeVehicleInfo(x: unknown): VehicleInfo | undefined {
+  if (!isRecord(x)) return undefined;
+
+  const year = asString(x.year)?.trim();
+  const make = asString(x.make)?.trim();
+  const model = asString(x.model)?.trim();
+  const vin = asString(x.vin)?.trim();
+
+  const out: VehicleInfo = {};
+  if (year) out.year = year;
+  if (make) out.make = make;
+  if (model) out.model = model;
+  if (vin) out.vin = vin;
+
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function sanitizeLines(x: unknown): InvoiceLinePayload[] | undefined {
+  if (!Array.isArray(x)) return undefined;
+
+  const out: InvoiceLinePayload[] = [];
+
+  for (const item of x) {
+    if (!isRecord(item)) continue;
+
+    const complaint = asString(item.complaint)?.trim();
+    const cause = asString(item.cause)?.trim();
+    const correction = asString(item.correction)?.trim();
+
+    const labor_time_raw = item.labor_time;
+    const labor_time_num = asNumber(labor_time_raw);
+    const labor_time_str =
+      typeof labor_time_raw === "string" ? labor_time_raw.trim() : undefined;
+
+    const lineId =
+      (typeof item.lineId === "string" ? item.lineId.trim() : undefined) ??
+      (typeof item.id === "string" ? item.id.trim() : undefined) ??
+      (typeof item.line_id === "string" ? item.line_id.trim() : undefined) ??
+      (typeof item.work_order_line_id === "string"
+        ? item.work_order_line_id.trim()
+        : undefined);
+
+    out.push({
+      complaint: complaint?.length ? complaint : null,
+      cause: cause?.length ? cause : null,
+      correction: correction?.length ? correction : null,
+      labor_time:
+        labor_time_num !== undefined
+          ? labor_time_num
+          : labor_time_str?.length
+            ? labor_time_str
+            : null,
+      lineId: lineId?.length ? lineId : null,
+    });
+  }
+
+  return out.length > 0 ? out : undefined;
+}
+
+type ParsedBody =
+  | { ok: true; body: RequestBody }
+  | { ok: false; error: string; status: number };
+
+function parseRequestBody(raw: unknown): ParsedBody {
+  if (!isRecord(raw)) {
+    return { ok: false, error: "Invalid JSON body", status: 400 };
+  }
+
+  const workOrderId = asString(raw.workOrderId)?.trim() ?? "";
+  const customerEmail = asString(raw.customerEmail)?.trim() ?? "";
+
+  if (!workOrderId || !customerEmail) {
+    return { ok: false, error: "Missing email or work order ID", status: 400 };
+  }
+
+  const invoiceTotal = asNumber(raw.invoiceTotal);
+  const customerName = asString(raw.customerName)?.trim();
+  const shopName = asString(raw.shopName)?.trim();
+  const vehicleInfo = sanitizeVehicleInfo(raw.vehicleInfo);
+  const lines = sanitizeLines(raw.lines);
+
+  const body: RequestBody = {
+    workOrderId,
+    customerEmail,
+    invoiceTotal,
+    customerName,
+    shopName,
+    vehicleInfo,
+    lines,
+  };
+
+  return { ok: true, body };
+}
+
+/* ------------------------------------------------------------------ */
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as RequestBody;
+    const raw = (await req.json().catch(() => null)) as unknown;
+
+    const parsed = parseRequestBody(raw);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+    }
+
     const {
       workOrderId,
       customerEmail,
@@ -54,14 +186,7 @@ export async function POST(req: Request) {
       shopName,
       lines,
       vehicleInfo,
-    } = body;
-
-    if (!customerEmail || !workOrderId) {
-      return NextResponse.json(
-        { error: "Missing email or work order ID" },
-        { status: 400 },
-      );
-    }
+    } = parsed.body;
 
     if (!SENDGRID_API_KEY || !SENDGRID_TEMPLATE_ID) {
       return NextResponse.json(
@@ -80,10 +205,7 @@ export async function POST(req: Request) {
       .maybeSingle<Pick<WorkOrderRow, "id" | "shop_id" | "customer_id">>();
 
     if (woErr || !wo) {
-      return NextResponse.json(
-        { error: "Invalid work order" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Invalid work order" }, { status: 404 });
     }
 
     // ------------------------------------------------------------------
@@ -116,11 +238,11 @@ export async function POST(req: Request) {
           to: [{ email: customerEmail }],
           dynamic_template_data: {
             workOrderId,
-            customerName,
-            shopName,
-            invoiceTotal,
-            vehicleInfo,
-            lines,
+            customerName: customerName ?? null,
+            shopName: shopName ?? null,
+            invoiceTotal: invoiceTotal ?? null,
+            vehicleInfo: vehicleInfo ?? null,
+            lines: lines ?? null,
             portalUrl: portalInvoiceUrl,
           },
         },
@@ -149,12 +271,6 @@ export async function POST(req: Request) {
       );
       throw new Error(`SendGrid error: ${sgRes.status} ${sgRes.statusText}`);
     }
-
-    console.log(
-      "[invoices/send] SendGrid accepted invoice email",
-      sgRes.status,
-      resBody || "<empty body>",
-    );
 
     // ------------------------------------------------------------------
     // 4) Update invoice metadata on the work order

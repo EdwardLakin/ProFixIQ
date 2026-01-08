@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
+import InvoicePreviewModal from "@/features/shared/components/InvoicePreviewModal";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -81,6 +82,10 @@ const BUTTON_MUTED =
   "rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 shadow-[0_0_14px_rgba(0,0,0,0.7)] " +
   "transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15 hover:text-white active:opacity-80";
 
+/* --------------------------- Review result types --------------------------- */
+type ReviewIssue = { kind: string; lineId?: string; message: string };
+type ReviewResponse = { ok: boolean; issues: ReviewIssue[] };
+
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -104,8 +109,14 @@ export default function WorkOrdersView(): JSX.Element {
 
   // ✅ invoice review loading indicator per row
   const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
-  // ✅ invoice send loading indicator per row
-  const [invoiceSendingId, setInvoiceSendingId] = useState<string | null>(null);
+
+  // Store last review results per WO so you can show indicators + gate send
+  const [reviewByWo, setReviewByWo] = useState<
+    Record<string, ReviewResponse | undefined>
+  >({});
+
+  // Preview modal wiring
+  const [previewWo, setPreviewWo] = useState<Row | null>(null);
 
   // -------------------------------------------------------------------
   // Load work orders
@@ -114,7 +125,6 @@ export default function WorkOrdersView(): JSX.Element {
     setLoading(true);
     setErr(null);
 
-    // 1) get work orders
     let query = supabase
       .from("work_orders")
       .select(
@@ -143,7 +153,6 @@ export default function WorkOrdersView(): JSX.Element {
 
     const workOrders = data as Row[];
 
-    // 2) client-side filter by search
     const qlc = q.trim().toLowerCase();
     const filtered =
       qlc.length === 0
@@ -176,107 +185,38 @@ export default function WorkOrdersView(): JSX.Element {
   }, [q, status, supabase]);
 
   // -------------------------------------------------------------------
-  // Invoice review + send
+  // Invoice review (AI gate) – stores results for indicators + send gating
   // -------------------------------------------------------------------
-  const runInvoiceReview = useCallback(
-    async (woId: string) => {
-      try {
-        setReviewLoadingId(woId);
+  const runInvoiceReview = useCallback(async (woId: string) => {
+    try {
+      setReviewLoadingId(woId);
 
-        const res = await fetch(`/api/work-orders/${woId}/invoice`, {
-          method: "POST",
-        });
+      const res = await fetch(`/api/work-orders/${woId}/invoice`, { method: "POST" });
+      const json = (await res.json()) as ReviewResponse;
 
-        const json = (await res.json()) as {
-          ok?: boolean;
-          issues?: Array<{ message?: string }>;
-        };
-
-        if (!res.ok) {
-          toast.error(json?.issues?.[0]?.message ?? "Invoice review failed");
-          return;
-        }
-
-        if (json?.ok) {
-          toast.success("Invoice review passed ✅ Ready to invoice.");
-          return;
-        }
-
-        const issues: Array<{ message?: string }> = Array.isArray(json?.issues)
-          ? json.issues
-          : [];
-
-        toast.error(
-          `Invoice review found ${issues.length} issue(s): ${
-            issues[0]?.message ?? "Fix required fields."
-          }`,
-        );
-      } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Invoice review failed";
-        toast.error(msg);
-      } finally {
-        setReviewLoadingId(null);
-      }
-    },
-    [],
-  );
-
-  const handleSendInvoice = useCallback(
-    async (wo: Row) => {
-      if (!wo.customers?.email) {
-        toast.error("No customer email on file for this work order.");
+      if (!res.ok) {
+        toast.error(json?.issues?.[0]?.message ?? "Invoice review failed");
         return;
       }
 
-      const customerNameFromCustomer =
-        [wo.customers.first_name, wo.customers.last_name]
-          .filter((part) => !!part)
-          .join(" ") || null;
+      setReviewByWo((prev) => ({ ...prev, [woId]: json }));
 
-      const customerName =
-        customerNameFromCustomer || wo.customer_name || undefined;
-
-      const laborTotal = wo.labor_total ?? 0;
-      const partsTotal = wo.parts_total ?? 0;
-
-      const invoiceTotal =
-        wo.invoice_total ?? Number(laborTotal) + Number(partsTotal);
-
-      try {
-        setInvoiceSendingId(wo.id);
-
-        const res = await fetch("/api/invoices/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workOrderId: wo.id,
-            customerEmail: wo.customers.email,
-            customerName,
-            shopName: undefined, // can wire real shop name later
-            invoiceTotal,
-          }),
-        });
-
-        const json = (await res.json()) as { ok?: boolean; error?: string };
-
-        if (!res.ok || !json.ok) {
-          toast.error(json.error ?? "Failed to send invoice email");
-          return;
-        }
-
-        toast.success("Invoice email sent to customer.");
-        await load(); // refresh list so invoice_* fields update
-      } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Failed to send invoice email.";
-        toast.error(msg);
-      } finally {
-        setInvoiceSendingId(null);
+      if (json.ok) {
+        toast.success("Invoice review passed ✅ Ready to invoice.");
+        return;
       }
-    },
-    [load],
-  );
+
+      const issues = Array.isArray(json.issues) ? json.issues : [];
+      toast.error(
+        `Invoice review found ${issues.length} issue(s): ${issues[0]?.message ?? "Fix required fields."}`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Invoice review failed";
+      toast.error(msg);
+    } finally {
+      setReviewLoadingId(null);
+    }
+  }, []);
 
   // -------------------------------------------------------------------
   // Auth + portal role + mechanics
@@ -391,7 +331,6 @@ export default function WorkOrdersView(): JSX.Element {
         }
         setAssigningFor(null);
         await load();
-        // 🔁 tell summary pills to reload assignment info
         setAssignVersion((v) => v + 1);
         toast.success("Work order assigned to mechanic.");
       } catch (e) {
@@ -563,6 +502,12 @@ export default function WorkOrdersView(): JSX.Element {
               const isReadyToInvoice =
                 statusLower === "ready_to_invoice" || statusLower === "completed";
 
+              const review = reviewByWo[r.id];
+              const issueCount = review?.issues?.length ?? 0;
+              const reviewedOk = review?.ok === true;
+
+              const canSend = isReadyToInvoice && reviewedOk;
+
               return (
                 <div
                   key={r.id}
@@ -573,7 +518,7 @@ export default function WorkOrdersView(): JSX.Element {
                     {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
                   </div>
 
-                  {/* Main: id, status, customer + vehicle */}
+                  {/* Main */}
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
@@ -582,14 +527,29 @@ export default function WorkOrdersView(): JSX.Element {
                       >
                         {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                       </Link>
+
                       {r.custom_id && (
                         <span className="rounded-full border border-white/15 bg-black/60 px-1.5 py-0.5 text-[0.65rem] font-mono text-neutral-400">
                           #{r.id.slice(0, 6)}
                         </span>
                       )}
+
                       <span className={chip(r.status)}>
                         {(r.status ?? "awaiting").replaceAll("_", " ")}
                       </span>
+
+                      {/* ✅ review indicator pill (shows after review ran) */}
+                      {review ? (
+                        review.ok ? (
+                          <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[0.65rem] text-emerald-200">
+                            Reviewed ✓
+                          </span>
+                        ) : (
+                          <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[0.65rem] text-amber-200">
+                            Issues: {issueCount}
+                          </span>
+                        )
+                      ) : null}
                     </div>
 
                     <div className="truncate text-[0.8rem] text-neutral-300">
@@ -616,27 +576,49 @@ export default function WorkOrdersView(): JSX.Element {
                       Open
                     </Link>
 
-                    {/* ✅ Invoice review button (entry point) */}
+                    {/* ✅ Invoice review button (AI gate) */}
                     {isReadyToInvoice && (
                       <button
                         onClick={() => void runInvoiceReview(r.id)}
-                        disabled={reviewLoadingId === r.id}
-                        className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
-                        title="Check required fields before invoicing"
+                        disabled={reviewLoadingId === r.id || reviewedOk}
+                        className={
+                          "rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 " +
+                          (reviewedOk
+                            ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-200"
+                            : "border-emerald-500/60 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20")
+                        }
+                        title={
+                          reviewedOk
+                            ? "Already reviewed ✓"
+                            : "Check required fields before invoicing"
+                        }
                       >
-                        {reviewLoadingId === r.id ? "Reviewing…" : "Invoice review"}
+                        {reviewLoadingId === r.id
+                          ? "Reviewing…"
+                          : reviewedOk
+                          ? "Reviewed"
+                          : "Invoice review"}
                       </button>
                     )}
 
-                    {/* ✅ Send invoice email */}
+                    {/* ✅ Send invoice now opens preview modal (only after review passes) */}
                     {isReadyToInvoice && (
                       <button
-                        onClick={() => void handleSendInvoice(r)}
-                        disabled={invoiceSendingId === r.id}
-                        className="rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper)]/15 px-2.5 py-1 text-xs text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/25 disabled:opacity-50"
-                        title="Email invoice and notify portal customer"
+                        onClick={() => setPreviewWo(r)}
+                        disabled={!canSend}
+                        className={
+                          "rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 " +
+                          (canSend
+                            ? "border-[var(--accent-copper-light)] bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/25"
+                            : "border-white/15 bg-white/5 text-neutral-300")
+                        }
+                        title={
+                          canSend
+                            ? "Preview + send invoice email"
+                            : "Run invoice review and fix issues first"
+                        }
                       >
-                        {invoiceSendingId === r.id ? "Sending…" : "Send invoice"}
+                        Send invoice
                       </button>
                     )}
 
@@ -698,6 +680,19 @@ export default function WorkOrdersView(): JSX.Element {
             })}
           </div>
         </section>
+      )}
+
+      {/* ✅ Invoice preview modal (email send happens inside this modal) */}
+      {previewWo && (
+        <InvoicePreviewModal
+          isOpen={!!previewWo}
+          onClose={() => setPreviewWo(null)}
+          workOrderId={previewWo.id}
+          onSent={async () => {
+            setPreviewWo(null);
+            await load();
+          }}
+        />
       )}
     </div>
   );
