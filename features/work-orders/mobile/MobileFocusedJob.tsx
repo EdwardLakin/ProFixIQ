@@ -877,7 +877,7 @@ export default function MobileFocusedJob(props: {
           onClose={() => setOpenAddJob(false)}
           workOrderId={workOrder.id}
           vehicleId={vehicle?.id ?? null}
-          techId={line?.assigned_to || "system"}
+          techId={(line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ?? "system"}
           shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {
             await refresh();

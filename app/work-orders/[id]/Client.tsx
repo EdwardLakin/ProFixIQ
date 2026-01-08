@@ -1424,9 +1424,9 @@ const openInspectionForLine = useCallback(
 
                   const lineTechIds = lineTechsByLine[ln.id] ?? [];
                   const primaryId =
-                    typeof ln.assigned_to === "string"
-                      ? (ln.assigned_to as string)
-                      : null;
+  typeof (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
+    ? (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id
+    : null;
 
                   const orderedTechIds: string[] = [];
                   if (primaryId) orderedTechIds.push(primaryId);

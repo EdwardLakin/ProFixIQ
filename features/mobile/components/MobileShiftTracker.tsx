@@ -10,10 +10,6 @@ type DB = Database;
 type ShiftType = "shift" | "break" | "lunch";
 type Mode = "none" | "shift" | "break" | "lunch" | "ended";
 
-type Props = {
-  userId: string;
-};
-
 type PunchEventType =
   | "start_shift"
   | "end_shift"
@@ -21,6 +17,8 @@ type PunchEventType =
   | "break_end"
   | "lunch_start"
   | "lunch_end";
+
+type Props = { userId: string };
 
 function toShiftType(input: unknown, fallback: ShiftType): ShiftType {
   const v = String(input ?? "").toLowerCase().trim();
@@ -37,14 +35,28 @@ export default function MobileShiftTracker({ userId }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  /* ------------------------------------------------------------------ */
-  /* Load open shift + infer state                                      */
-  /* ------------------------------------------------------------------ */
+  const insertPunch = useCallback(
+    async (sid: string, event: PunchEventType) => {
+      const { error } = await supabase.from("punch_events").insert({
+        shift_id: sid,
+        user_id: userId,
+        profile_id: userId,
+        event_type: event,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (error) {
+        console.error("[MobileShiftTracker] insertPunch failed:", error);
+        setErr(`${error.code ?? "punch_error"}: ${error.message}`);
+      }
+    },
+    [supabase, userId],
+  );
+
   const loadOpenShift = useCallback(async () => {
     if (!userId) return;
     setErr(null);
 
-    // Primary: status = 'open' (DB truth)
     const { data: shift, error: sErr } = await supabase
       .from("tech_shifts")
       .select("id, start_time, type, status, end_time")
@@ -64,7 +76,6 @@ export default function MobileShiftTracker({ userId }: Props) {
 
     let open = shift ?? null;
 
-    // Fallback: end_time is null (legacy rows / drift)
     if (!open) {
       const { data: fb, error: fbErr } = await supabase
         .from("tech_shifts")
@@ -82,7 +93,6 @@ export default function MobileShiftTracker({ userId }: Props) {
         setMode("none");
         return;
       }
-
       open = fb ?? null;
     }
 
@@ -96,33 +106,34 @@ export default function MobileShiftTracker({ userId }: Props) {
     setShiftId(open.id);
     setStartTime(open.start_time ?? null);
 
-    // Prefer shift.type for UI mode
-    const t = toShiftType(open.type, "shift");
-    setMode(t);
+    const { data: lastPunch, error: pErr } = await supabase
+      .from("punch_events")
+      .select("event_type")
+      .eq("shift_id", open.id)
+      .order("timestamp", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (pErr) {
+      setMode(toShiftType(open.type, "shift"));
+      return;
+    }
+
+    const ev = lastPunch?.event_type ?? null;
+
+    const computed: Mode =
+      ev === "break_start"
+        ? "break"
+        : ev === "lunch_start"
+          ? "lunch"
+          : "shift";
+
+    setMode(computed);
   }, [supabase, userId]);
 
   useEffect(() => {
     void loadOpenShift();
   }, [loadOpenShift]);
-
-  /* ------------------------------------------------------------------ */
-  /* Punch helpers                                                      */
-  /* ------------------------------------------------------------------ */
-  const insertPunch = useCallback(
-    async (event: PunchEventType) => {
-      if (!shiftId) return;
-
-      const { error } = await supabase.from("punch_events").insert({
-        shift_id: shiftId,
-        user_id: userId,
-        event_type: event,
-        timestamp: new Date().toISOString(),
-      });
-
-      if (error) setErr(`${error.code ?? "punch_error"}: ${error.message}`);
-    },
-    [supabase, shiftId, userId],
-  );
 
   const startShift = useCallback(async () => {
     if (busy || !userId) return;
@@ -130,10 +141,9 @@ export default function MobileShiftTracker({ userId }: Props) {
     setErr(null);
 
     try {
-      // hydrate if already open
       const { data: existing, error: exErr } = await supabase
         .from("tech_shifts")
-        .select("id, start_time, type")
+        .select("id, start_time")
         .eq("user_id", userId)
         .eq("status", "open")
         .order("start_time", { ascending: false })
@@ -145,7 +155,7 @@ export default function MobileShiftTracker({ userId }: Props) {
       if (existing) {
         setShiftId(existing.id);
         setStartTime(existing.start_time ?? null);
-        setMode(toShiftType(existing.type, "shift"));
+        setMode("shift");
         return;
       }
 
@@ -159,19 +169,19 @@ export default function MobileShiftTracker({ userId }: Props) {
           type: "shift",
           status: "open",
           end_time: null,
-        } as DB["public"]["Tables"]["tech_shifts"]["Insert"])
-        .select("id, start_time, type")
+        })
+        .select("id, start_time")
         .single();
 
       if (error) throw error;
 
       setShiftId(data.id);
       setStartTime(data.start_time ?? now);
-      setMode(toShiftType(data.type, "shift"));
-      await insertPunch("start_shift");
+      setMode("shift");
+
+      await insertPunch(data.id, "start_shift");
     } catch (e: any) {
-      const msg = `${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to start shift"}`;
-      setErr(msg);
+      setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to start shift"}`);
     } finally {
       setBusy(false);
     }
@@ -187,16 +197,13 @@ export default function MobileShiftTracker({ userId }: Props) {
 
       const { error } = await supabase
         .from("tech_shifts")
-        .update({
-          end_time: now,
-          status: "closed",
-          type: "shift",
-        } as DB["public"]["Tables"]["tech_shifts"]["Update"])
+        .update({ end_time: now, status: "closed", type: "shift" })
         .eq("id", shiftId);
 
       if (error) throw error;
 
-      await insertPunch("end_shift");
+      await insertPunch(shiftId, "end_shift");
+
       setShiftId(null);
       setStartTime(null);
       setMode("ended");
@@ -213,19 +220,18 @@ export default function MobileShiftTracker({ userId }: Props) {
     setErr(null);
 
     try {
-      const next: ShiftType = mode === "break" ? "shift" : "break";
-
-      if (mode === "break") await insertPunch("break_end");
-      else await insertPunch("break_start");
+      const isEnding = mode === "break";
+      const nextType: ShiftType = isEnding ? "shift" : "break";
 
       const { error } = await supabase
         .from("tech_shifts")
-        .update({ type: next, status: "open" } as DB["public"]["Tables"]["tech_shifts"]["Update"])
+        .update({ type: nextType, status: "open" })
         .eq("id", shiftId);
 
       if (error) throw error;
 
-      setMode(next);
+      await insertPunch(shiftId, isEnding ? "break_end" : "break_start");
+      setMode(nextType);
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle break"}`);
     } finally {
@@ -239,19 +245,18 @@ export default function MobileShiftTracker({ userId }: Props) {
     setErr(null);
 
     try {
-      const next: ShiftType = mode === "lunch" ? "shift" : "lunch";
-
-      if (mode === "lunch") await insertPunch("lunch_end");
-      else await insertPunch("lunch_start");
+      const isEnding = mode === "lunch";
+      const nextType: ShiftType = isEnding ? "shift" : "lunch";
 
       const { error } = await supabase
         .from("tech_shifts")
-        .update({ type: next, status: "open" } as DB["public"]["Tables"]["tech_shifts"]["Update"])
+        .update({ type: nextType, status: "open" })
         .eq("id", shiftId);
 
       if (error) throw error;
 
-      setMode(next);
+      await insertPunch(shiftId, isEnding ? "lunch_end" : "lunch_start");
+      setMode(nextType);
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle lunch"}`);
     } finally {
@@ -259,16 +264,11 @@ export default function MobileShiftTracker({ userId }: Props) {
     }
   }, [busy, supabase, shiftId, mode, insertPunch]);
 
-  /* ------------------------------------------------------------------ */
-  /* UI                                                                  */
-  /* ------------------------------------------------------------------ */
-
   const niceStatus =
     mode === "none" ? "Off shift" : mode === "ended" ? "Shift ended" : mode;
 
   const btnBase =
-    "rounded-xl px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] " +
-    "transition-colors disabled:opacity-60 disabled:cursor-not-allowed";
+    "rounded-xl px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] transition-colors disabled:opacity-60 disabled:cursor-not-allowed";
 
   return (
     <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[rgba(5,9,16,0.9)] px-3 py-3 text-[0.75rem] text-neutral-100 shadow-[0_14px_32px_rgba(0,0,0,0.9)] backdrop-blur-md space-y-2">
@@ -277,7 +277,7 @@ export default function MobileShiftTracker({ userId }: Props) {
           Shift tracker
         </span>
         <span className="text-[0.7rem] text-[var(--accent-copper-light)]">
-          {niceStatus.charAt(0).toUpperCase() + niceStatus.slice(1)}
+          {niceStatus}
         </span>
       </div>
 
@@ -296,7 +296,6 @@ export default function MobileShiftTracker({ userId }: Props) {
         </p>
       )}
 
-      {/* OFF SHIFT */}
       {mode === "none" && (
         <button
           type="button"
@@ -313,7 +312,6 @@ export default function MobileShiftTracker({ userId }: Props) {
         </button>
       )}
 
-      {/* ON SHIFT / BREAK / LUNCH */}
       {mode !== "none" && mode !== "ended" && (
         <div className="mt-1 space-y-2">
           <div className="flex gap-2">
@@ -354,8 +352,7 @@ export default function MobileShiftTracker({ userId }: Props) {
             disabled={busy}
             className={
               btnBase +
-              " w-full border border-red-500/70 bg-red-500/10 " +
-              "text-red-100 hover:bg-red-500/20"
+              " w-full border border-red-500/70 bg-red-500/10 text-red-100 hover:bg-red-500/20"
             }
           >
             End shift
@@ -363,7 +360,6 @@ export default function MobileShiftTracker({ userId }: Props) {
         </div>
       )}
 
-      {/* ENDED */}
       {mode === "ended" && (
         <div className="mt-1 space-y-2">
           <p className="text-[0.65rem] text-neutral-400">
@@ -375,8 +371,7 @@ export default function MobileShiftTracker({ userId }: Props) {
             disabled={busy}
             className={
               btnBase +
-              " w-full border border-[var(--accent-copper-soft)] " +
-              "bg-black/60 text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]/20"
+              " w-full border border-[var(--accent-copper-soft)] bg-black/60 text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]/20"
             }
           >
             {busy ? "Starting…" : "Start new shift"}

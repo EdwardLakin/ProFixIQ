@@ -1,10 +1,12 @@
-// features/work-orders/components/workorders/AssignTechModal.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
 import { toast } from "sonner";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
 
 interface Assignable {
   id: string;
@@ -16,9 +18,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   workOrderLineId: string;
-  // name we originally used
   initialMechanics?: Assignable[];
-  // name your page is currently passing
   mechanics?: Assignable[];
   onAssigned?: (techId: string) => void | Promise<void>;
 }
@@ -32,9 +32,7 @@ export default function AssignTechModal({
   onAssigned,
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
-  const [users, setUsers] = useState<Assignable[]>(() => {
-    return mechanics ?? initialMechanics ?? [];
-  });
+  const [users, setUsers] = useState<Assignable[]>(() => mechanics ?? initialMechanics ?? []);
   const [techId, setTechId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -48,33 +46,40 @@ export default function AssignTechModal({
     }
 
     (async () => {
+      // try API first
       try {
         const res = await fetch("/api/assignables");
-        const json = await res.json();
-        if (res.ok && Array.isArray(json.data)) {
+        const json = (await res.json().catch(() => null)) as { data?: Assignable[] } | null;
+        if (res.ok && Array.isArray(json?.data)) {
           setUsers(json.data);
-        } else {
-          const { data } = await supabase
-            .from("profiles")
-            .select("id, full_name, role")
-            .in("role", ["mechanic", "tech", "foreman", "lead_hand"])
-            .order("full_name", { ascending: true });
-          setUsers((data as Assignable[]) ?? []);
+          return;
         }
       } catch {
-        // ignore, leave users as-is
+        // fall through
       }
+
+      // fallback to profiles query
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, role")
+        .in("role", ["mechanic", "tech", "foreman", "lead_hand"])
+        .order("full_name", { ascending: true });
+
+      setUsers((data as Assignable[]) ?? []);
     })();
   }, [isOpen, mechanics, initialMechanics, supabase]);
 
   const submit = async () => {
-    if (!techId || submitting) {
+    if (submitting) return;
+
+    if (!techId) {
       onClose();
       return;
     }
 
     setSubmitting(true);
     try {
+      // Prefer API route if available
       const res = await fetch("/api/work-orders/assign-line", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -85,17 +90,35 @@ export default function AssignTechModal({
       });
 
       if (!res.ok) {
-        await supabase
+        // ✅ Correct DB column (NOT assigned_to)
+        const { error } = await supabase
           .from("work_order_lines")
-          .update({ assigned_to: techId })
+          .update(
+            { assigned_tech_id: techId } as DB["public"]["Tables"]["work_order_lines"]["Update"],
+          )
           .eq("id", workOrderLineId);
+
+        if (error) throw error;
+      }
+
+      // Optional: also keep join table in sync (ignore if blocked/missing)
+      try {
+        await supabase
+          .from("work_order_line_technicians")
+          .upsert(
+            { work_order_line_id: workOrderLineId, technician_id: techId },
+            { onConflict: "work_order_line_id,technician_id" },
+          );
+      } catch {
+        // ignore
       }
 
       toast.success("Mechanic assigned.");
       await onAssigned?.(techId);
       onClose();
-    } catch {
-      toast.error("Failed to assign mechanic.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to assign mechanic.";
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
