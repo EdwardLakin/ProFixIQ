@@ -13,7 +13,7 @@ import { WorkOrderAssignedSummary } from "@/features/work-orders/components/Work
 
 // ✅ IMPORTANT: lazy-load PDF modal to avoid “Something went wrong” crash
 const InvoicePreviewModal = dynamic(
-  () => import("@work-orders/components/InvoicePreviewModal"),
+  () => import("@/features/shared/components/InvoicePreviewModal"),
   { ssr: false },
 );
 
