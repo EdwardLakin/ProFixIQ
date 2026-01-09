@@ -64,10 +64,7 @@ const TONE_STYLES: Record<
 };
 
 export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
-  const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
-    [],
-  );
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +81,8 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
       return;
     }
 
+    let cancelled = false;
+
     (async () => {
       setLoading(true);
       setError(null);
@@ -97,6 +96,8 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
           )
           .eq("shop_id", shopId)
           .maybeSingle();
+
+        if (cancelled) return;
 
         if (healthRes.error) {
           setError(healthRes.error.message);
@@ -119,35 +120,50 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
           )
           .eq("shop_id", shopId)
           .order("intake_created_at", { ascending: false })
-          .limit(1);
+          .limit(1)
+          .maybeSingle();
+
+        if (cancelled) return;
 
         if (intakeRes.error) {
           // Don’t fail whole widget; snapshot might still exist.
           setLatestIntake(null);
         } else {
-          setLatestIntake(
-            (intakeRes.data?.[0] as VBoostOverviewRow | undefined) ?? null,
-          );
+          setLatestIntake((intakeRes.data as VBoostOverviewRow | null) ?? null);
         }
       } catch (e) {
         const msg =
           e instanceof Error ? e.message : "Failed to load Shop Boost widget.";
-        setError(msg);
+        if (!cancelled) setError(msg);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [shopId, canViewShopHealth, supabase]);
 
   if (!canViewShopHealth) return null;
 
-  const score = extractOverallScore(latest?.scores ?? latestIntake?.latest_scores);
-  const tone = score === null ? "neutral" : score >= 80 ? "good" : score >= 55 ? "warn" : "bad";
+  const score = extractOverallScore(
+    (latest?.scores ?? latestIntake?.latest_scores) as unknown,
+  );
 
-  const createdAt = latest?.snapshot_created_at ?? latestIntake?.latest_snapshot_created_at ?? null;
+  const tone: HealthTone =
+    score === null ? "neutral" : score >= 80 ? "good" : score >= 55 ? "warn" : "bad";
+
+  const createdAt =
+    latest?.snapshot_created_at ??
+    latestIntake?.latest_snapshot_created_at ??
+    null;
+
   const intakeStatus = latestIntake?.intake_status ?? null;
 
-  const metrics = pickMetrics(latest?.metrics ?? latestIntake?.latest_metrics);
+  const metrics = pickMetrics(
+    (latest?.metrics ?? latestIntake?.latest_metrics) as unknown,
+  );
 
   return (
     <section className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/80 via-slate-950/90 to-black/80 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
@@ -164,7 +180,9 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
                 TONE_STYLES[tone].pill,
               ].join(" ")}
             >
-              <span className={["h-2 w-2 rounded-full", TONE_STYLES[tone].dot].join(" ")} />
+              <span
+                className={["h-2 w-2 rounded-full", TONE_STYLES[tone].dot].join(" ")}
+              />
               {TONE_STYLES[tone].label}
               {typeof score === "number" ? ` • ${score}/100` : ""}
             </span>
@@ -186,9 +204,7 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
             {createdAt ? (
               <span>
                 Last analyzed:{" "}
-                <span className="text-neutral-300">
-                  {formatDate(createdAt)}
-                </span>
+                <span className="text-neutral-300">{formatDate(createdAt)}</span>
               </span>
             ) : (
               <span>No snapshot created yet.</span>
@@ -260,7 +276,6 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
             Run analysis
           </Link>
 
-          {/* Next step: point this at a real “analysis detail” page once we add it */}
           <Link
             href="/dashboard/owner/reports"
             className="inline-flex items-center justify-center rounded-xl border border-[color:var(--accent-copper)]/55 bg-black/25 px-4 py-2 text-xs font-semibold text-[color:var(--accent-copper-light)] transition hover:bg-neutral-900/40"
@@ -278,13 +293,14 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
 /* -------------------------------------------------------------------------- */
 
 function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 function extractOverallScore(scores: unknown): number | null {
   if (!isRecord(scores)) return null;
 
-  const candidates: unknown[] = [
+  // Direct keys
+  const directCandidates: unknown[] = [
     scores.overall,
     scores.total,
     scores.score,
@@ -293,16 +309,43 @@ function extractOverallScore(scores: unknown): number | null {
     scores.overall_score,
   ];
 
-  for (const c of candidates) {
+  for (const c of directCandidates) {
     const n = toNumber(c);
     if (n !== null) return clamp(Math.round(n), 0, 100);
   }
 
-  // sometimes nested like scores.summary.overall
+  // Nested summary
   const summary = scores.summary;
   if (isRecord(summary)) {
     const n = toNumber(summary.overall ?? summary.score);
     if (n !== null) return clamp(Math.round(n), 0, 100);
+  }
+
+  // Nested components (common: scores.components.<name>.score)
+  const components = scores.components;
+  if (isRecord(components)) {
+    // Best guess: if a component called "overall" exists
+    const maybeOverall = components.overall;
+    if (isRecord(maybeOverall)) {
+      const n = toNumber(maybeOverall.score);
+      if (n !== null) return clamp(Math.round(n), 0, 100);
+    }
+
+    // Otherwise: average known component scores (completeness/classification/historyVolume)
+    const keys = ["completeness", "classification", "historyVolume", "risk"] as const;
+    const nums: number[] = [];
+
+    for (const k of keys) {
+      const part = components[k];
+      if (!isRecord(part)) continue;
+      const n = toNumber(part.score);
+      if (n !== null) nums.push(n);
+    }
+
+    if (nums.length > 0) {
+      const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+      return clamp(Math.round(avg), 0, 100);
+    }
   }
 
   return null;
@@ -339,34 +382,75 @@ function clampOneLine(text: string) {
 
 type MetricChip = { label: string; value: string; hint?: string };
 
+function getPath(obj: unknown, path: string[]): unknown {
+  let cur: unknown = obj;
+  for (const p of path) {
+    if (!isRecord(cur)) return null;
+    cur = cur[p];
+  }
+  return cur;
+}
+
 function pickMetrics(metrics: unknown): MetricChip[] {
   if (!isRecord(metrics)) return [];
 
-  const get = (k: string) => metrics[k];
-
   const picks: MetricChip[] = [];
 
-  // Try common keys (we’ll evolve this once we lock your snapshot schema)
-  const roCount = toNumber(get("work_order_count") ?? get("repair_order_count") ?? get("ro_count"));
-  if (roCount !== null) picks.push({ label: "Work orders", value: String(Math.round(roCount)) });
-
-  const revenue = toNumber(get("total_revenue") ?? get("revenue_total") ?? get("gross_revenue"));
-  if (revenue !== null) picks.push({ label: "Revenue", value: formatMoney(revenue) });
-
-  const aro = toNumber(get("avg_ro") ?? get("aro") ?? get("avg_repair_order"));
-  if (aro !== null) picks.push({ label: "Avg RO", value: formatMoney(aro) });
-
-  const comeback = toNumber(get("comeback_rate") ?? get("warranty_rate") ?? get("return_rate"));
-  if (comeback !== null) {
-    picks.push({ label: "Comeback risk", value: `${Math.round(comeback * 100)}%`, hint: "Lower is better" });
+  // ✅ Preferred schema: metrics.totals.{ totalRepairOrders, totalRevenue, averageRo }
+  const totalRepairOrders = toNumber(getPath(metrics, ["totals", "totalRepairOrders"]));
+  if (totalRepairOrders !== null) {
+    picks.push({ label: "Repair orders", value: String(Math.round(totalRepairOrders)) });
   }
 
-  // Fallback: show 1–2 arbitrary metrics if we found nothing
+  const totalRevenue = toNumber(getPath(metrics, ["totals", "totalRevenue"]));
+  if (totalRevenue !== null) {
+    picks.push({ label: "Revenue", value: formatMoney(totalRevenue) });
+  }
+
+  const averageRo = toNumber(getPath(metrics, ["totals", "averageRo"]));
+  if (averageRo !== null) {
+    picks.push({ label: "Avg RO", value: formatMoney(averageRo) });
+  }
+
+  // ✅ Fallback keys (older / alternate)
+  const roCount = toNumber(metrics.work_order_count ?? metrics.repair_order_count ?? metrics.ro_count);
+  if (roCount !== null && !picks.some((p) => p.label === "Repair orders" || p.label === "Work orders")) {
+    picks.push({ label: "Work orders", value: String(Math.round(roCount)) });
+  }
+
+  const revenue = toNumber(metrics.total_revenue ?? metrics.revenue_total ?? metrics.gross_revenue);
+  if (revenue !== null && !picks.some((p) => p.label === "Revenue")) {
+    picks.push({ label: "Revenue", value: formatMoney(revenue) });
+  }
+
+  const aro = toNumber(metrics.avg_ro ?? metrics.aro ?? metrics.avg_repair_order);
+  if (aro !== null && !picks.some((p) => p.label === "Avg RO")) {
+    picks.push({ label: "Avg RO", value: formatMoney(aro) });
+  }
+
+  const comebackRate = toNumber(metrics.comeback_rate ?? metrics.warranty_rate ?? metrics.return_rate);
+  if (comebackRate !== null) {
+    // accept either 0..1 or 0..100
+    const pct = comebackRate <= 1 ? comebackRate * 100 : comebackRate;
+    picks.push({
+      label: "Comeback risk",
+      value: `${Math.round(pct)}%`,
+      hint: "Lower is better",
+    });
+  }
+
+  // If we still found nothing, show 1–2 string/number metrics
   if (picks.length === 0) {
-    const entries = Object.entries(metrics).slice(0, 4);
+    const entries = Object.entries(metrics).slice(0, 6);
     for (const [k, v] of entries) {
-      const str = typeof v === "string" ? v : typeof v === "number" ? String(v) : null;
+      const str =
+        typeof v === "string"
+          ? v
+          : typeof v === "number" && Number.isFinite(v)
+            ? String(v)
+            : null;
       if (str) picks.push({ label: humanizeKey(k), value: str });
+      if (picks.length >= 4) break;
     }
   }
 
@@ -374,6 +458,7 @@ function pickMetrics(metrics: unknown): MetricChip[] {
 }
 
 function formatMoney(n: number) {
+  // keep USD for now (matches existing demo). If you want CAD later we can wire shop currency.
   return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
