@@ -17,17 +17,24 @@ type Resp =
   | { ok: true; shopId: string; intakeId: string; snapshot: unknown }
   | { ok: false; error: string };
 
-function isFile(v: unknown): v is File {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    "arrayBuffer" in (v as any) &&
-    "name" in (v as any)
-  );
-}
-
 function safeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function asFile(v: FormDataEntryValue | null): File | null {
+  // Next.js route handlers (Node runtime) provide File for multipart formData
+  return typeof File !== "undefined" && v instanceof File ? v : null;
+}
+
+function parseQuestionnaire(raw: unknown): unknown {
+  if (typeof raw !== "string") return {};
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return {};
+  }
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
@@ -41,7 +48,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
     } = await supabaseUser.auth.getUser();
 
     if (authErr || !user?.id) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401 },
+      );
     }
 
     // ✅ resolve shop_id from profile (DO NOT trust client shopId)
@@ -52,8 +62,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       .maybeSingle<{ shop_id: string | null }>();
 
     if (profErr) {
-      return NextResponse.json({ ok: false, error: profErr.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: profErr.message },
+        { status: 500 },
+      );
     }
+
     if (!prof?.shop_id) {
       return NextResponse.json(
         { ok: false, error: "No shop linked to your profile." },
@@ -62,44 +76,61 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
     }
 
     const shopId = prof.shop_id;
-
-    // ✅ accept files + questionnaire (optional) via formdata
-    let formData: FormData;
-    try {
-      formData = await req.formData();
-    } catch {
-      return NextResponse.json(
-        { ok: false, error: "Invalid request. Please submit as multipart/form-data." },
-        { status: 400 },
-      );
-    }
-
-    const rawQuestionnaire = formData.get("questionnaire");
-    let questionnaire: unknown = {};
-    if (typeof rawQuestionnaire === "string" && rawQuestionnaire.trim().length > 0) {
-      try {
-        questionnaire = JSON.parse(rawQuestionnaire);
-      } catch {
-        questionnaire = {};
-      }
-    }
-
-    const customersFile = isFile(formData.get("customersFile"))
-      ? (formData.get("customersFile") as File)
-      : null;
-
-    const vehiclesFile = isFile(formData.get("vehiclesFile"))
-      ? (formData.get("vehiclesFile") as File)
-      : null;
-
-    const partsFile = isFile(formData.get("partsFile"))
-      ? (formData.get("partsFile") as File)
-      : null;
-
-    const noUploads = !customersFile && !vehiclesFile && !partsFile;
-
     const supabaseAdmin = createAdminSupabase();
     const intakeId = randomUUID();
+
+    // We support:
+    //  - multipart/form-data (uploads + questionnaire)
+    //  - application/json (rerun snapshot from reports; no uploads)
+    const contentType = req.headers.get("content-type") ?? "";
+
+    let questionnaire: unknown = {};
+    let customersFile: File | null = null;
+    let vehiclesFile: File | null = null;
+    let partsFile: File | null = null;
+
+    if (contentType.includes("multipart/form-data")) {
+      let formData: FormData;
+      try {
+        formData = await req.formData();
+      } catch {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Invalid request. Please submit as multipart/form-data.",
+          },
+          { status: 400 },
+        );
+      }
+
+      questionnaire = parseQuestionnaire(formData.get("questionnaire"));
+
+      customersFile = asFile(formData.get("customersFile"));
+      vehiclesFile = asFile(formData.get("vehiclesFile"));
+      partsFile = asFile(formData.get("partsFile"));
+    } else if (contentType.includes("application/json")) {
+      const body = (await req.json().catch(() => null)) as
+        | { questionnaire?: unknown }
+        | null;
+
+      questionnaire =
+        body && typeof body === "object" && body !== null
+          ? (body.questionnaire ?? {})
+          : {};
+      // no files in JSON mode
+    } else {
+      // if no content-type, still try json (reports sometimes omit header)
+      const body = (await req.json().catch(() => null)) as
+        | { questionnaire?: unknown }
+        | null;
+
+      questionnaire =
+        body && typeof body === "object" && body !== null
+          ? (body.questionnaire ?? {})
+          : {};
+    }
+
+    const noUploads = !customersFile && !vehiclesFile && !partsFile;
 
     // ✅ If re-running with no new files, reuse latest intake file paths (best UX)
     let fallbackPaths: {
@@ -137,13 +168,18 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       const safeName = safeFileName(file.name || `${kind}.csv`);
       const path = `shops/${shopId}/${intakeId}/${kind}-${safeName}`;
 
-      const { error: uploadErr } = await supabaseAdmin.storage.from(BUCKET).upload(path, file, {
-        cacheControl: "3600",
-        upsert: true,
-        contentType: file.type || "text/csv",
-      });
+      const { error: uploadErr } = await supabaseAdmin.storage
+        .from(BUCKET)
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: true,
+          contentType: file.type || "text/csv",
+        });
 
-      if (uploadErr) throw new Error(`Failed to upload ${kind}: ${uploadErr.message}`);
+      if (uploadErr) {
+        throw new Error(`Failed to upload ${kind}: ${uploadErr.message}`);
+      }
+
       return path;
     };
 
@@ -157,6 +193,18 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
     const vehiclesFinal = vehiclesPath ?? fallbackPaths.vehiclesPath;
     const partsFinal = partsPath ?? fallbackPaths.partsPath;
 
+    // If we have nothing at all to analyze, fail fast
+    if (!customersFinal && !vehiclesFinal && !partsFinal) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "No uploads found and no previous intake files exist yet. Upload at least one CSV first.",
+        },
+        { status: 400 },
+      );
+    }
+
     // ✅ create intake row (real shop)
     const intakeInsert: DB["public"]["Tables"]["shop_boost_intakes"]["Insert"] = {
       id: intakeId,
@@ -169,7 +217,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       status: "pending",
     };
 
-    const { error: intakeErr } = await supabaseAdmin.from("shop_boost_intakes").insert(intakeInsert);
+    const { error: intakeErr } = await supabaseAdmin
+      .from("shop_boost_intakes")
+      .insert(intakeInsert);
 
     if (intakeErr) {
       return NextResponse.json(
@@ -188,7 +238,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       );
     }
 
-    return NextResponse.json({ ok: true, shopId, intakeId, snapshot }, { status: 200 });
+    return NextResponse.json(
+      { ok: true, shopId, intakeId, snapshot },
+      { status: 200 },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unexpected error";
     console.error("[shop-boost/run-snapshot]", err);
