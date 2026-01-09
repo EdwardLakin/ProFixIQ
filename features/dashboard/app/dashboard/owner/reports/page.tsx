@@ -171,15 +171,17 @@ export default function ReportsPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ stats: fetchedStats, timeRange: range }),
           });
-          if (!res.ok) {
-            throw new Error(`AI summary failed (${res.status})`);
+         if (!res.ok) {
+  const text = await res.text().catch(() => "");
+  console.error("[ai-summary] status:", res.status, "body:", text);
+  throw new Error(`AI summary failed (${res.status})`);
           }
           const json = (await res.json()) as { summary?: string };
           if (json?.summary) setAiSummary(json.summary);
         } catch (e) {
           // eslint-disable-next-line no-console
           console.error(e);
-          toast.error("AI summary could not be generated.");
+          toast.error("AI summary could not be generated again.");
         }
       } catch (e) {
         const msg =
