@@ -167,27 +167,47 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
   const grouped = groupSuggestions(suggestions);
 
-  const runSnapshot = useCallback(async () => {
-  if (!shopId) return; // optional: you can keep this guard since panel needs shopId to load views
+  type ShopBoostRunOk = { ok: true; shopId: string; intakeId: string; snapshot: unknown };
+type ShopBoostRunErr = { ok: false; error: string };
+type ShopBoostRunResp = ShopBoostRunOk | ShopBoostRunErr;
+
+function isShopBoostRunResp(v: unknown): v is ShopBoostRunResp {
+  if (typeof v !== "object" || v === null) return false;
+  if (!("ok" in v)) return false;
+
+  const rec = v as Record<string, unknown>;
+  if (typeof rec.ok !== "boolean") return false;
+
+  if (rec.ok === true) {
+    return (
+      typeof rec.shopId === "string" &&
+      typeof rec.intakeId === "string" &&
+      "snapshot" in rec
+    );
+  }
+
+  return typeof rec.error === "string";
+}
+
+const runSnapshot = useCallback(async () => {
+  if (!shopId) return;
   setRunning(true);
 
   try {
-    const fd = new FormData();
-    // Optional: include questionnaire if you want to influence the pipeline
-    // fd.set("questionnaire", JSON.stringify({ source: "reports" }));
-
     const res = await fetch("/api/onboarding/shop-boost", {
       method: "POST",
-      body: fd, // ✅ FormData, no content-type header
+      headers: { "Content-Type": "application/json" },
+      // optional questionnaire context
+      body: JSON.stringify({ questionnaire: { source: "reports" } }),
     });
 
-    const json = (await res.json().catch(() => null)) as
-      | { ok: true; shopId: string; intakeId: string; snapshot: unknown }
-      | { ok: false; error: string }
-      | null;
+    const json = (await res.json().catch(() => null)) as unknown;
 
-    if (!res.ok || !json || (json as any).ok !== true) {
-      const msg = json && "error" in json ? json.error : "Snapshot could not be run.";
+    if (!res.ok || !isShopBoostRunResp(json) || json.ok !== true) {
+      const msg =
+        isShopBoostRunResp(json) && json.ok === false
+          ? json.error
+          : "Snapshot could not be run.";
       throw new Error(msg);
     }
 

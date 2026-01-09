@@ -1,5 +1,3 @@
-// app/api/onboarding/shop-boost/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
@@ -21,9 +19,29 @@ function safeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Avoid `instanceof File` (can be unreliable across runtimes/bundlers).
+ * This checks for the shape Next route handlers provide for uploaded files.
+ */
 function asFile(v: FormDataEntryValue | null): File | null {
-  // Next.js route handlers (Node runtime) provide File for multipart formData
-  return typeof File !== "undefined" && v instanceof File ? v : null;
+  if (!v || typeof v !== "object") return null;
+
+  const rec = v as unknown;
+  if (!isRecord(rec)) return null;
+
+  const ab = rec["arrayBuffer"];
+  const name = rec["name"];
+  const type = rec["type"];
+
+  if (typeof ab !== "function") return null;
+  if (typeof name !== "string") return null;
+  if (typeof type !== "string") return null;
+
+  return v as File;
 }
 
 function parseQuestionnaire(raw: unknown): unknown {
@@ -108,26 +126,15 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       customersFile = asFile(formData.get("customersFile"));
       vehiclesFile = asFile(formData.get("vehiclesFile"));
       partsFile = asFile(formData.get("partsFile"));
-    } else if (contentType.includes("application/json")) {
-      const body = (await req.json().catch(() => null)) as
-        | { questionnaire?: unknown }
-        | null;
-
-      questionnaire =
-        body && typeof body === "object" && body !== null
-          ? (body.questionnaire ?? {})
-          : {};
-      // no files in JSON mode
     } else {
-      // if no content-type, still try json (reports sometimes omit header)
-      const body = (await req.json().catch(() => null)) as
-        | { questionnaire?: unknown }
-        | null;
+      // JSON rerun mode (reports panel)
+      const body = (await req.json().catch(() => null)) as unknown;
 
-      questionnaire =
-        body && typeof body === "object" && body !== null
-          ? (body.questionnaire ?? {})
-          : {};
+      if (isRecord(body) && "questionnaire" in body) {
+        questionnaire = body["questionnaire"];
+      } else {
+        questionnaire = {};
+      }
     }
 
     const noUploads = !customersFile && !vehiclesFile && !partsFile;
@@ -205,7 +212,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       );
     }
 
-    // ✅ create intake row (real shop)
     const intakeInsert: DB["public"]["Tables"]["shop_boost_intakes"]["Insert"] = {
       id: intakeId,
       shop_id: shopId,
@@ -228,7 +234,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       );
     }
 
-    // ✅ run pipeline (should populate snapshots + suggestions tables your views read)
     const snapshot = await buildShopBoostProfile({ shopId, intakeId });
 
     if (!snapshot) {
