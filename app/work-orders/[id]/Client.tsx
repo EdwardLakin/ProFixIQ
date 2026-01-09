@@ -255,7 +255,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   >({});
 
   // ✅ AI review state for status icons
-  const [reviewChecked, setReviewChecked] = useState<boolean>(false);
+  const [, setReviewChecked] = useState<boolean>(false);
   const [reviewOk, setReviewOk] = useState<boolean | undefined>(undefined);
   const [reviewIssuesByLine, setReviewIssuesByLine] = useState<
     Record<string, ReviewIssue[]>
