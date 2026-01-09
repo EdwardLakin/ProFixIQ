@@ -29,7 +29,6 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
   const [bootLoading, setBootLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load existing AI profile summary + latest stored snapshot (if any)
   useEffect(() => {
     let cancelled = false;
 
@@ -54,14 +53,12 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
           setAiProfile(profileRes.data as ShopAiProfileRow);
         }
 
-        // If you have a latest snapshot stored in DB, map it into the UI snapshot type.
         if (!snapRes.error && snapRes.data) {
           const row = snapRes.data as ShopHealthSnapshotRow;
           const mapped = mapSnapshotRowToUi(row);
           if (mapped) setSnapshot(mapped);
         }
       } catch (e) {
-        // non-fatal
         console.warn("[OwnerShopHealthWidget] boot load failed", e);
       } finally {
         if (!cancelled) setBootLoading(false);
@@ -73,10 +70,7 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
     };
   }, [shopId, supabase]);
 
-  const summaryText = useMemo(
-    () => normalizeSummary(aiProfile?.summary),
-    [aiProfile?.summary],
-  );
+  const summaryText = useMemo(() => normalizeSummary(aiProfile?.summary), [aiProfile?.summary]);
 
   const handleRefresh = async () => {
     setLoading(true);
@@ -90,11 +84,7 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
       });
 
       const json = (await res.json().catch(() => null)) as
-        | {
-            ok?: boolean;
-            snapshot?: ShopHealthSnapshot | null;
-            error?: string;
-          }
+        | { ok?: boolean; snapshot?: ShopHealthSnapshot | null; error?: string }
         | null;
 
       if (!res.ok || !json || !json.ok || !json.snapshot) {
@@ -105,14 +95,13 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
       const newSnapshot = json.snapshot;
       setSnapshot(newSnapshot);
 
-      // Also update local summary so future loads match DB
       if (newSnapshot.narrativeSummary) {
         setAiProfile((prev) =>
           prev
-            ? {
+            ? ({
                 ...prev,
                 summary: newSnapshot.narrativeSummary as unknown as ShopAiProfileRow["summary"],
-              }
+              } as ShopAiProfileRow)
             : prev,
         );
       }
@@ -125,8 +114,7 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
   };
 
   const displaySummary =
-    summaryText ||
-    "Run Shop Boost once you’ve uploaded history to see what your shop already excels at.";
+    summaryText || "Run Shop Boost once you’ve uploaded history to see what your shop excels at.";
 
   return (
     <section className={`space-y-3 p-4 sm:p-5 ${cardBase}`}>
@@ -135,10 +123,7 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-300/70">
             Shop Health
           </p>
-          <h2
-            className="mt-1 text-lg text-white"
-            style={{ fontFamily: "var(--font-blackops)" }}
-          >
+          <h2 className="mt-1 text-lg text-white" style={{ fontFamily: "var(--font-blackops)" }}>
             AI view of your shop
           </h2>
         </div>
@@ -176,18 +161,13 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
   );
 }
 
-/**
- * Normalize the JSON `summary` column into a plain string for React.
- */
 function normalizeSummary(summary: ShopAiProfileRow["summary"] | undefined): string {
   if (summary === null || summary === undefined) return "";
   if (typeof summary === "string") return summary;
   if (typeof summary === "number" || typeof summary === "boolean") return String(summary);
 
-  // If it's a JSON object/array, try to extract a useful string first.
   if (typeof summary === "object") {
     try {
-      // common shapes: { text: "..." } or { summary: "..." }
       const s = summary as Record<string, unknown>;
       const maybe = (k: string) => (typeof s[k] === "string" ? String(s[k]) : "");
       const picked = maybe("text") || maybe("summary") || maybe("narrative") || "";
@@ -204,16 +184,10 @@ function normalizeSummary(summary: ShopAiProfileRow["summary"] | undefined): str
   }
 }
 
-/**
- * Map a stored DB snapshot row (metrics/scores/narrative) into the UI snapshot type.
- * If you later store the full UI snapshot JSON, you can simplify this.
- */
 function mapSnapshotRowToUi(row: ShopHealthSnapshotRow): ShopHealthSnapshot | null {
-  // This is best-effort: we only have some fields in the DB table.
-  // The demo API returns a fuller snapshot; refresh will replace this with complete data.
   const metrics = (row.metrics ?? {}) as Record<string, unknown>;
-
   const totals = (metrics["totals"] ?? {}) as Record<string, unknown>;
+
   const totalRepairOrders =
     typeof totals["totalRepairOrders"] === "number" ? totals["totalRepairOrders"] : 0;
   const totalRevenue = typeof totals["totalRevenue"] === "number" ? totals["totalRevenue"] : 0;

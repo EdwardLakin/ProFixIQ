@@ -67,13 +67,19 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
   useEffect(() => {
     if (!shopId) return;
 
+    let cancelled = false;
+
     (async () => {
       setLoading(true);
       setErr(null);
 
       try {
         const [latestRes, overviewRes, suggRes] = await Promise.all([
-          supabase.from("v_shop_health_latest").select("*").eq("shop_id", shopId).maybeSingle(),
+          supabase
+            .from("v_shop_health_latest")
+            .select("*")
+            .eq("shop_id", shopId)
+            .maybeSingle(),
           supabase
             .from("v_shop_boost_overview")
             .select("*")
@@ -89,6 +95,8 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
             .limit(60),
         ]);
 
+        if (cancelled) return;
+
         if (latestRes.error) throw latestRes.error;
         if (overviewRes.error) throw overviewRes.error;
         if (suggRes.error) throw suggRes.error;
@@ -103,12 +111,19 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
         setOverview(null);
         setSuggestions([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [shopId, supabase]);
 
-  const scores = (latest?.scores ?? overview?.latest_scores ?? null) as Record<string, unknown> | null;
+  const scores = (latest?.scores ?? overview?.latest_scores ?? null) as
+    | Record<string, unknown>
+    | null;
+
   const normalized = normalizeScores(scores);
 
   const overall = normalized.overall ?? null;
@@ -170,11 +185,14 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 </div>
                 <h2 className="mt-1 text-lg font-semibold text-white">Overall health score</h2>
                 <p className="mt-1 text-xs text-slate-300/70">
-                  This snapshot drives “ready in minutes” onboarding: menu items, inspections, and staff invites.
+                  This snapshot drives “ready in minutes” onboarding: menu items, inspections, and
+                  staff invites.
                 </p>
               </div>
 
-              <div className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${statusClass}`}>
+              <div
+                className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${statusClass}`}
+              >
                 {statusLabel}
               </div>
             </div>
@@ -211,7 +229,10 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <MetaCard label="Latest intake" value={intakeAge ?? "—"} />
               <MetaCard label="Latest snapshot" value={snapshotAge ?? "—"} />
-              <MetaCard label="Source" value={overview?.intake_source ? String(overview.intake_source) : "—"} />
+              <MetaCard
+                label="Source"
+                value={overview?.intake_source ? String(overview.intake_source) : "—"}
+              />
             </div>
           </section>
 
@@ -232,9 +253,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               {narrative ? (
                 <p className="whitespace-pre-wrap text-sm text-neutral-100">{narrative}</p>
               ) : (
-                <p className="text-sm text-slate-300/70">
-                  No narrative summary yet.
-                </p>
+                <p className="text-sm text-slate-300/70">No narrative summary yet.</p>
               )}
             </div>
           </section>
@@ -250,7 +269,8 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                   Suggested setup (menus, inspections, staff)
                 </h3>
                 <p className="mt-1 text-xs text-slate-300/70">
-                  These are the items we can auto-create after signup so the shop is usable immediately.
+                  These are the items we can auto-create after signup so the shop is usable
+                  immediately.
                 </p>
               </div>
 
@@ -279,7 +299,8 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
             {suggestions.length === 0 ? (
               <div className={`mt-4 ${cardInner} px-4 py-3 text-sm text-slate-300/70`}>
-                No suggestions yet. Once your analysis pipeline writes to the suggestion tables, they’ll show here.
+                No suggestions yet. Once your analysis pipeline writes to the suggestion tables,
+                they’ll show here.
               </div>
             ) : null}
           </section>
@@ -328,8 +349,6 @@ function normalizeScores(
     };
   }
 
-  // Current schema from your healthScoring.ts:
-  // scores = { overall, status, components: { completeness: {score}, classification: {score}, historyVolume: {score} } }
   const overall = getPathNum(scores, ["overall"]);
 
   const dataCompleteness =
@@ -344,8 +363,6 @@ function normalizeScores(
     getPathNum(scores, ["components", "historyVolume", "score"]) ??
     getPathNum(scores, ["historyVolume"]);
 
-  // Risk is not yet produced by your scorer (you only produce comebackRisks list).
-  // Keep it null until you add a risk component.
   const risk = getPathNum(scores, ["risk"]);
 
   return {
@@ -358,7 +375,6 @@ function normalizeScores(
 }
 
 function clamp01to100(v: number): number {
-  // accept 0..1 or 0..100
   if (v <= 1) return Math.round(v * 100);
   return Math.round(Math.max(0, Math.min(100, v)));
 }
@@ -413,9 +429,7 @@ function HealthScoreCard({
   return (
     <div className={cardInner + " p-4"}>
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-slate-300/70">
-          {title}
-        </div>
+        <div className="text-[10px] uppercase tracking-[0.2em] text-slate-300/70">{title}</div>
         <div className={`text-[11px] font-semibold ${labelClass(tone)}`}>
           {value === null ? "—" : `${value}/100`}
         </div>
@@ -469,9 +483,7 @@ function ScoreBar({
 function MetaCard({ label, value }: { label: string; value: string }) {
   return (
     <div className={cardInner + " px-4 py-3"}>
-      <div className="text-[10px] uppercase tracking-[0.2em] text-slate-300/70">
-        {label}
-      </div>
+      <div className="text-[10px] uppercase tracking-[0.2em] text-slate-300/70">{label}</div>
       <div className="mt-1 text-sm font-semibold text-neutral-100">{value}</div>
     </div>
   );

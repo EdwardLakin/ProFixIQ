@@ -5,17 +5,16 @@ import type { ReactNode } from "react";
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
 import { formatCurrency } from "@shared/lib/formatters";
 
-type Props = {
-  snapshot: ShopHealthSnapshot;
-};
-
 // Theme tokens (matches your newer glass + slate + orange accents)
 const cardBase =
   "rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
 const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/60";
 
+type Props = {
+  snapshot: ShopHealthSnapshot;
+};
+
 function looksLikePersonName(label: string): boolean {
-  // quick heuristic: 1–2 capitalized words, no digits, no separators
   const s = label.trim();
   if (!s) return false;
   if (/\d/.test(s)) return false;
@@ -76,7 +75,8 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
         </h2>
 
         <p className="text-[11px] text-slate-300/70">
-          Based on {totalRepairOrders.toLocaleString()} repair orders ({timeRangeDescription}).
+          Based on {Number(totalRepairOrders ?? 0).toLocaleString()} repair orders (
+          {timeRangeDescription}).
         </p>
 
         {/* AI summary under title */}
@@ -85,7 +85,7 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
             AI Summary
           </div>
           <p className="mt-2 text-[13px] sm:text-[14px] leading-relaxed text-white/90 whitespace-pre-wrap">
-            {narrativeSummary}
+            {narrativeSummary || "No summary yet."}
           </p>
         </div>
       </div>
@@ -97,9 +97,7 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
         <MetricCard
           label="Most common job"
           value={safeMostCommon[0]?.label ?? "—"}
-          subValue={
-            safeMostCommon[0] ? `${safeMostCommon[0].count.toLocaleString()} jobs` : undefined
-          }
+          subValue={safeMostCommon[0] ? `${safeMostCommon[0].count.toLocaleString()} jobs` : undefined}
         />
       </div>
 
@@ -113,17 +111,11 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 className={`flex items-center justify-between gap-3 px-3 py-2 ${cardInner}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-[12px] font-medium text-white/90">
-                    {repair.label}
-                  </p>
-                  <p className="text-[11px] text-white/60">
-                    {repair.count.toLocaleString()} jobs
-                  </p>
+                  <p className="truncate text-[12px] font-medium text-white/90">{repair.label}</p>
+                  <p className="text-[11px] text-white/60">{repair.count.toLocaleString()} jobs</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[11px] text-white/80">
-                    {formatCurrency(repair.revenue)}
-                  </p>
+                  <p className="text-[11px] text-white/80">{formatCurrency(repair.revenue)}</p>
                   {typeof repair.averageLaborHours === "number" && (
                     <p className="text-[10px] text-white/45">
                       {repair.averageLaborHours.toFixed(1)} hrs avg
@@ -132,11 +124,11 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 </div>
               </li>
             ))}
-            {safeMostCommon.length === 0 && (
+            {safeMostCommon.length === 0 ? (
               <li className="text-[11px] text-white/45">
                 We didn’t detect any repair history yet. Import repair orders to unlock this section.
               </li>
-            )}
+            ) : null}
           </ul>
         </Panel>
 
@@ -148,25 +140,19 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 className={`flex items-center justify-between gap-3 px-3 py-2 ${cardInner}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-[12px] font-medium text-white/90">
-                    {repair.label}
-                  </p>
-                  <p className="text-[11px] text-white/60">
-                    {repair.count.toLocaleString()} jobs
-                  </p>
+                  <p className="truncate text-[12px] font-medium text-white/90">{repair.label}</p>
+                  <p className="text-[11px] text-white/60">{repair.count.toLocaleString()} jobs</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[11px] text-orange-200">
-                    {formatCurrency(repair.revenue)}
-                  </p>
+                  <p className="text-[11px] text-orange-200">{formatCurrency(repair.revenue)}</p>
                 </div>
               </li>
             ))}
-            {safeHighValue.length === 0 && (
+            {safeHighValue.length === 0 ? (
               <li className="text-[11px] text-white/45">
                 We’ll highlight your biggest money-makers once we see some history.
               </li>
-            )}
+            ) : null}
           </ul>
         </Panel>
       </div>
@@ -188,14 +174,14 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                       ? ` • ~${risk.estimatedLostHours.toFixed(1)} hrs lost`
                       : null}
                   </p>
-                  {risk.note && (
+                  {risk.note ? (
                     <p className="mt-1 text-[11px] text-rose-100/80">{risk.note}</p>
-                  )}
+                  ) : null}
                 </li>
               ))
             ) : (
               <li className="text-[11px] text-white/45">
-                No obvious repeat issues detected yet. We’ll flag patterns like repeat failures or frequent re-checks as the system learns.
+                No obvious repeat issues detected yet.
               </li>
             )}
           </ul>
@@ -210,12 +196,10 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                   className={`flex items-center justify-between gap-3 px-3 py-2 ${cardInner}`}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-medium text-white/90">
-                      {metric.label}
-                    </p>
-                    {metric.note && (
+                    <p className="text-[12px] font-medium text-white/90">{metric.label}</p>
+                    {metric.note ? (
                       <p className="text-[11px] text-white/60">{metric.note}</p>
-                    )}
+                    ) : null}
                   </div>
                   <div className="text-right text-[11px] text-orange-200">
                     {metric.value.toLocaleString()} {metric.unit ?? ""}
@@ -224,7 +208,7 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
               ))
             ) : (
               <li className="text-[11px] text-white/45">
-                Connect fleets and pre-trip reports to see downtime and maintenance opportunities here.
+                Connect fleets and pre-trip reports to see metrics here.
               </li>
             )}
           </ul>
@@ -239,14 +223,10 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
               <li key={menu.id} className={`px-3 py-2 ${cardInner}`}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="truncate text-[12px] font-medium text-white/90">
-                      {menu.name}
-                    </p>
-                    {menu.targetVehicleYmm && (
-                      <p className="text-[11px] text-white/60">
-                        For {menu.targetVehicleYmm}
-                      </p>
-                    )}
+                    <p className="truncate text-[12px] font-medium text-white/90">{menu.name}</p>
+                    {menu.targetVehicleYmm ? (
+                      <p className="text-[11px] text-white/60">For {menu.targetVehicleYmm}</p>
+                    ) : null}
                   </div>
                   <div className="text-right text-[11px] text-orange-200">
                     {formatCurrency(menu.recommendedPrice)}
@@ -258,11 +238,11 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 <p className="mt-1 text-[11px] text-white/70">{menu.description}</p>
               </li>
             ))}
-            {menuSuggestions.length === 0 && (
+            {menuSuggestions.length === 0 ? (
               <li className="text-[11px] text-white/45">
-                Once you have enough history, we’ll suggest ready-to-use menu services built from what you already do.
+                Once you have enough history, we’ll suggest ready-to-use menu services.
               </li>
-            )}
+            ) : null}
           </ul>
         </Panel>
 
@@ -274,16 +254,16 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 <p className="text-[11px] text-white/60">
                   Best for: <span className="capitalize">{inspection.usageContext}</span> work
                 </p>
-                {inspection.note && (
+                {inspection.note ? (
                   <p className="mt-1 text-[11px] text-white/70">{inspection.note}</p>
-                )}
+                ) : null}
               </li>
             ))}
-            {inspectionSuggestions.length === 0 && (
+            {inspectionSuggestions.length === 0 ? (
               <li className="text-[11px] text-white/45">
-                AI will propose inspection templates that match your common jobs and fleet requirements.
+                AI will propose inspection templates as the system learns.
               </li>
-            )}
+            ) : null}
           </ul>
         </Panel>
       </div>
