@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import html2canvas from "html2canvas";
+import { startOfYear, endOfYear } from "date-fns";
 import {
   LineChart,
   Line,
@@ -91,6 +92,12 @@ export default function ReportsPage() {
 
   // Performance state
   const [range, setRange] = useState<Range>("monthly");
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const yearOptions = useMemo(() => {
+    const current = new Date().getFullYear();
+    return Array.from({ length: 5 }, (_, i) => current - i);
+  }, []);
+
   const [stats, setStats] = useState<ShopStats | null>(null);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -139,8 +146,7 @@ export default function ReportsPage() {
 
         setShopId(data.shop_id);
       } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Failed to load shop information.";
+        const msg = e instanceof Error ? e.message : "Failed to load shop information.";
         setError(msg);
       }
     })();
@@ -157,10 +163,20 @@ export default function ReportsPage() {
       setAiSummary(null);
 
       try {
-        const fetchedStats = await getShopStats(shopId, range, {
-          technicianId: filters.technicianId || undefined,
-          invoiceId: filters.invoiceId || undefined,
-        });
+        const fetchedStats = await getShopStats(
+          shopId,
+          range,
+          {
+            technicianId: filters.technicianId || undefined,
+            invoiceId: filters.invoiceId || undefined,
+          },
+          range === "yearly"
+            ? {
+                start: startOfYear(new Date(year, 0, 1)),
+                end: endOfYear(new Date(year, 0, 1)),
+              }
+            : {},
+        );
 
         setStats(fetchedStats as ShopStats);
 
@@ -171,11 +187,14 @@ export default function ReportsPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ stats: fetchedStats, timeRange: range }),
           });
-         if (!res.ok) {
-  const text = await res.text().catch(() => "");
-  console.error("[ai-summary] status:", res.status, "body:", text);
-  throw new Error(`AI summary failed (${res.status})`);
+
+          if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            // eslint-disable-next-line no-console
+            console.error("[ai-summary] status:", res.status, "body:", text);
+            throw new Error(`AI summary failed (${res.status})`);
           }
+
           const json = (await res.json()) as { summary?: string };
           if (json?.summary) setAiSummary(json.summary);
         } catch (e) {
@@ -184,15 +203,14 @@ export default function ReportsPage() {
           toast.error("AI summary could not be generated again.");
         }
       } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Failed to load shop stats.";
+        const msg = e instanceof Error ? e.message : "Failed to load shop stats.";
         setError(msg);
         setStats(null);
       } finally {
         setLoading(false);
       }
     })();
-  }, [shopId, range, filters, activeTab]);
+  }, [shopId, range, filters, activeTab, year]);
 
   // Load tech leaderboard whenever shop / range change
   useEffect(() => {
@@ -207,9 +225,7 @@ export default function ReportsPage() {
         setTechBoard(result);
       } catch (e) {
         const msg =
-          e instanceof Error
-            ? e.message
-            : "Failed to load technician leaderboard.";
+          e instanceof Error ? e.message : "Failed to load technician leaderboard.";
         setTechError(msg);
         setTechBoard(null);
       } finally {
@@ -374,10 +390,10 @@ export default function ReportsPage() {
           </div>
         ) : null}
 
-        {/* TAB: Performance (your existing page content) */}
+        {/* TAB: Performance */}
         {activeTab === "performance" ? (
           <>
-            {/* Top controls ---------------------------------------------------- */}
+            {/* Top controls */}
             <div className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-slate-950/80 via-slate-900/70 to-slate-950/80 px-4 py-4 shadow-[0_0_0_1px_rgba(15,23,42,0.9)] shadow-black/60">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -394,12 +410,13 @@ export default function ReportsPage() {
               </div>
 
               <div className="flex flex-wrap items-start gap-4 border-t border-orange-500/20 pt-4">
-                {/* Time range + label */}
+                {/* Time range */}
                 <div className="space-y-2">
                   <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
                     Time range
                   </div>
-                  <div className="flex flex-wrap gap-2">
+
+                  <div className="flex flex-wrap items-center gap-2">
                     {(["weekly", "monthly", "quarterly", "yearly"] as Range[]).map((r) => {
                       const isActive = range === r;
                       return (
@@ -419,7 +436,29 @@ export default function ReportsPage() {
                         </Button>
                       );
                     })}
+
+                    {/* ✅ Year selector (only for yearly) */}
+                    {range === "yearly" ? (
+                      <div className="ml-1 inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-black/40 px-3 py-1.5">
+                        <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                          Year
+                        </span>
+                        <select
+                          value={year}
+                          onChange={(e) => setYear(Number(e.target.value))}
+                          className="bg-transparent text-xs text-neutral-200 focus:outline-none"
+                          aria-label="Select year"
+                        >
+                          {yearOptions.map((y) => (
+                            <option key={y} value={y}>
+                              {y}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
                   </div>
+
                   <div className="text-[11px] text-neutral-400">{dateRangeLabel}</div>
                 </div>
 
@@ -493,12 +532,36 @@ export default function ReportsPage() {
             {!loading && !error && hasData && stats ? (
               <>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <SummaryCard label="Revenue" value={`$${stats.total.revenue.toFixed(2)}`} accent="text-emerald-400" />
-                  <SummaryCard label="Profit" value={`$${stats.total.profit.toFixed(2)}`} accent="text-amber-300" />
-                  <SummaryCard label="Labor cost" value={`$${stats.total.labor.toFixed(2)}`} accent="text-rose-400" />
-                  <SummaryCard label="Expenses" value={`$${stats.total.expenses.toFixed(2)}`} accent="text-fuchsia-400" />
-                  <SummaryCard label="Jobs" value={String(stats.total.jobs)} accent="text-sky-400" />
-                  <SummaryCard label="Tech efficiency" value={`${stats.total.techEfficiency.toFixed(1)}%`} accent="text-cyan-300" />
+                  <SummaryCard
+                    label="Revenue"
+                    value={`$${stats.total.revenue.toFixed(2)}`}
+                    accent="text-emerald-400"
+                  />
+                  <SummaryCard
+                    label="Profit"
+                    value={`$${stats.total.profit.toFixed(2)}`}
+                    accent="text-amber-300"
+                  />
+                  <SummaryCard
+                    label="Labor cost"
+                    value={`$${stats.total.labor.toFixed(2)}`}
+                    accent="text-rose-400"
+                  />
+                  <SummaryCard
+                    label="Expenses"
+                    value={`$${stats.total.expenses.toFixed(2)}`}
+                    accent="text-fuchsia-400"
+                  />
+                  <SummaryCard
+                    label="Jobs"
+                    value={String(stats.total.jobs)}
+                    accent="text-sky-400"
+                  />
+                  <SummaryCard
+                    label="Tech efficiency"
+                    value={`${stats.total.techEfficiency.toFixed(1)}%`}
+                    accent="text-cyan-300"
+                  />
                 </div>
 
                 <div
@@ -515,7 +578,8 @@ export default function ReportsPage() {
                       </p>
                     </div>
                     <div className="rounded-full border border-emerald-400/70 bg-gradient-to-r from-emerald-500/15 to-lime-400/10 px-3 py-1 text-xs text-emerald-100">
-                      <span className="font-medium">Revenue goal:</span> ${goalRevenue.toLocaleString()}
+                      <span className="font-medium">Revenue goal:</span>{" "}
+                      ${goalRevenue.toLocaleString()}
                     </div>
                   </div>
 
@@ -552,7 +616,9 @@ export default function ReportsPage() {
                         />
                         <Legend
                           wrapperStyle={{ fontSize: 11 }}
-                          formatter={(value) => <span style={{ color: "#e5e5e5" }}>{value}</span>}
+                          formatter={(value) => (
+                            <span style={{ color: "#e5e5e5" }}>{value}</span>
+                          )}
                         />
                         <ReferenceLine
                           y={goalRevenue}
@@ -565,10 +631,38 @@ export default function ReportsPage() {
                             fontSize: 11,
                           }}
                         />
-                        <Line type="monotone" dataKey="revenue" stroke="#22c55e" strokeWidth={2} dot={false} name="Revenue" />
-                        <Line type="monotone" dataKey="profit" stroke="#f59e0b" strokeWidth={2} dot={false} name="Profit" />
-                        <Line type="monotone" dataKey="expenses" stroke="#e11d48" strokeWidth={2} dot={false} name="Expenses" />
-                        <Line type="monotone" dataKey="labor" stroke="#3b82f6" strokeWidth={2} dot={false} name="Labor cost" />
+                        <Line
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke="#22c55e"
+                          strokeWidth={2}
+                          dot={false}
+                          name="Revenue"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="profit"
+                          stroke="#f59e0b"
+                          strokeWidth={2}
+                          dot={false}
+                          name="Profit"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="expenses"
+                          stroke="#e11d48"
+                          strokeWidth={2}
+                          dot={false}
+                          name="Expenses"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="labor"
+                          stroke="#3b82f6"
+                          strokeWidth={2}
+                          dot={false}
+                          name="Labor cost"
+                        />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -598,7 +692,8 @@ export default function ReportsPage() {
                     Technician Leaderboard
                   </h2>
                   <p className="text-[11px] text-neutral-400">
-                    Earnings per tech, billed vs clocked hours, and efficiency for this time range.
+                    Earnings per tech, billed vs clocked hours, and efficiency for this time
+                    range.
                   </p>
                 </div>
               </div>
@@ -651,7 +746,9 @@ export default function ReportsPage() {
                               <div className="flex flex-col">
                                 <span className="font-medium text-foreground">{row.name}</span>
                                 {row.role ? (
-                                  <span className="text-[11px] text-neutral-500">{row.role}</span>
+                                  <span className="text-[11px] text-neutral-500">
+                                    {row.role}
+                                  </span>
                                 ) : null}
                               </div>
                             </td>
@@ -707,9 +804,7 @@ function SummaryCard({
 }) {
   return (
     <div className="rounded-2xl border border-zinc-800/80 bg-slate-950/70 px-4 py-3 text-sm shadow-[0_16px_32px_rgba(0,0,0,0.9)] backdrop-blur">
-      <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">
-        {label}
-      </div>
+      <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">{label}</div>
       <div className={`mt-1 text-xl font-semibold ${accent ?? ""}`}>{value}</div>
     </div>
   );

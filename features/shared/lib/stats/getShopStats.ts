@@ -55,6 +55,12 @@ export type ShopStats = {
   periods: PeriodStats[];
 };
 
+export type ShopStatsOptions = {
+  /** Optional override for date boundaries (useful for calendar-year selection) */
+  start?: Date;
+  end?: Date;
+};
+
 /**
  * Financial shop stats:
  * - revenue      → from invoices.total
@@ -68,39 +74,64 @@ export async function getShopStats(
   shopId: string,
   timeRange: TimeRange,
   filters: ShopStatsFilters = {},
+  options: ShopStatsOptions = {},
 ): Promise<ShopStats> {
   const supabase = createClientComponentClient<Database>();
 
   const now = new Date();
+
+  // If caller provides explicit start/end, use them.
+  // Otherwise compute from the current date + timeRange.
   let start: Date;
   let end: Date;
   let intervals: Date[];
 
-  switch (timeRange) {
-    case "weekly": {
-      start = startOfWeek(now, { weekStartsOn: 1 });
-      end = endOfWeek(now, { weekStartsOn: 1 });
-      intervals = eachDayOfInterval({ start, end });
-      break;
+  const hasCustomRange = options.start instanceof Date && options.end instanceof Date;
+
+  if (hasCustomRange) {
+    start = options.start as Date;
+    end = options.end as Date;
+
+    switch (timeRange) {
+      case "weekly":
+      case "monthly":
+        intervals = eachDayOfInterval({ start, end });
+        break;
+      case "quarterly":
+        intervals = eachMonthOfInterval({ start, end });
+        break;
+      case "yearly":
+      default:
+        intervals = eachQuarterOfInterval({ start, end });
+        break;
     }
-    case "quarterly": {
-      start = startOfQuarter(now);
-      end = endOfQuarter(now);
-      intervals = eachMonthOfInterval({ start, end });
-      break;
-    }
-    case "yearly": {
-      start = startOfYear(now);
-      end = endOfYear(now);
-      intervals = eachQuarterOfInterval({ start, end });
-      break;
-    }
-    case "monthly":
-    default: {
-      start = startOfMonth(now);
-      end = endOfMonth(now);
-      intervals = eachDayOfInterval({ start, end });
-      break;
+  } else {
+    switch (timeRange) {
+      case "weekly": {
+        start = startOfWeek(now, { weekStartsOn: 1 });
+        end = endOfWeek(now, { weekStartsOn: 1 });
+        intervals = eachDayOfInterval({ start, end });
+        break;
+      }
+      case "quarterly": {
+        start = startOfQuarter(now);
+        end = endOfQuarter(now);
+        intervals = eachMonthOfInterval({ start, end });
+        break;
+      }
+      case "yearly": {
+        start = startOfYear(now);
+        end = endOfYear(now);
+        intervals = eachQuarterOfInterval({ start, end });
+        break;
+      }
+      case "monthly":
+      default: {
+        start = startOfMonth(now);
+        end = endOfMonth(now);
+        intervals = eachDayOfInterval({ start, end });
+        break;
+      }
     }
   }
 
@@ -120,7 +151,6 @@ export async function getShopStats(
   }
 
   if (filters.technicianId) {
-    // if invoices.tech_id exists
     invoiceQuery = invoiceQuery.eq("tech_id", filters.technicianId);
   }
 
@@ -152,7 +182,6 @@ export async function getShopStats(
   for (const inv of invoices) {
     const revenue = Number(inv.total ?? 0);
     const labor = Number(inv.labor_cost ?? 0);
-
     total.revenue += Number.isFinite(revenue) ? revenue : 0;
     total.labor += Number.isFinite(labor) ? labor : 0;
   }
@@ -163,8 +192,7 @@ export async function getShopStats(
   }
 
   total.profit = total.revenue - total.labor - total.expenses;
-  total.techEfficiency =
-    total.labor > 0 ? (total.revenue / total.labor) * 100 : 0;
+  total.techEfficiency = total.labor > 0 ? (total.revenue / total.labor) * 100 : 0;
 
   // Helper: "bucket" key by time range
   const bucketKeyFor = (d: Date): string => {
@@ -218,18 +246,18 @@ export async function getShopStats(
       (sum, inv) => sum + Number(inv.total ?? 0),
       0,
     );
+
     const periodLabor = periodInvoices.reduce<number>(
       (sum, inv) => sum + Number(inv.labor_cost ?? 0),
       0,
     );
+
     const periodExpensesTotal = periodExpenses.reduce<number>(
       (sum, exp) => sum + Number(exp.amount ?? 0),
       0,
     );
-    const periodProfit =
-      periodRevenue - periodLabor - periodExpensesTotal;
 
-    const periodJobs = periodInvoices.length;
+    const periodProfit = periodRevenue - periodLabor - periodExpensesTotal;
 
     return {
       label,
@@ -237,7 +265,7 @@ export async function getShopStats(
       labor: periodLabor,
       expenses: periodExpensesTotal,
       profit: periodProfit,
-      jobs: periodJobs,
+      jobs: periodInvoices.length,
     };
   });
 

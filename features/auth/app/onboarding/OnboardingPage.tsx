@@ -1,3 +1,5 @@
+//features/auth/app/onboarding/OnboardingPage.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

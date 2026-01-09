@@ -1,28 +1,38 @@
-// app/api/shop-boost/refresh/route.ts
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
-import { NextRequest, NextResponse } from "next/server";
+import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 
-type RefreshBody = {
-  shopId?: string;
-};
+type DB = Database;
 
-export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => null)) as RefreshBody | null;
-  const shopId = body?.shopId;
+export async function POST() {
+  const supabaseUser = createRouteHandlerClient<DB>({ cookies });
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabaseUser.auth.getUser();
 
-  if (!shopId) {
-    return NextResponse.json(
-      { ok: false, error: "shopId is required" },
-      { status: 400 },
-    );
+  if (authErr || !user?.id) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const supabase = createAdminSupabase();
+  const { data: prof, error: profErr } = await supabaseUser
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", user.id)
+    .maybeSingle<{ shop_id: string | null }>();
 
-  // Find the most recent intake for this shop
-  const { data: intakeRow, error: intakeErr } = await supabase
+  if (profErr || !prof?.shop_id) {
+    return NextResponse.json({ ok: false, error: "No shop linked to your profile." }, { status: 400 });
+  }
+
+  const shopId = prof.shop_id;
+  const supabaseAdmin = createAdminSupabase();
+
+  const { data: intakeRow, error: intakeErr } = await supabaseAdmin
     .from("shop_boost_intakes")
     .select("id")
     .eq("shop_id", shopId)
@@ -31,45 +41,14 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (intakeErr) {
-    console.error("Failed to fetch latest intake", intakeErr);
-    return NextResponse.json(
-      { ok: false, error: "Failed to load latest intake" },
-      { status: 500 },
-    );
+    return NextResponse.json({ ok: false, error: intakeErr.message }, { status: 500 });
   }
 
-  if (!intakeRow) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "No Shop Boost intake found for this shop yet. Run Shop Boost once from onboarding first.",
-      },
-      { status: 404 },
-    );
+  if (!intakeRow?.id) {
+    return NextResponse.json({ ok: false, error: "No intake found yet. Upload files once first." }, { status: 404 });
   }
 
-  const snapshot = await buildShopBoostProfile({
-    shopId,
-    intakeId: intakeRow.id,
-  });
+  const snapshot = await buildShopBoostProfile({ shopId, intakeId: intakeRow.id });
 
-  if (!snapshot) {
-    return NextResponse.json(
-      {
-        ok: false,
-        snapshot: null,
-        error: "Failed to rebuild Shop Health Snapshot",
-      },
-      { status: 200 },
-    );
-  }
-
-  return NextResponse.json(
-    {
-      ok: true,
-      snapshot,
-    },
-    { status: 200 },
-  );
+  return NextResponse.json({ ok: !!snapshot, snapshot: snapshot ?? null }, { status: 200 });
 }
