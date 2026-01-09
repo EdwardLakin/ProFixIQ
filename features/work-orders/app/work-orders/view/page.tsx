@@ -194,35 +194,61 @@ export default function WorkOrdersView(): JSX.Element {
   // Invoice review gate (AI)
   // -------------------------------------------------------------------
   const runInvoiceReview = useCallback(async (woId: string) => {
+  try {
+    setReviewLoadingId(woId);
+
+    const res = await fetch(`/api/work-orders/${woId}/invoice`, {
+      method: "POST",
+    });
+
+    let json: ReviewResponse | null = null;
+
     try {
-      setReviewLoadingId(woId);
-
-      const res = await fetch(`/api/work-orders/${woId}/invoice`, { method: "POST" });
-      const json = (await res.json().catch(() => null)) as ReviewResponse | null;
-
-      if (!res.ok || !json) {
-        toast.error("Invoice review failed");
-        return;
-      }
-
-      setReviewByWo((prev) => ({ ...prev, [woId]: json }));
-
-      if (json.ok) {
-        toast.success("Invoice review passed ✅ Ready to invoice.");
-        return;
-      }
-
-      const issues = Array.isArray(json.issues) ? json.issues : [];
-      toast.error(
-        `Invoice review found ${issues.length} issue(s): ${issues[0]?.message ?? "Fix required fields."}`,
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Invoice review failed";
-      toast.error(msg);
-    } finally {
-      setReviewLoadingId(null);
+      json = await res.json();
+    } catch {
+      json = null;
     }
-  }, []);
+
+    // ❗ HARD GUARD — prevents hasOwnProperty crashes
+    if (
+      !res.ok ||
+      !json ||
+      typeof json !== "object" ||
+      typeof json.ok !== "boolean"
+    ) {
+      console.error("[invoice-review] Invalid response:", json);
+      toast.error("Invoice review failed (invalid response)");
+      return;
+    }
+
+    const issues = Array.isArray(json.issues) ? json.issues : [];
+
+    const safeResult: ReviewResponse = {
+      ok: Boolean(json.ok),
+      issues,
+    };
+
+    setReviewByWo((prev) => ({
+      ...prev,
+      [woId]: safeResult,
+    }));
+
+    if (safeResult.ok) {
+      toast.success("Invoice review passed ✅ Ready to invoice.");
+    } else {
+      toast.error(
+        `Invoice review found ${issues.length} issue(s)${
+          issues[0]?.message ? `: ${issues[0].message}` : ""
+        }`,
+      );
+    }
+  } catch (e) {
+    console.error("[invoice-review] crash:", e);
+    toast.error("Invoice review crashed");
+  } finally {
+    setReviewLoadingId(null);
+  }
+}, []);
 
   // -------------------------------------------------------------------
   // Auth + portal role + mechanics
