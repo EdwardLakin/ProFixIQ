@@ -77,7 +77,7 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
     setError(null);
 
     try {
-      const res = await fetch("/api/onboarding/shop-boost/refresh", {
+      const res = await fetch("/api/onboarding/shop-boost", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ shopId }),
