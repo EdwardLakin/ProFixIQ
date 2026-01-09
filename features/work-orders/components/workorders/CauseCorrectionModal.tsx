@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import ModalShell from "@/features/shared/components/ModalShell";
 
 interface CauseCorrectionModalProps {
@@ -38,12 +38,23 @@ export default function CauseCorrectionModal({
     }
   }, [isOpen, initialCause, initialCorrection]);
 
+  const trimmedCause = useMemo(() => cause.trim(), [cause]);
+  const trimmedCorrection = useMemo(() => correction.trim(), [correction]);
+  const canComplete = trimmedCause.length > 0 && trimmedCorrection.length > 0;
+
   const handleSubmit = async () => {
     if (submitting || savingDraft) return;
+
+    // ✅ hard gate: must have both
+    if (!canComplete) {
+      setError("Cause and correction are required to complete this job.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
-      await onSubmit(cause.trim(), correction.trim());
+      await onSubmit(trimmedCause, trimmedCorrection);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to complete job.");
@@ -57,7 +68,7 @@ export default function CauseCorrectionModal({
     setSavingDraft(true);
     setError(null);
     try {
-      await onSaveDraft(cause.trim(), correction.trim());
+      await onSaveDraft(trimmedCause, trimmedCorrection);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save draft.");
     } finally {
@@ -68,15 +79,25 @@ export default function CauseCorrectionModal({
   const busy = submitting || savingDraft;
 
   return (
-    <ModalShell isOpen={isOpen} onClose={onClose} title="COMPLETE JOB" size="md" hideFooter>
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      title="COMPLETE JOB"
+      size="md"
+      hideFooter
+    >
       <div
         className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         <div className="flex items-center justify-between text-[0.7rem] text-neutral-400">
           <div className="flex flex-col gap-0.5">
-            <span className="font-semibold uppercase tracking-[0.18em]">Job ID</span>
-            <span className="font-mono text-[0.7rem] text-neutral-200">{jobId}</span>
+            <span className="font-semibold uppercase tracking-[0.18em]">
+              Job ID
+            </span>
+            <span className="font-mono text-[0.7rem] text-neutral-200">
+              {jobId}
+            </span>
           </div>
           <span className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
             Cause / Correction
@@ -89,6 +110,14 @@ export default function CauseCorrectionModal({
           </div>
         )}
 
+        {!canComplete && (
+          <div className="rounded-lg border border-amber-500/35 bg-black/35 px-3 py-2 text-[0.75rem] text-amber-200">
+            <span className="font-semibold">Required:</span> enter both a{" "}
+            <span className="font-semibold">cause</span> and{" "}
+            <span className="font-semibold">correction</span> to complete the job.
+          </div>
+        )}
+
         <div className="space-y-1">
           <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
             Cause
@@ -98,7 +127,10 @@ export default function CauseCorrectionModal({
             rows={3}
             className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/75 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
             value={cause}
-            onChange={(e) => setCause(e.target.value)}
+            onChange={(e) => {
+              setCause(e.target.value);
+              if (error) setError(null);
+            }}
             placeholder="What caused the issue?"
           />
         </div>
@@ -111,7 +143,10 @@ export default function CauseCorrectionModal({
             rows={3}
             className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/75 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
             value={correction}
-            onChange={(e) => setCorrection(e.target.value)}
+            onChange={(e) => {
+              setCorrection(e.target.value);
+              if (error) setError(null);
+            }}
             placeholder="Describe what was done to correct the issue…"
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -121,9 +156,19 @@ export default function CauseCorrectionModal({
             }}
           />
           <p className="mt-1 text-[0.7rem] text-neutral-500">
-            Press <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">Ctrl</kbd> /
-            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">⌘</kbd> +
-            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">Enter</kbd> to complete.
+            Press{" "}
+            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
+              Ctrl
+            </kbd>{" "}
+            /{" "}
+            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
+              ⌘
+            </kbd>{" "}
+            +{" "}
+            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
+              Enter
+            </kbd>{" "}
+            to complete.
           </p>
         </div>
 
@@ -152,8 +197,18 @@ export default function CauseCorrectionModal({
             <button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={busy}
-              className="inline-flex flex-1 items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-black shadow-[0_0_20px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60 sm:flex-none sm:px-6"
+              disabled={busy || !canComplete}
+              className={[
+                "inline-flex flex-1 items-center justify-center rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] shadow-[0_0_20px_rgba(212,118,49,0.7)] sm:flex-none sm:px-6",
+                canComplete
+                  ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black hover:brightness-110"
+                  : "border border-amber-500/40 bg-amber-500/10 text-amber-200 opacity-70",
+              ].join(" ")}
+              title={
+                canComplete
+                  ? "Complete job"
+                  : "Cause and correction are required to complete this job"
+              }
             >
               {submitting ? "Completing…" : "Complete job"}
             </button>

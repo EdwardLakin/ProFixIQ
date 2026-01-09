@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-export type WorkOrderLine =
-  DB["public"]["Tables"]["work_order_lines"]["Row"];
+export type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 export type AllocationRow =
   DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
@@ -23,8 +22,10 @@ export type JobCardPricing = {
   partsTotal?: number | null;
   laborTotal?: number | null;
   lineTotal?: number | null;
-  currency?: string; // e.g. "CAD", "USD"
+  currency?: string;
 };
+
+export type ReviewIssue = { kind: string; lineId?: string; message: string };
 
 export type JobCardProps = {
   index: number;
@@ -36,9 +37,11 @@ export type JobCardProps = {
   onOpen: () => void;
   onAssign?: () => void;
   onOpenInspection?: () => void;
-  onAddPart?: () => void; // kept for compatibility, not used in this mobile card
-  /** Optional pricing info – we’ll wire this from the page later */
+  onAddPart?: () => void;
   pricing?: JobCardPricing;
+
+  reviewIssues?: ReviewIssue[];
+  reviewOk?: boolean;
 };
 
 /* ---------------------------- Status visuals ---------------------------- */
@@ -55,7 +58,6 @@ type KnownStatus =
   | "ready_to_invoice"
   | "invoiced";
 
-/** Status pill styling (matches WO header pills) */
 const BASE_BADGE =
   "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide";
 
@@ -80,9 +82,6 @@ const statusChip = (s: string | null | undefined): string => {
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
-/**
- * Card border / background styles – kept in sync with the mobile WO client
- */
 const CARD_SURFACE: Record<
   KnownStatus,
   { border: string; surface: string; ring: string }
@@ -148,9 +147,91 @@ const CARD_SURFACE: Record<
   },
 };
 
+/* ---------------------------- Review indicators ---------------------------- */
+
+type ReviewFlags = {
+  missingCause: boolean;
+  missingCorrection: boolean;
+  noParts: boolean;
+  missingComplaint: boolean;
+  otherIssues: number;
+};
+
+function norm(s: unknown): string {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+function computeReviewFlags(args: {
+  line: WorkOrderLine;
+  partsCount: number;
+  reviewIssues?: ReviewIssue[];
+}): ReviewFlags {
+  const localMissingCause = !norm(args.line.cause);
+  const localMissingCorrection = !norm(args.line.correction);
+  const localMissingComplaint = !norm(args.line.complaint) && !norm(args.line.description);
+  const localNoParts = args.partsCount === 0;
+
+  const issues = Array.isArray(args.reviewIssues) ? args.reviewIssues : [];
+
+  let aiMissingCause = false;
+  let aiMissingCorrection = false;
+  let aiMissingComplaint = false;
+  let aiNoParts = false;
+  let other = 0;
+
+  for (const it of issues) {
+    const k = norm(it.kind);
+    const m = norm(it.message);
+
+    const hasCause = k.includes("cause") || m.includes("cause");
+    const hasCorrection = k.includes("correction") || m.includes("corr");
+    const hasComplaint = k.includes("complaint") || m.includes("description");
+    const hasParts = k.includes("part") || m.includes("part");
+
+    if (hasCause) aiMissingCause = true;
+    else if (hasCorrection) aiMissingCorrection = true;
+    else if (hasComplaint) aiMissingComplaint = true;
+    else if (hasParts) aiNoParts = true;
+    else other += 1;
+  }
+
+  return {
+    missingCause: aiMissingCause || localMissingCause,
+    missingCorrection: aiMissingCorrection || localMissingCorrection,
+    missingComplaint: aiMissingComplaint || localMissingComplaint,
+    noParts: aiNoParts || localNoParts,
+    otherIssues: other,
+  };
+}
+
+function ReviewIcon({
+  title,
+  label,
+  tone,
+}: {
+  title: string;
+  label: string;
+  tone: "ok" | "warn" | "info";
+}) {
+  const base =
+    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide";
+  const cls =
+    tone === "ok"
+      ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-100"
+      : tone === "warn"
+        ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
+        : "border-white/15 bg-black/40 text-neutral-200";
+  return (
+    <span className={`${base} ${cls}`} title={title}>
+      {label}
+    </span>
+  );
+}
+
 export function JobCard({
   index,
   line,
+  parts,
   technicians,
   canAssign,
   isPunchedIn,
@@ -158,6 +239,8 @@ export function JobCard({
   onAssign,
   onOpenInspection,
   pricing,
+  reviewIssues,
+  reviewOk,
 }: JobCardProps): JSX.Element {
   const statusKey = (line.status ?? "awaiting")
     .toLowerCase()
@@ -170,31 +253,20 @@ export function JobCard({
     return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
   };
 
-  // Completed / invoiced jobs start collapsed
   const [collapsed, setCollapsed] = useState<boolean>(isCompletedLike());
 
-  // If status changes (e.g. job finished), update collapsed state
   useEffect(() => {
     setCollapsed(isCompletedLike());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line.status]);
 
-  const jobLabel =
-    line.description || line.complaint || "Untitled job";
+  const jobLabel = line.description || line.complaint || "Untitled job";
 
   const laborText =
-    typeof line.labor_time === "number"
-      ? `${line.labor_time}h`
-      : "—";
+    typeof line.labor_time === "number" ? `${line.labor_time}h` : "—";
 
-  const jobTypeText = String(line.job_type ?? "job").replaceAll(
-    "_",
-    " ",
-  );
-  const statusText = String(line.status ?? "awaiting").replaceAll(
-    "_",
-    " ",
-  );
+  const jobTypeText = String(line.job_type ?? "job").replaceAll("_", " ");
+  const statusText = String(line.status ?? "awaiting").replaceAll("_", " ");
 
   const showPricingRow =
     pricing &&
@@ -213,11 +285,20 @@ export function JobCard({
     return `${currency ?? "$"}${n.toFixed(2)}`;
   };
 
+  const partsCount = parts.length;
+
+  const reviewFlags = useMemo(
+    () =>
+      computeReviewFlags({
+        line,
+        partsCount,
+        reviewIssues,
+      }),
+    [line, partsCount, reviewIssues],
+  );
+
   const handleCardClick = () => {
-    // Always open job; completed jobs will show details in modal anyway
-    if (isCompletedLike()) {
-      setCollapsed(false);
-    }
+    if (isCompletedLike()) setCollapsed(false);
     onOpen();
   };
 
@@ -232,11 +313,8 @@ export function JobCard({
       onClick={handleCardClick}
     >
       <div className="flex items-start justify-between gap-3">
-        {/* LEFT CONTENT */}
         <div className="min-w-0 space-y-1.5">
-          {/* Top row: title + controls */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Left side: title + assign + inspection */}
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <div className="truncate text-sm font-medium text-white">
                 {index + 1}. {jobLabel}
@@ -269,27 +347,67 @@ export function JobCard({
                       : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
                   }`}
                 >
-                  {isCompletedLike()
-                    ? "View inspection"
-                    : "Open inspection"}
+                  {isCompletedLike() ? "View inspection" : "Open inspection"}
                 </button>
               )}
             </div>
 
-            {/* Right side: status pill only (no parts UI on mobile) */}
             <div className="ml-auto flex items-center gap-2">
-              <span className={statusChip(line.status)}>
-                {statusText}
-              </span>
+              <span className={statusChip(line.status)}>{statusText}</span>
             </div>
           </div>
 
-          {/* Meta line */}
+          {/* ✅ Review icons row (only after completed-like) */}
+          {isCompletedLike() && (
+            <div className="flex flex-wrap items-center gap-2">
+              {reviewOk ? (
+                <ReviewIcon
+                  tone="ok"
+                  title="AI invoice review passed for this work order"
+                  label="✅ Reviewed"
+                />
+              ) : (
+                <ReviewIcon
+                  tone="info"
+                  title="Review not passed yet (or not run). Icons below show what needs fixing."
+                  label="🧠 Review"
+                />
+              )}
+
+              {reviewFlags.missingCause && (
+                <ReviewIcon tone="warn" title="Cause is missing" label="⚠ Cause" />
+              )}
+              {reviewFlags.missingCorrection && (
+                <ReviewIcon
+                  tone="warn"
+                  title="Correction is missing"
+                  label="⚠ Correction"
+                />
+              )}
+              {reviewFlags.noParts && (
+                <ReviewIcon tone="warn" title="No parts recorded" label="⚠ No parts" />
+              )}
+              {reviewFlags.missingComplaint && (
+                <ReviewIcon
+                  tone="warn"
+                  title="Complaint/description missing"
+                  label="⚠ No complaint"
+                />
+              )}
+              {reviewFlags.otherIssues > 0 && (
+                <ReviewIcon
+                  tone="warn"
+                  title="Other review issues exist"
+                  label={`⚠ +${reviewFlags.otherIssues}`}
+                />
+              )}
+            </div>
+          )}
+
           <div className="text-[11px] text-neutral-300">
             {jobTypeText} • {laborText} • Status: {statusText}
           </div>
 
-          {/* Completed jobs: small “tap to expand” hint */}
           {isCompletedLike() && (
             <div className="text-[10px] text-teal-200/80">
               {collapsed
@@ -298,10 +416,8 @@ export function JobCard({
             </div>
           )}
 
-          {/* Everything below here can be collapsed for completed / invoiced lines */}
           {!collapsed && (
             <>
-              {/* Technician chips */}
               {technicians.length > 0 && (
                 <div className="mt-0.5 flex flex-wrap gap-1">
                   {technicians.map((tech) => (
@@ -316,18 +432,14 @@ export function JobCard({
                 </div>
               )}
 
-              {/* Complaint / cause / correction */}
               {(line.complaint || line.cause || line.correction) && (
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
                   {line.complaint && <span>Cmpl: {line.complaint}</span>}
                   {line.cause && <span>| Cause: {line.cause}</span>}
-                  {line.correction && (
-                    <span>| Corr: {line.correction}</span>
-                  )}
+                  {line.correction && <span>| Corr: {line.correction}</span>}
                 </div>
               )}
 
-              {/* Pricing summary row (optional, only if provided) */}
               {showPricingRow && (
                 <div className="mt-2 flex flex-wrap items-center justify-end gap-3 text-[11px] text-neutral-300">
                   {pricing?.partsTotal != null && (

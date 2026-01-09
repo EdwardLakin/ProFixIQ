@@ -129,10 +129,11 @@ const BADGE: Record<KnownStatus, string> = {
 };
 
 const chip = (s: string | null | undefined): string => {
-  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as KnownStatus;
+  const key = (s ?? "awaiting")
+    .toLowerCase()
+    .replaceAll(" ", "_") as KnownStatus;
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
-
 
 // roles allowed to assign jobs
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
@@ -148,6 +149,51 @@ const APPROVAL_ROLES = new Set([
   "leadhand",
 ]);
 
+/* ----------------------- AI review icon support ----------------------- */
+
+type ReviewIssue = { kind: string; message: string; lineId?: string };
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+function asString(x: unknown): string | undefined {
+  if (typeof x === "string") return x;
+  if (typeof x === "number") return String(x);
+  return undefined;
+}
+function toReviewIssues(raw: unknown): ReviewIssue[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ReviewIssue[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const kind = asString(item.kind) ?? "issue";
+    const message =
+      asString(item.message) ??
+      asString(item.reason) ??
+      asString(item.detail) ??
+      "Review issue";
+    const lineId =
+      asString(item.lineId) ??
+      asString(item.workOrderLineId) ??
+      asString(item.work_order_line_id) ??
+      asString(item.line_id) ??
+      undefined;
+    out.push({ kind, message, lineId });
+  }
+  return out;
+}
+function groupIssuesByLine(
+  issues: ReviewIssue[],
+): Record<string, ReviewIssue[]> {
+  const m: Record<string, ReviewIssue[]> = {};
+  for (const it of issues) {
+    if (!it.lineId) continue;
+    if (!m[it.lineId]) m[it.lineId] = [];
+    m[it.lineId].push(it);
+  }
+  return m;
+}
+
 /* ------------------------------------------------------------------------- */
 
 export default function WorkOrderIdClient(): JSX.Element {
@@ -161,17 +207,28 @@ export default function WorkOrderIdClient(): JSX.Element {
     [],
   );
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
-  const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
+  const [customer, setCustomer] = useTabState<Customer | null>(
+    "wo:id:cust",
+    null,
+  );
 
-  const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
+  const [allocsByLine, setAllocsByLine] = useState<
+    Record<string, AllocationRow[]>
+  >({});
   const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
+  const [currentUserId, setCurrentUserId] = useTabState<string | null>(
+    "wo:id:uid",
+    null,
+  );
   const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
-  const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
+  const [showDetails, setShowDetails] = useTabState<boolean>(
+    "wo:showDetails",
+    true,
+  );
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [warnedMissing, setWarnedMissing] = useState(false);
@@ -193,7 +250,48 @@ export default function WorkOrderIdClient(): JSX.Element {
   >([]);
 
   // per-line technicians
-  const [lineTechsByLine, setLineTechsByLine] = useState<Record<string, string[]>>({});
+  const [lineTechsByLine, setLineTechsByLine] = useState<
+    Record<string, string[]>
+  >({});
+
+  // ✅ AI review state for status icons
+  const [reviewChecked, setReviewChecked] = useState<boolean>(false);
+  const [reviewOk, setReviewOk] = useState<boolean | undefined>(undefined);
+  const [reviewIssuesByLine, setReviewIssuesByLine] = useState<
+    Record<string, ReviewIssue[]>
+  >({});
+
+  const fetchLatestReview = useCallback(async (workOrderId: string) => {
+    if (!workOrderId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("work_order_invoice_reviews")
+        .select("ok, issues, created_at")
+        .eq("work_order_id", workOrderId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data) {
+        setReviewChecked(true);
+        setReviewOk(undefined);
+        setReviewIssuesByLine({});
+        return;
+      }
+
+      const issues = toReviewIssues(
+        (data as unknown as { issues?: unknown }).issues,
+      );
+      setReviewChecked(true);
+      setReviewOk(Boolean((data as unknown as { ok?: unknown }).ok));
+      setReviewIssuesByLine(groupIssuesByLine(issues));
+    } catch {
+      setReviewChecked(true);
+      setReviewOk(undefined);
+      setReviewIssuesByLine({});
+    }
+  }, []);
 
   /* ---------------------- AUTH + assignables ---------------------- */
   useEffect(() => {
@@ -334,11 +432,22 @@ export default function WorkOrderIdClient(): JSX.Element {
           setCustomer(null);
           setAllocsByLine({});
           setLineTechsByLine({});
+
+          // ✅ reset review state
+          setReviewChecked(true);
+          setReviewOk(undefined);
+          setReviewIssuesByLine({});
+
           setLoading(false);
           return;
         }
 
         setWo(woRow);
+
+        // ✅ reset review state until loaded for this WO
+        setReviewChecked(false);
+        setReviewOk(undefined);
+        setReviewIssuesByLine({});
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
           toast.error(
@@ -430,6 +539,9 @@ export default function WorkOrderIdClient(): JSX.Element {
           setAllocsByLine({});
           setLineTechsByLine({});
         }
+
+        // ✅ load latest AI invoice review (drives status icons in JobCard)
+        void fetchLatestReview(woRow.id);
       } catch (e: unknown) {
         const msg =
           e instanceof Error ? e.message : "Failed to load work order.";
@@ -448,6 +560,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       setQuoteLines,
       setVehicle,
       setCustomer,
+      fetchLatestReview,
     ],
   );
 
@@ -464,7 +577,12 @@ export default function WorkOrderIdClient(): JSX.Element {
       .channel(`wo:${wo.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${wo.id}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "work_orders",
+          filter: `id=eq.${wo.id}`,
+        },
         () => fetchAll(),
       )
       .on(
@@ -505,6 +623,17 @@ export default function WorkOrderIdClient(): JSX.Element {
         },
         () => fetchAll(),
       )
+      // ✅ refresh review icons when a new review row is inserted
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_invoice_reviews",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchLatestReview(wo.id),
+      )
       .subscribe();
 
     const local = () => fetchAll();
@@ -518,7 +647,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       }
       window.removeEventListener("wo:parts-used", local);
     };
-  }, [wo?.id, fetchAll]);
+  }, [wo?.id, fetchAll, fetchLatestReview]);
 
   // ---------- listen for inspection finish ----------
   useEffect(() => {
@@ -551,7 +680,10 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     window.addEventListener("inspection:completed", handler as EventListener);
     return () => {
-      window.removeEventListener("inspection:completed", handler as EventListener);
+      window.removeEventListener(
+        "inspection:completed",
+        handler as EventListener,
+      );
     };
   }, []);
 
@@ -561,12 +693,12 @@ export default function WorkOrderIdClient(): JSX.Element {
       void fetchAll();
     };
     window.addEventListener("parts-request:submitted", handler);
-    return () => window.removeEventListener("parts-request:submitted", handler);
+    return () =>
+      window.removeEventListener("parts-request:submitted", handler);
   }, [fetchAll]);
 
   /* ----------------------- Derived data ----------------------- */
 
-  // simple map of active quote-lines per work_order_line
   const activeQuotesByLine = useMemo(() => {
     const m: Record<string, WorkOrderQuoteLine[]> = {};
 
@@ -584,25 +716,25 @@ export default function WorkOrderIdClient(): JSX.Element {
     return m;
   }, [quoteLines]);
 
-  // lines that are already quoted & waiting on customer
   const approvalPending = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
     [lines],
   );
 
-  // lines that still need to be sent to parts for quoting
   const linesNeedingQuote = useMemo(
     () =>
       lines.filter((l) => {
         const approval = l.approval_state ?? null;
         const status = l.status ?? "awaiting";
 
-        // skip items already in an approval state
-        if (approval === "pending" || approval === "approved" || approval === "declined") {
+        if (
+          approval === "pending" ||
+          approval === "approved" ||
+          approval === "declined"
+        ) {
           return false;
         }
 
-        // skip completed / invoiced stuff
         if (
           status === "completed" ||
           status === "ready_to_invoice" ||
@@ -611,7 +743,6 @@ export default function WorkOrderIdClient(): JSX.Element {
           return false;
         }
 
-        // skip if already on hold specifically for parts / quote
         const hold = (l.hold_reason ?? "").toLowerCase();
         if (
           status === "on_hold" &&
@@ -630,7 +761,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     [lines],
   );
 
-  // Quote lines that are still in play (not converted/declined)
   const approvalPendingQuotes = useMemo(
     () =>
       quoteLines.filter((q) => {
@@ -667,7 +797,9 @@ export default function WorkOrderIdClient(): JSX.Element {
       : "—";
 
   const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
-  const canApprove = currentUserRole ? APPROVAL_ROLES.has(currentUserRole) : false;
+  const canApprove = currentUserRole
+    ? APPROVAL_ROLES.has(currentUserRole)
+    : false;
 
   const assignablesById = useMemo(() => {
     const m: Record<string, { full_name: string | null; role: string | null }> =
@@ -698,10 +830,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   /* ----------------------- line actions ----------------------- */
 
-  // hook for parts-quoting actions
   const { sendAllPendingToParts } = useWorkOrderActions({
-    // we want the bulk-quote button to operate on lines that *need* quoting,
-    // so feed those into the hook
     approvalPending: linesNeedingQuote,
     setPartsLineId,
     setBulkQueue,
@@ -712,10 +841,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     async (lineId: string) => {
       if (!lineId) return;
 
-      // When approving a line that was on parts hold:
-      // - mark approval_state approved
-      // - move status to queued (ready to start)
-      // - clear hold + punch timestamps so tech gets a fresh Start button
       const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
         approval_state: "approved",
         status: "queued",
@@ -742,19 +867,16 @@ export default function WorkOrderIdClient(): JSX.Element {
         null;
 
       if (workOrderId) {
-        // If the work order was previously marked in_progress while waiting for parts,
-        // move it back to queued to match the fact that no line is currently running.
         const { error: woErr } = await supabase
           .from("work_orders")
-          .update({ status: "queued" } as DB["public"]["Tables"]["work_orders"]["Update"])
+          .update(
+            { status: "queued" } as DB["public"]["Tables"]["work_orders"]["Update"],
+          )
           .eq("id", workOrderId);
 
         if (woErr) {
           // eslint-disable-next-line no-console
-          console.error(
-            "[approveLine] failed to update work order status",
-            woErr,
-          );
+          console.error("[approveLine] failed to update work order status", woErr);
         }
       }
 
@@ -824,138 +946,126 @@ export default function WorkOrderIdClient(): JSX.Element {
     [fetchAll],
   );
 
-  // 🔍 open inspection – fetch template, inject corner grid, stage to session, then open generic fill screen
-const openInspectionForLine = useCallback(
-  async (ln: WorkOrderLine) => {
-    if (!ln?.id) return;
+  const openInspectionForLine = useCallback(
+    async (ln: WorkOrderLine) => {
+      if (!ln?.id) return;
 
-    const anyLine = ln as WorkOrderLineWithInspectionMeta;
-    const templateId = extractInspectionTemplateId(anyLine);
+      const anyLine = ln as WorkOrderLineWithInspectionMeta;
+      const templateId = extractInspectionTemplateId(anyLine);
 
-    if (!templateId) {
-      toast.error(
-        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+      if (!templateId) {
+        toast.error(
+          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+        );
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("inspection_templates")
+        .select("template_name, sections, vehicle_type")
+        .eq("id", templateId)
+        .maybeSingle();
+
+      if (error || !data) {
+        toast.error("Unable to load inspection template.");
+        return;
+      }
+
+      const rawSections = (data.sections ?? []) as TemplateSection[];
+      const vehicleType = String(data.vehicle_type ?? "");
+      const sections = prepareSectionsWithCornerGrid(
+        rawSections,
+        vehicleType,
+        null,
       );
-      return;
-    }
 
-    // 1) Load the inspection template for this line
-    const { data, error } = await supabase
-      .from("inspection_templates")
-      .select("template_name, sections, vehicle_type")
-      .eq("id", templateId)
-      .maybeSingle();
+      const title = data.template_name ?? "Inspection";
 
-    if (error || !data) {
-      toast.error("Unable to load inspection template.");
-      return;
-    }
+      if (typeof window !== "undefined") {
+        const paramsObj: Record<string, string> = {};
 
-    const rawSections = (data.sections ?? []) as TemplateSection[];
-    const vehicleType = String(data.vehicle_type ?? "");
-    const sections = prepareSectionsWithCornerGrid(
-      rawSections,
-      vehicleType,
-      null, // no explicit ?grid override from here
-    );
+        if (wo?.id) {
+          paramsObj.workOrderId = wo.id;
+          paramsObj.work_order_id = wo.id;
+        }
 
-    const title = data.template_name ?? "Inspection";
+        paramsObj.workOrderLineId = ln.id;
+        paramsObj.work_order_line_id = ln.id;
+        paramsObj.lineId = ln.id;
 
-    // 2) Stage into sessionStorage so GenericInspectionScreen can boot in the modal
-    if (typeof window !== "undefined") {
-      const paramsObj: Record<string, string> = {};
+        paramsObj.embed = "1";
+
+        if (ln.description) paramsObj.seed = String(ln.description);
+
+        if (customer) {
+          if (customer.first_name) paramsObj.first_name = customer.first_name;
+          if (customer.last_name) paramsObj.last_name = customer.last_name;
+          if (customer.phone) paramsObj.phone = customer.phone;
+          if (customer.email) paramsObj.email = customer.email;
+          if (customer.address) paramsObj.address = customer.address;
+          if (customer.city) paramsObj.city = customer.city;
+          if (customer.province) paramsObj.province = customer.province;
+          if (customer.postal_code)
+            paramsObj.postal_code = customer.postal_code;
+        }
+
+        if (vehicle) {
+          if (vehicle.year != null)
+            paramsObj.year = String(vehicle.year as string | number);
+          if (vehicle.make) paramsObj.make = vehicle.make;
+          if (vehicle.model) paramsObj.model = vehicle.model;
+          if (vehicle.vin) paramsObj.vin = vehicle.vin;
+          if (vehicle.license_plate)
+            paramsObj.license_plate = vehicle.license_plate;
+          if (vehicle.mileage != null) paramsObj.mileage = String(vehicle.mileage);
+          if (vehicle.color) paramsObj.color = vehicle.color;
+          if (vehicle.unit_number) paramsObj.unit_number = vehicle.unit_number;
+          if (vehicle.engine_hours != null)
+            paramsObj.engine_hours = String(vehicle.engine_hours);
+        }
+
+        sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
+        sessionStorage.setItem("inspection:title", title);
+        sessionStorage.setItem("inspection:vehicleType", vehicleType);
+        sessionStorage.setItem("inspection:template", "generic");
+        sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
+
+        sessionStorage.setItem(
+          "customInspection:sections",
+          JSON.stringify(sections),
+        );
+        sessionStorage.setItem("customInspection:title", title);
+        sessionStorage.setItem(
+          "customInspection:includeOil",
+          JSON.stringify(false),
+        );
+      }
+
+      const sp = new URLSearchParams();
+      sp.set("template", "generic");
 
       if (wo?.id) {
-        paramsObj.workOrderId = wo.id;
-        paramsObj.work_order_id = wo.id; // ✅ legacy/snake_case
+        sp.set("workOrderId", wo.id);
+        sp.set("work_order_id", wo.id);
       }
 
-      paramsObj.workOrderLineId = ln.id;
-      paramsObj.work_order_line_id = ln.id; // ✅ legacy/snake_case
-      paramsObj.lineId = ln.id; // ✅ legacy alias used in some screens
+      sp.set("workOrderLineId", ln.id);
+      sp.set("work_order_line_id", ln.id);
+      sp.set("lineId", ln.id);
 
-      // ❌ DON'T force mobile view here for the desktop modal
-      // paramsObj.view = "mobile";
-      paramsObj.embed = "1";
+      sp.set("embed", "1");
 
-      if (ln.description) paramsObj.seed = String(ln.description);
+      if (ln.description) sp.set("seed", String(ln.description));
 
-      // prefill customer / vehicle into params if available
-      if (customer) {
-        if (customer.first_name) paramsObj.first_name = customer.first_name;
-        if (customer.last_name) paramsObj.last_name = customer.last_name;
-        if (customer.phone) paramsObj.phone = customer.phone;
-        if (customer.email) paramsObj.email = customer.email;
-        if (customer.address) paramsObj.address = customer.address;
-        if (customer.city) paramsObj.city = customer.city;
-        if (customer.province) paramsObj.province = customer.province;
-        if (customer.postal_code) paramsObj.postal_code = customer.postal_code;
-      }
+      const url = `/inspections/fill?${sp.toString()}`;
 
-      if (vehicle) {
-        if (vehicle.year != null)
-          paramsObj.year = String(vehicle.year as string | number);
-        if (vehicle.make) paramsObj.make = vehicle.make;
-        if (vehicle.model) paramsObj.model = vehicle.model;
-        if (vehicle.vin) paramsObj.vin = vehicle.vin;
-        if (vehicle.license_plate)
-          paramsObj.license_plate = vehicle.license_plate;
-        if (vehicle.mileage != null)
-          paramsObj.mileage = String(vehicle.mileage);
-        if (vehicle.color) paramsObj.color = vehicle.color;
-        if (vehicle.unit_number)
-          paramsObj.unit_number = vehicle.unit_number;
-        if (vehicle.engine_hours != null)
-          paramsObj.engine_hours = String(vehicle.engine_hours);
-      }
+      setInspectionSrc(url);
+      setInspectionOpen(true);
+      toast.success("Inspection opened");
+    },
+    [wo?.id, customer, vehicle],
+  );
 
-      sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
-      sessionStorage.setItem("inspection:title", title);
-      sessionStorage.setItem("inspection:vehicleType", vehicleType);
-      sessionStorage.setItem("inspection:template", "generic");
-      sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
-
-      // Legacy keys for older flows
-      sessionStorage.setItem(
-        "customInspection:sections",
-        JSON.stringify(sections),
-      );
-      sessionStorage.setItem("customInspection:title", title);
-      sessionStorage.setItem(
-        "customInspection:includeOil",
-        JSON.stringify(false),
-      );
-    }
-
-    // 3) Set src for the modal (mainly for debugging / template label)
-    const sp = new URLSearchParams();
-    sp.set("template", "generic");
-
-    if (wo?.id) {
-      sp.set("workOrderId", wo.id);
-      sp.set("work_order_id", wo.id); // ✅ legacy/snake_case
-    }
-
-    sp.set("workOrderLineId", ln.id);
-    sp.set("work_order_line_id", ln.id); // ✅ legacy/snake_case
-    sp.set("lineId", ln.id); // ✅ legacy alias used in some screens
-
-    sp.set("embed", "1");
-    // ❌ do NOT set view=mobile for the desktop modal
-    // sp.set("view", "mobile");
-
-    if (ln.description) sp.set("seed", String(ln.description));
-
-    const url = `/inspections/fill?${sp.toString()}`;
-
-    setInspectionSrc(url);
-    setInspectionOpen(true);
-    toast.success("Inspection opened");
-  },
-  [wo?.id, customer, vehicle],
-);
-
-  // parts drawer close / bulk
   useEffect(() => {
     if (!partsLineId) return;
 
@@ -989,11 +1099,9 @@ const openInspectionForLine = useCallback(
     <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
   );
 
-  // ✅ Mobile-matching: dark slate surface + thin neutral border (no copper)
   const cardBase =
     "rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
-  const cardInner =
-    "rounded-xl border border-slate-700/60 bg-slate-950/60";
+  const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/60";
 
   return (
     <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
@@ -1006,9 +1114,7 @@ const openInspectionForLine = useCallback(
       />
 
       <div className="mb-4 flex items-center justify-between gap-2">
-        {/* Back now goes to previous page, with /work-orders as internal fallback */}
         <PreviousPageButton />
-        {/* Internal ID pill removed */}
       </div>
 
       {!currentUserId && (
@@ -1037,7 +1143,7 @@ const openInspectionForLine = useCallback(
         <div className="mt-6 text-sm text-red-400">Work order not found.</div>
       ) : (
         <div className="space-y-6">
-          {/* Header – glass + thin burnt-copper border */}
+          {/* Header */}
           <div className={`${cardBase} p-4`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
@@ -1075,7 +1181,7 @@ const openInspectionForLine = useCallback(
             </div>
           </div>
 
-          {/* Vehicle & Customer – glass cards */}
+          {/* Vehicle & Customer */}
           <div className={`${cardBase} p-4`}>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-foreground sm:text-base">
@@ -1106,9 +1212,7 @@ const openInspectionForLine = useCallback(
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         VIN:{" "}
-                        <span className="font-mono">
-                          {vehicle.vin ?? "—"}
-                        </span>
+                        <span className="font-mono">{vehicle.vin ?? "—"}</span>
                         <br />
                         Plate:{" "}
                         {vehicle.license_plate ?? (
@@ -1119,8 +1223,8 @@ const openInspectionForLine = useCallback(
                         {vehicle.mileage
                           ? vehicle.mileage
                           : wo?.odometer_km != null
-                          ? `${wo.odometer_km} km`
-                          : "—"}
+                            ? `${wo.odometer_km} km`
+                            : "—"}
                       </p>
                     </>
                   ) : (
@@ -1190,12 +1294,8 @@ const openInspectionForLine = useCallback(
                     {approvalPending.map((ln, idx) => {
                       const isAwaitingPartsBase =
                         (ln.status === "on_hold" &&
-                          (ln.hold_reason ?? "")
-                            .toLowerCase()
-                            .includes("part")) ||
-                        (ln.hold_reason ?? "")
-                          .toLowerCase()
-                          .includes("quote");
+                          (ln.hold_reason ?? "").toLowerCase().includes("part")) ||
+                        (ln.hold_reason ?? "").toLowerCase().includes("quote");
 
                       const hasQuotedParts =
                         (activeQuotesByLine[ln.id] ?? []).length > 0;
@@ -1210,32 +1310,20 @@ const openInspectionForLine = useCallback(
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-foreground">
                                 {idx + 1}.{" "}
-                                {ln.description ||
-                                  ln.complaint ||
-                                  "Untitled job"}
+                                {ln.description || ln.complaint || "Untitled job"}
                               </div>
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                {String(ln.job_type ?? "job").replaceAll(
-                                  "_",
-                                  " ",
-                                )}{" "}
+                                {String(ln.job_type ?? "job").replaceAll("_", " ")}{" "}
                                 •{" "}
                                 {typeof ln.labor_time === "number"
                                   ? `${ln.labor_time}h`
                                   : "—"}{" "}
                                 • Status:{" "}
-                                {(ln.status ?? "awaiting").replaceAll(
-                                  "_",
-                                  " ",
-                                )}{" "}
+                                {(ln.status ?? "awaiting").replaceAll("_", " ")}{" "}
                                 • Approval:{" "}
-                                {(ln.approval_state ?? "pending").replaceAll(
-                                  "_",
-                                  " ",
-                                )}
+                                {(ln.approval_state ?? "pending").replaceAll("_", " ")}
                               </div>
 
-                              {/* flag lines that are on hold for parts */}
                               {isAwaitingPartsBase && (
                                 <div className="mt-1 inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-200">
                                   {partsLabel}
@@ -1291,19 +1379,13 @@ const openInspectionForLine = useCallback(
                               {idx + 1}. {q.description || "Quoted item"}
                             </div>
                             <div className="mt-0.5 text-[11px] text-muted-foreground">
-                              {String(q.job_type ?? "job").replaceAll(
-                                "_",
-                                " ",
-                              )}{" "}
+                              {String(q.job_type ?? "job").replaceAll("_", " ")}{" "}
                               •{" "}
                               {typeof q.est_labor_hours === "number"
                                 ? `${q.est_labor_hours}h`
                                 : "—"}{" "}
                               • Status:{" "}
-                              {(q.status ?? "pending_parts").replaceAll(
-                                "_",
-                                " ",
-                              )}
+                              {(q.status ?? "pending_parts").replaceAll("_", " ")}
                             </div>
                             {q.notes && (
                               <div className="mt-1 text-[11px] text-muted-foreground">
@@ -1339,9 +1421,8 @@ const openInspectionForLine = useCallback(
             )}
           </div>
 
-                      {/* Jobs list – hero view; JobCard handles status & line details */}
+          {/* Jobs list */}
           <div className={`${cardBase} p-4 sm:p-5`}>
-            {/* Header row + progress */}
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
                 <h2 className="text-sm font-semibold text-foreground sm:text-base">
@@ -1366,7 +1447,6 @@ const openInspectionForLine = useCallback(
               )}
             </div>
 
-            {/* Progress strip (purely visual – uses existing line data) */}
             {sortedLines.length > 0 && (
               <div className="mb-4 rounded-xl border border-white/10 bg-black/50 px-3 py-2.5">
                 {(() => {
@@ -1417,23 +1497,24 @@ const openInspectionForLine = useCallback(
             ) : (
               <div className="space-y-2">
                 {sortedLines.map((ln, idx) => {
-                  const punchedIn =
-                    !!ln.punched_in_at && !ln.punched_out_at;
+                  const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
                   const partsForLine = allocsByLine[ln.id] ?? [];
 
                   const lineTechIds = lineTechsByLine[ln.id] ?? [];
                   const primaryId =
-  typeof (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
-    ? (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id
-    : null;
+                    typeof (
+                      ln as unknown as { assigned_tech_id?: string | null }
+                    ).assigned_tech_id === "string"
+                      ? (
+                          ln as unknown as { assigned_tech_id?: string | null }
+                        ).assigned_tech_id
+                      : null;
 
                   const orderedTechIds: string[] = [];
                   if (primaryId) orderedTechIds.push(primaryId);
                   lineTechIds.forEach((tid) => {
-                    if (!orderedTechIds.includes(tid)) {
-                      orderedTechIds.push(tid);
-                    }
+                    if (!orderedTechIds.includes(tid)) orderedTechIds.push(tid);
                   });
 
                   const technicians = orderedTechIds.map((tid) => {
@@ -1468,23 +1549,19 @@ const openInspectionForLine = useCallback(
                       }
                       onOpenInspection={
                         ln.job_type === "inspection"
-                          ? () => {
-                              void openInspectionForLine(ln);
-                            }
+                          ? () => void openInspectionForLine(ln)
                           : undefined
                       }
-                      onAddPart={() => {
-                        setPartsLineId(ln.id);
-                      }}
+                      onAddPart={() => setPartsLineId(ln.id)}
+                      reviewOk={reviewOk}
+                      reviewIssues={reviewIssuesByLine[ln.id] ?? []}
                     />
                   );
                 })}
               </div>
             )}
           </div>
-          
 
-          {/* Suggested maintenance / quick add – full-width card */}
           <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
             <WorkOrderSuggestionsPanel
               workOrderId={wo.id}
@@ -1537,9 +1614,8 @@ const openInspectionForLine = useCallback(
           vehicleSummary={
             vehicle
               ? {
-                  year: (
-                    vehicle.year as string | number | null
-                  )?.toString() ?? null,
+                  year:
+                    (vehicle.year as string | number | null)?.toString() ?? null,
                   make: vehicle.make ?? null,
                   model: vehicle.model ?? null,
                 }
@@ -1550,9 +1626,7 @@ const openInspectionForLine = useCallback(
             lines.find((l) => l.id === partsLineId)?.complaint ??
             null
           }
-          jobNotes={
-            lines.find((l) => l.id === partsLineId)?.notes ?? null
-          }
+          jobNotes={lines.find((l) => l.id === partsLineId)?.notes ?? null}
           closeEventName={`parts-drawer:closed:${partsLineId}`}
         />
       )}

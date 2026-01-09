@@ -1,7 +1,7 @@
 // features/work-orders/components/JobCard.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
 import { UsePartButton } from "@work-orders/components/UsePartButton";
 import { PartsUsedList } from "@work-orders/components/PartsUsedList";
@@ -28,6 +28,9 @@ export type JobCardPricing = {
   currency?: string; // e.g. "CAD", "USD"
 };
 
+/** Optional per-line review signal from AI invoice review */
+export type ReviewIssue = { kind: string; lineId?: string; message: string };
+
 export type JobCardProps = {
   index: number;
   line: WorkOrderLine;
@@ -41,6 +44,15 @@ export type JobCardProps = {
   onAddPart?: () => void;
   /** Optional pricing info – we’ll wire this from the page later */
   pricing?: JobCardPricing;
+
+  /**
+   * ✅ Optional AI review results for THIS line.
+   * - Pass issues that belong to this lineId only.
+   * - If omitted, card still shows local checks (missing cause/correction, no parts).
+   */
+  reviewIssues?: ReviewIssue[];
+  /** ✅ Optional: if the overall WO review has passed */
+  reviewOk?: boolean;
 };
 
 /* ---------------------------- Status visuals ---------------------------- */
@@ -174,6 +186,90 @@ const CARD_SURFACE: Record<
   },
 };
 
+/* ---------------------------- Review indicators ---------------------------- */
+
+type ReviewFlags = {
+  missingCause: boolean;
+  missingCorrection: boolean;
+  noParts: boolean;
+  missingComplaint: boolean;
+  otherIssues: number;
+};
+
+function norm(s: unknown): string {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+function computeReviewFlags(args: {
+  line: WorkOrderLine;
+  partsCount: number;
+  reviewIssues?: ReviewIssue[];
+}): ReviewFlags {
+  // Local checks (works even without AI review)
+  const localMissingCause = !norm(args.line.cause);
+  const localMissingCorrection = !norm(args.line.correction);
+  const localMissingComplaint = !norm(args.line.complaint) && !norm(args.line.description);
+  const localNoParts = args.partsCount === 0;
+
+  const issues = Array.isArray(args.reviewIssues) ? args.reviewIssues : [];
+
+  // If AI issues exist, use them to drive flags (but keep local as fallback)
+  let aiMissingCause = false;
+  let aiMissingCorrection = false;
+  let aiMissingComplaint = false;
+  let aiNoParts = false;
+
+  let other = 0;
+
+  for (const it of issues) {
+    const k = norm(it.kind);
+    const m = norm(it.message);
+
+    const hasCause = k.includes("cause") || m.includes("cause");
+    const hasCorrection = k.includes("correction") || m.includes("corr");
+    const hasComplaint = k.includes("complaint") || m.includes("complaint") || m.includes("description");
+    const hasParts = k.includes("part") || m.includes("part");
+
+    if (hasCause) aiMissingCause = true;
+    else if (hasCorrection) aiMissingCorrection = true;
+    else if (hasComplaint) aiMissingComplaint = true;
+    else if (hasParts) aiNoParts = true;
+    else other += 1;
+  }
+
+  return {
+    missingCause: aiMissingCause || localMissingCause,
+    missingCorrection: aiMissingCorrection || localMissingCorrection,
+    missingComplaint: aiMissingComplaint || localMissingComplaint,
+    noParts: aiNoParts || localNoParts,
+    otherIssues: other,
+  };
+}
+
+function ReviewIcon({
+  title,
+  label,
+  tone,
+}: {
+  title: string;
+  label: string;
+  tone: "ok" | "warn" | "info";
+}) {
+  const base =
+    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide";
+  const cls =
+    tone === "ok"
+      ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-100"
+      : tone === "warn"
+        ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
+        : "border-white/15 bg-black/40 text-neutral-200";
+  return (
+    <span className={`${base} ${cls}`} title={title}>
+      {label}
+    </span>
+  );
+}
+
 export function JobCard({
   index,
   line,
@@ -186,13 +282,14 @@ export function JobCard({
   onOpenInspection,
   onAddPart,
   pricing,
+  reviewIssues,
+  reviewOk,
 }: JobCardProps): JSX.Element {
   const statusKey = (line.status ?? "awaiting")
     .toLowerCase()
     .replaceAll(" ", "_") as KnownStatus;
 
   const surfaceCfg = CARD_SURFACE[statusKey] ?? CARD_SURFACE.awaiting;
-
   const [partsOpen, setPartsOpen] = useState(false);
 
   const isCompletedLike = () => {
@@ -249,6 +346,18 @@ export function JobCard({
 
   const statusIcon = STATUS_ICON[statusKey] ?? "●";
 
+  const reviewFlags = useMemo(
+    () =>
+      computeReviewFlags({
+        line,
+        partsCount,
+        reviewIssues,
+      }),
+    [line, partsCount, reviewIssues],
+  );
+
+  const showReviewRow = isCompletedLike();
+
   return (
     <div
       className={[
@@ -266,15 +375,13 @@ export function JobCard({
         <div className="absolute inset-x-10 -top-10 h-32 bg-[radial-gradient(circle,_rgba(249,115,22,0.22),transparent_65%)]" />
       </div>
 
-      {/* left status rail */}
       <div className="relative z-0 flex gap-3">
         <div className="mt-1 hidden h-[calc(100%-0.5rem)] w-[3px] rounded-full bg-gradient-to-b from-transparent via-white/30 to-transparent opacity-60 sm:block" />
 
         <div className="relative z-10 min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-start gap-2">
-            {/* index + title cluster */}
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <span className="inline-flex h-6 min-w-[1.75rem] items-center justify-center rounded-full border border-white/15 bg-black/40 text-[11px] font-semibold text-neutral-200 shadow-[0_0_12px_rgba(0,0,0,0.8)]">
                   {index + 1}
                 </span>
@@ -316,9 +423,7 @@ export function JobCard({
               )}
             </div>
 
-            {/* right-side controls */}
             <div className="ml-auto flex items-center gap-2">
-              {/* chevron */}
               <button
                 type="button"
                 onClick={toggleCollapsed}
@@ -334,13 +439,11 @@ export function JobCard({
                 </span>
               </button>
 
-              {/* status pill w/ icon */}
               <span className={statusChip(line.status)}>
                 <span className="mr-1">{statusIcon}</span>
                 {statusText}
               </span>
 
-              {/* desktop add-part */}
               <button
                 type="button"
                 onClick={(e) => {
@@ -353,7 +456,6 @@ export function JobCard({
                 ＋ <span className="hidden md:inline">Add part</span>
               </button>
 
-              {/* mobile add-part */}
               <div className="sm:hidden">
                 <UsePartButton
                   workOrderLineId={line.id}
@@ -366,7 +468,61 @@ export function JobCard({
             </div>
           </div>
 
-          {/* subline: type, labor, status */}
+          {/* ✅ Review icons row (only after completed-like) */}
+          {showReviewRow && (
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              {reviewOk ? (
+                <ReviewIcon
+                  tone="ok"
+                  title="AI invoice review passed for this work order"
+                  label="✅ Reviewed"
+                />
+              ) : (
+                <ReviewIcon
+                  tone="info"
+                  title="Review not passed yet (or not run). Icons below show what needs fixing."
+                  label="🧠 Review"
+                />
+              )}
+
+              {reviewFlags.missingCause && (
+                <ReviewIcon
+                  tone="warn"
+                  title="Cause is missing"
+                  label="⚠ Cause"
+                />
+              )}
+              {reviewFlags.missingCorrection && (
+                <ReviewIcon
+                  tone="warn"
+                  title="Correction is missing"
+                  label="⚠ Correction"
+                />
+              )}
+              {reviewFlags.noParts && (
+                <ReviewIcon
+                  tone="warn"
+                  title="No parts recorded on this job line"
+                  label="⚠ No parts"
+                />
+              )}
+              {reviewFlags.missingComplaint && (
+                <ReviewIcon
+                  tone="warn"
+                  title="Complaint / description is missing"
+                  label="⚠ No complaint"
+                />
+              )}
+              {reviewFlags.otherIssues > 0 && (
+                <ReviewIcon
+                  tone="warn"
+                  title="Other review issues exist for this line"
+                  label={`⚠ +${reviewFlags.otherIssues}`}
+                />
+              )}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
             <span className="inline-flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-white/60" />
@@ -397,7 +553,6 @@ export function JobCard({
             </div>
           )}
 
-          {/* expanded details */}
           {!collapsed && (
             <>
               {technicians.length > 0 && (
@@ -443,7 +598,6 @@ export function JobCard({
                 </div>
               )}
 
-              {/* Parts used */}
               <div className="mt-2 rounded-xl border border-white/10 bg-black/40">
                 <button
                   type="button"
