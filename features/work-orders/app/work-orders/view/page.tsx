@@ -186,56 +186,70 @@ export default function WorkOrdersView(): JSX.Element {
   // Invoice review gate (AI)
   // -------------------------------------------------------------------
   const runInvoiceReview = useCallback(async (woId: string) => {
+  try {
+    setReviewLoadingId(woId);
+
+    const res = await fetch(`/api/work-orders/${woId}/invoice`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const raw = await res.text();
+
+    let parsed: unknown = null;
     try {
-      setReviewLoadingId(woId);
-
-      const res = await fetch(`/api/work-orders/${woId}/invoice`, {
-        method: "POST",
-      });
-
-      let json: ReviewResponse | null = null;
-
-      try {
-        json = await res.json();
-      } catch {
-        json = null;
-      }
-
-      // ❗ HARD GUARD — prevents hasOwnProperty crashes
-      if (!res.ok || !json || typeof json !== "object" || typeof json.ok !== "boolean") {
-        console.error("[invoice-review] Invalid response:", json);
-        toast.error("Invoice review failed (invalid response)");
-        return;
-      }
-
-      const issues = Array.isArray(json.issues) ? json.issues : [];
-
-      const safeResult: ReviewResponse = {
-        ok: Boolean(json.ok),
-        issues,
-      };
-
-      setReviewByWo((prev) => ({
-        ...prev,
-        [woId]: safeResult,
-      }));
-
-      if (safeResult.ok) {
-        toast.success("Invoice review passed ✅ Ready to invoice.");
-      } else {
-        toast.error(
-          `Invoice review found ${issues.length} issue(s)${
-            issues[0]?.message ? `: ${issues[0].message}` : ""
-          }`,
-        );
-      }
-    } catch (e) {
-      console.error("[invoice-review] crash:", e);
-      toast.error("Invoice review crashed");
-    } finally {
-      setReviewLoadingId(null);
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = null;
     }
-  }, []);
+
+    if (!res.ok) {
+      console.error("[invoice-review] Non-OK response", {
+        status: res.status,
+        statusText: res.statusText,
+        raw,
+      });
+      toast.error(`Invoice review failed (${res.status}).`);
+      return;
+    }
+
+    // Validate shape
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof (parsed as Record<string, unknown>).ok !== "boolean"
+    ) {
+      console.error("[invoice-review] Invalid JSON shape", { raw, parsed });
+      toast.error("Invoice review failed (invalid response shape).");
+      return;
+    }
+
+    const obj = parsed as Record<string, unknown>;
+    const issues = Array.isArray(obj.issues) ? (obj.issues as ReviewIssue[]) : [];
+
+    const safeResult: ReviewResponse = {
+      ok: Boolean(obj.ok),
+      issues,
+    };
+
+    setReviewByWo((prev) => ({ ...prev, [woId]: safeResult }));
+
+    if (safeResult.ok) {
+      toast.success("Invoice review passed ✅ Ready to invoice.");
+    } else {
+      toast.error(
+        `Invoice review found ${issues.length} issue(s)${
+          issues[0]?.message ? `: ${issues[0].message}` : ""
+        }`,
+      );
+    }
+  } catch (e) {
+    console.error("[invoice-review] crash:", e);
+    toast.error("Invoice review crashed");
+  } finally {
+    setReviewLoadingId(null);
+  }
+}, []);
 
   // -------------------------------------------------------------------
   // Auth + portal role + mechanics
