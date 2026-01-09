@@ -3,19 +3,13 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
-
-// ✅ IMPORTANT: lazy-load PDF modal to avoid “Something went wrong” crash
-const InvoicePreviewModal = dynamic(
-  () => import("@/features/shared/components/InvoicePreviewModal"),
-  { ssr: false },
-);
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -94,6 +88,7 @@ const BUTTON_MUTED =
 
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const router = useRouter();
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,9 +115,6 @@ export default function WorkOrdersView(): JSX.Element {
   const [reviewByWo, setReviewByWo] = useState<Record<string, ReviewResponse | undefined>>(
     {},
   );
-
-  // ✅ Preview modal state
-  const [previewWo, setPreviewWo] = useState<Row | null>(null);
 
   // -------------------------------------------------------------------
   // Load work orders
@@ -194,61 +186,56 @@ export default function WorkOrdersView(): JSX.Element {
   // Invoice review gate (AI)
   // -------------------------------------------------------------------
   const runInvoiceReview = useCallback(async (woId: string) => {
-  try {
-    setReviewLoadingId(woId);
-
-    const res = await fetch(`/api/work-orders/${woId}/invoice`, {
-      method: "POST",
-    });
-
-    let json: ReviewResponse | null = null;
-
     try {
-      json = await res.json();
-    } catch {
-      json = null;
+      setReviewLoadingId(woId);
+
+      const res = await fetch(`/api/work-orders/${woId}/invoice`, {
+        method: "POST",
+      });
+
+      let json: ReviewResponse | null = null;
+
+      try {
+        json = await res.json();
+      } catch {
+        json = null;
+      }
+
+      // ❗ HARD GUARD — prevents hasOwnProperty crashes
+      if (!res.ok || !json || typeof json !== "object" || typeof json.ok !== "boolean") {
+        console.error("[invoice-review] Invalid response:", json);
+        toast.error("Invoice review failed (invalid response)");
+        return;
+      }
+
+      const issues = Array.isArray(json.issues) ? json.issues : [];
+
+      const safeResult: ReviewResponse = {
+        ok: Boolean(json.ok),
+        issues,
+      };
+
+      setReviewByWo((prev) => ({
+        ...prev,
+        [woId]: safeResult,
+      }));
+
+      if (safeResult.ok) {
+        toast.success("Invoice review passed ✅ Ready to invoice.");
+      } else {
+        toast.error(
+          `Invoice review found ${issues.length} issue(s)${
+            issues[0]?.message ? `: ${issues[0].message}` : ""
+          }`,
+        );
+      }
+    } catch (e) {
+      console.error("[invoice-review] crash:", e);
+      toast.error("Invoice review crashed");
+    } finally {
+      setReviewLoadingId(null);
     }
-
-    // ❗ HARD GUARD — prevents hasOwnProperty crashes
-    if (
-      !res.ok ||
-      !json ||
-      typeof json !== "object" ||
-      typeof json.ok !== "boolean"
-    ) {
-      console.error("[invoice-review] Invalid response:", json);
-      toast.error("Invoice review failed (invalid response)");
-      return;
-    }
-
-    const issues = Array.isArray(json.issues) ? json.issues : [];
-
-    const safeResult: ReviewResponse = {
-      ok: Boolean(json.ok),
-      issues,
-    };
-
-    setReviewByWo((prev) => ({
-      ...prev,
-      [woId]: safeResult,
-    }));
-
-    if (safeResult.ok) {
-      toast.success("Invoice review passed ✅ Ready to invoice.");
-    } else {
-      toast.error(
-        `Invoice review found ${issues.length} issue(s)${
-          issues[0]?.message ? `: ${issues[0].message}` : ""
-        }`,
-      );
-    }
-  } catch (e) {
-    console.error("[invoice-review] crash:", e);
-    toast.error("Invoice review crashed");
-  } finally {
-    setReviewLoadingId(null);
-  }
-}, []);
+  }, []);
 
   // -------------------------------------------------------------------
   // Auth + portal role + mechanics
@@ -368,6 +355,17 @@ export default function WorkOrdersView(): JSX.Element {
       }
     },
     [selectedTechId, load],
+  );
+
+  // -------------------------------------------------------------------
+  // NEW: open invoice page (replaces modal)
+  // -------------------------------------------------------------------
+  const openInvoicePage = useCallback(
+    (woId: string) => {
+      if (!woId) return;
+      router.push(`/work-orders/invoice/${woId}`);
+    },
+    [router],
   );
 
   const total = rows.length;
@@ -515,7 +513,8 @@ export default function WorkOrdersView(): JSX.Element {
               const plate = r.vehicles?.license_plate ?? "";
 
               const statusLower = String(r.status ?? "").toLowerCase();
-              const isReadyToInvoice = statusLower === "ready_to_invoice" || statusLower === "completed";
+              const isReadyToInvoice =
+                statusLower === "ready_to_invoice" || statusLower === "completed";
 
               const review = reviewByWo[r.id];
               const reviewedOk = Boolean(review?.ok);
@@ -569,7 +568,9 @@ export default function WorkOrdersView(): JSX.Element {
                       {customerName || "No customer"}{" "}
                       <span className="mx-1 text-neutral-600">•</span>
                       {vehicleLabel || "No vehicle"}
-                      {plate ? <span className="ml-1 text-neutral-400">({plate})</span> : null}
+                      {plate ? (
+                        <span className="ml-1 text-neutral-400">({plate})</span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -603,14 +604,18 @@ export default function WorkOrdersView(): JSX.Element {
                             : "Check required fields before invoicing"
                         }
                       >
-                        {reviewedOk ? "Reviewed" : reviewLoadingId === r.id ? "Reviewing…" : "Invoice review"}
+                        {reviewedOk
+                          ? "Reviewed"
+                          : reviewLoadingId === r.id
+                            ? "Reviewing…"
+                            : "Invoice review"}
                       </button>
                     )}
 
-                    {/* ✅ Send invoice (opens preview modal; gated by review pass) */}
+                    {/* ✅ Invoice (page) */}
                     {isReadyToInvoice && (
                       <button
-                        onClick={() => setPreviewWo(r)}
+                        onClick={() => openInvoicePage(r.id)}
                         disabled={!reviewedOk}
                         className={
                           reviewedOk
@@ -619,11 +624,11 @@ export default function WorkOrdersView(): JSX.Element {
                         }
                         title={
                           reviewedOk
-                            ? "Preview + review gate + email invoice"
+                            ? "Open invoice page"
                             : "Run invoice review first"
                         }
                       >
-                        Send invoice
+                        Invoice
                       </button>
                     )}
 
@@ -648,12 +653,16 @@ export default function WorkOrdersView(): JSX.Element {
                             <select
                               value={selectedTechId}
                               onChange={(e) => setSelectedTechId(e.target.value)}
-                              className={SELECT_DARK + " h-8 min-w-[150px] px-2 py-1 text-[0.7rem]"}
+                              className={
+                                SELECT_DARK +
+                                " h-8 min-w-[150px] px-2 py-1 text-[0.7rem]"
+                              }
                             >
                               <option value="">Pick mechanic…</option>
                               {techs.map((t) => (
                                 <option key={t.id} value={t.id}>
-                                  {t.full_name ?? "(no name)"} {t.role ? `(${t.role})` : ""}
+                                  {t.full_name ?? "(no name)"}{" "}
+                                  {t.role ? `(${t.role})` : ""}
                                 </option>
                               ))}
                             </select>
@@ -679,19 +688,6 @@ export default function WorkOrdersView(): JSX.Element {
             })}
           </div>
         </section>
-      )}
-
-      {/* ✅ Invoice preview modal (only mounts when opened) */}
-      {previewWo && (
-        <InvoicePreviewModal
-          isOpen={!!previewWo}
-          onClose={() => setPreviewWo(null)}
-          workOrderId={previewWo.id}
-          onSent={async () => {
-            setPreviewWo(null);
-            await load();
-          }}
-        />
       )}
     </div>
   );

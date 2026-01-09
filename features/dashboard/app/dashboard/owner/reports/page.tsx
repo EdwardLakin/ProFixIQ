@@ -166,7 +166,7 @@ export default function ReportsPage() {
 
         // AI summary – don’t block main stats
         try {
-          const res = await fetch("/api/stats/summarize-stats", {
+          const res = await fetch("/api/ai/summarize-stats", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ stats: fetchedStats, timeRange: range }),
