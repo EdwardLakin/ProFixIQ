@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import html2canvas from "html2canvas";
@@ -352,7 +353,7 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {/* Only show export when performance tab */}
+          {/* Export / Health header actions */}
           {activeTab === "performance" ? (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
               <div className="text-[11px] text-neutral-400">
@@ -370,8 +371,32 @@ export default function ReportsPage() {
               </Button>
             </div>
           ) : (
-            <div className="mt-4 border-t border-white/10 pt-4 text-[11px] text-neutral-400">
-              Shop Health reads your latest snapshot + suggestions and highlights where onboarding can be automated.
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+              <div className="text-[11px] text-neutral-400">
+                Shop Health reads your latest snapshot + suggestions and highlights where onboarding can be automated.
+              </div>
+
+              {/* ✅ NEW: Upload + Run Snapshot buttons */}
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/onboarding/shop-boost"
+                  className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-200 transition hover:bg-black/35 hover:text-white"
+                >
+                  ⬆️ Upload files
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById("shop-health");
+                    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    toast.message("Scroll down to run the snapshot in Shop Health.");
+                  }}
+                  className="rounded-full border border-orange-500/60 bg-orange-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-100 transition hover:bg-orange-500 hover:text-black"
+                >
+                  ⚡ Run snapshot
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -741,7 +766,10 @@ export default function ReportsPage() {
                             : 0;
 
                         return (
-                          <tr key={row.techId} className="border-b border-zinc-800 last:border-0">
+                          <tr
+                            key={row.techId}
+                            className="border-b border-zinc-800 last:border-0"
+                          >
                             <td className="px-2 py-2">
                               <div className="flex flex-col">
                                 <span className="font-medium text-foreground">{row.name}</span>
@@ -764,8 +792,12 @@ export default function ReportsPage() {
                                 </span>
                               ) : null}
                             </td>
-                            <td className="px-2 py-2 text-right">${row.revenuePerHour.toFixed(2)}</td>
-                            <td className="px-2 py-2 text-right">{row.efficiencyPct.toFixed(0)}%</td>
+                            <td className="px-2 py-2 text-right">
+                              ${row.revenuePerHour.toFixed(2)}
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {row.efficiencyPct.toFixed(0)}%
+                            </td>
                             <td className="px-2 py-2 text-center">
                               {badge ? (
                                 <span
