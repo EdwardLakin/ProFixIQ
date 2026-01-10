@@ -173,7 +173,7 @@ async function loadIntake(shopId: string, intakeId: string): Promise<IntakeRow> 
 async function updateIntakeStatus(
   shopId: string,
   intakeId: string,
-  status: "pending" | "processing" | "complete" | "failed",
+  status: "pending" | "processing" | "completed" | "failed",
   extra?: { processed_at?: string | null; error?: string | null },
 ) {
   const supabase = createAdminSupabase();
@@ -182,7 +182,7 @@ async function updateIntakeStatus(
     .update({
       status,
       processed_at:
-        extra?.processed_at ?? (status === "complete" ? nowIso() : null),
+        extra?.processed_at ?? (status === "completed" ? nowIso() : null),
       error: extra?.error ?? null,
     } as Partial<DB["public"]["Tables"]["shop_boost_intakes"]["Update"]>)
     .eq("shop_id", shopId)
@@ -463,7 +463,7 @@ export async function buildShopBoostProfile(
       );
     }
 
-    await updateIntakeStatus(shopId, intakeId, "complete", {
+    await updateIntakeStatus(shopId, intakeId, "completed", {
       processed_at: nowIso(),
     });
 
