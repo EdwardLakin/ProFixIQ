@@ -194,19 +194,28 @@ function mapSnapshotRowToUi(row: ShopHealthSnapshotRow): ShopHealthSnapshot | nu
   const averageRo = typeof totals["averageRo"] === "number" ? totals["averageRo"] : 0;
 
   return {
-    shopId: row.shop_id as string,
-    timeRangeDescription: buildTimeRangeDescription(row.period_start, row.period_end),
-    totalRepairOrders,
-    totalRevenue,
-    averageRo,
-    mostCommonRepairs: [],
-    highValueRepairs: [],
-    comebackRisks: [],
-    fleetMetrics: [],
-    menuSuggestions: [],
-    inspectionSuggestions: [],
-    narrativeSummary: row.narrative_summary ?? "",
-  };
+  shopId: row.shop_id as string,
+  timeRangeDescription: buildTimeRangeDescription(
+    row.period_start,
+    row.period_end
+  ),
+  totalRepairOrders,
+  totalRevenue,
+  averageRo,
+
+  mostCommonRepairs: [],
+  highValueRepairs: [],
+  comebackRisks: [],
+  fleetMetrics: [],
+  menuSuggestions: [],
+  inspectionSuggestions: [],
+  narrativeSummary: row.narrative_summary ?? "",
+
+  // ✅ NEW — required by ShopHealthSnapshot
+  topTechs: [],
+  issuesDetected: [],
+  recommendations: [],
+};
 }
 
 function buildTimeRangeDescription(start: string | null, end: string | null): string {

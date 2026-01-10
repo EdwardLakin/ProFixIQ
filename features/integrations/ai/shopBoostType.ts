@@ -1,4 +1,5 @@
-// features/integrations/ai/shopBoostTypes.ts
+// /features/integrations/ai/shopBoostType.ts
+
 export type ShopHealthTopRepair = {
   label: string;
   count: number;
@@ -37,17 +38,59 @@ export type ShopHealthInspectionSuggestion = {
   note?: string | null;
 };
 
+export type ShopHealthTopTech = {
+  techId: string;
+  name: string;
+  role: string | null;
+  jobs: number;
+  revenue: number;
+  clockedHours: number;
+  revenuePerHour: number;
+};
+
+export type ShopHealthIssueSeverity = "low" | "medium" | "high";
+
+export type ShopHealthIssue = {
+  key: "comebacks" | "low_aro" | "bay_imbalance";
+  title: string;
+  severity: ShopHealthIssueSeverity;
+  detail: string;
+  evidence?: string | null;
+};
+
+export type ShopHealthRecommendation = {
+  key:
+    | "publish_menus"
+    | "publish_inspections"
+    | "reduce_comebacks_qc"
+    | "raise_aro_packages"
+    | "dispatch_balance";
+  title: string;
+  why: string;
+  actionSteps: string[];
+  expectedImpact?: string | null;
+};
+
 export type ShopHealthSnapshot = {
   shopId: string;
   timeRangeDescription: string;
   totalRepairOrders: number;
   totalRevenue: number;
   averageRo: number;
+
   mostCommonRepairs: ShopHealthTopRepair[];
   highValueRepairs: ShopHealthTopRepair[];
+
   comebackRisks: ShopHealthComebackRisk[];
   fleetMetrics: ShopHealthFleetMetric[];
+
   menuSuggestions: ShopHealthMenuSuggestion[];
   inspectionSuggestions: ShopHealthInspectionSuggestion[];
+
+  // ✅ NEW
+  topTechs: ShopHealthTopTech[];
+  issuesDetected: ShopHealthIssue[];
+  recommendations: ShopHealthRecommendation[];
+
   narrativeSummary: string;
 };

@@ -1,14 +1,18 @@
-//features/integrations/ai/shopBoost.ts
+// /features/integrations/ai/shopBoost.ts
 import { randomUUID } from "crypto";
 
 import { openai } from "lib/server/openai";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
-import {
-  type ShopHealthSnapshot,
-  type ShopHealthTopRepair,
-  type ShopHealthComebackRisk,
-  type ShopHealthFleetMetric,
+import type {
+  ShopHealthSnapshot,
+  ShopHealthTopRepair,
+  ShopHealthComebackRisk,
+  ShopHealthFleetMetric,
+  ShopHealthTopTech,
+  ShopHealthIssue,
+  ShopHealthRecommendation,
+  ShopHealthIssueSeverity,
 } from "@/features/integrations/ai/shopBoostType";
 
 type DB = Database;
@@ -21,74 +25,79 @@ type BuildShopBoostProfileOptions = {
   intakeId?: string;
 };
 
-/**
- * Entry point: take an intake row for a shop, parse files,
- * build a ShopHealthSnapshot, store it, and emit AI events.
- */
 export async function buildShopBoostProfile(
   opts: BuildShopBoostProfileOptions,
 ): Promise<ShopHealthSnapshot | null> {
   const supabase = createAdminSupabase();
   const { shopId, intakeId } = opts;
 
-  // 1) Find intake row
-  const { data: intakeRow, error: intakeErr } = await supabase
-    .from("shop_boost_intakes")
-    .select("*")
-    .eq("shop_id", shopId)
-    .eq("status", "pending")
-    .order("created_at", { ascending: false })
-    .maybeSingle();
+  const intakeQuery = supabase.from("shop_boost_intakes").select("*").eq("shop_id", shopId);
+
+  const { data: intakeRow, error: intakeErr } = intakeId
+    ? await intakeQuery.eq("id", intakeId).maybeSingle()
+    : await intakeQuery
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .maybeSingle();
 
   if (intakeErr) {
     console.error("Error fetching intake", intakeErr);
     return null;
   }
-
   if (!intakeRow) {
-    console.warn("No pending shop_boost_intakes found for shop", shopId);
+    console.warn("No matching shop_boost_intakes found", { shopId, intakeId });
     return null;
   }
+  if (intakeId && intakeRow.id !== intakeId) return null;
 
-  // If intakeId was given, ensure it matches
-  if (intakeId && intakeRow.id !== intakeId) {
-    console.warn("Intake ID mismatch; skipping", { shopId, intakeId });
-    return null;
-  }
-
-  // 2) Download CSV files (if present)
   const [customersCsv, vehiclesCsv, partsCsv] = await Promise.all([
     downloadCsvFile(supabase, intakeRow.customers_file_path),
     downloadCsvFile(supabase, intakeRow.vehicles_file_path),
     downloadCsvFile(supabase, intakeRow.parts_file_path),
   ]);
 
-  // 3) Calculate structured aggregates from CSVs
-  const baseStats = await deriveStatsFromCsvs({
-    customersCsv,
-    vehiclesCsv,
-    partsCsv,
-  });
-
-  // 4) Pull any existing stats from DB (if you already have some WOs, etc.)
+  const baseStats = await deriveStatsFromCsvs({ customersCsv, vehiclesCsv, partsCsv });
   const dbStats = await deriveStatsFromDatabase(supabase, shopId);
-
-  // Merge CSV-derived stats and DB-derived stats
   const mergedStats = mergeStats(baseStats, dbStats);
 
-  // 5) Call OpenAI to turn stats into final snapshot + suggestions + narrative
-  const snapshot = await generateSnapshotWithAI({
+  // ✅ 2) tech aggregation
+  const topTechs = await deriveTopTechsFromDatabase(supabase, shopId);
+
+  // AI snapshot (menus/inspections/narrative + repairs)
+  const aiSnapshot = await generateSnapshotWithAI({
     shopId,
     intakeRow,
     mergedStats,
+    topTechs,
   });
 
-  if (!snapshot) {
-    console.error("Failed to generate ShopHealthSnapshot");
-    return null;
-  }
+  if (!aiSnapshot) return null;
 
-  // 6) Upsert into shop_ai_profiles
+  // ✅ 3) issue heuristics
+  const issuesDetected = detectIssues({
+    intakeRow,
+    mergedStats,
+    topTechs,
+    comebackRisks: aiSnapshot.comebackRisks,
+  });
+
+  // ✅ 4) actionable recommendations (tied to menus/inspections)
+  const recommendations = buildRecommendations({
+    intakeRow,
+    mergedStats,
+    issuesDetected,
+    menuSuggestions: aiSnapshot.menuSuggestions,
+    inspectionSuggestions: aiSnapshot.inspectionSuggestions,
+  });
+
+  const snapshot: ShopHealthSnapshot = {
+    ...aiSnapshot,
+    topTechs,
+    issuesDetected,
+    recommendations,
+  };
+
+  // Upsert shop_ai_profiles (summary)
   const { error: aiProfileErr } = await supabase
     .from("shop_ai_profiles")
     .upsert(
@@ -100,31 +109,22 @@ export async function buildShopBoostProfile(
       { onConflict: "shop_id" },
     );
 
-  if (aiProfileErr) {
-    console.error("Failed to upsert shop_ai_profiles", aiProfileErr);
-  }
+  if (aiProfileErr) console.error("Failed to upsert shop_ai_profiles", aiProfileErr);
 
-  // 7) Log AI event + training data
   await logTrainingEvents(supabase, snapshot);
 
-  // 8) Mark intake as processed
   const { error: updateIntakeErr } = await supabase
     .from("shop_boost_intakes")
-    .update({
-      status: "completed",
-      processed_at: new Date().toISOString(),
-    })
+    .update({ status: "completed", processed_at: new Date().toISOString() })
     .eq("id", intakeRow.id);
 
-  if (updateIntakeErr) {
-    console.error("Failed to update intake status", updateIntakeErr);
-  }
+  if (updateIntakeErr) console.error("Failed to update intake status", updateIntakeErr);
 
   return snapshot;
 }
 
 /* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
+/* CSV                                                                         */
 /* -------------------------------------------------------------------------- */
 
 async function downloadCsvFile(
@@ -133,17 +133,14 @@ async function downloadCsvFile(
 ): Promise<string | null> {
   if (!path) return null;
 
-  const { data, error } = await supabase.storage
-    .from(SHOP_IMPORT_BUCKET)
-    .download(path);
+  const { data, error } = await supabase.storage.from(SHOP_IMPORT_BUCKET).download(path);
 
   if (error || !data) {
     console.error("Failed to download CSV", path, error);
     return null;
   }
 
-  const text = await data.text();
-  return text;
+  return data.text();
 }
 
 type CsvStatsInput = {
@@ -163,7 +160,6 @@ type DerivedStats = {
 };
 
 function splitCsvLine(line: string): string[] {
-  // Minimal CSV splitter that respects simple quoted commas
   const out: string[] = [];
   let cur = "";
   let inQuotes = false;
@@ -171,7 +167,6 @@ function splitCsvLine(line: string): string[] {
   for (let i = 0; i < line.length; i += 1) {
     const ch = line[i];
     if (ch === '"') {
-      // toggle quotes (handles doubled quotes poorly but better than raw split)
       inQuotes = !inQuotes;
       continue;
     }
@@ -191,28 +186,24 @@ function normHeader(h: string): string {
 }
 
 function headerLooksLikePersonField(h: string): boolean {
-  // These fields commonly contain staff/customer names, not repair descriptions
   return /(tech|technician|advisor|writer|service writer|employee|staff|name|customer|driver)/i.test(
     h,
   );
 }
 
 function headerLooksLikeRepairTextField(h: string): boolean {
-  // Favor true job/line text fields
   return /(complaint|concern|cause|correction|operation|op|job|service|work performed|work_performed|description|line)/i.test(
     h,
   );
 }
 
 function headerLooksLikeBadTextField(h: string): boolean {
-  // Explicitly avoid columns that are “notes” but actually names/metadata
   return /(phone|email|address|vin|plate|license|unit|stock|fleet|company|location|city|state|zip)/i.test(
     h,
   );
 }
 
 function chooseBestDescriptionColumn(headers: string[]): number {
-  // Score each header; pick highest score; avoid person-name columns.
   let bestIdx = -1;
   let bestScore = -1;
 
@@ -220,19 +211,16 @@ function chooseBestDescriptionColumn(headers: string[]): number {
     const h = normHeader(headers[i]);
     if (!h) continue;
 
-    // hard rejects
     if (headerLooksLikePersonField(h)) continue;
     if (headerLooksLikeBadTextField(h)) continue;
 
     let score = 0;
 
-    // strong positives
     if (/(line description|job description|work performed|description)/i.test(h)) score += 7;
     if (/(complaint|concern|cause|correction)/i.test(h)) score += 6;
     if (/(service|job|operation|op)/i.test(h)) score += 4;
     if (headerLooksLikeRepairTextField(h)) score += 2;
 
-    // mild negatives
     if (/(note|notes|memo|comment)/i.test(h)) score -= 1;
     if (/(id|number|no\.|ro|invoice)/i.test(h)) score -= 2;
 
@@ -242,7 +230,6 @@ function chooseBestDescriptionColumn(headers: string[]): number {
     }
   }
 
-  // fallback: original behavior, but still avoid person fields if possible
   if (bestIdx === -1) {
     const loose = headers.findIndex((h) => /description|job|service/i.test(h));
     if (loose >= 0 && !headerLooksLikePersonField(headers[loose])) return loose;
@@ -253,7 +240,6 @@ function chooseBestDescriptionColumn(headers: string[]): number {
 }
 
 function chooseBestTotalColumn(headers: string[]): number {
-  // prefer totals that represent invoice/grand/line totals
   let bestIdx = -1;
   let bestScore = -1;
 
@@ -266,7 +252,6 @@ function chooseBestTotalColumn(headers: string[]): number {
     if (/(line_total|line total|amount|price|extended)/i.test(h)) score += 4;
     if (/(labor|parts)/i.test(h)) score += 1;
 
-    // avoid misleading fields
     if (/(rate|tax|qty|quantity|cost)/i.test(h)) score -= 3;
 
     if (score > bestScore) {
@@ -280,17 +265,12 @@ function chooseBestTotalColumn(headers: string[]): number {
 
 function cleanDesc(raw: string): string {
   const s = raw.replace(/\s+/g, " ").trim();
-
-  // If it’s basically “a name” (single token / two tokens), treat as low quality.
-  // Not perfect, but helps stop “Lucas” from becoming top repair.
   const tokens = s.split(" ").filter(Boolean);
   if (tokens.length <= 2 && /^[a-zA-Z.'-]+$/.test(s)) return "General Repair";
 
-  // strip leading tech labels like "Tech: Bob"
   const stripped = s.replace(/^(tech|technician|advisor|writer)\s*[:\-]\s*/i, "").trim();
   if (!stripped) return "General Repair";
 
-  // cap length
   return stripped.slice(0, 90);
 }
 
@@ -323,8 +303,7 @@ async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> 
   for (let i = 1; i < lines.length; i += 1) {
     const cols = splitCsvLine(lines[i]);
 
-    const rawDesc =
-      idxDescription >= 0 ? (cols[idxDescription] ?? "").trim() : "";
+    const rawDesc = idxDescription >= 0 ? (cols[idxDescription] ?? "").trim() : "";
     const desc = cleanDesc(rawDesc || "General Repair");
 
     const rawTotal = idxTotal >= 0 ? (cols[idxTotal] ?? "0") : "0";
@@ -337,11 +316,7 @@ async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> 
   }
 
   const mostCommonRepairs: ShopHealthTopRepair[] = Array.from(repairMap.entries())
-    .map(([label, value]) => ({
-      label,
-      count: value.count,
-      revenue: value.revenue,
-    }))
+    .map(([label, value]) => ({ label, count: value.count, revenue: value.revenue }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
@@ -349,16 +324,9 @@ async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> 
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 
-  const totalRepairOrders = mostCommonRepairs.reduce(
-    (sum, repair) => sum + repair.count,
-    0,
-  );
-  const totalRevenue = mostCommonRepairs.reduce(
-    (sum, repair) => sum + repair.revenue,
-    0,
-  );
-  const averageRo =
-    totalRepairOrders > 0 ? totalRevenue / totalRepairOrders : 0;
+  const totalRepairOrders = mostCommonRepairs.reduce((sum, r) => sum + r.count, 0);
+  const totalRevenue = mostCommonRepairs.reduce((sum, r) => sum + r.revenue, 0);
+  const averageRo = totalRepairOrders > 0 ? totalRevenue / totalRepairOrders : 0;
 
   return {
     totalRepairOrders,
@@ -375,7 +343,6 @@ async function deriveStatsFromDatabase(
   supabase: ReturnType<typeof createAdminSupabase>,
   shopId: string,
 ): Promise<DerivedStats> {
-  // TODO: enrich from work_orders + work_order_lines if desired.
   void supabase;
   void shopId;
 
@@ -406,17 +373,13 @@ function mergeStats(a: DerivedStats, b: DerivedStats): DerivedStats {
   };
 }
 
-function mergeRepairLists(
-  a: ShopHealthTopRepair[],
-  b: ShopHealthTopRepair[],
-): ShopHealthTopRepair[] {
+function mergeRepairLists(a: ShopHealthTopRepair[], b: ShopHealthTopRepair[]): ShopHealthTopRepair[] {
   const map = new Map<string, ShopHealthTopRepair>();
 
   for (const item of [...a, ...b]) {
     const existing = map.get(item.label);
-    if (!existing) {
-      map.set(item.label, { ...item });
-    } else {
+    if (!existing) map.set(item.label, { ...item });
+    else {
       existing.count += item.count;
       existing.revenue += item.revenue;
     }
@@ -427,36 +390,369 @@ function mergeRepairLists(
     .slice(0, 10);
 }
 
+/* -------------------------------------------------------------------------- */
+/* ✅ Tech aggregation                                                         */
+/* -------------------------------------------------------------------------- */
+
+type SlimProfile = {
+  id: string;
+  full_name: string | null;
+  role: string | null;
+};
+
+type InvoiceSlim = {
+  id: string;
+  tech_id: string | null;
+  shop_id: string | null;
+  total: number | null;
+  created_at: string | null;
+};
+
+type TimecardSlim = {
+  id: string;
+  user_id: string | null;
+  shop_id: string | null;
+  hours_worked: number | null;
+  clock_in: string | null;
+};
+
+function isTechRole(role: string | null): boolean {
+  const r = (role ?? "").trim().toLowerCase();
+  if (!r) return false;
+  if (r === "tech" || r === "technician" || r === "mechanic") return true;
+  if (r.includes("tech")) return true;
+  if (r.includes("mechanic")) return true;
+  return false;
+}
+
+async function deriveTopTechsFromDatabase(
+  supabase: ReturnType<typeof createAdminSupabase>,
+  shopId: string,
+): Promise<ShopHealthTopTech[]> {
+  const now = new Date();
+  const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const startIso = start.toISOString();
+  const endIso = now.toISOString();
+
+  const { data: profilesRes, error: profErr } = await supabase
+    .from("profiles")
+    .select("id, full_name, role, shop_id")
+    .eq("shop_id", shopId);
+
+  if (profErr) {
+    console.warn("[shopBoost] profiles error", profErr);
+    return [];
+  }
+
+  const techProfiles: SlimProfile[] = (profilesRes ?? [])
+    .map((p) => ({
+      id: String(p.id),
+      full_name: p.full_name ?? null,
+      role: p.role ?? null,
+    }))
+    .filter((p) => isTechRole(p.role));
+
+  const techIds = techProfiles.map((p) => p.id);
+  if (techIds.length === 0) return [];
+
+  const [invoicesRes, timecardsRes] = await Promise.all([
+    supabase
+      .from("invoices")
+      .select("id, tech_id, shop_id, total, created_at")
+      .eq("shop_id", shopId)
+      .in("tech_id", techIds)
+      .gte("created_at", startIso)
+      .lt("created_at", endIso),
+
+    supabase
+      .from("payroll_timecards")
+      .select("id, user_id, shop_id, hours_worked, clock_in")
+      .eq("shop_id", shopId)
+      .in("user_id", techIds)
+      .gte("clock_in", startIso)
+      .lt("clock_in", endIso),
+  ]);
+
+  if (invoicesRes.error) {
+    console.warn("[shopBoost] invoices error", invoicesRes.error);
+    return [];
+  }
+  if (timecardsRes.error) {
+    console.warn("[shopBoost] timecards error", timecardsRes.error);
+    return [];
+  }
+
+  const invoices = (invoicesRes.data ?? []) as unknown as InvoiceSlim[];
+  const timecards = (timecardsRes.data ?? []) as unknown as TimecardSlim[];
+
+  const byTech = new Map<string, ShopHealthTopTech>();
+
+  for (const p of techProfiles) {
+    byTech.set(p.id, {
+      techId: p.id,
+      name: p.full_name || "Unnamed tech",
+      role: p.role,
+      jobs: 0,
+      revenue: 0,
+      clockedHours: 0,
+      revenuePerHour: 0,
+    });
+  }
+
+  for (const inv of invoices) {
+    if (!inv.tech_id) continue;
+    const row = byTech.get(inv.tech_id);
+    if (!row) continue;
+
+    const total = Number(inv.total ?? 0);
+    row.jobs += 1;
+    row.revenue += Number.isFinite(total) ? total : 0;
+  }
+
+  for (const tc of timecards) {
+    if (!tc.user_id) continue;
+    const row = byTech.get(tc.user_id);
+    if (!row) continue;
+
+    const hours = Number(tc.hours_worked ?? 0);
+    row.clockedHours += Number.isFinite(hours) ? hours : 0;
+  }
+
+  for (const row of byTech.values()) {
+    row.revenuePerHour = row.clockedHours > 0 ? row.revenue / row.clockedHours : 0;
+  }
+
+  return Array.from(byTech.values())
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+}
+
+/* -------------------------------------------------------------------------- */
+/* ✅ Issue heuristics                                                         */
+/* -------------------------------------------------------------------------- */
+
+function severityFromScore(n: number): ShopHealthIssueSeverity {
+  if (n >= 80) return "high";
+  if (n >= 50) return "medium";
+  return "low";
+}
+
+function readQuestionnaireNumber(q: unknown, key: string): number | null {
+  if (!q || typeof q !== "object") return null;
+  const rec = q as Record<string, unknown>;
+  const v = rec[key];
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function detectIssues(args: {
+  intakeRow: ShopBoostIntakeRow;
+  mergedStats: DerivedStats;
+  topTechs: ShopHealthTopTech[];
+  comebackRisks: ShopHealthComebackRisk[];
+}): ShopHealthIssue[] {
+  const { intakeRow, mergedStats, comebackRisks } = args;
+
+  const issues: ShopHealthIssue[] = [];
+  const totalRos = mergedStats.totalRepairOrders || 0;
+  const aro = mergedStats.averageRo || 0;
+
+  // 1) Comebacks
+  const comebackCount = (comebackRisks ?? []).reduce((sum, r) => sum + (r.count || 0), 0);
+  const comebackRate = totalRos > 0 ? comebackCount / totalRos : 0;
+
+  if (comebackCount >= 3 || comebackRate >= 0.05) {
+    const score = Math.min(100, Math.round((comebackRate * 1000) + comebackCount * 6));
+    issues.push({
+      key: "comebacks",
+      title: "Repeat issues / comeback risk",
+      severity: severityFromScore(score),
+      detail:
+        "We’re seeing repeat patterns that can create comebacks and wasted bay time. Add a QC step + targeted inspections to catch it before delivery.",
+      evidence:
+        totalRos > 0
+          ? `${comebackCount} repeat signals across ${totalRos} ROs (~${Math.round(comebackRate * 100)}%).`
+          : `${comebackCount} repeat signals detected.`,
+    });
+  }
+
+  // 2) Low ARO
+  // (simple baseline: retail < 450 flagged, HD/mixed tolerates higher targets)
+  const specialty = (() => {
+    const q = intakeRow.questionnaire as unknown;
+    if (!q || typeof q !== "object") return "general";
+    const rec = q as Record<string, unknown>;
+    return typeof rec["specialty"] === "string" ? rec["specialty"] : "general";
+  })();
+
+  const targetAro =
+    specialty === "hd" || specialty === "diesel" ? 700 : specialty === "mixed" ? 550 : 450;
+
+  if (totalRos >= 15 && aro > 0 && aro < targetAro) {
+    const gap = targetAro - aro;
+    const score = Math.min(100, Math.round((gap / targetAro) * 120));
+    issues.push({
+      key: "low_aro",
+      title: "Average RO looks low",
+      severity: severityFromScore(score),
+      detail:
+        "Your average RO suggests missed packaged services. Build 2–3 menu packages around your most common repairs and attach an upsell inspection to lift ARO.",
+      evidence: `ARO ${Math.round(aro)} vs target ~${targetAro} for ${specialty}.`,
+    });
+  }
+
+  // 3) Bay imbalance (questionnaire techCount/bayCount)
+  const techCount = readQuestionnaireNumber(intakeRow.questionnaire, "techCount");
+  const bayCount = readQuestionnaireNumber(intakeRow.questionnaire, "bayCount");
+
+  if (techCount && bayCount && bayCount > 0) {
+    const ratio = techCount / bayCount; // tech per bay
+    if (ratio < 0.6 || ratio > 1.25) {
+      const distance = ratio < 0.6 ? (0.6 - ratio) : (ratio - 1.25);
+      const score = Math.min(100, Math.round(distance * 160));
+      issues.push({
+        key: "bay_imbalance",
+        title: "Tech-to-bay imbalance",
+        severity: severityFromScore(score),
+        detail:
+          "Your staffing ratio suggests either bays sitting idle or techs waiting on bays. Tighten dispatch rules and add a simple WIP board to keep bays loaded.",
+        evidence: `${techCount} techs / ${bayCount} bays = ${ratio.toFixed(2)} tech per bay.`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+/* -------------------------------------------------------------------------- */
+/* ✅ Recommendations tied to menus + inspections                              */
+/* -------------------------------------------------------------------------- */
+
+function buildRecommendations(args: {
+  intakeRow: ShopBoostIntakeRow;
+  mergedStats: DerivedStats;
+  issuesDetected: ShopHealthIssue[];
+  menuSuggestions: ShopHealthSnapshot["menuSuggestions"];
+  inspectionSuggestions: ShopHealthSnapshot["inspectionSuggestions"];
+}): ShopHealthRecommendation[] {
+  const { issuesDetected, menuSuggestions, inspectionSuggestions, mergedStats } = args;
+
+  const recs: ShopHealthRecommendation[] = [];
+
+  if ((menuSuggestions ?? []).length > 0) {
+    recs.push({
+      key: "publish_menus",
+      title: "Publish your suggested menu packages",
+      why: "These packages are the fastest way to standardize pricing, increase consistency, and lift ARO.",
+      actionSteps: [
+        "Review the top 3 suggested menus and adjust pricing/labor time to match your shop.",
+        "Enable them as public/available services.",
+        "Train advisors to attach one package per matching complaint.",
+      ],
+      expectedImpact: "Higher ARO + faster estimating + more consistent quoting.",
+    });
+  }
+
+  if ((inspectionSuggestions ?? []).length > 0) {
+    recs.push({
+      key: "publish_inspections",
+      title: "Attach an inspection to every RO type",
+      why: "Inspections catch upsells early and reduce comebacks with consistent checks.",
+      actionSteps: [
+        "Pick 1–2 suggested inspections and make them default by vehicle/work type.",
+        "Require a photo + note on any FAIL item to support approvals.",
+        "Use the inspection results to auto-generate recommended services.",
+      ],
+      expectedImpact: "More approved work + fewer missed items + stronger documentation.",
+    });
+  }
+
+  const hasComebacks = issuesDetected.some((i) => i.key === "comebacks");
+  if (hasComebacks) {
+    recs.push({
+      key: "reduce_comebacks_qc",
+      title: "Add a QC step to reduce comebacks",
+      why: "Repeat issues waste bay time and destroy shop momentum. A lightweight QC step catches the misses.",
+      actionSteps: [
+        "Add a “Post-repair QC” mini inspection template (10–15 items).",
+        "Require QC sign-off before invoice creation on high-risk jobs.",
+        "Track repeat issues by category and tune the QC checklist monthly.",
+      ],
+      expectedImpact: "Lower comeback rate + fewer rechecks + better customer trust.",
+    });
+  }
+
+  const hasLowAro = issuesDetected.some((i) => i.key === "low_aro");
+  if (hasLowAro) {
+    const topRepair = mergedStats.mostCommonRepairs?.[0]?.label ?? "your most common repairs";
+    recs.push({
+      key: "raise_aro_packages",
+      title: "Lift ARO with 2–3 bundled packages",
+      why: "Bundles turn frequent complaints into predictable, higher-value tickets without feeling pushy.",
+      actionSteps: [
+        `Create a package built around: ${topRepair}.`,
+        "Add 1 complementary add-on (flush/diag/inspection) as a default suggestion.",
+        "Make advisors pick: Basic / Standard / Premium options.",
+      ],
+      expectedImpact: "Higher ARO + clearer options for customers + easier approvals.",
+    });
+  }
+
+  const hasImbalance = issuesDetected.some((i) => i.key === "bay_imbalance");
+  if (hasImbalance) {
+    recs.push({
+      key: "dispatch_balance",
+      title: "Tighten dispatch rules to keep bays loaded",
+      why: "When bays and tech capacity don’t match, work gets stuck in WIP and cycle time explodes.",
+      actionSteps: [
+        "Add a simple WIP board: Waiting, In Progress, Waiting Parts, Waiting Approval, Done.",
+        "Set a rule: no job sits in Waiting Approval more than 2 hours (advisor follow-up).",
+        "Use tech punch + job status to auto-surface blocked work.",
+      ],
+      expectedImpact: "Shorter cycle time + better utilization + less idle time.",
+    });
+  }
+
+  // Keep it tight
+  return recs.slice(0, 6);
+}
+
+/* -------------------------------------------------------------------------- */
+/* AI snapshot generation                                                      */
+/* -------------------------------------------------------------------------- */
+
 type GenerateSnapshotArgs = {
   shopId: string;
   intakeRow: ShopBoostIntakeRow;
   mergedStats: DerivedStats;
+  topTechs: ShopHealthTopTech[];
 };
 
 async function generateSnapshotWithAI(
   args: GenerateSnapshotArgs,
 ): Promise<ShopHealthSnapshot | null> {
-  const { shopId, intakeRow, mergedStats } = args;
+  const { shopId, intakeRow, mergedStats, topTechs } = args;
 
   const systemPrompt =
-    "You are an assistant that helps configure an auto and heavy-duty repair shop management system.";
+    "You are an assistant that helps configure an auto and heavy-duty repair shop management system. " +
+    "Return ONLY valid JSON, no markdown, no commentary.";
 
+  // NOTE: we still ask AI for the classic fields (repairs, menus, inspections, narrative).
+  // Issues/recs are now server-side heuristics so we keep them deterministic.
   const shapeExample = {
     shopId: "<string>",
     timeRangeDescription: "<string>",
     totalRepairOrders: 0,
     totalRevenue: 0,
     averageRo: 0,
-    mostCommonRepairs: [
-      { label: "<string>", count: 0, revenue: 0, averageLaborHours: 0 },
-    ],
-    highValueRepairs: [
-      { label: "<string>", count: 0, revenue: 0, averageLaborHours: 0 },
-    ],
-    comebackRisks: [
-      { label: "<string>", count: 0, estimatedLostHours: 0, note: "<string>" },
-    ],
-    fleetMetrics: [{ label: "<string>", value: 0, unit: "<string>", note: "<string>" }],
+    mostCommonRepairs: [{ label: "<string>", count: 0, revenue: 0, averageLaborHours: 0 }],
+    highValueRepairs: [{ label: "<string>", count: 0, revenue: 0, averageLaborHours: 0 }],
+    comebackRisks: [{ label: "<string>", count: 0, estimatedLostHours: 0, note: "<string>" }],
+    fleetMetrics: [{ label: "<string>", value: 0, unit: "<string|null>", note: "<string|null>" }],
     menuSuggestions: [
       {
         id: "<uuid-string>",
@@ -476,12 +772,6 @@ async function generateSnapshotWithAI(
   };
 
   const userPrompt = [
-    "You are given:",
-    "- High-level questionnaire answers",
-    "- Aggregate repair statistics",
-    "",
-    "Your job: build a compact JSON object describing the shop health and concrete suggestions.",
-    "",
     "Return ONLY valid JSON with this exact shape (keys and types):",
     JSON.stringify(shapeExample, null, 2),
     "",
@@ -490,6 +780,13 @@ async function generateSnapshotWithAI(
     "",
     "Aggregate stats (from history):",
     JSON.stringify(mergedStats, null, 2),
+    "",
+    "Top techs (from invoices/timecards):",
+    JSON.stringify(topTechs, null, 2),
+    "",
+    "Rules:",
+    "- Repair labels should be customer-friendly and not person names.",
+    "- Menus and inspections should reflect the most common repairs.",
   ].join("\n");
 
   try {
@@ -502,34 +799,50 @@ async function generateSnapshotWithAI(
       temperature: 0.2,
     });
 
-    const message = completion.choices[0]?.message;
-    const raw = message?.content ?? "{}";
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(raw) as Partial<ShopHealthSnapshot>;
 
-    const parsed = JSON.parse(raw) as ShopHealthSnapshot;
+    const menuSuggestions = (parsed.menuSuggestions ?? []).map((m) => ({
+      ...m,
+      id: m.id && m.id !== "<uuid-string>" ? m.id : randomUUID(),
+    }));
 
-    parsed.shopId = shopId;
+    const inspectionSuggestions = (parsed.inspectionSuggestions ?? []).map((i) => ({
+      ...i,
+      id: i.id && i.id !== "<uuid-string>" ? i.id : randomUUID(),
+    }));
 
-    parsed.menuSuggestions =
-      parsed.menuSuggestions?.map((menu) => ({
-        ...menu,
-        id: menu.id && menu.id !== "<uuid-string>" ? menu.id : randomUUID(),
-      })) ?? [];
+    // Fill required fields (new ones are set later by heuristics)
+    const snapshotBase: ShopHealthSnapshot = {
+      shopId,
+      timeRangeDescription: parsed.timeRangeDescription ?? "Recent history",
+      totalRepairOrders: parsed.totalRepairOrders ?? mergedStats.totalRepairOrders,
+      totalRevenue: parsed.totalRevenue ?? mergedStats.totalRevenue,
+      averageRo: parsed.averageRo ?? mergedStats.averageRo,
+      mostCommonRepairs: parsed.mostCommonRepairs ?? mergedStats.mostCommonRepairs,
+      highValueRepairs: parsed.highValueRepairs ?? mergedStats.highValueRepairs,
+      comebackRisks: parsed.comebackRisks ?? [],
+      fleetMetrics: parsed.fleetMetrics ?? [],
+      menuSuggestions,
+      inspectionSuggestions,
+      narrativeSummary: parsed.narrativeSummary ?? "No summary yet.",
 
-    parsed.inspectionSuggestions =
-      parsed.inspectionSuggestions?.map((inspection) => ({
-        ...inspection,
-        id:
-          inspection.id && inspection.id !== "<uuid-string>"
-            ? inspection.id
-            : randomUUID(),
-      })) ?? [];
+      // placeholders (set after)
+      topTechs: [],
+      issuesDetected: [],
+      recommendations: [],
+    };
 
-    return parsed;
+    return snapshotBase;
   } catch (err) {
     console.error("Error generating snapshot", err);
     return null;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Training logs                                                               */
+/* -------------------------------------------------------------------------- */
 
 async function logTrainingEvents(
   supabase: ReturnType<typeof createAdminSupabase>,
@@ -553,7 +866,8 @@ async function logTrainingEvents(
     return;
   }
 
-  const sourceEventId = eventRows?.[0]?.id;
+  const first = (eventRows ?? [])[0] as { id?: string } | undefined;
+  const sourceEventId = first?.id;
   if (!sourceEventId) return;
 
   const { error: trainingErr } = await supabase.from("ai_training_data").insert({

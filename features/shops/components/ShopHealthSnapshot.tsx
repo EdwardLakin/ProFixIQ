@@ -1,8 +1,14 @@
+// /features/shops/components/ShopHealthSnapshot.tsx
 "use client";
 
 import type { ReactNode } from "react";
 
-import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
+import type {
+  ShopHealthSnapshot,
+  ShopHealthTopTech,
+  ShopHealthIssue,
+  ShopHealthRecommendation,
+} from "@/features/integrations/ai/shopBoostType";
 import { formatCurrency } from "@shared/lib/formatters";
 
 // Theme tokens (matches your newer glass + slate + orange accents)
@@ -47,17 +53,24 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
     menuSuggestions,
     inspectionSuggestions,
     narrativeSummary,
+
+    // ✅ new
+    topTechs,
+    issuesDetected,
+    recommendations,
   } = snapshot;
 
-  const safeMostCommon = mostCommonRepairs.map((r) => ({
+  const safeMostCommon = (mostCommonRepairs ?? []).map((r) => ({
     ...r,
     label: normalizeRepairLabel(r.label),
   }));
 
-  const safeHighValue = highValueRepairs.map((r) => ({
+  const safeHighValue = (highValueRepairs ?? []).map((r) => ({
     ...r,
     label: normalizeRepairLabel(r.label),
   }));
+
+  const safeTopTechs = (topTechs ?? []).filter((t) => t && t.techId);
 
   return (
     <section className={`space-y-6 p-4 sm:p-6 ${cardBase}`}>
@@ -97,7 +110,11 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
         <MetricCard
           label="Most common job"
           value={safeMostCommon[0]?.label ?? "—"}
-          subValue={safeMostCommon[0] ? `${safeMostCommon[0].count.toLocaleString()} jobs` : undefined}
+          subValue={
+            safeMostCommon[0]
+              ? `${safeMostCommon[0].count.toLocaleString()} jobs`
+              : undefined
+          }
         />
       </div>
 
@@ -111,11 +128,17 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 className={`flex items-center justify-between gap-3 px-3 py-2 ${cardInner}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-[12px] font-medium text-white/90">{repair.label}</p>
-                  <p className="text-[11px] text-white/60">{repair.count.toLocaleString()} jobs</p>
+                  <p className="truncate text-[12px] font-medium text-white/90">
+                    {repair.label}
+                  </p>
+                  <p className="text-[11px] text-white/60">
+                    {repair.count.toLocaleString()} jobs
+                  </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[11px] text-white/80">{formatCurrency(repair.revenue)}</p>
+                  <p className="text-[11px] text-white/80">
+                    {formatCurrency(repair.revenue)}
+                  </p>
                   {typeof repair.averageLaborHours === "number" && (
                     <p className="text-[10px] text-white/45">
                       {repair.averageLaborHours.toFixed(1)} hrs avg
@@ -140,11 +163,17 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 className={`flex items-center justify-between gap-3 px-3 py-2 ${cardInner}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-[12px] font-medium text-white/90">{repair.label}</p>
-                  <p className="text-[11px] text-white/60">{repair.count.toLocaleString()} jobs</p>
+                  <p className="truncate text-[12px] font-medium text-white/90">
+                    {repair.label}
+                  </p>
+                  <p className="text-[11px] text-white/60">
+                    {repair.count.toLocaleString()} jobs
+                  </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[11px] text-orange-200">{formatCurrency(repair.revenue)}</p>
+                  <p className="text-[11px] text-orange-200">
+                    {formatCurrency(repair.revenue)}
+                  </p>
                 </div>
               </li>
             ))}
@@ -157,11 +186,46 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
         </Panel>
       </div>
 
+      {/* ✅ NEW: Top techs */}
+      <Panel title="Top revenue producing techs">
+        <ul className="space-y-2 text-xs text-neutral-200">
+          {safeTopTechs.length > 0 ? (
+            safeTopTechs.slice(0, 5).map((t: ShopHealthTopTech) => (
+              <li
+                key={t.techId}
+                className={`flex items-center justify-between gap-3 px-3 py-2 ${cardInner}`}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-medium text-white/90">
+                    {t.name}
+                  </p>
+                  <p className="text-[11px] text-white/60">
+                    {t.jobs.toLocaleString()} jobs • {t.clockedHours.toFixed(1)} hrs
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] text-orange-200">
+                    {formatCurrency(t.revenue)}
+                  </p>
+                  <p className="text-[10px] text-white/45">
+                    {formatCurrency(t.revenuePerHour)}/hr
+                  </p>
+                </div>
+              </li>
+            ))
+          ) : (
+            <li className="text-[11px] text-white/45">
+              No tech revenue data yet (invoices/timecards). Once you run billing + timecards, this populates.
+            </li>
+          )}
+        </ul>
+      </Panel>
+
       {/* Comeback risk + fleet metrics */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Potential comeback risks">
           <ul className="space-y-2 text-xs text-neutral-200">
-            {comebackRisks.length > 0 ? (
+            {(comebackRisks ?? []).length > 0 ? (
               comebackRisks.map((risk) => (
                 <li
                   key={risk.label}
@@ -180,16 +244,14 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 </li>
               ))
             ) : (
-              <li className="text-[11px] text-white/45">
-                No obvious repeat issues detected yet.
-              </li>
+              <li className="text-[11px] text-white/45">No obvious repeat issues detected yet.</li>
             )}
           </ul>
         </Panel>
 
         <Panel title="Fleet snapshot (if applicable)">
           <ul className="space-y-2 text-xs text-neutral-200">
-            {fleetMetrics.length > 0 ? (
+            {(fleetMetrics ?? []).length > 0 ? (
               fleetMetrics.map((metric) => (
                 <li
                   key={metric.label}
@@ -197,9 +259,7 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-[12px] font-medium text-white/90">{metric.label}</p>
-                    {metric.note ? (
-                      <p className="text-[11px] text-white/60">{metric.note}</p>
-                    ) : null}
+                    {metric.note ? <p className="text-[11px] text-white/60">{metric.note}</p> : null}
                   </div>
                   <div className="text-right text-[11px] text-orange-200">
                     {metric.value.toLocaleString()} {metric.unit ?? ""}
@@ -214,6 +274,32 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
           </ul>
         </Panel>
       </div>
+
+      {/* ✅ NEW: Issues detected */}
+      <Panel title="Issues detected (what to fix first)">
+        <ul className="space-y-2 text-xs text-neutral-200">
+          {(issuesDetected ?? []).length > 0 ? (
+            (issuesDetected as ShopHealthIssue[]).map((iss) => (
+              <li key={iss.key} className={`px-3 py-2 ${cardInner}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[12px] font-semibold text-white/90">{iss.title}</p>
+                  <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] text-neutral-200">
+                    {iss.severity.toUpperCase()}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-white/70">{iss.detail}</p>
+                {iss.evidence ? (
+                  <p className="mt-1 text-[10px] text-white/45">Evidence: {iss.evidence}</p>
+                ) : null}
+              </li>
+            ))
+          ) : (
+            <li className="text-[11px] text-white/45">
+              No major issues flagged yet. As data grows, we’ll surface bottlenecks automatically.
+            </li>
+          )}
+        </ul>
+      </Panel>
 
       {/* AI suggestions: menus + inspections */}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -254,9 +340,7 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
                 <p className="text-[11px] text-white/60">
                   Best for: <span className="capitalize">{inspection.usageContext}</span> work
                 </p>
-                {inspection.note ? (
-                  <p className="mt-1 text-[11px] text-white/70">{inspection.note}</p>
-                ) : null}
+                {inspection.note ? <p className="mt-1 text-[11px] text-white/70">{inspection.note}</p> : null}
               </li>
             ))}
             {inspectionSuggestions.length === 0 ? (
@@ -267,6 +351,34 @@ export default function ShopHealthSnapshotView({ snapshot }: Props) {
           </ul>
         </Panel>
       </div>
+
+      {/* ✅ NEW: Actionable recommendations */}
+      <Panel title="Recommendations (do these next)">
+        <ul className="space-y-2 text-xs text-neutral-200">
+          {(recommendations ?? []).length > 0 ? (
+            (recommendations as ShopHealthRecommendation[]).map((rec) => (
+              <li key={rec.key} className={`px-3 py-2 ${cardInner}`}>
+                <p className="text-[12px] font-semibold text-white/90">{rec.title}</p>
+                <p className="mt-1 text-[11px] text-white/70">{rec.why}</p>
+                <ul className="mt-2 list-disc pl-4 text-[11px] text-white/70 space-y-1">
+                  {rec.actionSteps.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ul>
+                {rec.expectedImpact ? (
+                  <p className="mt-2 text-[10px] text-white/45">
+                    Expected impact: {rec.expectedImpact}
+                  </p>
+                ) : null}
+              </li>
+            ))
+          ) : (
+            <li className="text-[11px] text-white/45">
+              No recommendations generated yet.
+            </li>
+          )}
+        </ul>
+      </Panel>
     </section>
   );
 }

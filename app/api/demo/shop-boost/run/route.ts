@@ -37,9 +37,36 @@ function makeUniqueName(base: string): string {
   return `${base} (Demo ${suffix})`.slice(0, 80);
 }
 
-export async function POST(
-  req: NextRequest,
-): Promise<NextResponse<DemoRunResponse>> {
+function safeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Avoid `instanceof File` (unreliable across runtimes/bundlers).
+ * Next route handlers provide a file-like object with name/type/arrayBuffer().
+ */
+function asFile(v: FormDataEntryValue | null): File | null {
+  if (!v || typeof v !== "object") return null;
+
+  const rec = v as unknown;
+  if (!isRecord(rec)) return null;
+
+  const ab = rec["arrayBuffer"];
+  const name = rec["name"];
+  const type = rec["type"];
+
+  if (typeof ab !== "function") return null;
+  if (typeof name !== "string") return null;
+  if (typeof type !== "string") return null;
+
+  return v as File;
+}
+
+export async function POST(req: NextRequest): Promise<NextResponse<DemoRunResponse>> {
   try {
     const formData = await req.formData();
 
@@ -53,10 +80,7 @@ export async function POST(
         : null;
 
     if (!shopName) {
-      return NextResponse.json(
-        { ok: false, error: "Shop name is required." },
-        { status: 400 },
-      );
+      return NextResponse.json({ ok: false, error: "Shop name is required." }, { status: 400 });
     }
 
     const countryValue =
@@ -73,27 +97,13 @@ export async function POST(
       }
     }
 
-    const customersFile =
-      formData.get("customersFile") instanceof File
-        ? (formData.get("customersFile") as File)
-        : null;
-
-    const vehiclesFile =
-      formData.get("vehiclesFile") instanceof File
-        ? (formData.get("vehiclesFile") as File)
-        : null;
-
-    const partsFile =
-      formData.get("partsFile") instanceof File
-        ? (formData.get("partsFile") as File)
-        : null;
+    const customersFile = asFile(formData.get("customersFile"));
+    const vehiclesFile = asFile(formData.get("vehiclesFile"));
+    const partsFile = asFile(formData.get("partsFile"));
 
     if (!customersFile && !vehiclesFile && !partsFile) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Please upload at least one CSV so we have some history to analyze.",
-        },
+        { ok: false, error: "Please upload at least one CSV so we have some history to analyze." },
         { status: 400 },
       );
     }
@@ -127,11 +137,7 @@ export async function POST(
     if (shopErr || !shopRow?.id) {
       console.error("Failed to create demo shop", shopErr);
       return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "We couldn't create a demo shop record. Please try again. (Shop insert failed)",
-        },
+        { ok: false, error: "We couldn't create a demo shop record. Please try again. (Shop insert failed)" },
         { status: 500 },
       );
     }
@@ -145,16 +151,16 @@ export async function POST(
     ): Promise<string | null> => {
       if (!file) return null;
 
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const safeName = safeFileName(file.name || `${kind}.csv`);
       const path = `demo/${shopId}/${intakeId}/${kind}-${safeName}`;
 
-      const { error: uploadErr } = await supabase.storage
-        .from(SHOP_IMPORT_BUCKET)
-        .upload(path, file, { cacheControl: "3600", upsert: true });
+      const { error: uploadErr } = await supabase.storage.from(SHOP_IMPORT_BUCKET).upload(path, file, {
+        cacheControl: "3600",
+        upsert: true,
+        contentType: file.type || "text/csv",
+      });
 
-      if (uploadErr) {
-        throw new Error(`Failed to upload ${kind} file: ${uploadErr.message}`);
-      }
+      if (uploadErr) throw new Error(`Failed to upload ${kind} file: ${uploadErr.message}`);
 
       return path;
     };
@@ -178,30 +184,19 @@ export async function POST(
       status: "pending",
     };
 
-    const { error: intakeErr } = await supabase
-      .from("shop_boost_intakes")
-      .insert(intakePayload);
+    const { error: intakeErr } = await supabase.from("shop_boost_intakes").insert(intakePayload);
 
     if (intakeErr) {
       console.error("Failed to insert shop_boost_intakes", intakeErr);
-      return NextResponse.json(
-        { ok: false, error: "We couldn't start the analysis. Please try again." },
-        { status: 500 },
-      );
+      return NextResponse.json({ ok: false, error: "We couldn't start the analysis. Please try again." }, { status: 500 });
     }
 
     // 4) Run pipeline
-    const snapshot = await buildShopBoostProfile({
-      shopId,
-      intakeId,
-    });
+    const snapshot = await buildShopBoostProfile({ shopId, intakeId });
 
     if (!snapshot) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "The AI analysis failed. Please try again with a different export.",
-        },
+        { ok: false, error: "The AI analysis failed. Please try again with a different export." },
         { status: 500 },
       );
     }
@@ -222,21 +217,14 @@ export async function POST(
     if (demoErr || !demoRow?.id) {
       console.error("Failed to insert demo_shop_boosts", demoErr);
       return NextResponse.json(
-        {
-          ok: false,
-          error: "We ran the analysis, but could not save the demo result.",
-        },
+        { ok: false, error: "We ran the analysis, but could not save the demo result." },
         { status: 500 },
       );
     }
 
-    return NextResponse.json(
-      { ok: true, demoId: demoRow.id as string, snapshot },
-      { status: 200 },
-    );
+    return NextResponse.json({ ok: true, demoId: demoRow.id as string, snapshot }, { status: 200 });
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Unexpected error while running demo analysis.";
+    const message = err instanceof Error ? err.message : "Unexpected error while running demo analysis.";
     console.error("Demo run error", err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
