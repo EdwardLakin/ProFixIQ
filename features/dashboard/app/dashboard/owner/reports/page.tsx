@@ -1,3 +1,4 @@
+// app/dashboard/owner/reports/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -147,7 +148,8 @@ export default function ReportsPage() {
 
         setShopId(data.shop_id);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to load shop information.";
+        const msg =
+          e instanceof Error ? e.message : "Failed to load shop information.";
         setError(msg);
       }
     })();
@@ -156,7 +158,7 @@ export default function ReportsPage() {
   // Load financial stats whenever shop / range / filters change
   useEffect(() => {
     if (!shopId) return;
-    if (activeTab !== "performance") return; // ⬅️ don’t spam queries on Health tab
+    if (activeTab !== "performance") return; // don’t spam queries on Health tab
 
     (async () => {
       setLoading(true);
@@ -376,7 +378,7 @@ export default function ReportsPage() {
                 Shop Health reads your latest snapshot + suggestions and highlights where onboarding can be automated.
               </div>
 
-              {/* ✅ NEW: Upload + Run Snapshot buttons */}
+              {/* Upload + Run Snapshot buttons */}
               <div className="flex items-center gap-2">
                 <Link
                   href="/onboarding/shop-boost"
@@ -462,7 +464,7 @@ export default function ReportsPage() {
                       );
                     })}
 
-                    {/* ✅ Year selector (only for yearly) */}
+                    {/* Year selector (only for yearly) */}
                     {range === "yearly" ? (
                       <div className="ml-1 inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-black/40 px-3 py-1.5">
                         <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">

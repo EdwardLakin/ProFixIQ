@@ -9,16 +9,16 @@ type DB = Database;
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
 
-// ✅ Seeded demo owner (profiles.id / auth.users.id)
+// Seeded demo owner (profiles.id / auth.users.id)
 const DEMO_OWNER_ID = "22fab07e-3b6f-432b-9434-e5476a7ade28";
 
-// ✅ shops.plan CHECK allows only: free, diy, pro, pro_plus
+// shops.plan CHECK allows only: free, diy, pro, pro_plus
 const DEMO_SHOP_PLAN: DB["public"]["Tables"]["shops"]["Insert"]["plan"] = "pro";
 
 type DemoRunSuccessResponse = {
   ok: true;
   demoId: string;
-  snapshot: unknown; // ShopHealthSnapshot, but keep as unknown at API layer
+  snapshot: unknown;
 };
 
 type DemoRunErrorResponse = {
@@ -38,7 +38,9 @@ function makeUniqueName(base: string): string {
 }
 
 function safeFileName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const base = (name || "upload.csv").trim();
+  const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return cleaned.length ? cleaned : "upload.csv";
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
     let questionnaire: unknown = {};
     if (typeof rawQuestionnaire === "string" && rawQuestionnaire.trim().length > 0) {
       try {
-        questionnaire = JSON.parse(rawQuestionnaire);
+        questionnaire = JSON.parse(rawQuestionnaire) as unknown;
       } catch {
         questionnaire = {};
       }
@@ -135,6 +137,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
     }
 
     if (shopErr || !shopRow?.id) {
+      // eslint-disable-next-line no-console
       console.error("Failed to create demo shop", shopErr);
       return NextResponse.json(
         { ok: false, error: "We couldn't create a demo shop record. Please try again. (Shop insert failed)" },
@@ -151,8 +154,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
     ): Promise<string | null> => {
       if (!file) return null;
 
+      // ✅ Keep first segment == shopId (matches your Storage RLS convention)
       const safeName = safeFileName(file.name || `${kind}.csv`);
-      const path = `demo/${shopId}/${intakeId}/${kind}-${safeName}`;
+      const path = `${shopId}/demo/${intakeId}/${kind}-${safeName}`;
 
       const { error: uploadErr } = await supabase.storage.from(SHOP_IMPORT_BUCKET).upload(path, file, {
         cacheControl: "3600",
@@ -187,8 +191,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
     const { error: intakeErr } = await supabase.from("shop_boost_intakes").insert(intakePayload);
 
     if (intakeErr) {
+      // eslint-disable-next-line no-console
       console.error("Failed to insert shop_boost_intakes", intakeErr);
-      return NextResponse.json({ ok: false, error: "We couldn't start the analysis. Please try again." }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "We couldn't start the analysis. Please try again." },
+        { status: 500 },
+      );
     }
 
     // 4) Run pipeline
@@ -215,6 +223,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
       .single();
 
     if (demoErr || !demoRow?.id) {
+      // eslint-disable-next-line no-console
       console.error("Failed to insert demo_shop_boosts", demoErr);
       return NextResponse.json(
         { ok: false, error: "We ran the analysis, but could not save the demo result." },
@@ -224,7 +233,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
 
     return NextResponse.json({ ok: true, demoId: demoRow.id as string, snapshot }, { status: 200 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unexpected error while running demo analysis.";
+    const message =
+      err instanceof Error ? err.message : "Unexpected error while running demo analysis.";
+    // eslint-disable-next-line no-console
     console.error("Demo run error", err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }

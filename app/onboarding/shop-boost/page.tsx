@@ -26,6 +26,45 @@ type StepStatus = "idle" | "uploading" | "processing" | "done" | "error";
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
 
+function safeFileName(name: string): string {
+  const base = (name || "upload.csv").trim();
+  const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return cleaned.length ? cleaned : "upload.csv";
+}
+
+/**
+ * Guaranteed UUIDv4 generator:
+ * - Uses crypto.randomUUID if available
+ * - Otherwise uses crypto.getRandomValues-based v4
+ * - Never returns a non-UUID string
+ */
+function uuidv4(): string {
+  // Client component: prefer browser crypto
+  const c = (typeof globalThis !== "undefined" ? globalThis.crypto : undefined) as
+    | Crypto
+    | undefined;
+
+  if (c?.randomUUID) return c.randomUUID();
+
+  if (c?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    c.getRandomValues(bytes);
+
+    // RFC 4122 v4
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(
+      16,
+      20,
+    )}-${hex.slice(20)}`;
+  }
+
+  // last resort, still UUID-shaped
+  return "00000000-0000-4000-8000-000000000000";
+}
+
 export default function ShopBoostOnboardingPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
@@ -74,9 +113,7 @@ export default function ShopBoostOnboardingPage() {
         .maybeSingle();
 
       if (profErr || !profile?.shop_id) {
-        setError(
-          "We couldn't find a shop for your profile. Finish owner onboarding first.",
-        );
+        setError("We couldn't find a shop for your profile. Finish owner onboarding first.");
         setLoadingProfile(false);
         return;
       }
@@ -105,9 +142,7 @@ export default function ShopBoostOnboardingPage() {
       }));
     };
 
-  const handleSpecialtyChange = (
-    value: QuestionnaireState["specialty"],
-  ) => {
+  const handleSpecialtyChange = (value: QuestionnaireState["specialty"]) => {
     setQuestionnaire((prev) => ({
       ...prev,
       specialty: value,
@@ -131,10 +166,8 @@ export default function ShopBoostOnboardingPage() {
 
     setStepStatus("uploading");
 
-    const intakeId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${shopId}-${Date.now().toString()}`;
+    // ✅ intakeId is ALWAYS UUID format now
+    const intakeId = uuidv4();
 
     const uploadIfPresent = async (
       file: File | null,
@@ -142,16 +175,18 @@ export default function ShopBoostOnboardingPage() {
     ): Promise<string | null> => {
       if (!file) return null;
 
-      const path = `${shopId}/${intakeId}/${kind}-${file.name}`;
+      // ✅ RLS policy expects first path segment == shopId
+      const safeName = safeFileName(file.name || `${kind}.csv`);
+      const path = `${shopId}/${intakeId}/${kind}-${safeName}`;
 
-      const { error: uploadErr } = await supabase.storage
-        .from(SHOP_IMPORT_BUCKET)
-        .upload(path, file, { upsert: true });
+      const { error: uploadErr } = await supabase.storage.from(SHOP_IMPORT_BUCKET).upload(path, file, {
+        upsert: true,
+        contentType: file.type || "text/csv",
+        cacheControl: "3600",
+      });
 
       if (uploadErr) {
-        throw new Error(
-          `Failed to upload ${kind} file: ${uploadErr.message}`,
-        );
+        throw new Error(`Failed to upload ${kind} file: ${uploadErr.message}`);
       }
 
       return path;
@@ -166,6 +201,7 @@ export default function ShopBoostOnboardingPage() {
 
       setStepStatus("processing");
 
+      // ✅ IMPORTANT: send the exact intakeId + file paths you just uploaded
       const response = await fetch("/api/shop-boost/intakes/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,8 +229,7 @@ export default function ShopBoostOnboardingPage() {
       setSnapshot(json.snapshot);
       setStepStatus("done");
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unexpected error during upload.";
+      const message = err instanceof Error ? err.message : "Unexpected error during upload.";
       setError(message);
       setStepStatus("error");
     }
@@ -214,12 +249,9 @@ export default function ShopBoostOnboardingPage() {
     return (
       <div className="grid min-h-screen place-items-center bg-black text-white px-6">
         <div className="max-w-md space-y-4 rounded-xl border border-neutral-800 bg-neutral-950 px-6 py-5">
-          <h1 className="text-2xl font-blackops text-orange-400">
-            Shop Boost needs a shop
-          </h1>
+          <h1 className="text-2xl font-blackops text-orange-400">Shop Boost needs a shop</h1>
           <p className="text-sm text-neutral-300">
-            We couldn&apos;t find a shop connected to your profile. Finish owner
-            onboarding and then come back here.
+            We couldn&apos;t find a shop connected to your profile. Finish owner onboarding and then come back here.
           </p>
           <button
             type="button"
@@ -240,15 +272,10 @@ export default function ShopBoostOnboardingPage() {
       {/* Header */}
       <header className="border-b border-neutral-900 bg-neutral-950/70 px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-2">
-          <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
-            ProFixIQ • Shop Boost Setup
-          </p>
-          <h1 className="text-xl font-blackops text-orange-400">
-            Let the AI learn your shop
-          </h1>
+          <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">ProFixIQ • Shop Boost Setup</p>
+          <h1 className="text-xl font-blackops text-orange-400">Let the AI learn your shop</h1>
           <p className="text-xs text-neutral-400">
-            Step 2 of 3 — quick questions and data uploads so we can build your
-            shop blueprint and menus.
+            Step 2 of 3 — quick questions and data uploads so we can build your shop blueprint and menus.
           </p>
         </div>
       </header>
@@ -261,17 +288,10 @@ export default function ShopBoostOnboardingPage() {
             <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text-neutral-100">
-                    Quick yes/no questions
-                  </h2>
+                  <h2 className="text-sm font-semibold text-neutral-100">Quick yes/no questions</h2>
                   <p className="text-[11px] text-neutral-500">
                     This lets us tune menus, inspections, and fleet tools for{" "}
-                    {shopName ? (
-                      <span className="font-medium">{shopName}</span>
-                    ) : (
-                      "your shop"
-                    )}
-                    .
+                    {shopName ? <span className="font-medium">{shopName}</span> : "your shop"}.
                   </p>
                 </div>
                 <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
@@ -317,9 +337,7 @@ export default function ShopBoostOnboardingPage() {
 
                 {/* specialty */}
                 <div className="space-y-1">
-                  <label className="text-xs text-neutral-300">
-                    What best describes your work?
-                  </label>
+                  <label className="text-xs text-neutral-300">What best describes your work?</label>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
                       { key: "general", label: "General repair / tires" },
@@ -330,11 +348,7 @@ export default function ShopBoostOnboardingPage() {
                       <button
                         type="button"
                         key={opt.key}
-                        onClick={() =>
-                          handleSpecialtyChange(
-                            opt.key as QuestionnaireState["specialty"],
-                          )
-                        }
+                        onClick={() => handleSpecialtyChange(opt.key as QuestionnaireState["specialty"])}
                         className={`rounded-md border px-3 py-2 text-left text-xs ${
                           questionnaire.specialty === opt.key
                             ? "border-orange-500 bg-orange-500/10 text-orange-100"
@@ -352,32 +366,17 @@ export default function ShopBoostOnboardingPage() {
                   <NumberInput
                     label="How many technicians?"
                     value={questionnaire.techCount}
-                    onChange={(value) =>
-                      setQuestionnaire((prev) => ({
-                        ...prev,
-                        techCount: value,
-                      }))
-                    }
+                    onChange={(value) => setQuestionnaire((prev) => ({ ...prev, techCount: value }))}
                   />
                   <NumberInput
                     label="How many bays?"
                     value={questionnaire.bayCount}
-                    onChange={(value) =>
-                      setQuestionnaire((prev) => ({
-                        ...prev,
-                        bayCount: value,
-                      }))
-                    }
+                    onChange={(value) => setQuestionnaire((prev) => ({ ...prev, bayCount: value }))}
                   />
                   <NumberInput
                     label="Approx. repair orders per month?"
                     value={questionnaire.averageMonthlyRos}
-                    onChange={(value) =>
-                      setQuestionnaire((prev) => ({
-                        ...prev,
-                        averageMonthlyRos: value,
-                      }))
-                    }
+                    onChange={(value) => setQuestionnaire((prev) => ({ ...prev, averageMonthlyRos: value }))}
                   />
                 </div>
               </div>
@@ -387,12 +386,9 @@ export default function ShopBoostOnboardingPage() {
             <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text-neutral-100">
-                    Upload what you already have
-                  </h2>
+                  <h2 className="text-sm font-semibold text-neutral-100">Upload what you already have</h2>
                   <p className="text-[11px] text-neutral-500">
-                    CSV exports from your current system are perfect. You can
-                    skip any of these and add them later.
+                    CSV exports from your current system are perfect. You can skip any of these and add them later.
                   </p>
                 </div>
                 <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
@@ -408,7 +404,6 @@ export default function ShopBoostOnboardingPage() {
                   currentFile={customersFile}
                   onFileChange={setCustomersFile}
                 />
-
                 <UploadRow
                   id="vehicles-upload"
                   label="Vehicles & repair history"
@@ -416,7 +411,6 @@ export default function ShopBoostOnboardingPage() {
                   currentFile={vehiclesFile}
                   onFileChange={setVehiclesFile}
                 />
-
                 <UploadRow
                   id="parts-upload"
                   label="Parts inventory"
@@ -426,9 +420,8 @@ export default function ShopBoostOnboardingPage() {
                 />
 
                 <p className="text-[11px] text-neutral-500">
-                  Don&apos;t worry about perfect formatting — we use AI to
-                  interpret the columns and map them into ProFixIQ. You&apos;ll
-                  get a chance to review everything before it goes live.
+                  Don&apos;t worry about perfect formatting — we use AI to interpret the columns and map them into ProFixIQ.
+                  You&apos;ll get a chance to review everything before it goes live.
                 </p>
               </div>
             </section>
@@ -449,20 +442,13 @@ export default function ShopBoostOnboardingPage() {
               {stepStatus !== "idle" && (
                 <span className="rounded-full bg-neutral-900 px-3 py-1 text-[11px] text-neutral-400">
                   {stepStatus === "uploading" && "Step 1 of 2: Uploading…"}
-                  {stepStatus === "processing" &&
-                    "Step 2 of 2: AI is building your snapshot…"}
-                  {stepStatus === "done" &&
-                    "Done. Scroll down to see your Shop Health Snapshot."}
-                  {stepStatus === "error" &&
-                    "Something went wrong. Adjust your files and try again."}
+                  {stepStatus === "processing" && "Step 2 of 2: AI is building your snapshot…"}
+                  {stepStatus === "done" && "Done. Scroll down to see your Shop Health Snapshot."}
+                  {stepStatus === "error" && "Something went wrong. Adjust your files and try again."}
                 </span>
               )}
 
-              {error && (
-                <p className="text-xs text-red-400">
-                  {error}
-                </p>
-              )}
+              {error && <p className="text-xs text-red-400">{error}</p>}
             </div>
           </form>
         </div>
@@ -470,24 +456,18 @@ export default function ShopBoostOnboardingPage() {
         {/* Sidebar explainer */}
         <aside className="w-full space-y-4 lg:w-72">
           <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-neutral-100">
-              What happens next?
-            </h3>
+            <h3 className="mb-2 text-sm font-semibold text-neutral-100">What happens next?</h3>
             <p className="text-xs text-neutral-400">
-              We create import jobs for your files and feed them into the AI
-              engine. It looks for your most common repairs, missed upsell
-              opportunities, and packages that should be on your menu.
+              We create import jobs for your files and feed them into the AI engine. It looks for your most common repairs,
+              missed upsell opportunities, and packages that should be on your menu.
             </p>
           </div>
 
           <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-neutral-100">
-              You stay in control
-            </h3>
+            <h3 className="mb-2 text-sm font-semibold text-neutral-100">You stay in control</h3>
             <p className="text-xs text-neutral-400">
-              Nothing is pushed live without your review. You&apos;ll see a draft
-              &quot;Shop Health&quot; report and proposed menus that you can tweak or
-              reject before going live.
+              Nothing is pushed live without your review. You&apos;ll see a draft &quot;Shop Health&quot; report and proposed menus
+              that you can tweak or reject before going live.
             </p>
           </div>
         </aside>
@@ -520,9 +500,7 @@ function YesNoRow({ label, helper, value, onChange }: YesNoRowProps) {
             type="button"
             onClick={() => onChange(true)}
             className={`rounded-full px-2 py-0.5 ${
-              value
-                ? "bg-orange-500 text-black"
-                : "text-neutral-300 hover:text-white"
+              value ? "bg-orange-500 text-black" : "text-neutral-300 hover:text-white"
             }`}
           >
             Yes
@@ -531,20 +509,14 @@ function YesNoRow({ label, helper, value, onChange }: YesNoRowProps) {
             type="button"
             onClick={() => onChange(false)}
             className={`rounded-full px-2 py-0.5 ${
-              !value
-                ? "bg-neutral-800 text-neutral-100"
-                : "text-neutral-300 hover:text-white"
+              !value ? "bg-neutral-800 text-neutral-100" : "text-neutral-300 hover:text-white"
             }`}
           >
             No
           </button>
         </div>
       </div>
-      {helper && (
-        <p className="text-[11px] text-neutral-500">
-          {helper}
-        </p>
-      )}
+      {helper && <p className="text-[11px] text-neutral-500">{helper}</p>}
     </div>
   );
 }
@@ -578,13 +550,7 @@ type UploadRowProps = {
   onFileChange: (f: File | null) => void;
 };
 
-function UploadRow({
-  id,
-  label,
-  description,
-  currentFile,
-  onFileChange,
-}: UploadRowProps) {
+function UploadRow({ id, label, description, currentFile, onFileChange }: UploadRowProps) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
