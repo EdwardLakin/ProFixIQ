@@ -1,4 +1,5 @@
 // features/integrations/ai/shopBoost/index.ts
+
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { parseCsvText } from "./csv";
@@ -7,7 +8,10 @@ import {
   type JobClassificationInput,
   type JobClassificationResult,
 } from "./classifyJobTypeScope";
-import { computeShopHealthScores, type ShopHealthScoringInput } from "./healthScoring";
+import {
+  computeShopHealthScores,
+  type ShopHealthScoringInput,
+} from "./healthScoring";
 import type { ShopHealthSnapshot } from "@/features/integrations/ai/shopBoostType";
 
 type DB = Database;
@@ -118,7 +122,9 @@ function guessTotals(row: Record<string, unknown>) {
     safeNum(row["total"]) ??
     safeNum(row["grand_total"]) ??
     safeNum(row["invoice_total"]) ??
-    (laborTotal !== null || partsTotal !== null ? (laborTotal ?? 0) + (partsTotal ?? 0) : null);
+    (laborTotal !== null || partsTotal !== null
+      ? (laborTotal ?? 0) + (partsTotal ?? 0)
+      : null);
 
   const techName = pickFirstNonEmpty(
     row["technician"],
@@ -134,10 +140,14 @@ function guessTotals(row: Record<string, unknown>) {
 async function downloadCsvIfPresent(path: string | null) {
   if (!path) return null;
   const supabase = createAdminSupabase();
-  const { data, error } = await supabase.storage.from(SHOP_IMPORT_BUCKET).download(path);
+  const { data, error } = await supabase.storage
+    .from(SHOP_IMPORT_BUCKET)
+    .download(path);
 
   if (error || !data) {
-    throw new Error(`Failed to download CSV: ${path} (${error?.message ?? "no data"})`);
+    throw new Error(
+      `Failed to download CSV: ${path} (${error?.message ?? "no data"})`,
+    );
   }
   const text = await data.text();
   return text;
@@ -153,7 +163,9 @@ async function loadIntake(shopId: string, intakeId: string): Promise<IntakeRow> 
     .maybeSingle();
 
   if (error || !data) {
-    throw new Error(`shop_boost_intakes not found (${shopId}/${intakeId}) ${error?.message ?? ""}`);
+    throw new Error(
+      `shop_boost_intakes not found (${shopId}/${intakeId}) ${error?.message ?? ""}`,
+    );
   }
   return data as IntakeRow;
 }
@@ -169,7 +181,8 @@ async function updateIntakeStatus(
     .from("shop_boost_intakes")
     .update({
       status,
-      processed_at: extra?.processed_at ?? (status === "complete" ? nowIso() : null),
+      processed_at:
+        extra?.processed_at ?? (status === "complete" ? nowIso() : null),
       error: extra?.error ?? null,
     } as Partial<DB["public"]["Tables"]["shop_boost_intakes"]["Update"]>)
     .eq("shop_id", shopId)
@@ -185,7 +198,9 @@ async function updateIntakeStatus(
  * - Writes shop_health_snapshots + suggestions + work_order_line_ai
  * - Returns a ShopHealthSnapshot-compatible object for the demo UI
  */
-export async function buildShopBoostProfile(args: BuildArgs): Promise<ShopHealthSnapshot> {
+export async function buildShopBoostProfile(
+  args: BuildArgs,
+): Promise<ShopHealthSnapshot> {
   const { shopId, intakeId } = args;
   const supabase = createAdminSupabase();
 
@@ -195,8 +210,12 @@ export async function buildShopBoostProfile(args: BuildArgs): Promise<ShopHealth
     const intake = await loadIntake(shopId, intakeId);
 
     const questionnaire = args.questionnaire ?? intake.questionnaire ?? {};
-    const customersText = await downloadCsvIfPresent(intake.customers_file_path ?? null);
-    const vehiclesText = await downloadCsvIfPresent(intake.vehicles_file_path ?? null);
+    const customersText = await downloadCsvIfPresent(
+      intake.customers_file_path ?? null,
+    );
+    const vehiclesText = await downloadCsvIfPresent(
+      intake.vehicles_file_path ?? null,
+    );
     const partsText = await downloadCsvIfPresent(intake.parts_file_path ?? null);
 
     const customersRows = customersText ? parseCsvText(customersText) : [];
@@ -206,7 +225,9 @@ export async function buildShopBoostProfile(args: BuildArgs): Promise<ShopHealth
     // ---------------------------------------------------------------------
     // 1) STORE IMPORT FILE METADATA
     // ---------------------------------------------------------------------
-    const filesToInsert: Array<DB["public"]["Tables"]["shop_import_files"]["Insert"]> = [];
+    const filesToInsert: Array<
+      DB["public"]["Tables"]["shop_import_files"]["Insert"]
+    > = [];
 
     if (intake.customers_file_path) {
       filesToInsert.push({
@@ -245,7 +266,10 @@ export async function buildShopBoostProfile(args: BuildArgs): Promise<ShopHealth
     // ---------------------------------------------------------------------
     const MAX_STORE = 800;
 
-    const makeImportRows = (kind: "customers" | "vehicles" | "parts", rows: Record<string, unknown>[]) => {
+    const makeImportRows = (
+      kind: "customers" | "vehicles" | "parts",
+      rows: Record<string, unknown>[],
+    ) => {
       return rows.slice(0, MAX_STORE).map((raw, idx) => ({
         shop_id: shopId,
         intake_id: intakeId,
@@ -255,7 +279,9 @@ export async function buildShopBoostProfile(args: BuildArgs): Promise<ShopHealth
       }));
     };
 
-    const importRowsToInsert: Array<DB["public"]["Tables"]["shop_import_rows"]["Insert"]> = [
+    const importRowsToInsert: Array<
+      DB["public"]["Tables"]["shop_import_rows"]["Insert"]
+    > = [
       ...makeImportRows("customers", customersRows),
       ...makeImportRows("vehicles", vehiclesRows),
       ...makeImportRows("parts", partsRows),
@@ -273,16 +299,20 @@ export async function buildShopBoostProfile(args: BuildArgs): Promise<ShopHealth
       .map((r, idx) => {
         const row = toLowerKeys(r);
         const { complaint, cause, correction, description } = getTextColumns(row);
-        const { laborHours, laborTotal, partsTotal, total, techName } = guessTotals(row);
+        const { laborHours, laborTotal, partsTotal, total, techName } =
+          guessTotals(row);
         const dt = guessDate(row);
 
-        const joinedText = [complaint, cause, correction, description].filter(Boolean).join(" | ");
+        const joinedText = [complaint, cause, correction, description]
+          .filter(Boolean)
+          .join(" | ");
 
         return {
           key: `row:${idx}`,
           occurredAt: dt,
           vehicle: {
-            year: safeNum(row["year"]) ?? safeNum(row["vehicle_year"]) ?? null,
+            year:
+              safeNum(row["year"]) ?? safeNum(row["vehicle_year"]) ?? null,
             make: normStr(row["make"] ?? row["vehicle_make"]),
             model: normStr(row["model"] ?? row["vehicle_model"]),
             vin: normStr(row["vin"] ?? row["vehicle_vin"]),
@@ -317,29 +347,28 @@ export async function buildShopBoostProfile(args: BuildArgs): Promise<ShopHealth
         ? String((questionnaire as Record<string, unknown>).specialty)
         : "general";
 
-    const classifications: JobClassificationResult[] = await classifyJobTypeScopeBatch(lineCandidates, {
-      shopSpecialty: specialty,
-    });
+    const classifications: JobClassificationResult[] =
+      await classifyJobTypeScopeBatch(lineCandidates, {
+        shopSpecialty: specialty,
+      });
 
     // Persist top N classifications for the demo (keeps DB lean)
     const MAX_AI_LINES = 600;
-    const aiLinesToInsert = classifications
-      .slice(0, MAX_AI_LINES)
-      .map((c) => {
-        return {
-          shop_id: shopId,
-          intake_id: intakeId,
-          work_order_id: null,
-          work_order_line_id: null,
-          source_key: c.key,
-          job_type: c.jobType,
-          job_scope: c.jobScope,
-          confidence: c.confidence,
-          signals: c.signals,
-          occurred_at: c.occurredAt,
-          totals: c.totals,
-        };
-      }) as unknown as Array<DB["public"]["Tables"]["work_order_line_ai"]["Insert"]>;
+    const aiLinesToInsert = classifications.slice(0, MAX_AI_LINES).map((c) => {
+      return {
+        shop_id: shopId,
+        intake_id: intakeId,
+        work_order_id: null,
+        work_order_line_id: null,
+        source_key: c.key,
+        job_type: c.jobType,
+        job_scope: c.jobScope,
+        confidence: c.confidence,
+        signals: c.signals,
+        occurred_at: c.occurredAt,
+        totals: c.totals,
+      };
+    }) as unknown as Array<DB["public"]["Tables"]["work_order_line_ai"]["Insert"]>;
 
     if (aiLinesToInsert.length) {
       await supabase.from("work_order_line_ai").insert(aiLinesToInsert);
@@ -414,21 +443,29 @@ export async function buildShopBoostProfile(args: BuildArgs): Promise<ShopHealth
 
     if (menu.length) {
       await supabase.from("menu_item_suggestions").insert(
-        menu as unknown as Array<DB["public"]["Tables"]["menu_item_suggestions"]["Insert"]>,
+        menu as unknown as Array<
+          DB["public"]["Tables"]["menu_item_suggestions"]["Insert"]
+        >,
       );
     }
     if (inspections.length) {
       await supabase.from("inspection_template_suggestions").insert(
-        inspections as unknown as Array<DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"]>,
+        inspections as unknown as Array<
+          DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"]
+        >,
       );
     }
     if (staffInvites.length) {
       await supabase.from("staff_invite_suggestions").insert(
-        staffInvites as unknown as Array<DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"]>,
+        staffInvites as unknown as Array<
+          DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"]
+        >,
       );
     }
 
-    await updateIntakeStatus(shopId, intakeId, "complete", { processed_at: nowIso() });
+    await updateIntakeStatus(shopId, intakeId, "complete", {
+      processed_at: nowIso(),
+    });
 
     // ---------------------------------------------------------------------
     // 7) RETURN API SNAPSHOT (for demo UI)
@@ -459,6 +496,11 @@ export async function buildShopBoostProfile(args: BuildArgs): Promise<ShopHealth
         note: i.note ?? null,
       })),
       narrativeSummary: scored.narrativeSummary,
+
+      // ✅ NEW REQUIRED FIELDS (build-safe even if healthScoring hasn’t been updated yet)
+      topTechs: scored.topTechs ?? [],
+      issuesDetected: scored.issuesDetected ?? [],
+      recommendations: scored.recommendations ?? [],
     };
 
     void snapshotRow?.id;

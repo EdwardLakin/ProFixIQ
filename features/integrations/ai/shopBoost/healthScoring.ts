@@ -1,4 +1,4 @@
-// features/integrations/ai/shopBoost/healthScoring.ts
+// /features/integrations/ai/shopBoost/healthScoring.ts
 import { randomUUID } from "crypto";
 import type { JobClassificationResult } from "./classifyJobTypeScope";
 import type {
@@ -7,6 +7,10 @@ import type {
   ShopHealthFleetMetric,
   ShopHealthMenuSuggestion,
   ShopHealthInspectionSuggestion,
+  ShopHealthTopTech,
+  ShopHealthIssue,
+  ShopHealthIssueSeverity,
+  ShopHealthRecommendation,
 } from "@/features/integrations/ai/shopBoostType";
 
 export type ShopHealthScoringInput = {
@@ -39,6 +43,31 @@ type SuggestionsBlock = {
   staffInvites: StaffInvite[];
 };
 
+type ShopHealthScoresResult = {
+  periodStart: string | null;
+  periodEnd: string | null;
+  timeRangeDescription: string;
+
+  kpis: { totalRepairOrders: number; totalRevenue: number; averageRo: number };
+
+  mostCommonRepairs: ShopHealthTopRepair[];
+  highValueRepairs: ShopHealthTopRepair[];
+
+  comebackRisks: ShopHealthComebackRisk[];
+  fleetMetrics: ShopHealthFleetMetric[];
+
+  // ✅ NEW (required by ShopHealthSnapshot)
+  topTechs: ShopHealthTopTech[];
+  issuesDetected: ShopHealthIssue[];
+  recommendations: ShopHealthRecommendation[];
+
+  metrics: Record<string, unknown>;
+  scores: Record<string, unknown>;
+  suggestions: SuggestionsBlock;
+
+  narrativeSummary: string;
+};
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -49,20 +78,20 @@ function getBool(obj: unknown, key: string): boolean {
   return v === true || v === "true" || v === 1 || v === "1";
 }
 
-export function computeShopHealthScores(input: ShopHealthScoringInput): {
-  periodStart: string | null;
-  periodEnd: string | null;
-  timeRangeDescription: string;
-  kpis: { totalRepairOrders: number; totalRevenue: number; averageRo: number };
-  mostCommonRepairs: ShopHealthTopRepair[];
-  highValueRepairs: ShopHealthTopRepair[];
-  comebackRisks: ShopHealthComebackRisk[];
-  fleetMetrics: ShopHealthFleetMetric[];
-  metrics: Record<string, unknown>;
-  scores: Record<string, unknown>;
-  suggestions: SuggestionsBlock;
-  narrativeSummary: string;
-} {
+function normName(v: unknown): string {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (!s) return "";
+  // normalize whitespace + strip double spaces
+  return s.replace(/\s+/g, " ");
+}
+
+function severityRank(s: ShopHealthIssueSeverity): number {
+  if (s === "high") return 3;
+  if (s === "medium") return 2;
+  return 1;
+}
+
+export function computeShopHealthScores(input: ShopHealthScoringInput): ShopHealthScoresResult {
   const { customersRows, vehiclesRows, partsRows, classifiedLines } = input;
 
   // ---- Period inference from occurredAt
@@ -76,9 +105,7 @@ export function computeShopHealthScores(input: ShopHealthScoringInput): {
 
   const timeRangeDescription =
     periodStart && periodEnd
-      ? `${new Date(periodStart).toLocaleDateString()} – ${new Date(
-          periodEnd,
-        ).toLocaleDateString()}`
+      ? `${new Date(periodStart).toLocaleDateString()} – ${new Date(periodEnd).toLocaleDateString()}`
       : "Recent history";
 
   // ---- Revenue totals (from totals.total)
@@ -86,6 +113,8 @@ export function computeShopHealthScores(input: ShopHealthScoringInput): {
     .map((x) => x.totals.total ?? 0)
     .filter((n) => typeof n === "number" && Number.isFinite(n));
   const totalRevenue = round2(totals.reduce((a, b) => a + b, 0));
+
+  // IMPORTANT: vehiclesRows may be "RO history rows"
   const totalRepairOrders = Math.max(vehiclesRows.length, classifiedLines.length);
   const averageRo = totalRepairOrders > 0 ? round2(totalRevenue / totalRepairOrders) : 0;
 
@@ -147,16 +176,16 @@ export function computeShopHealthScores(input: ShopHealthScoringInput): {
       averageLaborHours: x.laborHoursN ? round2(x.laborHoursSum / x.laborHoursN) : null,
     }));
 
-  // ---- Comeback risk heuristic
+  // ---- Comeback risk heuristic (today: low classification confidence proxy)
   const comebackRisks: ShopHealthComebackRisk[] = [];
   const lowConf = classifiedLines.filter((x) => x.confidence < 0.65).length;
 
   if (lowConf > 0) {
     comebackRisks.push({
-      label: "Unclear / misc descriptions (classification confidence)",
+      label: "Unclear / misc descriptions (low classification confidence)",
       count: lowConf,
       estimatedLostHours: round2(lowConf * 0.6),
-      note: "Many lines are vague (ex: “misc”, “repair”). Better job notes improves accuracy.",
+      note: "Many lines are vague (ex: “misc”, “repair”). Better job notes improves reporting and AI accuracy.",
     });
   }
 
@@ -171,6 +200,17 @@ export function computeShopHealthScores(input: ShopHealthScoringInput): {
       note: hasFleetFlag ? "Fleet mode enabled in questionnaire" : null,
     },
   ];
+
+  // ✅ NEW: Top Techs aggregation (from classifiedLines techName + totals)
+  const topTechs = deriveTopTechsFromClassifiedLines(classifiedLines);
+
+  // ✅ NEW: Issues detected (comebacks proxy, low ARO, bay imbalance)
+  const issuesDetected = detectIssues({
+    totalRepairOrders,
+    averageRo,
+    lowConfLines: lowConf,
+    topTechs,
+  });
 
   // ---- Component scoring (0-100)
   const completenessScore = scoreCompleteness(customersRows, vehiclesRows, partsRows);
@@ -203,12 +243,24 @@ export function computeShopHealthScores(input: ShopHealthScoringInput): {
       lowConfidenceLines: lowConf,
       uniqueJobTypes: byType.size,
     },
+    tech: {
+      topTechs,
+    },
+    issuesDetected,
   };
 
   const suggestions = buildSuggestions({
     mostCommonRepairs,
     averageRo,
     hasFleetFlag,
+    totalRepairOrders,
+  });
+
+  // ✅ NEW: Recommendations tied to menus + inspections + operations
+  const recommendations = buildRecommendations({
+    issuesDetected,
+    suggestions,
+    averageRo,
     totalRepairOrders,
   });
 
@@ -230,11 +282,237 @@ export function computeShopHealthScores(input: ShopHealthScoringInput): {
     highValueRepairs,
     comebackRisks,
     fleetMetrics,
+
+    // ✅ NEW required fields
+    topTechs,
+    issuesDetected,
+    recommendations,
+
     metrics,
     scores,
     suggestions,
     narrativeSummary,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* NEW: tech aggregation                                                       */
+/* -------------------------------------------------------------------------- */
+
+function deriveTopTechsFromClassifiedLines(lines: JobClassificationResult[]): ShopHealthTopTech[] {
+  const byName = new Map<
+    string,
+    {
+      name: string;
+      jobs: number;
+      revenue: number;
+      clockedHours: number;
+    }
+  >();
+
+  for (const line of lines) {
+    const name = normName((line as unknown as { techName?: unknown }).techName);
+    if (!name) continue;
+
+    const rev = typeof line.totals.total === "number" && Number.isFinite(line.totals.total) ? line.totals.total : 0;
+    const hrs =
+      typeof line.totals.laborHours === "number" && Number.isFinite(line.totals.laborHours)
+        ? line.totals.laborHours
+        : 0;
+
+    const cur = byName.get(name) ?? { name, jobs: 0, revenue: 0, clockedHours: 0 };
+    cur.jobs += 1;
+    cur.revenue += rev;
+    cur.clockedHours += hrs; // proxy: billed/estimated labor hours (not true punches)
+    byName.set(name, cur);
+  }
+
+  const rows: ShopHealthTopTech[] = Array.from(byName.values())
+    .map((t) => ({
+      techId: t.name, // we don't have ids from CSV; use stable string (or leave empty)
+      name: t.name,
+      role: "tech",
+      jobs: t.jobs,
+      revenue: round2(t.revenue),
+      clockedHours: round2(t.clockedHours),
+      revenuePerHour: t.clockedHours > 0 ? round2(t.revenue / t.clockedHours) : 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+
+  return rows;
+}
+
+/* -------------------------------------------------------------------------- */
+/* NEW: issues + recommendations                                                */
+/* -------------------------------------------------------------------------- */
+
+function detectIssues(args: {
+  totalRepairOrders: number;
+  averageRo: number;
+  lowConfLines: number;
+  topTechs: ShopHealthTopTech[];
+}): ShopHealthIssue[] {
+  const { totalRepairOrders, averageRo, lowConfLines, topTechs } = args;
+
+  const issues: ShopHealthIssue[] = [];
+
+  // 1) Comebacks proxy: lots of low-confidence lines means messy writeups
+  if (lowConfLines >= 20) {
+    issues.push({
+      key: "comebacks",
+      title: "Job notes are too vague (risk of repeat work / poor reporting)",
+      severity: "medium",
+      detail:
+        "A large portion of rows have unclear descriptions (ex: “misc”, “repair”). This usually correlates with comebacks, missed upsells, and poor accountability.",
+      evidence: `${lowConfLines} low-confidence rows detected`,
+    });
+  } else if (lowConfLines >= 8) {
+    issues.push({
+      key: "comebacks",
+      title: "Some job notes are vague",
+      severity: "low",
+      detail:
+        "Several lines are hard to classify because the description is too generic. Cleaner writeups improve analytics and AI suggestions.",
+      evidence: `${lowConfLines} low-confidence rows detected`,
+    });
+  }
+
+  // 2) Low ARO heuristic: thresholding (tune later)
+  // Use a conservative default if volume exists
+  if (totalRepairOrders >= 20) {
+    const lowAroThreshold = 420; // adjust per market later (CAD/USD)
+    if (averageRo > 0 && averageRo < lowAroThreshold) {
+      issues.push({
+        key: "low_aro",
+        title: "Average RO looks low (missed packaging / inspections)",
+        severity: averageRo < 300 ? "high" : "medium",
+        detail:
+          "Your average repair order value is below what we typically see for shops with consistent inspections + service packages. Packaging common work into menus and running MPI/PM checks can raise RO safely.",
+        evidence: `Avg RO ≈ $${Math.round(averageRo).toLocaleString()}`,
+      });
+    }
+  }
+
+  // 3) Bay imbalance: one tech doing most of the work (proxy via job share)
+  // We only have topTechs counts, not full staff list; still useful.
+  const top = topTechs[0];
+  const totalTopJobs = topTechs.reduce((s, t) => s + (t.jobs || 0), 0);
+  if (top && totalTopJobs >= 25) {
+    const share = totalTopJobs > 0 ? top.jobs / totalTopJobs : 0;
+    if (share >= 0.55) {
+      issues.push({
+        key: "bay_imbalance",
+        title: "Work may be imbalanced across bays",
+        severity: share >= 0.7 ? "high" : "medium",
+        detail:
+          "One tech appears to carry a large share of the work. That can create bottlenecks, longer cycle times, and uneven quality. Dispatch rules + clearer job splitting can help.",
+        evidence: `${top.name} ≈ ${Math.round(share * 100)}% of attributed jobs`,
+      });
+    }
+  }
+
+  // Sort high→low severity for cleaner UI
+  issues.sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
+  return issues.slice(0, 6);
+}
+
+function buildRecommendations(args: {
+  issuesDetected: ShopHealthIssue[];
+  suggestions: SuggestionsBlock;
+  averageRo: number;
+  totalRepairOrders: number;
+}): ShopHealthRecommendation[] {
+  const { issuesDetected, suggestions, averageRo, totalRepairOrders } = args;
+
+  const recs: ShopHealthRecommendation[] = [];
+
+  // Publish menus if we have menu suggestions
+  if ((suggestions.menuItems ?? []).length > 0) {
+    recs.push({
+      key: "publish_menus",
+      title: "Publish your top service menus (1-click upsell packages)",
+      why: "Your history shows repeatable work categories. Menus standardize quoting and raise consistency.",
+      actionSteps: [
+        "Review the auto-generated menu packages",
+        "Adjust pricing/labor to match your shop",
+        "Publish to advisor + tech tablets",
+      ],
+      expectedImpact: totalRepairOrders >= 30 ? "Higher ARO + faster estimates" : null,
+    });
+  }
+
+  // Publish inspections if we have inspection suggestions
+  if ((suggestions.inspections ?? []).length > 0) {
+    recs.push({
+      key: "publish_inspections",
+      title: "Standardize inspections for every visit",
+      why: "Inspections catch safety/maintenance items early and reduce missed opportunities.",
+      actionSteps: [
+        "Enable the suggested inspection templates",
+        "Require an inspection on check-in (or at least for first-time customers)",
+        "Use fail-to-quote automation to build consistent estimates",
+      ],
+      expectedImpact: "More consistent work recommendations + better customer trust",
+    });
+  }
+
+  // Issue-driven recs
+  const hasComebacks = issuesDetected.some((i) => i.key === "comebacks");
+  if (hasComebacks) {
+    recs.push({
+      key: "reduce_comebacks_qc",
+      title: "Reduce comebacks with QC + better job notes",
+      why: "Vague lines and inconsistent notes make repeat failures more likely and hurt reporting.",
+      actionSteps: [
+        "Add a required complaint/cause/correction structure for RO lines",
+        "Enable end-of-job QC checklist for safety-related work",
+        "Use advisor review before invoice close-out",
+      ],
+      expectedImpact: "Lower redo work + cleaner analytics",
+    });
+  }
+
+  const lowAro = issuesDetected.find((i) => i.key === "low_aro");
+  if (lowAro) {
+    recs.push({
+      key: "raise_aro_packages",
+      title: "Raise ARO by bundling common work into packages",
+      why: `Avg RO is currently around $${Math.round(averageRo).toLocaleString()}. Packaging repeat work reduces “one-off” quoting and increases approval rate.`,
+      actionSteps: [
+        "Bundle the top 3 repeat repairs into fixed-price packages",
+        "Attach the correct inspection to each package",
+        "Auto-suggest packages when matching job types appear",
+      ],
+      expectedImpact: "Higher approvals + safer maintenance compliance",
+    });
+  }
+
+  const imbalance = issuesDetected.find((i) => i.key === "bay_imbalance");
+  if (imbalance) {
+    recs.push({
+      key: "dispatch_balance",
+      title: "Balance dispatch across bays to reduce bottlenecks",
+      why: "If one bay is overloaded, cycle times increase and quality can drop.",
+      actionSteps: [
+        "Use a dispatcher view with WIP limits per tech",
+        "Split jobs into clear sub-lines (brakes, diag, parts, road test)",
+        "Track clocked vs billed hours per tech to identify blockers",
+      ],
+      expectedImpact: "Faster throughput + more predictable delivery times",
+    });
+  }
+
+  // de-dupe by key
+  const seen = new Set<string>();
+  const out: ShopHealthRecommendation[] = [];
+  for (const r of recs) {
+    if (seen.has(r.key)) continue;
+    seen.add(r.key);
+    out.push(r);
+  }
+
+  return out.slice(0, 6);
 }
 
 /* --------------------- scoring helpers --------------------- */
@@ -362,7 +640,7 @@ function buildNarrative(args: {
     `Based on ${totalRepairOrders} repair-order rows and an estimated total revenue of **$${totalRevenue.toLocaleString()}** (avg RO **$${averageRo.toLocaleString()}**).`,
     topLine,
     hvLine,
-    `Next step: use the suggested menus/inspections to standardize quoting and reduce “misc” lines — that improves accuracy and speeds onboarding.`,
+    `Next step: publish the suggested menus/inspections to standardize quoting and reduce “misc” lines — that improves accuracy and speeds onboarding.`,
   ].join("\n\n");
 }
 
