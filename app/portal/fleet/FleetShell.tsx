@@ -1,11 +1,13 @@
 // app/portal/fleet/FleetShell.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+
+import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
 
 type DB = Database;
 
@@ -87,6 +89,9 @@ export default function FleetShell({
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
+  const [userId, setUserId] = useState<string | null>(null);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+
   const activeHref = useMemo(() => {
     const exact = NAV.find((x) => x.href === pathname);
     if (exact) return exact.href;
@@ -96,6 +101,33 @@ export default function FleetShell({
     );
     return starts?.href ?? "/portal/fleet";
   }, [pathname]);
+
+  // Load session + must_change_password (fleet portal)
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const uid = session?.user?.id ?? null;
+      setUserId(uid);
+
+      if (!uid) return;
+
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("must_change_password")
+          .eq("id", uid)
+          .single();
+
+        setMustChangePassword(!!profile?.must_change_password);
+      } catch (err) {
+        console.error("Failed to load profile must_change_password (FleetShell)", err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
 
   const signOut = async () => {
     if (signingOut) return;
@@ -141,9 +173,7 @@ export default function FleetShell({
           </button>
 
           <div>
-            <div className="text-[0.75rem] font-medium text-neutral-100">
-              {title}
-            </div>
+            <div className="text-[0.75rem] font-medium text-neutral-100">{title}</div>
             <div className="text-[0.65rem] text-neutral-400">{subtitle}</div>
           </div>
         </div>
@@ -183,10 +213,7 @@ export default function FleetShell({
             )}
           >
             <div className="px-5 py-5">
-              <div
-                className="font-blackops text-lg tracking-[0.16em]"
-                style={{ color: COPPER }}
-              >
+              <div className="font-blackops text-lg tracking-[0.16em]" style={{ color: COPPER }}>
                 PROFIXIQ
               </div>
               <div className="mt-1 text-xs text-neutral-400">Fleet Portal</div>
@@ -203,31 +230,21 @@ export default function FleetShell({
               ))}
             </nav>
 
-            <div className="px-5 pb-5 text-xs text-neutral-500">
-              Powered by ProFixIQ
-            </div>
+            <div className="px-5 pb-5 text-xs text-neutral-500">Powered by ProFixIQ</div>
           </div>
         </aside>
 
         {/* Mobile drawer */}
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
-            <div
-              className="absolute inset-0 bg-black/60"
-              onClick={() => setMobileOpen(false)}
-            />
+            <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
             <div className="absolute left-0 top-0 h-full w-[82vw] max-w-[360px] border-r border-white/10 bg-black/85 backdrop-blur-xl">
               <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
                 <div>
-                  <div
-                    className="font-blackops text-lg tracking-[0.16em]"
-                    style={{ color: COPPER }}
-                  >
+                  <div className="font-blackops text-lg tracking-[0.16em]" style={{ color: COPPER }}>
                     PROFIXIQ
                   </div>
-                  <div className="mt-1 text-xs text-neutral-400">
-                    Fleet Portal
-                  </div>
+                  <div className="mt-1 text-xs text-neutral-400">Fleet Portal</div>
                 </div>
                 <button
                   className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-xs text-neutral-100"
@@ -259,9 +276,7 @@ export default function FleetShell({
                   {signingOut ? "Signing out…" : "Sign out"}
                 </button>
 
-                <div className="mt-3 text-xs text-neutral-500">
-                  Powered by ProFixIQ
-                </div>
+                <div className="mt-3 text-xs text-neutral-500">Powered by ProFixIQ</div>
               </div>
             </div>
           </div>
@@ -272,6 +287,15 @@ export default function FleetShell({
           <div className={ShellCard}>{children}</div>
         </div>
       </div>
+
+      {/* ✅ Force password change modal (blocks portal until complete) */}
+      <ForcePasswordChangeModal
+        open={!!userId && mustChangePassword}
+        onDone={() => {
+          setMustChangePassword(false);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }

@@ -5585,6 +5585,7 @@ export type Database = {
           questionnaire: Json
           shop_id: string
           source: string | null
+          staff_file_path: string | null
           status: string
           vehicles_file_path: string | null
         }
@@ -5599,6 +5600,7 @@ export type Database = {
           questionnaire: Json
           shop_id: string
           source?: string | null
+          staff_file_path?: string | null
           status?: string
           vehicles_file_path?: string | null
         }
@@ -5613,6 +5615,7 @@ export type Database = {
           questionnaire?: Json
           shop_id?: string
           source?: string | null
+          staff_file_path?: string | null
           status?: string
           vehicles_file_path?: string | null
         }

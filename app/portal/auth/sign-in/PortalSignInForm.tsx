@@ -7,18 +7,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// ✅ you said you added this already
 import {
   resolvePortalMode,
   type PortalMode,
 } from "@/features/portal/lib/resolvePortalMode";
 
 const COPPER = "#C57A4A";
+const SHOP_USER_DOMAIN = "local.profix-internal";
 
 type PortalType = "customer" | "fleet";
 
 function safeRedirectPath(v: string | null): string | null {
-  // only allow internal redirects
   if (!v) return null;
   if (!v.startsWith("/")) return null;
   if (v.startsWith("//")) return null;
@@ -27,7 +26,6 @@ function safeRedirectPath(v: string | null): string | null {
 
 function isAllowedRedirectForMode(path: string, mode: PortalMode) {
   if (mode === "fleet") return path.startsWith("/portal/fleet");
-  // customer portal: allow /portal/* BUT NOT /portal/fleet/*
   return path.startsWith("/portal") && !path.startsWith("/portal/fleet");
 }
 
@@ -37,7 +35,7 @@ export default function PortalSignInPage() {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [portalType, setPortalType] = useState<PortalType>("customer");
-  const [email, setEmail] = useState<string>("");
+  const [identifier, setIdentifier] = useState<string>(""); // ✅ email OR username
   const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
@@ -67,8 +65,16 @@ export default function PortalSignInPage() {
     setLoading(true);
     setError("");
 
+    const raw = identifier.trim();
+    let emailToUse = raw;
+
+    // ✅ Allow username-only for shop/fleet-created accounts
+    if (!raw.includes("@")) {
+      emailToUse = `${raw.toLowerCase()}@${SHOP_USER_DOMAIN}`;
+    }
+
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: emailToUse,
       password,
     });
 
@@ -113,13 +119,15 @@ export default function PortalSignInPage() {
         : fallback;
 
     router.replace(to);
+    setLoading(false);
   };
 
-  const portalLabel = portalType === "fleet" ? "Fleet Portal" : "Customer Portal";
+  const portalLabel =
+    portalType === "fleet" ? "Fleet Portal" : "Customer Portal";
 
   const helperCopy =
     portalType === "fleet"
-      ? "Use your fleet login from the shop or dispatch to see assigned units, pre-trips, and service requests."
+      ? "Use your fleet login (email or username) from the shop or dispatch to see assigned units, pre-trips, and service requests."
       : "Use the email and password you created when you signed up.";
 
   return (
@@ -155,9 +163,7 @@ export default function PortalSignInPage() {
                 disabled:cursor-not-allowed disabled:opacity-60
               "
             >
-              <span aria-hidden className="text-base leading-none">
-                ←
-              </span>
+              <span aria-hidden className="text-base leading-none">←</span>
               Back
             </button>
 
@@ -215,7 +221,9 @@ export default function PortalSignInPage() {
               Sign in
             </h1>
 
-            <p className="text-xs text-muted-foreground sm:text-sm">{helperCopy}</p>
+            <p className="text-xs text-muted-foreground sm:text-sm">
+              {helperCopy}
+            </p>
           </div>
 
           {/* Error */}
@@ -229,14 +237,18 @@ export default function PortalSignInPage() {
           <form onSubmit={handleSignIn} className="space-y-4">
             <div className="space-y-1 text-sm">
               <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                Email
+                {portalType === "fleet" ? "Email or username" : "Email"}
               </label>
               <input
-                type="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type={portalType === "fleet" ? "text" : "email"}
+                autoComplete={portalType === "fleet" ? "username" : "email"}
+                placeholder={
+                  portalType === "fleet"
+                    ? "dispatch@fleet.com or fleet username"
+                    : "you@example.com"
+                }
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="
                   w-full rounded-lg border
                   border-[color:var(--metal-border-soft,#1f2937)]
@@ -248,6 +260,12 @@ export default function PortalSignInPage() {
                 "
                 required
               />
+              {portalType === "fleet" ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Fleet accounts can sign in using the username provided by your
+                  shop/dispatch.
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-1 text-sm">
@@ -306,8 +324,8 @@ export default function PortalSignInPage() {
               </>
             ) : (
               <p className="text-[11px] text-neutral-400">
-                Fleet logins are created by your shop or dispatch. If you need access,
-                contact your shop administrator.
+                Fleet logins are created by your shop or dispatch. If you need
+                access, contact your shop administrator.
               </p>
             )}
           </div>

@@ -29,14 +29,9 @@ function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
-// Basic UUID v4/v1 format check (accepts any UUID version)
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * Avoid `instanceof File` (can be unreliable across runtimes/bundlers).
- * This checks for the shape Next route handlers provide for uploaded files.
- */
 function asFile(v: FormDataEntryValue | null): File | null {
   if (!v || typeof v !== "object") return null;
 
@@ -66,14 +61,12 @@ function parseQuestionnaire(raw: unknown): unknown {
 }
 
 function isShopScopedPath(shopId: string, path: string | null): boolean {
-  if (!path) return true; // null is allowed
-  // Must start with `${shopId}/` because your storage RLS checks first segment
+  if (!path) return true;
   return path.startsWith(`${shopId}/`);
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
   try {
-    // user-scoped supabase (cookies)
     const supabaseUser = createRouteHandlerClient<DB>({ cookies });
 
     const {
@@ -85,7 +78,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // resolve shop_id from profile (DO NOT trust client shopId)
     const { data: prof, error: profErr } = await supabaseUser
       .from("profiles")
       .select("shop_id")
@@ -110,17 +102,16 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
 
     let questionnaire: unknown = {};
 
-    // These may come from:
-    // - multipart: actual files uploaded to this route
-    // - json: client already uploaded and is sending the storage paths
     let customersFile: File | null = null;
     let vehiclesFile: File | null = null;
     let partsFile: File | null = null;
+    let staffFile: File | null = null;
 
     let providedIntakeId: string | null = null;
     let providedCustomersPath: string | null = null;
     let providedVehiclesPath: string | null = null;
     let providedPartsPath: string | null = null;
+    let providedStaffPath: string | null = null;
 
     if (contentType.includes("multipart/form-data")) {
       let formData: FormData;
@@ -137,8 +128,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       customersFile = asFile(formData.get("customersFile"));
       vehiclesFile = asFile(formData.get("vehiclesFile"));
       partsFile = asFile(formData.get("partsFile"));
+      staffFile = asFile(formData.get("staffFile"));
 
-      // optional if you ever want to include it in multipart
       const rawIntake = formData.get("intakeId");
       providedIntakeId = typeof rawIntake === "string" ? rawIntake : null;
     } else {
@@ -149,16 +140,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
         if ("customersPath" in body) providedCustomersPath = asString(body["customersPath"]);
         if ("vehiclesPath" in body) providedVehiclesPath = asString(body["vehiclesPath"]);
         if ("partsPath" in body) providedPartsPath = asString(body["partsPath"]);
+        if ("staffPath" in body) providedStaffPath = asString(body["staffPath"]);
       }
     }
 
-    // ✅ Decide intakeId:
-    // - If client provided a UUID, use it (keeps intakeId aligned with upload paths)
-    // - Otherwise generate one server-side
     const intakeId =
       providedIntakeId && UUID_RE.test(providedIntakeId) ? providedIntakeId : randomUUID();
 
-    // If JSON mode provided an intakeId but it's invalid -> fail with clear error
     if (providedIntakeId && !UUID_RE.test(providedIntakeId)) {
       return NextResponse.json(
         { ok: false, error: "Invalid intakeId format (must be UUID)." },
@@ -168,11 +156,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
 
     const uploadIfPresent = async (
       file: File | null,
-      kind: "customers" | "vehicles" | "parts",
+      kind: "customers" | "vehicles" | "parts" | "staff",
     ): Promise<string | null> => {
       if (!file) return null;
 
-      // ✅ IMPORTANT: keep first path segment == shopId (matches your Storage RLS policy)
       const safeName = safeFileName(file.name || `${kind}.csv`);
       const path = `${shopId}/${intakeId}/${kind}-${safeName}`;
 
@@ -189,33 +176,33 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       return path;
     };
 
-    // If multipart uploaded files, we upload here
-    const [customersPathUploaded, vehiclesPathUploaded, partsPathUploaded] =
+    const [customersPathUploaded, vehiclesPathUploaded, partsPathUploaded, staffPathUploaded] =
       await Promise.all([
         uploadIfPresent(customersFile, "customers"),
         uploadIfPresent(vehiclesFile, "vehicles"),
         uploadIfPresent(partsFile, "parts"),
+        uploadIfPresent(staffFile, "staff"),
       ]);
 
-    // Decide final file paths:
-    // 1) multipart uploaded paths win
-    // 2) else JSON provided paths
-    // 3) else fallback to latest intake (rerun mode)
-    const noUploads = !customersFile && !vehiclesFile && !partsFile;
+    const noUploads = !customersFile && !vehiclesFile && !partsFile && !staffFile;
 
     let fallbackPaths: {
       customersPath: string | null;
       vehiclesPath: string | null;
       partsPath: string | null;
-    } = { customersPath: null, vehiclesPath: null, partsPath: null };
+      staffPath: string | null;
+    } = { customersPath: null, vehiclesPath: null, partsPath: null, staffPath: null };
 
     const jsonProvidedAny =
-      !!providedCustomersPath || !!providedVehiclesPath || !!providedPartsPath;
+      !!providedCustomersPath ||
+      !!providedVehiclesPath ||
+      !!providedPartsPath ||
+      !!providedStaffPath;
 
     if (noUploads && !jsonProvidedAny) {
       const { data: latestIntake } = await supabaseAdmin
         .from("shop_boost_intakes")
-        .select("customers_file_path, vehicles_file_path, parts_file_path")
+        .select("customers_file_path, vehicles_file_path, parts_file_path, staff_file_path")
         .eq("shop_id", shopId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -223,12 +210,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
           customers_file_path: string | null;
           vehicles_file_path: string | null;
           parts_file_path: string | null;
+          staff_file_path: string | null;
         }>();
 
       fallbackPaths = {
         customersPath: latestIntake?.customers_file_path ?? null,
         vehiclesPath: latestIntake?.vehicles_file_path ?? null,
         partsPath: latestIntake?.parts_file_path ?? null,
+        staffPath: latestIntake?.staff_file_path ?? null,
       };
     }
 
@@ -238,12 +227,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       vehiclesPathUploaded ?? providedVehiclesPath ?? fallbackPaths.vehiclesPath;
     const partsFinal =
       partsPathUploaded ?? providedPartsPath ?? fallbackPaths.partsPath;
+    const staffFinal =
+      staffPathUploaded ?? providedStaffPath ?? fallbackPaths.staffPath;
 
-    // ✅ Security: ensure any provided paths are shop-scoped
     if (
       !isShopScopedPath(shopId, customersFinal) ||
       !isShopScopedPath(shopId, vehiclesFinal) ||
-      !isShopScopedPath(shopId, partsFinal)
+      !isShopScopedPath(shopId, partsFinal) ||
+      !isShopScopedPath(shopId, staffFinal)
     ) {
       return NextResponse.json(
         { ok: false, error: "Invalid file path (must start with your shopId/)." },
@@ -251,8 +242,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       );
     }
 
-    // If we have nothing at all to analyze, fail fast
-    if (!customersFinal && !vehiclesFinal && !partsFinal) {
+    if (!customersFinal && !vehiclesFinal && !partsFinal && !staffFinal) {
       return NextResponse.json(
         {
           ok: false,
@@ -271,6 +261,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       customers_file_path: customersFinal,
       vehicles_file_path: vehiclesFinal,
       parts_file_path: partsFinal,
+      // ✅ requires column in table + types
+      staff_file_path: staffFinal,
       status: "pending",
     };
 
@@ -295,7 +287,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
     return NextResponse.json({ ok: true, shopId, intakeId, snapshot }, { status: 200 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unexpected error";
-    // eslint-disable-next-line no-console
     console.error("[shop-boost/intakes/run]", err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }

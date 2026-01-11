@@ -14,6 +14,7 @@ import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import AgentRequestModal from "@/features/agent/components/AgentRequestModal";
 import { cn } from "@/features/shared/utils/cn";
 import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
+import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
 
 const NON_APP_ROUTES = [
   "/",
@@ -54,6 +55,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+
   const [punchOpen, setPunchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
@@ -62,14 +65,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const punchRef = useRef<HTMLDivElement | null>(null);
 
-  const isPortalRoute =
-    pathname === "/portal" || pathname.startsWith("/portal/");
+  const isPortalRoute = pathname === "/portal" || pathname.startsWith("/portal/");
 
   const isAppRoute =
     !isPortalRoute &&
-    !NON_APP_ROUTES.some(
-      (p) => pathname === p || pathname.startsWith(p + "/"),
-    );
+    !NON_APP_ROUTES.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
   // ✅ Only hide Planner / AI Planner for tech role (everyone else keeps them)
   const isTech = (userRole ?? "").toLowerCase() === "tech";
@@ -88,15 +88,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       if (!uid) return;
 
-      // load user role for agent console gating
+      // load user role + must_change_password
       try {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role")
+          .select("role, must_change_password")
           .eq("id", uid)
           .single();
 
         if (profile?.role) setUserRole(profile.role as string);
+        setMustChangePassword(!!profile?.must_change_password);
       } catch (err) {
         console.error("Failed to load profile role for AppShell", err);
       }
@@ -364,6 +365,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
       </div>
+
+      {/* ✅ Force password change modal (blocks app until complete) */}
+      <ForcePasswordChangeModal
+        open={!!userId && mustChangePassword}
+        onDone={() => {
+          setMustChangePassword(false);
+          router.refresh();
+        }}
+      />
 
       {/* Global chat modal (main app only) */}
       <NewChatModal
