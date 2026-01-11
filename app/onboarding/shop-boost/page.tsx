@@ -1,3 +1,4 @@
+// /app/onboarding/shop-boost/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState, FormEvent } from "react";
@@ -87,6 +88,7 @@ export default function ShopBoostOnboardingPage() {
   const [customersFile, setCustomersFile] = useState<File | null>(null);
   const [vehiclesFile, setVehiclesFile] = useState<File | null>(null);
   const [partsFile, setPartsFile] = useState<File | null>(null);
+  const [historyFile, setHistoryFile] = useState<File | null>(null);
   const [staffFile, setStaffFile] = useState<File | null>(null);
 
   const [stepStatus, setStepStatus] = useState<StepStatus>("idle");
@@ -158,7 +160,7 @@ export default function ShopBoostOnboardingPage() {
       return;
     }
 
-    if (!customersFile && !vehiclesFile && !partsFile && !staffFile) {
+    if (!customersFile && !vehiclesFile && !partsFile && !historyFile && !staffFile) {
       setError("Please upload at least one CSV file so we have data to scan.");
       return;
     }
@@ -170,7 +172,7 @@ export default function ShopBoostOnboardingPage() {
 
     const uploadIfPresent = async (
       file: File | null,
-      kind: "customers" | "vehicles" | "parts" | "staff",
+      kind: "customers" | "vehicles" | "parts" | "history" | "staff",
     ): Promise<string | null> => {
       if (!file) return null;
 
@@ -194,12 +196,14 @@ export default function ShopBoostOnboardingPage() {
     };
 
     try {
-      const [customersPath, vehiclesPath, partsPath, staffPath] = await Promise.all([
-        uploadIfPresent(customersFile, "customers"),
-        uploadIfPresent(vehiclesFile, "vehicles"),
-        uploadIfPresent(partsFile, "parts"),
-        uploadIfPresent(staffFile, "staff"),
-      ]);
+      const [customersPath, vehiclesPath, partsPath, historyPath, staffPath] =
+        await Promise.all([
+          uploadIfPresent(customersFile, "customers"),
+          uploadIfPresent(vehiclesFile, "vehicles"),
+          uploadIfPresent(partsFile, "parts"),
+          uploadIfPresent(historyFile, "history"),
+          uploadIfPresent(staffFile, "staff"),
+        ]);
 
       setStepStatus("processing");
 
@@ -213,6 +217,7 @@ export default function ShopBoostOnboardingPage() {
           customersPath,
           vehiclesPath,
           partsPath,
+          historyPath,
           staffPath,
         }),
       });
@@ -359,7 +364,9 @@ export default function ShopBoostOnboardingPage() {
                       <button
                         type="button"
                         key={opt.key}
-                        onClick={() => handleSpecialtyChange(opt.key as QuestionnaireState["specialty"])}
+                        onClick={() =>
+                          handleSpecialtyChange(opt.key as QuestionnaireState["specialty"])
+                        }
                         className={`rounded-md border px-3 py-2 text-left text-xs ${
                           questionnaire.specialty === opt.key
                             ? "border-[color:var(--accent-copper,#f97316)] bg-white/5 text-[color:var(--accent-copper-light,#fdba74)]"
@@ -377,12 +384,16 @@ export default function ShopBoostOnboardingPage() {
                   <NumberInput
                     label="How many technicians?"
                     value={questionnaire.techCount}
-                    onChange={(value) => setQuestionnaire((prev) => ({ ...prev, techCount: value }))}
+                    onChange={(value) =>
+                      setQuestionnaire((prev) => ({ ...prev, techCount: value }))
+                    }
                   />
                   <NumberInput
                     label="How many bays?"
                     value={questionnaire.bayCount}
-                    onChange={(value) => setQuestionnaire((prev) => ({ ...prev, bayCount: value }))}
+                    onChange={(value) =>
+                      setQuestionnaire((prev) => ({ ...prev, bayCount: value }))
+                    }
                   />
                   <NumberInput
                     label="Approx. repair orders per month?"
@@ -421,8 +432,8 @@ export default function ShopBoostOnboardingPage() {
                 />
                 <UploadRow
                   id="vehicles-upload"
-                  label="Vehicles & repair history"
-                  description="VIN/plate, mileage, RO dates, complaint/cause/correction, line items."
+                  label="Vehicles"
+                  description="VIN/plate, unit #, year/make/model — links to customers and history."
                   currentFile={vehiclesFile}
                   onFileChange={setVehiclesFile}
                 />
@@ -434,16 +445,23 @@ export default function ShopBoostOnboardingPage() {
                   onFileChange={setPartsFile}
                 />
                 <UploadRow
+                  id="history-upload"
+                  label="History (repair orders)"
+                  description="RO#, date, complaint/cause/correction, totals — builds Work Orders + Lines so history works day 1."
+                  currentFile={historyFile}
+                  onFileChange={setHistoryFile}
+                />
+                <UploadRow
                   id="staff-upload"
                   label="Staff / team roster"
-                  description="Names, roles, phone/email/usernames — helps us prep roles, permissions, and invites."
+                  description="Names, roles, phone/email/usernames — creates accounts and profiles."
                   currentFile={staffFile}
                   onFileChange={setStaffFile}
                 />
 
                 <p className="text-[11px] text-neutral-500">
-                  Don&apos;t worry about perfect formatting — we use AI to interpret the columns and map them into ProFixIQ.
-                  You&apos;ll get a chance to review everything before it goes live.
+                  Don&apos;t worry about perfect formatting — we interpret columns and map them into ProFixIQ.
+                  You&apos;ll be able to review results after import.
                 </p>
               </div>
             </section>
@@ -455,20 +473,11 @@ export default function ShopBoostOnboardingPage() {
                 className="inline-flex items-center justify-center rounded-md bg-[color:var(--accent-copper,#f97316)] px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {stepStatus === "uploading" && "Uploading files…"}
-                {stepStatus === "processing" && "Analyzing your shop…"}
+                {stepStatus === "processing" && "Analyzing + importing…"}
                 {stepStatus === "idle" && "Start AI Shop Boost"}
                 {stepStatus === "error" && "Try again"}
                 {stepStatus === "done" && "Re-run with new files"}
               </button>
-
-              {stepStatus !== "idle" && (
-                <span className="rounded-full bg-neutral-900 px-3 py-1 text-[11px] text-neutral-400">
-                  {stepStatus === "uploading" && "Step 1 of 2: Uploading…"}
-                  {stepStatus === "processing" && "Step 2 of 2: AI is building your snapshot…"}
-                  {stepStatus === "done" && "Done. Scroll down to see your Shop Health Snapshot."}
-                  {stepStatus === "error" && "Something went wrong. Adjust your files and try again."}
-                </span>
-              )}
 
               {error && <p className="text-xs text-red-400">{error}</p>}
             </div>
@@ -480,22 +489,14 @@ export default function ShopBoostOnboardingPage() {
           <div className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-neutral-950 p-4">
             <h3 className="mb-2 text-sm font-semibold text-neutral-100">What happens next?</h3>
             <p className="text-xs text-neutral-400">
-              We create import jobs for your files and feed them into the AI engine. It looks for your most common repairs,
-              missed upsell opportunities, and packages that should be on your menu.
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-neutral-950 p-4">
-            <h3 className="mb-2 text-sm font-semibold text-neutral-100">You stay in control</h3>
-            <p className="text-xs text-neutral-400">
-              Nothing is pushed live without your review. You&apos;ll see a draft &quot;Shop Health&quot; report and proposed menus
-              that you can tweak or reject before going live.
+              We store your files, stage row-level data, generate Shop Health + menus, and then import customers, vehicles,
+              parts, staff, and history into your live tables.
             </p>
           </div>
         </aside>
       </main>
 
-      {/* Snapshot WOW zone */}
+      {/* Snapshot */}
       {snapshot && (
         <div className="mx-auto max-w-6xl px-4 pb-10 pt-2 sm:px-6">
           <ShopHealthSnapshotView snapshot={snapshot} />
@@ -533,9 +534,7 @@ function YesNoRow({ label, helper, value, onChange }: YesNoRowProps) {
             type="button"
             onClick={() => onChange(false)}
             className={`rounded-full px-2 py-0.5 ${
-              !value
-                ? "bg-neutral-800 text-neutral-100"
-                : "text-neutral-300 hover:text-white"
+              !value ? "bg-neutral-800 text-neutral-100" : "text-neutral-300 hover:text-white"
             }`}
           >
             No

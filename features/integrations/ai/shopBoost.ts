@@ -19,8 +19,6 @@ type DB = Database;
 type ShopBoostIntakeRow = DB["public"]["Tables"]["shop_boost_intakes"]["Row"];
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
-
-// Batch size for inserting shop_import_rows (Supabase payload-safe)
 const IMPORT_ROW_BATCH = 500;
 
 type BuildShopBoostProfileOptions = {
@@ -56,14 +54,14 @@ export async function buildShopBoostProfile(
   }
   if (intakeId && intakeRow.id !== intakeId) return null;
 
-  const [customersCsv, vehiclesCsv, partsCsv] = await Promise.all([
+  const [customersCsv, vehiclesCsv, partsCsv, historyCsv, staffCsv] = await Promise.all([
     downloadCsvFile(supabase, intakeRow.customers_file_path),
     downloadCsvFile(supabase, intakeRow.vehicles_file_path),
     downloadCsvFile(supabase, intakeRow.parts_file_path),
+    downloadCsvFile(supabase, (intakeRow ).history_file_path ?? null),
+    downloadCsvFile(supabase, (intakeRow ).staff_file_path ?? null),
   ]);
 
-  // ✅ 1) Record import artifacts (files + rows) for overview view.
-  // This is what powers v_shop_boost_overview import_file_count / import_row_count.
   const importStats = await recordImportArtifacts({
     supabase,
     intakeId: intakeRow.id,
@@ -71,6 +69,8 @@ export async function buildShopBoostProfile(
       { kind: "customers", storagePath: intakeRow.customers_file_path, csvText: customersCsv },
       { kind: "vehicles", storagePath: intakeRow.vehicles_file_path, csvText: vehiclesCsv },
       { kind: "parts", storagePath: intakeRow.parts_file_path, csvText: partsCsv },
+      { kind: "history", storagePath: (intakeRow ).history_file_path ?? null, csvText: historyCsv },
+      { kind: "staff", storagePath: (intakeRow ).staff_file_path ?? null, csvText: staffCsv },
     ],
   });
 
@@ -78,10 +78,8 @@ export async function buildShopBoostProfile(
   const dbStats = await deriveStatsFromDatabase(supabase, shopId);
   const mergedStats = mergeStats(baseStats, dbStats);
 
-  // ✅ 2) tech aggregation
   const topTechs = await deriveTopTechsFromDatabase(supabase, shopId);
 
-  // AI snapshot (menus/inspections/narrative + repairs)
   const aiSnapshot = await generateSnapshotWithAI({
     shopId,
     intakeRow,
@@ -91,7 +89,6 @@ export async function buildShopBoostProfile(
 
   if (!aiSnapshot) return null;
 
-  // ✅ 3) issue heuristics
   const issuesDetected = detectIssues({
     intakeRow,
     mergedStats,
@@ -99,7 +96,6 @@ export async function buildShopBoostProfile(
     comebackRisks: aiSnapshot.comebackRisks,
   });
 
-  // ✅ 4) actionable recommendations (tied to menus/inspections)
   const recommendations = buildRecommendations({
     intakeRow,
     mergedStats,
@@ -108,7 +104,6 @@ export async function buildShopBoostProfile(
     inspectionSuggestions: aiSnapshot.inspectionSuggestions,
   });
 
-  // ✅ 5) deterministic scoring shape (matches ReportShopHealthPanel normalizeScores())
   const scoring = computeScores({
     intakeRow,
     mergedStats,
@@ -117,7 +112,6 @@ export async function buildShopBoostProfile(
     importStats,
   });
 
-  // ✅ 6) Persist snapshot to DB (what v_shop_health_latest reads)
   const snapshotId = randomUUID();
   const snapshotCreatedAt = new Date().toISOString();
 
@@ -145,7 +139,6 @@ export async function buildShopBoostProfile(
     return null;
   }
 
-  // ✅ 7) Persist suggestions (what v_shop_boost_suggestions reads)
   await persistSuggestions({
     supabase,
     shopId,
@@ -162,7 +155,6 @@ export async function buildShopBoostProfile(
     recommendations,
   };
 
-  // Upsert shop_ai_profiles (summary)
   const { error: aiProfileErr } = await supabase
     .from("shop_ai_profiles")
     .upsert(
@@ -189,10 +181,10 @@ export async function buildShopBoostProfile(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Import artifacts: shop_import_files + shop_import_rows                      */
+/* Import artifacts                                                           */
 /* -------------------------------------------------------------------------- */
 
-type ImportFileKind = "customers" | "vehicles" | "parts";
+type ImportFileKind = "customers" | "vehicles" | "parts" | "history" | "staff";
 
 type ImportFileInput = {
   kind: ImportFileKind;
@@ -220,6 +212,8 @@ async function recordImportArtifacts(args: {
       customers: { rows: 0, fileId: null },
       vehicles: { rows: 0, fileId: null },
       parts: { rows: 0, fileId: null },
+      history: { rows: 0, fileId: null },
+      staff: { rows: 0, fileId: null },
     },
   };
 
@@ -250,7 +244,6 @@ async function recordImportArtifacts(args: {
 
     if (fileErr) {
       console.error("[shopBoost] failed to insert shop_import_files", f.kind, fileErr);
-      // keep going; we still want snapshot
       continue;
     }
 
@@ -258,9 +251,6 @@ async function recordImportArtifacts(args: {
     rowCount += rows;
     empty.byKind[f.kind] = { rows, fileId };
 
-    // Insert row-level raw data for row_counts aggregate + later parsing/ML.
-    // We store raw row mapping: { <header>: <value>, ... }
-    // normalized is left {} for now.
     const inserted = await insertImportRows({
       supabase,
       intakeId,
@@ -269,7 +259,6 @@ async function recordImportArtifacts(args: {
       csv,
     });
 
-    // If row insert failed, counts will be off — log and continue
     if (!inserted) {
       console.warn("[shopBoost] insertImportRows failed", { kind: f.kind, intakeId, fileId });
     }
@@ -281,6 +270,8 @@ async function recordImportArtifacts(args: {
     byKind: empty.byKind,
   };
 }
+
+// ... keep the rest of your existing file unchanged below this point ...
 
 function basename(path: string): string {
   const parts = path.split("/").filter(Boolean);

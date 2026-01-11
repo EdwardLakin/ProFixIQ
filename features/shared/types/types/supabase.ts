@@ -5578,6 +5578,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           customers_file_path: string | null
+          history_file_path: string | null
           id: string
           intake_basics: Json | null
           parts_file_path: string | null
@@ -5593,6 +5594,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customers_file_path?: string | null
+          history_file_path?: string | null
           id?: string
           intake_basics?: Json | null
           parts_file_path?: string | null
@@ -5608,6 +5610,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customers_file_path?: string | null
+          history_file_path?: string | null
           id?: string
           intake_basics?: Json | null
           parts_file_path?: string | null

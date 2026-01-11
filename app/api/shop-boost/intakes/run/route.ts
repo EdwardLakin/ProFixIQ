@@ -1,3 +1,4 @@
+// /app/api/shop-boost/intakes/run/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
@@ -6,6 +7,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
+import { runShopBoostImport } from "@/features/integrations/imports/runFullImport";
 
 type DB = Database;
 
@@ -105,12 +107,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
     let customersFile: File | null = null;
     let vehiclesFile: File | null = null;
     let partsFile: File | null = null;
+    let historyFile: File | null = null;
     let staffFile: File | null = null;
 
     let providedIntakeId: string | null = null;
     let providedCustomersPath: string | null = null;
     let providedVehiclesPath: string | null = null;
     let providedPartsPath: string | null = null;
+    let providedHistoryPath: string | null = null;
     let providedStaffPath: string | null = null;
 
     if (contentType.includes("multipart/form-data")) {
@@ -128,6 +132,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       customersFile = asFile(formData.get("customersFile"));
       vehiclesFile = asFile(formData.get("vehiclesFile"));
       partsFile = asFile(formData.get("partsFile"));
+      historyFile = asFile(formData.get("historyFile"));
       staffFile = asFile(formData.get("staffFile"));
 
       const rawIntake = formData.get("intakeId");
@@ -140,6 +145,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
         if ("customersPath" in body) providedCustomersPath = asString(body["customersPath"]);
         if ("vehiclesPath" in body) providedVehiclesPath = asString(body["vehiclesPath"]);
         if ("partsPath" in body) providedPartsPath = asString(body["partsPath"]);
+        if ("historyPath" in body) providedHistoryPath = asString(body["historyPath"]);
         if ("staffPath" in body) providedStaffPath = asString(body["staffPath"]);
       }
     }
@@ -156,7 +162,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
 
     const uploadIfPresent = async (
       file: File | null,
-      kind: "customers" | "vehicles" | "parts" | "staff",
+      kind: "customers" | "vehicles" | "parts" | "history" | "staff",
     ): Promise<string | null> => {
       if (!file) return null;
 
@@ -176,33 +182,50 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       return path;
     };
 
-    const [customersPathUploaded, vehiclesPathUploaded, partsPathUploaded, staffPathUploaded] =
-      await Promise.all([
-        uploadIfPresent(customersFile, "customers"),
-        uploadIfPresent(vehiclesFile, "vehicles"),
-        uploadIfPresent(partsFile, "parts"),
-        uploadIfPresent(staffFile, "staff"),
-      ]);
+    const [
+      customersPathUploaded,
+      vehiclesPathUploaded,
+      partsPathUploaded,
+      historyPathUploaded,
+      staffPathUploaded,
+    ] = await Promise.all([
+      uploadIfPresent(customersFile, "customers"),
+      uploadIfPresent(vehiclesFile, "vehicles"),
+      uploadIfPresent(partsFile, "parts"),
+      uploadIfPresent(historyFile, "history"),
+      uploadIfPresent(staffFile, "staff"),
+    ]);
 
-    const noUploads = !customersFile && !vehiclesFile && !partsFile && !staffFile;
+    const noUploads =
+      !customersFile && !vehiclesFile && !partsFile && !historyFile && !staffFile;
 
     let fallbackPaths: {
       customersPath: string | null;
       vehiclesPath: string | null;
       partsPath: string | null;
+      historyPath: string | null;
       staffPath: string | null;
-    } = { customersPath: null, vehiclesPath: null, partsPath: null, staffPath: null };
+    } = {
+      customersPath: null,
+      vehiclesPath: null,
+      partsPath: null,
+      historyPath: null,
+      staffPath: null,
+    };
 
     const jsonProvidedAny =
       !!providedCustomersPath ||
       !!providedVehiclesPath ||
       !!providedPartsPath ||
+      !!providedHistoryPath ||
       !!providedStaffPath;
 
     if (noUploads && !jsonProvidedAny) {
       const { data: latestIntake } = await supabaseAdmin
         .from("shop_boost_intakes")
-        .select("customers_file_path, vehicles_file_path, parts_file_path, staff_file_path")
+        .select(
+          "customers_file_path, vehicles_file_path, parts_file_path, history_file_path, staff_file_path",
+        )
         .eq("shop_id", shopId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -210,6 +233,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
           customers_file_path: string | null;
           vehicles_file_path: string | null;
           parts_file_path: string | null;
+          history_file_path: string | null;
           staff_file_path: string | null;
         }>();
 
@@ -217,6 +241,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
         customersPath: latestIntake?.customers_file_path ?? null,
         vehiclesPath: latestIntake?.vehicles_file_path ?? null,
         partsPath: latestIntake?.parts_file_path ?? null,
+        historyPath: latestIntake?.history_file_path ?? null,
         staffPath: latestIntake?.staff_file_path ?? null,
       };
     }
@@ -225,15 +250,16 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       customersPathUploaded ?? providedCustomersPath ?? fallbackPaths.customersPath;
     const vehiclesFinal =
       vehiclesPathUploaded ?? providedVehiclesPath ?? fallbackPaths.vehiclesPath;
-    const partsFinal =
-      partsPathUploaded ?? providedPartsPath ?? fallbackPaths.partsPath;
-    const staffFinal =
-      staffPathUploaded ?? providedStaffPath ?? fallbackPaths.staffPath;
+    const partsFinal = partsPathUploaded ?? providedPartsPath ?? fallbackPaths.partsPath;
+    const historyFinal =
+      historyPathUploaded ?? providedHistoryPath ?? fallbackPaths.historyPath;
+    const staffFinal = staffPathUploaded ?? providedStaffPath ?? fallbackPaths.staffPath;
 
     if (
       !isShopScopedPath(shopId, customersFinal) ||
       !isShopScopedPath(shopId, vehiclesFinal) ||
       !isShopScopedPath(shopId, partsFinal) ||
+      !isShopScopedPath(shopId, historyFinal) ||
       !isShopScopedPath(shopId, staffFinal)
     ) {
       return NextResponse.json(
@@ -242,7 +268,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       );
     }
 
-    if (!customersFinal && !vehiclesFinal && !partsFinal && !staffFinal) {
+    if (!customersFinal && !vehiclesFinal && !partsFinal && !historyFinal && !staffFinal) {
       return NextResponse.json(
         {
           ok: false,
@@ -261,7 +287,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       customers_file_path: customersFinal,
       vehicles_file_path: vehiclesFinal,
       parts_file_path: partsFinal,
-      // ✅ requires column in table + types
+      history_file_path: historyFinal,
       staff_file_path: staffFinal,
       status: "pending",
     };
@@ -275,6 +301,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
       );
     }
 
+    // 1) AI snapshot + suggestions + import artifact staging
     const snapshot = await buildShopBoostProfile({ shopId, intakeId });
 
     if (!snapshot) {
@@ -283,6 +310,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<Resp>> {
         { status: 500 },
       );
     }
+
+    // 2) REAL import into operational tables
+    await runShopBoostImport({ shopId, intakeId });
 
     return NextResponse.json({ ok: true, shopId, intakeId, snapshot }, { status: 200 });
   } catch (err) {
