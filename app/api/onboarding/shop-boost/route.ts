@@ -1,3 +1,5 @@
+//app/api/onboarding/shop-boost/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";

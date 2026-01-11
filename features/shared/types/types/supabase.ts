@@ -7929,6 +7929,61 @@ export type Database = {
           },
         ]
       }
+      work_order_invoice_reviews: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          issues: Json
+          model: string | null
+          ok: boolean
+          shop_id: string
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          issues?: Json
+          model?: string | null
+          ok?: boolean
+          shop_id: string
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          issues?: Json
+          model?: string | null
+          ok?: boolean
+          shop_id?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_invoice_reviews_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_invoice_reviews_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_invoice_reviews_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_order_line_ai: {
         Row: {
           confidence: number
@@ -9885,6 +9940,9 @@ export type Database = {
         | "advisor"
         | "parts"
         | "customer"
+        | "driver"
+        | "dispatcher"
+        | "fleet_manager"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -10089,6 +10147,9 @@ export const Constants = {
         "advisor",
         "parts",
         "customer",
+        "driver",
+        "dispatcher",
+        "fleet_manager",
       ],
     },
   },

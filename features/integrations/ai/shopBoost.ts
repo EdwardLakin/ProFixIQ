@@ -1,5 +1,5 @@
 // /features/integrations/ai/shopBoost.ts
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 
 import { openai } from "lib/server/openai";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -20,6 +20,9 @@ type ShopBoostIntakeRow = DB["public"]["Tables"]["shop_boost_intakes"]["Row"];
 
 const SHOP_IMPORT_BUCKET = "shop-imports";
 
+// Batch size for inserting shop_import_rows (Supabase payload-safe)
+const IMPORT_ROW_BATCH = 500;
+
 type BuildShopBoostProfileOptions = {
   shopId: string;
   intakeId?: string;
@@ -31,7 +34,10 @@ export async function buildShopBoostProfile(
   const supabase = createAdminSupabase();
   const { shopId, intakeId } = opts;
 
-  const intakeQuery = supabase.from("shop_boost_intakes").select("*").eq("shop_id", shopId);
+  const intakeQuery = supabase
+    .from("shop_boost_intakes")
+    .select("*")
+    .eq("shop_id", shopId);
 
   const { data: intakeRow, error: intakeErr } = intakeId
     ? await intakeQuery.eq("id", intakeId).maybeSingle()
@@ -55,6 +61,18 @@ export async function buildShopBoostProfile(
     downloadCsvFile(supabase, intakeRow.vehicles_file_path),
     downloadCsvFile(supabase, intakeRow.parts_file_path),
   ]);
+
+  // ✅ 1) Record import artifacts (files + rows) for overview view.
+  // This is what powers v_shop_boost_overview import_file_count / import_row_count.
+  const importStats = await recordImportArtifacts({
+    supabase,
+    intakeId: intakeRow.id,
+    files: [
+      { kind: "customers", storagePath: intakeRow.customers_file_path, csvText: customersCsv },
+      { kind: "vehicles", storagePath: intakeRow.vehicles_file_path, csvText: vehiclesCsv },
+      { kind: "parts", storagePath: intakeRow.parts_file_path, csvText: partsCsv },
+    ],
+  });
 
   const baseStats = await deriveStatsFromCsvs({ customersCsv, vehiclesCsv, partsCsv });
   const dbStats = await deriveStatsFromDatabase(supabase, shopId);
@@ -90,6 +108,53 @@ export async function buildShopBoostProfile(
     inspectionSuggestions: aiSnapshot.inspectionSuggestions,
   });
 
+  // ✅ 5) deterministic scoring shape (matches ReportShopHealthPanel normalizeScores())
+  const scoring = computeScores({
+    intakeRow,
+    mergedStats,
+    aiSnapshot,
+    issuesDetected,
+    importStats,
+  });
+
+  // ✅ 6) Persist snapshot to DB (what v_shop_health_latest reads)
+  const snapshotId = randomUUID();
+  const snapshotCreatedAt = new Date().toISOString();
+
+  const metrics = buildMetrics({
+    intakeRow,
+    mergedStats,
+    topTechs,
+    importStats,
+  });
+
+  const { error: snapErr } = await supabase.from("shop_health_snapshots").insert({
+    id: snapshotId,
+    shop_id: shopId,
+    intake_id: intakeRow.id,
+    period_start: null,
+    period_end: null,
+    metrics,
+    scores: scoring,
+    narrative_summary: aiSnapshot.narrativeSummary ?? null,
+    created_at: snapshotCreatedAt,
+  } as DB["public"]["Tables"]["shop_health_snapshots"]["Insert"]);
+
+  if (snapErr) {
+    console.error("[shopBoost] failed to insert shop_health_snapshots", snapErr);
+    return null;
+  }
+
+  // ✅ 7) Persist suggestions (what v_shop_boost_suggestions reads)
+  await persistSuggestions({
+    supabase,
+    shopId,
+    intakeId: intakeRow.id,
+    aiSnapshot,
+    issuesDetected,
+    mergedStats,
+  });
+
   const snapshot: ShopHealthSnapshot = {
     ...aiSnapshot,
     topTechs,
@@ -121,6 +186,171 @@ export async function buildShopBoostProfile(
   if (updateIntakeErr) console.error("Failed to update intake status", updateIntakeErr);
 
   return snapshot;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Import artifacts: shop_import_files + shop_import_rows                      */
+/* -------------------------------------------------------------------------- */
+
+type ImportFileKind = "customers" | "vehicles" | "parts";
+
+type ImportFileInput = {
+  kind: ImportFileKind;
+  storagePath: string | null;
+  csvText: string | null;
+};
+
+type ImportStats = {
+  fileCount: number;
+  rowCount: number;
+  byKind: Record<ImportFileKind, { rows: number; fileId: string | null }>;
+};
+
+async function recordImportArtifacts(args: {
+  supabase: ReturnType<typeof createAdminSupabase>;
+  intakeId: string;
+  files: ImportFileInput[];
+}): Promise<ImportStats> {
+  const { supabase, intakeId, files } = args;
+
+  const empty: ImportStats = {
+    fileCount: 0,
+    rowCount: 0,
+    byKind: {
+      customers: { rows: 0, fileId: null },
+      vehicles: { rows: 0, fileId: null },
+      parts: { rows: 0, fileId: null },
+    },
+  };
+
+  const present = files.filter((f) => f.storagePath && f.csvText);
+  if (present.length === 0) return empty;
+
+  let fileCount = 0;
+  let rowCount = 0;
+
+  for (const f of present) {
+    const csv = f.csvText ?? "";
+    const rows = countCsvDataRows(csv);
+
+    const fileId = randomUUID();
+    const sha256 = hashSha256(csv);
+    const originalFilename = f.storagePath ? basename(f.storagePath) : null;
+
+    const { error: fileErr } = await supabase.from("shop_import_files").insert({
+      id: fileId,
+      intake_id: intakeId,
+      kind: f.kind,
+      storage_path: f.storagePath!,
+      original_filename: originalFilename,
+      sha256,
+      parsed_row_count: rows,
+      status: "completed",
+    } as DB["public"]["Tables"]["shop_import_files"]["Insert"]);
+
+    if (fileErr) {
+      console.error("[shopBoost] failed to insert shop_import_files", f.kind, fileErr);
+      // keep going; we still want snapshot
+      continue;
+    }
+
+    fileCount += 1;
+    rowCount += rows;
+    empty.byKind[f.kind] = { rows, fileId };
+
+    // Insert row-level raw data for row_counts aggregate + later parsing/ML.
+    // We store raw row mapping: { <header>: <value>, ... }
+    // normalized is left {} for now.
+    const inserted = await insertImportRows({
+      supabase,
+      intakeId,
+      fileId,
+      entityType: f.kind,
+      csv,
+    });
+
+    // If row insert failed, counts will be off — log and continue
+    if (!inserted) {
+      console.warn("[shopBoost] insertImportRows failed", { kind: f.kind, intakeId, fileId });
+    }
+  }
+
+  return {
+    fileCount,
+    rowCount,
+    byKind: empty.byKind,
+  };
+}
+
+function basename(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+function hashSha256(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+function countCsvDataRows(csv: string): number {
+  const lines = csv
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length);
+
+  // 0 or 1 line = header only
+  if (lines.length < 2) return 0;
+  return Math.max(0, lines.length - 1);
+}
+
+async function insertImportRows(args: {
+  supabase: ReturnType<typeof createAdminSupabase>;
+  intakeId: string;
+  fileId: string;
+  entityType: string;
+  csv: string;
+}): Promise<boolean> {
+  const { supabase, intakeId, fileId, entityType, csv } = args;
+
+  const lines = csv
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length);
+
+  if (lines.length < 2) return true;
+
+  const header = splitCsvLine(lines[0]).map((h) => h.trim());
+  const rows: DB["public"]["Tables"]["shop_import_rows"]["Insert"][] = [];
+
+  for (let i = 1; i < lines.length; i += 1) {
+    const cols = splitCsvLine(lines[i]);
+    const raw: Record<string, unknown> = {};
+    for (let c = 0; c < header.length; c += 1) {
+      const key = header[c] || `col_${c + 1}`;
+      raw[key] = cols[c] ?? "";
+    }
+
+    rows.push({
+      intake_id: intakeId,
+      file_id: fileId,
+      row_number: i,
+      entity_type: entityType,
+      raw,
+      normalized: {},
+      errors: [],
+    } as DB["public"]["Tables"]["shop_import_rows"]["Insert"]);
+  }
+
+  // Batch insert
+  for (let i = 0; i < rows.length; i += IMPORT_ROW_BATCH) {
+    const batch = rows.slice(i, i + IMPORT_ROW_BATCH);
+    const { error } = await supabase.from("shop_import_rows").insert(batch);
+    if (error) {
+      console.error("[shopBoost] failed inserting shop_import_rows batch", error);
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -566,7 +796,7 @@ function detectIssues(args: {
   const comebackRate = totalRos > 0 ? comebackCount / totalRos : 0;
 
   if (comebackCount >= 3 || comebackRate >= 0.05) {
-    const score = Math.min(100, Math.round((comebackRate * 1000) + comebackCount * 6));
+    const score = Math.min(100, Math.round(comebackRate * 1000 + comebackCount * 6));
     issues.push({
       key: "comebacks",
       title: "Repeat issues / comeback risk",
@@ -581,7 +811,6 @@ function detectIssues(args: {
   }
 
   // 2) Low ARO
-  // (simple baseline: retail < 450 flagged, HD/mixed tolerates higher targets)
   const specialty = (() => {
     const q = intakeRow.questionnaire as unknown;
     if (!q || typeof q !== "object") return "general";
@@ -605,14 +834,14 @@ function detectIssues(args: {
     });
   }
 
-  // 3) Bay imbalance (questionnaire techCount/bayCount)
+  // 3) Bay imbalance
   const techCount = readQuestionnaireNumber(intakeRow.questionnaire, "techCount");
   const bayCount = readQuestionnaireNumber(intakeRow.questionnaire, "bayCount");
 
   if (techCount && bayCount && bayCount > 0) {
     const ratio = techCount / bayCount; // tech per bay
     if (ratio < 0.6 || ratio > 1.25) {
-      const distance = ratio < 0.6 ? (0.6 - ratio) : (ratio - 1.25);
+      const distance = ratio < 0.6 ? 0.6 - ratio : ratio - 1.25;
       const score = Math.min(100, Math.round(distance * 160));
       issues.push({
         key: "bay_imbalance",
@@ -717,8 +946,215 @@ function buildRecommendations(args: {
     });
   }
 
-  // Keep it tight
   return recs.slice(0, 6);
+}
+
+/* -------------------------------------------------------------------------- */
+/* ✅ Metrics + scoring (DB writes)                                            */
+/* -------------------------------------------------------------------------- */
+
+function buildMetrics(args: {
+  intakeRow: ShopBoostIntakeRow;
+  mergedStats: DerivedStats;
+  topTechs: ShopHealthTopTech[];
+  importStats: ImportStats;
+}): Record<string, unknown> {
+  const { intakeRow, mergedStats, topTechs, importStats } = args;
+
+  const specialty = (() => {
+    const q = intakeRow.questionnaire as unknown;
+    if (!q || typeof q !== "object") return "general";
+    const rec = q as Record<string, unknown>;
+    return typeof rec["specialty"] === "string" ? rec["specialty"] : "general";
+  })();
+
+  return {
+    specialty,
+    import: {
+      fileCount: importStats.fileCount,
+      rowCount: importStats.rowCount,
+      byKind: importStats.byKind,
+    },
+    history: {
+      totalRepairOrders: mergedStats.totalRepairOrders,
+      totalRevenue: mergedStats.totalRevenue,
+      averageRo: mergedStats.averageRo,
+      mostCommonRepairs: mergedStats.mostCommonRepairs,
+      highValueRepairs: mergedStats.highValueRepairs,
+    },
+    topTechs,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function computeScores(args: {
+  intakeRow: ShopBoostIntakeRow;
+  mergedStats: DerivedStats;
+  aiSnapshot: ShopHealthSnapshot;
+  issuesDetected: ShopHealthIssue[];
+  importStats: ImportStats;
+}): Record<string, unknown> {
+  const { intakeRow, mergedStats, aiSnapshot, issuesDetected, importStats } = args;
+
+  const hasVehicles = importStats.byKind.vehicles.rows > 0;
+  const hasCustomers = importStats.byKind.customers.rows > 0;
+  const hasParts = importStats.byKind.parts.rows > 0;
+
+  // Completeness: vehicles history is the backbone; customers/parts improve confidence
+  const completenessBase = hasVehicles ? 0.6 : 0;
+  const completenessBonus = (hasCustomers ? 0.2 : 0) + (hasParts ? 0.2 : 0);
+  const completeness = clamp01(completenessBase + completenessBonus);
+
+  // History volume: scale by number of ROs (cap at 1)
+  // 0..200 ROs -> 0..1
+  const hv = clamp01((mergedStats.totalRepairOrders || 0) / 200);
+
+  // Classification: if AI returned menuSuggestions + inspectionSuggestions, treat as higher confidence
+  const menuCount = (aiSnapshot.menuSuggestions ?? []).length;
+  const inspCount = (aiSnapshot.inspectionSuggestions ?? []).length;
+  const classification = clamp01(hasVehicles ? 0.35 + Math.min(0.65, (menuCount + inspCount) * 0.08) : 0);
+
+  // Risk: higher is worse in your UI (invertTone for risk bar)
+  // We map detected issues into a 0..1 "risk" where comebacks + low_aro + imbalance raise it.
+  const riskSignals = issuesDetected.reduce((sum, i) => {
+    if (i.key === "comebacks") return sum + 0.5;
+    if (i.key === "low_aro") return sum + 0.3;
+    if (i.key === "bay_imbalance") return sum + 0.2;
+    return sum + 0.1;
+  }, 0);
+  const risk = clamp01(riskSignals);
+
+  // Overall: weighted, risk subtracts
+  const overall = clamp01(
+    completeness * 0.35 + hv * 0.25 + classification * 0.25 + (1 - risk) * 0.15,
+  );
+
+  const specialty = (() => {
+    const q = intakeRow.questionnaire as unknown;
+    if (!q || typeof q !== "object") return "general";
+    const rec = q as Record<string, unknown>;
+    return typeof rec["specialty"] === "string" ? rec["specialty"] : "general";
+  })();
+
+  return {
+    overall: round2(overall),
+    risk: round2(risk),
+    components: {
+      completeness: {
+        score: round2(completeness),
+        note: hasVehicles
+          ? `Vehicles history present${hasCustomers ? ", customers present" : ""}${hasParts ? ", parts present" : ""}.`
+          : "No vehicles history detected.",
+      },
+      historyVolume: {
+        score: round2(hv),
+        note: `Based on ${mergedStats.totalRepairOrders || 0} repair orders.`,
+      },
+      classification: {
+        score: round2(classification),
+        note: `Derived from suggestions generated (menus: ${menuCount}, inspections: ${inspCount}).`,
+      },
+    },
+    meta: {
+      specialty,
+      import_row_count: importStats.rowCount,
+      import_file_count: importStats.fileCount,
+    },
+  };
+}
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/* -------------------------------------------------------------------------- */
+/* ✅ Persist suggestions                                                       */
+/* -------------------------------------------------------------------------- */
+
+async function persistSuggestions(args: {
+  supabase: ReturnType<typeof createAdminSupabase>;
+  shopId: string;
+  intakeId: string;
+  aiSnapshot: ShopHealthSnapshot;
+  issuesDetected: ShopHealthIssue[];
+  mergedStats: DerivedStats;
+}): Promise<void> {
+  const { supabase, shopId, intakeId, aiSnapshot } = args;
+
+  // Menu suggestions -> menu_item_suggestions (title column)
+  const menuInserts: DB["public"]["Tables"]["menu_item_suggestions"]["Insert"][] = (
+    aiSnapshot.menuSuggestions ?? []
+  ).map((m) => ({
+    shop_id: shopId,
+    intake_id: intakeId,
+    title: m.name ?? "Suggested menu item",
+    category: null,
+    price_suggestion: Number.isFinite(Number(m.recommendedPrice)) ? Number(m.recommendedPrice) : null,
+    labor_hours_suggestion: Number.isFinite(Number(m.estimatedLaborHours))
+      ? Number(m.estimatedLaborHours)
+      : null,
+    confidence: 0.75,
+    reason: m.description ?? null,
+  })) as DB["public"]["Tables"]["menu_item_suggestions"]["Insert"][];
+
+  if (menuInserts.length > 0) {
+    const { error } = await supabase.from("menu_item_suggestions").insert(menuInserts);
+    if (error) console.error("[shopBoost] failed inserting menu_item_suggestions", error);
+  }
+
+  // Inspection suggestions -> inspection_template_suggestions
+  const inspInserts: DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"][] = (
+    aiSnapshot.inspectionSuggestions ?? []
+  ).map((i) => ({
+    shop_id: shopId,
+    intake_id: intakeId,
+    template_key: null,
+    name: i.name ?? "Suggested inspection",
+    items: { note: i.note ?? null, usageContext: i.usageContext ?? null },
+    applies_to:
+      i.usageContext === "fleet" ? "fleet" : i.usageContext === "retail" ? "retail" : "both",
+    confidence: 0.8,
+  })) as DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"][];
+
+  if (inspInserts.length > 0) {
+    const { error } = await supabase.from("inspection_template_suggestions").insert(inspInserts);
+    if (error) console.error("[shopBoost] failed inserting inspection_template_suggestions", error);
+  }
+
+  // Staff suggestions: keep deterministic + small. (You can upgrade this later.)
+  // We propose at least 1 advisor + 1 tech if none exist, based on questionnaire counts if present.
+  const staffSuggested: Array<{ role: string; count: number; notes: string | null }> = [];
+
+  const q = aiSnapshot ? (aiSnapshot as unknown) : null;
+  void q;
+
+  staffSuggested.push({
+    role: "advisor",
+    count: 1,
+    notes: "Recommended to assign an advisor to own approvals + dispatch.",
+  });
+  staffSuggested.push({
+    role: "tech",
+    count: 1,
+    notes: "Recommended to add at least one technician account for timecards and attribution.",
+  });
+
+  const staffInserts: DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"][] =
+    staffSuggested.map((s) => ({
+      shop_id: shopId,
+      intake_id: intakeId,
+      role: s.role,
+      count_suggested: s.count,
+      notes: s.notes,
+    })) as DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"][];
+
+  const { error: staffErr } = await supabase.from("staff_invite_suggestions").insert(staffInserts);
+  if (staffErr) console.error("[shopBoost] failed inserting staff_invite_suggestions", staffErr);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -741,8 +1177,6 @@ async function generateSnapshotWithAI(
     "You are an assistant that helps configure an auto and heavy-duty repair shop management system. " +
     "Return ONLY valid JSON, no markdown, no commentary.";
 
-  // NOTE: we still ask AI for the classic fields (repairs, menus, inspections, narrative).
-  // Issues/recs are now server-side heuristics so we keep them deterministic.
   const shapeExample = {
     shopId: "<string>",
     timeRangeDescription: "<string>",
@@ -812,7 +1246,6 @@ async function generateSnapshotWithAI(
       id: i.id && i.id !== "<uuid-string>" ? i.id : randomUUID(),
     }));
 
-    // Fill required fields (new ones are set later by heuristics)
     const snapshotBase: ShopHealthSnapshot = {
       shopId,
       timeRangeDescription: parsed.timeRangeDescription ?? "Recent history",
@@ -827,7 +1260,6 @@ async function generateSnapshotWithAI(
       inspectionSuggestions,
       narrativeSummary: parsed.narrativeSummary ?? "No summary yet.",
 
-      // placeholders (set after)
       topTechs: [],
       issuesDetected: [],
       recommendations: [],
