@@ -442,7 +442,12 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
 
       // Handles messy headers because pick() normalizes keys with lower(trim)
       const fullName =
-        pick(row, [/^full name$/, /^name$/, /employee name/, /staff name/, /technician/, /advisor/]) ?? null;
+  pick(row, [
+    /^full[_\s-]*name$/, // ✅ matches Full_Name, full_name, full-name, full name
+    /^name$/,
+    /employee name/,
+    /staff name/,
+  ]) ?? null;
 
       const emailRaw = pick(row, [/^email$/, /e-mail/, /mail/]);
       const email = emailRaw && emailRaw.includes("@") ? emailRaw.trim() : null;
