@@ -178,7 +178,7 @@ export default function ShopBoostOnboardingPage() {
 
       // ✅ RLS policy expects first path segment == shopId
       const safeName = safeFileName(file.name || `${kind}.csv`);
-      const path = `${shopId}/${intakeId}/${kind}-${safeName}`;
+      const path = `shops/${shopId}/${intakeId}/${kind}-${safeName}`;
 
       const { error: uploadErr } = await supabase.storage
         .from(SHOP_IMPORT_BUCKET)
