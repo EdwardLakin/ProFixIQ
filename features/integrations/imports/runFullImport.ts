@@ -38,6 +38,35 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+// ✅ ROLE PATCH (only change)
+const ROLE_MAP: Record<string, DB["public"]["Enums"]["user_role_enum"]> = {
+  owner: "owner",
+  admin: "admin",
+  manager: "manager",
+  advisor: "advisor",
+  mechanic: "mechanic",
+  parts: "parts",
+  driver: "driver",
+  dispatcher: "dispatcher",
+  fleet_manager: "fleet_manager",
+
+  // common aliases
+  tech: "mechanic",
+  technician: "mechanic",
+
+  // requested mapping
+  accounting: "admin",
+};
+
+function normRole(raw: string | null | undefined): DB["public"]["Enums"]["user_role_enum"] {
+  const key = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  return ROLE_MAP[key] ?? "mechanic";
+}
+
 function parseCsv(csv: string): { header: string[]; rows: CsvRow[] } {
   const lines = csv
     .split(/\r?\n/)
@@ -452,26 +481,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
       const emailRaw = pick(row, [/^email$/, /e-mail/, /mail/]);
       const email = emailRaw && emailRaw.includes("@") ? emailRaw.trim() : null;
 
-      const roleRaw = lower(pick(row, [/^role$/, /position/, /job/, /title/]) ?? "");
-      const roleEnum =
-        ([
-          "owner",
-          "admin",
-          "manager",
-          "advisor",
-          "mechanic",
-          "parts",
-          "driver",
-          "dispatcher",
-          "fleet_manager",
-          "tech",
-          "technician",
-        ] as const).includes(roleRaw as any)
-          ? roleRaw
-          : null;
-
-      // normalize tech/technician -> mechanic (matches your ROLE_MAP expectation downstream)
-      const role = roleEnum === "tech" || roleEnum === "technician" ? "mechanic" : roleEnum;
+      // ✅ ROLE PATCH (use schema enum + mapping, including accounting->admin)
+      const roleRaw = pick(row, [/^role$/, /position/, /job/, /title/]);
+      const role = normRole(roleRaw);
 
       // Skip totally empty rows
       if (!fullName && !email && !role) continue;
