@@ -126,6 +126,17 @@ export const TILES: Tile[] = [
     scopes: ["work_orders", "all"],
     section: "Operations",
   },
+    /* ---------------------------------------------------------------------- */
+  /* MENU (owner/advisor)                                                    */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/menu",
+    title: "Menu Builder",
+    subtitle: "Create and manage menu items",
+    roles: ["owner", "admin", "manager", "advisor"],
+    scopes: ["management", "settings", "all"],
+    section: "Tools",
+  },
 
   /* ---------------------------------------------------------------------- */
   /* APPOINTMENTS                                                            */
@@ -143,7 +154,7 @@ export const TILES: Tile[] = [
   /* INSPECTIONS (no mechanic/tech sidebar access)                           */
   /* ---------------------------------------------------------------------- */
   {
-    href: "/inspection/templates",
+    href: "/inspections/templates",
     title: "Inspection Templates",
     subtitle: "View and edit",
     roles: ["advisor", "manager", "owner", "admin"],

@@ -212,9 +212,9 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
     }
   }, [shopId, load]);
 
-  const openMenu = useCallback(() => router.push("/app/menu"), [router]);
-  const openInspections = useCallback(() => router.push("/inspections"), [router]);
-  const openTeam = useCallback(() => router.push("/dashboard/owner/team"), [router]);
+  const openMenu = useCallback(() => router.push("/menu"), [router]);
+  const openInspections = useCallback(() => router.push("/inspection/templates"), [router]);
+  const openTeam = useCallback(() => router.push("/dashboard/owner/create-user"), [router]);
 
   const acceptSuggestion = useCallback(
     async (s: ShopBoostSuggestionRow) => {

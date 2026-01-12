@@ -1,4 +1,4 @@
-// app/api/shop-health/accept-suggestion/route.ts
+// /app/api/shop-health/accept-suggestion/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -14,13 +14,12 @@ import {
 type DB = Database;
 
 type Body = {
-  shopId?: string | null;
+  shopId?: string | null; // ignored intentionally
   suggestionId?: string | null;
 };
 
 const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
 
-// Map suggestion roles -> your enum values (fallback to mechanic)
 const ROLE_MAP: Record<string, DB["public"]["Enums"]["user_role_enum"]> = {
   owner: "owner",
   admin: "admin",
@@ -35,19 +34,29 @@ const ROLE_MAP: Record<string, DB["public"]["Enums"]["user_role_enum"]> = {
   fleet_manager: "fleet_manager",
 };
 
-function normRole(raw: string | null | undefined): DB["public"]["Enums"]["user_role_enum"] {
-  const key = String(raw ?? "")
-    .trim()
-    .toLowerCase();
-  return ROLE_MAP[key] ?? "mechanic";
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 function safeStr(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+function toNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function normRole(raw: string | null | undefined): DB["public"]["Enums"]["user_role_enum"] {
+  const key = String(raw ?? "").trim().toLowerCase();
+  return ROLE_MAP[key] ?? "mechanic";
+}
+
 function genPassword(): string {
-  // 12 bytes -> 16 chars base64url-ish after slicing
   return randomBytes(12).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 14);
 }
 
@@ -64,7 +73,6 @@ async function uniqueUsername(
 
   const root = clean || "user";
 
-  // try root, then root_2..root_50, then root_<uuid4>
   for (let i = 0; i < 50; i += 1) {
     const candidate = i === 0 ? root : `${root}_${i + 1}`;
     const { data } = await admin
@@ -97,7 +105,9 @@ async function getCallerOrFail() {
     .from("profiles")
     .select("id, role, shop_id, full_name")
     .eq("id", user.id)
-    .maybeSingle<Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "role" | "shop_id" | "full_name">>();
+    .maybeSingle<
+      Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "role" | "shop_id" | "full_name">
+    >();
 
   if (meErr || !me || !me.shop_id) {
     return {
@@ -131,23 +141,14 @@ async function findSuggestion(
   admin: ReturnType<typeof createAdminSupabase>,
   suggestionId: string,
 ): Promise<FoundSuggestion | null> {
-  // Try each table (cheap + deterministic)
   const [menuRes, inspRes, staffRes] = await Promise.all([
-    admin
-      .from("menu_item_suggestions")
-      .select("*")
-      .eq("id", suggestionId)
-      .maybeSingle<MenuSuggestionRow>(),
+    admin.from("menu_item_suggestions").select("*").eq("id", suggestionId).maybeSingle<MenuSuggestionRow>(),
     admin
       .from("inspection_template_suggestions")
       .select("*")
       .eq("id", suggestionId)
       .maybeSingle<InspSuggestionRow>(),
-    admin
-      .from("staff_invite_suggestions")
-      .select("*")
-      .eq("id", suggestionId)
-      .maybeSingle<StaffSuggestionRow>(),
+    admin.from("staff_invite_suggestions").select("*").eq("id", suggestionId).maybeSingle<StaffSuggestionRow>(),
   ]);
 
   if (menuRes.data) return { type: "menu_item", row: menuRes.data };
@@ -177,7 +178,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Suggestion not found" }, { status: 404 });
     }
 
-    // Enforce shop match (ignore any client shopId)
     const suggestionShopId = (found.row as { shop_id: string | null }).shop_id;
     if (!suggestionShopId || suggestionShopId !== callerShopId) {
       return NextResponse.json({ error: "Suggestion not in your shop" }, { status: 403 });
@@ -185,16 +185,26 @@ export async function POST(req: Request) {
 
     // --- MENU ITEM SUGGESTION -> menu_items
     if (found.type === "menu_item") {
-      const s = found.row;
+      const s = found.row as unknown as Record<string, unknown>;
+
+      const titleOrName =
+        safeStr(s["title"]).trim() ||
+        safeStr(s["name"]).trim() ||
+        "Untitled Menu Item";
+
+      const category = safeStr(s["category"]).trim() || null;
+      const price = toNumber(s["price_suggestion"]);
+      const labor = toNumber(s["labor_hours_suggestion"]);
+      const reason = safeStr(s["reason"]).trim() || null;
 
       const insert: DB["public"]["Tables"]["menu_items"]["Insert"] = {
         shop_id: callerShopId,
         user_id: caller.me.id,
-        name: s.title, // suggestion uses "title"
-        category: s.category ?? null,
-        total_price: s.price_suggestion ?? null,
-        labor_hours: s.labor_hours_suggestion ?? null,
-        description: s.reason ?? null,
+        name: titleOrName,
+        category,
+        total_price: price,
+        labor_hours: labor,
+        description: reason,
         is_active: true,
         source: "shop_boost",
       } as DB["public"]["Tables"]["menu_items"]["Insert"];
@@ -203,34 +213,32 @@ export async function POST(req: Request) {
         .from("menu_items")
         .insert(insert)
         .select("*")
-        .maybeSingle();
+        .single();
 
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-      return NextResponse.json({
-        ok: true,
-        createdType: "menu_item",
-        created,
-      });
+      return NextResponse.json({ ok: true, createdType: "menu_item", created });
     }
 
     // --- INSPECTION TEMPLATE SUGGESTION -> inspection_templates
     if (found.type === "inspection_template") {
-      const s = found.row;
+      const s = found.row as unknown as Record<string, unknown>;
 
-      // items -> sections (your destination column is "sections")
-      const sections = (s.items ?? {}) as unknown as DB["public"]["Tables"]["inspection_templates"]["Insert"]["sections"];
+      const name = safeStr(s["name"]).trim() || "Shop Boost Inspection";
+      const appliesTo = safeStr(s["applies_to"]).trim() || null;
+
+      const items = s["items"];
+      const sections =
+        isRecord(items) ? (items as DB["public"]["Tables"]["inspection_templates"]["Insert"]["sections"]) : ({} as DB["public"]["Tables"]["inspection_templates"]["Insert"]["sections"]);
 
       const insert: DB["public"]["Tables"]["inspection_templates"]["Insert"] = {
         shop_id: callerShopId,
         user_id: caller.me.id,
-        template_name: s.name,
+        template_name: name,
         sections,
         description: null,
         tags: ["shop_boost"],
-        vehicle_type: s.applies_to ?? null,
+        vehicle_type: appliesTo,
         is_public: false,
       } as DB["public"]["Tables"]["inspection_templates"]["Insert"];
 
@@ -238,30 +246,21 @@ export async function POST(req: Request) {
         .from("inspection_templates")
         .insert(insert)
         .select("*")
-        .maybeSingle();
+        .single();
 
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-      return NextResponse.json({
-        ok: true,
-        createdType: "inspection_template",
-        created,
-      });
+      return NextResponse.json({ ok: true, createdType: "inspection_template", created });
     }
 
     // --- STAFF INVITE SUGGESTION -> create real users (auth + profiles)
     if (found.type === "staff_invite") {
-      const s = found.row;
+      const s = found.row as unknown as Record<string, unknown>;
 
-      const roleEnum = normRole(s.role);
-      const count = Math.max(0, Math.min(25, Number(s.count_suggested ?? 0) || 0)); // cap
+      const roleEnum = normRole(safeStr(s["role"]));
+      const count = Math.max(0, Math.min(25, Number(s["count_suggested"] ?? 0) || 0));
       if (count <= 0) {
-        return NextResponse.json(
-          { error: "This staff suggestion has count_suggested = 0" },
-          { status: 400 },
-        );
+        return NextResponse.json({ error: "This staff suggestion has count_suggested = 0" }, { status: 400 });
       }
 
       const createdUsers: Array<{
@@ -272,7 +271,6 @@ export async function POST(req: Request) {
         role: DB["public"]["Enums"]["user_role_enum"];
       }> = [];
 
-      // Use a readable username base: role + shop short
       const shopShort = callerShopId.slice(0, 6);
       const base = `${roleEnum}_${shopShort}`;
 
@@ -281,7 +279,6 @@ export async function POST(req: Request) {
         const tempPassword = genPassword();
         const syntheticEmail = `${username}@local.profix-internal`;
 
-        // Create auth user
         const { data: authCreated, error: authErr } = await admin.auth.admin.createUser({
           email: syntheticEmail,
           password: tempPassword,
@@ -304,7 +301,6 @@ export async function POST(req: Request) {
 
         const newUserId = authCreated.user.id;
 
-        // Upsert profile (mirrors /api/admin/create-user)
         const { error: profErr } = await admin
           .from("profiles")
           .upsert(
@@ -324,9 +320,11 @@ export async function POST(req: Request) {
           );
 
         if (profErr) {
-          // attempt cleanup so we don’t leave auth-only users
           await admin.auth.admin.deleteUser(newUserId).catch(() => null);
-          return NextResponse.json({ error: `Profile upsert failed: ${profErr.message}` }, { status: 400 });
+          return NextResponse.json(
+            { error: `Profile upsert failed: ${profErr.message}` },
+            { status: 400 },
+          );
         }
 
         createdUsers.push({
