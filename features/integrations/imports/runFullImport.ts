@@ -50,19 +50,24 @@ function parseCsv(csv: string): { header: string[]; rows: CsvRow[] } {
     const out: string[] = [];
     let cur = "";
     let inQuotes = false;
+
     for (let i = 0; i < line.length; i += 1) {
       const ch = line[i];
+
       if (ch === '"') {
         inQuotes = !inQuotes;
         continue;
       }
+
       if (ch === "," && !inQuotes) {
         out.push(cur);
         cur = "";
         continue;
       }
+
       cur += ch;
     }
+
     out.push(cur);
     return out.map((s) => s.trim());
   };
@@ -189,6 +194,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
       .select("id,email,phone,phone_number,shop_id")
       .eq("shop_id", shopId)
       .limit(5000);
+
     for (const r of data ?? []) {
       const email = lower((r as any).email ?? "");
       const phone = lower((r as any).phone ?? (r as any).phone_number ?? "");
@@ -204,6 +210,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
       .select("id,vin,license_plate,shop_id")
       .eq("shop_id", shopId)
       .limit(5000);
+
     for (const r of data ?? []) {
       const vin = lower((r as any).vin ?? "");
       const plate = lower((r as any).license_plate ?? "");
@@ -219,6 +226,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
       .select("id,email,full_name,shop_id")
       .eq("shop_id", shopId)
       .limit(5000);
+
     for (const r of data ?? []) {
       const email = lower((r as any).email ?? "");
       const name = lower((r as any).full_name ?? "");
@@ -249,8 +257,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
 
       const external_id = `import:${intakeId}:customers:${i + 1}`;
 
-      const existingId =
-        (email && customersByEmail.get(email)) || (phone && customersByPhone.get(phone));
+      const existingId = (email && customersByEmail.get(email)) || (phone && customersByPhone.get(phone));
 
       if (existingId) {
         await supabase
@@ -349,6 +356,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
             import_confidence: 0.75,
           } as DB["public"]["Tables"]["vehicles"]["Update"])
           .eq("id", existingId);
+
         continue;
       }
 
@@ -422,29 +430,22 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
     }
   }
 
-  // 4) Import staff (Auth + profiles)
-    // 4) Import staff -> staff_invite_suggestions (NO auth creation here)
+  // 4) Import staff -> staff_invite_suggestions (NO auth creation here)
   if (staffCsv) {
     const { rows } = parseCsv(staffCsv);
 
     // Optional: clear prior staff suggestions for this intake so reruns don't duplicate
-    await supabase
-      .from("staff_invite_suggestions")
-      .delete()
-      .eq("shop_id", shopId)
-      .eq("intake_id", intakeId);
+    await supabase.from("staff_invite_suggestions").delete().eq("shop_id", shopId).eq("intake_id", intakeId);
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
 
-      // Handles messy headers like "role " etc because pick() normalizes keys with lower(trim)
+      // Handles messy headers because pick() normalizes keys with lower(trim)
       const fullName =
-        pick(row, [/^full name$/, /^name$/, /employee name/, /staff name/, /technician/, /advisor/]) ??
-        null;
+        pick(row, [/^full name$/, /^name$/, /employee name/, /staff name/, /technician/, /advisor/]) ?? null;
 
       const emailRaw = pick(row, [/^email$/, /e-mail/, /mail/]);
-      const email =
-        emailRaw && emailRaw.includes("@") ? emailRaw.trim() : null;
+      const email = emailRaw && emailRaw.includes("@") ? emailRaw.trim() : null;
 
       const roleRaw = lower(pick(row, [/^role$/, /position/, /job/, /title/]) ?? "");
       const roleEnum =
@@ -464,38 +465,36 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
           ? roleRaw
           : null;
 
-      // normalize tech/technician -> mechanic to match your enum expectations downstream
-      const role =
-        roleEnum === "tech" || roleEnum === "technician" ? "mechanic" : roleEnum;
+      // normalize tech/technician -> mechanic (matches your ROLE_MAP expectation downstream)
+      const role = roleEnum === "tech" || roleEnum === "technician" ? "mechanic" : roleEnum;
 
       // Skip totally empty rows
       if (!fullName && !email && !role) continue;
 
-      const reason =
-        pick(row, [/reason/, /note/, /notes/, /comment/]) ??
-        "Imported from staff CSV";
+      const notes = pick(row, [/reason/, /note/, /notes/, /comment/]) ?? "Imported from staff CSV";
 
-      // confidence can be inferred, but keep it simple for now
-      const confidence = 0.8;
-
-      // Use deterministic-ish external id to prevent duplicates on reruns
+      // Deterministic-ish external id to prevent duplicates on reruns (even without delete)
       const external_id = `import:${intakeId}:staff:${i + 1}:${sha1(
         `${fullName ?? ""}|${email ?? ""}|${role ?? ""}`,
       ).slice(0, 10)}`;
 
-      await supabase.from("staff_invite_suggestions").insert({
+      const { error: staffInsErr } = await supabase.from("staff_invite_suggestions").insert({
         shop_id: shopId,
         intake_id: intakeId,
-        role: role ?? null,
+        role: role ?? "mechanic",
         full_name: fullName,
-        email: email,
+        email,
         count_suggested: 1,
-        confidence,
-        reason,
+        notes,
         external_id,
       } as unknown as DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"]);
+
+      if (staffInsErr) {
+        console.warn("[staff invite suggestions] insert failed", staffInsErr);
+      }
     }
   }
+
   // 5) Import history → completed work orders + lines (+ invoices if totals exist)
   if (historyCsv) {
     const { rows } = parseCsv(historyCsv);
@@ -503,12 +502,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
 
-      const ro =
-        pick(row, [/^ro$/, /ro number/, /work order/, /order number/, /invoice number/]) ?? null;
+      const ro = pick(row, [/^ro$/, /ro number/, /work order/, /order number/, /invoice number/]) ?? null;
 
-      const dateIso =
-        parseDateIso(pick(row, [/date/, /service date/, /closed/, /completed/])) ??
-        new Date().toISOString();
+      const dateIso = parseDateIso(pick(row, [/date/, /service date/, /closed/, /completed/])) ?? new Date().toISOString();
 
       const complaint = pick(row, [/complaint/, /concern/]);
       const cause = pick(row, [/cause/]);
@@ -530,8 +526,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
         (customerPhone && customersByPhone.get(customerPhone)) ||
         null;
 
-      const vehicle_id =
-        (vin && vehiclesByVin.get(vin)) || (plate && vehiclesByPlate.get(plate)) || null;
+      const vehicle_id = (vin && vehiclesByVin.get(vin)) || (plate && vehiclesByPlate.get(plate)) || null;
 
       const external_id = `import:${intakeId}:history:${i + 1}`;
 
@@ -567,6 +562,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle<{ id: string }>();
+
           if (!existingWo?.id) continue;
 
           await upsertHistoryLine({
@@ -625,9 +621,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
     }
   }
 
-  const prevBasics = isRecord((intakeRow as any).intake_basics)
-    ? ((intakeRow as any).intake_basics as Record<string, unknown>)
-    : {};
+  const prevBasics = isRecord((intakeRow as any).intake_basics) ? ((intakeRow as any).intake_basics as Record<string, unknown>) : {};
 
   await supabase
     .from("shop_boost_intakes")
@@ -654,8 +648,7 @@ async function upsertHistoryLine(args: {
   correction: string | null;
   vehicle_id: string | null;
 }): Promise<void> {
-  const { supabase, shopId, intakeId, workOrderId, rowIndex, complaint, cause, correction, vehicle_id } =
-    args;
+  const { supabase, shopId, intakeId, workOrderId, rowIndex, complaint, cause, correction, vehicle_id } = args;
 
   const external_id = `import:${intakeId}:wol:${rowIndex}`;
 
