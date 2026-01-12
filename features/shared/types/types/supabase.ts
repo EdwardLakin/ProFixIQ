@@ -6441,6 +6441,99 @@ export type Database = {
           },
         ]
       }
+      staff_invite_candidates: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          created_profile_id: string | null
+          email: string | null
+          email_lc: string | null
+          full_name: string | null
+          id: string
+          intake_id: string | null
+          notes: string | null
+          phone: string | null
+          role: Database["public"]["Enums"]["user_role_enum"] | null
+          shop_id: string
+          source: string
+          updated_at: string
+          username: string | null
+          username_lc: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          created_profile_id?: string | null
+          email?: string | null
+          email_lc?: string | null
+          full_name?: string | null
+          id?: string
+          intake_id?: string | null
+          notes?: string | null
+          phone?: string | null
+          role?: Database["public"]["Enums"]["user_role_enum"] | null
+          shop_id: string
+          source?: string
+          updated_at?: string
+          username?: string | null
+          username_lc?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          created_profile_id?: string | null
+          email?: string | null
+          email_lc?: string | null
+          full_name?: string | null
+          id?: string
+          intake_id?: string | null
+          notes?: string | null
+          phone?: string | null
+          role?: Database["public"]["Enums"]["user_role_enum"] | null
+          shop_id?: string
+          source?: string
+          updated_at?: string
+          username?: string | null
+          username_lc?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_invite_candidates_created_profile_id_fkey"
+            columns: ["created_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_invite_candidates_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "shop_boost_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_invite_candidates_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "v_shop_boost_overview"
+            referencedColumns: ["intake_id"]
+          },
+          {
+            foreignKeyName: "staff_invite_candidates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_invite_candidates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_invite_suggestions: {
         Row: {
           count_suggested: number

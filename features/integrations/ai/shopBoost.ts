@@ -155,6 +155,14 @@ export async function buildShopBoostProfile(
     mergedStats,
   });
 
+  // ✅ NEW: persist staff candidates from staff CSV (per-person)
+  await persistStaffInviteCandidates({
+    supabase,
+    shopId,
+    intakeId: intakeRow.id,
+    staffCsv,
+  });
+
   const snapshot: ShopHealthSnapshot = {
     ...aiSnapshot,
     topTechs,
@@ -293,7 +301,6 @@ function countCsvDataRows(csv: string): number {
     .map((l) => l.trim())
     .filter((l) => l.length);
 
-  // 0 or 1 line = header only
   if (lines.length < 2) return 0;
   return Math.max(0, lines.length - 1);
 }
@@ -336,7 +343,6 @@ async function insertImportRows(args: {
     } as DB["public"]["Tables"]["shop_import_rows"]["Insert"]);
   }
 
-  // Batch insert
   for (let i = 0; i < rows.length; i += IMPORT_ROW_BATCH) {
     const batch = rows.slice(i, i + IMPORT_ROW_BATCH);
     const { error } = await supabase.from("shop_import_rows").insert(batch);
@@ -373,8 +379,6 @@ type CsvStatsInput = {
   customersCsv: string | null;
   vehiclesCsv: string | null;
   partsCsv: string | null;
-
-  // ✅ new
   historyCsv: string | null;
 };
 
@@ -476,7 +480,6 @@ function chooseBestTotalColumn(headers: string[]): number {
     const h = normHeader(headers[i]);
     if (!h) continue;
 
-    // ✅ hard skip non-money columns (prevents VIN/RO/ID being “total”)
     if (/(vin|plate|license|unit|ro|work order|order number|invoice number|phone|email|address|id)/i.test(h)) {
       continue;
     }
@@ -495,9 +498,7 @@ function chooseBestTotalColumn(headers: string[]): number {
     }
   }
 
-  // Optional: if nothing scored at all, return -1 (don’t guess)
   if (bestScore <= 0) return -1;
-
   return bestIdx;
 }
 
@@ -519,13 +520,11 @@ function parseMoneySafe(v: string): number {
   const cleaned = s.replace(/[^0-9,.\-]/g, "");
   if (!cleaned) return 0;
 
-  // 1,234.56 -> 1234.56
   if (cleaned.includes(",") && cleaned.includes(".")) {
     const n = Number(cleaned.replace(/,/g, ""));
     return Number.isFinite(n) ? n : 0;
   }
 
-  // 6,06 -> 6.06
   if (cleaned.includes(",") && !cleaned.includes(".")) {
     const n = Number(cleaned.replace(",", "."));
     return Number.isFinite(n) ? n : 0;
@@ -546,7 +545,6 @@ async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> 
     fleetMetrics: [],
   };
 
-  // ✅ FIX: use HISTORY CSV for stats
   if (!input.historyCsv) return empty;
 
   const lines = input.historyCsv
@@ -562,7 +560,6 @@ async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> 
 
   const repairMap = new Map<string, { count: number; revenue: number }>();
 
-  // ✅ FIX: totals must be computed across ALL rows, not top 10 slice
   let totalRepairOrders = 0;
   let totalRevenue = 0;
 
@@ -655,6 +652,189 @@ function mergeRepairLists(a: ShopHealthTopRepair[], b: ShopHealthTopRepair[]): S
   return Array.from(map.values())
     .sort((x, y) => y.count - x.count)
     .slice(0, 10);
+}
+
+/* -------------------------------------------------------------------------- */
+/* ✅ Staff invite candidates (from staff CSV)                                 */
+/* -------------------------------------------------------------------------- */
+
+type StaffCandidate = {
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  username: string | null;
+  role: DB["public"]["Enums"]["user_role_enum"] | null;
+  confidence: number | null;
+  source: string;
+  notes: string | null;
+};
+
+function lower(s: string | null | undefined): string {
+  return (s ?? "").trim().toLowerCase();
+}
+
+function cleanUsername(raw: string): string {
+  const s = lower(raw).replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
+  return s.slice(0, 32);
+}
+
+function pickByHeader(headers: string[], cols: string[], patterns: RegExp[]): string | null {
+  for (let i = 0; i < headers.length; i += 1) {
+    const h = lower(headers[i]);
+    if (!h) continue;
+    if (!patterns.some((p) => p.test(h))) continue;
+    const v = (cols[i] ?? "").trim();
+    if (v) return v;
+  }
+  return null;
+}
+
+function normalizeRole(raw: string | null): DB["public"]["Enums"]["user_role_enum"] | null {
+  const r = lower(raw);
+  if (!r) return null;
+
+  const allowed = new Set([
+    "owner",
+    "admin",
+    "manager",
+    "advisor",
+    "mechanic",
+    "parts",
+    "driver",
+    "dispatcher",
+    "fleet_manager",
+  ]);
+
+  if (allowed.has(r)) return r as DB["public"]["Enums"]["user_role_enum"];
+
+  if (r.includes("tech") || r.includes("mechanic")) return "mechanic";
+  if (r.includes("advisor") || r.includes("writer")) return "advisor";
+  if (r.includes("parts")) return "parts";
+  if (r.includes("manager")) return "manager";
+  if (r.includes("admin")) return "admin";
+  if (r.includes("owner")) return "owner";
+
+  return null;
+}
+
+function parseStaffCandidatesFromCsv(staffCsv: string): StaffCandidate[] {
+  const lines = staffCsv
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length);
+
+  if (lines.length < 2) return [];
+
+  const headers = splitCsvLine(lines[0]);
+
+  const out: StaffCandidate[] = [];
+
+  for (let i = 1; i < lines.length; i += 1) {
+    const cols = splitCsvLine(lines[i]);
+
+    const fullName =
+      pickByHeader(headers, cols, [/^full name$/, /^name$/, /employee/, /staff/]) ?? null;
+
+    const emailRaw = pickByHeader(headers, cols, [/^email$/, /e-mail/]);
+    const phoneRaw = pickByHeader(headers, cols, [/^phone$/, /mobile/, /cell/]);
+
+    const usernameRaw = pickByHeader(headers, cols, [/^username$/, /user name/, /login/]);
+    const roleRaw = pickByHeader(headers, cols, [/^role$/, /position/, /job/]);
+
+    const email = emailRaw && emailRaw.includes("@") ? lower(emailRaw) : null;
+    const phone = phoneRaw ? phoneRaw.trim() : null;
+
+    const username =
+      usernameRaw
+        ? cleanUsername(usernameRaw)
+        : fullName
+          ? cleanUsername(fullName)
+          : email
+            ? cleanUsername(email.split("@")[0] ?? "")
+            : null;
+
+    const role = normalizeRole(roleRaw);
+    const confidence =
+      email || username ? 0.85 : fullName ? 0.6 : 0.4;
+
+    // Skip completely empty rows
+    if (!fullName && !email && !phone && !username) continue;
+
+    out.push({
+      full_name: fullName,
+      email,
+      phone,
+      username,
+      role,
+      confidence,
+      source: "staff_csv",
+      notes: null,
+    });
+  }
+
+  return out;
+}
+
+async function persistStaffInviteCandidates(args: {
+  supabase: ReturnType<typeof createAdminSupabase>;
+  shopId: string;
+  intakeId: string;
+  staffCsv: string | null;
+}): Promise<void> {
+  const { supabase, shopId, intakeId, staffCsv } = args;
+  if (!staffCsv) return;
+
+  const candidates = parseStaffCandidatesFromCsv(staffCsv);
+  if (candidates.length === 0) return;
+
+  // Prefer stable conflict keys: shop_id,email_lc and shop_id,username_lc
+  // We'll do two passes:
+  // 1) upsert by email_lc when email exists
+  // 2) upsert by username_lc when username exists and no email
+  const withEmail = candidates.filter((c) => c.email);
+  const noEmailButUsername = candidates.filter((c) => !c.email && c.username);
+
+  if (withEmail.length > 0) {
+    const rows = withEmail.map((c) => ({
+      shop_id: shopId,
+      intake_id: intakeId,
+      full_name: c.full_name,
+      email: c.email,
+      phone: c.phone,
+      username: c.username,
+      role: c.role,
+      source: c.source,
+      confidence: c.confidence,
+      notes: c.notes,
+    })) as DB["public"]["Tables"]["staff_invite_candidates"]["Insert"][];
+
+    const { error } = await supabase
+      .from("staff_invite_candidates")
+      .upsert(rows, { onConflict: "shop_id,email_lc" });
+
+    if (error) console.error("[shopBoost] staff_invite_candidates upsert(email) failed", error);
+  }
+
+  if (noEmailButUsername.length > 0) {
+    const rows = noEmailButUsername.map((c) => ({
+      shop_id: shopId,
+      intake_id: intakeId,
+      full_name: c.full_name,
+      email: null,
+      phone: c.phone,
+      username: c.username,
+      role: c.role,
+      source: c.source,
+      confidence: c.confidence,
+      notes: c.notes,
+    })) as DB["public"]["Tables"]["staff_invite_candidates"]["Insert"][];
+
+    const { error } = await supabase
+      .from("staff_invite_candidates")
+      .upsert(rows, { onConflict: "shop_id,username_lc" });
+
+    if (error) console.error("[shopBoost] staff_invite_candidates upsert(username) failed", error);
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -828,7 +1008,6 @@ function detectIssues(args: {
   const totalRos = mergedStats.totalRepairOrders || 0;
   const aro = mergedStats.averageRo || 0;
 
-  // 1) Comebacks
   const comebackCount = (comebackRisks ?? []).reduce((sum, r) => sum + (r.count || 0), 0);
   const comebackRate = totalRos > 0 ? comebackCount / totalRos : 0;
 
@@ -847,7 +1026,6 @@ function detectIssues(args: {
     });
   }
 
-  // 2) Low ARO
   const specialty = (() => {
     const q = intakeRow.questionnaire as unknown;
     if (!q || typeof q !== "object") return "general";
@@ -871,12 +1049,11 @@ function detectIssues(args: {
     });
   }
 
-  // 3) Bay imbalance
   const techCount = readQuestionnaireNumber(intakeRow.questionnaire, "techCount");
   const bayCount = readQuestionnaireNumber(intakeRow.questionnaire, "bayCount");
 
   if (techCount && bayCount && bayCount > 0) {
-    const ratio = techCount / bayCount; // tech per bay
+    const ratio = techCount / bayCount;
     if (ratio < 0.6 || ratio > 1.25) {
       const distance = ratio < 0.6 ? 0.6 - ratio : ratio - 1.25;
       const score = Math.min(100, Math.round(distance * 160));
@@ -1033,7 +1210,6 @@ function computeScores(args: {
 }): Record<string, unknown> {
   const { intakeRow, mergedStats, aiSnapshot, issuesDetected, importStats } = args;
 
-  // ✅ FIX: history is the backbone
   const hasHistory = importStats.byKind.history.rows > 0;
   const hasVehicles = importStats.byKind.vehicles.rows > 0;
   const hasCustomers = importStats.byKind.customers.rows > 0;
@@ -1044,7 +1220,6 @@ function computeScores(args: {
     (hasVehicles ? 0.15 : 0) + (hasCustomers ? 0.15 : 0) + (hasParts ? 0.1 : 0);
   const completeness = clamp01(completenessBase + completenessBonus);
 
-  // 0..200 ROs -> 0..1
   const hv = clamp01((mergedStats.totalRepairOrders || 0) / 200);
 
   const menuCount = (aiSnapshot.menuSuggestions ?? []).length;
@@ -1160,31 +1335,6 @@ async function persistSuggestions(args: {
     const { error } = await supabase.from("inspection_template_suggestions").insert(inspInserts);
     if (error) console.error("[shopBoost] failed inserting inspection_template_suggestions", error);
   }
-
-  const staffSuggested: Array<{ role: string; count: number; notes: string | null }> = [];
-
-  staffSuggested.push({
-    role: "advisor",
-    count: 1,
-    notes: "Recommended to assign an advisor to own approvals + dispatch.",
-  });
-  staffSuggested.push({
-    role: "tech",
-    count: 1,
-    notes: "Recommended to add at least one technician account for timecards and attribution.",
-  });
-
-  const staffInserts: DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"][] =
-    staffSuggested.map((s) => ({
-      shop_id: shopId,
-      intake_id: intakeId,
-      role: s.role,
-      count_suggested: s.count,
-      notes: s.notes,
-    })) as DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"][];
-
-  const { error: staffErr } = await supabase.from("staff_invite_suggestions").insert(staffInserts);
-  if (staffErr) console.error("[shopBoost] failed inserting staff_invite_suggestions", staffErr);
 }
 
 /* -------------------------------------------------------------------------- */
