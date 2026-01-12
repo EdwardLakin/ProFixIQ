@@ -254,96 +254,104 @@ export async function POST(req: Request) {
     }
 
     // --- STAFF INVITE SUGGESTION -> create real users (auth + profiles)
-    if (found.type === "staff_invite") {
-      const s = found.row as unknown as Record<string, unknown>;
+    // --- STAFF INVITE SUGGESTION -> create user(s)
+if (found.type === "staff_invite") {
+  const s = found.row as unknown as Record<string, unknown>;
 
-      const roleEnum = normRole(safeStr(s["role"]));
-      const count = Math.max(0, Math.min(25, Number(s["count_suggested"] ?? 0) || 0));
-      if (count <= 0) {
-        return NextResponse.json({ error: "This staff suggestion has count_suggested = 0" }, { status: 400 });
-      }
+  const roleEnum = normRole(safeStr(s["role"]));
+  const fullName = safeStr(s["full_name"]).trim() || null;
+  const emailRaw = safeStr(s["email"]).trim() || null;
 
-      const createdUsers: Array<{
-        user_id: string;
-        username: string;
-        email: string;
-        temp_password: string;
-        role: DB["public"]["Enums"]["user_role_enum"];
-      }> = [];
+  // ✅ NEW: if we have an email (or a name), treat this suggestion as "one person"
+  const isPerPerson = !!emailRaw || !!fullName;
 
-      const shopShort = callerShopId.slice(0, 6);
-      const base = `${roleEnum}_${shopShort}`;
+  const count = isPerPerson
+    ? 1
+    : Math.max(0, Math.min(25, Number(s["count_suggested"] ?? 0) || 0));
 
-      for (let i = 0; i < count; i += 1) {
-        const username = await uniqueUsername(admin, `${base}_${i + 1}`);
-        const tempPassword = genPassword();
-        const syntheticEmail = `${username}@local.profix-internal`;
+  if (count <= 0) {
+    return NextResponse.json({ error: "This staff suggestion has count_suggested = 0" }, { status: 400 });
+  }
 
-        const { data: authCreated, error: authErr } = await admin.auth.admin.createUser({
-          email: syntheticEmail,
-          password: tempPassword,
-          email_confirm: true,
-          user_metadata: {
-            full_name: null,
-            role: roleEnum,
-            shop_id: callerShopId,
-            phone: null,
-            username,
-          },
-        });
+  const createdUsers: Array<{
+    user_id: string;
+    username: string;
+    email: string;
+    temp_password: string;
+    role: DB["public"]["Enums"]["user_role_enum"];
+  }> = [];
 
-        if (authErr || !authCreated?.user?.id) {
-          return NextResponse.json(
-            { error: authErr?.message ?? "Failed to create staff user" },
-            { status: 400 },
-          );
-        }
+  const shopShort = callerShopId.slice(0, 6);
 
-        const newUserId = authCreated.user.id;
+  for (let i = 0; i < count; i += 1) {
+    const base = isPerPerson
+      ? `${(fullName ?? emailRaw ?? roleEnum).replace(/\s+/g, "_")}_${shopShort}`
+      : `${roleEnum}_${shopShort}_${i + 1}`;
 
-        const { error: profErr } = await admin
-          .from("profiles")
-          .upsert(
-            {
-              id: newUserId,
-              email: syntheticEmail,
-              full_name: null,
-              phone: null,
-              role: roleEnum,
-              shop_id: callerShopId,
-              shop_name: null,
-              username,
-              must_change_password: true,
-              updated_at: new Date().toISOString(),
-            } as DB["public"]["Tables"]["profiles"]["Insert"],
-            { onConflict: "id" },
-          );
+    const username = await uniqueUsername(admin, base);
+    const tempPassword = genPassword();
 
-        if (profErr) {
-          await admin.auth.admin.deleteUser(newUserId).catch(() => null);
-          return NextResponse.json(
-            { error: `Profile upsert failed: ${profErr.message}` },
-            { status: 400 },
-          );
-        }
+    // ✅ Prefer real email from CSV when present; otherwise synthetic
+    const email = emailRaw ?? `${username}@local.profix-internal`;
 
-        createdUsers.push({
-          user_id: newUserId,
-          username,
-          email: syntheticEmail,
-          temp_password: tempPassword,
-          role: roleEnum,
-        });
-      }
+    const { data: authCreated, error: authErr } = await admin.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName,
+        role: roleEnum,
+        shop_id: callerShopId,
+        username,
+      },
+    });
 
-      return NextResponse.json({
-        ok: true,
-        createdType: "staff_invite",
-        created: createdUsers,
-        note:
-          "These are real accounts with synthetic emails. Share username + temp password with staff. must_change_password=true.",
-      });
+    if (authErr || !authCreated?.user?.id) {
+      return NextResponse.json(
+        { error: authErr?.message ?? "Failed to create staff user" },
+        { status: 400 },
+      );
     }
+
+    const newUserId = authCreated.user.id;
+
+    const { error: profErr } = await admin
+      .from("profiles")
+      .upsert(
+        {
+          id: newUserId,
+          email,
+          full_name: fullName,
+          role: roleEnum,
+          shop_id: callerShopId,
+          username,
+          must_change_password: true,
+          updated_at: new Date().toISOString(),
+        } as DB["public"]["Tables"]["profiles"]["Insert"],
+        { onConflict: "id" },
+      );
+
+    if (profErr) {
+      await admin.auth.admin.deleteUser(newUserId).catch(() => null);
+      return NextResponse.json({ error: `Profile upsert failed: ${profErr.message}` }, { status: 400 });
+    }
+
+    createdUsers.push({
+      user_id: newUserId,
+      username,
+      email,
+      temp_password: tempPassword,
+      role: roleEnum,
+    });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    createdType: "staff_invite",
+    created: createdUsers,
+    note: "Share username + temp password. must_change_password=true.",
+  });
+}
 
     return NextResponse.json({ error: "Unsupported suggestion type" }, { status: 400 });
   } catch (e) {

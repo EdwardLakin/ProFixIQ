@@ -1,5 +1,5 @@
 // /features/integrations/imports/runFullImport.ts
-import { createHash, randomUUID } from "crypto";
+import { createHash, } from "crypto";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -423,18 +423,31 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
   }
 
   // 4) Import staff (Auth + profiles)
+    // 4) Import staff -> staff_invite_suggestions (NO auth creation here)
   if (staffCsv) {
     const { rows } = parseCsv(staffCsv);
+
+    // Optional: clear prior staff suggestions for this intake so reruns don't duplicate
+    await supabase
+      .from("staff_invite_suggestions")
+      .delete()
+      .eq("shop_id", shopId)
+      .eq("intake_id", intakeId);
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
 
+      // Handles messy headers like "role " etc because pick() normalizes keys with lower(trim)
       const fullName =
-        pick(row, [/full name/, /^name$/, /employee/, /staff/]) ?? `Staff ${i + 1}`;
-      const emailRaw = pick(row, [/^email$/, /e-mail/]);
-      const roleRaw = lower(pick(row, [/^role$/, /position/, /job/]) ?? "");
+        pick(row, [/^full name$/, /^name$/, /employee name/, /staff name/, /technician/, /advisor/]) ??
+        null;
 
-      const role =
+      const emailRaw = pick(row, [/^email$/, /e-mail/, /mail/]);
+      const email =
+        emailRaw && emailRaw.includes("@") ? emailRaw.trim() : null;
+
+      const roleRaw = lower(pick(row, [/^role$/, /position/, /job/, /title/]) ?? "");
+      const roleEnum =
         ([
           "owner",
           "admin",
@@ -445,67 +458,44 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
           "driver",
           "dispatcher",
           "fleet_manager",
+          "tech",
+          "technician",
         ] as const).includes(roleRaw as any)
-          ? (roleRaw as any)
+          ? roleRaw
           : null;
 
-      const email =
-        emailRaw && emailRaw.includes("@")
-          ? emailRaw
-          : `${lower(fullName).replace(/[^a-z0-9]+/g, ".").slice(0, 24)}.${sha1(fullName).slice(
-              0,
-              6,
-            )}@local.profixiq`;
+      // normalize tech/technician -> mechanic to match your enum expectations downstream
+      const role =
+        roleEnum === "tech" || roleEnum === "technician" ? "mechanic" : roleEnum;
 
-      const existingId = staffByEmail.get(lower(email)) || staffByName.get(lower(fullName));
+      // Skip totally empty rows
+      if (!fullName && !email && !role) continue;
 
-      if (existingId) {
-        await supabase
-          .from("profiles")
-          .update({
-            shop_id: shopId,
-            full_name: fullName,
-            email,
-            role,
-            must_change_password: true,
-            updated_at: new Date().toISOString(),
-          } as DB["public"]["Tables"]["profiles"]["Update"])
-          .eq("id", existingId);
+      const reason =
+        pick(row, [/reason/, /note/, /notes/, /comment/]) ??
+        "Imported from staff CSV";
 
-        continue;
-      }
+      // confidence can be inferred, but keep it simple for now
+      const confidence = 0.8;
 
-      const tempPassword = `PFI-${randomUUID().slice(0, 8)}!`;
+      // Use deterministic-ish external id to prevent duplicates on reruns
+      const external_id = `import:${intakeId}:staff:${i + 1}:${sha1(
+        `${fullName ?? ""}|${email ?? ""}|${role ?? ""}`,
+      ).slice(0, 10)}`;
 
-      const { data: created, error: createErr } = await supabase.auth.admin.createUser({
-        email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: { full_name: fullName, shop_id: shopId, source: "shop_boost" },
-      });
-
-      if (createErr || !created?.user?.id) {
-        console.warn("[staff import] failed to create auth user", createErr);
-        continue;
-      }
-
-      const userId = created.user.id;
-
-      await supabase.from("profiles").insert({
-        id: userId,
+      await supabase.from("staff_invite_suggestions").insert({
         shop_id: shopId,
+        intake_id: intakeId,
+        role: role ?? null,
         full_name: fullName,
-        email,
-        role,
-        must_change_password: true,
-        created_by: null,
-      } as DB["public"]["Tables"]["profiles"]["Insert"]);
-
-      staffByEmail.set(lower(email), userId);
-      staffByName.set(lower(fullName), userId);
+        email: email,
+        count_suggested: 1,
+        confidence,
+        reason,
+        external_id,
+      } as unknown as DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"]);
     }
   }
-
   // 5) Import history → completed work orders + lines (+ invoices if totals exist)
   if (historyCsv) {
     const { rows } = parseCsv(historyCsv);
