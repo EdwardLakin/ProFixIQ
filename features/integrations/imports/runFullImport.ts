@@ -96,8 +96,25 @@ function pick(row: CsvRow, patterns: RegExp[]): string | null {
 }
 
 function parseMoney(v: string | null): number | null {
-  if (!v) return null;
-  const n = Number(String(v).replace(/[^0-9.\-]/g, ""));
+  const s = (v ?? "").trim();
+  if (!s) return null;
+
+  const cleaned = s.replace(/[^0-9,.\-]/g, "");
+  if (!cleaned) return null;
+
+  // 1,234.56 -> 1234.56
+  if (cleaned.includes(",") && cleaned.includes(".")) {
+    const n = Number(cleaned.replace(/,/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // 6,06 -> 6.06
+  if (cleaned.includes(",") && !cleaned.includes(".")) {
+    const n = Number(cleaned.replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -236,7 +253,6 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
         (email && customersByEmail.get(email)) || (phone && customersByPhone.get(phone));
 
       if (existingId) {
-        // update light fields
         await supabase
           .from("customers")
           .update({
@@ -303,7 +319,6 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
       const mileage = pick(row, [/mileage/, /odometer/]);
       const engineHours = parseIntSafe(pick(row, [/engine hours/, /hours/]));
 
-      // link customer
       const custEmail = lower(pick(row, [/customer email/, /email/]) ?? "");
       const custPhone = lower(pick(row, [/customer phone/, /phone/]) ?? "");
       const customer_id =
@@ -460,7 +475,6 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
         continue;
       }
 
-      // Create auth user (service role required)
       const tempPassword = `PFI-${randomUUID().slice(0, 8)}!`;
 
       const { data: created, error: createErr } = await supabase.auth.admin.createUser({
@@ -531,7 +545,6 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
 
       const external_id = `import:${intakeId}:history:${i + 1}`;
 
-      // Work order insert (completed)
       const { data: woInserted, error: woErr } = await supabase
         .from("work_orders")
         .insert({
@@ -555,7 +568,6 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
         .limit(1);
 
       if (woErr) {
-        // If duplicate RO exists (manual rerun), try to find by custom_id
         if (ro) {
           const { data: existingWo } = await supabase
             .from("work_orders")
@@ -623,8 +635,9 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
     }
   }
 
-  // Mark intake processed (keep your status semantics, but ensure processed_at updated)
-  const prevBasics = isRecord((intakeRow as any).intake_basics) ? ((intakeRow as any).intake_basics as Record<string, unknown>) : {};
+  const prevBasics = isRecord((intakeRow as any).intake_basics)
+    ? ((intakeRow as any).intake_basics as Record<string, unknown>)
+    : {};
 
   await supabase
     .from("shop_boost_intakes")

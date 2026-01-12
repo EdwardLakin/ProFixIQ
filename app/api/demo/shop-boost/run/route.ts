@@ -156,7 +156,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
 
       // ✅ Keep first segment == shopId (matches your Storage RLS convention)
       const safeName = safeFileName(file.name || `${kind}.csv`);
-      const path = `${shopId}/demo/${intakeId}/${kind}-${safeName}`;
+      const path = `shops/${shopId}/demo/${intakeId}/${kind}-${safeName}`;
 
       const { error: uploadErr } = await supabase.storage.from(SHOP_IMPORT_BUCKET).upload(path, file, {
         cacheControl: "3600",

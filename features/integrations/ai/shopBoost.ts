@@ -58,8 +58,8 @@ export async function buildShopBoostProfile(
     downloadCsvFile(supabase, intakeRow.customers_file_path),
     downloadCsvFile(supabase, intakeRow.vehicles_file_path),
     downloadCsvFile(supabase, intakeRow.parts_file_path),
-    downloadCsvFile(supabase, (intakeRow ).history_file_path ?? null),
-    downloadCsvFile(supabase, (intakeRow ).staff_file_path ?? null),
+    downloadCsvFile(supabase, intakeRow.history_file_path ?? null),
+    downloadCsvFile(supabase, intakeRow.staff_file_path ?? null),
   ]);
 
   const importStats = await recordImportArtifacts({
@@ -69,12 +69,19 @@ export async function buildShopBoostProfile(
       { kind: "customers", storagePath: intakeRow.customers_file_path, csvText: customersCsv },
       { kind: "vehicles", storagePath: intakeRow.vehicles_file_path, csvText: vehiclesCsv },
       { kind: "parts", storagePath: intakeRow.parts_file_path, csvText: partsCsv },
-      { kind: "history", storagePath: (intakeRow ).history_file_path ?? null, csvText: historyCsv },
-      { kind: "staff", storagePath: (intakeRow ).staff_file_path ?? null, csvText: staffCsv },
+      { kind: "history", storagePath: intakeRow.history_file_path ?? null, csvText: historyCsv },
+      { kind: "staff", storagePath: intakeRow.staff_file_path ?? null, csvText: staffCsv },
     ],
   });
 
-  const baseStats = await deriveStatsFromCsvs({ customersCsv, vehiclesCsv, partsCsv });
+  // ✅ FIX: stats must come from HISTORY, not vehicles
+  const baseStats = await deriveStatsFromCsvs({
+    customersCsv,
+    vehiclesCsv,
+    partsCsv,
+    historyCsv,
+  });
+
   const dbStats = await deriveStatsFromDatabase(supabase, shopId);
   const mergedStats = mergeStats(baseStats, dbStats);
 
@@ -271,8 +278,6 @@ async function recordImportArtifacts(args: {
   };
 }
 
-// ... keep the rest of your existing file unchanged below this point ...
-
 function basename(path: string): string {
   const parts = path.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? path;
@@ -368,6 +373,9 @@ type CsvStatsInput = {
   customersCsv: string | null;
   vehiclesCsv: string | null;
   partsCsv: string | null;
+
+  // ✅ new
+  historyCsv: string | null;
 };
 
 type DerivedStats = {
@@ -468,10 +476,16 @@ function chooseBestTotalColumn(headers: string[]): number {
     const h = normHeader(headers[i]);
     if (!h) continue;
 
+    // ✅ hard skip non-money columns (prevents VIN/RO/ID being “total”)
+    if (/(vin|plate|license|unit|ro|work order|order number|invoice number|phone|email|address|id)/i.test(h)) {
+      continue;
+    }
+
     let score = 0;
+
     if (/(grand total|invoice total|total)/i.test(h)) score += 6;
     if (/(line_total|line total|amount|price|extended)/i.test(h)) score += 4;
-    if (/(labor|parts)/i.test(h)) score += 1;
+    if (/(labor|labour|parts)/i.test(h)) score += 1;
 
     if (/(rate|tax|qty|quantity|cost)/i.test(h)) score -= 3;
 
@@ -480,6 +494,9 @@ function chooseBestTotalColumn(headers: string[]): number {
       bestIdx = i;
     }
   }
+
+  // Optional: if nothing scored at all, return -1 (don’t guess)
+  if (bestScore <= 0) return -1;
 
   return bestIdx;
 }
@@ -495,6 +512,29 @@ function cleanDesc(raw: string): string {
   return stripped.slice(0, 90);
 }
 
+function parseMoneySafe(v: string): number {
+  const s = (v ?? "").trim();
+  if (!s) return 0;
+
+  const cleaned = s.replace(/[^0-9,.\-]/g, "");
+  if (!cleaned) return 0;
+
+  // 1,234.56 -> 1234.56
+  if (cleaned.includes(",") && cleaned.includes(".")) {
+    const n = Number(cleaned.replace(/,/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  // 6,06 -> 6.06
+  if (cleaned.includes(",") && !cleaned.includes(".")) {
+    const n = Number(cleaned.replace(",", "."));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
 async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> {
   const empty: DerivedStats = {
     totalRepairOrders: 0,
@@ -506,9 +546,10 @@ async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> 
     fleetMetrics: [],
   };
 
-  if (!input.vehiclesCsv) return empty;
+  // ✅ FIX: use HISTORY CSV for stats
+  if (!input.historyCsv) return empty;
 
-  const lines = input.vehiclesCsv
+  const lines = input.historyCsv
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((line) => line.length);
@@ -521,6 +562,10 @@ async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> 
 
   const repairMap = new Map<string, { count: number; revenue: number }>();
 
+  // ✅ FIX: totals must be computed across ALL rows, not top 10 slice
+  let totalRepairOrders = 0;
+  let totalRevenue = 0;
+
   for (let i = 1; i < lines.length; i += 1) {
     const cols = splitCsvLine(lines[i]);
 
@@ -528,7 +573,10 @@ async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> 
     const desc = cleanDesc(rawDesc || "General Repair");
 
     const rawTotal = idxTotal >= 0 ? (cols[idxTotal] ?? "0") : "0";
-    const total = Number(String(rawTotal).replace(/[^0-9.]/g, "")) || 0;
+    const total = parseMoneySafe(String(rawTotal));
+
+    totalRepairOrders += 1;
+    totalRevenue += total;
 
     const existing = repairMap.get(desc) ?? { count: 0, revenue: 0 };
     existing.count += 1;
@@ -545,8 +593,6 @@ async function deriveStatsFromCsvs(input: CsvStatsInput): Promise<DerivedStats> 
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 
-  const totalRepairOrders = mostCommonRepairs.reduce((sum, r) => sum + r.count, 0);
-  const totalRevenue = mostCommonRepairs.reduce((sum, r) => sum + r.revenue, 0);
   const averageRo = totalRepairOrders > 0 ? totalRevenue / totalRepairOrders : 0;
 
   return {
@@ -987,26 +1033,27 @@ function computeScores(args: {
 }): Record<string, unknown> {
   const { intakeRow, mergedStats, aiSnapshot, issuesDetected, importStats } = args;
 
+  // ✅ FIX: history is the backbone
+  const hasHistory = importStats.byKind.history.rows > 0;
   const hasVehicles = importStats.byKind.vehicles.rows > 0;
   const hasCustomers = importStats.byKind.customers.rows > 0;
   const hasParts = importStats.byKind.parts.rows > 0;
 
-  // Completeness: vehicles history is the backbone; customers/parts improve confidence
-  const completenessBase = hasVehicles ? 0.6 : 0;
-  const completenessBonus = (hasCustomers ? 0.2 : 0) + (hasParts ? 0.2 : 0);
+  const completenessBase = hasHistory ? 0.6 : 0;
+  const completenessBonus =
+    (hasVehicles ? 0.15 : 0) + (hasCustomers ? 0.15 : 0) + (hasParts ? 0.1 : 0);
   const completeness = clamp01(completenessBase + completenessBonus);
 
-  // History volume: scale by number of ROs (cap at 1)
   // 0..200 ROs -> 0..1
   const hv = clamp01((mergedStats.totalRepairOrders || 0) / 200);
 
-  // Classification: if AI returned menuSuggestions + inspectionSuggestions, treat as higher confidence
   const menuCount = (aiSnapshot.menuSuggestions ?? []).length;
   const inspCount = (aiSnapshot.inspectionSuggestions ?? []).length;
-  const classification = clamp01(hasVehicles ? 0.35 + Math.min(0.65, (menuCount + inspCount) * 0.08) : 0);
 
-  // Risk: higher is worse in your UI (invertTone for risk bar)
-  // We map detected issues into a 0..1 "risk" where comebacks + low_aro + imbalance raise it.
+  const classification = clamp01(
+    hasHistory ? 0.35 + Math.min(0.65, (menuCount + inspCount) * 0.08) : 0,
+  );
+
   const riskSignals = issuesDetected.reduce((sum, i) => {
     if (i.key === "comebacks") return sum + 0.5;
     if (i.key === "low_aro") return sum + 0.3;
@@ -1015,7 +1062,6 @@ function computeScores(args: {
   }, 0);
   const risk = clamp01(riskSignals);
 
-  // Overall: weighted, risk subtracts
   const overall = clamp01(
     completeness * 0.35 + hv * 0.25 + classification * 0.25 + (1 - risk) * 0.15,
   );
@@ -1033,9 +1079,9 @@ function computeScores(args: {
     components: {
       completeness: {
         score: round2(completeness),
-        note: hasVehicles
-          ? `Vehicles history present${hasCustomers ? ", customers present" : ""}${hasParts ? ", parts present" : ""}.`
-          : "No vehicles history detected.",
+        note: hasHistory
+          ? `History present${hasVehicles ? ", vehicles present" : ""}${hasCustomers ? ", customers present" : ""}${hasParts ? ", parts present" : ""}.`
+          : "No repair history detected.",
       },
       historyVolume: {
         score: round2(hv),
@@ -1077,7 +1123,6 @@ async function persistSuggestions(args: {
 }): Promise<void> {
   const { supabase, shopId, intakeId, aiSnapshot } = args;
 
-  // Menu suggestions -> menu_item_suggestions (title column)
   const menuInserts: DB["public"]["Tables"]["menu_item_suggestions"]["Insert"][] = (
     aiSnapshot.menuSuggestions ?? []
   ).map((m) => ({
@@ -1098,7 +1143,6 @@ async function persistSuggestions(args: {
     if (error) console.error("[shopBoost] failed inserting menu_item_suggestions", error);
   }
 
-  // Inspection suggestions -> inspection_template_suggestions
   const inspInserts: DB["public"]["Tables"]["inspection_template_suggestions"]["Insert"][] = (
     aiSnapshot.inspectionSuggestions ?? []
   ).map((i) => ({
@@ -1117,12 +1161,7 @@ async function persistSuggestions(args: {
     if (error) console.error("[shopBoost] failed inserting inspection_template_suggestions", error);
   }
 
-  // Staff suggestions: keep deterministic + small. (You can upgrade this later.)
-  // We propose at least 1 advisor + 1 tech if none exist, based on questionnaire counts if present.
   const staffSuggested: Array<{ role: string; count: number; notes: string | null }> = [];
-
-  const q = aiSnapshot ? (aiSnapshot as unknown) : null;
-  void q;
 
   staffSuggested.push({
     role: "advisor",
