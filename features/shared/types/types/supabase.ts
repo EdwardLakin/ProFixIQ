@@ -6445,9 +6445,12 @@ export type Database = {
         Row: {
           confidence: number | null
           created_at: string
+          created_by: string | null
           created_profile_id: string | null
+          created_user_id: string | null
           email: string | null
           email_lc: string | null
+          error: string | null
           full_name: string | null
           id: string
           intake_id: string | null
@@ -6456,6 +6459,7 @@ export type Database = {
           role: Database["public"]["Enums"]["user_role_enum"] | null
           shop_id: string
           source: string
+          status: string
           updated_at: string
           username: string | null
           username_lc: string | null
@@ -6463,9 +6467,12 @@ export type Database = {
         Insert: {
           confidence?: number | null
           created_at?: string
+          created_by?: string | null
           created_profile_id?: string | null
+          created_user_id?: string | null
           email?: string | null
           email_lc?: string | null
+          error?: string | null
           full_name?: string | null
           id?: string
           intake_id?: string | null
@@ -6474,6 +6481,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role_enum"] | null
           shop_id: string
           source?: string
+          status?: string
           updated_at?: string
           username?: string | null
           username_lc?: string | null
@@ -6481,9 +6489,12 @@ export type Database = {
         Update: {
           confidence?: number | null
           created_at?: string
+          created_by?: string | null
           created_profile_id?: string | null
+          created_user_id?: string | null
           email?: string | null
           email_lc?: string | null
+          error?: string | null
           full_name?: string | null
           id?: string
           intake_id?: string | null
@@ -6492,6 +6503,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role_enum"] | null
           shop_id?: string
           source?: string
+          status?: string
           updated_at?: string
           username?: string | null
           username_lc?: string | null
