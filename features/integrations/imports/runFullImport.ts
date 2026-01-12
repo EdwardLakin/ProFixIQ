@@ -435,7 +435,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
     const { rows } = parseCsv(staffCsv);
 
     // Optional: clear prior staff suggestions for this intake so reruns don't duplicate
-    await supabase.from("staff_invite_suggestions").delete().eq("shop_id", shopId).eq("intake_id", intakeId);
+    
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
@@ -488,6 +488,7 @@ export async function runShopBoostImport(args: RunArgs): Promise<void> {
         notes,
         external_id,
       } as unknown as DB["public"]["Tables"]["staff_invite_suggestions"]["Insert"]);
+      { onConflict: "shop_id,external_id" }
 
       if (staffInsErr) {
         console.warn("[staff invite suggestions] insert failed", staffInsErr);

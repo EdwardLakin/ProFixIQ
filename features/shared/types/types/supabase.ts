@@ -6550,6 +6550,9 @@ export type Database = {
         Row: {
           count_suggested: number
           created_at: string
+          email: string | null
+          external_id: string | null
+          full_name: string | null
           id: string
           intake_id: string | null
           notes: string | null
@@ -6559,6 +6562,9 @@ export type Database = {
         Insert: {
           count_suggested?: number
           created_at?: string
+          email?: string | null
+          external_id?: string | null
+          full_name?: string | null
           id?: string
           intake_id?: string | null
           notes?: string | null
@@ -6568,6 +6574,9 @@ export type Database = {
         Update: {
           count_suggested?: number
           created_at?: string
+          email?: string | null
+          external_id?: string | null
+          full_name?: string | null
           id?: string
           intake_id?: string | null
           notes?: string | null
@@ -9691,6 +9700,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      v_staff_invites_common: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string | null
+          intake_id: string | null
+          name: string | null
+          notes: string | null
+          phone: string | null
+          role: string | null
+          shop_id: string | null
+          source_type: string | null
+          status: string | null
+          username: string | null
+        }
+        Relationships: []
       }
       v_vehicle_service_history: {
         Row: {
