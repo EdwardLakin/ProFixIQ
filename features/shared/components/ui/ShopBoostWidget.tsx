@@ -1,3 +1,5 @@
+//features/shared/components/ui/ShopBoostWidget.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

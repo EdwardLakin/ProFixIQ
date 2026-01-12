@@ -1,5 +1,3 @@
-//features/owner/reports/ReportShopHealthPanel.tsx
-
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
@@ -63,6 +61,25 @@ const titleText = "text-white";
 const copperBorder = "border-[var(--accent-copper-light)]/50";
 const copperBg = "bg-[var(--accent-copper)]/12";
 
+type ShopBoostRunOk = { ok: true; shopId: string; intakeId: string; snapshot: unknown };
+type ShopBoostRunErr = { ok: false; error: string };
+type ShopBoostRunResp = ShopBoostRunOk | ShopBoostRunErr;
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function isShopBoostRunResp(v: unknown): v is ShopBoostRunResp {
+  if (!isRecord(v)) return false;
+  if (typeof v.ok !== "boolean") return false;
+
+  if (v.ok === true) {
+    return typeof v.shopId === "string" && typeof v.intakeId === "string" && "snapshot" in v;
+  }
+
+  return typeof v.error === "string";
+}
+
 export default function ReportsShopHealthPanel({ shopId }: Props) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const router = useRouter();
@@ -85,11 +102,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
     try {
       const [latestRes, overviewRes, suggRes] = await Promise.all([
-        supabase
-          .from("v_shop_health_latest")
-          .select("*")
-          .eq("shop_id", shopId)
-          .maybeSingle(),
+        supabase.from("v_shop_health_latest").select("*").eq("shop_id", shopId).maybeSingle(),
         supabase
           .from("v_shop_boost_overview")
           .select("*")
@@ -127,9 +140,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
     void load();
   }, [load]);
 
-  const scores = (latest?.scores ?? overview?.latest_scores ?? null) as
-    | Record<string, unknown>
-    | null;
+  const scores = (latest?.scores ?? overview?.latest_scores ?? null) as Record<string, unknown> | null;
 
   const normalized = normalizeScores(scores);
 
@@ -167,59 +178,39 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
   const grouped = groupSuggestions(suggestions);
 
-  type ShopBoostRunOk = { ok: true; shopId: string; intakeId: string; snapshot: unknown };
-type ShopBoostRunErr = { ok: false; error: string };
-type ShopBoostRunResp = ShopBoostRunOk | ShopBoostRunErr;
+  /**
+   * ✅ UPDATED: this now runs the "intake run + import" route
+   * - When called with JSON and no files, the route will reuse latest file paths (fallback)
+   * - It also runs your import pipeline
+   */
+  const runSnapshot = useCallback(async () => {
+    if (!shopId) return;
+    setRunning(true);
 
-function isShopBoostRunResp(v: unknown): v is ShopBoostRunResp {
-  if (typeof v !== "object" || v === null) return false;
-  if (!("ok" in v)) return false;
+    try {
+      const res = await fetch("/api/shop-boost/intakes/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionnaire: { source: "reports" } }),
+      });
 
-  const rec = v as Record<string, unknown>;
-  if (typeof rec.ok !== "boolean") return false;
+      const json = (await res.json().catch(() => null)) as unknown;
 
-  if (rec.ok === true) {
-    return (
-      typeof rec.shopId === "string" &&
-      typeof rec.intakeId === "string" &&
-      "snapshot" in rec
-    );
-  }
+      if (!res.ok || !isShopBoostRunResp(json) || json.ok !== true) {
+        const msg =
+          isShopBoostRunResp(json) && json.ok === false ? json.error : "Snapshot/import could not be run.";
+        throw new Error(msg);
+      }
 
-  return typeof rec.error === "string";
-}
-
-const runSnapshot = useCallback(async () => {
-  if (!shopId) return;
-  setRunning(true);
-
-  try {
-    const res = await fetch("/api/onboarding/shop-boost", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // optional questionnaire context
-      body: JSON.stringify({ questionnaire: { source: "reports" } }),
-    });
-
-    const json = (await res.json().catch(() => null)) as unknown;
-
-    if (!res.ok || !isShopBoostRunResp(json) || json.ok !== true) {
-      const msg =
-        isShopBoostRunResp(json) && json.ok === false
-          ? json.error
-          : "Snapshot could not be run.";
-      throw new Error(msg);
+      toast.success("Shop Health refreshed and import queued/completed.");
+      setTimeout(() => void load(), 900);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to run snapshot/import.";
+      toast.error(msg);
+    } finally {
+      setRunning(false);
     }
-
-    toast.success("Shop Health snapshot refreshed.");
-    setTimeout(() => void load(), 900);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Failed to run snapshot.";
-    toast.error(msg);
-  } finally {
-    setRunning(false);
-  }
-}, [shopId, load]);
+  }, [shopId, load]);
 
   const openMenu = useCallback(() => router.push("/app/menu"), [router]);
   const openInspections = useCallback(() => router.push("/inspections"), [router]);
@@ -259,9 +250,7 @@ const runSnapshot = useCallback(async () => {
   return (
     <div className="space-y-6">
       {loading ? (
-        <div className={`${cardInner} px-4 py-6 text-sm text-neutral-300`}>
-          Loading Shop Health…
-        </div>
+        <div className={`${cardInner} px-4 py-6 text-sm text-neutral-300`}>Loading Shop Health…</div>
       ) : null}
 
       {err ? (
@@ -300,7 +289,7 @@ const runSnapshot = useCallback(async () => {
                     copperBg,
                     "text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/20 disabled:opacity-60",
                   ].join(" ")}
-                  title="Re-run analysis snapshot"
+                  title="Re-run analysis + import using latest intake files"
                 >
                   {running ? "Running…" : "↻ Run snapshot"}
                 </button>
@@ -352,14 +341,11 @@ const runSnapshot = useCallback(async () => {
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <MetaCard label="Latest intake" value={intakeAge ?? "—"} />
               <MetaCard label="Latest snapshot" value={snapshotAge ?? "—"} />
-              <MetaCard
-                label="Source"
-                value={overview?.intake_source ? String(overview.intake_source) : "—"}
-              />
+              <MetaCard label="Source" value={overview?.intake_source ? String(overview.intake_source) : "—"} />
             </div>
           </section>
 
-          {/* How to use this (make uploads/suggestions easy to follow) */}
+          {/* How to use this */}
           <section className={`${cardBase} p-4`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -384,7 +370,7 @@ const runSnapshot = useCallback(async () => {
                 <StepCard
                   step="1"
                   title="Upload files"
-                  body="In the next patch, this panel will let you upload invoices/expenses/menu exports directly here."
+                  body="Upload history once (customers/vehicles/parts/etc). Future runs can reuse your latest intake files."
                   tone="watch"
                 />
                 <StepCard
@@ -396,13 +382,13 @@ const runSnapshot = useCallback(async () => {
                 <StepCard
                   step="3"
                   title="Apply suggestions"
-                  body="Either click “Open” to go to the right screen, or enable one-click create (we’ll wire it)."
+                  body="Use “Open” to do it manually or wire 1-click create for each suggestion type."
                   tone="good"
                 />
               </div>
 
               <div className="mt-3 text-[11px] text-neutral-400">
-                Recommendation: **start with Menu items** (fastest win), then **Inspections**, then **Staff invites**.
+                Recommendation: <b>start with Menu items</b>, then <b>Inspections</b>, then <b>Staff invites</b>.
               </div>
             </div>
           </section>
@@ -414,9 +400,7 @@ const runSnapshot = useCallback(async () => {
                 <div className={`text-[10px] font-semibold uppercase tracking-[0.22em] ${subtleText}`}>
                   Summary
                 </div>
-                <h3 className={`mt-1 text-sm font-semibold ${titleText}`}>
-                  What the system thinks is happening
-                </h3>
+                <h3 className={`mt-1 text-sm font-semibold ${titleText}`}>What the system thinks is happening</h3>
               </div>
             </div>
 
@@ -424,9 +408,7 @@ const runSnapshot = useCallback(async () => {
               {narrative ? (
                 <p className="whitespace-pre-wrap text-sm text-neutral-100">{narrative}</p>
               ) : (
-                <p className="text-sm text-neutral-400">
-                  No narrative summary yet. Upload history and run a snapshot.
-                </p>
+                <p className="text-sm text-neutral-400">No narrative summary yet. Upload history and run a snapshot.</p>
               )}
             </div>
           </section>
@@ -438,11 +420,9 @@ const runSnapshot = useCallback(async () => {
                 <div className={`text-[10px] font-semibold uppercase tracking-[0.22em] ${subtleText}`}>
                   Suggestions
                 </div>
-                <h3 className={`mt-1 text-sm font-semibold ${titleText}`}>
-                  Setup checklist (menus, inspections, staff)
-                </h3>
+                <h3 className={`mt-1 text-sm font-semibold ${titleText}`}>Setup checklist (menus, inspections, staff)</h3>
                 <p className={`mt-1 text-xs ${subtleText}`}>
-                  Use “Open” to go to the right screen. If you want one-click create, we’ll wire the endpoint next.
+                  Use “Open” to go to the right screen. “Create” requires the accept-suggestion API to be wired.
                 </p>
               </div>
 
@@ -495,10 +475,6 @@ const runSnapshot = useCallback(async () => {
 
 /* -------------------------------- helpers -------------------------------- */
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
 function readNum(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   return null;
@@ -535,16 +511,13 @@ function normalizeScores(
   const overall = getPathNum(scores, ["overall"]);
 
   const dataCompleteness =
-    getPathNum(scores, ["components", "completeness", "score"]) ??
-    getPathNum(scores, ["dataCompleteness"]);
+    getPathNum(scores, ["components", "completeness", "score"]) ?? getPathNum(scores, ["dataCompleteness"]);
 
   const classification =
-    getPathNum(scores, ["components", "classification", "score"]) ??
-    getPathNum(scores, ["classification"]);
+    getPathNum(scores, ["components", "classification", "score"]) ?? getPathNum(scores, ["classification"]);
 
   const historyVolume =
-    getPathNum(scores, ["components", "historyVolume", "score"]) ??
-    getPathNum(scores, ["historyVolume"]);
+    getPathNum(scores, ["components", "historyVolume", "score"]) ?? getPathNum(scores, ["historyVolume"]);
 
   const risk = getPathNum(scores, ["risk"]);
 
@@ -666,9 +639,7 @@ function ScoreBar({
     <div className={`${cardInner} px-4 py-3`}>
       <div className="flex items-center justify-between gap-3">
         <div className="text-[11px] font-semibold text-neutral-200">{label}</div>
-        <div className={`text-[11px] font-semibold ${labelClass(tone)}`}>
-          {shown === null ? "—" : `${shown}%`}
-        </div>
+        <div className={`text-[11px] font-semibold ${labelClass(tone)}`}>{shown === null ? "—" : `${shown}%`}</div>
       </div>
       <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/10 bg-black/25">
         <div className={`h-full ${barClass(tone)}`} style={{ width: `${width}%` }} />
@@ -724,9 +695,7 @@ function StepCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge}`}>
-              Step {step}
-            </span>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge}`}>Step {step}</span>
             <div className="text-sm font-semibold text-white">{title}</div>
           </div>
           <div className="mt-2 text-[11px] text-neutral-400">{body}</div>
@@ -792,9 +761,7 @@ function SuggestionColumn({
                   <div className="truncate text-[12px] font-semibold text-neutral-100">
                     {s.name ?? "Untitled"}
                   </div>
-                  {s.category ? (
-                    <div className="mt-0.5 text-[10px] text-neutral-400">{s.category}</div>
-                  ) : null}
+                  {s.category ? <div className="mt-0.5 text-[10px] text-neutral-400">{s.category}</div> : null}
                 </div>
 
                 {conf !== null ? (
@@ -828,9 +795,7 @@ function SuggestionColumn({
                 </div>
               ) : null}
 
-              {s.reason ? (
-                <div className="mt-2 line-clamp-2 text-[10px] text-neutral-400">{s.reason}</div>
-              ) : null}
+              {s.reason ? <div className="mt-2 line-clamp-2 text-[10px] text-neutral-400">{s.reason}</div> : null}
 
               <div className="mt-3 flex items-center justify-end gap-2">
                 <button
@@ -850,14 +815,10 @@ function SuggestionColumn({
           );
         })}
 
-        {items.length > 10 ? (
-          <div className="text-[11px] text-neutral-400">+{items.length - 10} more…</div>
-        ) : null}
+        {items.length > 10 ? <div className="text-[11px] text-neutral-400">+{items.length - 10} more…</div> : null}
 
         {items.length === 0 ? (
-          <div className={`${cardInner} px-3 py-3 text-[11px] text-neutral-400`}>
-            No suggestions yet.
-          </div>
+          <div className={`${cardInner} px-3 py-3 text-[11px] text-neutral-400`}>No suggestions yet.</div>
         ) : null}
       </div>
     </div>

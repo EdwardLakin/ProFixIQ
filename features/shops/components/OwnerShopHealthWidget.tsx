@@ -20,6 +20,29 @@ const cardBase =
   "rounded-3xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
 const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/60";
 
+type RunOk = { ok: true; shopId: string; intakeId: string; snapshot: unknown };
+type RunErr = { ok: false; error: string };
+type RunResp = RunOk | RunErr;
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function isRunResp(v: unknown): v is RunResp {
+  if (!isRecord(v)) return false;
+  if (typeof v.ok !== "boolean") return false;
+
+  if (v.ok === true) {
+    return typeof v.shopId === "string" && typeof v.intakeId === "string" && "snapshot" in v;
+  }
+
+  return typeof v.error === "string";
+}
+
+function isShopHealthSnapshot(v: unknown): v is ShopHealthSnapshot {
+  return isRecord(v) && typeof v.shopId === "string";
+}
+
 export default function OwnerShopHealthWidget({ shopId }: Props) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -59,6 +82,7 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
           if (mapped) setSnapshot(mapped);
         }
       } catch (e) {
+        // eslint-disable-next-line no-console
         console.warn("[OwnerShopHealthWidget] boot load failed", e);
       } finally {
         if (!cancelled) setBootLoading(false);
@@ -72,35 +96,44 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
 
   const summaryText = useMemo(() => normalizeSummary(aiProfile?.summary), [aiProfile?.summary]);
 
+  /**
+   * ✅ UPDATED: call the new intake run route (imports + snapshot)
+   * Server resolves shopId from profile; do NOT send shopId from client.
+   */
   const handleRefresh = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch("/api/onboarding/shop-boost", {
+      const res = await fetch("/api/shop-boost/intakes/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shopId }),
+        body: JSON.stringify({ questionnaire: { source: "owner_widget" } }),
       });
 
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; snapshot?: ShopHealthSnapshot | null; error?: string }
-        | null;
+      const json = (await res.json().catch(() => null)) as unknown;
 
-      if (!res.ok || !json || !json.ok || !json.snapshot) {
-        setError(json?.error ?? "Failed to refresh snapshot.");
+      if (!res.ok || !isRunResp(json) || json.ok !== true) {
+        const msg = isRunResp(json) && json.ok === false ? json.error : "Failed to refresh snapshot/import.";
+        setError(msg);
         return;
       }
 
-      const newSnapshot = json.snapshot;
-      setSnapshot(newSnapshot);
+      const snap = (json.snapshot ?? null) as unknown;
 
-      if (newSnapshot.narrativeSummary) {
+      if (!snap || !isShopHealthSnapshot(snap)) {
+        setError("Snapshot completed but returned an unexpected payload.");
+        return;
+      }
+
+      setSnapshot(snap);
+
+      if (snap.narrativeSummary) {
         setAiProfile((prev) =>
           prev
             ? ({
                 ...prev,
-                summary: newSnapshot.narrativeSummary as unknown as ShopAiProfileRow["summary"],
+                summary: snap.narrativeSummary as unknown as ShopAiProfileRow["summary"],
               } as ShopAiProfileRow)
             : prev,
         );
@@ -145,9 +178,7 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
       <div className={`${cardInner} px-3 py-3`}>
         <p className="text-[11px] text-slate-200/80">{displaySummary}</p>
 
-        {bootLoading ? (
-          <p className="mt-2 text-[11px] text-slate-300/70">Loading latest snapshot…</p>
-        ) : null}
+        {bootLoading ? <p className="mt-2 text-[11px] text-slate-300/70">Loading latest snapshot…</p> : null}
 
         {error ? <p className="mt-2 text-[11px] text-rose-300">{error}</p> : null}
       </div>
@@ -194,28 +225,24 @@ function mapSnapshotRowToUi(row: ShopHealthSnapshotRow): ShopHealthSnapshot | nu
   const averageRo = typeof totals["averageRo"] === "number" ? totals["averageRo"] : 0;
 
   return {
-  shopId: row.shop_id as string,
-  timeRangeDescription: buildTimeRangeDescription(
-    row.period_start,
-    row.period_end
-  ),
-  totalRepairOrders,
-  totalRevenue,
-  averageRo,
+    shopId: row.shop_id as string,
+    timeRangeDescription: buildTimeRangeDescription(row.period_start, row.period_end),
+    totalRepairOrders,
+    totalRevenue,
+    averageRo,
 
-  mostCommonRepairs: [],
-  highValueRepairs: [],
-  comebackRisks: [],
-  fleetMetrics: [],
-  menuSuggestions: [],
-  inspectionSuggestions: [],
-  narrativeSummary: row.narrative_summary ?? "",
+    mostCommonRepairs: [],
+    highValueRepairs: [],
+    comebackRisks: [],
+    fleetMetrics: [],
+    menuSuggestions: [],
+    inspectionSuggestions: [],
+    narrativeSummary: row.narrative_summary ?? "",
 
-  // ✅ NEW — required by ShopHealthSnapshot
-  topTechs: [],
-  issuesDetected: [],
-  recommendations: [],
-};
+    topTechs: [],
+    issuesDetected: [],
+    recommendations: [],
+  };
 }
 
 function buildTimeRangeDescription(start: string | null, end: string | null): string {
