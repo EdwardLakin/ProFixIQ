@@ -1,4 +1,4 @@
-// features/integrations/shopBoost/runIntakeHandler.ts
+// /features/integrations/shopBoost/runIntakeHandler.ts
 import { randomUUID } from "crypto";
 import type { NextRequest } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -71,10 +71,25 @@ function parseQuestionnaire(raw: unknown): unknown {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * ✅ SECURITY:
+ * Accept both:
+ * - canonical: shops/<shopId>/...
+ * - legacy: <shopId>/...
+ */
 function isShopScopedPath(shopId: string, path: string | null): boolean {
   if (!path) return true;
-  // ✅ canonical: shops/${shopId}/...
-  return path.startsWith(`shops/${shopId}/`);
+  return path.startsWith(`shops/${shopId}/`) || path.startsWith(`${shopId}/`);
+}
+
+/**
+ * ✅ Normalize legacy paths into canonical paths for storage + reruns.
+ * If "<shopId>/..." convert to "shops/<shopId>/..."
+ */
+function normalizeShopPath(shopId: string, path: string | null): string | null {
+  if (!path) return null;
+  if (path.startsWith(`${shopId}/`)) return `shops/${path}`;
+  return path;
 }
 
 export async function runShopBoostIntake(
@@ -124,7 +139,12 @@ export async function runShopBoostIntake(
 
   if (contentType.includes("multipart/form-data")) {
     const formData = await req.formData().catch(() => null);
-    if (!formData) return { ok: false, error: "Invalid request. Please submit as multipart/form-data." };
+    if (!formData) {
+      return {
+        ok: false,
+        error: "Invalid request. Please submit as multipart/form-data.",
+      };
+    }
 
     questionnaire = parseQuestionnaire(formData.get("questionnaire"));
 
@@ -184,17 +204,25 @@ export async function runShopBoostIntake(
     return path;
   };
 
-  const [customersPathUploaded, vehiclesPathUploaded, partsPathUploaded, historyPathUploaded, staffPathUploaded] =
-    await Promise.all([
-      uploadIfPresent(customersFile, "customers"),
-      uploadIfPresent(vehiclesFile, "vehicles"),
-      uploadIfPresent(partsFile, "parts"),
-      mode.allowHistoryAndStaff ? uploadIfPresent(historyFile, "history") : Promise.resolve(null),
-      mode.allowHistoryAndStaff ? uploadIfPresent(staffFile, "staff") : Promise.resolve(null),
-    ]);
+  const [
+    customersPathUploaded,
+    vehiclesPathUploaded,
+    partsPathUploaded,
+    historyPathUploaded,
+    staffPathUploaded,
+  ] = await Promise.all([
+    uploadIfPresent(customersFile, "customers"),
+    uploadIfPresent(vehiclesFile, "vehicles"),
+    uploadIfPresent(partsFile, "parts"),
+    mode.allowHistoryAndStaff ? uploadIfPresent(historyFile, "history") : Promise.resolve(null),
+    mode.allowHistoryAndStaff ? uploadIfPresent(staffFile, "staff") : Promise.resolve(null),
+  ]);
 
   const noUploads =
-    !customersFile && !vehiclesFile && !partsFile && (!mode.allowHistoryAndStaff || (!historyFile && !staffFile));
+    !customersFile &&
+    !vehiclesFile &&
+    !partsFile &&
+    (!mode.allowHistoryAndStaff || (!historyFile && !staffFile));
 
   const jsonProvidedAny =
     !!providedCustomersPath ||
@@ -247,22 +275,34 @@ export async function runShopBoostIntake(
     ? staffPathUploaded ?? providedStaffPath ?? fallbackPaths.staffPath
     : null;
 
+  // ✅ normalize legacy paths to canonical before enforcing + inserting
+  const customersFinalN = normalizeShopPath(shopId, customersFinal);
+  const vehiclesFinalN = normalizeShopPath(shopId, vehiclesFinal);
+  const partsFinalN = normalizeShopPath(shopId, partsFinal);
+
+  const historyFinalN = mode.allowHistoryAndStaff
+    ? normalizeShopPath(shopId, historyFinal)
+    : null;
+
+  const staffFinalN = mode.allowHistoryAndStaff
+    ? normalizeShopPath(shopId, staffFinal)
+    : null;
+
   // ✅ enforce shop-scoped paths for any provided/fallback content
   if (
-    !isShopScopedPath(shopId, customersFinal) ||
-    !isShopScopedPath(shopId, vehiclesFinal) ||
-    !isShopScopedPath(shopId, partsFinal) ||
-    !isShopScopedPath(shopId, historyFinal) ||
-    !isShopScopedPath(shopId, staffFinal)
+    !isShopScopedPath(shopId, customersFinalN) ||
+    !isShopScopedPath(shopId, vehiclesFinalN) ||
+    !isShopScopedPath(shopId, partsFinalN) ||
+    !isShopScopedPath(shopId, historyFinalN) ||
+    !isShopScopedPath(shopId, staffFinalN)
   ) {
     return { ok: false, error: "Invalid file path (must start with shops/<shopId>/)." };
   }
 
-  if (!customersFinal && !vehiclesFinal && !partsFinal && !historyFinal && !staffFinal) {
+  if (!customersFinalN && !vehiclesFinalN && !partsFinalN && !historyFinalN && !staffFinalN) {
     return {
       ok: false,
-      error:
-        "No uploads found and no previous intake files exist yet. Upload at least one CSV first.",
+      error: "No uploads found and no previous intake files exist yet. Upload at least one CSV first.",
     };
   }
 
@@ -271,17 +311,19 @@ export async function runShopBoostIntake(
     shop_id: shopId,
     questionnaire:
       questionnaire as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["questionnaire"],
-    customers_file_path: customersFinal,
-    vehicles_file_path: vehiclesFinal,
-    parts_file_path: partsFinal,
-    history_file_path: historyFinal,
-    staff_file_path: staffFinal,
+    customers_file_path: customersFinalN,
+    vehicles_file_path: vehiclesFinalN,
+    parts_file_path: partsFinalN,
+    history_file_path: historyFinalN,
+    staff_file_path: staffFinalN,
     status: "pending",
   };
 
   const { error: intakeErr } = await supabaseAdmin.from("shop_boost_intakes").insert(intakeInsert);
 
-  if (intakeErr) return { ok: false, error: `Failed to create intake: ${intakeErr.message}` };
+  if (intakeErr) {
+    return { ok: false, error: `Failed to create intake: ${intakeErr.message}` };
+  }
 
   const snapshot = await buildShopBoostProfile({ shopId, intakeId });
   if (!snapshot) return { ok: false, error: "AI analysis failed. Try different exports." };
