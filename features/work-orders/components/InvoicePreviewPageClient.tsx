@@ -2,15 +2,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
 import type { RepairLine } from "@ai/lib/parseRepairOutput";
 
-import { WorkOrderInvoicePDF } from "@work-orders/components/WorkOrderInvoicePDF";
 import CustomerPaymentButton from "@/features/stripe/components/CustomerPaymentButton";
+import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 
 type DB = Database;
 
@@ -19,7 +18,6 @@ type CustomerInfo = { name?: string; phone?: string; email?: string };
 
 type Props = {
   workOrderId: string;
-  // optional overrides (kept for parity with your modal)
   vehicleInfo?: VehicleInfo;
   customerInfo?: CustomerInfo;
   lines?: RepairLine[];
@@ -27,11 +25,6 @@ type Props = {
   signatureImage?: string;
   onSent?: () => void | Promise<void>;
 };
-
-const PDFViewer = dynamic(
-  () => import("@react-pdf/renderer").then((m) => ({ default: m.PDFViewer })),
-  { ssr: false },
-);
 
 function normalizeCurrencyFromCountry(country: unknown): "usd" | "cad" {
   const c = String(country ?? "").trim().toUpperCase();
@@ -145,7 +138,6 @@ export default function InvoicePreviewPageClient({
     (async () => {
       setLoading(true);
 
-      // Always fetch WO core so this page can send invoice safely
       const { data: woRow, error: woErr } = await supabase
         .from("work_orders")
         .select(
@@ -180,7 +172,6 @@ export default function InvoicePreviewPageClient({
       setWo(woRow);
       setShopId(woRow.shop_id);
 
-      // Shop -> stripe connect + country
       const { data: shop, error: sErr } = await supabase
         .from("shops")
         .select("stripe_account_id, country")
@@ -281,9 +272,7 @@ export default function InvoicePreviewPageClient({
         }
       }
 
-      if (needSummary) {
-        setFSummary(undefined);
-      }
+      if (needSummary) setFSummary(undefined);
 
       setLoading(false);
     })();
@@ -375,7 +364,9 @@ export default function InvoicePreviewPageClient({
     const laborTotal = Number(wo?.labor_total ?? 0);
     const partsTotal = Number(wo?.parts_total ?? 0);
     const invoiceTotal =
-      Number(wo?.invoice_total ?? 0) > 0 ? Number(wo?.invoice_total ?? 0) : laborTotal + partsTotal;
+      Number(wo?.invoice_total ?? 0) > 0
+        ? Number(wo?.invoice_total ?? 0)
+        : laborTotal + partsTotal;
 
     const payloadLines: InvoiceLinePayload[] = (effectiveLines ?? []).map((l) => {
       const lineId = getLineIdFromRepairLine(l);
@@ -407,6 +398,8 @@ export default function InvoicePreviewPageClient({
           invoiceTotal,
           vehicleInfo: effectiveVehicleInfo,
           lines: payloadLines,
+          // pass through if you want to store/display signature later
+          signatureImage: signatureImage ?? undefined,
         }),
       });
 
@@ -440,6 +433,7 @@ export default function InvoicePreviewPageClient({
     wo?.invoice_total,
     onSent,
     handleBack,
+    signatureImage,
   ]);
 
   return (
@@ -523,7 +517,9 @@ export default function InvoicePreviewPageClient({
               Fix the items below, then refresh this page.
             </div>
 
-            {reviewError ? <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div> : null}
+            {reviewError ? (
+              <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div>
+            ) : null}
 
             <ul className="mt-2 space-y-1 text-[0.8rem] text-neutral-200">
               {(reviewIssues ?? []).slice(0, 12).map((i, idx) => (
@@ -548,7 +544,8 @@ export default function InvoicePreviewPageClient({
                       const list = issuesByLineId.get(id as string) ?? [];
                       const r = l as unknown as Record<string, unknown>;
                       const label =
-                        typeof r["complaint"] === "string" && (r["complaint"] as string).trim().length > 0
+                        typeof r["complaint"] === "string" &&
+                        (r["complaint"] as string).trim().length > 0
                           ? (r["complaint"] as string)
                           : `Line ${String(id).slice(0, 6)}…`;
 
@@ -575,18 +572,38 @@ export default function InvoicePreviewPageClient({
           </div>
         ) : null}
 
-        {/* PDF Surface */}
-        <div className="h-[78vh] overflow-hidden rounded-xl border border-[var(--metal-border-soft)] bg-black/30">
-          <PDFViewer width="100%" height="100%">
-            <WorkOrderInvoicePDF
-              workOrderId={workOrderId}
-              vehicleInfo={effectiveVehicleInfo}
-              customerInfo={effectiveCustomerInfo}
-              lines={effectiveLines}
-              summary={effectiveSummary}
-              signatureImage={signatureImage}
-            />
-          </PDFViewer>
+        {/* PDF Download Panel (replaces PDFViewer) */}
+        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+                Invoice PDF
+              </div>
+              <div className="mt-1 text-sm text-neutral-200">
+                Download a copy for your records.
+              </div>
+              <div className="mt-1 text-[0.75rem] text-neutral-500">
+                Tip: if you ever see missing glyphs, avoid emoji in PDF text.
+              </div>
+            </div>
+
+            <div className={reviewOk ? "" : "opacity-60 pointer-events-none"}>
+              <WorkOrderInvoiceDownloadButton
+                workOrderId={workOrderId}
+                lines={effectiveLines}
+                summary={effectiveSummary}
+                vehicleInfo={effectiveVehicleInfo}
+                customerInfo={effectiveCustomerInfo}
+                autoTrigger={false}
+              />
+            </div>
+          </div>
+
+          {!reviewOk ? (
+            <div className="mt-3 text-[0.75rem] text-amber-200">
+              PDF download is shown, but invoice is still blocked until required info is complete.
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
