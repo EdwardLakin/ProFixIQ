@@ -240,7 +240,7 @@ export async function POST(req: NextRequest, context: unknown) {
 
     // send email invite (SendGrid template)
     const SENDGRID_API_KEY = mustEnv("SENDGRID_API_KEY");
-    const TEMPLATE_ID = mustEnv("SENDGRID_STAFF_INVITE_TEMPLATE_ID");
+    const TEMPLATE_ID = mustEnv("SENDGRID_USER_INVITE_TEMPLATE_ID");
     const FROM_EMAIL = mustEnv("SENDGRID_FROM_EMAIL");
     const FROM_NAME = process.env.SENDGRID_FROM_NAME ?? "ProFixIQ";
     const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
