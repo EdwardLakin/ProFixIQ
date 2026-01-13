@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  Document,
-  Page,
-  Text,
-  View,
-  StyleSheet,
-  Font,
-  Image,
-} from "@react-pdf/renderer";
-
+import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
 import type { RepairLine } from "@ai/lib/parseRepairOutput";
 
 type VehicleInfo = {
@@ -34,11 +25,9 @@ type Props = {
   signatureImage?: string;
 };
 
-// Use built-in fonts reliably (remote font URLs can fail in PDFs).
-Font.register({
-  family: "Helvetica",
-  fonts: [{ src: undefined as unknown as string }],
-});
+// ✅ NOTE:
+// Do NOT register Helvetica with an undefined src.
+// react-pdf already includes Helvetica as a built-in font.
 
 const styles = StyleSheet.create({
   page: {
@@ -137,6 +126,15 @@ function fmtVin(v?: VehicleInfo): string {
   return vin.length > 0 ? vin : "—";
 }
 
+function safeDate(): string {
+  // avoid any locale edge weirdness
+  const d = new Date();
+  const yyyy = String(d.getFullYear());
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export function WorkOrderInvoicePDF({
   workOrderId,
   vehicleInfo,
@@ -149,12 +147,14 @@ export function WorkOrderInvoicePDF({
   const customerPhone = safeStr(customerInfo?.phone).trim() || "—";
   const customerEmail = safeStr(customerInfo?.email).trim() || "—";
 
+  const safeLines = Array.isArray(lines) ? lines : [];
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
           <Text style={styles.title}>Invoice</Text>
-          <Text style={styles.subtitle}>Work Order #{workOrderId}</Text>
+          <Text style={styles.subtitle}>Work Order #{safeStr(workOrderId) || "—"}</Text>
 
           <View style={styles.grid2}>
             <View style={styles.box}>
@@ -197,14 +197,14 @@ export function WorkOrderInvoicePDF({
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Work Performed</Text>
 
-          {(lines ?? []).length === 0 ? (
+          {safeLines.length === 0 ? (
             <Text style={styles.paragraph}>—</Text>
           ) : (
-            (lines ?? []).map((line, idx) => {
-              const complaint = safeStr(line.complaint).trim() || "—";
-              const cause = safeStr(line.cause).trim() || "—";
-              const correction = safeStr(line.correction).trim() || "—";
-              const laborTime = safeStr(line.labor_time).trim() || "—";
+            safeLines.map((line, idx) => {
+              const complaint = safeStr((line as any)?.complaint).trim() || "—";
+              const cause = safeStr((line as any)?.cause).trim() || "—";
+              const correction = safeStr((line as any)?.correction).trim() || "—";
+              const laborTime = safeStr((line as any)?.labor_time).trim() || "—";
 
               return (
                 <View key={`line-${idx}`} style={styles.lineItem}>
@@ -221,13 +221,13 @@ export function WorkOrderInvoicePDF({
         {typeof signatureImage === "string" && signatureImage.trim().length > 0 && (
           <View style={styles.signatureWrap}>
             <Text style={styles.signatureLabel}>Customer Signature</Text>
-            <Image src={signatureImage} style={styles.signatureImage} />
+            <Image src={signatureImage.trim()} style={styles.signatureImage} />
           </View>
         )}
 
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>ProFixIQ</Text>
-          <Text style={styles.footerText}>Generated {new Date().toLocaleDateString()}</Text>
+          <Text style={styles.footerText}>Generated {safeDate()}</Text>
         </View>
       </Page>
     </Document>
