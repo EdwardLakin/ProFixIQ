@@ -29,7 +29,7 @@ type Props = {
 };
 
 const PDFViewer = dynamic(
-  () => import("@react-pdf/renderer").then((m) => m.PDFViewer),
+  () => import("@react-pdf/renderer").then((m) => ({ default: m.PDFViewer })),
   { ssr: false },
 );
 
