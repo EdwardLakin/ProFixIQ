@@ -398,7 +398,6 @@ export default function InvoicePreviewPageClient({
           invoiceTotal,
           vehicleInfo: effectiveVehicleInfo,
           lines: payloadLines,
-          // pass through if you want to store/display signature later
           signatureImage: signatureImage ?? undefined,
         }),
       });
@@ -435,6 +434,8 @@ export default function InvoicePreviewPageClient({
     handleBack,
     signatureImage,
   ]);
+
+  const fileName = useMemo(() => `Invoice_WorkOrder_${workOrderId}.pdf`, [workOrderId]);
 
   return (
     <div className="min-h-[calc(100vh-0px)] bg-black px-3 py-3 sm:px-4 sm:py-4">
@@ -604,6 +605,9 @@ export default function InvoicePreviewPageClient({
               PDF download is shown, but invoice is still blocked until required info is complete.
             </div>
           ) : null}
+
+          {/* Small helper row if you want quick filename visibility */}
+          <div className="mt-3 text-[0.7rem] text-neutral-500">Filename: {fileName}</div>
         </div>
       </div>
     </div>
