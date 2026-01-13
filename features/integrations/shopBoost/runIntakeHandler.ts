@@ -280,13 +280,9 @@ export async function runShopBoostIntake(
   const vehiclesFinalN = normalizeShopPath(shopId, vehiclesFinal);
   const partsFinalN = normalizeShopPath(shopId, partsFinal);
 
-  const historyFinalN = mode.allowHistoryAndStaff
-    ? normalizeShopPath(shopId, historyFinal)
-    : null;
+  const historyFinalN = mode.allowHistoryAndStaff ? normalizeShopPath(shopId, historyFinal) : null;
 
-  const staffFinalN = mode.allowHistoryAndStaff
-    ? normalizeShopPath(shopId, staffFinal)
-    : null;
+  const staffFinalN = mode.allowHistoryAndStaff ? normalizeShopPath(shopId, staffFinal) : null;
 
   // ✅ enforce shop-scoped paths for any provided/fallback content
   if (
@@ -329,7 +325,12 @@ export async function runShopBoostIntake(
   if (!snapshot) return { ok: false, error: "AI analysis failed. Try different exports." };
 
   if (mode.runImport) {
-    await runShopBoostImport({ shopId, intakeId });
+    // 🔒 do NOT allow staff auth creation from intake runs
+    await runShopBoostImport({
+      shopId,
+      intakeId,
+      options: { createStaffUsers: false },
+    });
   }
 
   return { ok: true, shopId, intakeId, snapshot };
