@@ -1,10 +1,10 @@
-//features/dashboard/app/dashboard/owner/create-user/page.tsx
-
+// features/dashboard/app/dashboard/owner/create-user/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import PageShell from "@/features/shared/components/PageShell";
 import UsersList from "@/features/admin/components/UsersList";
+import InviteCandidatesList from "@/features/admin/components/InviteCandidatesList";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -420,12 +420,20 @@ export default function CreateUserPage(): JSX.Element {
         </div>
       </div>
 
+      {/* PENDING INVITES */}
+      <div className="mt-6 rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_24px_70px_rgba(0,0,0,0.85)] sm:p-6">
+        <h2 className="mb-3 text-lg font-semibold text-white">Pending invites</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          These are staff invite candidates (imported or staged). Create the user + send the invite email.
+        </p>
+        <InviteCandidatesList />
+      </div>
+
       {/* USERS LIST (full width, own card) */}
       <div className="mt-6 rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_24px_70px_rgba(0,0,0,0.85)] sm:p-6">
         <h2 className="mb-3 text-lg font-semibold text-white">All users</h2>
         <p className="mb-3 text-xs text-neutral-500">
-          This is the full list of users for your shop. New accounts appear here
-          automatically.
+          This is the full list of users for your shop. New accounts appear here automatically.
         </p>
         <UsersList key={listRefreshKey} />
       </div>
