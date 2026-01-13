@@ -1,4 +1,3 @@
-// app/api/admin/staff-invite-candidates/[id]/create-user/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -240,7 +239,12 @@ export async function POST(req: NextRequest, context: unknown) {
 
     // send email invite (SendGrid template)
     const SENDGRID_API_KEY = mustEnv("SENDGRID_API_KEY");
-    const TEMPLATE_ID = mustEnv("SENDGRID_USER_INVITE_TEMPLATE_ID");
+
+    // ✅ Use env if set; otherwise fall back to the known correct template id you showed.
+    const TEMPLATE_ID =
+      process.env.SENDGRID_USER_INVITE_TEMPLATE_ID?.trim() ||
+      "d-d76d1c40019f400c9b1106703efa4041";
+
     const FROM_EMAIL = mustEnv("SENDGRID_FROM_EMAIL");
     const FROM_NAME = process.env.SENDGRID_FROM_NAME ?? "ProFixIQ";
     const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
@@ -269,6 +273,7 @@ export async function POST(req: NextRequest, context: unknown) {
     } catch (e) {
       finalStatus = INVITE_STATUS.created;
       sendErrMsg = e instanceof Error ? e.message : "SendGrid send failed";
+      // eslint-disable-next-line no-console
       console.warn("[staff invite] sendgrid failed", e);
     }
 
