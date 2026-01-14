@@ -435,8 +435,6 @@ export default function InvoicePreviewPageClient({
     signatureImage,
   ]);
 
-  const fileName = useMemo(() => `Invoice_WorkOrder_${workOrderId}.pdf`, [workOrderId]);
-
   return (
     <div className="min-h-[calc(100vh-0px)] bg-black px-3 py-3 sm:px-4 sm:py-4">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-3">
@@ -518,9 +516,7 @@ export default function InvoicePreviewPageClient({
               Fix the items below, then refresh this page.
             </div>
 
-            {reviewError ? (
-              <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div>
-            ) : null}
+            {reviewError ? <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div> : null}
 
             <ul className="mt-2 space-y-1 text-[0.8rem] text-neutral-200">
               {(reviewIssues ?? []).slice(0, 12).map((i, idx) => (
@@ -545,8 +541,7 @@ export default function InvoicePreviewPageClient({
                       const list = issuesByLineId.get(id as string) ?? [];
                       const r = l as unknown as Record<string, unknown>;
                       const label =
-                        typeof r["complaint"] === "string" &&
-                        (r["complaint"] as string).trim().length > 0
+                        typeof r["complaint"] === "string" && (r["complaint"] as string).trim().length > 0
                           ? (r["complaint"] as string)
                           : `Line ${String(id).slice(0, 6)}…`;
 
@@ -573,19 +568,14 @@ export default function InvoicePreviewPageClient({
           </div>
         ) : null}
 
-        {/* PDF Download Panel (replaces PDFViewer) */}
+        {/* PDF Download Panel */}
         <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/30 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
                 Invoice PDF
               </div>
-              <div className="mt-1 text-sm text-neutral-200">
-                Download a copy for your records.
-              </div>
-              <div className="mt-1 text-[0.75rem] text-neutral-500">
-                Tip: if you ever see missing glyphs, avoid emoji in PDF text.
-              </div>
+              <div className="mt-1 text-sm text-neutral-200">Download a copy for your records.</div>
             </div>
 
             <div className={reviewOk ? "" : "opacity-60 pointer-events-none"}>
@@ -605,9 +595,6 @@ export default function InvoicePreviewPageClient({
               PDF download is shown, but invoice is still blocked until required info is complete.
             </div>
           ) : null}
-
-          {/* Small helper row if you want quick filename visibility */}
-          <div className="mt-3 text-[0.7rem] text-neutral-500">Filename: {fileName}</div>
         </div>
       </div>
     </div>
