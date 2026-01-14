@@ -13,8 +13,38 @@ import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrde
 
 type DB = Database;
 
-type VehicleInfo = { year?: string; make?: string; model?: string; vin?: string };
-type CustomerInfo = { name?: string; phone?: string; email?: string };
+type VehicleInfo = {
+  year?: string;
+  make?: string;
+  model?: string;
+  vin?: string;
+  license_plate?: string;
+  unit_number?: string;
+  mileage?: string;
+  color?: string;
+  engine_hours?: string;
+};
+
+type CustomerInfo = {
+  name?: string;
+  phone?: string;
+  email?: string;
+  business_name?: string;
+  street?: string;
+  city?: string;
+  province?: string;
+  postal_code?: string;
+};
+
+type ShopInfo = {
+  name?: string;
+  phone_number?: string;
+  email?: string;
+  street?: string;
+  city?: string;
+  province?: string;
+  postal_code?: string;
+};
 
 type Props = {
   workOrderId: string;
@@ -75,6 +105,41 @@ function getLineIdFromRepairLine(line: RepairLine): string | undefined {
   return undefined;
 }
 
+function joinName(first?: string | null, last?: string | null): string | undefined {
+  const f = (first ?? "").trim();
+  const l = (last ?? "").trim();
+  const s = [f, l].filter(Boolean).join(" ").trim();
+  return s.length ? s : undefined;
+}
+
+function pickCustomerPhone(c?: Pick<CustomerRow, "phone" | "phone_number"> | null): string | undefined {
+  const p1 = (c?.phone_number ?? "").trim();
+  const p2 = (c?.phone ?? "").trim();
+  const out = p1 || p2;
+  return out.length ? out : undefined;
+}
+
+function pickCustomerName(
+  c?: Pick<CustomerRow, "name" | "first_name" | "last_name"> | null,
+  fallback?: string | null,
+): string | undefined {
+  const a = (c?.name ?? "").trim();
+  const b = joinName(c?.first_name ?? null, c?.last_name ?? null);
+  const f = (fallback ?? "").trim();
+  const out = a || b || f;
+  return out.length ? out : undefined;
+}
+
+function pickShopName(
+  s?: Pick<ShopRow, "business_name" | "shop_name" | "name"> | null,
+): string | undefined {
+  const a = (s?.business_name ?? "").trim();
+  const b = (s?.shop_name ?? "").trim();
+  const c = (s?.name ?? "").trim();
+  const out = a || b || c;
+  return out.length ? out : undefined;
+}
+
 export default function InvoicePreviewPageClient({
   workOrderId,
   vehicleInfo,
@@ -91,6 +156,8 @@ export default function InvoicePreviewPageClient({
   const [shopId, setShopId] = useState<string | null>(null);
   const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
   const [currency, setCurrency] = useState<"usd" | "cad">("usd");
+
+  const [shopInfo, setShopInfo] = useState<ShopInfo | undefined>(undefined);
 
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewOk, setReviewOk] = useState<boolean>(false);
@@ -127,6 +194,11 @@ export default function InvoicePreviewPageClient({
 
   const effectiveSummary = summary ?? fSummary;
 
+  const effectiveShopName = useMemo(() => {
+    const n = (shopInfo?.name ?? "").trim();
+    return n.length ? n : undefined;
+  }, [shopInfo?.name]);
+
   // -------------------------------------------------------------------
   // Load shop/stripe + WO + optional customer/vehicle/lines (when not provided)
   // -------------------------------------------------------------------
@@ -140,9 +212,7 @@ export default function InvoicePreviewPageClient({
 
       const { data: woRow, error: woErr } = await supabase
         .from("work_orders")
-        .select(
-          "id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name",
-        )
+        .select("id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name")
         .eq("id", workOrderId)
         .maybeSingle<
           Pick<
@@ -165,6 +235,7 @@ export default function InvoicePreviewPageClient({
         setShopId(null);
         setStripeAccountId(null);
         setCurrency("usd");
+        setShopInfo(undefined);
         setLoading(false);
         return;
       }
@@ -174,18 +245,45 @@ export default function InvoicePreviewPageClient({
 
       const { data: shop, error: sErr } = await supabase
         .from("shops")
-        .select("stripe_account_id, country")
+        .select(
+          "stripe_account_id, country, business_name, shop_name, name, phone_number, email, street, city, province, postal_code",
+        )
         .eq("id", woRow.shop_id)
-        .maybeSingle<Pick<ShopRow, "stripe_account_id" | "country">>();
+        .maybeSingle<
+          Pick<
+            ShopRow,
+            | "stripe_account_id"
+            | "country"
+            | "business_name"
+            | "shop_name"
+            | "name"
+            | "phone_number"
+            | "email"
+            | "street"
+            | "city"
+            | "province"
+            | "postal_code"
+          >
+        >();
 
       if (cancelled) return;
 
       if (sErr) {
         setStripeAccountId(null);
         setCurrency("usd");
+        setShopInfo(undefined);
       } else {
         setStripeAccountId(shop?.stripe_account_id ?? null);
         setCurrency(normalizeCurrencyFromCountry(shop?.country));
+        setShopInfo({
+          name: pickShopName(shop ?? null),
+          phone_number: (shop?.phone_number ?? "").trim() || undefined,
+          email: (shop?.email ?? "").trim() || undefined,
+          street: (shop?.street ?? "").trim() || undefined,
+          city: (shop?.city ?? "").trim() || undefined,
+          province: (shop?.province ?? "").trim() || undefined,
+          postal_code: (shop?.postal_code ?? "").trim() || undefined,
+        });
       }
 
       const needCustomer = !customerInfo;
@@ -196,40 +294,82 @@ export default function InvoicePreviewPageClient({
       if (needCustomer && woRow.customer_id) {
         const { data: c } = await supabase
           .from("customers")
-          .select("first_name,last_name,phone,email")
+          .select(
+            "name, first_name, last_name, phone, phone_number, email, business_name, street, city, province, postal_code",
+          )
           .eq("id", woRow.customer_id)
-          .maybeSingle<Pick<CustomerRow, "first_name" | "last_name" | "phone" | "email">>();
+          .maybeSingle<
+            Pick<
+              CustomerRow,
+              | "name"
+              | "first_name"
+              | "last_name"
+              | "phone"
+              | "phone_number"
+              | "email"
+              | "business_name"
+              | "street"
+              | "city"
+              | "province"
+              | "postal_code"
+            >
+          >();
 
         if (cancelled) return;
 
-        const customerName =
-          [c?.first_name ?? "", c?.last_name ?? ""].filter(Boolean).join(" ") ||
-          woRow.customer_name ||
-          undefined;
-
         setFCustomerInfo({
-          name: customerName,
-          phone: c?.phone ?? undefined,
-          email: c?.email ?? undefined,
+          name: pickCustomerName(c ?? null, woRow.customer_name ?? null),
+          phone: pickCustomerPhone(c ?? null),
+          email: (c?.email ?? "").trim() || undefined,
+          business_name: (c?.business_name ?? "").trim() || undefined,
+          street: (c?.street ?? "").trim() || undefined,
+          city: (c?.city ?? "").trim() || undefined,
+          province: (c?.province ?? "").trim() || undefined,
+          postal_code: (c?.postal_code ?? "").trim() || undefined,
         });
       } else if (needCustomer) {
-        setFCustomerInfo({ name: woRow.customer_name ?? undefined });
+        setFCustomerInfo({
+          name: (woRow.customer_name ?? "").trim() || undefined,
+        });
       }
 
       if (needVehicle && woRow.vehicle_id) {
         const { data: v } = await supabase
           .from("vehicles")
-          .select("year,make,model,vin")
+          .select(
+            "year, make, model, vin, license_plate, unit_number, mileage, color, engine_hours",
+          )
           .eq("id", woRow.vehicle_id)
-          .maybeSingle<Pick<VehicleRow, "year" | "make" | "model" | "vin">>();
+          .maybeSingle<
+            Pick<
+              VehicleRow,
+              | "year"
+              | "make"
+              | "model"
+              | "vin"
+              | "license_plate"
+              | "unit_number"
+              | "mileage"
+              | "color"
+              | "engine_hours"
+            >
+          >();
 
         if (cancelled) return;
 
         setFVehicleInfo({
-          year: v?.year ? String(v.year) : undefined,
-          make: v?.make ?? undefined,
-          model: v?.model ?? undefined,
-          vin: v?.vin ?? undefined,
+          year: v?.year !== null && v?.year !== undefined ? String(v.year) : undefined,
+          make: (v?.make ?? "").trim() || undefined,
+          model: (v?.model ?? "").trim() || undefined,
+          vin: (v?.vin ?? "").trim() || undefined,
+          license_plate: (v?.license_plate ?? "").trim() || undefined,
+          unit_number: (v?.unit_number ?? "").trim() || undefined,
+          mileage: (v?.mileage ?? "").trim() || undefined,
+          color: (v?.color ?? "").trim() || undefined,
+          engine_hours:
+            v?.engine_hours !== null && v?.engine_hours !== undefined
+              ? String(v.engine_hours)
+              : undefined,
         });
       } else if (needVehicle) {
         setFVehicleInfo(undefined);
@@ -247,13 +387,7 @@ export default function InvoicePreviewPageClient({
             (
               l: Pick<
                 WorkOrderLineRow,
-                | "id"
-                | "line_no"
-                | "description"
-                | "complaint"
-                | "cause"
-                | "correction"
-                | "labor_time"
+                "id" | "line_no" | "description" | "complaint" | "cause" | "correction" | "labor_time"
               >,
             ) => {
               const complaint = (l.description ?? l.complaint ?? "") || "";
@@ -355,9 +489,7 @@ export default function InvoicePreviewPageClient({
     const email = effectiveCustomerInfo?.email;
     if (!email) {
       setReviewOk(false);
-      setReviewIssues([
-        { kind: "missing_email", message: "No customer email on file for this work order." },
-      ]);
+      setReviewIssues([{ kind: "missing_email", message: "No customer email on file for this work order." }]);
       return;
     }
 
@@ -395,8 +527,9 @@ export default function InvoicePreviewPageClient({
           workOrderId,
           customerEmail: email,
           customerName: effectiveCustomerInfo?.name,
+          shopName: effectiveShopName, // ✅ added (shops table)
           invoiceTotal,
-          vehicleInfo: effectiveVehicleInfo,
+          vehicleInfo: effectiveVehicleInfo, // ✅ now includes plate/unit/mileage/etc when available
           lines: payloadLines,
           signatureImage: signatureImage ?? undefined,
         }),
@@ -433,6 +566,7 @@ export default function InvoicePreviewPageClient({
     onSent,
     handleBack,
     signatureImage,
+    effectiveShopName,
   ]);
 
   return (
@@ -516,7 +650,9 @@ export default function InvoicePreviewPageClient({
               Fix the items below, then refresh this page.
             </div>
 
-            {reviewError ? <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div> : null}
+            {reviewError ? (
+              <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div>
+            ) : null}
 
             <ul className="mt-2 space-y-1 text-[0.8rem] text-neutral-200">
               {(reviewIssues ?? []).slice(0, 12).map((i, idx) => (
