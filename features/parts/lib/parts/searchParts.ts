@@ -1,4 +1,4 @@
-// lib/parts/searchParts.ts
+//features/parts/lib/parts/searchParts.ts
 
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";

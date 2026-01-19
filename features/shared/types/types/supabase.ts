@@ -3905,38 +3905,83 @@ export type Database = {
       part_request_items: {
         Row: {
           approved: boolean
+          created_at: string
           description: string
           id: string
           markup_pct: number | null
+          menu_item_id: string | null
           part_id: string | null
           qty: number
+          qty_approved: number
+          qty_consumed: number
+          qty_picked: number
+          qty_received: number
+          qty_requested: number
+          qty_reserved: number
           quoted_price: number | null
           request_id: string
+          shop_id: string | null
+          status: Database["public"]["Enums"]["part_request_item_status"]
+          unit_cost: number | null
+          unit_price: number | null
+          updated_at: string
           vendor: string | null
+          vendor_id: string | null
+          work_order_id: string | null
           work_order_line_id: string | null
         }
         Insert: {
           approved?: boolean
+          created_at?: string
           description: string
           id?: string
           markup_pct?: number | null
+          menu_item_id?: string | null
           part_id?: string | null
           qty: number
+          qty_approved?: number
+          qty_consumed?: number
+          qty_picked?: number
+          qty_received?: number
+          qty_requested?: number
+          qty_reserved?: number
           quoted_price?: number | null
           request_id: string
+          shop_id?: string | null
+          status?: Database["public"]["Enums"]["part_request_item_status"]
+          unit_cost?: number | null
+          unit_price?: number | null
+          updated_at?: string
           vendor?: string | null
+          vendor_id?: string | null
+          work_order_id?: string | null
           work_order_line_id?: string | null
         }
         Update: {
           approved?: boolean
+          created_at?: string
           description?: string
           id?: string
           markup_pct?: number | null
+          menu_item_id?: string | null
           part_id?: string | null
           qty?: number
+          qty_approved?: number
+          qty_consumed?: number
+          qty_picked?: number
+          qty_received?: number
+          qty_requested?: number
+          qty_reserved?: number
           quoted_price?: number | null
           request_id?: string
+          shop_id?: string | null
+          status?: Database["public"]["Enums"]["part_request_item_status"]
+          unit_cost?: number | null
+          unit_price?: number | null
+          updated_at?: string
           vendor?: string | null
+          vendor_id?: string | null
+          work_order_id?: string | null
           work_order_line_id?: string | null
         }
         Relationships: [
@@ -6295,7 +6340,7 @@ export type Database = {
           max_users: number | null
           min_notice_minutes: number | null
           name: string | null
-          owner_id: string
+          owner_id: string | null
           owner_pin: string | null
           owner_pin_hash: string | null
           phone_number: string | null
@@ -6349,7 +6394,7 @@ export type Database = {
           max_users?: number | null
           min_notice_minutes?: number | null
           name?: string | null
-          owner_id: string
+          owner_id?: string | null
           owner_pin?: string | null
           owner_pin_hash?: string | null
           phone_number?: string | null
@@ -6403,7 +6448,7 @@ export type Database = {
           max_users?: number | null
           min_notice_minutes?: number | null
           name?: string | null
-          owner_id?: string
+          owner_id?: string | null
           owner_pin?: string | null
           owner_pin_hash?: string | null
           phone_number?: string | null
@@ -9822,6 +9867,10 @@ export type Database = {
       }
       check_plan_limit: { Args: { _feature: string }; Returns: boolean }
       clear_auth: { Args: never; Returns: undefined }
+      consume_part_request_item_on_picked: {
+        Args: { p_request_item_id: string }
+        Returns: undefined
+      }
       create_fleet_form_upload: {
         Args: { _filename: string; _path: string }
         Returns: string
@@ -9910,6 +9959,10 @@ export type Database = {
         Args: { p_shop_id: string; p_user_id: string }
         Returns: string
       }
+      get_default_stock_location: {
+        Args: { p_shop_id: string }
+        Returns: string
+      }
       get_work_order_assignments: {
         Args: { p_work_order_id: string }
         Returns: {
@@ -9930,6 +9983,10 @@ export type Database = {
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
       mark_active: { Args: never; Returns: undefined }
+      maybe_release_line_hold_for_parts: {
+        Args: { p_work_order_line_id: string }
+        Returns: undefined
+      }
       portal_approve_line: { Args: { p_line_id: string }; Returns: undefined }
       portal_approve_part_request_item: {
         Args: { p_item_id: string }
@@ -9947,13 +10004,34 @@ export type Database = {
         Args: { p_shop_id: string }
         Returns: undefined
       }
+      receive_part_request_item: {
+        Args: {
+          p_item_id: string
+          p_location_id: string
+          p_po_id?: string
+          p_qty: number
+        }
+        Returns: {
+          move_id: string
+          qty_received: number
+          status: Database["public"]["Enums"]["part_request_item_status"]
+        }[]
+      }
       recompute_work_order_status: {
         Args: { p_wo: string }
+        Returns: undefined
+      }
+      reserve_part_request_items_for_line: {
+        Args: { p_work_order_line_id: string }
         Returns: undefined
       }
       resolve_fleet_id_from_vehicle: {
         Args: { p_vehicle_id: string }
         Returns: string
+      }
+      restock_consumed_part_request_item: {
+        Args: { p_qty?: number; p_request_item_id: string }
+        Returns: undefined
       }
       seed_default_hours: { Args: { shop_id: string }; Returns: undefined }
       send_for_approval: {
@@ -9981,6 +10059,10 @@ export type Database = {
           p_signature_image_path?: string
           p_signed_name: string
         }
+        Returns: undefined
+      }
+      unreserve_part_request_item: {
+        Args: { p_qty?: number; p_request_item_id: string }
         Returns: undefined
       }
       update_part_quote: {
@@ -10044,6 +10126,19 @@ export type Database = {
         | "completed"
         | "aborted"
       job_type_enum: "diagnosis" | "inspection" | "maintenance" | "repair"
+      part_request_item_status:
+        | "requested"
+        | "quoted"
+        | "awaiting_customer_approval"
+        | "approved"
+        | "reserved"
+        | "picking"
+        | "picked"
+        | "ordered"
+        | "partially_received"
+        | "received"
+        | "consumed"
+        | "cancelled"
       part_request_status:
         | "requested"
         | "quoted"
@@ -10248,6 +10343,20 @@ export const Constants = {
         "aborted",
       ],
       job_type_enum: ["diagnosis", "inspection", "maintenance", "repair"],
+      part_request_item_status: [
+        "requested",
+        "quoted",
+        "awaiting_customer_approval",
+        "approved",
+        "reserved",
+        "picking",
+        "picked",
+        "ordered",
+        "partially_received",
+        "received",
+        "consumed",
+        "cancelled",
+      ],
       part_request_status: [
         "requested",
         "quoted",

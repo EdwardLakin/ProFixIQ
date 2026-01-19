@@ -1,3 +1,5 @@
+//app/parts/inventory/page.tsx
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";

@@ -1,7 +1,7 @@
 // features/work-orders/components/workorders/PartsDrawer.tsx (FULL FILE REPLACEMENT)
-// Themed to match Menu page (metal-card / copper accent / glass look)
-// NOTE: PartPicker itself renders a modal; here we render it inline with a "forcedOpen" flag so it
-// can reuse the same component without nesting backdrops.
+// Drawer modal with tabs: Use from Inventory vs Request to Purchase
+// IMPORTANT: PartPicker must be rendered inline (no fixed inset/backdrop) to avoid nested modals.
+// This file assumes PartPicker supports `variant="inline"`.
 
 "use client";
 
@@ -11,11 +11,13 @@ import PartsRequestModal from "@/features/work-orders/components/workorders/Part
 import { toast } from "sonner";
 import { consumePart } from "@/features/work-orders/lib/parts/consumePart";
 
-type SerializableVehicle = {
-  year?: number | string | null;
-  make?: string | null;
-  model?: string | null;
-} | null;
+type SerializableVehicle =
+  | {
+      year?: number | string | null;
+      make?: string | null;
+      model?: string | null;
+    }
+  | null;
 
 type Props = {
   open: boolean;
@@ -31,9 +33,9 @@ export default function PartsDrawer({
   open,
   workOrderId,
   workOrderLineId,
-  vehicleSummary: _vehicleSummary = null,
-  jobDescription: _jobDescription = null,
-  jobNotes: _jobNotes = null,
+  vehicleSummary: vehicleSummary = null,
+  jobDescription: jobDescription = null,
+  jobNotes: jobNotes = null,
   closeEventName = "parts-drawer:closed",
 }: Props) {
   const [tab, setTab] = useState<"use" | "request">("use");
@@ -96,12 +98,7 @@ export default function PartsDrawer({
       : "rounded-full border border-transparent px-4 py-2 text-sm text-neutral-300 hover:text-white";
 
   return (
-    <div
-      className="fixed inset-0 z-[510]"
-      onClick={(e) => {
-        e.stopPropagation();
-      }}
-    >
+    <div className="fixed inset-0 z-[510]" onClick={(e) => e.stopPropagation()}>
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -163,21 +160,19 @@ export default function PartsDrawer({
         {/* Body */}
         <div className="h-[70vh] overflow-auto p-4 md:h-[calc(85vh-120px)] md:p-5">
           {tab === "use" ? (
-            // IMPORTANT: PartPicker itself is a modal component; if your PartPicker renders its own
-            // backdrop/panel, you’ll want the *inline* variant (no fixed inset). If you already updated
-            // PartPicker to match the menu theme, it likely still uses fixed positioning.
-            // If so, use channel + open true but DO NOT wrap it in another modal elsewhere.
             <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-4">
               <PartPicker
                 open={true}
+                // @ts-expect-error If PartPicker doesn't have variant yet, patch PartPicker with variant="inline"
+                variant="inline"
                 onClose={emitClose}
                 onPick={handleUsePart}
                 initialSearch=""
                 workOrderId={workOrderId}
                 workOrderLineId={workOrderLineId}
-                jobDescription={_jobDescription}
-                jobNotes={_jobNotes}
-                vehicleSummary={_vehicleSummary}
+                jobDescription={jobDescription}
+                jobNotes={jobNotes}
+                vehicleSummary={vehicleSummary}
               />
             </div>
           ) : (

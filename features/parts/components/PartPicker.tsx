@@ -1,7 +1,4 @@
 // features/parts/components/PartPicker.tsx (FULL FILE REPLACEMENT)
-// Theme updated to match /app/menu/page.tsx (metal-card + copper accent + glass panels)
-// No `any`, keeps existing behavior + events.
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -55,7 +52,6 @@ type Props = {
   onPick?: (sel: PickedPart) => void;
 };
 
-
 function cleanNumericString(raw: string): string {
   if (raw === "") return "";
   const v = raw.replace(/[^\d.]/g, "");
@@ -93,7 +89,12 @@ export function PartPicker({
   const [qty, setQty] = useState<number>(1);
   const [unitCostStr, setUnitCostStr] = useState<string>("");
 
-  const { loading: aiLoading, items: aiItems, error: aiErr, suggest } = useAiPartSuggestions();
+  const {
+    loading: aiLoading,
+    items: aiItems,
+    error: aiErr,
+    suggest,
+  } = useAiPartSuggestions();
 
   const mainLocId = useMemo(() => {
     const m = locs.find((l) => (l.code ?? "").toUpperCase() === "MAIN");
@@ -102,17 +103,20 @@ export function PartPicker({
 
   useEffect(() => {
     if (!open) return;
+
     (async () => {
       setErr(null);
+
       const { data: auth } = await supabase.auth.getUser();
       const userId = auth.user?.id;
       if (!userId) return;
 
+      // ✅ FIX: profiles are keyed by id = auth.uid() in the rest of your app
       const { data: prof, error: pe } = await supabase
         .from("profiles")
         .select("shop_id")
-        .eq("user_id", userId)
-        .single();
+        .eq("id", userId)
+        .maybeSingle();
 
       if (pe) {
         setErr(pe.message);
@@ -121,6 +125,7 @@ export function PartPicker({
 
       const sid = (prof?.shop_id as UUID | null) ?? "";
       setShopId(sid);
+
       if (!sid) return;
 
       const { data: locsData, error: le } = await supabase
@@ -133,12 +138,14 @@ export function PartPicker({
         setErr(le.message);
         return;
       }
-      setLocs(locsData ?? []);
+
+      setLocs((locsData ?? []) as StockLoc[]);
     })();
   }, [open, supabase]);
 
   useEffect(() => {
     if (!open || !workOrderId) return;
+
     void suggest({
       workOrderId,
       workOrderLineId: workOrderLineId ?? null,
@@ -147,21 +154,38 @@ export function PartPicker({
       notes: jobNotes ?? null,
       topK: 5,
     });
-  }, [open, workOrderId, workOrderLineId, vehicleSummary, jobDescription, jobNotes, suggest]);
+  }, [
+    open,
+    workOrderId,
+    workOrderLineId,
+    vehicleSummary,
+    jobDescription,
+    jobNotes,
+    suggest,
+  ]);
 
   useEffect(() => {
     if (!open || !shopId) return;
+
     let cancelled = false;
 
     (async () => {
       setLoading(true);
       setErr(null);
+
       try {
-        let q = supabase.from("parts").select("*").eq("shop_id", shopId).order("name").limit(50);
+        let q = supabase
+          .from("parts")
+          .select("*")
+          .eq("shop_id", shopId)
+          .order("name")
+          .limit(50);
 
         const term = search.trim();
         if (term) {
-          q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`);
+          q = q.or(
+            `name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`,
+          );
         }
 
         const { data: rows, error } = await q;
@@ -219,7 +243,10 @@ export function PartPicker({
   }, [open, initialSearch]);
 
   const selectedStocks = selectedPartId ? stock[selectedPartId] ?? [] : [];
-  const locMap = useMemo(() => new Map<UUID, StockLoc>(locs.map((l) => [l.id as UUID, l])), [locs]);
+  const locMap = useMemo(
+    () => new Map<UUID, StockLoc>(locs.map((l) => [l.id as UUID, l])),
+    [locs],
+  );
 
   const defaultLocId: UUID | null =
     selectedLocId ?? mainLocId ?? (selectedStocks[0]?.location_id ?? null);
@@ -242,7 +269,10 @@ export function PartPicker({
   const availabilityLabel = useMemo(() => {
     if (!selectedPartId) return "—";
     if (!selectedStocks.length) return "No stock records";
-    const totalAvail = selectedStocks.reduce((sum, s) => sum + Number(s.qty_available || 0), 0);
+    const totalAvail = selectedStocks.reduce(
+      (sum, s) => sum + Number(s.qty_available || 0),
+      0,
+    );
     if (totalAvail <= 0) return "Out of stock";
     if (totalAvail < qty) return "Low / partial stock";
     return "In stock";
@@ -250,7 +280,10 @@ export function PartPicker({
 
   const computeAvailabilityFlag = (): AvailabilityFlag | null => {
     if (!selectedPartId || !selectedStocks.length) return "unknown";
-    const totalAvail = selectedStocks.reduce((sum, s) => sum + Number(s.qty_available || 0), 0);
+    const totalAvail = selectedStocks.reduce(
+      (sum, s) => sum + Number(s.qty_available || 0),
+      0,
+    );
     if (totalAvail <= 0) return "out_of_stock";
     if (totalAvail < qty) return "low_stock";
     return "in_stock";
@@ -258,6 +291,7 @@ export function PartPicker({
 
   const confirmPick = () => {
     if (!selectedPartId || qty <= 0) return;
+
     const payload: PickedPart = {
       part_id: selectedPartId,
       location_id: selectedLocId ?? undefined,
@@ -265,12 +299,15 @@ export function PartPicker({
       unit_cost: parsedUnitCost || null,
       availability: computeAvailabilityFlag(),
     };
+
     onPick?.(payload);
     emit("pick", payload);
     close();
   };
 
-  async function resolveSuggestionToPartId(s: AiPartSuggestion): Promise<string | null> {
+  async function resolveSuggestionToPartId(
+    s: AiPartSuggestion,
+  ): Promise<string | null> {
     if (!shopId) return null;
 
     if (s.sku) {
@@ -321,7 +358,9 @@ export function PartPicker({
           {/* Header */}
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Select a part</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+                Select a part
+              </div>
               <h3
                 className="mt-1 text-2xl font-semibold text-white"
                 style={{ fontFamily: "var(--font-blackops), system-ui" }}
@@ -333,6 +372,7 @@ export function PartPicker({
             <button
               onClick={close}
               className="rounded-full border border-neutral-700 bg-neutral-950 px-4 py-2 text-sm text-neutral-100 hover:border-orange-500 hover:bg-neutral-900"
+              type="button"
             >
               Close
             </button>
@@ -344,7 +384,9 @@ export function PartPicker({
               <div className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
                 AI suggestions
               </div>
-              {aiLoading ? <div className="text-xs text-neutral-400">Thinking…</div> : null}
+              {aiLoading ? (
+                <div className="text-xs text-neutral-400">Thinking…</div>
+              ) : null}
             </div>
 
             <div className="p-3">
@@ -359,6 +401,7 @@ export function PartPicker({
                       key={`${s.sku ?? s.name ?? "s"}-${i}`}
                       className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 text-xs text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-[color:var(--accent-copper,#f97316)]/10"
                       title={s.rationale || ""}
+                      type="button"
                       onClick={async () => {
                         const pid = await resolveSuggestionToPartId(s);
                         if (pid) {
@@ -420,6 +463,7 @@ export function PartPicker({
                               ? "ring-2 ring-[color:var(--accent-copper,#f97316)]/60"
                               : "ring-0",
                           ].join(" ")}
+                          type="button"
                         >
                           <div className="truncate text-sm font-semibold text-neutral-50">
                             {p.name ?? "Unnamed part"}
@@ -441,7 +485,9 @@ export function PartPicker({
                 </div>
 
                 {!selectedPartId ? (
-                  <div className="text-sm text-neutral-400">Select a part to view stock.</div>
+                  <div className="text-sm text-neutral-400">
+                    Select a part to view stock.
+                  </div>
                 ) : selectedStocks.length === 0 ? (
                   <div className="text-sm text-neutral-400">
                     No stock entries yet (you can still use/consume).
@@ -450,10 +496,14 @@ export function PartPicker({
                   <div className="grid gap-2">
                     {selectedStocks
                       .slice()
-                      .sort((a, b) => Number(b.qty_available) - Number(a.qty_available))
+                      .sort(
+                        (a, b) =>
+                          Number(b.qty_available) - Number(a.qty_available),
+                      )
                       .map((s) => {
                         const l = locMap.get(s.location_id as UUID);
-                        const checked = (selectedLocId ?? defaultLocId) === s.location_id;
+                        const checked =
+                          (selectedLocId ?? defaultLocId) === s.location_id;
 
                         return (
                           <label
@@ -461,7 +511,9 @@ export function PartPicker({
                             className={[
                               "flex items-center justify-between gap-3 rounded-xl border p-3",
                               "border-[color:var(--metal-border-soft,#1f2937)] bg-black/50",
-                              checked ? "ring-2 ring-[color:var(--accent-copper,#f97316)]/50" : "",
+                              checked
+                                ? "ring-2 ring-[color:var(--accent-copper,#f97316)]/50"
+                                : "",
                             ].join(" ")}
                           >
                             <div className="min-w-0">
@@ -469,7 +521,8 @@ export function PartPicker({
                                 {l?.code ?? "LOC"}
                               </div>
                               <div className="truncate text-xs text-neutral-500">
-                                {l?.name ?? String(s.location_id).slice(0, 6) + "…"}
+                                {l?.name ??
+                                  String(s.location_id).slice(0, 6) + "…"}
                               </div>
                             </div>
 
@@ -482,7 +535,9 @@ export function PartPicker({
                               name="loc"
                               className="ml-1"
                               checked={!!checked}
-                              onChange={() => setSelectedLocId(s.location_id as UUID)}
+                              onChange={() =>
+                                setSelectedLocId(s.location_id as UUID)
+                              }
                             />
                           </label>
                         );
@@ -498,7 +553,9 @@ export function PartPicker({
                       min={0}
                       step="0.01"
                       value={qty}
-                      onChange={(e) => setQty(Math.max(0, Number(e.target.value || 0)))}
+                      onChange={(e) =>
+                        setQty(Math.max(0, Number(e.target.value || 0)))
+                      }
                       className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
                     />
                   </div>
@@ -507,7 +564,11 @@ export function PartPicker({
                     <div className="text-xs text-neutral-500">Location</div>
                     <select
                       value={defaultLocId ?? ""}
-                      onChange={(e) => setSelectedLocId((e.target.value || null) as UUID | null)}
+                      onChange={(e) =>
+                        setSelectedLocId(
+                          (e.target.value || null) as UUID | null,
+                        )
+                      }
                       className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100"
                     >
                       <option value="">Auto</option>
@@ -527,7 +588,9 @@ export function PartPicker({
                       type="text"
                       inputMode="decimal"
                       value={unitCostStr}
-                      onChange={(e) => setUnitCostStr(cleanNumericString(e.target.value))}
+                      onChange={(e) =>
+                        setUnitCostStr(cleanNumericString(e.target.value))
+                      }
                       className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
                       placeholder="e.g. 45.00"
                     />
@@ -546,6 +609,7 @@ export function PartPicker({
                     disabled={!selectedPartId || qty <= 0}
                     onClick={confirmPick}
                     className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-5 py-2 text-sm font-semibold text-neutral-50 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-md transition hover:border-[color:var(--accent-copper-light,#fed7aa)] hover:bg-[color:var(--accent-copper,#f97316)]/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    type="button"
                   >
                     Use Part
                   </button>

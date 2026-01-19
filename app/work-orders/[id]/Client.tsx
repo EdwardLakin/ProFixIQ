@@ -1,3 +1,5 @@
+//app/work-orders/[id]/client.tsx
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";

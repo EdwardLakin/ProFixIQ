@@ -1,3 +1,4 @@
+// features/work-orders/lib/parts/consumePart.ts
 "use server";
 
 import { cookies } from "next/headers";
@@ -8,6 +9,8 @@ import { ensureMainLocation } from "@parts/lib/locations";
 
 type DB = Database;
 
+type StockMoveRow = DB["public"]["Tables"]["stock_moves"]["Row"];
+
 export type ConsumePartInput = {
   work_order_line_id: string;
   part_id: string;
@@ -16,6 +19,13 @@ export type ConsumePartInput = {
   unit_cost?: number | null; // optional override from UI
   availability?: string | null; // accepted but not stored yet
 };
+
+function extractStockMoveId(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const maybe = data as Partial<StockMoveRow>;
+  const id = maybe.id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
 
 export async function consumePart(input: ConsumePartInput) {
   const supabase = createServerActionClient<DB>({ cookies });
@@ -36,9 +46,7 @@ export async function consumePart(input: ConsumePartInput) {
   const workOrderId = woLine.work_order_id as string;
 
   // Supabase typed join object can be awkward; keep it safe without `any`
-  const joined = woLine as unknown as {
-    work_orders: { shop_id: string };
-  };
+  const joined = woLine as unknown as { work_orders: { shop_id: string } };
   const shopId = joined.work_orders.shop_id;
 
   // 2) Determine location_id (default MAIN)
@@ -71,27 +79,14 @@ export async function consumePart(input: ConsumePartInput) {
         : null;
   }
 
-  // 4) Create allocation row FIRST (and include work_order_id for schemas that require it)
-  const { data: alloc, error: aErr } = await supabase
-    .from("work_order_part_allocations")
-    .insert({
-      work_order_id: workOrderId,
-      work_order_line_id: input.work_order_line_id,
-      part_id: input.part_id,
-      location_id: locationId,
-      qty: Math.abs(input.qty),
-      unit_cost: effectiveUnitCost,
-    })
-    .select("id")
-    .single();
+  const qtyAbs = Math.abs(input.qty);
 
-  if (aErr) throw aErr;
-
-  // 5) Create stock move (consume = negative)
-  const { data: moveId, error: mErr } = await supabase.rpc("apply_stock_move", {
+  // 4) Create stock move (consume = negative)
+  // NOTE: apply_stock_move RETURNS stock_moves row, not uuid
+  const { data: moveRow, error: mErr } = await supabase.rpc("apply_stock_move", {
     p_part: input.part_id,
     p_loc: locationId,
-    p_qty: -Math.abs(input.qty),
+    p_qty: -qtyAbs,
     p_reason: "consume",
     p_ref_kind: "work_order",
     p_ref_id: workOrderId,
@@ -99,16 +94,30 @@ export async function consumePart(input: ConsumePartInput) {
 
   if (mErr) throw mErr;
 
-  // 6) Link stock move back to allocation
-  const { error: linkErr } = await supabase
+  const moveId = extractStockMoveId(moveRow);
+  if (!moveId) {
+    throw new Error("Inventory move failed: apply_stock_move returned no id");
+  }
+
+  // 5) Create allocation row (link to move)
+  const { data: alloc, error: aErr } = await supabase
     .from("work_order_part_allocations")
-    .update({ stock_move_id: moveId as string })
-    .eq("id", alloc.id);
+    .insert({
+      work_order_id: workOrderId,
+      work_order_line_id: input.work_order_line_id,
+      part_id: input.part_id,
+      location_id: locationId,
+      qty: qtyAbs,
+      unit_cost: effectiveUnitCost,
+      stock_move_id: moveId,
+    })
+    .select("id")
+    .single();
 
-  if (linkErr) throw linkErr;
+  if (aErr) throw aErr;
 
-  // 7) Revalidate the WO page
+  // 6) Revalidate the WO page
   revalidatePath(`/work-orders/${workOrderId}`);
 
-  return { allocationId: alloc.id as string, moveId: moveId as string };
+  return { allocationId: alloc.id as string, moveId };
 }
