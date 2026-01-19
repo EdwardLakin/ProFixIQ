@@ -3911,6 +3911,7 @@ export type Database = {
           markup_pct: number | null
           menu_item_id: string | null
           part_id: string | null
+          po_id: string | null
           qty: number
           qty_approved: number
           qty_consumed: number
@@ -3938,6 +3939,7 @@ export type Database = {
           markup_pct?: number | null
           menu_item_id?: string | null
           part_id?: string | null
+          po_id?: string | null
           qty: number
           qty_approved?: number
           qty_consumed?: number
@@ -3965,6 +3967,7 @@ export type Database = {
           markup_pct?: number | null
           menu_item_id?: string | null
           part_id?: string | null
+          po_id?: string | null
           qty?: number
           qty_approved?: number
           qty_consumed?: number
@@ -3985,6 +3988,13 @@ export type Database = {
           work_order_line_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "part_request_items_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "part_request_items_request_id_fkey"
             columns: ["request_id"]
@@ -5419,6 +5429,7 @@ export type Database = {
           created_by: string | null
           expected_at: string | null
           id: string
+          notes: string | null
           ordered_at: string | null
           received_at: string | null
           shipping_total: number | null
@@ -5434,6 +5445,7 @@ export type Database = {
           created_by?: string | null
           expected_at?: string | null
           id?: string
+          notes?: string | null
           ordered_at?: string | null
           received_at?: string | null
           shipping_total?: number | null
@@ -5449,6 +5461,7 @@ export type Database = {
           created_by?: string | null
           expected_at?: string | null
           id?: string
+          notes?: string | null
           ordered_at?: string | null
           received_at?: string | null
           shipping_total?: number | null

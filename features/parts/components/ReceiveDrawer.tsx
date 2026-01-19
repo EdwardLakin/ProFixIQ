@@ -78,19 +78,33 @@ export default function ReceiveDrawer(props: {
     return Math.max(0, approved - received);
   }, [item]);
 
+  // Keep a stable fallback for location (default > first option)
+  const resolvedDefaultLocationId = useMemo(() => {
+    const fallback = defaultLocationId ?? locations[0]?.value ?? "";
+    return typeof fallback === "string" ? fallback : "";
+  }, [defaultLocationId, locations]);
+
+  // Keep a stable fallback for PO (default > empty)
+  const resolvedDefaultPoId = useMemo(() => {
+    const v = defaultPoId ?? "";
+    return typeof v === "string" ? v : "";
+  }, [defaultPoId]);
+
   useEffect(() => {
     if (!open) return;
 
     setErr(null);
+    setSubmitting(false);
     setQty("");
 
-    if (!locationId) {
-      const fallback = defaultLocationId ?? locations[0]?.value ?? "";
-      if (fallback) setLocationId(fallback);
-    }
+    // ✅ Always reset when opening / switching items (prevents stale PO/location)
+    setLocationId(resolvedDefaultLocationId);
 
+    // Only set PO if PO list exists; otherwise force empty
     if (purchaseOrders && purchaseOrders.length > 0) {
-      if (defaultPoId && !poId) setPoId(defaultPoId);
+      setPoId(resolvedDefaultPoId);
+    } else {
+      setPoId("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item?.id]);
