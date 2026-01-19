@@ -1,5 +1,4 @@
-//app/parts/quoting/page.tsx
-
+// app/parts/quoting/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -14,12 +13,9 @@ import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 
-const PartsDrawer = dynamic(
-  () => import("@/features/parts/components/PartsDrawer"),
-  {
-    ssr: false,
-  }
-);
+const PartsDrawer = dynamic(() => import("@/features/parts/components/PartsDrawer"), {
+  ssr: false,
+});
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -41,20 +37,63 @@ type MenuUpsertResponse = {
   detail?: string;
 };
 
+type ApplyAiUnmatched = { name: string; qty: number };
+type ApplyAiResponse = {
+  ok?: boolean;
+  labor_applied?: boolean;
+  unmatched?: ApplyAiUnmatched[];
+  error?: string;
+};
+
 const BASE_BADGE =
-  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium";
+  "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide";
 const BADGE: Record<string, string> = {
-  awaiting: "bg-sky-900/20 border-sky-500/40 text-sky-300",
-  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
-  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
-  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
-  on_hold: "bg-amber-900/20 border-amber-500/40 text-amber-300",
-  completed: "bg-green-900/20 border-green-500/40 text-green-300",
+  awaiting: "bg-sky-950/30 border-sky-500/30 text-sky-200",
+  awaiting_approval: "bg-blue-950/30 border-blue-500/30 text-blue-200",
+  queued: "bg-indigo-950/30 border-indigo-500/30 text-indigo-200",
+  in_progress: "bg-amber-950/30 border-amber-500/30 text-amber-200",
+  on_hold: "bg-orange-950/30 border-orange-500/30 text-orange-200",
+  completed: "bg-emerald-950/25 border-emerald-500/30 text-emerald-200",
+  quoted: "bg-teal-950/25 border-teal-500/30 text-teal-200",
 };
 const chip = (s: string | null | undefined): string => {
   const k = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
   return `${BASE_BADGE} ${BADGE[k] ?? BADGE.awaiting}`;
 };
+
+// ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
+const COPPER_BORDER = "border-[#8b5a2b]/60";
+const COPPER_TEXT = "text-[#c88a4d]";
+const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
+const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
+
+const PAGE = "p-4 sm:p-6 text-white space-y-4";
+const CARD =
+  "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+const CARD_PAD = `${CARD} p-4`;
+const HEADER_BAR = "flex flex-col gap-3 md:flex-row md:items-center md:justify-between";
+
+const BTN_BASE =
+  "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60";
+const BTN_GHOST = `${BTN_BASE} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
+const BTN_COPPER = `${BTN_BASE} ${COPPER_BORDER} ${COPPER_TEXT} bg-neutral-950/20 ${COPPER_HOVER_BG}`;
+const BTN_GO = `${BTN_BASE} border-emerald-500/30 bg-emerald-950/25 text-emerald-200 hover:bg-emerald-900/25`;
+const BTN_AI = `${BTN_BASE} border-sky-500/30 bg-sky-950/25 text-sky-200 hover:bg-sky-900/25`;
+
+const SMALL = "text-xs text-neutral-400";
+const INPUT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${COPPER_FOCUS_RING}`;
+
+async function safeText(res: Response): Promise<string> {
+  return res.text().catch(() => "");
+}
+
+function tryParseJson<T>(raw: string): T | null {
+  try {
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function QuotingQueuePage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -66,15 +105,35 @@ export default function QuotingQueuePage(): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = useMemo(
     () => rows.find((r) => r.id === selectedId) ?? null,
-    [rows, selectedId]
+    [rows, selectedId],
   );
 
   const [bulkQueue, setBulkQueue] = useState<string[]>([]);
   const bulkActive = bulkQueue.length > 0;
 
+  const [search, setSearch] = useState<string>("");
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const wo = r.work_order?.custom_id ?? r.work_order?.id ?? "";
+      const title = r.description ?? r.complaint ?? "";
+      const notes = r.notes ?? "";
+      const veh = r.vehicle
+        ? `${r.vehicle.year ?? ""} ${r.vehicle.make ?? ""} ${r.vehicle.model ?? ""}`.trim()
+        : "";
+      const cust = r.customer
+        ? `${r.customer.first_name ?? ""} ${r.customer.last_name ?? ""}`.trim()
+        : "";
+      const blob = `${wo} ${title} ${notes} ${veh} ${cust}`.toLowerCase();
+      return blob.includes(q);
+    });
+  }, [rows, search]);
+
   const fetchQueue = useCallback(async () => {
     setLoading(true);
     setErr(null);
+
     try {
       const { data: lines, error: lerr } = await supabase
         .from("work_order_lines")
@@ -91,32 +150,23 @@ export default function QuotingQueuePage(): JSX.Element {
         return;
       }
 
-      const woIds = [
-        ...new Set(
-          wol.map((l) => l.work_order_id).filter(Boolean) as string[]
-        ),
-      ];
-      const { data: woRows } = await supabase
+      const woIds = [...new Set(wol.map((l) => l.work_order_id).filter(Boolean) as string[])];
+
+      const { data: woRows, error: woErr } = await supabase
         .from("work_orders")
         .select("*")
         .in("id", woIds);
 
+      if (woErr) throw woErr;
+
       const woById = new Map<string, WorkOrder>();
-      (woRows ?? []).forEach((w) => woById.set(w.id, w as WorkOrder));
+      (woRows ?? []).forEach((w) => woById.set((w as WorkOrder).id, w as WorkOrder));
 
       const vehIds = [
-        ...new Set(
-          (woRows ?? [])
-            .map((w) => (w as WorkOrder).vehicle_id)
-            .filter(Boolean) as string[]
-        ),
+        ...new Set((woRows ?? []).map((w) => (w as WorkOrder).vehicle_id).filter(Boolean) as string[]),
       ];
       const custIds = [
-        ...new Set(
-          (woRows ?? [])
-            .map((w) => (w as WorkOrder).customer_id)
-            .filter(Boolean) as string[]
-        ),
+        ...new Set((woRows ?? []).map((w) => (w as WorkOrder).customer_id).filter(Boolean) as string[]),
       ];
 
       const [vehRes, custRes] = await Promise.all([
@@ -129,38 +179,30 @@ export default function QuotingQueuePage(): JSX.Element {
       ]);
 
       const vById = new Map<string, Vehicle>();
-      (vehRes.data ?? []).forEach((v) =>
-        vById.set((v as Vehicle).id, v as Vehicle)
-      );
+      (vehRes.data ?? []).forEach((v) => vById.set((v as Vehicle).id, v as Vehicle));
 
       const cById = new Map<string, Customer>();
-      (custRes.data ?? []).forEach((c) =>
-        cById.set((c as Customer).id, c as Customer)
-      );
+      (custRes.data ?? []).forEach((c) => cById.set((c as Customer).id, c as Customer));
 
       const out: QueueRow[] = wol.map((l) => {
-        const wo = l.work_order_id
-          ? woById.get(l.work_order_id) ?? null
-          : null;
-        const vehicle = wo?.vehicle_id
-          ? vById.get(wo.vehicle_id) ?? null
-          : null;
-        const customer = wo?.customer_id
-          ? cById.get(wo.customer_id) ?? null
-          : null;
+        const wo = l.work_order_id ? woById.get(l.work_order_id) ?? null : null;
+        const vehicle = wo?.vehicle_id ? vById.get(wo.vehicle_id) ?? null : null;
+        const customer = wo?.customer_id ? cById.get(wo.customer_id) ?? null : null;
         return { ...l, work_order: wo, vehicle, customer };
       });
 
       setRows(out);
-    } catch (e) {
-      const msg =
-        (e as { message?: string })?.message ??
-        "Failed to load quoting queue.";
+
+      if (selectedId && !out.some((r) => r.id === selectedId)) {
+        setSelectedId(null);
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to load quoting queue.";
       setErr(msg);
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, selectedId]);
 
   useEffect(() => {
     void fetchQueue();
@@ -177,9 +219,10 @@ export default function QuotingQueuePage(): JSX.Element {
           table: "work_order_lines",
           filter: "approval_state=eq.pending",
         },
-        () => void fetchQueue()
+        () => void fetchQueue(),
       )
       .subscribe();
+
     return () => {
       try {
         supabase.removeChannel(ch);
@@ -199,6 +242,7 @@ export default function QuotingQueuePage(): JSX.Element {
 
   useEffect(() => {
     if (!selectedId) return;
+
     const evt = `parts-drawer:closed:${selectedId}`;
     const handler = () => {
       if (bulkActive) {
@@ -211,6 +255,7 @@ export default function QuotingQueuePage(): JSX.Element {
         void fetchQueue();
       }
     };
+
     window.addEventListener(evt, handler as EventListener);
     return () => window.removeEventListener(evt, handler as EventListener);
   }, [selectedId, bulkActive, bulkQueue, fetchQueue]);
@@ -241,35 +286,28 @@ export default function QuotingQueuePage(): JSX.Element {
           body: JSON.stringify({ workOrderLineId: row.id, suggestion }),
         });
 
-        const j = (await r.json()) as {
-          ok?: boolean;
-          labor_applied?: boolean;
-          unmatched?: { name: string; qty: number }[];
-          error?: string;
-        };
+        const raw = await safeText(r);
+        const j = tryParseJson<ApplyAiResponse>(raw);
+
         if (!r.ok || !j?.ok) {
-          throw new Error(j?.error || "Apply AI failed");
+          throw new Error(j?.error || raw || `HTTP ${r.status}`);
         }
 
         if (j.unmatched && j.unmatched.length) {
           const list = j.unmatched
-            .map((u) => `${u.qty}× ${u.name}`)
+            .map((u: ApplyAiUnmatched) => `${u.qty}× ${u.name}`)
             .join(", ");
-          toast.message(`Some parts need manual matching: ${list}`, {
-            id: `ai-${row.id}`,
-          });
+          toast.message(`Some parts need manual matching: ${list}`, { id: `ai-${row.id}` });
         } else {
           toast.success("AI parts & labor applied", { id: `ai-${row.id}` });
         }
+
         await fetchQueue();
-      } catch (e) {
-        toast.error(
-          (e as { message?: string })?.message ?? "AI apply failed",
-          { id: `ai-${row.id}` }
-        );
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : "AI apply failed", { id: `ai-${row.id}` });
       }
     },
-    [fetchQueue]
+    [fetchQueue],
   );
 
   // ---- Mark as quoted (still pending approval) + grow Saved Menu
@@ -279,43 +317,21 @@ export default function QuotingQueuePage(): JSX.Element {
       toast.loading("Marking as quoted…", { id: `quoted-${row.id}` });
 
       try {
-        // Create/merge Saved Menu record for this line
         const r = await fetch("/api/menu-items/upsert-from-line", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workOrderLineId: row.id }),
         });
 
-        let body: MenuUpsertResponse | null = null;
-        let raw: string | null = null;
-        try {
-          raw = await r.text();
-          body = raw ? (JSON.parse(raw) as MenuUpsertResponse) : null;
-        } catch {
-          // non-JSON or empty body
-        }
+        const raw = await safeText(r);
+        const body = tryParseJson<MenuUpsertResponse>(raw);
 
         if (!r.ok || !body?.ok) {
-          console.error("Menu upsert failed", {
-            status: r.status,
-            body: body ?? raw,
-          });
-
-          const reason =
-            body?.detail ||
-            body?.error ||
-            (r.ok ? "Unknown error" : `HTTP ${r.status}`);
-
-          // This mirrors the "Quoted, but couldn’t save to menu items" vibe,
-          // but also surfaces the detail so you know *why*.
-          toast.warning(
-            `Quoted, but couldn’t save to menu items. ${reason}`,
-            { id: `quoted-${row.id}` }
-          );
+          const reason = body?.detail || body?.error || raw || `HTTP ${r.status}`;
+          toast.warning(`Quoted, but couldn’t save to menu items. ${reason}`, { id: `quoted-${row.id}` });
           return;
         }
 
-        // Keep approval_state as pending, but mark status + notes as quoted
         const nextNotes = `${row.notes ?? ""}`.includes("[quoted]")
           ? row.notes
           : [row.notes ?? "", "[quoted]"].filter(Boolean).join(" ").trim();
@@ -326,54 +342,54 @@ export default function QuotingQueuePage(): JSX.Element {
             {
               status: "quoted",
               notes: nextNotes,
-            } as DB["public"]["Tables"]["work_order_lines"]["Update"]
+            } as DB["public"]["Tables"]["work_order_lines"]["Update"],
           )
           .eq("id", row.id);
 
         if (ue) {
-          console.warn("Could not set line to quoted:", ue.message);
-          toast.success(
-            "Saved Menu updated, but line status could not be set to quoted.",
-            { id: `quoted-${row.id}` }
-          );
+          toast.success("Saved Menu updated, but line status could not be set to quoted.", {
+            id: `quoted-${row.id}`,
+          });
         } else {
-          toast.success(
-            "Marked as quoted (awaiting approval). Saved Menu updated.",
-            { id: `quoted-${row.id}` }
-          );
+          toast.success("Marked as quoted (awaiting approval). Saved Menu updated.", { id: `quoted-${row.id}` });
         }
 
         await fetchQueue();
-      } catch (e) {
-        console.error("markQuoted failed:", e);
-        toast.error(
-          (e as { message?: string })?.message ??
-            "Failed to mark as quoted",
-          { id: `quoted-${row.id}` }
-        );
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : "Failed to mark as quoted", { id: `quoted-${row.id}` });
       }
     },
-    [supabase, fetchQueue]
+    [supabase, fetchQueue],
   );
 
   return (
-    <div className="p-4 sm:p-6 text-white">
+    <div className={PAGE}>
       <VoiceContextSetter currentView="parts_quoting" />
 
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Quoting Queue</h1>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/parts/inventory"
-            className="text-sm text-orange-400 hover:underline"
-          >
-            Open Inventory →
+      <div className={HEADER_BAR}>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Parts</div>
+          <h1 className="text-2xl font-semibold text-white" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
+            Quoting Queue
+          </h1>
+          <p className="mt-1 text-sm text-neutral-400">
+            Pending approval lines that need quoting. Use AI Apply or open the Parts Drawer.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/parts/inventory" className={BTN_COPPER}>
+            Inventory →
           </Link>
+          <button type="button" className={BTN_GHOST} onClick={() => void fetchQueue()}>
+            Refresh
+          </button>
           <button
             type="button"
-            className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+            className={BTN_COPPER}
             onClick={startBulk}
             disabled={rows.length === 0}
+            title="Walk through each pending line with the Parts Drawer"
           >
             Quote all pending ({rows.length})
           </button>
@@ -381,143 +397,146 @@ export default function QuotingQueuePage(): JSX.Element {
       </div>
 
       {err && (
-        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">
-          {err}
-        </div>
+        <div className="rounded-xl border border-red-500/30 bg-red-950/35 p-3 text-red-200">{err}</div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[420px_1fr]">
-        {/* LEFT: queue */}
-        <div className="rounded border border-neutral-800 bg-neutral-900">
-          <div className="border-b border-neutral-800 p-3 text-sm text-neutral-300">
-            Pending approval lines
+      {/* search */}
+      <div className={CARD_PAD}>
+        <div className="grid gap-3 md:grid-cols-12 md:items-center">
+          <div className="md:col-span-8">
+            <div className={SMALL}>Search by WO, job, notes, vehicle, customer</div>
+            <input
+              className={INPUT}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search…"
+            />
           </div>
-          {loading ? (
-            <div className="p-3 text-neutral-400">Loading…</div>
-          ) : rows.length === 0 ? (
-            <div className="p-3 text-neutral-400">
-              Nothing awaiting quoting.
+          <div className="md:col-span-4">
+            <div className={SMALL}>Bulk mode</div>
+            <div className="rounded-lg border border-white/10 bg-neutral-950/20 px-3 py-2 text-sm text-neutral-200">
+              {bulkActive ? (
+                <>
+                  Active · Remaining <span className={COPPER_TEXT}>{bulkQueue.length}</span>
+                </>
+              ) : (
+                "Inactive"
+              )}
             </div>
-          ) : (
-            <ul className="divide-y divide-neutral-800">
-              {rows.map((r) => (
-                <li key={r.id} className="p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">
-                        {r.description || r.complaint || "Untitled job"}
-                      </div>
-                      <div className="mt-0.5 text-xs text-neutral-400">
-                        WO:{" "}
-                        {r.work_order?.custom_id ||
-                          r.work_order?.id?.slice(0, 8) ||
-                          "—"}{" "}
-                        •{" "}
-                        {r.vehicle
-                          ? `${r.vehicle.year ?? ""} ${
-                              r.vehicle.make ?? ""
-                            } ${r.vehicle.model ?? ""}`.trim()
-                          : "No vehicle"}{" "}
-                        •{" "}
-                        {r.created_at
-                          ? format(new Date(r.created_at), "PPp")
-                          : "—"}
-                      </div>
-                      {r.notes && (
-                        <div className="mt-1 truncate text-xs text-neutral-400">
-                          Notes: {r.notes}
-                        </div>
-                      )}
-                    </div>
+          </div>
+        </div>
+      </div>
 
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className={chip(r.status)}>
-                        {(r.status ?? "awaiting").replaceAll("_", " ")}
-                      </span>
-                      <button
-                        type="button"
-                        className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
-                        onClick={() => void aiApply(r)}
-                        title="AI: allocate parts + labor"
-                      >
-                        AI Apply
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[460px_1fr]">
+        {/* LEFT: queue */}
+        <div className={CARD}>
+          <div className="border-b border-white/10 px-4 py-3 text-sm text-neutral-300">Pending approval lines</div>
+
+          {loading ? (
+            <div className="p-4 text-neutral-400">Loading…</div>
+          ) : filteredRows.length === 0 ? (
+            <div className="p-4 text-neutral-400">Nothing awaiting quoting.</div>
+          ) : (
+            <ul className="divide-y divide-white/10">
+              {filteredRows.map((r) => {
+                const active = selectedId === r.id;
+                const woLabel = r.work_order?.custom_id || r.work_order?.id?.slice(0, 8) || "—";
+                const title = r.description || r.complaint || "Untitled job";
+                const veh = r.vehicle
+                  ? `${r.vehicle.year ?? ""} ${r.vehicle.make ?? ""} ${r.vehicle.model ?? ""}`.trim()
+                  : "No vehicle";
+                const when = r.created_at ? format(new Date(r.created_at), "PPp") : "—";
+
+                return (
+                  <li key={r.id} className={["px-4 py-3", active ? "bg-white/5" : ""].join(" ")}>
+                    <div className="flex items-start justify-between gap-3">
+                      <button type="button" className="min-w-0 text-left" onClick={() => setSelectedId(r.id)}>
+                        <div className="truncate font-semibold text-white">{title}</div>
+                        <div className="mt-1 text-xs text-neutral-400">
+                          WO: {woLabel} <span className="mx-2 text-neutral-600">·</span>
+                          {veh} <span className="mx-2 text-neutral-600">·</span>
+                          {when}
+                        </div>
+                        {r.notes ? (
+                          <div className="mt-1 truncate text-xs text-neutral-400">Notes: {r.notes}</div>
+                        ) : null}
                       </button>
-                      <button
-                        type="button"
-                        className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
-                        onClick={() => setSelectedId(r.id)}
-                        title="Open Parts Drawer"
-                      >
-                        Quote
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-black hover:bg-emerald-500"
-                        onClick={() => void markQuoted(r)}
-                        title="Mark as quoted (keeps awaiting approval) and grow Saved Menu"
-                      >
-                        Mark Quoted
-                      </button>
+
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <span className={chip(r.status)}>{(r.status ?? "awaiting").replaceAll("_", " ")}</span>
+
+                        <div className="flex items-center gap-2">
+                          <button type="button" className={BTN_AI} onClick={() => void aiApply(r)}>
+                            AI Apply
+                          </button>
+
+                          <button type="button" className={BTN_GHOST} onClick={() => setSelectedId(r.id)}>
+                            Quote
+                          </button>
+
+                          <button type="button" className={BTN_GO} onClick={() => void markQuoted(r)}>
+                            Mark Quoted
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
 
         {/* RIGHT: details */}
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-          <h2 className="mb-2 text-lg font-semibold">Details</h2>
+        <div className={CARD_PAD}>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">Details</h2>
+            {selected?.work_order?.id ? (
+              <Link href={`/work-orders/${selected.work_order.id}`} className={BTN_COPPER}>
+                Open Work Order →
+              </Link>
+            ) : null}
+          </div>
+
           {selected ? (
-            <div className="space-y-2 text-sm">
-              <div className="text-neutral-400">Work Order</div>
-              <div className="font-medium">
-                {selected.work_order
-                  ? selected.work_order.custom_id ||
-                    selected.work_order.id?.slice(0, 8)
-                  : "—"}
+            <div className="mt-3 space-y-3 text-sm">
+              <div>
+                <div className={SMALL}>Work Order</div>
+                <div className="font-semibold text-white">
+                  {selected.work_order?.custom_id || selected.work_order?.id?.slice(0, 8) || "—"}
+                </div>
               </div>
 
-              <div className="text-neutral-400">Vehicle</div>
-              <div className="font-medium">
-                {selected.vehicle
-                  ? (
-                      `${selected.vehicle.year ?? ""} ${
-                        selected.vehicle.make ?? ""
-                      } ${selected.vehicle.model ?? ""}`.trim() || "—"
-                    )
-                  : "—"}
+              <div>
+                <div className={SMALL}>Vehicle</div>
+                <div className="font-semibold text-white">
+                  {selected.vehicle
+                    ? (`${selected.vehicle.year ?? ""} ${selected.vehicle.make ?? ""} ${selected.vehicle.model ?? ""}`.trim() || "—")
+                    : "—"}
+                </div>
               </div>
 
-              <div className="text-neutral-400">Customer</div>
-              <div className="font-medium">
-                {selected.customer
-                  ? (
-                      [
-                        selected.customer.first_name ?? "",
-                        selected.customer.last_name ?? "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ") || "—"
-                    )
-                  : "—"}
+              <div>
+                <div className={SMALL}>Customer</div>
+                <div className="font-semibold text-white">
+                  {selected.customer
+                    ? ([selected.customer.first_name ?? "", selected.customer.last_name ?? ""].filter(Boolean).join(" ") || "—")
+                    : "—"}
+                </div>
               </div>
 
-              <div className="text-neutral-400">Description</div>
-              <div className="font-medium">
-                {selected.description ?? "—"}
+              <div>
+                <div className={SMALL}>Description</div>
+                <div className="font-semibold text-white">{selected.description ?? "—"}</div>
               </div>
 
-              <div className="text-neutral-400">Notes</div>
-              <div className="whitespace-pre-wrap font-medium">
-                {selected.notes ?? "—"}
+              <div>
+                <div className={SMALL}>Notes</div>
+                <div className="whitespace-pre-wrap font-semibold text-white">{selected.notes ?? "—"}</div>
               </div>
             </div>
           ) : (
-            <div className="text-neutral-400">
-              Select a line on the left to see details.
-            </div>
+            <div className="mt-3 text-neutral-400">Select a line on the left to see details.</div>
           )}
         </div>
       </div>
@@ -531,9 +550,7 @@ export default function QuotingQueuePage(): JSX.Element {
           vehicleSummary={
             selected.vehicle
               ? {
-                  year:
-                    (selected.vehicle.year as string | number | null)
-                      ?.toString() ?? null,
+                  year: (selected.vehicle.year as string | number | null)?.toString() ?? null,
                   make: selected.vehicle.make ?? null,
                   model: selected.vehicle.model ?? null,
                 }

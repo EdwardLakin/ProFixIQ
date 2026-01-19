@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ type RequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
 type ItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type LocationRow = DB["public"]["Tables"]["stock_locations"]["Row"];
+type PurchaseOrderRow = DB["public"]["Tables"]["purchase_orders"]["Row"];
 
 type Status = RequestRow["status"];
 
@@ -37,6 +39,20 @@ type RequestUi = {
   items: UiItem[];
 };
 
+type DrawerItem = {
+  id: string;
+  created_at?: string | null;
+  request_id?: string | null;
+  part_id?: string | null;
+  description?: string | null;
+  status?: string | null;
+  qty_approved?: number | null;
+  qty_received?: number | null;
+  qty_remaining?: number | null;
+  part_name?: string | null;
+  sku?: string | null;
+};
+
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0;
 }
@@ -58,14 +74,10 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
 }
 
 function resolveWorkOrderLineId(currentReq: RequestRow, list: UiItem[]): string | null {
-  // 1) try any item work_order_line_id
   for (const it of list) {
     if (isNonEmptyString(it.work_order_line_id)) return it.work_order_line_id;
   }
-
-  // 2) in your schema, part_requests.job_id is used as the WO line id
   if (isNonEmptyString(currentReq.job_id)) return currentReq.job_id;
-
   return null;
 }
 
@@ -83,6 +95,17 @@ function computeRequestBadge(req: RequestRow, items: UiItem[]): "needs_quote" | 
   return allDone ? "quoted" : "needs_quote";
 }
 
+function n(v: unknown): number {
+  const num = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(num) ? num : 0;
+}
+
+const ReceiveDrawer = dynamic(() => import("@/features/parts/components/ReceiveDrawer"), {
+  ssr: false,
+});
+
+type Opt = { value: string; label: string };
+
 export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const { id: routeId } = useParams<{ id: string }>();
   const router = useRouter();
@@ -94,8 +117,15 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [defaultLocationId, setDefaultLocationId] = useState<string>("");
 
+  const [pos, setPOs] = useState<PurchaseOrderRow[]>([]);
+  const [selectedPo, setSelectedPo] = useState<string>("");
+
   const [loading, setLoading] = useState<boolean>(true);
   const [savingReqId, setSavingReqId] = useState<string | null>(null);
+
+  // Drawer
+  const [recvOpen, setRecvOpen] = useState<boolean>(false);
+  const [recvItem, setRecvItem] = useState<DrawerItem | null>(null);
 
   // ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
   const COPPER_BORDER = "border-[#8b5a2b]/60";
@@ -107,19 +137,15 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const pageWrap = "space-y-4 p-6 text-white";
   const glassCard =
     "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
-  const glassHeader =
-    "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
-  const inputBase =
-    `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
-  const selectBase =
-    `rounded-lg border bg-neutral-950/40 px-2 py-2 text-xs text-white border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
+  const glassHeader = "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
+  const inputBase = `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
+  const selectBase = `rounded-lg border bg-neutral-950/40 px-2 py-2 text-xs text-white border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition disabled:opacity-60";
   const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
   const btnCopper = `${btnBase} ${COPPER_BORDER} ${COPPER_TEXT} bg-neutral-950/20 ${COPPER_HOVER_BG}`;
-  const btnDanger =
-    `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
+  const btnDanger = `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
 
   const pillBase =
     "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium";
@@ -131,20 +157,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     if (!raw) return null;
 
     if (looksLikeUuid(raw)) {
-      const { data, error } = await supabase
-        .from("work_orders")
-        .select("*")
-        .eq("id", raw)
-        .maybeSingle();
+      const { data, error } = await supabase.from("work_orders").select("*").eq("id", raw).maybeSingle();
       if (!error && data) return data as WorkOrderRow;
     }
 
     {
-      const { data } = await supabase
-        .from("work_orders")
-        .select("*")
-        .eq("custom_id", raw)
-        .maybeSingle();
+      const { data } = await supabase.from("work_orders").select("*").eq("custom_id", raw).maybeSingle();
       if (data) return data as WorkOrderRow;
     }
 
@@ -160,11 +178,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     {
       const { prefix, n } = splitCustomId(raw);
       if (n != null) {
-        const { data: cands } = await supabase
-          .from("work_orders")
-          .select("*")
-          .ilike("custom_id", `${prefix}%`)
-          .limit(50);
+        const { data: cands } = await supabase.from("work_orders").select("*").ilike("custom_id", `${prefix}%`).limit(50);
 
         const wanted = `${prefix}${n}`;
         const match = (cands ?? []).find((r) => {
@@ -188,6 +202,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setParts([]);
       setLocations([]);
       setDefaultLocationId("");
+      setPOs([]);
+      setSelectedPo("");
       setLoading(false);
       return;
     }
@@ -207,10 +223,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     const itemsByRequest: Record<string, ItemRow[]> = {};
     if (reqIds.length) {
-      const { data: items, error: itErr } = await supabase
-        .from("part_request_items")
-        .select("*")
-        .in("request_id", reqIds);
+      const { data: items, error: itErr } = await supabase.from("part_request_items").select("*").in("request_id", reqIds);
 
       if (itErr) toast.error(itErr.message);
 
@@ -239,12 +252,17 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     setRequests(uiRequests);
 
-    // parts + locations (we auto-pick the first location so user never selects)
     const shopId = woRow.shop_id ?? null;
     if (shopId) {
-      const [{ data: ps }, { data: locs }] = await Promise.all([
+      const [{ data: ps }, { data: locs }, { data: poRows }] = await Promise.all([
         supabase.from("parts").select("*").eq("shop_id", shopId).order("name").limit(1000),
         supabase.from("stock_locations").select("*").eq("shop_id", shopId).order("code"),
+        supabase
+          .from("purchase_orders")
+          .select("*")
+          .eq("shop_id", shopId)
+          .order("created_at", { ascending: false })
+          .limit(50),
       ]);
 
       setParts((ps ?? []) as PartRow[]);
@@ -252,17 +270,21 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       const locList = (locs ?? []) as LocationRow[];
       setLocations(locList);
 
-      // 🔑 default location (no UI step)
-      if (locList.length > 0) {
-        const first = locList[0]?.id ? String(locList[0].id) : "";
-        setDefaultLocationId(first);
-      } else {
-        setDefaultLocationId("");
+      const main = locList.find((l) => String(l.code ?? "").toUpperCase() === "MAIN");
+      const chosen = main?.id ? String(main.id) : locList[0]?.id ? String(locList[0].id) : "";
+      setDefaultLocationId(chosen);
+
+      setPOs((poRows ?? []) as PurchaseOrderRow[]);
+
+      if (selectedPo && !(poRows ?? []).some((p) => String(p.id) === selectedPo)) {
+        setSelectedPo("");
       }
     } else {
       setParts([]);
       setLocations([]);
       setDefaultLocationId("");
+      setPOs([]);
+      setSelectedPo("");
     }
 
     setLoading(false);
@@ -270,6 +292,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId]);
+
+  // ✅ Global refresh hook for ANY receive
+  useEffect(() => {
+    const handler = () => void load();
+    window.addEventListener("parts:received", handler as EventListener);
+    return () => window.removeEventListener("parts:received", handler as EventListener);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
 
@@ -303,11 +333,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         part_id: null,
       };
 
-      const { data, error } = await supabase
-        .from("part_request_items")
-        .insert(insertPayload)
-        .select("*")
-        .maybeSingle<ItemRow>();
+      const { data, error } = await supabase.from("part_request_items").insert(insertPayload).select("*").maybeSingle<ItemRow>();
 
       if (error) {
         toast.error(error.message);
@@ -326,9 +352,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         ui_added: false,
       };
 
-      setRequests((prev) =>
-        prev.map((r) => (r.req.id === reqId ? { ...r, items: [...r.items, ui] } : r)),
-      );
+      setRequests((prev) => prev.map((r) => (r.req.id === reqId ? { ...r, items: [...r.items, ui] } : r)));
     } finally {
       setSavingReqId(null);
     }
@@ -338,12 +362,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const ok = window.confirm("Remove this item from the request?");
     if (!ok) return;
 
-    const { data: deleted, error } = await supabase
-      .from("part_request_items")
-      .delete()
-      .eq("id", itemId)
-      .select("id")
-      .maybeSingle();
+    const { data: deleted, error } = await supabase.from("part_request_items").delete().eq("id", itemId).select("id").maybeSingle();
 
     if (error) {
       toast.error(error.message);
@@ -354,12 +373,32 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.req.id === reqId ? { ...r, items: r.items.filter((x) => x.id !== itemId) } : r,
-      ),
-    );
+    setRequests((prev) => prev.map((r) => (r.req.id === reqId ? { ...r, items: r.items.filter((x) => x.id !== itemId) } : r)));
     toast.success("Item removed.");
+  }
+
+  function openReceiveFor(reqId: string, it: UiItem): void {
+    const partId = (it.part_id ?? it.ui_part_id ?? null) as string | null;
+    const part = partId ? parts.find((p) => String(p.id) === String(partId)) ?? null : null;
+
+    const approved = n((it as unknown as { qty_approved?: unknown }).qty_approved);
+    const received = n((it as unknown as { qty_received?: unknown }).qty_received);
+    const remaining = Math.max(0, approved - received);
+
+    setRecvItem({
+      id: String(it.id),
+      created_at: it.created_at ?? null,
+      request_id: reqId,
+      part_id: partId,
+      description: String(it.description ?? ""),
+      status: String((it as unknown as { status?: unknown }).status ?? ""),
+      qty_approved: approved,
+      qty_received: received,
+      qty_remaining: remaining,
+      part_name: part?.name ? String(part.name) : null,
+      sku: part?.sku ? String(part.sku) : null,
+    });
+    setRecvOpen(true);
   }
 
   async function addAndAttach(reqId: string, itemId: string): Promise<void> {
@@ -390,28 +429,26 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    // We keep inventory allocation working, but remove the UI step:
-    // - we auto-pick the first location (if any)
-    // - if none exist, we still save the request item but cannot allocate inventory
     const locId = defaultLocationId || "";
 
     setSavingReqId(reqId);
     try {
-      const part = parts.find((p) => String(p.id) === partId);
+      const part = parts.find((p) => String(p.id) === String(partId));
       const desc = (part?.name ?? it.description ?? "").trim();
 
-      // 1) persist the item immediately
       const { error: updErr } = await supabase
         .from("part_request_items")
-        .update({
-          part_id: partId,
-          description: desc || it.description || "Part",
-          qty,
-          quoted_price: price,
-          vendor: null,
-          markup_pct: null,
-          work_order_line_id: it.work_order_line_id ?? lineId,
-        } as DB["public"]["Tables"]["part_request_items"]["Update"])
+        .update(
+          {
+            part_id: partId,
+            description: desc || it.description || "Part",
+            qty,
+            quoted_price: price,
+            vendor: null,
+            markup_pct: null,
+            work_order_line_id: it.work_order_line_id ?? lineId,
+          } as DB["public"]["Tables"]["part_request_items"]["Update"],
+        )
         .eq("id", it.id);
 
       if (updErr) {
@@ -419,7 +456,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         return;
       }
 
-      // 2) allocate (only if we have a location)
       if (locId) {
         const { error } = await supabase.rpc("upsert_part_allocation_from_request_item", {
           p_request_item_id: it.id,
@@ -435,61 +471,54 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         toast.warning("No stock location exists for this shop. Item saved, but inventory was not allocated.");
       }
 
-      // 3) update local state so badge flips immediately
+      const nextItems = target.items.map((x) => {
+        if (x.id !== itemId) return x;
+        return {
+          ...x,
+          part_id: partId,
+          quoted_price: price,
+          qty,
+          ui_added: true,
+        } as UiItem;
+      });
+
+      const allNowQuoted = nextItems.length > 0 && nextItems.every((x) => isRowComplete(x));
+
       setRequests((prev) =>
-        prev.map((r) => {
-          if (r.req.id !== reqId) return r;
-
-          const nextItems = r.items.map((x) => {
-            if (x.id !== itemId) return x;
-            return {
-              ...x,
-              part_id: partId,
-              quoted_price: price,
-              qty,
-              ui_added: true,
-            } as UiItem;
-          });
-
-          const allNowQuoted = nextItems.length > 0 && nextItems.every((x) => isRowComplete(x));
-
-          return {
-            req: {
-              ...r.req,
-              status: allNowQuoted ? "quoted" : (r.req.status ?? "requested"),
-            },
-            items: nextItems,
-          };
-        }),
+        prev.map((r) =>
+          r.req.id !== reqId
+            ? r
+            : {
+                req: {
+                  ...r.req,
+                  status: allNowQuoted ? "quoted" : (r.req.status ?? "requested"),
+                },
+                items: r.items.map((x) =>
+                  x.id !== itemId
+                    ? x
+                    : ({
+                        ...x,
+                        part_id: partId,
+                        quoted_price: price,
+                        qty,
+                        ui_added: true,
+                      } as UiItem),
+                ),
+              },
+        ),
       );
 
-      // 4) if all rows complete, mark request quoted in DB
-      {
-        const refreshed = requests.find((r) => r.req.id === reqId);
-        const localItems = refreshed?.items ?? [];
-        const optimistic = localItems.map((x) =>
-          x.id === itemId
-            ? ({ ...x, part_id: partId, quoted_price: price, qty } as UiItem)
-            : x,
-        );
-
-        const allNowQuoted = optimistic.length > 0 && optimistic.every((x) => isRowComplete(x));
-        if (allNowQuoted) {
-          const { error: statusErr } = await supabase.rpc("set_part_request_status", {
-            p_request: reqId,
-            p_status: "quoted" satisfies Status,
-          });
-          if (statusErr) {
-            toast.warning(statusErr.message);
-          }
-        }
+      if (allNowQuoted) {
+        const { error: statusErr } = await supabase.rpc("set_part_request_status", {
+          p_request: reqId,
+          p_status: "quoted" satisfies Status,
+        });
+        if (statusErr) toast.warning(statusErr.message);
       }
 
-      // 5) tell WO page to refresh + redraw parts used
       window.dispatchEvent(new Event("parts-request:submitted"));
       window.dispatchEvent(new Event("wo:parts-used"));
 
-      // 6) best-effort: save to menu items (keeps your catalog in sync)
       try {
         const res = await fetch("/api/menu-items/upsert-from-line", {
           method: "POST",
@@ -514,18 +543,28 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
   const woDisplay = wo?.custom_id || (wo?.id ? `#${wo.id.slice(0, 8)}` : null);
 
+  const locOptions: Opt[] = locations.map((l) => ({
+    value: String(l.id),
+    label: `${String(l.code ?? "LOC")} — ${String(l.name ?? "")}`,
+  }));
+
+  const poOptions: Opt[] = pos.map((po) => ({
+    value: String(po.id),
+    label: `${String(po.id).slice(0, 8)} • ${String(po.status ?? "draft")}`,
+  }));
+
+  const resolvedDefaultLocId = defaultLocationId || locOptions[0]?.value || "";
+
   return (
     <div className={pageWrap}>
-      <button className={btnGhost} onClick={() => router.back()}>
+      <button className={btnGhost} onClick={() => router.back()} type="button">
         ← Back
       </button>
 
       {loading ? (
         <div className={`${glassCard} p-4 text-neutral-300`}>Loading…</div>
       ) : !wo ? (
-        <div className={`${glassCard} p-4 text-neutral-300`}>
-          Work order not found / not visible.
-        </div>
+        <div className={`${glassCard} p-4 text-neutral-300`}>Work order not found / not visible.</div>
       ) : (
         <>
           <div className={`${glassCard} overflow-hidden`}>
@@ -535,12 +574,26 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                   <div className="text-xl font-semibold tracking-wide">
                     Work Order <span className={COPPER_TEXT}>{woDisplay}</span>
                   </div>
-                  <div className="mt-1 text-sm text-neutral-400">
-                    Parts requests for this work order.
-                  </div>
+                  <div className="mt-1 text-sm text-neutral-400">Parts requests for this work order.</div>
                 </div>
 
-                {/* Stock location selector removed (auto-picked internally) */}
+                {/* Optional PO selector (for receiving) */}
+                <div className="flex items-center gap-2">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">PO</div>
+                  <select
+                    className={`${selectBase} w-56`}
+                    value={selectedPo}
+                    onChange={(e) => setSelectedPo(e.target.value)}
+                    title="Optional: choose PO to apply receiving against"
+                  >
+                    <option value="">— none —</option>
+                    {pos.map((po) => (
+                      <option key={String(po.id)} value={String(po.id)}>
+                        {String(po.id).slice(0, 8)} • {String(po.status ?? "draft")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="mt-3 text-xs text-neutral-400">
@@ -551,9 +604,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           </div>
 
           {requests.length === 0 ? (
-            <div className={`${glassCard} p-4 text-neutral-400`}>
-              No parts requests for this work order yet.
-            </div>
+            <div className={`${glassCard} p-4 text-neutral-400`}>No parts requests for this work order yet.</div>
           ) : (
             <div className="space-y-4">
               {requests.map((r) => {
@@ -569,8 +620,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                             Request <span className={COPPER_TEXT}>#{r.req.id.slice(0, 8)}</span>
                           </div>
                           <div className="mt-1 text-xs text-neutral-400">
-                            Created{" "}
-                            {r.req.created_at ? new Date(r.req.created_at).toLocaleString() : "—"}
+                            Created {r.req.created_at ? new Date(r.req.created_at).toLocaleString() : "—"}
                             <span className="mx-2 text-neutral-600">·</span>
                             Line: {resolveWorkOrderLineId(r.req, r.items)?.slice(0, 8) ?? "—"}
                           </div>
@@ -581,11 +631,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                             {badge === "needs_quote" ? "Needs quote" : "Quoted"}
                           </span>
 
-                          <button
-                            className={btnGhost}
-                            onClick={() => void addRow(r.req.id)}
-                            disabled={busy}
-                          >
+                          <button className={btnGhost} onClick={() => void addRow(r.req.id)} disabled={busy} type="button">
                             {busy ? "Working…" : "＋ Add part row"}
                           </button>
                         </div>
@@ -602,7 +648,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                               <th className="p-3 text-right">Qty</th>
                               <th className="p-3 text-right">Price (unit)</th>
                               <th className="p-3 text-right">Line total</th>
-                              <th className="w-48 p-3" />
+                              <th className="w-[240px] p-3" />
                             </tr>
                           </thead>
 
@@ -616,9 +662,17 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                             ) : (
                               r.items.map((it) => {
                                 const locked = busy;
+
                                 const qty = toNum(it.ui_qty, 0);
                                 const price = it.ui_price ?? 0;
                                 const lineTotal = qty > 0 ? price * qty : 0;
+
+                                const approved = n((it as unknown as { qty_approved?: unknown }).qty_approved);
+                                const received = n((it as unknown as { qty_received?: unknown }).qty_received);
+                                const remaining = Math.max(0, approved - received);
+
+                                const effectivePartId = (it.part_id ?? it.ui_part_id ?? null) as string | null;
+                                const canReceive = !!effectivePartId && approved > 0 && remaining > 0 && !!resolvedDefaultLocId;
 
                                 return (
                                   <tr key={String(it.id)} className="border-t border-white/10">
@@ -627,10 +681,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         className={`${selectBase} w-80`}
                                         value={it.ui_part_id ?? ""}
                                         onChange={(e) => {
-                                          const partId = e.target.value || null;
-                                          const p = parts.find((x) => String(x.id) === String(partId));
+                                          const nextPartId = e.target.value || null;
+                                          const p = parts.find((x) => String(x.id) === String(nextPartId));
                                           updateItem(r.req.id, String(it.id), {
-                                            ui_part_id: partId,
+                                            ui_part_id: nextPartId,
                                             description: (p?.name ?? it.description ?? "").trim(),
                                             ui_price: p?.price == null ? undefined : toNum(p.price, 0),
                                           });
@@ -644,6 +698,16 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           </option>
                                         ))}
                                       </select>
+
+                                      {approved > 0 ? (
+                                        <div className="mt-2 text-[11px] text-neutral-500">
+                                          Approved <span className="text-neutral-200">{approved}</span>{" "}
+                                          <span className="text-neutral-600">·</span>{" "}
+                                          Received <span className="text-neutral-200">{received}</span>{" "}
+                                          <span className="text-neutral-600">·</span>{" "}
+                                          Remaining <span className="text-neutral-200">{remaining}</span>
+                                        </div>
+                                      ) : null}
                                     </td>
 
                                     <td className="p-3 align-top">
@@ -651,9 +715,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         className={`${inputBase} w-full py-2 text-xs`}
                                         value={it.description ?? ""}
                                         placeholder="Description"
-                                        onChange={(e) =>
-                                          updateItem(r.req.id, String(it.id), { description: e.target.value })
-                                        }
+                                        onChange={(e) => updateItem(r.req.id, String(it.id), { description: e.target.value })}
                                         disabled={locked}
                                       />
                                     </td>
@@ -667,8 +729,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         value={Number.isFinite(it.ui_qty) ? String(it.ui_qty) : "1"}
                                         onChange={(e) => {
                                           const raw = e.target.value;
-                                          const nextQty =
-                                            raw === "" ? 1 : Math.max(1, Math.floor(toNum(raw, 1)));
+                                          const nextQty = raw === "" ? 1 : Math.max(1, Math.floor(toNum(raw, 1)));
                                           updateItem(r.req.id, String(it.id), { ui_qty: nextQty });
                                         }}
                                         disabled={locked}
@@ -683,17 +744,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         value={it.ui_price == null ? "" : String(it.ui_price)}
                                         onChange={(e) => {
                                           const raw = e.target.value;
-                                          updateItem(r.req.id, String(it.id), {
-                                            ui_price: raw === "" ? undefined : toNum(raw, 0),
-                                          });
+                                          updateItem(r.req.id, String(it.id), { ui_price: raw === "" ? undefined : toNum(raw, 0) });
                                         }}
                                         disabled={locked}
                                       />
                                     </td>
 
-                                    <td className="p-3 text-right tabular-nums align-top">
-                                      {lineTotal.toFixed(2)}
-                                    </td>
+                                    <td className="p-3 text-right tabular-nums align-top">{lineTotal.toFixed(2)}</td>
 
                                     <td className="p-3 align-top">
                                       <div className="flex flex-col items-stretch gap-2">
@@ -701,14 +758,32 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           className={`${btnCopper} py-2 text-xs`}
                                           onClick={() => void addAndAttach(r.req.id, String(it.id))}
                                           disabled={busy}
+                                          type="button"
                                         >
                                           {busy ? "Saving…" : "Add"}
+                                        </button>
+
+                                        <button
+                                          className={btnGhost}
+                                          onClick={() => openReceiveFor(r.req.id, it)}
+                                          disabled={busy || !canReceive}
+                                          type="button"
+                                          title={
+                                            !resolvedDefaultLocId
+                                              ? "No stock locations exist for this shop"
+                                              : canReceive
+                                                ? "Receive against this request item"
+                                                : "Needs qty_approved > qty_received and a selected part"
+                                          }
+                                        >
+                                          Receive…
                                         </button>
 
                                         <button
                                           className={`${btnDanger} py-2 text-xs`}
                                           onClick={() => void deleteLine(r.req.id, String(it.id))}
                                           disabled={busy}
+                                          type="button"
                                         >
                                           Delete
                                         </button>
@@ -724,8 +799,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
                       {locations.length === 0 && (
                         <div className="mt-3 text-xs text-neutral-500">
-                          No stock locations exist for this shop, so inventory allocation is skipped.
-                          Parts will still be saved to the request item.
+                          No stock locations exist for this shop, so inventory allocation is skipped. Parts will still be saved to the request item.
                         </div>
                       )}
                     </div>
@@ -736,6 +810,22 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           )}
         </>
       )}
+
+      <ReceiveDrawer
+        open={recvOpen}
+        item={recvItem}
+        onClose={() => {
+          setRecvOpen(false);
+          setRecvItem(null);
+          void load();
+        }}
+        locations={locOptions}
+        defaultLocationId={resolvedDefaultLocId}
+        purchaseOrders={poOptions}
+        defaultPoId={selectedPo || ""}
+        lockLocation={false}
+        lockPo={false}
+      />
     </div>
   );
 }

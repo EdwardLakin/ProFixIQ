@@ -1,5 +1,4 @@
-//app/parts/inventory/page.tsx
-
+// app/parts/inventory/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -31,10 +30,22 @@ function Modal(props: {
 }) {
   const { open, title, onClose, children, footer, widthClass = "max-w-xl" } = props;
   if (!open) return null;
+
+  // ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
+  const COPPER_BORDER = "border-[#8b5a2b]/60";
+  const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
+
+  const shell =
+    "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl " +
+    "shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset] text-white";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
       <div
-        className={`w-full ${widthClass} rounded border border-orange-500 bg-neutral-950 p-4 text-white shadow-xl`}
+        className={`w-full ${widthClass} ${shell} p-4`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -43,14 +54,18 @@ function Modal(props: {
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+            className={`rounded-lg border border-white/10 bg-neutral-950/20 px-2 py-1 text-sm hover:bg-white/5 focus:outline-none ${COPPER_FOCUS_RING}`}
             aria-label="Close"
           >
             ✕
           </button>
         </div>
+
         <div>{children}</div>
-        {footer ? <div className="mt-4">{footer}</div> : null}
+
+        {footer ? (
+          <div className={`mt-4 border-t border-white/10 pt-3 ${COPPER_BORDER}`}>{footer}</div>
+        ) : null}
       </div>
     </div>
   );
@@ -67,7 +82,7 @@ function TextField(props: {
     <div>
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <input
-        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+        className="w-full rounded-lg border border-white/10 bg-neutral-950/40 p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -89,7 +104,7 @@ function NumberField(props: {
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <input
         type="number"
-        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+        className="w-full rounded-lg border border-white/10 bg-neutral-950/40 p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35"
         value={value === "" ? "" : value}
         min={min}
         step={step}
@@ -113,7 +128,7 @@ function SelectField(props: {
     <div>
       <div className="mb-1 text-xs text-neutral-400">{label}</div>
       <select
-        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+        className="w-full rounded-lg border border-white/10 bg-neutral-950/40 p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#8b5a2b]/35"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -242,6 +257,7 @@ async function applyStockMoveRPC(
 export default function InventoryPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [shopId, setShopId] = useState<string>("");
+
   const [search, setSearch] = useState<string>("");
   const [parts, setParts] = useState<Part[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -290,6 +306,31 @@ export default function InventoryPage(): JSX.Element {
   const [csvPreview, setCsvPreview] = useState<boolean>(false);
   const [csvDefaultLoc, setCsvDefaultLoc] = useState<string>("");
 
+  // ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
+  const COPPER_TEXT = "text-[#c88a4d]";
+  const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
+  const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
+
+  const pageWrap = "space-y-4 p-6 text-white";
+  const glassCard =
+    "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+  const glassHeader =
+    "bg-gradient-to-b from-white/5 to-transparent border-b border-white/10";
+
+  const inputBase =
+    `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-white/10 focus:outline-none ${COPPER_FOCUS_RING}`;
+
+  const btnBase =
+    "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60";
+  const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
+  const btnCopper = `${btnBase} border-white/10 ${COPPER_TEXT} bg-neutral-950/20 ${COPPER_HOVER_BG}`;
+  const btnBlue = `${btnBase} border-sky-500/30 bg-sky-950/25 text-sky-200 hover:bg-sky-900/25`;
+
+  const pillBase =
+    "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold";
+  const pillOk = `${pillBase} border-emerald-500/30 bg-emerald-950/25 text-emerald-200`;
+  const pillZero = `${pillBase} border-red-500/30 bg-red-950/35 text-red-200`;
+
   // ---------- on-hand loader (pass sid directly; avoids first-render zeros)
   const loadOnHand = useCallback(
     async (sid: string, partIds: string[]) => {
@@ -318,63 +359,67 @@ export default function InventoryPage(): JSX.Element {
     [supabase],
   );
 
-  const load = async (sid: string) => {
-    setLoading(true);
-    const base = supabase
-      .from("parts")
-      .select("*")
-      .eq("shop_id", sid)
-      .order("name", { ascending: true });
+  const load = useCallback(
+    async (sid: string) => {
+      setLoading(true);
 
-    const { data, error } = await (search.trim()
-      ? base.or(
-          [
-            `name.ilike.%${search}%`,
-            `sku.ilike.%${search}%`,
-            `category.ilike.%${search}%`,
-          ].join(","),
-        )
-      : base);
+      const base = supabase
+        .from("parts")
+        .select("*")
+        .eq("shop_id", sid)
+        .order("name", { ascending: true });
 
-    const partRows = (!error && (data as Part[])) || [];
-    setParts(partRows);
-    setLoading(false);
+      const q = search.trim();
 
-    void loadOnHand(sid, partRows.map((p) => p.id));
-  };
+      const { data, error } = await (q
+        ? base.or([`name.ilike.%${q}%`, `sku.ilike.%${q}%`, `category.ilike.%${q}%`].join(","))
+        : base);
+
+      const partRows = (!error && (data as Part[])) || [];
+      setParts(partRows);
+      setLoading(false);
+
+      void loadOnHand(sid, partRows.map((p) => p.id));
+    },
+    [supabase, search, loadOnHand],
+  );
 
   // --- on-hand detail (per-location)
-  const openOnHandDetail = async (p: Part) => {
-    setOhForPart(p);
-    const { data, error } = await supabase
-      .from("stock_moves")
-      .select("location_id, qty_change")
-      .eq("part_id", p.id)
-      .eq("shop_id", shopId);
+  const openOnHandDetail = useCallback(
+    async (p: Part) => {
+      setOhForPart(p);
 
-    if (error || !data) {
-      setOhLines([]);
+      const { data, error } = await supabase
+        .from("stock_moves")
+        .select("location_id, qty_change")
+        .eq("part_id", p.id)
+        .eq("shop_id", shopId);
+
+      if (error || !data) {
+        setOhLines([]);
+        setOhOpen(true);
+        return;
+      }
+
+      const byLoc: Record<string, number> = {};
+      (data as StockMove[]).forEach((r) => {
+        const loc = r.location_id as string;
+        const q = Number(r.qty_change) || 0;
+        byLoc[loc] = (byLoc[loc] ?? 0) + q;
+      });
+
+      const lines = locs
+        .map((l) => ({
+          location: `${l.code ?? "LOC"} — ${l.name ?? ""}`,
+          qty: byLoc[l.id] ?? 0,
+        }))
+        .filter((x) => x.qty !== 0);
+
+      setOhLines(lines);
       setOhOpen(true);
-      return;
-    }
-
-    const byLoc: Record<string, number> = {};
-    (data as StockMove[]).forEach((r) => {
-      const loc = r.location_id as string;
-      const q = Number(r.qty_change) || 0;
-      byLoc[loc] = (byLoc[loc] ?? 0) + q;
-    });
-
-    const lines = locs
-      .map((l) => ({
-        location: `${l.code ?? "LOC"} — ${l.name ?? ""}`,
-        qty: byLoc[l.id] ?? 0,
-      }))
-      .filter((x) => x.qty !== 0);
-
-    setOhLines(lines);
-    setOhOpen(true);
-  };
+    },
+    [supabase, shopId, locs],
+  );
 
   /* boot */
   useEffect(() => {
@@ -383,13 +428,15 @@ export default function InventoryPage(): JSX.Element {
       const uid = u.user?.id ?? null;
       if (!uid) return;
 
-      const { data: prof } = await supabase
+      const { data: profA } = await supabase
         .from("profiles")
         .select("shop_id")
         .eq("user_id", uid)
         .maybeSingle();
 
-      const sid = (prof?.shop_id as string) || "";
+      const sidA = (profA?.shop_id as string) || "";
+
+      const sid = sidA || "";
       setShopId(sid);
       if (!sid) return;
 
@@ -407,18 +454,21 @@ export default function InventoryPage(): JSX.Element {
         setInitLoc(main.id);
         setRecvLoc(main.id);
         setCsvDefaultLoc(main.id);
+      } else if (locRows[0]?.id) {
+        setInitLoc(locRows[0].id);
+        setRecvLoc(locRows[0].id);
+        setCsvDefaultLoc(locRows[0].id);
       }
 
       await load(sid);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase]);
+  }, [supabase, load]);
 
   /* refetch on search */
   useEffect(() => {
     if (shopId) void load(shopId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, shopId]);
+  }, [search, shopId, load]);
 
   /* ----------------------- CRUD handlers ----------------------- */
 
@@ -503,6 +553,7 @@ export default function InventoryPage(): JSX.Element {
 
   const applyReceive = async () => {
     if (!recvPart?.id || !recvLoc || typeof recvQty !== "number" || recvQty <= 0) return;
+
     try {
       await applyStockMoveRPC(supabase, {
         p_part: recvPart.id,
@@ -541,22 +592,24 @@ export default function InventoryPage(): JSX.Element {
 
     for (let r = 1; r < rows.length; r++) {
       const row = rows[r];
-      const name = idx.name >= 0 ? row[idx.name] : "";
+      const nm = idx.name >= 0 ? row[idx.name] : "";
+      const name = (nm ?? "").trim();
       if (!name) continue;
-      const sku = idx.sku >= 0 ? row[idx.sku] : undefined;
-      const category = idx.category >= 0 ? row[idx.category] : undefined;
-      const priceStr = idx.price >= 0 ? row[idx.price] : undefined;
-      const qtyStr = idx.qty >= 0 ? row[idx.qty] : undefined;
 
-      const price = priceStr && priceStr.length ? Number(priceStr) : undefined;
-      const qty = qtyStr && qtyStr.length ? Number(qtyStr) : undefined;
+      const sku = idx.sku >= 0 ? (row[idx.sku] ?? "").trim() : "";
+      const category = idx.category >= 0 ? (row[idx.category] ?? "").trim() : "";
+      const priceStr = idx.price >= 0 ? (row[idx.price] ?? "").trim() : "";
+      const qtyStr = idx.qty >= 0 ? (row[idx.qty] ?? "").trim() : "";
+
+      const priceNum = priceStr ? Number(priceStr) : NaN;
+      const qtyNum = qtyStr ? Number(qtyStr) : NaN;
 
       out.push({
         name,
-        sku: sku && sku.length ? sku : undefined,
-        category: category && category.length ? category : undefined,
-        price: typeof price === "number" && !Number.isNaN(price) ? price : undefined,
-        qty: typeof qty === "number" && !Number.isNaN(qty) ? qty : undefined,
+        sku: sku || undefined,
+        category: category || undefined,
+        price: Number.isFinite(priceNum) ? priceNum : undefined,
+        qty: Number.isFinite(qtyNum) ? qtyNum : undefined,
       });
     }
 
@@ -573,6 +626,7 @@ export default function InventoryPage(): JSX.Element {
   const runCsvImport = async () => {
     if (!shopId || !csvRows.length) return;
 
+    // NOTE: intentionally sequential to keep it safe and predictable for now.
     for (const row of csvRows) {
       let partId: string | null = null;
 
@@ -583,7 +637,8 @@ export default function InventoryPage(): JSX.Element {
           .eq("shop_id", shopId)
           .eq("sku", row.sku)
           .maybeSingle();
-        if (found?.id) partId = found.id;
+
+        if (found?.id) partId = String(found.id);
       }
 
       if (!partId) {
@@ -598,6 +653,7 @@ export default function InventoryPage(): JSX.Element {
         };
         const { error } = await supabase.from("parts").insert(insert);
         if (error) {
+          // eslint-disable-next-line no-console
           console.warn("Insert failed:", row, error.message);
           continue;
         }
@@ -623,6 +679,7 @@ export default function InventoryPage(): JSX.Element {
             p_ref_id: null,
           });
         } catch (err: unknown) {
+          // eslint-disable-next-line no-console
           console.warn("Stock receive failed for row:", row, errMsg(err));
         }
       }
@@ -638,95 +695,109 @@ export default function InventoryPage(): JSX.Element {
   /* ----------------------------- UI ----------------------------- */
 
   return (
-    <div className="space-y-4 p-6 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Inventory</h1>
-        <div className="flex items-center gap-2">
-          <input
-            className="w-64 rounded border border-neutral-700 bg-neutral-900 p-2 text-sm"
-            placeholder="Search name / SKU / category"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button
-            className="font-header rounded border border-orange-500 px-3 py-1.5 text-sm hover:bg-orange-500/10 disabled:opacity-60"
-            onClick={() => setAddOpen(true)}
-            disabled={!shopId}
-          >
-            Add Part
-          </button>
-          <button
-            className="font-header rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
-            onClick={() => setCsvOpen(true)}
-            disabled={!shopId}
-          >
-            CSV Import
-          </button>
+    <div className={pageWrap}>
+      <div className={`${glassCard} overflow-hidden`}>
+        <div className={`${glassHeader} px-5 py-4`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">
+                Parts
+              </div>
+              <h1 className="text-2xl font-semibold" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
+                Inventory
+              </h1>
+              <div className="mt-1 text-sm text-neutral-400">
+                Create parts, quick receive, and import stock from CSV.
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                className={`${inputBase} w-72`}
+                placeholder="Search name / SKU / category"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+
+              <button className={btnCopper} onClick={() => setAddOpen(true)} disabled={!shopId}>
+                Add Part
+              </button>
+
+              <button className={btnBlue} onClick={() => setCsvOpen(true)} disabled={!shopId}>
+                CSV Import
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       {loading ? (
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-sm text-neutral-400">
-          Loading…
-        </div>
+        <div className={`${glassCard} p-4 text-sm text-neutral-300`}>Loading…</div>
       ) : parts.length === 0 ? (
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-sm text-neutral-400">
+        <div className={`${glassCard} p-4 text-sm text-neutral-300`}>
           No parts yet. Click “Add Part” to create your first item or use CSV Import.
         </div>
       ) : (
-        <div className="overflow-hidden rounded border border-neutral-800 bg-neutral-900">
-          <table className="w-full text-sm">
-            <thead className="bg-neutral-900">
-              <tr className="text-left text-neutral-400">
-                <th className="p-2">Name</th>
-                <th className="p-2">SKU</th>
-                <th className="p-2">Category</th>
-                <th className="p-2">Price</th>
-                <th className="p-2">On hand</th>
-                <th className="p-2 w-48 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parts.map((p) => {
-                const total = onHand[p.id] ?? 0;
-                return (
-                  <tr key={p.id} className="border-t border-neutral-800">
-                    <td className="p-2">{p.name}</td>
-                    <td className="p-2">{p.sku ?? "—"}</td>
-                    <td className="p-2">{p.category ?? "—"}</td>
-                    <td className="p-2">
-                      {typeof p.price === "number" ? `$${p.price.toFixed(2)}` : "—"}
-                    </td>
-                    <td className="p-2">
-                      <button
-                        className="rounded border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800"
-                        onClick={() => openOnHandDetail(p)}
-                        title="View per-location balance"
-                      >
-                        {total}
-                      </button>
-                    </td>
-                    <td className="p-2">
-                      <div className="flex justify-end gap-2">
+        <div className={`${glassCard} overflow-hidden`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-white/5 text-neutral-400">
+                <tr className="text-left">
+                  <th className="p-3">Name</th>
+                  <th className="p-3">SKU</th>
+                  <th className="p-3">Category</th>
+                  <th className="p-3">Price</th>
+                  <th className="p-3">On hand</th>
+                  <th className="w-56 p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parts.map((p) => {
+                  const total = onHand[p.id] ?? 0;
+                  const onHandPill = total > 0 ? pillOk : pillZero;
+
+                  return (
+                    <tr key={p.id} className="border-t border-white/10">
+                      <td className="p-3">
+                        <div className="font-medium text-white">{p.name}</div>
+                        <div className="mt-0.5 text-xs text-neutral-500">
+                          {p.id ? `#${String(p.id).slice(0, 8)}` : ""}
+                        </div>
+                      </td>
+                      <td className="p-3">{p.sku ?? "—"}</td>
+                      <td className="p-3">{p.category ?? "—"}</td>
+                      <td className="p-3 tabular-nums">
+                        {typeof p.price === "number" ? `$${p.price.toFixed(2)}` : "—"}
+                      </td>
+                      <td className="p-3">
                         <button
-                          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
-                          onClick={() => openEdit(p)}
+                          className={`${onHandPill} hover:bg-white/5`}
+                          onClick={() => void openOnHandDetail(p)}
+                          title="View per-location balance"
                         >
-                          Edit
+                          {total}
                         </button>
-                        <button
-                          className="rounded border border-blue-600 px-2 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
-                          onClick={() => openReceive(p)}
-                        >
-                          Receive
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex justify-end gap-2">
+                          <button className={btnGhost} onClick={() => openEdit(p)}>
+                            Edit
+                          </button>
+                          <button className={btnBlue} onClick={() => openReceive(p)}>
+                            Receive
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="border-t border-white/10 px-5 py-3 text-xs text-neutral-500">
+            Tip: Click the on-hand number to see per-location balances.
+          </div>
         </div>
       )}
 
@@ -737,17 +808,10 @@ export default function InventoryPage(): JSX.Element {
         onClose={() => setAddOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
-            <button
-              className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
-              onClick={() => setAddOpen(false)}
-            >
+            <button className={btnGhost} onClick={() => setAddOpen(false)}>
               Cancel
             </button>
-            <button
-              className="rounded border border-orange-500 px-3 py-1.5 text-sm hover:bg-orange-500/10 disabled:opacity-60"
-              onClick={createPart}
-              disabled={!name.trim()}
-            >
+            <button className={btnCopper} onClick={createPart} disabled={!name.trim()}>
               Save Part
             </button>
           </div>
@@ -759,15 +823,13 @@ export default function InventoryPage(): JSX.Element {
           </div>
           <TextField label="SKU" value={sku} onChange={setSku} placeholder="Optional" />
           <TextField label="Category" value={category} onChange={setCategory} placeholder="Optional" />
-          <NumberField
-            label="Price"
-            value={price}
-            onChange={(v) => setPrice(v === "" ? "" : v)}
-          />
+          <NumberField label="Price" value={price} onChange={(v) => setPrice(v === "" ? "" : v)} />
         </div>
 
-        <div className="mt-4 rounded border border-neutral-800 bg-neutral-900 p-3">
-          <div className="mb-2 text-sm font-semibold">Initial Stock (optional)</div>
+        <div className="mt-4 rounded-xl border border-white/10 bg-neutral-950/20 p-3">
+          <div className="mb-2 text-sm font-semibold text-white">
+            Initial Stock <span className="text-xs font-normal text-neutral-400">(optional)</span>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <SelectField
               label="Location"
@@ -799,17 +861,10 @@ export default function InventoryPage(): JSX.Element {
         onClose={() => setEditOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
-            <button
-              className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
-              onClick={() => setEditOpen(false)}
-            >
+            <button className={btnGhost} onClick={() => setEditOpen(false)}>
               Cancel
             </button>
-            <button
-              className="rounded border border-orange-500 px-3 py-1.5 text-sm hover:bg-orange-500/10 disabled:opacity-60"
-              onClick={saveEdit}
-              disabled={!editName.trim()}
-            >
+            <button className={btnCopper} onClick={saveEdit} disabled={!editName.trim()}>
               Save Changes
             </button>
           </div>
@@ -832,14 +887,11 @@ export default function InventoryPage(): JSX.Element {
         onClose={() => setRecvOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
-            <button
-              className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
-              onClick={() => setRecvOpen(false)}
-            >
+            <button className={btnGhost} onClick={() => setRecvOpen(false)}>
               Cancel
             </button>
             <button
-              className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
+              className={btnBlue}
               onClick={applyReceive}
               disabled={!recvPart?.id || !recvLoc || typeof recvQty !== "number" || recvQty <= 0}
             >
@@ -876,21 +928,21 @@ export default function InventoryPage(): JSX.Element {
         widthClass="max-w-lg"
       >
         {ohLines.length === 0 ? (
-          <div className="text-sm text-neutral-400">No movement found for this part.</div>
+          <div className="text-sm text-neutral-300">No movement found for this part.</div>
         ) : (
-          <div className="rounded border border-neutral-800">
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-neutral-950/20">
             <table className="w-full text-sm">
-              <thead className="text-left text-neutral-400">
+              <thead className="bg-white/5 text-left text-neutral-400">
                 <tr>
-                  <th className="p-2">Location</th>
-                  <th className="p-2">Qty</th>
+                  <th className="p-3">Location</th>
+                  <th className="p-3">Qty</th>
                 </tr>
               </thead>
               <tbody>
                 {ohLines.map((l, i) => (
-                  <tr key={i} className="border-t border-neutral-800">
-                    <td className="p-2">{l.location}</td>
-                    <td className="p-2">{l.qty}</td>
+                  <tr key={i} className="border-t border-white/10">
+                    <td className="p-3">{l.location}</td>
+                    <td className="p-3 tabular-nums">{l.qty}</td>
                   </tr>
                 ))}
               </tbody>
@@ -906,21 +958,25 @@ export default function InventoryPage(): JSX.Element {
         onClose={() => setCsvOpen(false)}
         widthClass="max-w-3xl"
         footer={
-          <div className="flex w-full flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-end justify-between gap-3">
+            <div className="min-w-[260px]">
               <SelectField
                 label="Default receive location (for rows with qty)"
                 value={csvDefaultLoc}
                 onChange={setCsvDefaultLoc}
                 options={[
                   { value: "", label: "— none —" },
-                  ...locs.map((l) => ({ value: l.id, label: `${l.code ?? "LOC"} — ${l.name ?? ""}` })),
+                  ...locs.map((l) => ({
+                    value: l.id,
+                    label: `${l.code ?? "LOC"} — ${l.name ?? ""}`,
+                  })),
                 ]}
               />
             </div>
+
             <div className="flex items-center gap-2">
               <button
-                className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+                className={btnGhost}
                 onClick={() => {
                   setCsvPreview(false);
                   setCsvText("");
@@ -931,7 +987,7 @@ export default function InventoryPage(): JSX.Element {
                 Close
               </button>
               <button
-                className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
+                className={btnBlue}
                 onClick={runCsvImport}
                 disabled={!csvPreview || csvRows.length === 0}
               >
@@ -942,8 +998,9 @@ export default function InventoryPage(): JSX.Element {
         }
       >
         <div className="grid gap-3">
-          <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-sm text-neutral-300">
-            Expected headers (case-insensitive): <code>name, sku, category, price, qty</code>. Extra columns are ignored.
+          <div className="rounded-xl border border-white/10 bg-neutral-950/20 p-3 text-sm text-neutral-300">
+            Expected headers (case-insensitive): <code className={COPPER_TEXT}>name, sku, category, price, qty</code>.
+            Extra columns are ignored.
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -954,10 +1011,10 @@ export default function InventoryPage(): JSX.Element {
                 const f = e.target.files?.[0];
                 if (f) void handleCsvFile(f);
               }}
-              className="text-sm"
+              className="text-sm text-neutral-200"
             />
             <button
-              className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+              className={btnGhost}
               onClick={() => {
                 if (csvText.trim().length) parseAndPreviewCSV(csvText);
               }}
@@ -968,7 +1025,7 @@ export default function InventoryPage(): JSX.Element {
 
           <textarea
             rows={8}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm"
+            className={`${inputBase} font-mono text-xs`}
             placeholder={`Paste CSV here… e.g.:
 name,sku,category,price,qty
 Oil Filter – Ford,OF-FORD-01,Filters,9.95,10
@@ -979,29 +1036,50 @@ Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
           />
 
           {csvPreview && (
-            <div className="rounded border border-neutral-800">
+            <div className="overflow-hidden rounded-xl border border-white/10 bg-neutral-950/20">
               <table className="w-full text-sm">
-                <thead className="text-left text-neutral-400">
+                <thead className="bg-white/5 text-left text-neutral-400">
                   <tr>
-                    <th className="p-2">Name</th>
-                    <th className="p-2">SKU</th>
-                    <th className="p-2">Category</th>
-                    <th className="p-2">Price</th>
-                    <th className="p-2">Qty</th>
+                    <th className="p-3">Name</th>
+                    <th className="p-3">SKU</th>
+                    <th className="p-3">Category</th>
+                    <th className="p-3">Price</th>
+                    <th className="p-3">Qty</th>
                   </tr>
                 </thead>
                 <tbody>
                   {csvRows.map((r, i) => (
-                    <tr key={i} className="border-t border-neutral-800">
-                      <td className="p-2">{r.name}</td>
-                      <td className="p-2">{r.sku ?? "—"}</td>
-                      <td className="p-2">{r.category ?? "—"}</td>
-                      <td className="p-2">{typeof r.price === "number" ? r.price.toFixed(2) : "—"}</td>
-                      <td className="p-2">{typeof r.qty === "number" ? r.qty : "—"}</td>
+                    <tr key={i} className="border-t border-white/10">
+                      <td className="p-3">{r.name}</td>
+                      <td className="p-3">{r.sku ?? "—"}</td>
+                      <td className="p-3">{r.category ?? "—"}</td>
+                      <td className="p-3 tabular-nums">
+                        {typeof r.price === "number" ? r.price.toFixed(2) : "—"}
+                      </td>
+                      <td className="p-3 tabular-nums">
+                        {typeof r.qty === "number" ? r.qty : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {csvPreview && (
+            <div className="text-xs text-neutral-500">
+              Rows: <span className="font-semibold text-white">{csvRows.length}</span>
+              {csvDefaultLoc ? (
+                <>
+                  {" "}
+                  · Default receive loc: <span className={COPPER_TEXT}>{csvDefaultLoc.slice(0, 8)}</span>
+                </>
+              ) : (
+                <>
+                  {" "}
+                  · <span className="text-neutral-400">No default receive location set</span>
+                </>
+              )}
             </div>
           )}
         </div>

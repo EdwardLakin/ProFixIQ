@@ -187,49 +187,92 @@ export const TILES: Tile[] = [
   },
 
   /* ---------------------------------------------------------------------- */
-  /* PARTS                                                                   */
-  /* ---------------------------------------------------------------------- */
-  {
-    href: "/parts",
-    title: "Parts Dashboard",
-    subtitle: "Orders & receiving",
-    roles: ["parts", "manager", "owner", "admin"],
-    scopes: ["parts", "all"],
-    section: "Parts",
-  },
-  {
-    href: "/parts/requests",
-    title: "Requests",
-    subtitle: "View requests",
-    roles: ["parts", "manager", "owner", "admin"],
-    scopes: ["parts", "all"],
-    section: "Parts",
-  },
-  {
-    href: "/parts/inventory",
-    title: "Inventory",
-    subtitle: "On-hand stock",
-    roles: ["parts", "manager", "owner", "admin"],
-    scopes: ["parts", "all"],
-    section: "Parts",
-  },
-  {
-    href: "/parts/po",
-    title: "Purchase Orders",
-    subtitle: "Create & manage POs",
-    roles: ["parts", "manager", "owner", "admin"],
-    scopes: ["parts", "all"],
-    section: "Parts",
-  },
-  {
-    href: "/parts/vendors",
-    title: "Vendor Integrations",
-    subtitle: "API keys for suppliers",
-    roles: ["owner", "admin", "manager", "parts"],
-    scopes: ["parts", "settings", "all"],
-    section: "Parts",
-  },
+/* PARTS                                                                   */
+/* ---------------------------------------------------------------------- */
+{
+  href: "/parts",
+  title: "Parts Dashboard",
+  subtitle: "Orders & receiving",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/requests",
+  title: "Requests",
+  subtitle: "View requests",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/receiving",
+  title: "Receiving Inbox",
+  subtitle: "Partial receive & allocations",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/receive",
+  title: "Scan to Receive",
+  subtitle: "Barcode receiving",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/inventory",
+  title: "Inventory",
+  subtitle: "On-hand stock",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/po",
+  title: "Purchase Orders",
+  subtitle: "Create & manage POs",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
 
+// Optional: if you create a “choose PO then receive” landing page.
+// If you don’t plan to build /parts/po/receive, delete this tile.
+{
+  href: "/parts/po/receive",
+  title: "Receive from PO",
+  subtitle: "Receive + auto-allocate",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+
+{
+  href: "/parts/movements",
+  title: "Stock Movements",
+  subtitle: "Inventory ledger",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/allocations",
+  title: "Allocations",
+  subtitle: "Parts used on jobs",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/vendors",
+  title: "Vendor Integrations",
+  subtitle: "API keys for suppliers",
+  roles: ["owner", "admin", "manager", "parts"],
+  scopes: ["parts", "settings", "all"],
+  section: "Parts",
+},
   /* ---------------------------------------------------------------------- */
   /* FLEET                                                                   */
   /* ---------------------------------------------------------------------- */

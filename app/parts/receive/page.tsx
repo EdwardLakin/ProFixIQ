@@ -1,4 +1,5 @@
-// app/parts/receive/page.tsx
+// app/parts/receive/page.tsx (FULL FILE REPLACEMENT)
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -33,7 +34,6 @@ let Quagga: QuaggaLike | null = null;
 
 if (typeof window !== "undefined") {
   void import("@ericblade/quagga2").then((m) => {
-    // quagga2 default export is the Quagga API object
     Quagga = (m.default as unknown) as QuaggaLike;
   });
 }
@@ -42,9 +42,18 @@ type DB = Database;
 type PurchaseOrder = DB["public"]["Tables"]["purchase_orders"]["Row"];
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
 
+type ReceiveResult =
+  | {
+      ok: true;
+      mode: "po" | "manual";
+      result?: unknown;
+    }
+  | { error: string };
+
 export default function ReceivePage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const [, setShopId] = useState<string>("");
+  const [shopId, setShopId] = useState<string>("");
+
   const [pos, setPOs] = useState<PurchaseOrder[]>([]);
   const [selectedPo, setSelectedPo] = useState<string>("");
   const [selectedLoc, setSelectedLoc] = useState<string>("");
@@ -55,6 +64,9 @@ export default function ReceivePage(): JSX.Element {
   const [scanning, setScanning] = useState<boolean>(false);
   const [qty, setQty] = useState<number>(1);
 
+  const [lastResult, setLastResult] = useState<ReceiveResult | null>(null);
+  const [busy, setBusy] = useState(false);
+
   const onDetectedRef = useRef<QuaggaDetectedHandler | null>(null);
 
   useEffect(() => {
@@ -63,11 +75,11 @@ export default function ReceivePage(): JSX.Element {
       const uid = userRes.user?.id;
       if (!uid) return;
 
-      // ✅ Option A: profiles.id == auth.uid()
+      // ✅ profiles.user_id == auth.uid()
       const { data: prof, error: profErr } = await supabase
         .from("profiles")
         .select("shop_id")
-        .eq("id", uid)
+        .eq("user_id", uid)
         .maybeSingle();
 
       if (profErr) return;
@@ -124,13 +136,18 @@ export default function ReceivePage(): JSX.Element {
           constraints: { facingMode: "environment" },
         },
         decoder: {
-          readers: ["upc_reader", "upc_e_reader", "ean_reader", "ean_8_reader", "code_128_reader"],
+          readers: [
+            "upc_reader",
+            "upc_e_reader",
+            "ean_reader",
+            "ean_8_reader",
+            "code_128_reader",
+          ],
         },
         locate: true,
       },
       (err?: Error) => {
         if (err) {
-          // eslint-disable-next-line no-console
           console.error(err);
           setScanning(false);
           return;
@@ -146,6 +163,13 @@ export default function ReceivePage(): JSX.Element {
       if (!code || code === lastScan) return;
 
       setLastScan(code);
+      setLastResult(null);
+
+      if (!selectedLoc) {
+        setLastResult({ error: "Select a location first." });
+        window.setTimeout(() => setLastScan(""), 800);
+        return;
+      }
 
       const supplierId = pos.find((p) => p.id === selectedPo)?.supplier_id ?? null;
 
@@ -155,31 +179,50 @@ export default function ReceivePage(): JSX.Element {
       });
 
       if (!part_id) {
-        alert(`No part found for "${code}". Map it in Parts → Inventory → Edit → Barcodes.`);
+        setLastResult({
+          error: `No part found for "${code}". Map it in Parts → Inventory → Edit → Barcodes.`,
+        });
+        window.setTimeout(() => setLastScan(""), 1200);
         return;
       }
 
-      if (!selectedLoc) {
-        alert("Select a location first.");
-        return;
+      setBusy(true);
+      try {
+        const resp = await fetch("/api/receive-scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            part_id,
+            location_id: selectedLoc,
+            qty,
+            po_id: selectedPo || null,
+          }),
+        });
+
+        const json = (await resp.json().catch(() => ({}))) as
+          | { ok?: boolean; mode?: "po" | "manual"; result?: unknown; error?: string }
+          | Record<string, unknown>;
+
+        if (!resp.ok) {
+          const errMsg =
+            typeof (json as { error?: unknown }).error === "string"
+              ? (json as { error: string }).error
+              : "Receive failed";
+          setLastResult({ error: errMsg });
+          return;
+        }
+
+        setLastResult({
+          ok: true,
+          mode: (json as { mode?: "po" | "manual" }).mode ?? (selectedPo ? "po" : "manual"),
+          result: (json as { result?: unknown }).result,
+        });
+
+        window.dispatchEvent(new CustomEvent("parts:received"));
+      } finally {
+        setBusy(false);
+        window.setTimeout(() => setLastScan(""), 900);
       }
-
-      await fetch("/api/receive-scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          part_id,
-          location_id: selectedLoc,
-          qty,
-          po_id: selectedPo || null,
-        }),
-      });
-
-      const locLabel = locs.find((l) => l.id === selectedLoc)?.code ?? "LOC";
-      alert(`Received ×${qty} to ${locLabel}`);
-
-      window.dispatchEvent(new CustomEvent("parts:received"));
-      window.setTimeout(() => setLastScan(""), 1000);
     };
 
     onDetectedRef.current = handler;
@@ -201,9 +244,15 @@ export default function ReceivePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const locLabel = locs.find((l) => l.id === selectedLoc)?.code ?? "LOC";
+
   return (
     <div className="p-6 space-y-4">
       <h1 className="text-2xl font-bold text-white">Scan to Receive</h1>
+
+      <div className="text-xs text-neutral-500">
+        Shop: <span className="text-neutral-300">{shopId ? shopId.slice(0, 8) : "—"}</span>
+      </div>
 
       <div className="rounded border border-neutral-800 bg-neutral-900 p-3 grid gap-3 sm:grid-cols-3">
         <div className="sm:col-span-1">
@@ -245,9 +294,36 @@ export default function ReceivePage(): JSX.Element {
             step="0.01"
             className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
             value={qty}
-            onChange={(e) => setQty(Math.max(0, Number(e.target.value || 0)))}
+            onChange={(e) => setQty(Math.max(0.01, Number(e.target.value || 1)))}
           />
         </div>
+      </div>
+
+      {/* Result panel */}
+      <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-2">
+          Last receive
+        </div>
+
+        {!lastResult ? (
+          <div className="text-sm text-neutral-400">
+            Scan a barcode to receive into <span className="text-neutral-200">{locLabel}</span>.
+          </div>
+        ) : "error" in lastResult ? (
+          <div className="text-sm text-red-300">{lastResult.error}</div>
+        ) : (
+          <div className="space-y-1">
+            <div className="text-sm text-emerald-300">
+              Received ×{qty} to {locLabel} ({lastResult.mode === "po" ? "PO receive + allocate" : "manual receive"})
+            </div>
+
+            {lastResult.mode === "po" ? (
+              <pre className="mt-2 max-h-64 overflow-auto rounded border border-neutral-800 bg-black/60 p-2 text-xs text-neutral-200">
+                {JSON.stringify(lastResult.result ?? {}, null, 2)}
+              </pre>
+            ) : null}
+          </div>
+        )}
       </div>
 
       <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
@@ -255,7 +331,8 @@ export default function ReceivePage(): JSX.Element {
           {!scanning ? (
             <button
               onClick={startScan}
-              className="rounded border border-orange-500 px-3 py-1.5 text-sm text-orange-300 hover:bg-orange-900/20"
+              disabled={busy}
+              className="rounded border border-orange-500 px-3 py-1.5 text-sm text-orange-300 hover:bg-orange-900/20 disabled:opacity-60"
             >
               Start Scanner
             </button>
@@ -267,7 +344,9 @@ export default function ReceivePage(): JSX.Element {
               Stop Scanner
             </button>
           )}
-          <span className="text-xs text-neutral-400">Use mobile camera to scan UPC/EAN/Code128.</span>
+          <span className="text-xs text-neutral-400">
+            Use mobile camera to scan UPC/EAN/Code128.
+          </span>
         </div>
 
         <div
