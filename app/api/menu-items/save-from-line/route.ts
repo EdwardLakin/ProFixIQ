@@ -7,10 +7,8 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
-type AllocationRow =
-  DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type MenuInsert = DB["public"]["Tables"]["menu_items"]["Insert"];
 type MenuItemPartInsert = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
@@ -32,6 +30,10 @@ type AllocationJoined = {
   part_id: AllocationRow["part_id"];
   parts: { name: PartRow["name"] }[] | null;
 };
+
+function clampNonNeg(n: number): number {
+  return n < 0 ? 0 : n;
+}
 
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
@@ -57,7 +59,7 @@ export async function POST(req: NextRequest) {
   /* 2) Parse Body                                                          */
   /* ---------------------------------------------------------------------- */
   const json = (await req.json().catch(() => null)) as RequestBody | null;
-  const lineId = json?.workOrderLineId;
+  const lineId = typeof json?.workOrderLineId === "string" ? json.workOrderLineId.trim() : "";
 
   if (!lineId) {
     const body: SaveFromLineResponse = {
@@ -73,9 +75,7 @@ export async function POST(req: NextRequest) {
   /* ---------------------------------------------------------------------- */
   const { data: wol, error: wolErr } = await supabase
     .from("work_order_lines")
-    .select(
-      "id, description, work_order_id, labor_time, price_estimate, template_id, notes",
-    )
+    .select("id, description, work_order_id, labor_time, template_id, notes")
     .eq("id", lineId)
     .maybeSingle();
 
@@ -149,6 +149,42 @@ export async function POST(req: NextRequest) {
   }
 
   /* ---------------------------------------------------------------------- */
+  /* 4b) Set shop context for RLS                                            */
+  /* ---------------------------------------------------------------------- */
+  const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
+  if (ctxErr) {
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "shop_context_failed",
+      detail: ctxErr.message,
+    };
+    return NextResponse.json(body, { status: 403 });
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* 4c) Load shop defaults (labor_rate)                                     */
+  /* ---------------------------------------------------------------------- */
+  const { data: shop, error: shopErr } = await supabase
+    .from("shops")
+    .select("labor_rate")
+    .eq("id", shopId)
+    .maybeSingle();
+
+  if (shopErr) {
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "shop_load_failed",
+      detail: shopErr.message,
+    };
+    return NextResponse.json(body, { status: 500 });
+  }
+
+  const laborRate =
+    typeof shop?.labor_rate === "number" && Number.isFinite(shop.labor_rate)
+      ? shop.labor_rate
+      : 0;
+
+  /* ---------------------------------------------------------------------- */
   /* 5) Load line parts from work_order_part_allocations + parts            */
   /* ---------------------------------------------------------------------- */
   const { data: rawAllocations, error: allocErr } = await supabase
@@ -170,53 +206,60 @@ export async function POST(req: NextRequest) {
   const partsForMenu: Omit<MenuItemPartInsert, "menu_item_id">[] = [];
   let partCost = 0;
 
-  allocations.forEach((a) => {
-    const quantity = a.qty ?? 0;
-    const unitCost = a.unit_cost ?? 0;
-    if (quantity <= 0) return;
+  for (const a of allocations) {
+    const qtyRaw = typeof a.qty === "number" && Number.isFinite(a.qty) ? a.qty : 0;
+    const unitRaw =
+      typeof a.unit_cost === "number" && Number.isFinite(a.unit_cost) ? a.unit_cost : 0;
 
-    const rawName =
-      a.parts && a.parts.length > 0 ? a.parts[0]?.name ?? null : null;
+    const quantity = clampNonNeg(qtyRaw);
+    const unitCost = clampNonNeg(unitRaw);
 
-    const name =
-      rawName && rawName.trim().length > 0 ? rawName.trim() : "Part";
+    if (quantity <= 0) continue;
+
+    const rawName = a.parts && a.parts.length > 0 ? a.parts[0]?.name ?? null : null;
+    const name = rawName && rawName.trim().length > 0 ? rawName.trim() : "Part";
 
     partsForMenu.push({
-      // menu_item_id will be filled after we create the menu item
       name,
       quantity,
       unit_cost: unitCost,
       user_id: user.id,
+      shop_id: shopId,
+      part_id: typeof a.part_id === "string" && a.part_id.length ? a.part_id : null,
     });
 
     partCost += quantity * unitCost;
-  });
+  }
 
   /* ---------------------------------------------------------------------- */
   /* 6) Build MenuInsert (labor + parts + totals)                           */
   /* ---------------------------------------------------------------------- */
   const laborTime =
     typeof wol.labor_time === "number" && Number.isFinite(wol.labor_time)
-      ? wol.labor_time
+      ? clampNonNeg(wol.labor_time)
       : null;
 
-  const totalPrice =
-    typeof wol.price_estimate === "number" &&
-    Number.isFinite(wol.price_estimate)
-      ? wol.price_estimate
-      : partCost || null;
+  const laborCost = (laborTime ?? 0) * laborRate;
+
+  // subtotal only (no tax)
+  const totalPrice = partCost + laborCost;
 
   const name =
-    wol.description && wol.description.trim().length > 0
-      ? wol.description.trim()
-      : "Service item";
+    wol.description && wol.description.trim().length > 0 ? wol.description.trim() : "Service item";
+
+  const description =
+    typeof wol.notes === "string" && wol.notes.trim().length
+      ? wol.notes.trim()
+      : typeof wol.description === "string" && wol.description.trim().length
+        ? wol.description.trim()
+        : null;
 
   const itemInsert: MenuInsert = {
     name,
-    description: wol.notes ?? wol.description ?? null,
+    description,
     labor_time: laborTime,
-    labor_hours: null,
-    part_cost: partCost || null,
+    labor_hours: laborTime, // keep consistent if column exists
+    part_cost: partCost || 0,
     total_price: totalPrice,
     inspection_template_id: wol.template_id ?? null,
     user_id: user.id,
@@ -247,22 +290,19 @@ export async function POST(req: NextRequest) {
   /* 8) Insert into menu_item_parts (if any parts)                          */
   /* ---------------------------------------------------------------------- */
   if (partsForMenu.length > 0) {
-    const partsInsert: MenuItemPartInsert[] = partsForMenu.map(
-      (p): MenuItemPartInsert => ({
-        ...p,
-        menu_item_id: created.id,
-      }),
-    );
+    const partsInsert: MenuItemPartInsert[] = partsForMenu.map((p) => ({
+      ...p,
+      menu_item_id: created.id,
+    }));
 
-    const { error: partsInsertErr } = await supabase
-      .from("menu_item_parts")
-      .insert(partsInsert);
+    const { error: partsInsertErr } = await supabase.from("menu_item_parts").insert(partsInsert);
 
     if (partsInsertErr) {
       console.warn(
         "[menu-items/save-from-line] menu_item_parts insert failed:",
         partsInsertErr.message,
       );
+      // don't fail request; item is created
     }
   }
 

@@ -1,7 +1,3 @@
-// MenuQuickAdd.tsx (FULL FILE REPLACEMENT)
-// Updated to use NEW schema on menu_item_parts: part_id + shop_id
-// and allocate directly (no more name/sku guessing).
-
 "use client";
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
@@ -10,6 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
+import { calculateTax, type ProvinceCode } from "@/features/integrations/tax";
 
 type DB = Database;
 type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
@@ -40,9 +37,13 @@ type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
 
 type VehicleLite = {
   id?: string | null;
-  year?: string | number | null;
+  year?: number | string | null;
   make?: string | null;
   model?: string | null;
+  submodel?: string | null;
+  engine_type?: string | null;
+  transmission_type?: string | null;
+  drivetrain?: string | null;
   vin?: string | null;
   license_plate?: string | null;
 };
@@ -55,12 +56,6 @@ type CustomerLite = {
   email?: string | null;
 };
 
-type PartToAllocate = {
-  sku?: string | null;
-  name?: string | null;
-  qty: number;
-};
-
 type AddMenuParams =
   | {
       kind?: "normal";
@@ -70,7 +65,6 @@ type AddMenuParams =
       notes?: string | null;
       source?: "single" | "package" | "menu_item" | "ai" | "inspection";
       returnLineId?: boolean;
-      partsToAllocate?: PartToAllocate[];
       menuItemIdForParts?: string | null;
     }
   | {
@@ -79,6 +73,236 @@ type AddMenuParams =
       name?: string;
       laborHours?: number | null;
     };
+
+type ShopDefaults = {
+  country: "US" | "CA";
+  province: string | null;
+  timezone: string | null;
+  labor_rate: number | null;
+  tax_rate: number | null; // percent in DB (e.g. 5 => 5%)
+};
+
+function normStr(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length ? t : null;
+}
+
+function normLower(v: unknown): string | null {
+  const s = normStr(v);
+  return s ? s.toLowerCase() : null;
+}
+
+function normYear(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number.parseInt(v.trim(), 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function isGlobalMenuItem(mi: MenuItemRow): boolean {
+  const has =
+    mi.vehicle_year != null ||
+    !!normStr(mi.vehicle_make) ||
+    !!normStr(mi.vehicle_model) ||
+    !!normStr(mi.submodel) ||
+    !!normStr(mi.engine_type) ||
+    !!normStr(mi.transmission_type) ||
+    !!normStr(mi.drivetrain);
+  return !has;
+}
+
+function scoreMenuItemFit(args: {
+  mi: MenuItemRow;
+  vehicle: VehicleLite | null;
+}): number {
+  const { mi, vehicle } = args;
+  if (!vehicle) {
+    // if no vehicle, prefer global items slightly
+    return isGlobalMenuItem(mi) ? 5 : 0;
+  }
+
+  const vYear = normYear(vehicle.year);
+  const vMake = normLower(vehicle.make);
+  const vModel = normLower(vehicle.model);
+  const vSub = normLower(vehicle.submodel);
+  const vEng = normLower(vehicle.engine_type);
+  const vTrans = normLower(vehicle.transmission_type);
+  const vDrive = normLower(vehicle.drivetrain);
+
+  const miYear = mi.vehicle_year ?? null;
+  const miMake = normLower(mi.vehicle_make);
+  const miModel = normLower(mi.vehicle_model);
+  const miSub = normLower(mi.submodel);
+  const miEng = normLower(mi.engine_type);
+  const miTrans = normLower(mi.transmission_type);
+  const miDrive = normLower(mi.drivetrain);
+
+  // hard mismatch on specific fields: if menu item specifies something and vehicle disagrees => score 0
+  const mismatches: boolean[] = [];
+
+  if (miYear != null && vYear != null && miYear !== vYear) mismatches.push(true);
+  if (miMake && vMake && miMake !== vMake) mismatches.push(true);
+  if (miModel && vModel && miModel !== vModel) mismatches.push(true);
+  if (miSub && vSub && miSub !== vSub) mismatches.push(true);
+  if (miEng && vEng && miEng !== vEng) mismatches.push(true);
+  if (miTrans && vTrans && miTrans !== vTrans) mismatches.push(true);
+  if (miDrive && vDrive && miDrive !== vDrive) mismatches.push(true);
+
+  if (mismatches.length) return 0;
+
+  // scoring: exact matches get more; “global / unspecified” still allowed but lower.
+  let score = 0;
+
+  // core YMM
+  if (miYear != null && vYear != null && miYear === vYear) score += 30;
+  else if (miYear == null) score += 8;
+
+  if (miMake && vMake && miMake === vMake) score += 25;
+  else if (!miMake) score += 6;
+
+  if (miModel && vModel && miModel === vModel) score += 25;
+  else if (!miModel) score += 6;
+
+  // spec refiners
+  if (miSub && vSub && miSub === vSub) score += 10;
+  else if (!miSub) score += 2;
+
+  if (miEng && vEng && miEng === vEng) score += 6;
+  else if (!miEng) score += 1;
+
+  if (miTrans && vTrans && miTrans === vTrans) score += 6;
+  else if (!miTrans) score += 1;
+
+  if (miDrive && vDrive && miDrive === vDrive) score += 6;
+  else if (!miDrive) score += 1;
+
+  return score;
+}
+
+function menuSearchHit(mi: MenuItemRow, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return true;
+
+  const hay = [
+    mi.name,
+    mi.description,
+    mi.category,
+    mi.service_key,
+    mi.complaint,
+    mi.cause,
+    mi.correction,
+  ]
+    .map((x) => (typeof x === "string" ? x : ""))
+    .join(" ")
+    .toLowerCase();
+
+  return hay.includes(needle);
+}
+
+function isProvinceCode(v: string): v is ProvinceCode {
+  return (
+    v === "AB" ||
+    v === "BC" ||
+    v === "MB" ||
+    v === "NB" ||
+    v === "NL" ||
+    v === "NS" ||
+    v === "NT" ||
+    v === "NU" ||
+    v === "ON" ||
+    v === "PE" ||
+    v === "QC" ||
+    v === "SK" ||
+    v === "YT"
+  );
+}
+
+function moneyLabel(currency: "CAD" | "USD", amount: number): string {
+  const rounded = Number.isFinite(amount) ? amount : 0;
+  return `${currency} $${rounded.toFixed(0)}`;
+}
+
+/**
+ * Consistent totals:
+ * - labor = labor_time * shop.labor_rate
+ * - parts = menu_items.part_cost (for preview only)
+ * - subtotal = labor + parts
+ * - CA: use province tax engine if province is a valid ProvinceCode
+ * - else: fall back to shops.tax_rate percent (same as onboarding)
+ */
+function calcMenuTotals(args: {
+  mi: MenuItemRow;
+  shop: ShopDefaults | null;
+}): {
+  laborHours: number;
+  laborRate: number;
+  laborTotal: number;
+  partsTotal: number;
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  taxLabel: string | null;
+} {
+  const { mi, shop } = args;
+
+  const laborHours =
+    typeof mi.labor_time === "number" && Number.isFinite(mi.labor_time)
+      ? mi.labor_time
+      : 0;
+
+  const partsTotal =
+    typeof mi.part_cost === "number" && Number.isFinite(mi.part_cost)
+      ? mi.part_cost
+      : 0;
+
+  const laborRate =
+    shop && typeof shop.labor_rate === "number" && Number.isFinite(shop.labor_rate)
+      ? shop.labor_rate
+      : 0;
+
+  const laborTotal = laborHours * laborRate;
+  const subtotal = partsTotal + laborTotal;
+
+  if (shop?.country === "CA") {
+    const prov = (shop.province ?? "").trim().toUpperCase();
+    if (isProvinceCode(prov)) {
+      const res = calculateTax(subtotal, prov);
+      const taxTotal = res.taxes.reduce((a, t) => a + t.amount, 0);
+      const taxLabel = res.taxes.map((t) => t.label).join("+") || null;
+      return {
+        laborHours,
+        laborRate,
+        laborTotal,
+        partsTotal,
+        subtotal,
+        taxTotal,
+        total: res.total,
+        taxLabel,
+      };
+    }
+    // province missing/invalid => fall back to stored percent below
+  }
+
+  const pct =
+    shop && typeof shop.tax_rate === "number" && Number.isFinite(shop.tax_rate)
+      ? shop.tax_rate / 100
+      : 0;
+
+  const taxTotal = subtotal * pct;
+  return {
+    laborHours,
+    laborRate,
+    laborTotal,
+    partsTotal,
+    subtotal,
+    taxTotal,
+    total: subtotal + taxTotal,
+    taxLabel: pct > 0 ? "Tax" : null,
+  };
+}
 
 export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -124,7 +348,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const [, setCustomer] = useState<CustomerLite | null>(null);
   const [woLineCount, setWoLineCount] = useState<number | null>(null);
 
-  const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
+  const [menuItemsAll, setMenuItemsAll] = useState<MenuItemRow[]>([]);
   const [menuLoading, setMenuLoading] = useState(false);
 
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
@@ -134,7 +358,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const shopReady = !!shopId;
   const vehicleId = vehicle?.id ?? null;
 
+  const [shopDefaults, setShopDefaults] = useState<ShopDefaults | null>(null);
+
   const [aiOpen, setAiOpen] = useState(false);
+
+  // search + include-global toggle
+  const [menuQuery, setMenuQuery] = useState("");
+  const [includeGlobal, setIncludeGlobal] = useState(true);
 
   const lastSetShopId = useRef<string | null>(null);
 
@@ -150,7 +380,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     lastSetShopId.current = id;
   }
 
-  // bootstrap WO + related
+  // bootstrap WO + related + shop defaults (for consistent totals)
   useEffect(() => {
     (async () => {
       const { data: wo, error: woErr } = await supabase
@@ -164,12 +394,39 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         return;
       }
 
-      setShopId(wo?.shop_id ?? null);
+      const sid = wo?.shop_id ?? null;
+      setShopId(sid);
+
+      if (sid) {
+        const { data: s, error: sErr } = await supabase
+          .from("shops")
+          .select("country, province, timezone, labor_rate, tax_rate")
+          .eq("id", sid)
+          .maybeSingle();
+
+        if (sErr) {
+          toast.message(sErr.message);
+          setShopDefaults(null);
+        } else {
+          const countrySafe: "US" | "CA" = s?.country === "CA" ? "CA" : "US";
+          setShopDefaults({
+            country: countrySafe,
+            province: typeof s?.province === "string" ? s.province : null,
+            timezone: typeof s?.timezone === "string" ? s.timezone : null,
+            labor_rate: typeof s?.labor_rate === "number" ? s.labor_rate : null,
+            tax_rate: typeof s?.tax_rate === "number" ? s.tax_rate : null,
+          });
+        }
+      } else {
+        setShopDefaults(null);
+      }
 
       if (wo?.vehicle_id) {
         const { data: v, error: vErr } = await supabase
           .from("vehicles")
-          .select("id, year, make, model, vin, license_plate")
+          .select(
+            "id, year, make, model, submodel, engine_type, transmission_type, drivetrain, vin, license_plate",
+          )
           .eq("id", wo.vehicle_id)
           .maybeSingle();
         if (vErr) toast.message(vErr.message);
@@ -200,86 +457,33 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     })();
   }, [supabase, workOrderId]);
 
-  // load saved menu items – prefer matches for this vehicle’s YMM
+  // load saved menu items (ALL for shop) – then filter + score client-side
   const loadMenuItems = useCallback(async () => {
     if (!shopId) return;
 
     setMenuLoading(true);
     try {
-      const vYear =
-        typeof vehicle?.year === "number"
-          ? vehicle.year
-          : typeof vehicle?.year === "string"
-            ? parseInt(vehicle.year, 10)
-            : null;
+      await ensureShopContext(shopId);
 
-      const vMake =
-        typeof vehicle?.make === "string" && vehicle.make.trim().length
-          ? vehicle.make.trim()
-          : null;
+      const { data, error } = await supabase
+        .from("menu_items")
+        .select("*")
+        .eq("shop_id", shopId)
+        .eq("is_active", true)
+        .order("created_at", { ascending: false })
+        .limit(400);
 
-      const vModel =
-        typeof vehicle?.model === "string" && vehicle.model.trim().length
-          ? vehicle.model.trim()
-          : null;
+      if (error) throw error;
 
-      let preferred: MenuItemRow[] = [];
-      let others: MenuItemRow[] = [];
-
-      if (vYear || vMake || vModel) {
-        let q = supabase
-          .from("menu_items")
-          .select("*")
-          .eq("shop_id", shopId)
-          .eq("is_active", true)
-          .order("created_at", { ascending: false });
-
-        if (vYear) q = q.eq("vehicle_year", vYear);
-        if (vMake) q = q.ilike("vehicle_make", vMake);
-        if (vModel) q = q.ilike("vehicle_model", vModel);
-
-        const { data: exact, error: exactErr } = await q.limit(20);
-        if (exactErr) throw exactErr;
-        preferred = (exact ?? []) as MenuItemRow[];
-
-        const excludeIds = preferred.map((mi) => mi.id);
-        let fbQuery = supabase
-          .from("menu_items")
-          .select("*")
-          .eq("shop_id", shopId)
-          .eq("is_active", true)
-          .order("created_at", { ascending: false })
-          .limit(30);
-
-        if (excludeIds.length) {
-          fbQuery = fbQuery.not("id", "in", `(${excludeIds.join(",")})`);
-        }
-
-        const { data: fb, error: fbErr } = await fbQuery;
-        if (fbErr) throw fbErr;
-        others = (fb ?? []) as MenuItemRow[];
-      } else {
-        const { data, error } = await supabase
-          .from("menu_items")
-          .select("*")
-          .eq("shop_id", shopId)
-          .eq("is_active", true)
-          .order("created_at", { ascending: false })
-          .limit(20);
-
-        if (error) throw error;
-        preferred = (data ?? []) as MenuItemRow[];
-        others = [];
-      }
-
-      setMenuItems([...preferred, ...others]);
+      setMenuItemsAll((data ?? []) as MenuItemRow[]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to load menu items.";
       toast.message(msg);
+      setMenuItemsAll([]);
     } finally {
       setMenuLoading(false);
     }
-  }, [supabase, shopId, vehicle]);
+  }, [supabase, shopId]);
 
   // load templates
   const loadTemplates = useCallback(async () => {
@@ -409,7 +613,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         typeof p.quantity === "number" && p.quantity > 0 ? p.quantity : 0;
       if (!qty) continue;
 
-      const partId = typeof p.part_id === "string" && p.part_id ? p.part_id : null;
+      const partId =
+        typeof p.part_id === "string" && p.part_id ? p.part_id : null;
       if (!partId) {
         toast.message(
           `Menu part "${p.name ?? "Part"}" is missing a linked Part (part_id).`,
@@ -442,7 +647,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
     if (!allocations.length) return;
 
-    // If your allocations table DOES NOT have unit_cost, remove it below.
     const { error: allocErr } = await supabase
       .from("work_order_part_allocations")
       .insert(
@@ -465,24 +669,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         `Allocated ${allocations.length} part${allocations.length > 1 ? "s" : ""}`,
       );
     }
-  }
-
-  // NOTE: This is now only used if you pass partsToAllocate explicitly.
-  // It still expects to do sku/name lookup. If you want "no guessing" everywhere,
-  // change PartToAllocate to carry part_id and remove lookup.
-  async function autoAllocateExplicitParts(
-    list: PartToAllocate[],
-    workOrderLineId: string,
-  ) {
-    if (!shopId || !list.length) return;
-
-    await ensureShopContext(shopId);
-
-    // We are no longer guessing for menu_item_parts allocations.
-    // If you still need explicit allocations, wire this to provide part_id instead.
-    toast.message("Explicit parts allocation is not wired in this version.");
-    void workOrderLineId;
-    void list;
   }
 
   /* ====================================================================== */
@@ -558,19 +744,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         await autoAllocateMenuParts(params.menuItemIdForParts, data.id);
       }
 
-      // Explicit allocations (disabled in this “no guessing” version)
-      if (params.partsToAllocate && params.partsToAllocate.length && data?.id) {
-        await autoAllocateExplicitParts(params.partsToAllocate, data.id);
-      }
-
       window.dispatchEvent(new CustomEvent("wo:line-added"));
-      toast.success(
-        params.source === "ai"
-          ? "AI suggestion added"
-          : params.source === "menu_item"
-            ? "Menu item added"
-            : "Job added",
-      );
+      toast.success("Job added");
 
       return params.returnLineId ? (data?.id ?? null) : null;
     } catch (e: unknown) {
@@ -624,6 +799,37 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         ? `Plate ${vehicle.license_plate}`
         : null;
 
+  // compute display list (search + fit scoring)
+  const menuItemsDisplay = useMemo(() => {
+    const q = menuQuery.trim();
+    const scored = menuItemsAll
+      .filter((mi) => menuSearchHit(mi, q))
+      .map((mi) => ({
+        mi,
+        score: scoreMenuItemFit({ mi, vehicle }),
+        global: isGlobalMenuItem(mi),
+      }))
+      .filter((x) => (includeGlobal ? true : !x.global))
+      // score 0 items are “not a match” when vehicle exists and item is specific
+      .filter((x) => {
+        if (!vehicle) return true;
+        if (x.global) return true;
+        return x.score > 0;
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        // tie-breaker: newer first
+        const aT = new Date(a.mi.created_at ?? 0).getTime();
+        const bT = new Date(b.mi.created_at ?? 0).getTime();
+        return bT - aT;
+      });
+
+    return scored.map((x) => x.mi);
+  }, [menuItemsAll, menuQuery, includeGlobal, vehicle]);
+
+  const currency: "CAD" | "USD" =
+    shopDefaults?.country === "CA" ? "CAD" : "USD";
+
   return (
     <div className="space-y-5 text-white">
       {/* Header / context */}
@@ -637,7 +843,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
               <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-mono text-neutral-300">
                 WO {workOrderId.slice(0, 8)}…
               </span>
+              {shopDefaults?.labor_rate != null ? (
+                <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-300">
+                  Labor {shopDefaults.labor_rate.toFixed(0)}/{currency}/hr
+                </span>
+              ) : null}
             </div>
+
             {vehicleLabel ? (
               <p className="text-[11px] text-neutral-400">
                 Vehicle:&nbsp;
@@ -760,51 +972,103 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* From My Menu */}
+      {/* From My Menu (searchable + YMM prioritized + CONSISTENT totals) */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
-            From My Menu
-          </h4>
-          <p className="text-[10px] text-neutral-500">
-            Saved services — best matches for this vehicle are shown first.
-          </p>
+        <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
+              From My Menu
+            </h4>
+            <p className="text-[10px] text-neutral-500">
+              Matches for this vehicle are shown first. Totals use shop labor +
+              tax rules (province engine for CA).
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              value={menuQuery}
+              onChange={(e) => setMenuQuery(e.target.value)}
+              placeholder="Search menu items (e.g. brakes, alignment, oil)…"
+              className="w-full sm:w-[320px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            />
+            <label className="flex items-center gap-2 text-[11px] text-neutral-300">
+              <input
+                type="checkbox"
+                checked={includeGlobal}
+                onChange={(e) => setIncludeGlobal(e.target.checked)}
+                className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
+              />
+              Include global services
+            </label>
+          </div>
         </div>
+
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {menuLoading ? (
             <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
               Loading menu items…
             </div>
-          ) : menuItems.length ? (
-            menuItems.slice(0, 9).map((mi) => (
-              <button
-                type="button"
-                key={mi.id}
-                onClick={() => addSavedMenuItem(mi)}
-                disabled={addingId === (mi.name ?? "") || !shopReady}
-                className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
-                title={mi.description ?? undefined}
-              >
-                <span className="font-medium text-neutral-50">{mi.name}</span>
-                <div className="mt-1 text-xs text-neutral-400">
-                  {typeof mi.labor_time === "number"
-                    ? `${mi.labor_time.toFixed(1)}h`
-                    : typeof (mi as unknown as { labor_hours?: number | null })
-                          .labor_hours === "number"
-                      ? `${(
-                          mi as unknown as { labor_hours: number }
-                        ).labor_hours.toFixed(1)}h`
-                      : "Labor TBD"}{" "}
-                  •{" "}
-                  {typeof mi.total_price === "number"
-                    ? `$${mi.total_price.toFixed(0)}`
-                    : "No price"}
-                </div>
-              </button>
-            ))
+          ) : menuItemsDisplay.length ? (
+            menuItemsDisplay.slice(0, 12).map((mi) => {
+              const p = calcMenuTotals({ mi, shop: shopDefaults });
+
+              const laborLabel =
+                p.laborHours > 0 ? `${p.laborHours.toFixed(1)}h` : "Labor TBD";
+
+              const partsLabel =
+                p.partsTotal > 0
+                  ? `${moneyLabel(currency, p.partsTotal)} parts`
+                  : "No parts";
+
+              const totalLabel =
+                p.total > 0 ? moneyLabel(currency, p.total) : "No total";
+
+              const taxLabel =
+                p.taxTotal > 0
+                  ? `${p.taxLabel ?? "Tax"} ${moneyLabel(currency, p.taxTotal)}`
+                  : null;
+
+              return (
+                <button
+                  type="button"
+                  key={mi.id}
+                  onClick={() => addSavedMenuItem(mi)}
+                  disabled={addingId === (mi.name ?? "") || !shopReady}
+                  className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
+                  title={mi.description ?? undefined}
+                >
+                  <span className="font-medium text-neutral-50">{mi.name}</span>
+
+                  <div className="mt-1 text-xs text-neutral-400">
+                    {laborLabel} • {partsLabel} •{" "}
+                    <span className="text-neutral-100">{totalLabel}</span>
+                    {taxLabel ? (
+                      <span className="ml-1 text-neutral-500">• {taxLabel}</span>
+                    ) : null}
+
+                    {isGlobalMenuItem(mi) ? (
+                      <span className="ml-2 rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-300">
+                        GLOBAL
+                      </span>
+                    ) : (
+                      <span className="ml-2 rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-0.5 text-[10px] text-orange-200">
+                        FIT
+                      </span>
+                    )}
+                  </div>
+
+                  {mi.service_key ? (
+                    <div className="mt-1 text-[10px] text-neutral-500 font-mono">
+                      {mi.service_key}
+                    </div>
+                  ) : null}
+                </button>
+              );
+            })
           ) : (
             <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
-              No saved menu items yet.
+              No menu items match this filter.
             </div>
           )}
         </div>

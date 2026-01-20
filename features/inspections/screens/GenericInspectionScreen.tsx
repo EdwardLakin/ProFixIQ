@@ -1097,66 +1097,89 @@ export default function GenericInspectionScreen(
   };
 
   // Save current layout as template
-  const saveCurrentAsTemplate = async (): Promise<void> => {
-    if (!session) return;
-    if (savingTemplate) return;
+const saveCurrentAsTemplate = async (): Promise<void> => {
+  if (!session) return;
+  if (savingTemplate) return;
 
-    const cleanedSections = toTemplateSections(session.sections);
-    if (cleanedSections.length === 0) {
-      toast.error("Nothing to save — no sections with items.");
+  const cleanedSections = toTemplateSections(session.sections);
+  if (cleanedSections.length === 0) {
+    toast.error("Nothing to save — no sections with items.");
+    return;
+  }
+
+  try {
+    setSavingTemplate(true);
+
+    // ✅ auth + uid
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth?.user?.id ?? null;
+    if (!uid) {
+      toast.error("Please sign in to save this as a template.");
       return;
     }
 
-    try {
-      setSavingTemplate(true);
+    // ✅ resolve shop_id (profiles.user_id first, then profiles.id)
+    let resolvedShopId: string | null = null;
 
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth?.user) {
-        toast.error("Please sign in to save this as a template.");
-        return;
-      }
+    const byUser = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("user_id", uid)
+      .maybeSingle();
 
-      const baseName = session.templateitem || templateName || "Inspection Template";
-      const template_name = `${baseName} (from run)`;
-
-      const totalItems = cleanedSections.reduce(
-        (sum, s) => sum + s.items.length,
-        0,
-      );
-      const labor_hours =
-        totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
-
-      const payload: InsertTemplate = {
-        template_name,
-        sections:
-          cleanedSections as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
-        description: "Saved from an in-progress inspection run.",
-        vehicle_type: templateVehicleType,
-        tags: ["run_saved", "custom"],
-        is_public: false,
-        labor_hours,
-      };
-
-      const { error, data } = await supabase
-        .from("inspection_templates")
-        .insert(payload)
-        .select("id")
+    if (byUser.data?.shop_id) {
+      resolvedShopId = String(byUser.data.shop_id);
+    } else {
+      const byId = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", uid)
         .maybeSingle();
-
-      if (error || !data?.id) {
-        // eslint-disable-next-line no-console
-        console.error(error);
-        toast.error("Failed to save template from inspection.");
-        return;
-      }
-
-      toast.success(
-        "Template saved from this inspection. You can reuse it under Templates.",
-      );
-    } finally {
-      setSavingTemplate(false);
+      resolvedShopId = byId.data?.shop_id ? String(byId.data.shop_id) : null;
     }
-  };
+
+    if (!resolvedShopId) {
+      toast.error("No shop_id found for your profile.");
+      return;
+    }
+
+    const baseName = session.templateitem || templateName || "Inspection Template";
+    const template_name = `${baseName} (from run)`;
+
+    const totalItems = cleanedSections.reduce((sum, s) => sum + s.items.length, 0);
+    const labor_hours = totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
+
+    const payload: InsertTemplate = {
+      user_id: uid,
+      shop_id: resolvedShopId,
+      template_name,
+      sections:
+        cleanedSections as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
+      description: "Saved from an in-progress inspection run.",
+      vehicle_type: templateVehicleType,
+      tags: ["run_saved", "custom"],
+      is_public: false,
+      labor_hours,
+    };
+
+    const { error, data } = await supabase
+      .from("inspection_templates")
+      .insert(payload)
+      .select("id")
+      .maybeSingle();
+
+    if (error || !data?.id) {
+      // eslint-disable-next-line no-console
+      console.error(error);
+      toast.error(error?.message || "Failed to save template from inspection.");
+      return;
+    }
+
+    toast.success("Template saved. You can reuse it under Templates.");
+  } finally {
+    setSavingTemplate(false);
+  }
+};
 
   // Add new item inline to a section (non-grid)
   const handleAddCustomItem = (sectionIndex: number): void => {

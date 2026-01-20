@@ -2,6 +2,10 @@
 // Menu Item details + edit + delete (NO `any`)
 // Uses API route: /api/menu/item/[id]
 // Maintains the same "metal-card" theme used on /menu
+//
+// IMPORTANT:
+// - Labor rate is pulled from shops.labor_rate (no manual labor rate input)
+// - Menu totals are previewed client-side, but stored totals are computed server-side on save.
 
 "use client";
 
@@ -17,6 +21,7 @@ type DB = Database;
 
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
 type MenuItemPartRow = DB["public"]["Tables"]["menu_item_parts"]["Row"];
+type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
@@ -38,6 +43,10 @@ type EditItemState = {
   isActive: boolean;
 };
 
+type ApiGetResponse =
+  | { ok: true; item: MenuItemRow; parts: MenuItemPartRow[] }
+  | { ok?: false; error?: string; detail?: string };
+
 type PatchBody = {
   item?: {
     name?: string;
@@ -54,8 +63,10 @@ type PatchBody = {
   }[];
 };
 
+type ApiBasicResponse = { ok?: boolean; error?: string; detail?: string };
+
 function toNum(raw: string): number {
-  const n = parseFloat(raw);
+  const n = Number.parseFloat(raw);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -63,6 +74,11 @@ function cleanNumericString(raw: string): string {
   if (raw === "") return "";
   const v = raw.replace(/[^\d.]/g, "");
   return v === "" ? "" : v.replace(/^0+(?=\d)/, "");
+}
+
+function money(n: number | null | undefined): string {
+  const x = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return `$${x.toFixed(2)}`;
 }
 
 export default function MenuItemDetailPage() {
@@ -81,24 +97,70 @@ export default function MenuItemDetailPage() {
 
   const [parts, setParts] = useState<EditablePart[]>([]);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [shopLaborRate, setShopLaborRate] = useState<number>(0);
 
   const [pickerOpenForRow, setPickerOpenForRow] = useState<number | null>(null);
+
+  const shopId = useMemo(() => {
+    const v = rawItem?.shop_id;
+    return typeof v === "string" && v.length ? v : null;
+  }, [rawItem]);
 
   const partsTotal = useMemo(() => {
     return parts.reduce((sum, p) => sum + toNum(p.quantityStr) * toNum(p.unitCostStr), 0);
   }, [parts]);
 
-  const loadTemplatesForShop = useCallback(
-    async (shopId: string | null) => {
-      if (!shopId) {
-        setTemplates([]);
+  const laborHours = useMemo(() => {
+    if (!item) return 0;
+    return item.laborTimeStr.trim() ? toNum(item.laborTimeStr) : 0;
+  }, [item]);
+
+  const laborPreview = useMemo(() => laborHours * shopLaborRate, [laborHours, shopLaborRate]);
+
+  const totalPreview = useMemo(() => partsTotal + laborPreview, [partsTotal, laborPreview]);
+
+  const loadShopMeta = useCallback(
+    async (sid: string | null) => {
+      if (!sid) {
+        setShopLaborRate(0);
         return;
       }
 
       // If your RLS relies on current_shop_id(), set it client-side too.
-      const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
+      const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: sid });
       if (ctxErr) {
-        // Don’t hard-fail the page if templates are blocked; just hide them.
+        setShopLaborRate(0);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("shops")
+        .select("labor_rate")
+        .eq("id", sid)
+        .maybeSingle<Pick<ShopRow, "labor_rate">>();
+
+      if (error) {
+        setShopLaborRate(0);
+        return;
+      }
+
+      const r =
+        typeof data?.labor_rate === "number" && Number.isFinite(data.labor_rate) ? data.labor_rate : 0;
+
+      setShopLaborRate(r);
+    },
+    [supabase],
+  );
+
+  const loadTemplatesForShop = useCallback(
+    async (sid: string | null) => {
+      if (!sid) {
+        setTemplates([]);
+        return;
+      }
+
+      const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: sid });
+      if (ctxErr) {
         setTemplates([]);
         return;
       }
@@ -124,15 +186,19 @@ export default function MenuItemDetailPage() {
     setLoading(true);
     try {
       const res = await fetch(`/api/menu/item/${id}`, { method: "GET" });
-      const json = (await res.json()) as
-        | { ok: true; item: MenuItemRow; parts: MenuItemPartRow[] }
-        | { ok?: false; error?: string; detail?: string };
+      const json = (await res.json()) as ApiGetResponse;
 
       if (!res.ok || !("ok" in json) || !json.ok) {
-        toast.error(("detail" in json && json.detail) || ("error" in json && json.error) || "Failed to load item.");
+        toast.error(
+          ("detail" in json && json.detail) ||
+            ("error" in json && json.error) ||
+            "Failed to load item.",
+        );
         setRawItem(null);
         setItem(null);
         setParts([]);
+        setTemplates([]);
+        setShopLaborRate(0);
         return;
       }
 
@@ -140,74 +206,93 @@ export default function MenuItemDetailPage() {
       setRawItem(loadedItem);
 
       setItem({
-        name: (loadedItem.name ?? "").toString(),
-        description: (loadedItem.description ?? "").toString(),
+        name: typeof loadedItem.name === "string" ? loadedItem.name : String(loadedItem.name ?? ""),
+        description:
+          typeof loadedItem.description === "string"
+            ? loadedItem.description
+            : String(loadedItem.description ?? ""),
         laborTimeStr:
           typeof loadedItem.labor_time === "number" && Number.isFinite(loadedItem.labor_time)
             ? String(loadedItem.labor_time)
             : "",
-        inspectionTemplateId: (loadedItem.inspection_template_id ?? "").toString(),
+        inspectionTemplateId:
+          typeof loadedItem.inspection_template_id === "string"
+            ? loadedItem.inspection_template_id
+            : "",
         isActive: loadedItem.is_active ?? true,
       });
 
       const mappedParts: EditablePart[] = (json.parts ?? []).map((p) => ({
         id: p.id,
-        name: (p.name ?? "").toString(),
+        name: typeof p.name === "string" ? p.name : String(p.name ?? ""),
         quantityStr:
-          typeof p.quantity === "number" && Number.isFinite(p.quantity) ? String(p.quantity) : p.quantity ? String(p.quantity) : "",
+          typeof p.quantity === "number" && Number.isFinite(p.quantity)
+            ? String(p.quantity)
+            : p.quantity != null
+              ? String(p.quantity)
+              : "",
         unitCostStr:
-          typeof p.unit_cost === "number" && Number.isFinite(p.unit_cost) ? String(p.unit_cost) : p.unit_cost ? String(p.unit_cost) : "",
+          typeof p.unit_cost === "number" && Number.isFinite(p.unit_cost)
+            ? String(p.unit_cost)
+            : p.unit_cost != null
+              ? String(p.unit_cost)
+              : "",
         part_id: typeof p.part_id === "string" && p.part_id.length ? p.part_id : null,
       }));
 
-      setParts(mappedParts.length ? mappedParts : [{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
+      setParts(
+        mappedParts.length
+          ? mappedParts
+          : [{ name: "", quantityStr: "", unitCostStr: "", part_id: null }],
+      );
 
-      // Templates dropdown (optional) — load after we know shop_id
-      const shopId = typeof loadedItem.shop_id === "string" ? loadedItem.shop_id : null;
-      await loadTemplatesForShop(shopId);
+      const sid = typeof loadedItem.shop_id === "string" ? loadedItem.shop_id : null;
+      await Promise.all([loadTemplatesForShop(sid), loadShopMeta(sid)]);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to load menu item");
       setRawItem(null);
       setItem(null);
       setParts([]);
+      setTemplates([]);
+      setShopLaborRate(0);
     } finally {
       setLoading(false);
     }
-  }, [id, loadTemplatesForShop]);
+  }, [id, loadTemplatesForShop, loadShopMeta]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const setItemField = <K extends keyof EditItemState>(field: K, value: EditItemState[K]) => {
-    setItem((prev) => (prev ? { ...prev, [field]: value } : prev));
-  };
+  const setItemField = useCallback(
+    <K extends keyof EditItemState>(field: K, value: EditItemState[K]) => {
+      setItem((prev) => (prev ? { ...prev, [field]: value } : prev));
+    },
+    [],
+  );
 
-  const setPartField = (idx: number, field: "name" | "quantityStr" | "unitCostStr", value: string) => {
-    setParts((rows) =>
-      rows.map((r, i) =>
-        i === idx
-          ? {
-              ...r,
-              [field]: field === "name" ? value : cleanNumericString(value),
-            }
-          : r,
-      ),
-    );
-  };
+  const setPartField = useCallback(
+    (idx: number, field: "name" | "quantityStr" | "unitCostStr", value: string) => {
+      setParts((rows) =>
+        rows.map((r, i) =>
+          i === idx ? { ...r, [field]: field === "name" ? value : cleanNumericString(value) } : r,
+        ),
+      );
+    },
+    [],
+  );
 
-  const addPartRow = () => {
+  const addPartRow = useCallback(() => {
     setParts((rows) => [...rows, { name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
-  };
+  }, []);
 
-  const removePartRow = (idx: number) => {
+  const removePartRow = useCallback((idx: number) => {
     setParts((rows) => rows.filter((_, i) => i !== idx));
-  };
+  }, []);
 
   const handlePickPart =
     (rowIdx: number) =>
     async (sel: PickedPart): Promise<void> => {
-      // Fetch label from catalog to keep the UI nice (and still no guessing for allocation—allocation uses part_id)
       const { data, error } = await supabase
         .from("parts")
         .select("name, unit_cost")
@@ -217,7 +302,11 @@ export default function MenuItemDetailPage() {
       const label = !error && data?.name ? data.name : "Part";
       const qtyFromSel = sel.qty && sel.qty > 0 ? String(sel.qty) : "";
       const unitCostFromSel =
-        sel.unit_cost != null && Number.isFinite(sel.unit_cost) ? String(sel.unit_cost) : !error && data?.unit_cost != null ? String(data.unit_cost) : "";
+        sel.unit_cost != null && Number.isFinite(sel.unit_cost)
+          ? String(sel.unit_cost)
+          : !error && data?.unit_cost != null
+            ? String(data.unit_cost)
+            : "";
 
       setParts((rows) =>
         rows.map((r, i) =>
@@ -236,7 +325,7 @@ export default function MenuItemDetailPage() {
       toast.success(`Picked ${label}`);
     };
 
-  const save = async () => {
+  const save = useCallback(async () => {
     if (!id || !item) return;
 
     if (!item.name.trim()) {
@@ -270,7 +359,7 @@ export default function MenuItemDetailPage() {
         body: JSON.stringify(body),
       });
 
-      const json = (await res.json()) as { ok?: boolean; error?: string; detail?: string };
+      const json = (await res.json()) as ApiBasicResponse;
 
       if (!res.ok || !json.ok) {
         toast.error(json.detail || json.error || "Failed to save changes");
@@ -284,9 +373,9 @@ export default function MenuItemDetailPage() {
     } finally {
       setBusy(false);
     }
-  };
+  }, [id, item, parts, load]);
 
-  const del = async () => {
+  const del = useCallback(async () => {
     if (!id) return;
 
     const ok = confirm("Delete this menu item? This cannot be undone.");
@@ -295,7 +384,7 @@ export default function MenuItemDetailPage() {
     setDeleting(true);
     try {
       const res = await fetch(`/api/menu/item/${id}`, { method: "DELETE" });
-      const json = (await res.json()) as { ok?: boolean; error?: string; detail?: string };
+      const json = (await res.json()) as ApiBasicResponse;
 
       if (!res.ok || !json.ok) {
         toast.error(json.detail || json.error || "Failed to delete");
@@ -310,7 +399,7 @@ export default function MenuItemDetailPage() {
     } finally {
       setDeleting(false);
     }
-  };
+  }, [id, router]);
 
   if (loading) {
     return (
@@ -349,6 +438,14 @@ export default function MenuItemDetailPage() {
             Edit Menu Item
           </h1>
           <p className="mt-1 text-sm text-neutral-400">Update details, linked inspection, and parts.</p>
+
+          {shopId ? (
+            <p className="mt-1 text-[11px] text-neutral-500">
+              Labor rate (shop):{" "}
+              <span className="font-medium text-neutral-200">{money(shopLaborRate)}</span>
+              <span className="text-neutral-500"> / hr</span>
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -446,8 +543,9 @@ export default function MenuItemDetailPage() {
                 </option>
               ))}
             </select>
+
             <p className="text-[11px] text-neutral-500">
-              If this dropdown is empty due to RLS, we’ll switch it to a server-fed endpoint that sets shop context.
+              If templates are blocked by RLS, we can switch this to a server-fed endpoint.
             </p>
           </div>
         </div>
@@ -524,15 +622,30 @@ export default function MenuItemDetailPage() {
         </div>
 
         {/* totals */}
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="mt-5 space-y-2 text-sm">
           <div className="flex flex-wrap items-center gap-4 text-xs md:text-sm">
             <div className="text-neutral-300">
-              Parts: <span className="text-white">${partsTotal.toFixed(2)}</span>
+              Parts: <span className="text-white">{money(partsTotal)}</span>
             </div>
             <div className="text-neutral-300">
-              Labor hours:{" "}
-              <span className="text-white">{(item.laborTimeStr.trim() ? toNum(item.laborTimeStr) : 0).toFixed(1)}h</span>
+              Labor:{" "}
+              <span className="text-white">
+                {laborHours.toFixed(1)}h × {money(shopLaborRate)}/hr = {money(laborPreview)}
+              </span>
             </div>
+            <div className="text-neutral-300">
+              Preview total:{" "}
+              <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">
+                {money(totalPreview)}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-[11px] text-neutral-500">
+            Saved (server) totals:{" "}
+            <span className="text-neutral-200">
+              parts {money(rawItem.part_cost)} • total {money(rawItem.total_price)}
+            </span>
           </div>
         </div>
       </section>
