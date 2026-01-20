@@ -221,24 +221,16 @@ export default function PurchaseOrdersPage(): JSX.Element {
     const createdId = (data?.id as string | null) ?? null;
     if (!createdId) throw new Error("Supplier create failed.");
 
-    // keep cache in sync
     setSuppliers((prev) => [data as Supplier, ...prev]);
-
     return createdId;
   }
 
   async function ensureSupplierIdRequired(): Promise<string> {
-    // Your generated types require purchase_orders.Insert.supplier_id: string
-    // So this MUST always return a real supplier id.
-
-    // 1) user selected existing
     if (isNonEmptyString(supplierId)) return supplierId.trim();
 
-    // 2) user typed new supplier
     const typed = normalizeName(newSupplierName);
     if (typed) return await createSupplier(typed);
 
-    // 3) fallback default supplier for generic stock POs
     return await createSupplier(DEFAULT_SUPPLIER_NAME);
   }
 
@@ -254,8 +246,6 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
       const fallbackId = uuidv4();
 
-      // NOTE: keep insert aligned to your generated Insert type (no unknown props).
-      // If your Insert requires created_at, this satisfies it.
       const insertPo: PurchaseOrderInsert = {
         id: fallbackId,
         shop_id: shopId,
@@ -270,7 +260,6 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
       const newPoId = (poData?.id as string | null) ?? fallbackId;
 
-      // Insert PO lines (only those with a selected part)
       const lineError = validateLines();
       if (lineError) throw new Error(lineError);
 
@@ -280,8 +269,6 @@ export default function PurchaseOrdersPage(): JSX.Element {
           const vendorPn = l.vendor_part_number.trim();
           const notes = l.notes.trim();
 
-          // Map UI fields -> your table fields (per your generated types)
-          // purchase_order_lines expects: qty, unit_cost, sku?, description?, received_qty, created_at, etc.
           const descriptionParts: string[] = [];
           if (vendorPn) descriptionParts.push(`Vendor PN: ${vendorPn}`);
           if (notes) descriptionParts.push(notes);
@@ -440,9 +427,10 @@ export default function PurchaseOrdersPage(): JSX.Element {
       {open ? (
         <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/70 p-4" onClick={closeModal}>
           <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
-            <div className={`${panel} p-5`}>
+            {/* IMPORTANT: keep modal within viewport and scroll internally */}
+            <div className={`${panel} max-h-[85vh] overflow-hidden p-5`}>
               <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-500">Create</div>
                   <div className="text-xl font-semibold text-white" style={headerFont}>
                     New Purchase Order
@@ -451,7 +439,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                 </div>
 
                 <button
-                  className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 disabled:opacity-60"
+                  className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 disabled:opacity-60"
                   onClick={closeModal}
                   disabled={busyCreate}
                   type="button"
@@ -460,87 +448,193 @@ export default function PurchaseOrdersPage(): JSX.Element {
                 </button>
               </div>
 
-              <div className="grid gap-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div>
-                    <div className="mb-1 text-xs text-neutral-400">Supplier</div>
-                    <select
-                      className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-sm text-neutral-100"
-                      value={supplierId}
-                      onChange={(e) => setSupplierId(e.target.value)}
-                      disabled={busyCreate}
-                    >
-                      <option value="">— auto: {DEFAULT_SUPPLIER_NAME} —</option>
-                      {suppliers.map((s) => (
-                        <option key={String(s.id)} value={String(s.id)}>
-                          {typeof s.name === "string" && s.name.trim() ? s.name.trim() : String(s.id).slice(0, 8)}
-                        </option>
-                      ))}
-                    </select>
+              {/* Scrollable body */}
+              <div className="max-h-[72vh] overflow-y-auto overflow-x-hidden pr-1">
+                <div className="grid gap-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="min-w-0">
+                      <div className="mb-1 text-xs text-neutral-400">Supplier</div>
+                      <select
+                        className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-sm text-neutral-100"
+                        value={supplierId}
+                        onChange={(e) => setSupplierId(e.target.value)}
+                        disabled={busyCreate}
+                      >
+                        <option value="">— auto: {DEFAULT_SUPPLIER_NAME} —</option>
+                        {suppliers.map((s) => (
+                          <option key={String(s.id)} value={String(s.id)}>
+                            {typeof s.name === "string" && s.name.trim() ? s.name.trim() : String(s.id).slice(0, 8)}
+                          </option>
+                        ))}
+                      </select>
 
-                    <div className="mt-2 text-[11px] text-neutral-500">or create a new supplier name:</div>
-                    <input
-                      className="mt-1 w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-600"
-                      value={newSupplierName}
-                      onChange={(e) => setNewSupplierName(e.target.value)}
-                      placeholder="e.g., NAPA / FleetPride / Cummins…"
-                      disabled={busyCreate || !!supplierId}
-                    />
-                    <div className="mt-1 text-[11px] text-neutral-600">
-                      If you select a supplier above, this field is ignored.
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="mb-1 text-xs text-neutral-400">PO Notes</div>
-                    <textarea
-                      className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-600"
-                      rows={5}
-                      value={poNote}
-                      onChange={(e) => setPoNote(e.target.value)}
-                      placeholder="Optional notes for this PO (delivery time, core return, account #, etc.)"
-                      disabled={busyCreate}
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">PO Lines</div>
-                      <div className="mt-1 text-[11px] text-neutral-500">
-                        Add stock lines now, or you can create header-only and add lines later.
+                      <div className="mt-2 text-[11px] text-neutral-500">or create a new supplier name:</div>
+                      <input
+                        className="mt-1 w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-600"
+                        value={newSupplierName}
+                        onChange={(e) => setNewSupplierName(e.target.value)}
+                        placeholder="e.g., NAPA / FleetPride / Cummins…"
+                        disabled={busyCreate || !!supplierId}
+                      />
+                      <div className="mt-1 text-[11px] text-neutral-600">
+                        If you select a supplier above, this field is ignored.
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 disabled:opacity-60"
-                      onClick={addLine}
-                      disabled={busyCreate}
-                    >
-                      + Add line
-                    </button>
+                    <div className="min-w-0">
+                      <div className="mb-1 text-xs text-neutral-400">PO Notes</div>
+                      <textarea
+                        className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-600"
+                        rows={5}
+                        value={poNote}
+                        onChange={(e) => setPoNote(e.target.value)}
+                        placeholder="Optional notes for this PO (delivery time, core return, account #, etc.)"
+                        disabled={busyCreate}
+                      />
+                    </div>
                   </div>
 
-                  <div className="overflow-auto">
-                    <table className="w-full min-w-[980px] text-sm">
-                      <thead>
-                        <tr className="text-left text-neutral-400">
-                          <th className="p-2">Part</th>
-                          <th className="p-2">Vendor Part #</th>
-                          <th className="p-2 text-right">Qty</th>
-                          <th className="p-2 text-right">Unit Cost</th>
-                          <th className="p-2">Line Notes</th>
-                          <th className="p-2 text-right"> </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lines.map((l) => (
-                          <tr key={l.id} className="border-t border-white/10">
-                            <td className="p-2">
+                  <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">PO Lines</div>
+                        <div className="mt-1 text-[11px] text-neutral-500">
+                          Add stock lines now, or you can create header-only and add lines later.
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 disabled:opacity-60"
+                        onClick={addLine}
+                        disabled={busyCreate}
+                      >
+                        + Add line
+                      </button>
+                    </div>
+
+                    {/* Desktop table, scrolls horizontally INSIDE this box */}
+                    <div className="hidden md:block">
+                      <div className="w-full overflow-x-auto">
+                        <table className="w-full min-w-[980px] text-sm">
+                          <thead>
+                            <tr className="text-left text-neutral-400">
+                              <th className="p-2">Part</th>
+                              <th className="p-2">Vendor Part #</th>
+                              <th className="p-2 text-right">Qty</th>
+                              <th className="p-2 text-right">Unit Cost</th>
+                              <th className="p-2">Line Notes</th>
+                              <th className="p-2 text-right"> </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {lines.map((l) => (
+                              <tr key={l.id} className="border-t border-white/10">
+                                <td className="p-2">
+                                  <select
+                                    className="w-[380px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100"
+                                    value={l.part_id}
+                                    onChange={(e) => updateLine(l.id, { part_id: e.target.value })}
+                                    disabled={busyCreate}
+                                  >
+                                    <option value="">— select —</option>
+                                    {parts.map((p) => (
+                                      <option key={String(p.id)} value={String(p.id)}>
+                                        {p.sku
+                                          ? `${String(p.sku)} — ${String(p.name ?? "")}`
+                                          : String(p.name ?? String(p.id).slice(0, 8))}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+
+                                <td className="p-2">
+                                  <input
+                                    className="w-[220px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                    value={l.vendor_part_number}
+                                    onChange={(e) => updateLine(l.id, { vendor_part_number: e.target.value })}
+                                    placeholder="Vendor / catalog #"
+                                    disabled={busyCreate}
+                                  />
+                                </td>
+
+                                <td className="p-2 text-right">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    className="w-[120px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
+                                    value={String(l.ordered_qty)}
+                                    onChange={(e) =>
+                                      updateLine(l.id, {
+                                        ordered_qty: Math.max(0, Math.floor(toNum(e.target.value, 0))),
+                                      })
+                                    }
+                                    disabled={busyCreate}
+                                  />
+                                </td>
+
+                                <td className="p-2 text-right">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={0.01}
+                                    className="w-[140px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
+                                    value={String(l.unit_cost)}
+                                    onChange={(e) => updateLine(l.id, { unit_cost: Math.max(0, toNum(e.target.value, 0)) })}
+                                    disabled={busyCreate}
+                                  />
+                                </td>
+
+                                <td className="p-2">
+                                  <input
+                                    className="w-[280px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                    value={l.notes}
+                                    onChange={(e) => updateLine(l.id, { notes: e.target.value })}
+                                    placeholder="Notes (core, urgency, etc.)"
+                                    disabled={busyCreate}
+                                  />
+                                </td>
+
+                                <td className="p-2 text-right">
+                                  <button
+                                    type="button"
+                                    className="rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-white/5 disabled:opacity-60"
+                                    onClick={() => removeLine(l.id)}
+                                    disabled={busyCreate || lines.length <= 1}
+                                    title={lines.length <= 1 ? "Keep at least one row" : "Remove line"}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Mobile stack layout (keeps everything inside modal) */}
+                    <div className="md:hidden grid gap-3">
+                      {lines.map((l, idx) => (
+                        <div key={l.id} className="rounded-2xl border border-white/10 bg-black/35 p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <div className="text-xs font-semibold text-neutral-300">Line {idx + 1}</div>
+                            <button
+                              type="button"
+                              className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-xs text-neutral-100 hover:bg-white/5 disabled:opacity-60"
+                              onClick={() => removeLine(l.id)}
+                              disabled={busyCreate || lines.length <= 1}
+                            >
+                              Remove
+                            </button>
+                          </div>
+
+                          <div className="grid gap-2">
+                            <div>
+                              <div className="mb-1 text-[11px] text-neutral-500">Part</div>
                               <select
-                                className="w-[380px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100"
+                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100"
                                 value={l.part_id}
                                 onChange={(e) => updateLine(l.id, { part_id: e.target.value })}
                                 disabled={busyCreate}
@@ -554,105 +648,102 @@ export default function PurchaseOrdersPage(): JSX.Element {
                                   </option>
                                 ))}
                               </select>
-                            </td>
+                            </div>
 
-                            <td className="p-2">
+                            <div>
+                              <div className="mb-1 text-[11px] text-neutral-500">Vendor Part #</div>
                               <input
-                                className="w-[220px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
                                 value={l.vendor_part_number}
                                 onChange={(e) => updateLine(l.id, { vendor_part_number: e.target.value })}
                                 placeholder="Vendor / catalog #"
                                 disabled={busyCreate}
                               />
-                            </td>
+                            </div>
 
-                            <td className="p-2 text-right">
-                              <input
-                                type="number"
-                                min={0}
-                                step={1}
-                                className="w-[120px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
-                                value={String(l.ordered_qty)}
-                                onChange={(e) =>
-                                  updateLine(l.id, { ordered_qty: Math.max(0, Math.floor(toNum(e.target.value, 0))) })
-                                }
-                                disabled={busyCreate}
-                              />
-                            </td>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <div className="mb-1 text-[11px] text-neutral-500">Qty</div>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
+                                  value={String(l.ordered_qty)}
+                                  onChange={(e) =>
+                                    updateLine(l.id, {
+                                      ordered_qty: Math.max(0, Math.floor(toNum(e.target.value, 0))),
+                                    })
+                                  }
+                                  disabled={busyCreate}
+                                />
+                              </div>
 
-                            <td className="p-2 text-right">
-                              <input
-                                type="number"
-                                min={0}
-                                step={0.01}
-                                className="w-[140px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
-                                value={String(l.unit_cost)}
-                                onChange={(e) => updateLine(l.id, { unit_cost: Math.max(0, toNum(e.target.value, 0)) })}
-                                disabled={busyCreate}
-                              />
-                            </td>
+                              <div>
+                                <div className="mb-1 text-[11px] text-neutral-500">Unit Cost</div>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
+                                  value={String(l.unit_cost)}
+                                  onChange={(e) => updateLine(l.id, { unit_cost: Math.max(0, toNum(e.target.value, 0)) })}
+                                  disabled={busyCreate}
+                                />
+                              </div>
+                            </div>
 
-                            <td className="p-2">
+                            <div>
+                              <div className="mb-1 text-[11px] text-neutral-500">Line Notes</div>
                               <input
-                                className="w-[280px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
                                 value={l.notes}
                                 onChange={(e) => updateLine(l.id, { notes: e.target.value })}
                                 placeholder="Notes (core, urgency, etc.)"
                                 disabled={busyCreate}
                               />
-                            </td>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
 
-                            <td className="p-2 text-right">
-                              <button
-                                type="button"
-                                className="rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-white/5 disabled:opacity-60"
-                                onClick={() => removeLine(l.id)}
-                                disabled={busyCreate || lines.length <= 1}
-                                title={lines.length <= 1 ? "Keep at least one row" : "Remove line"}
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="mt-2 text-[11px] text-neutral-600">
+                      Tip: If you don’t know the part yet, you can create the PO header only and add lines later from the PO page.
+                    </div>
                   </div>
 
-                  <div className="mt-2 text-[11px] text-neutral-600">
-                    Tip: If you don’t know the part yet, you can create the PO header only and add lines later from the PO page.
+                  {errorMsg ? (
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{errorMsg}</div>
+                  ) : null}
+
+                  <div className="flex flex-wrap justify-end gap-2 pt-1">
+                    <button
+                      className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:bg-black/60 disabled:opacity-60"
+                      onClick={closeModal}
+                      disabled={busyCreate}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-copper-light,#fed7aa)] disabled:opacity-60"
+                      onClick={() => void createPo()}
+                      disabled={!shopId || busyCreate}
+                      type="button"
+                    >
+                      {busyCreate ? "Creating…" : "Create PO"}
+                    </button>
                   </div>
-                </div>
 
-                {errorMsg ? (
-                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{errorMsg}</div>
-                ) : null}
-
-                <div className="flex justify-end gap-2 pt-1">
-                  <button
-                    className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:bg-black/60 disabled:opacity-60"
-                    onClick={closeModal}
-                    disabled={busyCreate}
-                    type="button"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-copper-light,#fed7aa)] disabled:opacity-60"
-                    onClick={() => void createPo()}
-                    disabled={!shopId || busyCreate}
-                    type="button"
-                  >
-                    {busyCreate ? "Creating…" : "Create PO"}
-                  </button>
-                </div>
-
-                <div className="text-[11px] text-neutral-600">
-                  After creation, you’ll see it in the list. Click <span className="text-neutral-200">Open</span> to review/edit lines, or{" "}
-                  <span className="text-neutral-200">Receive</span> to receive items.
+                  <div className="text-[11px] text-neutral-600">
+                    After creation, you’ll see it in the list. Click <span className="text-neutral-200">Open</span> to review/edit
+                    lines, or <span className="text-neutral-200">Receive</span> to receive items.
+                  </div>
                 </div>
               </div>
+              {/* end scroll body */}
             </div>
           </div>
         </div>
