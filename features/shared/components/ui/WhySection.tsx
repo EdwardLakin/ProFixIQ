@@ -1,3 +1,5 @@
+//features/shared/components/ui/WhySection.tsx
+
 "use client";
 
 const COPPER = "var(--pfq-copper)";

@@ -59,7 +59,7 @@ export default function ProFixIQLanding() {
     >
       <Toaster position="top-center" />
 
-      {/* Top bar */}
+            {/* Top bar */}
       <div className="relative w-full border-b border-white/10 bg-black/35 backdrop-blur-xl">
         <Container>
           <div className="flex items-center justify-between gap-3 py-3">
@@ -78,22 +78,30 @@ export default function ProFixIQLanding() {
                   PFQ
                 </span>
               </div>
+
               <div className="leading-tight">
-                <div className="text-sm font-semibold text-white">
-                  ProFixIQ
-                </div>
+                <div className="text-sm font-semibold text-white">ProFixIQ</div>
                 <div className="text-[11px] text-neutral-500">
-                  Inspections • Work Orders • AI • Portal
+                  Heavy-Duty &amp; Fleet Shop OS
                 </div>
               </div>
             </Link>
 
             <div className="flex items-center gap-2">
+              {/* Keep portal sign-in always visible */}
               <Link
                 href="/portal"
                 className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-1.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
               >
-                Customer Portal
+                Portal Sign In
+              </Link>
+
+              {/* Optional: fleet portal button (hide on small screens) */}
+              <Link
+                href="/portal/fleet"
+                className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-1.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
+              >
+                Fleet Portal
               </Link>
 
               {sessionExists ? (
@@ -119,7 +127,7 @@ export default function ProFixIQLanding() {
               ) : (
                 <Link
                   href="/sign-in"
-                  className="inline-flex rounded-xl border border-white/10 bg-black/25 px-3 py-1.5 text-sm text-neutral-200 transition hover:bg-neutral-900/40"
+                  className="inline-flex rounded-xl border border-white/10 bg-black/25 px-3 py-1.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
                 >
                   Sign In
                 </Link>

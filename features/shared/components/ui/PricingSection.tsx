@@ -1,3 +1,5 @@
+//features/shared/components/ui/PricingSection.tsx
+
 "use client";
 
 import type { FC } from "react";
