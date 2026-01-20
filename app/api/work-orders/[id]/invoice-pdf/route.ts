@@ -13,6 +13,9 @@ type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
+type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
+type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
+type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -80,14 +83,18 @@ function pickCustomerName(
   return out.length ? out : undefined;
 }
 
-function pickCustomerPhone(c?: Pick<CustomerRow, "phone" | "phone_number"> | null): string | undefined {
+function pickCustomerPhone(
+  c?: Pick<CustomerRow, "phone" | "phone_number"> | null,
+): string | undefined {
   const p1 = (c?.phone_number ?? "").trim();
   const p2 = (c?.phone ?? "").trim();
   const out = p1 || p2;
   return out.length ? out : undefined;
 }
 
-function pickShopName(s?: Pick<ShopRow, "business_name" | "shop_name" | "name"> | null): string | undefined {
+function pickShopName(
+  s?: Pick<ShopRow, "business_name" | "shop_name" | "name"> | null,
+): string | undefined {
   const a = (s?.business_name ?? "").trim();
   const b = (s?.shop_name ?? "").trim();
   const c = (s?.name ?? "").trim();
@@ -95,15 +102,25 @@ function pickShopName(s?: Pick<ShopRow, "business_name" | "shop_name" | "name"> 
   return out.length ? out : undefined;
 }
 
-function normalizeCurrencyFromCountry(country: unknown): "CAD" | "USD" {
-  const c = String(country ?? "").trim().toUpperCase();
-  return c === "CA" ? "CAD" : "USD";
+function normalizeInvoiceCurrency(v: unknown): "CAD" | "USD" {
+  const c = String(v ?? "").trim().toUpperCase();
+  return c === "CAD" ? "CAD" : "USD";
 }
+
+type PartDisplayRow = {
+  name: string;
+  partNumber?: string;
+  sku?: string;
+  unit?: string;
+  qty: number;
+  unitPrice: number;
+  totalPrice: number;
+};
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  // Auth check (prevents “random public invoice pdf”)
+  // Auth check (preventsS (prevents “random public invoice pdf”)
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -114,26 +131,15 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: "Missing work order id" }, { status: 400 });
   }
 
-  // Load WO
+  // Load WO (light)
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
-    .select(
-      "id, shop_id, customer_id, vehicle_id, customer_name, labor_total, parts_total, invoice_total, custom_id, created_at",
-    )
+    .select("id, shop_id, customer_id, vehicle_id, customer_name, custom_id, created_at")
     .eq("id", workOrderId)
     .maybeSingle<
       Pick<
         WorkOrderRow,
-        | "id"
-        | "shop_id"
-        | "customer_id"
-        | "vehicle_id"
-        | "customer_name"
-        | "labor_total"
-        | "parts_total"
-        | "invoice_total"
-        | "custom_id"
-        | "created_at"
+        "id" | "shop_id" | "customer_id" | "vehicle_id" | "customer_name" | "custom_id" | "created_at"
       >
     >();
 
@@ -141,10 +147,41 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: "Work order not found" }, { status: 404 });
   }
 
-  // Shop (header + currency)
+  // Load latest invoice for this WO (SOURCE OF TRUTH for totals/currency)
+  const { data: inv, error: invErr } = await supabase
+    .from("invoices")
+    .select(
+      "id, invoice_number, currency, subtotal, parts_cost, labor_cost, discount_total, tax_total, total, issued_at, notes, created_at",
+    )
+    .eq("work_order_id", workOrderId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<
+      Pick<
+        InvoiceRow,
+        | "id"
+        | "invoice_number"
+        | "currency"
+        | "subtotal"
+        | "parts_cost"
+        | "labor_cost"
+        | "discount_total"
+        | "tax_total"
+        | "total"
+        | "issued_at"
+        | "notes"
+        | "created_at"
+      >
+    >();
+
+  if (invErr) {
+    console.warn("[invoice-pdf] invoices query failed", invErr.message);
+  }
+
+  // Shop (header)
   const { data: shop } = await supabase
     .from("shops")
-    .select("business_name, shop_name, name, phone_number, email, street, city, province, postal_code, country")
+    .select("business_name, shop_name, name, phone_number, email, street, city, province, postal_code")
     .eq("id", wo.shop_id)
     .maybeSingle<
       Pick<
@@ -158,7 +195,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         | "city"
         | "province"
         | "postal_code"
-        | "country"
       >
     >();
 
@@ -174,9 +210,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     (shop?.email ?? "").trim() || undefined,
   ]);
 
-  const currency: "CAD" | "USD" = normalizeCurrencyFromCountry(shop?.country);
-
-  // Customer (extra fields from your schema)
+  // Customer
   let customer:
     | Pick<
         CustomerRow,
@@ -197,7 +231,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (wo.customer_id) {
     const { data: c } = await supabase
       .from("customers")
-      .select("name,first_name,last_name,phone,phone_number,email,business_name,street,city,province,postal_code")
+      .select(
+        "name,first_name,last_name,phone,phone_number,email,business_name,street,city,province,postal_code",
+      )
       .eq("id", wo.customer_id)
       .maybeSingle<
         Pick<
@@ -230,7 +266,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       (customer?.postal_code ?? "").trim() || undefined,
     ]) || "—";
 
-  // Vehicle (extra fields from your schema)
+  // Vehicle
   let vehicle:
     | Pick<
         VehicleRow,
@@ -282,7 +318,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const color = (vehicle?.color ?? "").trim() || "—";
   const engineHours = vehicle?.engine_hours != null ? String(vehicle.engine_hours) : "—";
 
-  // Lines
+  // Work order lines (complaint/cause/correction)
   const { data: lines } = await supabase
     .from("work_order_lines")
     .select("id, line_no, description, complaint, cause, correction, labor_time, price_estimate")
@@ -292,197 +328,349 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const lineRows = (Array.isArray(lines) ? lines : []) as Array<
     Pick<
       WorkOrderLineRow,
-      | "id"
-      | "line_no"
-      | "description"
-      | "complaint"
-      | "cause"
-      | "correction"
-      | "labor_time"
-      | "price_estimate"
+      "id" | "line_no" | "description" | "complaint" | "cause" | "correction" | "labor_time" | "price_estimate"
     >
   >;
 
-  // Totals
-  const laborTotal = safeMoney(wo.labor_total);
-  const partsTotal = safeMoney(wo.parts_total);
-  const invoiceTotal =
-    safeMoney(wo.invoice_total) > 0 ? safeMoney(wo.invoice_total) : laborTotal + partsTotal;
+  // Parts (invoice display parts from work_order_parts + parts)
+  const { data: wop } = await supabase
+    .from("work_order_parts")
+    .select("id, work_order_id, part_id, quantity, unit_price, total_price, created_at")
+    .eq("work_order_id", workOrderId);
+
+  const workOrderParts = (Array.isArray(wop) ? wop : []) as Array<
+    Pick<WorkOrderPartRow, "part_id" | "quantity" | "unit_price" | "total_price">
+  >;
+
+  const partIds = Array.from(
+    new Set(
+      workOrderParts
+        .map((r) => r.part_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  );
+
+  let partsMap = new Map<string, Pick<PartRow, "id" | "name" | "part_number" | "sku" | "unit">>();
+  if (partIds.length > 0) {
+    const { data: parts } = await supabase.from("parts").select("id, name, part_number, sku, unit").in("id", partIds);
+
+    const arr = (Array.isArray(parts) ? parts : []) as Array<
+      Pick<PartRow, "id" | "name" | "part_number" | "sku" | "unit">
+    >;
+
+    partsMap = new Map(arr.map((p) => [p.id, p]));
+  }
+
+  const partRows: PartDisplayRow[] = workOrderParts.map((r) => {
+    const p = r.part_id ? partsMap.get(r.part_id) : undefined;
+
+    const qty = typeof r.quantity === "number" ? r.quantity : Number(r.quantity);
+    const unitPrice = safeMoney(r.unit_price);
+    const totalPrice = safeMoney(r.total_price);
+
+    return {
+      name: (p?.name ?? "Part").trim() || "Part",
+      partNumber: (p?.part_number ?? "").trim() || undefined,
+      sku: (p?.sku ?? "").trim() || undefined,
+      unit: (p?.unit ?? "").trim() || undefined,
+      qty: Number.isFinite(qty) ? qty : 0,
+      unitPrice,
+      totalPrice:
+        totalPrice > 0
+          ? totalPrice
+          : Math.max(0, (Number.isFinite(qty) ? qty : 0) * unitPrice),
+    };
+  });
+
+  // Totals + currency from invoice, fallback to safe defaults if no invoice row exists yet
+  const currency: "CAD" | "USD" = normalizeInvoiceCurrency(inv?.currency);
+  const subtotal = safeMoney(inv?.subtotal);
+  const laborCost = safeMoney(inv?.labor_cost);
+  const partsCost = safeMoney(inv?.parts_cost);
+  const discountTotal = safeMoney(inv?.discount_total);
+  const taxTotal = safeMoney(inv?.tax_total);
+  const grandTotal = safeMoney(inv?.total);
 
   // ---------------- PDF ----------------
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4
+
+  const PAGE_W = 595.28;
+  const PAGE_H = 841.89; // A4
+  const marginX = 42;
+
+  const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const marginX = 42;
-  let y = 800;
+  // Colors (white background + dark text + copper accents)
+  const C_TEXT = rgb(0.08, 0.08, 0.08);
+  const C_MUTED = rgb(0.35, 0.35, 0.35);
+  const C_LIGHT = rgb(0.70, 0.70, 0.70);
+  const C_COPPER = rgb(0.78, 0.48, 0.28);
+  const C_HEADER_BG = rgb(0.05, 0.07, 0.10);
+  const C_WHITE = rgb(1, 1, 1);
 
-  const draw = (
+  const lineH = (size: number) => size + 6;
+
+  let y = PAGE_H - 40;
+
+  const drawText = (
     text: string,
-    opts?: { size?: number; bold?: boolean; x?: number; color?: [number, number, number] },
+    opts?: { size?: number; bold?: boolean; x?: number; color?: any },
   ) => {
     const size = opts?.size ?? 11;
     const x = opts?.x ?? marginX;
     const f = opts?.bold ? bold : font;
-    const c = opts?.color ?? [1, 1, 1];
-    page.drawText(text, {
-      x,
-      y,
-      size,
-      font: f,
-      color: rgb(c[0], c[1], c[2]),
-    });
-    y -= size + 6;
+    const color = opts?.color ?? C_TEXT;
+
+    page.drawText(text, { x, y, size, font: f, color });
+    y -= lineH(size);
   };
 
-  const titleId = wo.custom_id ? asString(wo.custom_id) : `WO-${wo.id.slice(0, 8)}`;
-  const generatedAt =
-    wo.created_at ? new Date(wo.created_at).toLocaleString() : new Date().toLocaleString();
+  const ensureSpace = (needed: number) => !(y - needed < 60);
 
-  // Header bar
+  const titleId = wo.custom_id ? asString(wo.custom_id) : `WO-${wo.id.slice(0, 8)}`;
+  const invoiceNumber = (inv?.invoice_number ?? "").trim();
+  const issuedAt =
+    inv?.issued_at != null
+      ? new Date(inv.issued_at).toLocaleString()
+      : inv?.created_at != null
+        ? new Date(inv.created_at).toLocaleString()
+        : wo.created_at
+          ? new Date(wo.created_at).toLocaleString()
+          : new Date().toLocaleString();
+
+  // Header (fix top clipping by anchoring to page height)
+  const headerH = 92;
+  const headerY = PAGE_H - headerH; // ensures it fits
+
   page.drawRectangle({
     x: 0,
-    y: 760,
-    width: 595.28,
-    height: 90,
-    color: rgb(0.05, 0.07, 0.10),
+    y: headerY,
+    width: PAGE_W,
+    height: headerH,
+    color: C_HEADER_BG,
   });
 
+  // Header text positions (manual Y so we don't fight the flowing `y`)
+  const headerTop = PAGE_H - 26;
+
   // Left: shop
-  y = 832;
-  draw(shopName, { size: 16, bold: true, color: [0.78, 0.48, 0.28] });
-  if (shopAddress.trim().length) draw(shopAddress, { size: 9.5, color: [0.85, 0.85, 0.85] });
-  if (shopContact.trim().length) draw(shopContact, { size: 9.5, color: [0.65, 0.65, 0.65] });
+  page.drawText(shopName, { x: marginX, y: headerTop, size: 16, font: bold, color: C_COPPER });
+  if (shopAddress.trim().length) {
+    page.drawText(shopAddress, { x: marginX, y: headerTop - 20, size: 9.5, font, color: C_LIGHT });
+  }
+  if (shopContact.trim().length) {
+    page.drawText(shopContact, {
+      x: marginX,
+      y: headerTop - 34,
+      size: 9.5,
+      font,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+  }
 
   // Right: invoice meta
   const rightX = 360;
-  const topY = 832;
-  y = topY;
-  draw("INVOICE", { size: 18, bold: true, x: rightX, color: [1, 1, 1] });
-  draw(`Work Order: ${titleId}`, { size: 10, x: rightX, color: [0.85, 0.85, 0.85] });
-  draw(`Generated: ${generatedAt}`, { size: 10, x: rightX, color: [0.65, 0.65, 0.65] });
+  page.drawText("INVOICE", { x: rightX, y: headerTop, size: 18, font: bold, color: C_WHITE });
 
-  // Body divider
-  y = 740;
+  const meta1 = invoiceNumber.length ? `Invoice #: ${invoiceNumber}` : `Work Order: ${titleId}`;
+  page.drawText(meta1, {
+    x: rightX,
+    y: headerTop - 20,
+    size: 10,
+    font,
+    color: rgb(0.88, 0.88, 0.88),
+  });
+  page.drawText(`Issued: ${issuedAt}`, {
+    x: rightX,
+    y: headerTop - 34,
+    size: 10,
+    font,
+    color: rgb(0.70, 0.70, 0.70),
+  });
+
+  // Start flowing content under header
+  y = headerY - 22;
+
+  // Divider
   page.drawRectangle({
     x: marginX - 10,
-    y: y - 10,
-    width: 595.28 - (marginX - 10) * 2,
+    y: y,
+    width: PAGE_W - (marginX - 10) * 2,
     height: 2,
-    color: rgb(0.78, 0.48, 0.28),
+    color: C_COPPER,
   });
-  y -= 24;
+  y -= 18;
 
   // Customer
-  draw("Customer", { bold: true, size: 12, color: [0.78, 0.48, 0.28] });
-  draw(customerName, { size: 11, color: [1, 1, 1] });
-  draw(`Business: ${customerBusiness}`, { size: 10, color: [0.85, 0.85, 0.85] });
-  draw(`Phone: ${customerPhone}`, { size: 10, color: [0.85, 0.85, 0.85] });
-  draw(`Email: ${customerEmail}`, { size: 10, color: [0.85, 0.85, 0.85] });
-  draw(`Address: ${customerAddress}`, { size: 10, color: [0.85, 0.85, 0.85] });
+  drawText("Customer", { bold: true, size: 12, color: C_COPPER });
+  drawText(customerName, { size: 11 });
+  drawText(`Business: ${customerBusiness}`, { size: 10, color: C_MUTED });
+  drawText(`Phone: ${customerPhone}`, { size: 10, color: C_MUTED });
+  drawText(`Email: ${customerEmail}`, { size: 10, color: C_MUTED });
+  drawText(`Address: ${customerAddress}`, { size: 10, color: C_MUTED });
 
   y -= 6;
 
   // Vehicle
-  draw("Vehicle", { bold: true, size: 12, color: [0.78, 0.48, 0.28] });
-  draw(vehicleLabel, { size: 11, color: [1, 1, 1] });
-  draw(`VIN: ${vin}`, { size: 10, color: [0.85, 0.85, 0.85] });
-  draw(`Plate: ${plate}`, { size: 10, color: [0.85, 0.85, 0.85] });
-  draw(`Unit #: ${unit}`, { size: 10, color: [0.85, 0.85, 0.85] });
-  draw(`Mileage: ${mileage}`, { size: 10, color: [0.85, 0.85, 0.85] });
-  draw(`Color: ${color}`, { size: 10, color: [0.85, 0.85, 0.85] });
-  draw(`Engine Hours: ${engineHours}`, { size: 10, color: [0.85, 0.85, 0.85] });
+  drawText("Vehicle", { bold: true, size: 12, color: C_COPPER });
+  drawText(vehicleLabel, { size: 11 });
+  drawText(`VIN: ${vin}`, { size: 10, color: C_MUTED });
+  drawText(`Plate: ${plate}`, { size: 10, color: C_MUTED });
+  drawText(`Unit #: ${unit}`, { size: 10, color: C_MUTED });
+  drawText(`Mileage: ${mileage}`, { size: 10, color: C_MUTED });
+  drawText(`Color: ${color}`, { size: 10, color: C_MUTED });
+  drawText(`Engine Hours: ${engineHours}`, { size: 10, color: C_MUTED });
 
   y -= 14;
 
   // Line Items
-  draw("Line Items", { bold: true, size: 12, color: [0.78, 0.48, 0.28] });
-
-  const col1X = marginX;
-  const col2X = marginX + 18;
-  const ensureSpace = (needed: number) => !(y - needed < 60);
+  drawText("Line Items", { bold: true, size: 12, color: C_COPPER });
 
   if (!lineRows.length) {
-    draw("— No line items recorded yet —", { size: 10, color: [0.85, 0.85, 0.85] });
+    drawText("— No line items recorded yet —", { size: 10, color: C_MUTED });
   } else {
     for (const row of lineRows) {
       if (!ensureSpace(110)) break;
 
       const label = row.line_no != null ? `#${row.line_no}` : "•";
-
-      // ✅ prefer complaint, fallback to description
       const complaint = asString(row.complaint || row.description || "—");
       const cause = asString(row.cause || "");
       const correction = asString(row.correction || "");
       const labor = row.labor_time != null ? String(row.labor_time) : "";
-      const price = safeMoney(row.price_estimate);
+      const est = safeMoney(row.price_estimate);
 
-      draw(label, { bold: true, size: 10, x: col1X, color: [0.78, 0.48, 0.28] });
+      drawText(label, { bold: true, size: 10, color: C_COPPER });
 
       const complaintLines = wrapText(complaint, 78);
-      draw(`Complaint: ${complaintLines[0]}`, { size: 10, x: col2X, color: [1, 1, 1] });
+      drawText(`Complaint: ${complaintLines[0]}`, { size: 10 });
       for (const extra of complaintLines.slice(1)) {
-        draw(`          ${extra}`, { size: 10, x: col2X, color: [0.9, 0.9, 0.9] });
+        drawText(`          ${extra}`, { size: 10, color: C_MUTED });
       }
 
       if (cause.trim()) {
         for (const c of wrapText(cause, 78)) {
-          draw(`Cause: ${c}`, { size: 10, x: col2X, color: [0.85, 0.85, 0.85] });
+          drawText(`Cause: ${c}`, { size: 10, color: C_MUTED });
         }
       }
 
       if (correction.trim()) {
         for (const c of wrapText(correction, 78)) {
-          draw(`Correction: ${c}`, { size: 10, x: col2X, color: [0.85, 0.85, 0.85] });
+          drawText(`Correction: ${c}`, { size: 10, color: C_MUTED });
         }
       }
 
-      if (labor) {
-        draw(`Labor time: ${labor} hr`, { size: 10, x: col2X, color: [0.75, 0.75, 0.75] });
-      }
-      if (price > 0) {
-        draw(`Estimate: ${moneyLabel(price, currency)}`, {
-          size: 10,
-          x: col2X,
-          color: [0.75, 0.75, 0.75],
-        });
-      }
+      if (labor.trim()) drawText(`Labor time: ${labor} hr`, { size: 10, color: C_MUTED });
+      if (est > 0) drawText(`Estimate: ${moneyLabel(est, currency)}`, { size: 10, color: C_MUTED });
 
       y -= 4;
       page.drawRectangle({
         x: marginX,
         y,
-        width: 595.28 - marginX * 2,
+        width: PAGE_W - marginX * 2,
         height: 1,
-        color: rgb(0.14, 0.18, 0.24),
+        color: rgb(0.92, 0.92, 0.92),
       });
       y -= 12;
     }
   }
 
-  // Totals
+  // Parts
   y -= 6;
-  draw("Totals", { bold: true, size: 12, color: [0.78, 0.48, 0.28] });
-  draw(`Labor: ${moneyLabel(laborTotal, currency)}`, { size: 11, color: [1, 1, 1] });
-  draw(`Parts: ${moneyLabel(partsTotal, currency)}`, { size: 11, color: [1, 1, 1] });
-  draw(`Invoice Total: ${moneyLabel(invoiceTotal, currency)}`, {
-    size: 12,
-    bold: true,
-    color: [1, 1, 1],
-  });
+  drawText("Parts", { bold: true, size: 12, color: C_COPPER });
+
+  if (!partRows.length) {
+    drawText("— No parts on this work order —", { size: 10, color: C_MUTED });
+  } else {
+    // simple table header
+    drawText("Qty   Part                                Unit     Total", { size: 10, bold: true });
+
+    page.drawRectangle({
+      x: marginX,
+      y: y + 4,
+      width: PAGE_W - marginX * 2,
+      height: 1,
+      color: rgb(0.90, 0.90, 0.90),
+    });
+
+    for (const p of partRows.slice(0, 25)) {
+      if (!ensureSpace(34)) break;
+
+      const qty = Number.isFinite(p.qty) ? p.qty : 0;
+      const unitPrice = p.unitPrice;
+      const totalPrice = p.totalPrice;
+
+      const meta = compactCsv([p.partNumber, p.sku, p.unit]);
+      const name = meta.length ? `${p.name} (${meta})` : p.name;
+
+      const nameLines = wrapText(name, 52);
+
+      // line 1
+      page.drawText(String(qty), { x: marginX, y, size: 10, font, color: C_TEXT });
+      page.drawText(nameLines[0], { x: marginX + 36, y, size: 10, font, color: C_TEXT });
+      page.drawText(moneyLabel(unitPrice, currency), { x: 420, y, size: 10, font, color: C_MUTED });
+      page.drawText(moneyLabel(totalPrice, currency), { x: 500, y, size: 10, font, color: C_TEXT });
+      y -= lineH(10);
+
+      // extra wrapped lines
+      for (const extra of nameLines.slice(1)) {
+        page.drawText(extra, { x: marginX + 36, y, size: 10, font, color: C_MUTED });
+        y -= lineH(10);
+      }
+
+      y -= 2;
+    }
+  }
+
+  // Totals (use invoices.* when available)
+  y -= 10;
+  drawText("Totals", { bold: true, size: 12, color: C_COPPER });
+
+  if (!inv?.id) {
+    drawText("— No invoice record found yet for this work order —", { size: 10, color: C_MUTED });
+    drawText(
+      "Create an invoice (public.invoices) to show full totals (subtotal/discount/tax/total).",
+      {
+        size: 10,
+        color: C_MUTED,
+      },
+    );
+  } else {
+    drawText(`Subtotal: ${moneyLabel(subtotal, currency)}`, { size: 11 });
+    drawText(`Labor: ${moneyLabel(laborCost, currency)}`, { size: 11, color: C_MUTED });
+    drawText(`Parts: ${moneyLabel(partsCost, currency)}`, { size: 11, color: C_MUTED });
+    if (discountTotal > 0) {
+      drawText(`Discount: -${moneyLabel(discountTotal, currency)}`, { size: 11, color: C_MUTED });
+    }
+    drawText(`Tax: ${moneyLabel(taxTotal, currency)}`, { size: 11, color: C_MUTED });
+    drawText(`Total: ${moneyLabel(grandTotal, currency)}`, { size: 13, bold: true });
+  }
 
   // Footer bar
+  const footerH = 34;
   page.drawRectangle({
     x: 0,
     y: 0,
-    width: 595.28,
-    height: 34,
-    color: rgb(0.05, 0.07, 0.10),
+    width: PAGE_W,
+    height: footerH,
+    color: C_HEADER_BG,
   });
-  y = 20;
-  draw(`${shopName} • Invoice`, { size: 9, color: [0.7, 0.7, 0.7] });
-  draw("For questions, contact your shop directly.", { size: 9, color: [0.55, 0.55, 0.55] });
+
+  page.drawText(`${shopName} • Invoice`, {
+    x: marginX,
+    y: 14,
+    size: 9,
+    font,
+    color: rgb(0.80, 0.80, 0.80),
+  });
+  page.drawText(`Work Order: ${titleId}`, {
+    x: rightX,
+    y: 14,
+    size: 9,
+    font,
+    color: rgb(0.65, 0.65, 0.65),
+  });
 
   const pdfBytes = await pdfDoc.save();
 
