@@ -1,12 +1,13 @@
+// app/portal/fleet/page.tsx
 "use client";
-
-import FleetShell from "./FleetShell";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
 
+import type { Database } from "@shared/types/types/supabase";
 import Container from "@shared/components/ui/Container";
+
+import FleetShell from "./FleetShell";
 import FleetPortalDashboard from "@/features/fleet/components/FleetPortalDashboard";
 import type {
   DispatchAssignment,
@@ -29,10 +30,48 @@ type ProfileWithShop = ProfileRow & {
   shop_name?: string | null;
 };
 
-const COPPER = "#C57A4A";
+// Fleet portal visual identity (cool/blue vs customer copper)
+const FLEET_ACCENT = "#38BDF8";
+
 const CARD =
   "rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md " +
   "shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]";
+
+function formatUnitFallback(unitId: string): string {
+  return unitId.length >= 8 ? `Unit ${unitId.slice(0, 8)}` : "Unit";
+}
+
+/**
+ * DB allows:
+ *  - pretrip_due | en_route | in_shop | completed
+ *
+ * UI expects ONLY:
+ *  - pretrip_due | en_route | in_shop
+ *
+ * So we normalize DB -> UI here.
+ */
+function normalizeAssignmentState(
+  v: unknown,
+): DispatchAssignment["state"] {
+  if (v === "pretrip_due" || v === "en_route" || v === "in_shop") return v;
+
+  // DB state "completed" exists, but UI union doesn't include it.
+  // Treat completed assignments as "in_shop" for portal display.
+  if (v === "completed") return "in_shop";
+
+  return "pretrip_due";
+}
+
+function normalizeIssueStatus(v: unknown): FleetIssue["status"] {
+  if (v === "open" || v === "scheduled" || v === "completed") return v;
+  if (v === "cancelled") return "completed";
+  return "open";
+}
+
+function normalizeIssueSeverity(v: unknown): FleetIssue["severity"] {
+  if (v === "safety" || v === "compliance" || v === "recommend") return v;
+  return "recommend";
+}
 
 export default function FleetPortalPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -40,6 +79,7 @@ export default function FleetPortalPage() {
   const [loading, setLoading] = useState(true);
   const [fleetName, setFleetName] = useState<string | null>(null);
   const [contactName, setContactName] = useState<string | null>(null);
+
   const [assignments, setAssignments] = useState<DispatchAssignment[] | null>(
     null,
   );
@@ -69,10 +109,7 @@ export default function FleetPortalPage() {
 
         if (profileError || !profile?.shop_id) {
           // eslint-disable-next-line no-console
-          console.error(
-            "Unable to resolve fleet portal profile/shop",
-            profileError,
-          );
+          console.error("Unable to resolve fleet portal profile/shop", profileError);
           if (!cancelled) setLoading(false);
           return;
         }
@@ -104,19 +141,22 @@ export default function FleetPortalPage() {
         }
 
         const mappedAssignments: DispatchAssignment[] = (assignmentRows ?? []).map(
-          (row) => ({
-            id: row.id,
-            driverName: row.driver_name || resolvedContactName || "Assigned driver",
-            driverId: row.driver_profile_id,
-            unitLabel:
-              row.unit_label ||
-              row.vehicle_identifier ||
-              `Unit ${row.vehicle_id.slice(0, 8)}`,
-            unitId: row.vehicle_id,
-            routeLabel: row.route_label,
-            nextPreTripDue: row.next_pretrip_due,
-            state: (row.state as DispatchAssignment["state"]) || "pretrip_due",
-          }),
+          (row) => {
+            const unitId = row.vehicle_id;
+            const fallbackLabel = formatUnitFallback(unitId);
+
+            return {
+              id: row.id,
+              driverName: row.driver_name || resolvedContactName || "Assigned driver",
+              driverId: row.driver_profile_id,
+              unitLabel:
+                row.unit_label || row.vehicle_identifier || fallbackLabel,
+              unitId,
+              routeLabel: row.route_label,
+              nextPreTripDue: row.next_pretrip_due,
+              state: normalizeAssignmentState(row.state),
+            };
+          },
         );
 
         // Units derived from assignments (portal view)
@@ -137,9 +177,7 @@ export default function FleetPortalPage() {
         // Service requests snapshot
         const { data: requestRows, error: requestError } = await supabase
           .from("fleet_service_requests")
-          .select(
-            "id, shop_id, vehicle_id, title, summary, severity, status, created_at",
-          )
+          .select("id, shop_id, vehicle_id, summary, severity, status, created_at")
           .eq("shop_id", shopId)
           .order("created_at", { ascending: false })
           .returns<FleetServiceRequestRow[]>();
@@ -151,21 +189,16 @@ export default function FleetPortalPage() {
 
         const mappedIssues: FleetIssue[] = (requestRows ?? []).map((r) => {
           const unitLabel =
-            unitMap.get(r.vehicle_id)?.label || `Unit ${r.vehicle_id.slice(0, 8)}`;
-
-          const status: FleetIssue["status"] =
-            r.status === "cancelled"
-              ? "completed"
-              : (r.status as FleetIssue["status"]);
+            unitMap.get(r.vehicle_id)?.label || formatUnitFallback(r.vehicle_id);
 
           return {
             id: r.id,
             unitId: r.vehicle_id,
             unitLabel,
-            severity: r.severity as FleetIssue["severity"],
-            summary: r.summary,
+            severity: normalizeIssueSeverity(r.severity),
+            summary: r.summary ?? "",
             createdAt: r.created_at,
-            status,
+            status: normalizeIssueStatus(r.status),
           };
         });
 
@@ -189,11 +222,11 @@ export default function FleetPortalPage() {
 
   return (
     <FleetShell>
-      <main className="relative min-h-[calc(100vh-3rem)] bg-black text-white">
-        {/* same copper wash vibe as /portal */}
+      <main className="relative min-h-[calc(100dvh-52px)] text-white">
+        {/* Fleet-themed wash (cool accent, distinct from customer copper) */}
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),#020617_78%)]"
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),#020617_78%)]"
         />
 
         <Container className="py-6">
@@ -204,12 +237,12 @@ export default function FleetPortalPage() {
               </div>
               <div
                 className="mt-2 text-2xl font-blackops"
-                style={{ color: COPPER }}
+                style={{ color: FLEET_ACCENT }}
               >
                 {fleetName ?? "Fleet"}
               </div>
               <div className="mt-1 text-xs text-neutral-500">
-                {contactName ? `Signed in as ${contactName}` : " "}
+                {contactName ? `Signed in as ${contactName}` : "\u00A0"}
               </div>
             </div>
 
