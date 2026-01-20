@@ -1,3 +1,4 @@
+// app/portal/invoices/page.tsx
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -14,13 +15,72 @@ export const dynamic = "force-dynamic";
 const COPPER = "#C57A4A";
 
 type DB = Database;
-type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 
-function formatCurrency(value: number | null | undefined): string {
+type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
+type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
+
+type WorkOrderLite = Pick<
+  WorkOrderRow,
+  | "id"
+  | "custom_id"
+  | "status"
+  | "created_at"
+  | "invoice_sent_at"
+  | "invoice_last_sent_to"
+  | "invoice_pdf_url"
+  | "invoice_url"
+  | "invoice_total"
+  | "labor_total"
+  | "parts_total"
+>;
+
+type InvoiceLite = Pick<
+  InvoiceRow,
+  | "id"
+  | "work_order_id"
+  | "invoice_number"
+  | "status"
+  | "currency"
+  | "total"
+  | "issued_at"
+  | "created_at"
+>;
+
+type InvoiceListItem = {
+  workOrderId: string;
+  label: string;
+  workOrderStatus: string | null;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  invoiceStatus: string | null;
+  currency: "CAD" | "USD";
+  total: number | null;
+  issuedAt: string | null;
+  sentAt: string | null;
+  sentTo: string | null;
+  pdfUrl: string | null;
+  onlineUrl: string | null;
+};
+
+function safeNumber(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeCurrency(v: unknown): "CAD" | "USD" {
+  const c = String(v ?? "").trim().toUpperCase();
+  return c === "CAD" ? "CAD" : "USD";
+}
+
+function formatCurrency(
+  value: number | null | undefined,
+  currency: "CAD" | "USD",
+): string {
   if (value == null || Number.isNaN(value)) return "—";
-  return new Intl.NumberFormat("en-CA", {
+  return new Intl.NumberFormat(currency === "CAD" ? "en-CA" : "en-US", {
     style: "currency",
-    currency: "CAD",
+    currency,
     maximumFractionDigits: 2,
   }).format(value);
 }
@@ -32,17 +92,24 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-function getInvoiceTotal(wo: WorkOrderRow): number | null {
-  if (wo.invoice_total != null) return Number(wo.invoice_total);
-  const labor = wo.labor_total != null ? Number(wo.labor_total) : 0;
-  const parts = wo.parts_total != null ? Number(wo.parts_total) : 0;
-  const sum = labor + parts;
-  return Number.isFinite(sum) ? sum : null;
-}
-
-function getWorkOrderLabel(wo: WorkOrderRow): string {
+function getWorkOrderLabel(wo: WorkOrderLite): string {
   if (wo.custom_id && wo.custom_id.trim().length > 0) return wo.custom_id;
   return `Work Order ${wo.id.slice(0, 8)}…`;
+}
+
+function workOrderFallbackTotal(wo: WorkOrderLite): number | null {
+  const invoiceTotal = safeNumber(wo.invoice_total);
+  if (invoiceTotal != null) return invoiceTotal;
+
+  const labor = safeNumber(wo.labor_total) ?? 0;
+  const parts = safeNumber(wo.parts_total) ?? 0;
+  const sum = labor + parts;
+
+  return Number.isFinite(sum) && sum > 0 ? sum : null;
+}
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
 }
 
 export default async function PortalInvoicesIndexPage() {
@@ -51,150 +118,244 @@ export default async function PortalInvoicesIndexPage() {
     cookies: () => cookieStore,
   });
 
-  let invoices: WorkOrderRow[] = [];
-
   try {
     // Auth + portal customer
     const { id: userId } = await requireAuthedUser(supabase);
     const customer = await requirePortalCustomer(supabase, userId);
 
-    // Load all customer work orders, then filter for invoice-bearing ones.
-    const { data, error } = await supabase
+    // 1) Work orders for this customer (labels + portal markers)
+    const { data: woRows, error: woErr } = await supabase
       .from("work_orders")
-      .select("*")
+      .select(
+        "id, custom_id, status, created_at, invoice_sent_at, invoice_last_sent_to, invoice_pdf_url, invoice_url, invoice_total, labor_total, parts_total",
+      )
       .eq("customer_id", customer.id)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .returns<WorkOrderLite[]>();
 
-    if (error) throw error;
+    if (woErr) throw woErr;
 
-    const rows = (data ?? []) as WorkOrderRow[];
+    const workOrders = Array.isArray(woRows) ? woRows : [];
+    const workOrderIds = workOrders.map((w) => w.id);
 
-    invoices = rows.filter((wo) => {
-      const hasInvoiceSent = !!wo.invoice_sent_at;
-      const hasPdf = !!wo.invoice_pdf_url;
-      const hasInvoiceUrl = !!wo.invoice_url;
-      const hasInvoiceTotal = wo.invoice_total != null;
-      const status = (wo.status ?? "").trim();
+    // 2) Invoices for those work orders (latest per WO)
+    let invoiceRows: InvoiceLite[] = [];
+    if (workOrderIds.length > 0) {
+      const { data: invRows, error: invErr } = await supabase
+        .from("invoices")
+        .select(
+          "id, work_order_id, invoice_number, status, currency, total, issued_at, created_at",
+        )
+        .in("work_order_id", workOrderIds)
+        .order("created_at", { ascending: false })
+        .returns<InvoiceLite[]>();
 
-      const invoiceStatus = status === "ready_to_invoice" || status === "invoiced";
+      if (invErr) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[portal invoices index] invoices query failed:",
+          invErr.message,
+        );
+      } else {
+        invoiceRows = Array.isArray(invRows) ? invRows : [];
+      }
+    }
 
-      return (
-        hasInvoiceSent || hasPdf || hasInvoiceUrl || hasInvoiceTotal || invoiceStatus
-      );
+    // ✅ Narrow away null work_order_id so TS is happy
+    const invoiceRowsWithWO = invoiceRows.filter(
+      (inv): inv is InvoiceLite & { work_order_id: string } =>
+        isNonEmptyString(inv.work_order_id),
+    );
+
+    const latestInvoiceByWO = new Map<
+      string,
+      InvoiceLite & { work_order_id: string }
+    >();
+    for (const inv of invoiceRowsWithWO) {
+      if (!latestInvoiceByWO.has(inv.work_order_id)) {
+        latestInvoiceByWO.set(inv.work_order_id, inv);
+      }
+    }
+
+    // 3) Build list items:
+    // show WO if it has invoice row OR it has portal invoice markers on the WO
+    const items: InvoiceListItem[] = workOrders
+      .map((wo) => {
+        const inv = latestInvoiceByWO.get(wo.id) ?? null;
+
+        const hasInvoiceRow = !!inv?.id;
+        const hasPortalMarkers =
+          !!wo.invoice_pdf_url ||
+          !!wo.invoice_url ||
+          !!wo.invoice_sent_at ||
+          wo.invoice_total != null;
+
+        if (!hasInvoiceRow && !hasPortalMarkers) return null;
+
+        const currency = inv?.currency ? normalizeCurrency(inv.currency) : "CAD";
+        const total =
+          inv?.total != null ? safeNumber(inv.total) : workOrderFallbackTotal(wo);
+
+        const issuedAt = (inv?.issued_at ?? inv?.created_at ?? null) as
+          | string
+          | null;
+
+        return {
+          workOrderId: wo.id,
+          label: getWorkOrderLabel(wo),
+          workOrderStatus: (wo.status ?? null) as string | null,
+          invoiceId: inv?.id ?? null,
+          invoiceNumber: (inv?.invoice_number ?? null) as string | null,
+          invoiceStatus: (inv?.status ?? null) as string | null,
+          currency,
+          total,
+          issuedAt,
+          sentAt: (wo.invoice_sent_at ?? null) as string | null,
+          sentTo: (wo.invoice_last_sent_to ?? null) as string | null,
+          pdfUrl: (wo.invoice_pdf_url ?? null) as string | null,
+          onlineUrl: (wo.invoice_url ?? null) as string | null,
+        };
+      })
+      .filter((x): x is InvoiceListItem => x !== null);
+
+    // Sort: most recently issued/sent/created first
+    items.sort((a, b) => {
+      const ad = new Date(a.issuedAt ?? a.sentAt ?? 0).getTime();
+      const bd = new Date(b.issuedAt ?? b.sentAt ?? 0).getTime();
+      return bd - ad;
     });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[portal invoices index] failed:", err);
-    redirect("/portal");
-  }
 
-  return (
-    <div className="space-y-6 text-white">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
-            Invoices
-          </h1>
-          <p className="mt-1 text-sm text-neutral-400">
-            View and download invoices for completed work orders.
-          </p>
+    return (
+      <div className="space-y-6 text-white">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
+              Invoices
+            </h1>
+            <p className="mt-1 text-sm text-neutral-400">
+              View and download invoices for completed work orders.
+            </p>
+          </div>
+
+          <Link
+            href="/portal"
+            className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/70 hover:text-white"
+          >
+            <span aria-hidden className="text-base leading-none">
+              ←
+            </span>
+            Back
+          </Link>
         </div>
 
-        <Link
-          href="/portal"
-          className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/70 hover:text-white"
-        >
-          <span aria-hidden className="text-base leading-none">
-            ←
-          </span>
-          Back
-        </Link>
-      </div>
-
-      {/* List */}
-      <div className="rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md ring-1 ring-inset ring-white/5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-            Your invoices
+        {/* List */}
+        <div className="rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card ring-1 ring-inset ring-white/5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+              Your invoices
+            </div>
+            <div className="text-[11px] text-neutral-500">
+              {items.length === 0
+                ? "No invoices yet"
+                : `${items.length} invoice(s)`}
+            </div>
           </div>
-          <div className="text-[11px] text-neutral-500">
-            {invoices.length === 0
-              ? "No invoices yet"
-              : `${invoices.length} invoice(s)`}
-          </div>
-        </div>
 
-        {invoices.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-neutral-400">
-            No invoices have been issued yet. Once a work order is finalized, the
-            invoice will show up here.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {invoices.map((wo) => {
-              const total = getInvoiceTotal(wo);
-              const label = getWorkOrderLabel(wo);
-
-              return (
+          {items.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-neutral-400">
+              No invoices have been issued yet. Once a work order is finalized,
+              the invoice will show up here.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((it) => (
                 <Link
-                  key={wo.id}
-                  href={`/portal/invoices/${wo.id}`}
+                  key={it.workOrderId}
+                  href={`/portal/invoices/${it.workOrderId}`}
                   className="block rounded-2xl border border-white/10 bg-black/35 px-4 py-3 transition hover:bg-black/45 hover:border-white/14"
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold text-neutral-100">
-                        {label}
+                        {it.label}
                       </div>
+
                       <div className="mt-0.5 text-[11px] text-neutral-500">
                         Status:{" "}
                         <span className="text-neutral-300">
-                          {wo.status ?? "—"}
+                          {it.workOrderStatus ?? "—"}
                         </span>
                         {" • "}
-                        Sent:{" "}
+                        Issued:{" "}
                         <span className="text-neutral-300">
-                          {formatDate(wo.invoice_sent_at)}
+                          {formatDate(it.issuedAt)}
                         </span>
                       </div>
+
+                      {it.invoiceNumber ? (
+                        <div className="mt-0.5 text-[11px] text-neutral-500">
+                          Invoice:{" "}
+                          <span className="text-neutral-300">
+                            #{it.invoiceNumber}
+                          </span>
+                          {it.invoiceStatus ? (
+                            <>
+                              {" • "}
+                              <span className="text-neutral-300">
+                                {it.invoiceStatus}
+                              </span>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-center">
                       <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
                         Total
                       </div>
-                      <div className="text-base font-semibold" style={{ color: COPPER }}>
-                        {total == null ? "—" : formatCurrency(total)}
+                      <div
+                        className="text-base font-semibold"
+                        style={{ color: COPPER }}
+                      >
+                        {it.total == null
+                          ? "—"
+                          : formatCurrency(it.total, it.currency)}
+                      </div>
+                      <div className="text-[11px] text-neutral-500">
+                        {it.currency}
                       </div>
                     </div>
                   </div>
 
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {wo.invoice_pdf_url ? (
+                    {it.pdfUrl ? (
                       <span className="rounded-full border border-white/12 bg-black/40 px-2.5 py-1 text-[11px] text-neutral-300">
                         PDF available
                       </span>
                     ) : null}
-
-                    {wo.invoice_url ? (
+                    {it.onlineUrl ? (
                       <span className="rounded-full border border-white/12 bg-black/40 px-2.5 py-1 text-[11px] text-neutral-300">
                         Online invoice
                       </span>
                     ) : null}
-
-                    {wo.invoice_last_sent_to ? (
+                    {it.sentTo ? (
                       <span className="rounded-full border border-white/12 bg-black/40 px-2.5 py-1 text-[11px] text-neutral-300">
-                        To: {wo.invoice_last_sent_to}
+                        To: {it.sentTo}
                       </span>
                     ) : null}
                   </div>
                 </Link>
-              );
-            })}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[portal invoices index] failed:", err);
+    redirect("/portal");
+  }
 }

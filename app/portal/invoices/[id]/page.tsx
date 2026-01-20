@@ -1,3 +1,4 @@
+// app/portal/invoices/[id]/page.tsx
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -9,6 +10,8 @@ import {
   requirePortalCustomer,
   requireWorkOrderOwnedByCustomer,
 } from "@/features/portal/server/portalAuth";
+
+export const dynamic = "force-dynamic";
 
 const COPPER = "#C57A4A";
 
@@ -37,11 +40,16 @@ type PartDisplayRow = {
   unit?: string;
 };
 
-export const dynamic = "force-dynamic";
-
 function safeNumber(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+// ✅ Use this when you want “unknown” to stay unknown (instead of turning into 0)
+function safeNumberOrNull(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function normalizeInvoiceCurrency(v: unknown): "CAD" | "USD" {
@@ -279,23 +287,36 @@ export default async function PortalInvoicePage({
 
   if (!workOrder) redirect("/portal");
 
-  const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
+  const titleLabel =
+    workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
 
-  // Totals: prefer invoice row, fallback to work order totals if invoice not created yet
+  // ✅ Totals: prefer invoice row; otherwise show "—" unless we have real WO totals
+  const woInvoiceTotal = safeNumberOrNull(workOrder.invoice_total);
+  const woLabor = safeNumberOrNull(workOrder.labor_total);
+  const woParts = safeNumberOrNull(workOrder.parts_total);
+
   const invoiceTotalFallback =
-    safeNumber(workOrder.invoice_total) > 0
-      ? safeNumber(workOrder.invoice_total)
-      : safeNumber(workOrder.labor_total) + safeNumber(workOrder.parts_total);
+    woInvoiceTotal != null
+      ? woInvoiceTotal
+      : woLabor != null || woParts != null
+        ? (woLabor ?? 0) + (woParts ?? 0)
+        : null;
 
   const total =
-    invoice?.total != null ? safeNumber(invoice.total) : invoiceTotalFallback;
+    invoice?.total != null ? safeNumberOrNull(invoice.total) : invoiceTotalFallback;
 
-  const subtotal = invoice?.subtotal != null ? safeNumber(invoice.subtotal) : undefined;
-  const laborCost = invoice?.labor_cost != null ? safeNumber(invoice.labor_cost) : undefined;
-  const partsCost = invoice?.parts_cost != null ? safeNumber(invoice.parts_cost) : undefined;
+  const subtotal =
+    invoice?.subtotal != null ? safeNumberOrNull(invoice.subtotal) : undefined;
+  const laborCost =
+    invoice?.labor_cost != null ? safeNumberOrNull(invoice.labor_cost) : undefined;
+  const partsCost =
+    invoice?.parts_cost != null ? safeNumberOrNull(invoice.parts_cost) : undefined;
   const discountTotal =
-    invoice?.discount_total != null ? safeNumber(invoice.discount_total) : undefined;
-  const taxTotal = invoice?.tax_total != null ? safeNumber(invoice.tax_total) : undefined;
+    invoice?.discount_total != null
+      ? safeNumberOrNull(invoice.discount_total)
+      : undefined;
+  const taxTotal =
+    invoice?.tax_total != null ? safeNumberOrNull(invoice.tax_total) : undefined;
 
   const statusLabel =
     (invoice?.status ?? "").trim() || (workOrder.status ?? "").trim() || "—";
@@ -367,17 +388,23 @@ export default async function PortalInvoicePage({
                 Invoice Total
               </div>
               <div className="mt-1 text-lg font-semibold text-white">
-                {formatCurrency(total, currency)}
+                {formatCurrency(total ?? null, currency)}
               </div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">Currency: {currency}</div>
+              <div className="mt-0.5 text-[11px] text-neutral-500">
+                Currency: {currency}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                 Status
               </div>
-              <div className="mt-1 text-sm font-semibold text-neutral-100">{statusLabel}</div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">Issued: {issuedAt}</div>
+              <div className="mt-1 text-sm font-semibold text-neutral-100">
+                {statusLabel}
+              </div>
+              <div className="mt-0.5 text-[11px] text-neutral-500">
+                Issued: {issuedAt}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
@@ -387,7 +414,9 @@ export default async function PortalInvoicePage({
               <div className="mt-1 text-sm font-semibold text-neutral-100">
                 {formatDate(sentAt)}
               </div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">To: {sentTo || "—"}</div>
+              <div className="mt-0.5 text-[11px] text-neutral-500">
+                To: {sentTo || "—"}
+              </div>
             </div>
           </div>
 
@@ -488,7 +517,7 @@ export default async function PortalInvoicePage({
                     Total
                   </div>
                   <div className="mt-1 text-lg font-semibold" style={{ color: COPPER }}>
-                    {formatCurrency(total, currency)}
+                    {formatCurrency(total ?? null, currency)}
                   </div>
                 </div>
               </div>
@@ -501,7 +530,9 @@ export default async function PortalInvoicePage({
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
                 Notes
               </div>
-              <div className="mt-2 whitespace-pre-wrap text-sm text-neutral-200">{notes}</div>
+              <div className="mt-2 whitespace-pre-wrap text-sm text-neutral-200">
+                {notes}
+              </div>
             </div>
           ) : null}
 
@@ -541,7 +572,7 @@ export default async function PortalInvoicePage({
                           typeof line.price_estimate === "number"
                             ? line.price_estimate
                             : line.price_estimate != null
-                              ? safeNumber(line.price_estimate)
+                              ? safeNumberOrNull(line.price_estimate)
                               : null,
                           currency,
                         )}
@@ -591,7 +622,9 @@ export default async function PortalInvoicePage({
                       className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-white/5 bg-black/40 px-3 py-2"
                     >
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-neutral-100">{p.name}</div>
+                        <div className="text-sm font-medium text-neutral-100">
+                          {p.name}
+                        </div>
                         {meta.length ? (
                           <div className="text-[11px] text-neutral-500">{meta}</div>
                         ) : null}
