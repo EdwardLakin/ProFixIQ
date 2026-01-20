@@ -1,4 +1,3 @@
-// app/api/work-orders/[id]/invoice-pdf/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -16,6 +15,7 @@ type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
 type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
+type WorkOrderPartAllocRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 
 type PdfRgb = ReturnType<typeof rgb>;
 
@@ -104,9 +104,16 @@ function pickShopName(
   return out.length ? out : undefined;
 }
 
-function normalizeInvoiceCurrency(v: unknown): "CAD" | "USD" {
+function currencyFromInvoice(v: unknown): "CAD" | "USD" | null {
   const c = String(v ?? "").trim().toUpperCase();
-  return c === "CAD" ? "CAD" : "USD";
+  if (c === "CAD") return "CAD";
+  if (c === "USD") return "USD";
+  return null;
+}
+
+function currencyFromShopCountry(country: unknown): "CAD" | "USD" {
+  const c = String(country ?? "").trim().toUpperCase();
+  return c === "CA" ? "CAD" : "USD";
 }
 
 type PartDisplayRow = {
@@ -129,7 +136,6 @@ type DrawTextOpts = {
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  // Auth check (prevents “random public invoice pdf”)
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -140,7 +146,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: "Missing work order id" }, { status: 400 });
   }
 
-  // Load WO (light)
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
     .select("id, shop_id, customer_id, vehicle_id, customer_name, custom_id, created_at")
@@ -156,7 +161,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: "Work order not found" }, { status: 404 });
   }
 
-  // Load latest invoice for this WO (SOURCE OF TRUTH for totals/currency)
   const { data: inv, error: invErr } = await supabase
     .from("invoices")
     .select(
@@ -187,10 +191,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     console.warn("[invoice-pdf] invoices query failed", invErr.message);
   }
 
-  // Shop (header)
   const { data: shop } = await supabase
     .from("shops")
-    .select("business_name, shop_name, name, phone_number, email, street, city, province, postal_code")
+    .select(
+      "business_name, shop_name, name, phone_number, email, street, city, province, postal_code, country",
+    )
     .eq("id", wo.shop_id)
     .maybeSingle<
       Pick<
@@ -204,6 +209,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         | "city"
         | "province"
         | "postal_code"
+        | "country"
       >
     >();
 
@@ -218,6 +224,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     (shop?.phone_number ?? "").trim() || undefined,
     (shop?.email ?? "").trim() || undefined,
   ]);
+
+  const currency: "CAD" | "USD" =
+    currencyFromInvoice(inv?.currency) ?? currencyFromShopCountry(shop?.country);
 
   // Customer
   let customer:
@@ -327,7 +336,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const color = (vehicle?.color ?? "").trim() || "—";
   const engineHours = vehicle?.engine_hours != null ? String(vehicle.engine_hours) : "—";
 
-  // Work order lines (complaint/cause/correction)
+  // Lines
   const { data: lines } = await supabase
     .from("work_order_lines")
     .select("id, line_no, description, complaint, cause, correction, labor_time, price_estimate")
@@ -341,30 +350,55 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     >
   >;
 
-  // Parts (invoice display parts from work_order_parts + parts)
+  // -------------------------------------------------------------------
+  // Parts: Prefer work_order_parts (billed parts). Fallback to allocations.
+  // -------------------------------------------------------------------
   const { data: wop } = await supabase
     .from("work_order_parts")
-    .select("id, work_order_id, part_id, quantity, unit_price, total_price, created_at")
+    .select("part_id, quantity, unit_price, total_price")
     .eq("work_order_id", workOrderId);
 
-  const workOrderParts = (Array.isArray(wop) ? wop : []) as Array<
+  const billedParts = (Array.isArray(wop) ? wop : []) as Array<
     Pick<WorkOrderPartRow, "part_id" | "quantity" | "unit_price" | "total_price">
   >;
 
+  let allocParts: Array<{
+    part_id: string;
+    qty: number;
+    unit_cost: number;
+  }> = [];
+
+  if (billedParts.length === 0) {
+    const { data: alloc } = await supabase
+      .from("work_order_part_allocations")
+      .select("part_id, qty, unit_cost")
+      .eq("work_order_id", workOrderId);
+
+    const allocRows = (Array.isArray(alloc) ? alloc : []) as Array<
+      Pick<WorkOrderPartAllocRow, "part_id" | "qty" | "unit_cost">
+    >;
+
+    allocParts = allocRows
+      .filter((r) => typeof r.part_id === "string" && r.part_id.length > 0)
+      .map((r) => ({
+        part_id: r.part_id as string,
+        qty: safeMoney(r.qty),
+        unit_cost: safeMoney(r.unit_cost),
+      }));
+  }
+
   const partIds = Array.from(
     new Set(
-      workOrderParts
-        .map((r) => r.part_id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0),
+      [
+        ...billedParts.map((r) => r.part_id).filter((id): id is string => typeof id === "string" && id.length > 0),
+        ...allocParts.map((r) => r.part_id),
+      ].filter(Boolean),
     ),
   );
 
   let partsMap = new Map<string, Pick<PartRow, "id" | "name" | "part_number" | "sku" | "unit">>();
   if (partIds.length > 0) {
-    const { data: parts } = await supabase
-      .from("parts")
-      .select("id, name, part_number, sku, unit")
-      .in("id", partIds);
+    const { data: parts } = await supabase.from("parts").select("id, name, part_number, sku, unit").in("id", partIds);
 
     const arr = (Array.isArray(parts) ? parts : []) as Array<
       Pick<PartRow, "id" | "name" | "part_number" | "sku" | "unit">
@@ -373,7 +407,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     partsMap = new Map(arr.map((p) => [p.id, p]));
   }
 
-  const partRows: PartDisplayRow[] = workOrderParts.map((r) => {
+  const partRowsFromBilled: PartDisplayRow[] = billedParts.map((r) => {
     const p = r.part_id ? partsMap.get(r.part_id) : undefined;
 
     const qty = typeof r.quantity === "number" ? r.quantity : Number(r.quantity);
@@ -387,15 +421,32 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       unit: (p?.unit ?? "").trim() || undefined,
       qty: Number.isFinite(qty) ? qty : 0,
       unitPrice,
-      totalPrice:
-        totalPrice > 0
-          ? totalPrice
-          : Math.max(0, (Number.isFinite(qty) ? qty : 0) * unitPrice),
+      totalPrice: totalPrice > 0 ? totalPrice : Math.max(0, (Number.isFinite(qty) ? qty : 0) * unitPrice),
     };
   });
 
-  // Totals + currency from invoice, fallback to safe defaults if no invoice row exists yet
-  const currency: "CAD" | "USD" = normalizeInvoiceCurrency(inv?.currency);
+  const partRowsFromAlloc: PartDisplayRow[] = allocParts.map((r) => {
+    const p = partsMap.get(r.part_id);
+
+    const qty = safeMoney(r.qty);
+    const unitCost = safeMoney(r.unit_cost);
+    const total = Math.max(0, qty * unitCost);
+
+    return {
+      name: (p?.name ?? "Part").trim() || "Part",
+      partNumber: (p?.part_number ?? "").trim() || undefined,
+      sku: (p?.sku ?? "").trim() || undefined,
+      unit: (p?.unit ?? "").trim() || undefined,
+      qty,
+      unitPrice: unitCost,
+      totalPrice: total,
+    };
+  });
+
+  const partRows: PartDisplayRow[] =
+    partRowsFromBilled.length > 0 ? partRowsFromBilled : partRowsFromAlloc;
+
+  // Totals (prefer invoice row)
   const subtotal = safeMoney(inv?.subtotal);
   const laborCost = safeMoney(inv?.labor_cost);
   const partsCost = safeMoney(inv?.parts_cost);
@@ -414,7 +465,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Colors (white background + dark text + copper accents)
   const C_TEXT: PdfRgb = rgb(0.08, 0.08, 0.08);
   const C_MUTED: PdfRgb = rgb(0.35, 0.35, 0.35);
   const C_LIGHT: PdfRgb = rgb(0.70, 0.70, 0.70);
@@ -423,7 +473,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const C_WHITE: PdfRgb = rgb(1, 1, 1);
 
   const lineH = (size: number) => size + 6;
-
   let y = PAGE_H - 40;
 
   const drawText = (text: string, opts?: DrawTextOpts) => {
@@ -449,22 +498,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           ? new Date(wo.created_at).toLocaleString()
           : new Date().toLocaleString();
 
-  // Header (fix top clipping by anchoring to page height)
   const headerH = 92;
-  const headerY = PAGE_H - headerH; // ensures it fits
+  const headerY = PAGE_H - headerH;
 
-  page.drawRectangle({
-    x: 0,
-    y: headerY,
-    width: PAGE_W,
-    height: headerH,
-    color: C_HEADER_BG,
-  });
+  page.drawRectangle({ x: 0, y: headerY, width: PAGE_W, height: headerH, color: C_HEADER_BG });
 
-  // Header text positions (manual Y so we don't fight the flowing `y`)
   const headerTop = PAGE_H - 26;
 
-  // Left: shop
   page.drawText(shopName, { x: marginX, y: headerTop, size: 16, font: bold, color: C_COPPER });
   if (shopAddress.trim().length) {
     page.drawText(shopAddress, { x: marginX, y: headerTop - 20, size: 9.5, font, color: C_LIGHT });
@@ -473,7 +513,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     page.drawText(shopContact, { x: marginX, y: headerTop - 34, size: 9.5, font, color: rgb(0.85, 0.85, 0.85) });
   }
 
-  // Right: invoice meta
   const rightX = 360;
   page.drawText("INVOICE", { x: rightX, y: headerTop, size: 18, font: bold, color: C_WHITE });
 
@@ -481,20 +520,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   page.drawText(meta1, { x: rightX, y: headerTop - 20, size: 10, font, color: rgb(0.88, 0.88, 0.88) });
   page.drawText(`Issued: ${issuedAt}`, { x: rightX, y: headerTop - 34, size: 10, font, color: rgb(0.70, 0.70, 0.70) });
 
-  // Start flowing content under header
   y = headerY - 22;
 
-  // Divider
   page.drawRectangle({
     x: marginX - 10,
-    y: y,
+    y,
     width: PAGE_W - (marginX - 10) * 2,
     height: 2,
     color: C_COPPER,
   });
   y -= 18;
 
-  // Customer
   drawText("Customer", { bold: true, size: 12, color: C_COPPER });
   drawText(customerName, { size: 11 });
   drawText(`Business: ${customerBusiness}`, { size: 10, color: C_MUTED });
@@ -504,7 +540,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   y -= 6;
 
-  // Vehicle
   drawText("Vehicle", { bold: true, size: 12, color: C_COPPER });
   drawText(vehicleLabel, { size: 11 });
   drawText(`VIN: ${vin}`, { size: 10, color: C_MUTED });
@@ -516,7 +551,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   y -= 14;
 
-  // Line Items
   drawText("Line Items", { bold: true, size: 12, color: C_COPPER });
 
   if (!lineRows.length) {
@@ -540,34 +574,18 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         drawText(`          ${extra}`, { size: 10, color: C_MUTED });
       }
 
-      if (cause.trim()) {
-        for (const c of wrapText(cause, 78)) {
-          drawText(`Cause: ${c}`, { size: 10, color: C_MUTED });
-        }
-      }
-
-      if (correction.trim()) {
-        for (const c of wrapText(correction, 78)) {
-          drawText(`Correction: ${c}`, { size: 10, color: C_MUTED });
-        }
-      }
+      if (cause.trim()) for (const c of wrapText(cause, 78)) drawText(`Cause: ${c}`, { size: 10, color: C_MUTED });
+      if (correction.trim()) for (const c of wrapText(correction, 78)) drawText(`Correction: ${c}`, { size: 10, color: C_MUTED });
 
       if (labor.trim()) drawText(`Labor time: ${labor} hr`, { size: 10, color: C_MUTED });
       if (est > 0) drawText(`Estimate: ${moneyLabel(est, currency)}`, { size: 10, color: C_MUTED });
 
       y -= 4;
-      page.drawRectangle({
-        x: marginX,
-        y,
-        width: PAGE_W - marginX * 2,
-        height: 1,
-        color: rgb(0.92, 0.92, 0.92),
-      });
+      page.drawRectangle({ x: marginX, y, width: PAGE_W - marginX * 2, height: 1, color: rgb(0.92, 0.92, 0.92) });
       y -= 12;
     }
   }
 
-  // Parts
   y -= 6;
   drawText("Parts", { bold: true, size: 12, color: C_COPPER });
 
@@ -576,13 +594,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   } else {
     drawText("Qty   Part                                Unit     Total", { size: 10, bold: true });
 
-    page.drawRectangle({
-      x: marginX,
-      y: y + 4,
-      width: PAGE_W - marginX * 2,
-      height: 1,
-      color: rgb(0.90, 0.90, 0.90),
-    });
+    page.drawRectangle({ x: marginX, y: y + 4, width: PAGE_W - marginX * 2, height: 1, color: rgb(0.90, 0.90, 0.90) });
 
     for (const p of partRows.slice(0, 25)) {
       if (!ensureSpace(34)) break;
@@ -611,36 +623,23 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
   }
 
-  // Totals (use invoices.* when available)
   y -= 10;
   drawText("Totals", { bold: true, size: 12, color: C_COPPER });
 
   if (!inv?.id) {
     drawText("— No invoice record found yet for this work order —", { size: 10, color: C_MUTED });
-    drawText("Create an invoice (public.invoices) to show full totals (subtotal/discount/tax/total).", {
-      size: 10,
-      color: C_MUTED,
-    });
+    drawText("Create an invoice (public.invoices) to show full totals (subtotal/discount/tax/total).", { size: 10, color: C_MUTED });
   } else {
     drawText(`Subtotal: ${moneyLabel(subtotal, currency)}`, { size: 11 });
     drawText(`Labor: ${moneyLabel(laborCost, currency)}`, { size: 11, color: C_MUTED });
     drawText(`Parts: ${moneyLabel(partsCost, currency)}`, { size: 11, color: C_MUTED });
-    if (discountTotal > 0) {
-      drawText(`Discount: -${moneyLabel(discountTotal, currency)}`, { size: 11, color: C_MUTED });
-    }
+    if (discountTotal > 0) drawText(`Discount: -${moneyLabel(discountTotal, currency)}`, { size: 11, color: C_MUTED });
     drawText(`Tax: ${moneyLabel(taxTotal, currency)}`, { size: 11, color: C_MUTED });
     drawText(`Total: ${moneyLabel(grandTotal, currency)}`, { size: 13, bold: true });
   }
 
-  // Footer bar
   const footerH = 34;
-  page.drawRectangle({
-    x: 0,
-    y: 0,
-    width: PAGE_W,
-    height: footerH,
-    color: C_HEADER_BG,
-  });
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: footerH, color: C_HEADER_BG });
 
   page.drawText(`${shopName} • Invoice`, { x: marginX, y: 14, size: 9, font, color: rgb(0.80, 0.80, 0.80) });
   page.drawText(`Work Order: ${titleId}`, { x: rightX, y: 14, size: 9, font, color: rgb(0.65, 0.65, 0.65) });

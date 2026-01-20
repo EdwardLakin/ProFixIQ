@@ -62,7 +62,6 @@ function NavPill({
       href={href}
       onClick={onClick}
       className={cx(
-        // mobile-bench-ish “pill row”
         "group flex items-center justify-between rounded-xl border px-4 py-3 text-sm transition",
         active
           ? "border-white/14 bg-white/7 text-white shadow-[0_10px_30px_rgba(0,0,0,0.55)]"
@@ -128,15 +127,13 @@ export default function PortalShell({
   if (hideNav) {
     return (
       <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
-        {/* ✅ Portal ambient glow (behind everything) */}
         <div className="pointer-events-none absolute inset-0">
-          {/* copper halo */}
           <div className="absolute left-1/2 top-[-22%] h-[58rem] w-[58rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.18),transparent_60%)]" />
-          {/* cool vignette depth */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.88),transparent_68%)]" />
         </div>
 
-        <header className="relative metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
+        {/* ✅ Removed `relative` to satisfy cssConflict lint */}
+        <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
           <div className="flex flex-col leading-none">
             <span
               className="font-blackops text-xs tracking-[0.22em]"
@@ -167,17 +164,14 @@ export default function PortalShell({
 
   return (
     <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
-      {/* ✅ Portal ambient glow (behind everything) */}
       <div className="pointer-events-none absolute inset-0">
-        {/* copper halo */}
         <div className="absolute left-1/2 top-[6%] h-[80rem] w-[80rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.14),transparent_62%)]" />
-        {/* secondary cool bloom */}
         <div className="absolute right-[-18%] top-[28%] h-[46rem] w-[46rem] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.06),transparent_60%)]" />
-        {/* vignette depth */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.82),transparent_70%)]" />
       </div>
 
-      <header className="relative metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
+      {/* ✅ Removed `relative` to satisfy cssConflict lint */}
+      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -206,7 +200,6 @@ export default function PortalShell({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* 🔔 Portal notifications bell */}
           <PortalNotificationsBell />
 
           <Link
@@ -235,9 +228,7 @@ export default function PortalShell({
         </div>
       </header>
 
-      {/* ✅ Mobile-first layout: stack by default, sidebar becomes left column on md+ */}
       <div className="relative mx-auto flex min-h-[calc(100dvh-52px)] w-full max-w-6xl flex-col gap-4 px-3 py-4 md:flex-row md:gap-6 md:px-6">
-        {/* Desktop sidebar */}
         <aside
           className={cx(
             "hidden overflow-hidden rounded-2xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card md:flex md:flex-col transition-all duration-300",
@@ -264,7 +255,6 @@ export default function PortalShell({
               </div>
             </div>
 
-            {/* ✅ Make desktop nav look like mobile “pill list” */}
             <nav className="flex-1 space-y-2 px-3 pb-4">
               {NAV.map((item) => (
                 <NavPill
@@ -282,7 +272,6 @@ export default function PortalShell({
           </div>
         </aside>
 
-        {/* Mobile drawer */}
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
             <div
@@ -310,8 +299,7 @@ export default function PortalShell({
                 </button>
               </div>
 
-              {/* ✅ Mobile bench-ish pill list */}
-              <nav className="space-y-2 px-4 py-4">
+              <nav className="space-ymt-6 space-y-2 px-4 py-4">
                 {NAV.map((item) => (
                   <NavPill
                     key={item.href}
@@ -341,7 +329,6 @@ export default function PortalShell({
           </div>
         )}
 
-        {/* Content */}
         <div className="min-w-0 flex-1">
           <div className={ShellCard}>{children}</div>
         </div>

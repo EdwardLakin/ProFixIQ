@@ -8,15 +8,17 @@ import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// ✅ you added this
 import { resolvePortalMode } from "@/features/portal/lib/resolvePortalMode";
 
 const COPPER = "#C57A4A";
 
 type DB = Database;
-type Customer = DB["public"]["Tables"]["customers"]["Row"];
+type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type BookingRow = DB["public"]["Tables"]["bookings"]["Row"];
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
+
+type PortalMode = "customer" | "fleet";
+
 
 function StatCard({
   title,
@@ -27,8 +29,9 @@ function StatCard({
   value: string;
   sub?: string;
 }) {
+  // ✅ Fix cssConflict warnings: do NOT combine shadow-card with explicit shadow-[...]
   return (
-    <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+    <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
       <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
         {title}
       </div>
@@ -37,6 +40,34 @@ function StatCard({
       </div>
       {sub ? <div className="mt-1 text-xs text-neutral-500">{sub}</div> : null}
     </div>
+  );
+}
+
+function ActionCard({
+  href,
+  title,
+  subtitle,
+}: {
+  href: string;
+  title: string;
+  subtitle: string;
+}) {
+  // ✅ Fix cssConflict warnings: single shadow class only
+  return (
+    <Link
+      href={href}
+      className="
+        rounded-2xl border border-white/12 bg-black/25 p-4 text-sm font-semibold
+        text-neutral-100 backdrop-blur-md shadow-[0_18px_50px_rgba(0,0,0,0.55)]
+        transition hover:bg-black/35
+      "
+    >
+      <div className="flex items-center justify-between">
+        <span>{title}</span>
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
+      </div>
+      <div className="mt-1 text-xs font-normal text-neutral-400">{subtitle}</div>
+    </Link>
   );
 }
 
@@ -68,7 +99,7 @@ export default function PortalHomePage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [, setCustomer] = useState<Customer | null>(null);
+  const [mode, setMode] = useState<PortalMode>("customer");
 
   const [vehiclesCount, setVehiclesCount] = useState<number | null>(null);
   const [nextBookingAt, setNextBookingAt] = useState<string | null>(null);
@@ -85,7 +116,6 @@ export default function PortalHomePage() {
     (async () => {
       setLoading(true);
 
-      // ✅ 1) resolve auth
       const {
         data: { user },
         error: userErr,
@@ -94,43 +124,42 @@ export default function PortalHomePage() {
       if (!mounted) return;
 
       if (userErr || !user) {
-        setCustomer(null);
         setVehiclesCount(null);
         setNextBookingAt(null);
         setActiveWo(null);
+        setMode("customer");
         setLoading(false);
         return;
       }
 
-      // ✅ 2) mode gate (fleet users should never render customer home)
-      const mode = await resolvePortalMode(supabase, user.id);
+      const resolved = await resolvePortalMode(supabase, user.id);
 
       if (!mounted) return;
 
-      if (mode === "fleet") {
+      if (resolved === "fleet") {
+        setMode("fleet");
         router.replace("/portal/fleet");
         return;
       }
 
-      // ✅ 3) customer data load continues as before
+      setMode("customer");
+
+      // Customer lookup
       const { data: cust, error: custErr } = await supabase
         .from("customers")
-        .select("*")
+        .select("id")
         .eq("user_id", user.id)
-        .maybeSingle();
+        .maybeSingle<Pick<CustomerRow, "id">>();
 
       if (!mounted) return;
 
-      if (custErr || !cust) {
-        setCustomer(null);
+      if (custErr || !cust?.id) {
         setVehiclesCount(null);
         setNextBookingAt(null);
         setActiveWo(null);
         setLoading(false);
         return;
       }
-
-      setCustomer(cust as Customer);
 
       // Vehicles count
       const { count: vCount } = await supabase
@@ -138,7 +167,7 @@ export default function PortalHomePage() {
         .select("id", { count: "exact", head: true })
         .eq("customer_id", cust.id);
 
-      // Upcoming booking (next)
+      // Next booking
       const nowIso = new Date().toISOString();
       const { data: booking } = await supabase
         .from("bookings")
@@ -147,12 +176,10 @@ export default function PortalHomePage() {
         .gte("starts_at", nowIso)
         .order("starts_at", { ascending: true })
         .limit(1)
-        .maybeSingle();
-
-      const b = booking as Pick<BookingRow, "starts_at"> | null;
+        .maybeSingle<Pick<BookingRow, "starts_at">>();
 
       // Active request (work order)
-      const ACTIVE_STATUSES: WorkOrderRow["status"][] = [
+      const ACTIVE_STATUSES: Array<WorkOrderRow["status"]> = [
         "awaiting_approval",
         "queued",
         "planned",
@@ -166,19 +193,17 @@ export default function PortalHomePage() {
         .in("status", ACTIVE_STATUSES as string[])
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle();
-
-      const w = wo as
-        | Pick<
+        .maybeSingle<
+          Pick<
             WorkOrderRow,
             "id" | "status" | "created_at" | "invoice_sent_at" | "approval_state"
           >
-        | null;
+        >();
 
       if (!mounted) return;
       setVehiclesCount(typeof vCount === "number" ? vCount : null);
-      setNextBookingAt(b?.starts_at ?? null);
-      setActiveWo(w ?? null);
+      setNextBookingAt(booking?.starts_at ?? null);
+      setActiveWo(wo ?? null);
       setLoading(false);
     })();
 
@@ -187,7 +212,6 @@ export default function PortalHomePage() {
     };
   }, [supabase, router]);
 
-  // If we are redirecting, keep a clean loading state (prevents flash)
   if (loading) {
     return (
       <div className="space-y-6 text-white">
@@ -201,11 +225,24 @@ export default function PortalHomePage() {
     );
   }
 
+  // If we’re redirecting fleet users, keep customer UI from flashing.
+  if (mode === "fleet") {
+    return (
+      <div className="space-y-6 text-white">
+        <div>
+          <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
+            Redirecting…
+          </h1>
+          <p className="mt-1 text-sm text-neutral-400">
+            Taking you to the fleet portal.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const upcomingValue = nextBookingAt ? formatWhen(nextBookingAt) : "—";
-
-  const vehiclesValue =
-    vehiclesCount == null ? "—" : String(vehiclesCount);
-
+  const vehiclesValue = vehiclesCount == null ? "—" : String(vehiclesCount);
   const activeReqValue = formatWoRef(activeWo);
 
   const hasInvoice =
@@ -213,7 +250,6 @@ export default function PortalHomePage() {
     !!activeWo.invoice_sent_at &&
     (activeWo.status === "ready_to_invoice" || activeWo.status === "invoiced");
 
-  // Treat “awaiting_approval” / approval_state flags as “quote ready”
   const hasQuote =
     !!activeWo &&
     (activeWo.status === "awaiting_approval" ||
@@ -224,10 +260,11 @@ export default function PortalHomePage() {
     <div className="space-y-6 text-white">
       <div>
         <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
-          Home
+          Customer Portal
         </h1>
         <p className="mt-1 text-sm text-neutral-400">
-          Quick overview — request service, track appointments, and manage vehicles.
+          Quick overview — request service, track appointments, and manage your
+          vehicles.
         </p>
       </div>
 
@@ -244,50 +281,29 @@ export default function PortalHomePage() {
 
       {/* Primary actions */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Link
+        <ActionCard
           href="/portal/request/when"
-          className="rounded-2xl border border-white/12 bg-black/25 p-4 text-sm font-semibold text-neutral-100 backdrop-blur-md shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition hover:bg-black/35"
-        >
-          <div className="flex items-center justify-between">
-            <span>Request service</span>
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
-          </div>
-          <div className="mt-1 text-xs font-normal text-neutral-400">
-            Pick a time, add lines, submit for approval.
-          </div>
-        </Link>
-
-        <Link
+          title="Request service"
+          subtitle="Pick a time, add details, submit for approval."
+        />
+        <ActionCard
           href="/portal/vehicles"
-          className="rounded-2xl border border-white/12 bg-black/25 p-4 text-sm font-semibold text-neutral-100 backdrop-blur-md shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition hover:bg-black/35"
-        >
-          <div className="flex items-center justify-between">
-            <span>Manage vehicles</span>
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
-          </div>
-          <div className="mt-1 text-xs font-normal text-neutral-400">
-            Add VIN, plate, mileage, and details.
-          </div>
-        </Link>
-
-        <Link
-          href="/portal/fleet"
-          className="rounded-2xl border border-white/12 bg-black/25 p-4 text-sm font-semibold text-neutral-100 backdrop-blur-md shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] transition hover:bg-black/35"
-        >
-          <div className="flex items-center justify-between">
-            <span>Fleet portal</span>
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
-          </div>
-          <div className="mt-1 text-xs font-normal text-neutral-400">
-            Pre-trips, service requests, assignments.
-          </div>
-        </Link>
+          title="Manage vehicles"
+          subtitle="Add VIN, plate, mileage, and details."
+        />
+        <ActionCard
+          href="/portal/customer-appointments"
+          title="Appointments"
+          subtitle="View upcoming and past bookings."
+        />
       </div>
 
       {/* Recent activity + deep links */}
-      <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+      <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-neutral-50">Recent activity</h2>
+          <h2 className="text-sm font-semibold text-neutral-50">
+            Recent activity
+          </h2>
           <div className="flex flex-wrap items-center gap-3 text-xs">
             <Link
               href="/portal/customer-appointments"
@@ -297,18 +313,11 @@ export default function PortalHomePage() {
               View appointments
             </Link>
             <Link
-              href="/portal/fleet/service-requests"
+              href="/portal/history"
               className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
               style={{ textDecorationColor: "rgba(197,122,74,0.65)" }}
             >
-              Fleet service
-            </Link>
-            <Link
-              href="/portal/fleet/pretrip-history"
-              className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
-              style={{ textDecorationColor: "rgba(197,122,74,0.65)" }}
-            >
-              Pre-trip history
+              View history
             </Link>
           </div>
         </div>

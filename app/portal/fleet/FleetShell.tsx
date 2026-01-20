@@ -26,7 +26,9 @@ function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
+// Keep ProFixIQ copper for brand mark, but give Fleet its own accent
 const COPPER = "#C57A4A";
+const FLEET_ACCENT = "#38BDF8"; // cyan/teal “ops” vibe
 
 function MenuIcon() {
   return (
@@ -56,17 +58,17 @@ function NavPill({
       className={cx(
         "group flex items-center justify-between rounded-xl border px-4 py-3 text-sm transition",
         active
-          ? "border-white/14 bg-white/7 text-white shadow-[0_10px_30px_rgba(0,0,0,0.55)]"
-          : "border-white/10 bg-black/20 text-neutral-200 hover:border-white/14 hover:bg-white/5",
+          ? "border-white/16 bg-white/8 text-white shadow-[0_10px_30px_rgba(0,0,0,0.55)]"
+          : "border-white/10 bg-black/20 text-neutral-200 hover:border-white/16 hover:bg-white/6",
       )}
     >
       <span className="font-semibold">{label}</span>
       <span
         className={cx(
           "h-2 w-2 rounded-full transition-opacity",
-          active ? "opacity-100" : "opacity-0 group-hover:opacity-70",
+          active ? "opacity-100" : "opacity-0 group-hover:opacity-80",
         )}
-        style={{ backgroundColor: COPPER }}
+        style={{ backgroundColor: FLEET_ACCENT }}
       />
     </Link>
   );
@@ -74,7 +76,7 @@ function NavPill({
 
 export default function FleetShell({
   title = "Fleet Portal",
-  subtitle = "Pre-trips, assignments, and service requests for your fleet",
+  subtitle = "Dispatch view for pre-trips, service requests, and fleet history",
   children,
 }: {
   title?: string;
@@ -83,7 +85,7 @@ export default function FleetShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = createClientComponentClient<DB>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(false);
@@ -104,12 +106,16 @@ export default function FleetShell({
 
   // Load session + must_change_password (fleet portal)
   useEffect(() => {
+    let alive = true;
+
     (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       const uid = session?.user?.id ?? null;
+      if (!alive) return;
+
       setUserId(uid);
 
       if (!uid) return;
@@ -121,12 +127,20 @@ export default function FleetShell({
           .eq("id", uid)
           .single();
 
+        if (!alive) return;
         setMustChangePassword(!!profile?.must_change_password);
       } catch (err) {
-        console.error("Failed to load profile must_change_password (FleetShell)", err);
+        // eslint-disable-next-line no-console
+        console.error(
+          "Failed to load profile must_change_password (FleetShell)",
+          err,
+        );
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => {
+      alive = false;
+    };
   }, [supabase]);
 
   const signOut = async () => {
@@ -144,15 +158,23 @@ export default function FleetShell({
     "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
 
   return (
-    <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
-      {/* ambient glow */}
+    <div className="relative min-h-dvh text-white overflow-hidden">
+      {/* ✅ Fleet-specific background (distinct from customer portal) */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-[6%] h-[80rem] w-[80rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(197,122,74,0.14),transparent_62%)]" />
-        <div className="absolute right-[-18%] top-[28%] h-[46rem] w-[46rem] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.06),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.82),transparent_70%)]" />
+        {/* deep base */}
+        <div className="absolute inset-0 bg-[#020617]" />
+        {/* subtle grid (ops/dispatch vibe) */}
+        <div className="absolute inset-0 opacity-[0.18] [background-image:linear-gradient(rgba(56,189,248,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(56,189,248,0.18)_1px,transparent_1px)] [background-size:44px_44px]" />
+        {/* cyan halo */}
+        <div className="absolute left-1/2 top-[-18%] h-[70rem] w-[70rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.20),transparent_60%)]" />
+        {/* secondary slate bloom */}
+        <div className="absolute right-[-22%] top-[20%] h-[52rem] w-[52rem] rounded-full bg-[radial-gradient(circle,rgba(148,163,184,0.10),transparent_60%)]" />
+        {/* bottom vignette */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.88),transparent_70%)]" />
       </div>
 
-      <header className="relative metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
+      {/* ✅ Removed `relative` to avoid cssConflict with `sticky` */}
+      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -172,9 +194,21 @@ export default function FleetShell({
             <MenuIcon />
           </button>
 
-          <div>
-            <div className="text-[0.75rem] font-medium text-neutral-100">{title}</div>
-            <div className="text-[0.65rem] text-neutral-400">{subtitle}</div>
+          <div className="flex items-start gap-3">
+            <div className="flex flex-col">
+              <div className="text-[0.75rem] font-medium text-neutral-100">
+                {title}
+              </div>
+              <div className="text-[0.65rem] text-neutral-400">{subtitle}</div>
+            </div>
+
+            {/* Fleet badge */}
+            <div
+              className="hidden sm:inline-flex items-center rounded-full border border-white/15 bg-black/40 px-2.5 py-1 text-[10px] uppercase tracking-[0.22em]"
+              style={{ color: FLEET_ACCENT }}
+            >
+              Fleet Ops
+            </div>
           </div>
         </div>
 
@@ -183,7 +217,7 @@ export default function FleetShell({
             href="/portal/fleet"
             className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
           >
-            <span style={{ color: COPPER }}>Dashboard</span>
+            <span style={{ color: FLEET_ACCENT }}>Dashboard</span>
           </Link>
 
           <button
@@ -203,7 +237,9 @@ export default function FleetShell({
         <aside
           className={cx(
             "hidden overflow-hidden rounded-2xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card md:flex md:flex-col transition-all duration-300",
-            desktopOpen ? "w-72" : "w-0 border-transparent bg-transparent shadow-none",
+            desktopOpen
+              ? "w-72"
+              : "w-0 border-transparent bg-transparent shadow-none",
           )}
         >
           <div
@@ -213,10 +249,23 @@ export default function FleetShell({
             )}
           >
             <div className="px-5 py-5">
-              <div className="font-blackops text-lg tracking-[0.16em]" style={{ color: COPPER }}>
-                PROFIXIQ
+              <div className="flex items-baseline justify-between">
+                <div
+                  className="font-blackops text-lg tracking-[0.16em]"
+                  style={{ color: COPPER }}
+                >
+                  PROFIXIQ
+                </div>
+                <div
+                  className="text-[10px] uppercase tracking-[0.22em]"
+                  style={{ color: FLEET_ACCENT }}
+                >
+                  Fleet
+                </div>
               </div>
-              <div className="mt-1 text-xs text-neutral-400">Fleet Portal</div>
+              <div className="mt-1 text-xs text-neutral-400">
+                Dispatch & ops view
+              </div>
             </div>
 
             <nav className="flex-1 space-y-2 px-3 pb-4">
@@ -230,23 +279,42 @@ export default function FleetShell({
               ))}
             </nav>
 
-            <div className="px-5 pb-5 text-xs text-neutral-500">Powered by ProFixIQ</div>
+            <div className="px-5 pb-5 text-xs text-neutral-500">
+              Powered by ProFixIQ
+            </div>
           </div>
         </aside>
 
         {/* Mobile drawer */}
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
-            <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setMobileOpen(false)}
+            />
             <div className="absolute left-0 top-0 h-full w-[82vw] max-w-[360px] border-r border-white/10 bg-black/85 backdrop-blur-xl">
               <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
                 <div>
-                  <div className="font-blackops text-lg tracking-[0.16em]" style={{ color: COPPER }}>
-                    PROFIXIQ
+                  <div className="flex items-baseline gap-2">
+                    <div
+                      className="font-blackops text-lg tracking-[0.16em]"
+                      style={{ color: COPPER }}
+                    >
+                      PROFIXIQ
+                    </div>
+                    <div
+                      className="text-[10px] uppercase tracking-[0.22em]"
+                      style={{ color: FLEET_ACCENT }}
+                    >
+                      Fleet
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs text-neutral-400">Fleet Portal</div>
+                  <div className="mt-1 text-xs text-neutral-400">
+                    Dispatch & ops view
+                  </div>
                 </div>
                 <button
+                  type="button"
                   className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-xs text-neutral-100"
                   onClick={() => setMobileOpen(false)}
                 >
@@ -276,7 +344,9 @@ export default function FleetShell({
                   {signingOut ? "Signing out…" : "Sign out"}
                 </button>
 
-                <div className="mt-3 text-xs text-neutral-500">Powered by ProFixIQ</div>
+                <div className="mt-3 text-xs text-neutral-500">
+                  Powered by ProFixIQ
+                </div>
               </div>
             </div>
           </div>
