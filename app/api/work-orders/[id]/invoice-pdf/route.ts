@@ -17,6 +17,8 @@ type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
 type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 
+type PdfRgb = ReturnType<typeof rgb>;
+
 function asString(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
@@ -117,10 +119,17 @@ type PartDisplayRow = {
   totalPrice: number;
 };
 
+type DrawTextOpts = {
+  size?: number;
+  bold?: boolean;
+  x?: number;
+  color?: PdfRgb;
+};
+
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  // Auth check (preventsS (prevents “random public invoice pdf”)
+  // Auth check (prevents “random public invoice pdf”)
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -352,7 +361,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   let partsMap = new Map<string, Pick<PartRow, "id" | "name" | "part_number" | "sku" | "unit">>();
   if (partIds.length > 0) {
-    const { data: parts } = await supabase.from("parts").select("id, name, part_number, sku, unit").in("id", partIds);
+    const { data: parts } = await supabase
+      .from("parts")
+      .select("id, name, part_number, sku, unit")
+      .in("id", partIds);
 
     const arr = (Array.isArray(parts) ? parts : []) as Array<
       Pick<PartRow, "id" | "name" | "part_number" | "sku" | "unit">
@@ -403,21 +415,18 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   // Colors (white background + dark text + copper accents)
-  const C_TEXT = rgb(0.08, 0.08, 0.08);
-  const C_MUTED = rgb(0.35, 0.35, 0.35);
-  const C_LIGHT = rgb(0.70, 0.70, 0.70);
-  const C_COPPER = rgb(0.78, 0.48, 0.28);
-  const C_HEADER_BG = rgb(0.05, 0.07, 0.10);
-  const C_WHITE = rgb(1, 1, 1);
+  const C_TEXT: PdfRgb = rgb(0.08, 0.08, 0.08);
+  const C_MUTED: PdfRgb = rgb(0.35, 0.35, 0.35);
+  const C_LIGHT: PdfRgb = rgb(0.70, 0.70, 0.70);
+  const C_COPPER: PdfRgb = rgb(0.78, 0.48, 0.28);
+  const C_HEADER_BG: PdfRgb = rgb(0.05, 0.07, 0.10);
+  const C_WHITE: PdfRgb = rgb(1, 1, 1);
 
   const lineH = (size: number) => size + 6;
 
   let y = PAGE_H - 40;
 
-  const drawText = (
-    text: string,
-    opts?: { size?: number; bold?: boolean; x?: number; color?: any },
-  ) => {
+  const drawText = (text: string, opts?: DrawTextOpts) => {
     const size = opts?.size ?? 11;
     const x = opts?.x ?? marginX;
     const f = opts?.bold ? bold : font;
@@ -461,13 +470,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     page.drawText(shopAddress, { x: marginX, y: headerTop - 20, size: 9.5, font, color: C_LIGHT });
   }
   if (shopContact.trim().length) {
-    page.drawText(shopContact, {
-      x: marginX,
-      y: headerTop - 34,
-      size: 9.5,
-      font,
-      color: rgb(0.85, 0.85, 0.85),
-    });
+    page.drawText(shopContact, { x: marginX, y: headerTop - 34, size: 9.5, font, color: rgb(0.85, 0.85, 0.85) });
   }
 
   // Right: invoice meta
@@ -475,20 +478,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   page.drawText("INVOICE", { x: rightX, y: headerTop, size: 18, font: bold, color: C_WHITE });
 
   const meta1 = invoiceNumber.length ? `Invoice #: ${invoiceNumber}` : `Work Order: ${titleId}`;
-  page.drawText(meta1, {
-    x: rightX,
-    y: headerTop - 20,
-    size: 10,
-    font,
-    color: rgb(0.88, 0.88, 0.88),
-  });
-  page.drawText(`Issued: ${issuedAt}`, {
-    x: rightX,
-    y: headerTop - 34,
-    size: 10,
-    font,
-    color: rgb(0.70, 0.70, 0.70),
-  });
+  page.drawText(meta1, { x: rightX, y: headerTop - 20, size: 10, font, color: rgb(0.88, 0.88, 0.88) });
+  page.drawText(`Issued: ${issuedAt}`, { x: rightX, y: headerTop - 34, size: 10, font, color: rgb(0.70, 0.70, 0.70) });
 
   // Start flowing content under header
   y = headerY - 22;
@@ -583,7 +574,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!partRows.length) {
     drawText("— No parts on this work order —", { size: 10, color: C_MUTED });
   } else {
-    // simple table header
     drawText("Qty   Part                                Unit     Total", { size: 10, bold: true });
 
     page.drawRectangle({
@@ -606,14 +596,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
       const nameLines = wrapText(name, 52);
 
-      // line 1
       page.drawText(String(qty), { x: marginX, y, size: 10, font, color: C_TEXT });
       page.drawText(nameLines[0], { x: marginX + 36, y, size: 10, font, color: C_TEXT });
       page.drawText(moneyLabel(unitPrice, currency), { x: 420, y, size: 10, font, color: C_MUTED });
       page.drawText(moneyLabel(totalPrice, currency), { x: 500, y, size: 10, font, color: C_TEXT });
       y -= lineH(10);
 
-      // extra wrapped lines
       for (const extra of nameLines.slice(1)) {
         page.drawText(extra, { x: marginX + 36, y, size: 10, font, color: C_MUTED });
         y -= lineH(10);
@@ -629,13 +617,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   if (!inv?.id) {
     drawText("— No invoice record found yet for this work order —", { size: 10, color: C_MUTED });
-    drawText(
-      "Create an invoice (public.invoices) to show full totals (subtotal/discount/tax/total).",
-      {
-        size: 10,
-        color: C_MUTED,
-      },
-    );
+    drawText("Create an invoice (public.invoices) to show full totals (subtotal/discount/tax/total).", {
+      size: 10,
+      color: C_MUTED,
+    });
   } else {
     drawText(`Subtotal: ${moneyLabel(subtotal, currency)}`, { size: 11 });
     drawText(`Labor: ${moneyLabel(laborCost, currency)}`, { size: 11, color: C_MUTED });
@@ -657,20 +642,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     color: C_HEADER_BG,
   });
 
-  page.drawText(`${shopName} • Invoice`, {
-    x: marginX,
-    y: 14,
-    size: 9,
-    font,
-    color: rgb(0.80, 0.80, 0.80),
-  });
-  page.drawText(`Work Order: ${titleId}`, {
-    x: rightX,
-    y: 14,
-    size: 9,
-    font,
-    color: rgb(0.65, 0.65, 0.65),
-  });
+  page.drawText(`${shopName} • Invoice`, { x: marginX, y: 14, size: 9, font, color: rgb(0.80, 0.80, 0.80) });
+  page.drawText(`Work Order: ${titleId}`, { x: rightX, y: 14, size: 9, font, color: rgb(0.65, 0.65, 0.65) });
 
   const pdfBytes = await pdfDoc.save();
 
