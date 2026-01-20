@@ -21,6 +21,7 @@ const NAV: NavItem[] = [
   { href: "/portal/approvals", label: "Approvals" },
   { href: "/portal/customer-appointments", label: "Appointments" },
   { href: "/portal/history", label: "History" },
+  { href: "/portal/invoices", label: "Invoices" },
   { href: "/portal/vehicles", label: "Vehicles" },
   { href: "/portal/profile", label: "Profile" },
   { href: "/portal/settings", label: "Settings" },
