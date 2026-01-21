@@ -48,6 +48,24 @@ const ActionButton = ({
   </button>
 );
 
+type ProfileScope = Pick<
+  Database["public"]["Tables"]["profiles"]["Row"],
+  "role" | "must_change_password" | "shop_id"
+>;
+
+type ShopBillingScope = Pick<
+  Database["public"]["Tables"]["shops"]["Row"],
+  "stripe_subscription_status" | "stripe_trial_end" | "stripe_current_period_end"
+>;
+
+function daysUntil(iso: string | null): number | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  const diff = t - Date.now();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
@@ -56,6 +74,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+
+  // Billing/trial badge state
+  const [, setShopId] = useState<string | null>(null);
+  const [subStatus, setSubStatus] = useState<string | null>(null);
+  const [trialEndIso, setTrialEndIso] = useState<string | null>(null);
+  const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
+
+  const trialDaysLeft = daysUntil(trialEndIso);
+  const periodDaysLeft = daysUntil(periodEndIso);
 
   const [punchOpen, setPunchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -74,9 +101,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // ✅ Only hide Planner / AI Planner for tech role (everyone else keeps them)
   const isTech = (userRole ?? "").toLowerCase() === "tech";
 
-  // load session user once, load role, & subscribe to messages (main app only)
+  const canSeeAgentConsole =
+    !!userRole &&
+    ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
+
+  // show badge when trialing OR when billing is in a bad state
+  const showBillingBadge =
+    (subStatus ?? "") === "trialing" ||
+    (subStatus ?? "") === "past_due" ||
+    (subStatus ?? "") === "incomplete" ||
+    (subStatus ?? "") === "unpaid";
+
+  // click target for badge -> owner settings billing section
+  const billingHref = "/dashboard/owner/settings#billing";
+
+  // load session user once, load role, billing & subscribe to messages (main app only)
   useEffect(() => {
     if (!isAppRoute) return;
+
+    let cleanup: (() => void) | null = null;
 
     (async () => {
       const {
@@ -88,18 +131,44 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       if (!uid) return;
 
-      // load user role + must_change_password
+      // load user role + must_change_password + shop_id
       try {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role, must_change_password")
+          .select("role, must_change_password, shop_id")
           .eq("id", uid)
-          .single();
+          .single<ProfileScope>();
 
         if (profile?.role) setUserRole(profile.role as string);
         setMustChangePassword(!!profile?.must_change_password);
+
+        const sid = (profile?.shop_id as string | null) ?? null;
+        setShopId(sid);
+
+        // load billing badge info from shop
+        if (sid) {
+          const { data: shop } = await supabase
+            .from("shops")
+            .select(
+              "stripe_subscription_status, stripe_trial_end, stripe_current_period_end",
+            )
+            .eq("id", sid)
+            .maybeSingle<ShopBillingScope>();
+
+          setSubStatus(
+            (shop?.stripe_subscription_status as string | null) ?? null,
+          );
+          setTrialEndIso((shop?.stripe_trial_end as string | null) ?? null);
+          setPeriodEndIso(
+            (shop?.stripe_current_period_end as string | null) ?? null,
+          );
+        } else {
+          setSubStatus(null);
+          setTrialEndIso(null);
+          setPeriodEndIso(null);
+        }
       } catch (err) {
-        console.error("Failed to load profile role for AppShell", err);
+        console.error("Failed to load profile/shop for AppShell", err);
       }
 
       // realtime for incoming messages
@@ -113,17 +182,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             table: "messages",
           },
           (payload) => {
-            const msg =
-              payload.new as Database["public"]["Tables"]["messages"]["Row"] &
-                Partial<{ recipients: string[] }>;
+            const raw = payload.new as unknown;
+            const msg = raw as Database["public"]["Tables"]["messages"]["Row"] & {
+              recipients?: string[] | null;
+            };
 
             // ignore messages I sent
             if (msg.sender_id === uid) return;
 
             // if a recipients array exists, make sure i'm in it
-            if (Array.isArray((msg as any).recipients)) {
-              const recips = (msg as any).recipients as string[];
-              if (!recips.includes(uid)) return;
+            if (Array.isArray(msg.recipients)) {
+              if (!msg.recipients.includes(uid)) return;
             }
 
             // ok, this is for me – open modal on top
@@ -133,11 +202,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         )
         .subscribe();
 
-      return () => {
+      cleanup = () => {
         supabase.removeChannel(channel);
       };
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => cleanup?.();
   }, [supabase, isAppRoute]);
 
   // click-away for shift tracker
@@ -170,10 +240,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const canSeeAgentConsole =
-    !!userRole &&
-    ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
-
   // ✅ PUBLIC / NON-APP ROUTES:
   // Landing, demo funnel, portal, etc. — no dashboard shell, no TabsBridge.
   if (!isAppRoute) {
@@ -184,6 +250,61 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
+
+  // Badge UI (desktop)
+  const BillingBadge = () => {
+    if (!showBillingBadge) return null;
+
+    const goToBilling = () => {
+      router.push(billingHref);
+    };
+
+    if ((subStatus ?? "") === "trialing") {
+      const label =
+        typeof trialDaysLeft === "number"
+          ? trialDaysLeft <= 0
+            ? "Ends today"
+            : `${trialDaysLeft} days left`
+          : "Active";
+
+      return (
+        <button
+          type="button"
+          onClick={goToBilling}
+          title="Open billing details"
+          className="mr-2 hidden lg:flex items-center"
+        >
+          <div className="rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] font-semibold text-neutral-200 shadow-sm backdrop-blur transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/70">
+            <span className="text-[color:var(--accent-copper-light)]">Trial</span>
+            <span className="ml-2 text-neutral-300">{label}</span>
+          </div>
+        </button>
+      );
+    }
+
+    const statusLabel = String(subStatus ?? "unknown").toUpperCase();
+    const dueLabel =
+      typeof periodDaysLeft === "number"
+        ? periodDaysLeft <= 0
+          ? "Due now"
+          : `${periodDaysLeft} days`
+        : "";
+
+    return (
+      <button
+        type="button"
+        onClick={goToBilling}
+        title="Open billing details"
+        className="mr-2 hidden lg:flex items-center"
+      >
+        <div className="rounded-full border border-red-500/30 bg-red-950/30 px-3 py-1 text-[11px] font-semibold text-red-100 shadow-sm backdrop-blur transition hover:border-red-400/40">
+          Billing issue:{" "}
+          <span className="ml-1 uppercase tracking-[0.12em]">{statusLabel}</span>
+          {dueLabel ? <span className="ml-2 text-red-200/80">{dueLabel}</span> : null}
+        </div>
+      </button>
+    );
+  };
 
   // ✅ MAIN APP SHELL (dashboard + tabs)
   return (
@@ -253,6 +374,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2">
+              <BillingBadge />
+
               {userId ? (
                 <ActionButton
                   onClick={() => setPunchOpen((p) => !p)}

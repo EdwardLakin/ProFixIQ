@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 
@@ -24,11 +25,40 @@ type HourRow = {
   close_time: string;
   closed?: boolean;
 };
+
 type TimeOffRow = {
   id: string;
   starts_at: string;
   ends_at: string;
   reason: string | null;
+};
+
+type StripeSubStatus =
+  | "incomplete"
+  | "incomplete_expired"
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "unpaid"
+  | "paused"
+  | "unknown";
+
+type ShopBillingScope = Pick<
+  Database["public"]["Tables"]["shops"]["Row"],
+  "stripe_subscription_status" | "stripe_trial_end" | "stripe_current_period_end"
+>;
+
+type OrgScope = Pick<
+  Database["public"]["Tables"]["organizations"]["Row"],
+  "id" | "name"
+>;
+
+type ShopLocationRow = Pick<
+  Database["public"]["Tables"]["shops"]["Row"],
+  "id" | "shop_name" | "name" | "city" | "province" | "stripe_subscription_status"
+> & {
+  organization_id?: string | null;
 };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -45,11 +75,72 @@ const TIMEZONES = [
   "America/Halifax",
 ] as const;
 
+function parseStripeStatus(v: unknown): StripeSubStatus {
+  const s = String(v ?? "").trim().toLowerCase();
+  const allowed: StripeSubStatus[] = [
+    "incomplete",
+    "incomplete_expired",
+    "trialing",
+    "active",
+    "past_due",
+    "canceled",
+    "unpaid",
+    "paused",
+    "unknown",
+  ];
+  return (allowed.includes(s as StripeSubStatus) ? s : "unknown") as StripeSubStatus;
+}
+
+function daysUntil(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  const diff = t - Date.now();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "—";
+  return d.toLocaleString();
+}
+
+function formatLocationLine(s: { city: string | null; province: string | null }) {
+  const city = (s.city ?? "").trim();
+  const prov = (s.province ?? "").trim();
+  if (!city && !prov) return "—";
+  if (city && prov) return `${city}, ${prov}`;
+  return city || prov;
+}
+
+function locationName(s: { shop_name?: string | null; name?: string | null }) {
+  return (s.shop_name ?? s.name ?? "").trim() || "Untitled location";
+}
+
 export default function OwnerSettingsPage() {
+  const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [loading, setLoading] = useState(true);
+
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Current active shop
   const [shopId, setShopId] = useState<string | null>(null);
+
+  // Organization (multi-location)
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [orgName, setOrgName] = useState<string>("");
+  const [locations, setLocations] = useState<ShopLocationRow[]>([]);
+
+  // Billing status (for badge deep-link)
+  const [subStatus, setSubStatus] = useState<StripeSubStatus>("unknown");
+  const [trialEndIso, setTrialEndIso] = useState<string | null>(null);
+  const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
+
+  const trialDaysLeft = daysUntil(trialEndIso);
+  const periodDaysLeft = daysUntil(periodEndIso);
 
   // PIN modal + timer
   const [pinModalOpen, setPinModalOpen] = useState(false);
@@ -125,150 +216,6 @@ export default function OwnerSettingsPage() {
     country === "CA" ? "Tax rate (GST/PST/HST %)" : "Tax rate (Sales tax %)";
   const currency = country === "CA" ? "CAD" : "USD";
 
-  // initial load
-  useEffect(() => {
-    const fetchSettings = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      const { data: profile, error: profErr } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profErr) {
-        toast.error(profErr.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!profile?.shop_id) {
-        setLoading(false);
-        return;
-      }
-
-      const sid = profile.shop_id;
-      setShopId(sid);
-
-      // core shop row
-      const { data: shop, error } = await supabase
-        .from("shops")
-        .select("*")
-        .eq("id", sid)
-        .maybeSingle();
-
-      if (error) toast.error(error.message);
-
-      if (shop) {
-        // ✅ fix: prefer shop_name, fall back to name/business_name
-        const resolvedShopName =
-          (shop.shop_name as string | null) ||
-          (shop.name as string | null) ||
-          (shop.business_name as string | null) ||
-          "";
-        setShopName(resolvedShopName);
-
-        // ✅ fix: prefer street, fall back to address
-        const resolvedStreet =
-          (shop.street as string | null) ||
-          (shop.address as string | null) ||
-          "";
-        setAddress(resolvedStreet);
-
-        setCity((shop.city as string | null) || "");
-        setProvince((shop.province as string | null) || "");
-        setPostalCode((shop.postal_code as string | null) || "");
-        setPhone((shop.phone_number as string | null) || "");
-        setEmail((shop.email as string | null) || "");
-        setLogoUrl((shop.logo_url as string | null) || "");
-
-        const c = (shop.country as string | null) || "US";
-        setCountry(c === "CA" ? "CA" : "US");
-
-        setTimezone((shop.timezone as string | null) || "America/New_York");
-
-        setLaborRate(
-          typeof shop.labor_rate === "number" ? String(shop.labor_rate) : "",
-        );
-        setSuppliesPercent(
-          typeof shop.supplies_percent === "number"
-            ? String(shop.supplies_percent)
-            : "",
-        );
-        setDiagnosticFee(
-          typeof shop.diagnostic_fee === "number"
-            ? String(shop.diagnostic_fee)
-            : "",
-        );
-        setTaxRate(typeof shop.tax_rate === "number" ? String(shop.tax_rate) : "");
-
-        setUseAi(!!shop.use_ai);
-        setRequireCauseCorrection(!!shop.require_cause_correction);
-        setRequireAuthorization(!!shop.require_authorization);
-
-        setInvoiceTerms((shop.invoice_terms as string | null) || "");
-        setInvoiceFooter((shop.invoice_footer as string | null) || "");
-        setEmailOnComplete(!!shop.email_on_complete);
-
-        setAutoGeneratePdf(!!shop.auto_generate_pdf);
-        setAutoSendQuoteEmail(!!shop.auto_send_quote_email);
-      }
-
-      // hours
-      try {
-        const res = await fetch(`/api/settings/hours?shopId=${sid}`, {
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const j = await res.json();
-          if (Array.isArray(j?.hours)) {
-            const byDay = new Map<number, HourRow>();
-            (j.hours as HourRow[]).forEach((h) =>
-              byDay.set(h.weekday, { ...h, closed: false }),
-            );
-            const normalized = Array.from({ length: 7 }, (_, i) => {
-              const existing = byDay.get(i);
-              if (existing) return existing;
-              return {
-                weekday: i,
-                open_time: "08:00",
-                close_time: "17:00",
-                closed: true,
-              };
-            });
-            setHours(normalized);
-          }
-        }
-      } catch {
-        // ignore
-      }
-
-      // time off
-      try {
-        const res = await fetch(`/api/settings/time-off?shopId=${sid}`, {
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const j = await res.json();
-          if (Array.isArray(j?.items)) setTimeOff(j.items);
-        }
-      } catch {
-        // ignore
-      }
-
-      setLoading(false);
-    };
-
-    void fetchSettings();
-  }, [supabase]);
-
   const guardUnlock = () => {
     if (!isUnlocked) {
       toast.warning("Unlock with Owner PIN first.");
@@ -277,6 +224,175 @@ export default function OwnerSettingsPage() {
     }
     return true;
   };
+
+  const fetchSettings = useCallback(async () => {
+    setLoading(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const uid = user?.id ?? null;
+    setUserId(uid);
+
+    if (!uid) {
+      setLoading(false);
+      return;
+    }
+
+    const { data: profile, error: profErr } = await supabase
+      .from("profiles")
+      .select("shop_id, organization_id")
+      .eq("id", uid)
+      .maybeSingle<{ shop_id: string | null; organization_id: string | null }>();
+
+    if (profErr) {
+      toast.error(profErr.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!profile?.shop_id) {
+      setLoading(false);
+      return;
+    }
+
+    const sid = profile.shop_id;
+    setShopId(sid);
+
+    // core shop row (also pull org_id from shop if present)
+    const { data: shop, error } = await supabase
+      .from("shops")
+      .select("*")
+      .eq("id", sid)
+      .maybeSingle();
+
+    if (error) toast.error(error.message);
+
+    if (shop) {
+      // ✅ fix: prefer shop_name, fall back to name/business_name
+      const resolvedShopName =
+        (shop.shop_name as string | null) ||
+        (shop.name as string | null) ||
+        (shop.business_name as string | null) ||
+        "";
+      setShopName(resolvedShopName);
+
+      // ✅ fix: prefer street, fall back to address
+      const resolvedStreet =
+        (shop.street as string | null) || (shop.address as string | null) || "";
+      setAddress(resolvedStreet);
+
+      setCity((shop.city as string | null) || "");
+      setProvince((shop.province as string | null) || "");
+      setPostalCode((shop.postal_code as string | null) || "");
+      setPhone((shop.phone_number as string | null) || "");
+      setEmail((shop.email as string | null) || "");
+      setLogoUrl((shop.logo_url as string | null) || "");
+
+      const c = (shop.country as string | null) || "US";
+      setCountry(c === "CA" ? "CA" : "US");
+
+      setTimezone((shop.timezone as string | null) || "America/New_York");
+
+      setLaborRate(typeof shop.labor_rate === "number" ? String(shop.labor_rate) : "");
+      setSuppliesPercent(
+        typeof shop.supplies_percent === "number" ? String(shop.supplies_percent) : "",
+      );
+      setDiagnosticFee(
+        typeof shop.diagnostic_fee === "number" ? String(shop.diagnostic_fee) : "",
+      );
+      setTaxRate(typeof shop.tax_rate === "number" ? String(shop.tax_rate) : "");
+
+      setUseAi(!!shop.use_ai);
+      setRequireCauseCorrection(!!shop.require_cause_correction);
+      setRequireAuthorization(!!shop.require_authorization);
+
+      setInvoiceTerms((shop.invoice_terms as string | null) || "");
+      setInvoiceFooter((shop.invoice_footer as string | null) || "");
+      setEmailOnComplete(!!shop.email_on_complete);
+
+      setAutoGeneratePdf(!!shop.auto_generate_pdf);
+      setAutoSendQuoteEmail(!!shop.auto_send_quote_email);
+    }
+
+    // billing fields (minimal select with strict pick)
+    const { data: billing } = await supabase
+      .from("shops")
+      .select("stripe_subscription_status, stripe_trial_end, stripe_current_period_end")
+      .eq("id", sid)
+      .maybeSingle<ShopBillingScope>();
+
+    setSubStatus(parseStripeStatus(billing?.stripe_subscription_status));
+    setTrialEndIso((billing?.stripe_trial_end as string | null) ?? null);
+    setPeriodEndIso((billing?.stripe_current_period_end as string | null) ?? null);
+
+    // Organization + Locations
+    const resolvedOrgId =
+      (shop?.organization_id as string | null) ?? profile.organization_id ?? null;
+
+    setOrgId(resolvedOrgId);
+
+    if (resolvedOrgId) {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("id, name")
+        .eq("id", resolvedOrgId)
+        .maybeSingle<OrgScope>();
+
+      setOrgName((org?.name ?? "").trim());
+
+      const { data: locs } = await supabase
+        .from("shops")
+        .select("id, shop_name, name, city, province, stripe_subscription_status, organization_id")
+        .eq("organization_id", resolvedOrgId)
+        .order("created_at", { ascending: true })
+        .returns<ShopLocationRow[]>();
+
+      setLocations(Array.isArray(locs) ? locs : []);
+    } else {
+      setOrgName("");
+      setLocations([]);
+    }
+
+    // hours
+    try {
+      const res = await fetch(`/api/settings/hours?shopId=${sid}`, { cache: "no-store" });
+      if (res.ok) {
+        const j = await res.json();
+        if (Array.isArray(j?.hours)) {
+          const byDay = new Map<number, HourRow>();
+          (j.hours as HourRow[]).forEach((h) => byDay.set(h.weekday, { ...h, closed: false }));
+          const normalized = Array.from({ length: 7 }, (_, i) => {
+            const existing = byDay.get(i);
+            if (existing) return existing;
+            return { weekday: i, open_time: "08:00", close_time: "17:00", closed: true };
+          });
+          setHours(normalized);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // time off
+    try {
+      const res = await fetch(`/api/settings/time-off?shopId=${sid}`, { cache: "no-store" });
+      if (res.ok) {
+        const j = await res.json();
+        if (Array.isArray(j?.items)) setTimeOff(j.items);
+      }
+    } catch {
+      // ignore
+    }
+
+    setLoading(false);
+  }, [supabase]);
+
+  // initial load
+  useEffect(() => {
+    void fetchSettings();
+  }, [fetchSettings]);
 
   const handleSave = async () => {
     if (!shopId) return;
@@ -412,9 +528,7 @@ export default function OwnerSettingsPage() {
     setNewOffReason("");
 
     try {
-      const r = await fetch(`/api/settings/time-off?shopId=${shopId}`, {
-        cache: "no-store",
-      });
+      const r = await fetch(`/api/settings/time-off?shopId=${shopId}`, { cache: "no-store" });
       if (r.ok) {
         const jj = await r.json();
         setTimeOff(jj.items || []);
@@ -446,19 +560,91 @@ export default function OwnerSettingsPage() {
     toast.success("Removed.");
   };
 
+  const switchLocation = async (nextShopId: string) => {
+    if (!userId) return;
+    if (!guardUnlock()) return;
+
+    if (nextShopId === shopId) return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        shop_id: nextShopId,
+        organization_id: orgId,
+      } as unknown as Database["public"]["Tables"]["profiles"]["Update"])
+      .eq("id", userId);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Switched location.");
+    // Refresh the page state + any server components / cached queries
+    await fetchSettings();
+    router.refresh();
+  };
+
   if (loading) {
-    return (
-      <div className="p-6 text-muted-foreground">Loading shop settings…</div>
-    );
+    return <div className="p-6 text-muted-foreground">Loading shop settings…</div>;
   }
+
+  const billingPill = (() => {
+    const base =
+      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold";
+    if (subStatus === "trialing") {
+      const label =
+        typeof trialDaysLeft === "number"
+          ? trialDaysLeft <= 0
+            ? "Ends today"
+            : `${trialDaysLeft} days left`
+          : "Active";
+      return (
+        <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
+          <span className="text-[color:var(--accent-copper-light)]">Trial</span>
+          <span className="text-neutral-300">{label}</span>
+        </span>
+      );
+    }
+    if (subStatus === "active") {
+      return (
+        <span className={`${base} border-emerald-500/20 bg-emerald-950/20 text-emerald-100`}>
+          Active
+        </span>
+      );
+    }
+    if (subStatus === "past_due" || subStatus === "unpaid" || subStatus === "incomplete") {
+      const due =
+        typeof periodDaysLeft === "number"
+          ? periodDaysLeft <= 0
+            ? "Due now"
+            : `Due in ${periodDaysLeft} days`
+          : "Action needed";
+      return (
+        <span className={`${base} border-red-500/25 bg-red-950/25 text-red-100`}>
+          Billing issue • {due}
+        </span>
+      );
+    }
+    if (subStatus === "canceled") {
+      return (
+        <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
+          Canceled
+        </span>
+      );
+    }
+    return (
+      <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
+        Status: {String(subStatus).toUpperCase()}
+      </span>
+    );
+  })();
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 text-foreground">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
         <div>
-          <h1 className="text-2xl font-blackops text-orange-400">
-            Shop Settings
-          </h1>
+          <h1 className="text-2xl font-blackops text-orange-400">Shop Settings</h1>
           <p className="text-xs text-neutral-400">
             Location (US/CA), billing defaults, and scheduling.
           </p>
@@ -473,6 +659,167 @@ export default function OwnerSettingsPage() {
           </Button>
         </div>
       </div>
+
+      {/* ✅ Organization + Locations */}
+      <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-50">Organization</h2>
+            <p className="text-[11px] text-neutral-400">
+              Manage multi-location accounts. Each location is billed separately.
+            </p>
+          </div>
+          <div className="text-xs text-neutral-300">
+            {orgId ? (
+              <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
+                Org: <span className="text-neutral-100">{orgName || "—"}</span>
+              </span>
+            ) : (
+              <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
+                No organization linked
+              </span>
+            )}
+          </div>
+        </div>
+
+        {orgId ? (
+          <>
+            <div className="grid gap-2 md:grid-cols-3 text-sm">
+              <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+                <div className="text-[11px] text-neutral-400">Organization name</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {orgName || "—"}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+                <div className="text-[11px] text-neutral-400">Organization ID</div>
+                <div className="mt-1 truncate text-sm font-semibold text-neutral-100">
+                  {orgId}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+                <div className="text-[11px] text-neutral-400">Locations</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  {locations.length}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-neutral-200">Locations</div>
+
+              {locations.length === 0 ? (
+                <div className="text-xs text-neutral-500">No locations found.</div>
+              ) : (
+                <ul className="space-y-2">
+                  {locations.map((loc) => {
+                    const isCurrent = loc.id === shopId;
+                    const status = parseStripeStatus(loc.stripe_subscription_status);
+                    const statusChip =
+                      status === "active" ? (
+                        <span className="rounded-full border border-emerald-500/20 bg-emerald-950/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-100">
+                          ACTIVE
+                        </span>
+                      ) : status === "trialing" ? (
+                        <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] font-semibold text-neutral-200">
+                          TRIAL
+                        </span>
+                      ) : status === "past_due" ||
+                        status === "unpaid" ||
+                        status === "incomplete" ? (
+                        <span className="rounded-full border border-red-500/25 bg-red-950/25 px-2 py-0.5 text-[10px] font-semibold text-red-100">
+                          BILLING ISSUE
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] font-semibold text-neutral-200">
+                          {String(status).toUpperCase()}
+                        </span>
+                      );
+
+                    return (
+                      <li
+                        key={loc.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="truncate text-sm font-semibold text-neutral-100">
+                              {locationName(loc)}
+                            </div>
+                            {statusChip}
+                            {isCurrent ? (
+                              <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] font-semibold text-neutral-200">
+                                CURRENT
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-neutral-400">
+                            {formatLocationLine({ city: loc.city ?? null, province: loc.province ?? null })}
+                          </div>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          variant={isCurrent ? "secondary" : "default"}
+                          disabled={!isUnlocked || isCurrent}
+                          onClick={() => void switchLocation(loc.id)}
+                        >
+                          {isCurrent ? "Selected" : "Switch"}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="text-xs text-neutral-500">
+            This account is not linked to an organization yet.
+          </div>
+        )}
+      </section>
+
+      {/* ✅ Billing section target for AppShell badge */}
+      <section
+        id="billing"
+        className="space-y-3 rounded-xl border border-border bg-card p-4"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-50">Billing</h2>
+            <p className="text-[11px] text-neutral-400">
+              Subscription status and trial/renewal timing for this location.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">{billingPill}</div>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-3 text-sm">
+          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+            <div className="text-[11px] text-neutral-400">Status</div>
+            <div className="mt-1 text-sm font-semibold text-neutral-100">
+              {String(subStatus).toUpperCase()}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+            <div className="text-[11px] text-neutral-400">Trial ends</div>
+            <div className="mt-1 text-sm font-semibold text-neutral-100">
+              {formatDate(trialEndIso)}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+            <div className="text-[11px] text-neutral-400">Current period ends</div>
+            <div className="mt-1 text-sm font-semibold text-neutral-100">
+              {formatDate(periodEndIso)}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex-1 space-y-6">
@@ -787,9 +1134,7 @@ export default function OwnerSettingsPage() {
           </section>
 
           <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-            <h2 className="text-sm font-semibold text-neutral-50">
-              Time off / blackouts
-            </h2>
+            <h2 className="text-sm font-semibold text-neutral-50">Time off / blackouts</h2>
 
             <div className="grid gap-2 md:grid-cols-4">
               <input
@@ -834,9 +1179,7 @@ export default function OwnerSettingsPage() {
                           {start.toLocaleString()} → {end.toLocaleString()}
                         </div>
                         {t.reason && (
-                          <div className="text-xs text-neutral-400">
-                            Reason: {t.reason}
-                          </div>
+                          <div className="text-xs text-neutral-400">Reason: {t.reason}</div>
                         )}
                       </div>
                       <Button
@@ -856,18 +1199,12 @@ export default function OwnerSettingsPage() {
         </div>
 
         <div className="w-full space-y-6 lg:w-80">
-          {shopId && (
-            <ShopPublicProfileSection shopId={shopId} isUnlocked={isUnlocked} />
-          )}
+          {shopId && <ShopPublicProfileSection shopId={shopId} isUnlocked={isUnlocked} />}
 
           <section className="space-y-2 rounded-xl border border-border bg-card p-4">
-            <h2 className="text-sm font-semibold text-neutral-50">
-              Invoice preview
-            </h2>
+            <h2 className="text-sm font-semibold text-neutral-50">Invoice preview</h2>
             <div className="space-y-2 rounded bg-white p-3 text-xs text-black shadow">
-              {logoUrl && (
-                <img src={logoUrl} alt="Logo" className="h-12 object-contain" />
-              )}
+              {logoUrl && <img src={logoUrl} alt="Logo" className="h-12 object-contain" />}
               <div className="font-semibold">{shopName || "Your shop name"}</div>
               <div>
                 {address}
@@ -886,12 +1223,9 @@ export default function OwnerSettingsPage() {
 
           {shopId && (
             <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold text-neutral-50">
-                Customer reviews
-              </h2>
+              <h2 className="text-sm font-semibold text-neutral-50">Customer reviews</h2>
               <p className="text-[11px] text-neutral-400">
-                Recent reviews for your shop. Owners/admins/managers can reply
-                directly.
+                Recent reviews for your shop. Owners/admins/managers can reply directly.
               </p>
               <ReviewsList shopId={shopId} />
             </section>
