@@ -1,9 +1,8 @@
-//features/shared/components/PlanSelectionPage.tsx
+// features/shared/components/PlanSelectionPage.tsx
 
 "use client";
 
 import { useMemo, useState } from "react";
-
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -17,6 +16,7 @@ type UiPlan = {
   description: string;
   priceLabel: string;
   features: string[];
+  recommended?: boolean;
 };
 
 export default function PlanSelectionPage() {
@@ -28,28 +28,43 @@ export default function PlanSelectionPage() {
   const PLANS: UiPlan[] = useMemo(
     () => [
       {
-        key: "pro30",
-        name: "Pro",
-        description: "Full system for shops up to 30 users",
-        priceLabel: "$300 / month",
+        key: "starter10",
+        name: "Starter",
+        description: "For small teams (up to 10 users)",
+        priceLabel: "$299 / month",
         features: [
-          "Work orders + invoicing",
-          "Inspections + templates",
-          "Parts + inventory",
-          "AI assistant + diagnostics",
-          "Up to 30 team users",
+          "14-day free trial",
+          "Inspections + templates (measured + photo proof)",
+          "Quotes + approvals + customer portal",
+          "Messaging + role dashboards",
+          "Up to 10 team users",
         ],
+      },
+      {
+        key: "pro50",
+        name: "Pro",
+        description: "Best for most shops (up to 50 users)",
+        priceLabel: "$399 / month",
+        features: [
+          "14-day free trial",
+          "Everything in Starter",
+          "Built for HD + fleet workflows (great for automotive too)",
+          "Automation from inspection → quote",
+          "Up to 50 team users",
+        ],
+        recommended: true,
       },
       {
         key: "unlimited",
         name: "Unlimited",
-        description: "For larger teams (no user cap)",
-        priceLabel: "$500 / month",
+        description: "Per location — no user cap",
+        priceLabel: "$599 / month / location",
         features: [
+          "14-day free trial",
           "Everything in Pro",
-          "Unlimited team users",
-          "Best for multi-tech shops",
-          "Priority feature access (as released)",
+          "Unlimited team users per location",
+          "Best for fleets + larger operations",
+          "Priority support",
         ],
       },
     ],
@@ -72,7 +87,6 @@ export default function PlanSelectionPage() {
         return;
       }
 
-      // You store plan on shop; user limits are enforced by DB triggers now.
       const { data: profile, error: profErr } = await supabase
         .from("profiles")
         .select("shop_id")
@@ -90,15 +104,17 @@ export default function PlanSelectionPage() {
         return;
       }
 
-      // Your /api/stripe/checkout route expects: { planKey: "price_*", shopId, userId? }
-      // We resolve the correct Stripe price server-side via lookup key.
+      // ✅ Your /api/stripe/checkout expects { planKey } (lookup key or price id)
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          lookupKey: PLAN_LOOKUP_KEYS[plan],
+          planKey: PLAN_LOOKUP_KEYS[plan],
           shopId,
           userId: user.id,
+          enableTrial: true,
+          trialDays: 14,
+          applyFoundingDiscount: true,
         }),
       });
 
@@ -122,16 +138,17 @@ export default function PlanSelectionPage() {
           PROFIXIQ BILLING
         </div>
         <h1 className="mt-2 text-3xl sm:text-4xl font-semibold text-neutral-50">
-          Choose your plan
+          Start your free trial
         </h1>
         <p className="mt-2 text-sm text-neutral-300">
-          Burnt copper • glass cards • monthly plans • upgrade anytime.
+          14-day free trial on every plan. Founding Shop discount applies at checkout (6 months
+          discounted).
         </p>
 
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
+        <div className="mt-10 grid gap-6 md:grid-cols-3">
           {PLANS.map((plan) => {
             const active = selectedPlan === plan.key;
-            const primary = plan.key === "unlimited";
+            const primary = Boolean(plan.recommended);
 
             return (
               <button
@@ -159,13 +176,15 @@ export default function PlanSelectionPage() {
 
                   {primary ? (
                     <div className="rounded-full border border-[var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-neutral-200">
-                      Recommended
+                      Most popular
                     </div>
                   ) : null}
                 </div>
 
                 <div className="mt-5 flex items-end gap-2">
-                  <div className="text-3xl font-semibold text-neutral-50">{plan.priceLabel}</div>
+                  <div className="text-3xl font-semibold text-neutral-50">
+                    {plan.priceLabel}
+                  </div>
                 </div>
 
                 <ul className="mt-5 space-y-2 text-sm text-neutral-200">
@@ -186,11 +205,11 @@ export default function PlanSelectionPage() {
                       loading && active ? "opacity-70" : "hover:brightness-110",
                     ].join(" ")}
                   >
-                    {loading && active ? "Starting…" : "Choose plan"}
+                    {loading && active ? "Starting…" : "Start free trial"}
                   </span>
 
                   <span className="text-[11px] text-neutral-400">
-                    Limits enforced automatically.
+                    14-day trial • Founding discount at checkout.
                   </span>
                 </div>
               </button>

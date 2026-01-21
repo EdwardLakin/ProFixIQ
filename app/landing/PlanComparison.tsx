@@ -1,3 +1,5 @@
+// app/landing/PlanComparison.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -18,15 +20,20 @@ type UiPlan = {
   title: string;
   amountCents: number;
   currency: string;
-  interval: string; // "month"
+  interval: "month";
   subtitle: string;
   bullets: string[];
+  recommended: boolean;
 };
 
 function fmtMoney(amountCents: number, currency: string): string {
   const cur = String(currency ?? "usd").toUpperCase();
   const dollars = (amountCents / 100).toFixed(0);
   return `${cur} $${dollars}`;
+}
+
+function isUiPlan(v: UiPlan | null): v is UiPlan {
+  return v !== null;
 }
 
 export default function PlanComparison() {
@@ -38,8 +45,8 @@ export default function PlanComparison() {
     const loadPlans = async () => {
       try {
         const res = await fetch("/api/plans", { cache: "no-store" });
-        const planData = (await res.json()) as StripePrice[];
-        setPrices(Array.isArray(planData) ? planData : []);
+        const planData = (await res.json()) as unknown;
+        setPrices(Array.isArray(planData) ? (planData as StripePrice[]) : []);
       } catch {
         setPrices([]);
       } finally {
@@ -50,79 +57,117 @@ export default function PlanComparison() {
   }, []);
 
   const uiPlans = useMemo<UiPlan[]>(() => {
-    // We only support TWO plans: pro30 + unlimited (monthly)
-    const wanted: Array<{ key: PlanKey; lookup: string }> = [
-      { key: "pro30", lookup: PLAN_LOOKUP_KEYS.pro30 },
-      { key: "unlimited", lookup: PLAN_LOOKUP_KEYS.unlimited },
+    const wanted: Array<{ key: PlanKey; lookup: string; title: string }> = [
+      { key: "starter10", lookup: PLAN_LOOKUP_KEYS.starter10, title: "Starter" },
+      { key: "pro50", lookup: PLAN_LOOKUP_KEYS.pro50, title: "Pro" },
+      { key: "unlimited", lookup: PLAN_LOOKUP_KEYS.unlimited, title: "Unlimited" },
     ];
 
-    // Find active monthly-ish prices by lookup_key
-    const found = wanted
-      .map(({ key, lookup }) => {
+    const found: UiPlan[] = wanted
+      .map(({ key, lookup, title }): UiPlan | null => {
         const match = prices.find((p) => {
           const lk = String(p.lookup_key ?? "").trim();
           const interval = String(p.recurring?.interval ?? "").trim();
-          return lk === lookup && (interval === "month" || interval === "monthly" || interval === "");
+          return (
+            lk === lookup &&
+            (interval === "month" || interval === "monthly" || interval === "")
+          );
         });
 
-        if (!match?.id || typeof match.unit_amount !== "number" || !match.currency) return null;
+        if (
+          !match?.id ||
+          typeof match.unit_amount !== "number" ||
+          !match.currency
+        ) {
+          return null;
+        }
 
-        const base: Omit<UiPlan, "subtitle" | "bullets"> = {
+        const base = {
           key,
           priceId: match.id,
-          title: key === "pro30" ? "Pro" : "Unlimited",
+          title,
           amountCents: match.unit_amount,
           currency: match.currency,
-          interval: "month",
+          interval: "month" as const,
         };
 
-        if (key === "pro30") {
+        if (key === "starter10") {
           return {
             ...base,
-            subtitle: "Up to 30 users • $300 / month",
+            subtitle: "Up to 10 users • 14-day free trial",
             bullets: [
-              "Work orders + invoicing",
-              "Inspections + templates",
-              "Parts + inventory",
-              "AI assistant + diagnostics",
-              "Up to 30 team users",
+              "Measured inspections + photo proof",
+              "Quotes + approvals",
+              "Customer portal",
+              "Internal messaging + role dashboards",
+              "Up to 10 team users",
             ],
+            recommended: false,
+          };
+        }
+
+        if (key === "pro50") {
+          return {
+            ...base,
+            subtitle: "Up to 50 users • 14-day free trial",
+            bullets: [
+              "Everything in Starter",
+              "Built for HD + fleet workflows (works for automotive too)",
+              "Automation from inspection → quote",
+              "Role-based dashboards",
+              "Up to 50 team users",
+            ],
+            recommended: true,
           };
         }
 
         return {
           ...base,
-          subtitle: "Unlimited users • $500 / month",
+          subtitle: "Unlimited users • 14-day free trial",
           bullets: [
             "Everything in Pro",
-            "Unlimited team users",
-            "Best for multi-tech shops",
-            "Priority feature access (as released)",
+            "Unlimited users per location",
+            "Best for fleets + larger operations",
+            "Multi-role teams (dispatch/ops/parts/advisors/techs)",
+            "Priority support",
           ],
+          recommended: false,
         };
       })
-      .filter((x): x is UiPlan => Boolean(x));
+      .filter(isUiPlan);
 
-    // Keep fixed order
-    const order: PlanKey[] = ["pro30", "unlimited"];
-    found.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+    const order: PlanKey[] = ["starter10", "pro50", "unlimited"];
+    const orderIndex: Record<PlanKey, number> = {
+      starter10: 0,
+      pro50: 1,
+      unlimited: 2,
+    };
+
+    found.sort((a, b) => (orderIndex[a.key] ?? order.length) - (orderIndex[b.key] ?? order.length));
 
     return found;
   }, [prices]);
 
-  async function handleCheckout(priceId: string) {
+  async function handleCheckout(lookupKey: string) {
     if (busyId) return;
-    setBusyId(priceId);
+    setBusyId(lookupKey);
 
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Server route in your app expects planKey (Stripe price id)
-        body: JSON.stringify({ planKey: priceId }),
+        body: JSON.stringify({
+          planKey: lookupKey,
+          enableTrial: true,
+          trialDays: 14,
+          applyFoundingDiscount: true,
+        }),
       });
 
-      const j = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+      const j = (await res.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+      };
 
       if (!res.ok || !j.url) {
         alert(j.error || "Checkout failed");
@@ -136,59 +181,56 @@ export default function PlanComparison() {
   }
 
   return (
-    <section className="px-4 py-14 text-neutral-100 bg-[radial-gradient(circle_at_top,_#050910,_#020308_60%,_#000)]">
+    <section className="bg-[radial-gradient(circle_at_top,_#050910,_#020308_60%,_#000)] px-4 py-14 text-neutral-100">
       <div className="mx-auto w-full max-w-6xl">
         <div className="text-center">
           <div className="font-blackops text-[0.75rem] tracking-[0.28em] text-neutral-300">
             PROFIXIQ PLANS
           </div>
-          <h2 className="mt-2 text-3xl sm:text-4xl font-semibold text-neutral-50">
+          <h2 className="mt-2 text-3xl font-semibold text-neutral-50 sm:text-4xl">
             Simple pricing for real shops
           </h2>
           <p className="mt-2 text-sm text-neutral-300">
-            Two plans. Monthly only. Upgrade anytime.
+            14-day free trial on every plan. Founding Shop discount applies at checkout
+            (6 months discounted).
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-3">
           {loading ? (
             <>
-              <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.75)] backdrop-blur">
-                <div className="h-6 w-40 rounded bg-white/10" />
-                <div className="mt-3 h-10 w-48 rounded bg-white/10" />
-                <div className="mt-6 space-y-2">
-                  <div className="h-4 w-full rounded bg-white/10" />
-                  <div className="h-4 w-5/6 rounded bg-white/10" />
-                  <div className="h-4 w-2/3 rounded bg-white/10" />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.75)] backdrop-blur"
+                >
+                  <div className="h-6 w-40 rounded bg-white/10" />
+                  <div className="mt-3 h-10 w-48 rounded bg-white/10" />
+                  <div className="mt-6 space-y-2">
+                    <div className="h-4 w-full rounded bg-white/10" />
+                    <div className="h-4 w-5/6 rounded bg-white/10" />
+                    <div className="h-4 w-2/3 rounded bg-white/10" />
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.75)] backdrop-blur">
-                <div className="h-6 w-40 rounded bg-white/10" />
-                <div className="mt-3 h-10 w-48 rounded bg-white/10" />
-                <div className="mt-6 space-y-2">
-                  <div className="h-4 w-full rounded bg-white/10" />
-                  <div className="h-4 w-5/6 rounded bg-white/10" />
-                  <div className="h-4 w-2/3 rounded bg-white/10" />
-                </div>
-              </div>
+              ))}
             </>
           ) : uiPlans.length === 0 ? (
-            <div className="md:col-span-2 rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.75)] backdrop-blur">
+            <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.75)] backdrop-blur md:col-span-3">
               <div className="text-sm text-neutral-200">Plans unavailable.</div>
               <div className="mt-1 text-xs text-neutral-400">
                 Make sure Stripe Prices have the lookup keys:
-                <span className="ml-2 font-mono text-neutral-300">
-                  {PLAN_LOOKUP_KEYS.pro30}
-                </span>
-                <span className="mx-2 text-neutral-500">•</span>
-                <span className="font-mono text-neutral-300">
-                  {PLAN_LOOKUP_KEYS.unlimited}
-                </span>
+                <div className="mt-2 space-y-1 font-mono text-neutral-300">
+                  <div>{PLAN_LOOKUP_KEYS.starter10}</div>
+                  <div>{PLAN_LOOKUP_KEYS.pro50}</div>
+                  <div>{PLAN_LOOKUP_KEYS.unlimited}</div>
+                </div>
               </div>
             </div>
           ) : (
             uiPlans.map((p) => {
-              const primary = p.key === "unlimited";
+              const primary = p.recommended;
+              const lk = PLAN_LOOKUP_KEYS[p.key];
+
               return (
                 <div
                   key={p.priceId}
@@ -210,7 +252,7 @@ export default function PlanComparison() {
 
                     {primary ? (
                       <div className="rounded-full border border-[var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-neutral-200">
-                        Recommended
+                        Most popular
                       </div>
                     ) : null}
                   </div>
@@ -232,19 +274,19 @@ export default function PlanComparison() {
                   </ul>
 
                   <button
-                    onClick={() => handleCheckout(p.priceId)}
-                    disabled={busyId === p.priceId}
+                    onClick={() => void handleCheckout(lk)}
+                    disabled={busyId === lk}
                     className={[
                       "mt-6 w-full rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-black",
                       "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))]",
                       "shadow-[0_0_20px_rgba(212,118,49,0.55)] hover:brightness-110 disabled:opacity-60",
                     ].join(" ")}
                   >
-                    {busyId === p.priceId ? "Starting…" : "Choose plan"}
+                    {busyId === lk ? "Starting…" : "Start free trial"}
                   </button>
 
                   <div className="mt-3 text-[11px] text-neutral-400">
-                    Users are enforced in-app (Pro: 30 • Unlimited: no cap).
+                    14-day free trial • Founding Shop discount applies at checkout.
                   </div>
                 </div>
               );
