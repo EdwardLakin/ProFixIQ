@@ -61,6 +61,17 @@ type ShopLocationRow = Pick<
   organization_id?: string | null;
 };
 
+type PlanName = "starter" | "pro" | "enterprise" | "unlimited" | "unknown";
+
+// ✅ These are your seat caps.
+// Starter & Pro limited. Everything else unlimited.
+const PLAN_LIMITS: Record<Exclude<PlanName, "unknown">, number | null> = {
+  starter: 10,
+  pro: 50,
+  enterprise: null,
+  unlimited: null,
+};
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const TIMEZONES = [
@@ -89,6 +100,30 @@ function parseStripeStatus(v: unknown): StripeSubStatus {
     "unknown",
   ];
   return (allowed.includes(s as StripeSubStatus) ? s : "unknown") as StripeSubStatus;
+}
+
+function parsePlan(v: unknown): PlanName {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (s === "starter") return "starter";
+  if (s === "pro") return "pro";
+  if (s === "enterprise") return "enterprise";
+  if (s === "unlimited") return "unlimited";
+  return "unknown";
+}
+
+function planLabel(p: PlanName): string {
+  if (p === "unknown") return "Starter";
+  return p.charAt(0).toUpperCase() + p.slice(1);
+}
+
+function planSeatLimit(p: PlanName): number | null {
+  const resolved = p === "unknown" ? "starter" : p;
+  return PLAN_LIMITS[resolved as Exclude<PlanName, "unknown">] ?? 10;
+}
+
+function isPlanUserLimitReachedError(err: unknown): boolean {
+  const msg = String((err as { message?: unknown } | null)?.message ?? err ?? "");
+  return msg.includes("PLAN_USER_LIMIT_REACHED");
 }
 
 function daysUntil(iso: string | null | undefined): number | null {
@@ -141,6 +176,11 @@ export default function OwnerSettingsPage() {
 
   const trialDaysLeft = daysUntil(trialEndIso);
   const periodDaysLeft = daysUntil(periodEndIso);
+
+  // ✅ Plan + seats (Starter/Pro limited)
+  const [plan, setPlan] = useState<PlanName>("unknown");
+  const [seatsUsed, setSeatsUsed] = useState<number>(0);
+  const [seatsLimit, setSeatsLimit] = useState<number | null>(planSeatLimit("unknown"));
 
   // PIN modal + timer
   const [pinModalOpen, setPinModalOpen] = useState(false);
@@ -225,6 +265,22 @@ export default function OwnerSettingsPage() {
     return true;
   };
 
+  const maybeToastSeatInfo = (used: number, limit: number | null, p: PlanName) => {
+    if (limit == null) return;
+
+    if (used >= limit) {
+      toast.error(
+        `User limit reached (${used}/${limit}) on ${planLabel(p)}. Upgrade to add more staff.`,
+      );
+      return;
+    }
+
+    const pct = limit > 0 ? used / limit : 0;
+    if (pct >= 0.9) {
+      toast.warning(`Approaching user limit (${used}/${limit}) on ${planLabel(p)}.`);
+    }
+  };
+
   const fetchSettings = useCallback(async () => {
     setLoading(true);
 
@@ -260,7 +316,7 @@ export default function OwnerSettingsPage() {
     const sid = profile.shop_id;
     setShopId(sid);
 
-    // core shop row (also pull org_id from shop if present)
+    // core shop row
     const { data: shop, error } = await supabase
       .from("shops")
       .select("*")
@@ -269,8 +325,30 @@ export default function OwnerSettingsPage() {
 
     if (error) toast.error(error.message);
 
+    // ✅ Plan + seats (Plan comes from shops.plan)
+    const resolvedPlan = parsePlan((shop as { plan?: unknown } | null)?.plan ?? "starter");
+    setPlan(resolvedPlan);
+    setSeatsLimit(planSeatLimit(resolvedPlan));
+
+    // Seats used = # of profiles in this shop
+    try {
+      const { count, error: cErr } = await supabase
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", sid);
+
+      if (cErr) {
+        console.warn("[OwnerSettings] seat count error", cErr);
+      } else {
+        const used = typeof count === "number" ? count : 0;
+        setSeatsUsed(used);
+        maybeToastSeatInfo(used, planSeatLimit(resolvedPlan), resolvedPlan);
+      }
+    } catch (e) {
+      console.warn("[OwnerSettings] seat count exception", e);
+    }
+
     if (shop) {
-      // ✅ fix: prefer shop_name, fall back to name/business_name
       const resolvedShopName =
         (shop.shop_name as string | null) ||
         (shop.name as string | null) ||
@@ -278,7 +356,6 @@ export default function OwnerSettingsPage() {
         "";
       setShopName(resolvedShopName);
 
-      // ✅ fix: prefer street, fall back to address
       const resolvedStreet =
         (shop.street as string | null) || (shop.address as string | null) || "";
       setAddress(resolvedStreet);
@@ -316,7 +393,7 @@ export default function OwnerSettingsPage() {
       setAutoSendQuoteEmail(!!shop.auto_send_quote_email);
     }
 
-    // billing fields (minimal select with strict pick)
+    // billing fields
     const { data: billing } = await supabase
       .from("shops")
       .select("stripe_subscription_status, stripe_trial_end, stripe_current_period_end")
@@ -344,7 +421,9 @@ export default function OwnerSettingsPage() {
 
       const { data: locs } = await supabase
         .from("shops")
-        .select("id, shop_name, name, city, province, stripe_subscription_status, organization_id")
+        .select(
+          "id, shop_name, name, city, province, stripe_subscription_status, organization_id",
+        )
         .eq("organization_id", resolvedOrgId)
         .order("created_at", { ascending: true })
         .returns<ShopLocationRow[]>();
@@ -362,7 +441,9 @@ export default function OwnerSettingsPage() {
         const j = await res.json();
         if (Array.isArray(j?.hours)) {
           const byDay = new Map<number, HourRow>();
-          (j.hours as HourRow[]).forEach((h) => byDay.set(h.weekday, { ...h, closed: false }));
+          (j.hours as HourRow[]).forEach((h) =>
+            byDay.set(h.weekday, { ...h, closed: false }),
+          );
           const normalized = Array.from({ length: 7 }, (_, i) => {
             const existing = byDay.get(i);
             if (existing) return existing;
@@ -394,22 +475,20 @@ export default function OwnerSettingsPage() {
     void fetchSettings();
   }, [fetchSettings]);
 
-  const handleSave = async () => {
+    const handleSave = async () => {
     if (!shopId) return;
     if (!guardUnlock()) return;
 
     const payload = {
       shopId,
       update: {
-        // ✅ NA fields
         country,
         timezone,
 
-        // core
         shop_name: shopName,
-        name: shopName, // keep name synced
+        name: shopName,
         street: address,
-        address, // keep both synced
+        address,
         city,
         province,
         postal_code: postalCode,
@@ -417,13 +496,11 @@ export default function OwnerSettingsPage() {
         email,
         logo_url: logoUrl,
 
-        // money
         labor_rate: laborRate ? parseFloat(laborRate) : null,
         supplies_percent: suppliesPercent ? parseFloat(suppliesPercent) : null,
         diagnostic_fee: diagnosticFee ? parseFloat(diagnosticFee) : null,
         tax_rate: taxRate ? parseFloat(taxRate) : null,
 
-        // flags
         use_ai: useAi,
         require_cause_correction: requireCauseCorrection,
         require_authorization: requireAuthorization,
@@ -528,7 +605,9 @@ export default function OwnerSettingsPage() {
     setNewOffReason("");
 
     try {
-      const r = await fetch(`/api/settings/time-off?shopId=${shopId}`, { cache: "no-store" });
+      const r = await fetch(`/api/settings/time-off?shopId=${shopId}`, {
+        cache: "no-store",
+      });
       if (r.ok) {
         const jj = await r.json();
         setTimeOff(jj.items || []);
@@ -575,23 +654,31 @@ export default function OwnerSettingsPage() {
       .eq("id", userId);
 
     if (error) {
-      toast.error(error.message);
+      if (isPlanUserLimitReachedError(error)) {
+        toast.error(
+          "That location is at its user limit for this plan. Upgrade the location to add more staff.",
+        );
+      } else {
+        toast.error(error.message);
+      }
       return;
     }
 
     toast.success("Switched location.");
-    // Refresh the page state + any server components / cached queries
     await fetchSettings();
     router.refresh();
   };
 
   if (loading) {
-    return <div className="p-6 text-muted-foreground">Loading shop settings…</div>;
+    return (
+      <div className="p-6 text-muted-foreground">Loading shop settings…</div>
+    );
   }
 
   const billingPill = (() => {
     const base =
       "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold";
+
     if (subStatus === "trialing") {
       const label =
         typeof trialDaysLeft === "number"
@@ -606,6 +693,7 @@ export default function OwnerSettingsPage() {
         </span>
       );
     }
+
     if (subStatus === "active") {
       return (
         <span className={`${base} border-emerald-500/20 bg-emerald-950/20 text-emerald-100`}>
@@ -613,6 +701,7 @@ export default function OwnerSettingsPage() {
         </span>
       );
     }
+
     if (subStatus === "past_due" || subStatus === "unpaid" || subStatus === "incomplete") {
       const due =
         typeof periodDaysLeft === "number"
@@ -626,6 +715,7 @@ export default function OwnerSettingsPage() {
         </span>
       );
     }
+
     if (subStatus === "canceled") {
       return (
         <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
@@ -633,6 +723,7 @@ export default function OwnerSettingsPage() {
         </span>
       );
     }
+
     return (
       <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
         Status: {String(subStatus).toUpperCase()}
@@ -640,7 +731,45 @@ export default function OwnerSettingsPage() {
     );
   })();
 
-  return (
+  const seatLimitLabel =
+    seatsLimit == null ? "Unlimited" : `${seatsUsed}/${seatsLimit}`;
+
+  const seatPill = (() => {
+    const base =
+      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold";
+
+    if (seatsLimit == null) {
+      return (
+        <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
+          Seats: Unlimited
+        </span>
+      );
+    }
+
+    if (seatsUsed >= seatsLimit) {
+      return (
+        <span className={`${base} border-red-500/25 bg-red-950/25 text-red-100`}>
+          Seats: {seatLimitLabel}
+        </span>
+      );
+    }
+
+    if (seatsLimit > 0 && seatsUsed / seatsLimit >= 0.9) {
+      return (
+        <span className={`${base} border-amber-500/25 bg-amber-950/20 text-amber-100`}>
+          Seats: {seatLimitLabel}
+        </span>
+      );
+    }
+
+    return (
+      <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
+        Seats: {seatLimitLabel}
+      </span>
+    );
+  })();
+
+    return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 text-foreground">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
         <div>
@@ -659,6 +788,49 @@ export default function OwnerSettingsPage() {
           </Button>
         </div>
       </div>
+
+      {/* ✅ Plan + Seats */}
+      <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-50">Plan & seats</h2>
+            <p className="text-[11px] text-neutral-400">
+              Staff users are counted from{" "}
+              <span className="font-mono">profiles</span> for this shop. Starter and
+              Pro are limited.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+              Plan: <span className="text-neutral-100">{planLabel(plan)}</span>
+            </span>
+            {seatPill}
+          </div>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-3 text-sm">
+          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+            <div className="text-[11px] text-neutral-400">Seats used</div>
+            <div className="mt-1 text-sm font-semibold text-neutral-100">
+              {seatsUsed}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+            <div className="text-[11px] text-neutral-400">Seat limit</div>
+            <div className="mt-1 text-sm font-semibold text-neutral-100">
+              {seatsLimit == null ? "Unlimited" : seatsLimit}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+            <div className="text-[11px] text-neutral-400">Remaining</div>
+            <div className="mt-1 text-sm font-semibold text-neutral-100">
+              {seatsLimit == null ? "—" : Math.max(0, seatsLimit - seatsUsed)}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ✅ Organization + Locations */}
       <section className="space-y-3 rounded-xl border border-border bg-card p-4">
@@ -717,6 +889,7 @@ export default function OwnerSettingsPage() {
                   {locations.map((loc) => {
                     const isCurrent = loc.id === shopId;
                     const status = parseStripeStatus(loc.stripe_subscription_status);
+
                     const statusChip =
                       status === "active" ? (
                         <span className="rounded-full border border-emerald-500/20 bg-emerald-950/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-100">
@@ -756,7 +929,10 @@ export default function OwnerSettingsPage() {
                             ) : null}
                           </div>
                           <div className="text-xs text-neutral-400">
-                            {formatLocationLine({ city: loc.city ?? null, province: loc.province ?? null })}
+                            {formatLocationLine({
+                              city: loc.city ?? null,
+                              province: loc.province ?? null,
+                            })}
                           </div>
                         </div>
 
@@ -783,10 +959,7 @@ export default function OwnerSettingsPage() {
       </section>
 
       {/* ✅ Billing section target for AppShell badge */}
-      <section
-        id="billing"
-        className="space-y-3 rounded-xl border border-border bg-card p-4"
-      >
+      <section id="billing" className="space-y-3 rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-neutral-50">Billing</h2>
@@ -944,9 +1117,7 @@ export default function OwnerSettingsPage() {
 
           <div className="grid gap-6 md:grid-cols-2">
             <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold text-neutral-50">
-                Billing defaults
-              </h2>
+              <h2 className="text-sm font-semibold text-neutral-50">Billing defaults</h2>
               <div className="grid gap-2 md:grid-cols-2 text-sm">
                 <Input
                   value={laborRate}
@@ -1008,9 +1179,7 @@ export default function OwnerSettingsPage() {
           </div>
 
           <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-            <h2 className="text-sm font-semibold text-neutral-50">
-              Communication & branding
-            </h2>
+            <h2 className="text-sm font-semibold text-neutral-50">Communication & branding</h2>
             <Input
               value={invoiceTerms}
               onChange={(e) => setInvoiceTerms(e.target.value)}
@@ -1093,9 +1262,7 @@ export default function OwnerSettingsPage() {
                         Closed
                       </label>
                     </div>
-                    <label className="mb-1 block text-[10px] text-neutral-400">
-                      Open
-                    </label>
+                    <label className="mb-1 block text-[10px] text-neutral-400">Open</label>
                     <input
                       type="time"
                       className="mb-2 w-full rounded bg-neutral-950 px-2 py-1 text-xs text-neutral-100 disabled:opacity-40"
@@ -1110,9 +1277,7 @@ export default function OwnerSettingsPage() {
                       }}
                       disabled={!isUnlocked || closed}
                     />
-                    <label className="mb-1 block text-[10px] text-neutral-400">
-                      Close
-                    </label>
+                    <label className="mb-1 block text-[10px] text-neutral-400">Close</label>
                     <input
                       type="time"
                       className="w-full rounded bg-neutral-950 px-2 py-1 text-xs text-neutral-100 disabled:opacity-40"
@@ -1199,12 +1364,16 @@ export default function OwnerSettingsPage() {
         </div>
 
         <div className="w-full space-y-6 lg:w-80">
-          {shopId && <ShopPublicProfileSection shopId={shopId} isUnlocked={isUnlocked} />}
+          {shopId && (
+            <ShopPublicProfileSection shopId={shopId} isUnlocked={isUnlocked} />
+          )}
 
           <section className="space-y-2 rounded-xl border border-border bg-card p-4">
             <h2 className="text-sm font-semibold text-neutral-50">Invoice preview</h2>
             <div className="space-y-2 rounded bg-white p-3 text-xs text-black shadow">
-              {logoUrl && <img src={logoUrl} alt="Logo" className="h-12 object-contain" />}
+              {logoUrl && (
+                <img src={logoUrl} alt="Logo" className="h-12 object-contain" />
+              )}
               <div className="font-semibold">{shopName || "Your shop name"}</div>
               <div>
                 {address}
