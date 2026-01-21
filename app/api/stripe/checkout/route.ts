@@ -23,6 +23,11 @@ type CheckoutPayload = {
   userId?: string | null;
   successPath?: string;
   cancelPath?: string;
+
+  // Trial + founding controls
+  enableTrial?: boolean; // default true
+  trialDays?: number; // default env STRIPE_TRIAL_DAYS or 14
+  applyFoundingDiscount?: boolean; // default true if coupon exists
 };
 
 async function resolvePriceId(input: string): Promise<string | null> {
@@ -42,6 +47,21 @@ async function resolvePriceId(input: string): Promise<string | null> {
   return price?.id ?? null;
 }
 
+function clampTrialDays(v: unknown, fallback: number): number {
+  const n = typeof v === "number" ? Math.trunc(v) : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  if (n < 1) return 1;
+  if (n > 60) return 60;
+  return n;
+}
+
+function envTrialDays(): number {
+  const raw = String(process.env.STRIPE_TRIAL_DAYS ?? "").trim();
+  const n = Math.trunc(Number(raw));
+  if (!Number.isFinite(n) || n <= 0) return 14;
+  return clampTrialDays(n, 14);
+}
+
 export async function POST(req: Request) {
   try {
     if (!process.env.STRIPE_SECRET_KEY) {
@@ -58,7 +78,10 @@ export async function POST(req: Request) {
 
     const raw = String(body.priceId ?? body.planKey ?? "").trim();
     if (!raw) {
-      return NextResponse.json({ error: "Missing price identifier" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing price identifier" },
+        { status: 400 },
+      );
     }
 
     const priceId = await resolvePriceId(raw);
@@ -81,12 +104,37 @@ export async function POST(req: Request) {
       body.cancelPath?.startsWith("/") ? body.cancelPath : "/subscribe"
     }`;
 
+    // Trial defaults ON (14 days)
+    const enableTrial = body.enableTrial !== false;
+    const trialDays = clampTrialDays(body.trialDays, envTrialDays());
+
+    // Founding discount (coupon id)
+    // Prefer env STRIPE_FOUNDING_COUPON_ID; fallback to your provided id.
+    const couponId = String(
+      process.env.STRIPE_FOUNDING_COUPON_ID ?? "7rhJRj31",
+    ).trim();
+
+    const applyFounding =
+      Boolean(couponId) && body.applyFoundingDiscount !== false;
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: successUrl,
       cancel_url: cancelUrl,
+      subscription_data: {
+        ...(enableTrial ? { trial_period_days: trialDays } : {}),
+        ...(applyFounding ? { discounts: [{ coupon: couponId }] } : {}),
+        metadata: {
+          shop_id: body.shopId ? String(body.shopId).trim() : "",
+          supabaseUserId: body.userId ? String(body.userId).trim() : "",
+          purpose: "profixiq_subscription",
+          founding_discount_applied: applyFounding ? "true" : "false",
+          trial_enabled: enableTrial ? "true" : "false",
+          trial_days: enableTrial ? String(trialDays) : "0",
+        },
+      },
       metadata: {
         shop_id: body.shopId ? String(body.shopId).trim() : "",
         supabaseUserId: body.userId ? String(body.userId).trim() : "",

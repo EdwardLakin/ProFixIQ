@@ -1,3 +1,5 @@
+//features/stripe/components/CustomerPaymentButton.tsx
+
 "use client";
 
 import { useMemo, useState } from "react";

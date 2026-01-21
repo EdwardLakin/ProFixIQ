@@ -2,42 +2,50 @@
 
 export const STRIPE_PLATFORM_FEE_BPS = 300; // 3.00%
 
-export type PlanKey = "pro30" | "unlimited";
+export type PlanKey = "starter10" | "pro50" | "unlimited";
 
 /**
- * Preferred: lookup keys (what you want to wire).
- * These must match Stripe "Lookup key" values exactly.
+ * Stripe Price lookup keys (must match Stripe exactly).
+ * Note: your Unlimited lookup key has a "1" suffix to avoid conflicts.
  */
 export const PLAN_LOOKUP_KEYS: Record<PlanKey, string> = {
-  pro30: "profixiq_pro30_monthly",
-  unlimited: "profixiq_unlimited_monthly",
+  starter10: "profixiq_starter10_monthly",
+  pro50: "profixiq_pro50_monthly",
+  unlimited: "profixiq_unlimited_monthly1",
 };
 
 /**
- * Kept for backwards compatibility (other files import this).
+ * User limits for each plan (enforced in your app).
  */
 export const PLAN_LIMITS: Record<PlanKey, number> = {
-  pro30: 30,
+  starter10: 10,
+  pro50: 50,
   unlimited: Number.MAX_SAFE_INTEGER,
 };
 
 /**
- * Kept for UI display + backwards compatibility.
+ * UI pricing display (Stripe is source of truth, but this powers labels).
  */
 export const PLAN_PRICING: Record<PlanKey, number> = {
-  pro30: 300,
-  unlimited: 500,
+  starter10: 299,
+  pro50: 399,
+  unlimited: 599,
 };
 
 /**
- * Direct Stripe Price IDs (used by Checkout session line_items.price).
- * Even if you use lookup keys in UI, the server can still resolve to a price id.
+ * Direct Stripe Price IDs (optional but useful for debugging).
+ * Your checkout route supports both:
+ *  - priceId directly
+ *  - lookup key (resolved server-side)
  */
 export const PRICE_IDS: Record<PlanKey, { monthly: string; yearly?: string }> = {
-  pro30: {
-    monthly: "price_1Sefd3ITYwJQigUIf99mYFpY",
+  starter10: {
+    monthly: "price_1Ss2nnITYwJQigUI2m5lzrdK",
+  },
+  pro50: {
+    monthly: "price_1Ss2gpITYwJQigUInZ2YXhqq",
   },
   unlimited: {
-    monthly: "price_1SefiBITYwJQigUIm4AtThRj",
+    monthly: "price_1Ss2kPITYwJQigUImcGOkXu0",
   },
 };

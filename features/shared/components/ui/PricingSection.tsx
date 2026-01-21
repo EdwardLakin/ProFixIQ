@@ -1,4 +1,4 @@
-//features/shared/components/ui/PricingSection.tsx
+// features/shared/components/ui/PricingSection.tsx
 
 "use client";
 
@@ -41,32 +41,49 @@ const COPPER = "var(--pfq-copper)";
 
 const plans: PricingPlan[] = [
   {
-    key: "pro30",
-    title: "Shop HD (up to 50 users)",
-    desc: "For most heavy-duty or mixed shops that need HD inspections, portal, and AI in one place.",
+    key: "starter10",
+    title: "Starter (up to 10 users)",
+    desc: "Perfect for smaller teams getting started — technician-first inspections, quotes, approvals, and customer transparency.",
+    priceLabel: "$299 / month",
+    features: [
+      "14-day free trial included",
+      "Up to 10 users (techs, advisors, parts, admin)",
+      "HD + fleet-ready inspections (works great for automotive too)",
+      "Customer portal + proof-based approvals",
+      "Internal messaging + role-based dashboards",
+    ],
+    featured: false,
+    cta: "Start free trial",
+  },
+  {
+    key: "pro50",
+    title: "Pro (up to 50 users)",
+    desc: "Best for most HD or mixed shops — everything you need to run the shop with less screen time and faster approvals.",
     priceLabel: "$399 / month",
     features: [
-      "All ProFixIQ HD & fleet features included",
+      "14-day free trial included",
       "Up to 50 users (techs, advisors, parts, admin)",
-      "HD inspections, portal, messaging & AI planner",
+      "Measured diagnostic inspections + automation workflows",
+      "Customer portal + fleet programs",
       "Priority support",
     ],
     featured: true,
-    cta: "Start shop plan",
+    cta: "Start free trial",
   },
   {
     key: "unlimited",
-    title: "Fleet / Multi-location",
-    desc: "Unlimited users per location — ideal for larger fleets, municipalities, and multi-site operations.",
+    title: "Unlimited (per location)",
+    desc: "Unlimited users per location — ideal for larger HD operations, fleets, municipalities, and multi-role teams.",
     priceLabel: "$599 / month / location",
     features: [
+      "14-day free trial included",
       "Unlimited users per location",
-      "All HD inspections, portal, and dispatch tools",
-      "Best for fleets, municipalities, and larger operations",
+      "Best for fleets + high-volume operations",
+      "All inspections, portal, messaging, and automation",
       "Priority support",
     ],
     featured: false,
-    cta: "Start fleet plan",
+    cta: "Start free trial",
   },
 ];
 
@@ -74,7 +91,7 @@ const plans: PricingPlan[] = [
 /* Component                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const PricingSection: FC<PricingSectionProps> = ({ onCheckout }) => {
+const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) => {
   const interval: BillingInterval = "monthly";
   const [busyKey, setBusyKey] = useState<PlanKey | null>(null);
 
@@ -102,17 +119,44 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout }) => {
     <div className="w-full">
       {/* Intro */}
       <div className="mx-auto mb-8 max-w-3xl text-center">
-        <p className="text-sm text-neutral-300">
-          No feature gating. HD inspections, fleet programs, portal and AI are
-          included from day one.
-        </p>
-        <p className="mt-2 text-xs text-neutral-500">
-          Onboarding available — pricing finalizes at checkout.
-        </p>
+        <div className="inline-flex flex-col items-center gap-2">
+          <span
+            className="rounded-full border px-3 py-1 text-xs font-semibold"
+            style={{
+              borderColor: "rgba(255,255,255,0.12)",
+              backgroundColor: "rgba(193,102,59,0.16)",
+              color: "var(--accent-copper-light)",
+            }}
+          >
+            14-day free trial • Founding Shop offer (6 months discounted)
+          </span>
+
+          <p className="text-sm text-neutral-300">
+            No feature gating. Inspections, portals, messaging, and automation are
+            included from day one.
+          </p>
+
+          <p className="text-xs text-neutral-500">
+            Start your free trial today — your Founding Shop discount applies at
+            checkout.
+          </p>
+
+          <button
+            type="button"
+            onClick={onStartFree}
+            className={[
+              "mt-2 rounded-xl px-4 py-2 text-sm font-bold text-black transition hover:opacity-95",
+              "disabled:opacity-60 disabled:cursor-not-allowed",
+            ].join(" ")}
+            style={{ backgroundColor: COPPER }}
+          >
+            Start 14-day free trial
+          </button>
+        </div>
       </div>
 
       {/* Plans */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         {plans.map((p) => {
           const isBusy = busyKey === p.key;
 
@@ -187,7 +231,8 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout }) => {
               </button>
 
               <p className="mt-3 text-xs text-neutral-500">
-                Taxes billed per your Stripe setup. Cancel anytime.
+                14-day free trial. Founding discount applies at checkout. Cancel
+                anytime.
               </p>
             </div>
           );
