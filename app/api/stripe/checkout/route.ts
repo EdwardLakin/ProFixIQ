@@ -108,8 +108,7 @@ export async function POST(req: Request) {
     const enableTrial = body.enableTrial !== false;
     const trialDays = clampTrialDays(body.trialDays, envTrialDays());
 
-    // Founding discount (coupon id)
-    // Prefer env STRIPE_FOUNDING_COUPON_ID; fallback to your provided id.
+    // Founding discount coupon
     const couponId = String(
       process.env.STRIPE_FOUNDING_COUPON_ID ?? "7rhJRj31",
     ).trim();
@@ -123,9 +122,12 @@ export async function POST(req: Request) {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: successUrl,
       cancel_url: cancelUrl,
+
+      // ✅ Discounts MUST be top-level (NOT subscription_data.discounts)
+      ...(applyFounding ? { discounts: [{ coupon: couponId }] } : {}),
+
       subscription_data: {
         ...(enableTrial ? { trial_period_days: trialDays } : {}),
-        ...(applyFounding ? { discounts: [{ coupon: couponId }] } : {}),
         metadata: {
           shop_id: body.shopId ? String(body.shopId).trim() : "",
           supabaseUserId: body.userId ? String(body.userId).trim() : "",
@@ -135,6 +137,7 @@ export async function POST(req: Request) {
           trial_days: enableTrial ? String(trialDays) : "0",
         },
       },
+
       metadata: {
         shop_id: body.shopId ? String(body.shopId).trim() : "",
         supabaseUserId: body.userId ? String(body.userId).trim() : "",
