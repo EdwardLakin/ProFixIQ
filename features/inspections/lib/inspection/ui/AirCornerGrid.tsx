@@ -15,6 +15,7 @@ type Props = {
 };
 
 type Side = "Left" | "Right";
+
 type MetricCell = {
   metric: string;
   idx: number;
@@ -22,13 +23,14 @@ type MetricCell = {
   fullLabel: string;
   initial: string;
 };
+
 type AxleGroup = { axle: string; left: MetricCell[]; right: MetricCell[] };
 
 type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
 
 const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
-// ✅ HARD FILTER: AirCornerGrid is brakes-only. Never render tire rows here.
+// ✅ HARD FILTER: brakes-only. Never render tire rows here.
 const isTireMetric = (metric: string) => {
   const m = metric.toLowerCase();
   return m.includes("tire") || m.includes("tread") || m.includes("pressure");
@@ -75,25 +77,15 @@ export default function AirCornerGrid({
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
 
-  const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
-    const m: Record<number, boolean> = {};
-    items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
-    return m;
-  });
-
-  const commit = (idx: number, el: HTMLInputElement | null) => {
-    if (!el) return;
-    const value = el.value;
+  const commit = (idx: number, value: string) => {
     updateItem(sectionIndex, idx, { value });
-    const has = value.trim().length > 0;
-    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
   };
 
-  const count = (cells: MetricCell[]) =>
-    cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
-
   const groups: AxleGroup[] = useMemo(() => {
-    const byAxle = new Map<string, { Left: MetricCell[]; Right: MetricCell[] }>();
+    const byAxle = new Map<
+      string,
+      { Left: MetricCell[]; Right: MetricCell[] }
+    >();
 
     items.forEach((it, idx) => {
       const label = it.item ?? "";
@@ -104,13 +96,13 @@ export default function AirCornerGrid({
       const side = (m.groups.side as Side) || "Left";
       const metric = m.groups.metric.trim();
 
-      // ✅ FIX: never render tire items in the brake grid
+      // ✅ brakes-only (avoid the “tires + brakes” leak when adding an axle)
       if (isTireMetric(metric)) return;
 
       if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
 
       const unit =
-        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
+        (it.unit ?? "").trim() || (unitHint ? unitHint(label).trim() : "");
 
       const cell: MetricCell = {
         metric,
@@ -136,150 +128,151 @@ export default function AirCornerGrid({
 
   const AxleCard = ({ g }: { g: AxleGroup }) => {
     const rows = buildTriplets(g);
-    const filled = count(g.left) + count(g.right);
-    const total = g.left.length + g.right.length;
+
+    // If an axle has no brake items, don't render an empty card.
+    if (!rows.length) return null;
 
     return (
-      <div className="w-full overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+      <div className="w-full overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div
             className="text-base font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-            style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+            style={{
+              fontFamily: "var(--font-blackops), system-ui, sans-serif",
+            }}
           >
             {g.axle}
-          </div>
-
-          <div
-            className="text-[11px] uppercase tracking-[0.16em] text-neutral-500"
-            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-          >
-            {filled}/{total}
           </div>
         </div>
 
         <div className="border-t border-white/10" />
 
-        <div className="px-4 py-2">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-            <div>Left</div>
-            <div className="text-center">Item</div>
-            <div className="text-right">Right</div>
-          </div>
-        </div>
-
+        {/* Match the “table-first” pattern so native TAB behaves consistently */}
         {open && (
-          <div className="divide-y divide-white/10">
-            {rows.map((row, rowIndex) => {
-              const leftUnit =
-                row.left?.unit ??
-                (unitHint ? unitHint(row.left?.fullLabel ?? "") : "") ??
-                "";
-              const rightUnit =
-                row.right?.unit ??
-                (unitHint ? unitHint(row.right?.fullLabel ?? "") : "") ??
-                "";
+          <div className="overflow-x-auto">
+            <div className="inline-block min-w-full align-middle">
+              <table className="min-w-full border-separate border-spacing-y-[2px]">
+                <thead>
+                  <tr className="text-xs text-muted-foreground">
+                    <th className="px-4 py-1.5 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
+                      Item
+                    </th>
+                    <th className="px-4 py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
+                      Left
+                    </th>
+                    <th className="px-4 py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
+                      Right
+                    </th>
+                  </tr>
+                </thead>
 
-              return (
-                <div
-                  key={`${row.metric}-${rowIndex}`}
-                  className="px-4 py-3 transition-colors hover:bg-white/[0.03]"
-                >
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-                    <div>
-                      {row.left ? (
-                        <div className="relative w-full">
-                          <input
-                            defaultValue={row.left.initial}
-                            className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 pr-16 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.75)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                            placeholder="Value"
-                            autoComplete="off"
-                            inputMode="decimal"
-                            onBlur={(e) => commit(row.left!.idx, e.currentTarget)}
-                          />
-                          {leftUnit ? (
-                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
-                              {leftUnit}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="h-[34px]" />
-                      )}
-                    </div>
+                <tbody>
+                  {rows.map((row, rowIndex) => {
+                    const leftUnit = row.left?.unit ?? "";
+                    const rightUnit = row.right?.unit ?? "";
 
-                    <div className="flex min-w-0 items-center justify-center gap-2">
-                      <span
-                        className="truncate text-center text-sm font-semibold text-neutral-100"
-                        style={{
-                          fontFamily:
-                            "var(--font-blackops), system-ui, sans-serif",
-                        }}
-                        title={row.metric}
+                    return (
+                      <tr
+                        key={`${row.metric}-${rowIndex}`}
+                        className="align-middle hover:bg-white/[0.03]"
                       >
-                        {row.metric}
-                      </span>
-                      {onSpecHint && (
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          onClick={() => onSpecHint(row.metric)}
-                          className="rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.16em] text-orange-300 hover:bg-orange-500/20"
-                          title="Show CVIP spec"
-                        >
-                          Spec
-                        </button>
-                      )}
-                    </div>
+                        <td className="px-4 py-1.5 text-sm font-semibold text-foreground">
+                          <div className="flex items-center gap-2">
+                            <span className="leading-tight">{row.metric}</span>
+                            {onSpecHint && (
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => onSpecHint(row.metric)}
+                                className="rounded-full border border-orange-500/50 bg-orange-500/10 px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.16em] text-orange-300 hover:bg-orange-500/20"
+                                title="Show CVIP spec"
+                              >
+                                Spec
+                              </button>
+                            )}
+                          </div>
+                        </td>
 
-                    <div className="justify-self-end">
-                      {row.right ? (
-                        <div className="relative w-full">
-                          <input
-                            defaultValue={row.right.initial}
-                            className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 pr-16 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.75)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                            placeholder="Value"
-                            autoComplete="off"
-                            inputMode="decimal"
-                            onBlur={(e) =>
-                              commit(row.right!.idx, e.currentTarget)
-                            }
-                          />
-                          {rightUnit ? (
-                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
-                              {rightUnit}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="h-[34px]" />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                        <td className="px-4 py-1.5 text-center">
+                          {row.left ? (
+                            <div className="relative w-full max-w-[8.5rem]">
+                              <input
+                                defaultValue={row.left.initial}
+                                className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
+                                placeholder="Value"
+                                autoComplete="off"
+                                inputMode="decimal"
+                                onBlur={(e) =>
+                                  commit(row.left!.idx, e.currentTarget.value)
+                                }
+                              />
+                              {leftUnit ? (
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
+                                  {leftUnit}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className="h-[32px]" />
+                          )}
+                        </td>
+
+                        <td className="px-4 py-1.5 text-center">
+                          {row.right ? (
+                            <div className="relative w-full max-w-[8.5rem]">
+                              <input
+                                defaultValue={row.right.initial}
+                                className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
+                                placeholder="Value"
+                                autoComplete="off"
+                                inputMode="decimal"
+                                onBlur={(e) =>
+                                  commit(row.right!.idx, e.currentTarget.value)
+                                }
+                              />
+                              {rightUnit ? (
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
+                                  {rightUnit}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className="h-[32px]" />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
     );
   };
 
+  // If nothing matched brakes-only, let parent decide fallback
+  if (!groups.length || groups.every((g) => !buildTriplets(g).length)) {
+    return null;
+  }
+
   return (
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-end gap-3 px-1">
         <button
-          onClick={() => setOpen((v) => !v)}
-          className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:border-orange-500 hover:bg-black/80"
-          tabIndex={-1}
           type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-md border border-slate-600/50 bg-slate-900/40 px-2 py-1 text-xs text-slate-100 hover:border-orange-400/70 hover:bg-slate-900/70"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
+          tabIndex={-1}
         >
           {open ? "Collapse" : "Expand"}
         </button>
       </div>
 
-      {onAddAxle && <AddAxlePicker groups={groups} onAddAxle={onAddAxle} />}
+      {onAddAxle ? <AddAxlePicker groups={groups} onAddAxle={onAddAxle} /> : null}
 
       <div className="grid w-full gap-4">
         {groups.map((g) => (
@@ -323,9 +316,10 @@ function AddAxlePicker({
           </option>
         ))}
       </select>
+
       <button
         className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
-        onClick={() => pending && onAddAxle(pending)}
+        onClick={() => (pending ? onAddAxle(pending) : null)}
         disabled={!pending}
         type="button"
       >
