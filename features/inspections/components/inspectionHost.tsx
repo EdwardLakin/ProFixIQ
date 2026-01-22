@@ -10,92 +10,47 @@ import dynamic from "next/dynamic";
 /* ------------------------------------------------------------------ */
 
 export type SpecHintPayload = {
-  /** Where the hint request came from (so the UI can style/anchor it). */
   source:
-    | "air_corner"   // AirCornerGrid (Steer / Drive / Trailer grids)
-    | "corner"       // Hydraulic CornerGrid (LF / RF / LR / RR)
-    | "item"         // Generic line item (non-grid)
-    | "battery"      // Battery grid
+    | "air_corner"
+    | "corner"
+    | "tire"
+    | "item"
+    | "battery"
     | "other";
-
-  /** Raw human label, e.g. "Steer 1 Left Tread Depth" or "Kingpins (play/wear)" */
   label: string;
-
-  /**
-   * Optional canonical CVIP spec key, if the screen can resolve it:
-   * e.g. "tire_tread_steer_min", "kingpin_radial", "brake_lining_front_disc".
-   * Screens can pass null/undefined if they only have the label.
-   */
   specCode?: string | null;
-
-  /** Optional extra context you may want later (axle, corner, etc.) */
   meta?: Record<string, string | number | boolean | null | undefined>;
 };
 
-/** Props our screens accept (now includes params + spec hint callback). */
 export type ScreenProps = {
   embed?: boolean;
-  template?: string;
+  template?: string | null;
   params?: Record<string, string | number | boolean | null | undefined>;
-
-  /**
-   * Optional CVIP spec hint hook.
-   * GenericInspectionScreen / Maintenance50* can call this when a user clicks
-   * “Spec” / “CVIP” / “What’s the fail for this?” on an item.
-   */
   onSpecHint?: (payload: SpecHintPayload) => void;
 };
 
-/** Host props (modal / pages pass these in). */
 export type HostProps = {
-  template: string; // "maintenance50", "maintenance50-air", "custom:abc", "generic", etc.
+  template: string;
   embed?: boolean;
   params?: Record<string, string | number | boolean | null | undefined>;
-
-  /** Bubble hint events up to the modal / page shell (optional). */
   onSpecHint?: (payload: SpecHintPayload) => void;
 };
 
 /* ------------------------------------------------------------------ */
-/* Lazy screens                                                       */
+/* Generic screen (only)                                              */
 /* ------------------------------------------------------------------ */
 
-const Maintenance50 = dynamic<ScreenProps>(
-  () => import("../screens/Maintenance50Screen"),
-);
-const Maintenance50Air = dynamic<ScreenProps>(
-  () => import("../screens/Maintenance50AirScreen"),
-);
 const GenericInspectionScreen = dynamic<ScreenProps>(
   () => import("../screens/GenericInspectionScreen"),
 );
 
 /* ------------------------------------------------------------------ */
-/* Registry (canonical keys)                                         */
-/* ------------------------------------------------------------------ */
-
-const REGISTRY: Record<string, React.ComponentType<ScreenProps>> = {
-  maintenance50: Maintenance50,
-  "maintenance50-air": Maintenance50Air,
-};
-
-/* ------------------------------------------------------------------ */
-/* Normalizer: accept a bunch of aliases safely                       */
+/* Normalizer                                                         */
 /* ------------------------------------------------------------------ */
 
 function normalizeTemplate(input: string): string {
   const raw = input.split("?")[0].split("#")[0];
-  const t = raw.trim().toLowerCase().replace(/[_\s]+/g, "-");
-
-  if (t === "maintenance50-hydraulic" || t === "maintenance-50" || t === "maintenance50-std") {
-    return "maintenance50";
-  }
-
-  if (t === "maintenance50air" || t === "maintenance-50-air" || t === "maintenance50-air") {
-    return "maintenance50-air";
-  }
-
-  return t;
+  return raw.trim().toLowerCase();
 }
 
 /* ------------------------------------------------------------------ */
@@ -109,8 +64,6 @@ export default function InspectionHost({
   onSpecHint,
 }: HostProps) {
   const key = normalizeTemplate(template);
-  const isCustom = key.startsWith("custom:");
-  const Renderer = (!isCustom && REGISTRY[key]) || GenericInspectionScreen;
 
   return (
     <Suspense
@@ -124,7 +77,7 @@ export default function InspectionHost({
         </div>
       }
     >
-      <Renderer
+      <GenericInspectionScreen
         embed={embed}
         template={key}
         params={params}
