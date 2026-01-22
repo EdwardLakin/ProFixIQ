@@ -18,7 +18,6 @@ type Section = { title: string; items: SectionItem[] };
 
 /* ------------------------------------------------------------------ */
 /* Regex helpers to detect existing “corner grid” sections             */
-/* (copied from /features/inspections/app/inspection/run/page.tsx)    */
 /* ------------------------------------------------------------------ */
 
 // LF/RF/LR/RR ...
@@ -52,7 +51,7 @@ function stripExistingCornerGrids(sections: Section[]): Section[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Canonical corner grid builders (labels match AxlesCornerGrid)      */
+/* Canonical corner grid builders                                     */
 /* ------------------------------------------------------------------ */
 
 function buildHydraulicCornerSection(): Section {
@@ -75,7 +74,6 @@ function buildHydraulicCornerSection(): Section {
   return { title: "Corner Grid (Hydraulic)", items };
 }
 
-/** Default air corner grid: Steer 1 + Drive 1 (explicit Inner/Outer where needed) */
 function buildAirCornerSection(): Section {
   const steer: SectionItem[] = [
     { item: "Steer 1 Left Tire Pressure", unit: "psi" },
@@ -109,7 +107,7 @@ function buildAirCornerSection(): Section {
 }
 
 /* ------------------------------------------------------------------ */
-/* Deterministic grid selection (same rules as /inspection/run)       */
+/* Deterministic grid selection                                       */
 /* ------------------------------------------------------------------ */
 
 function prepareSectionsWithCornerGrid(
@@ -119,35 +117,27 @@ function prepareSectionsWithCornerGrid(
 ): Section[] {
   const s = Array.isArray(sections) ? sections : [];
 
-  // 1) If there is already a corner-style title, trust the template
   const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
   if (hasCornerByTitle) return s;
 
-  // 2) Otherwise, strip out any corner-looking item patterns
   const withoutGrids = stripExistingCornerGrids(s);
   const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
 
   if (gridMode === "none") return withoutGrids;
 
-  // 3) Decide air vs hyd
   let injectAir: boolean;
   if (gridMode === "air" || gridMode === "hyd") {
-    // URL override wins on mobile too
     injectAir = gridMode === "air";
   } else {
     const vt = (vehicleType || "").toLowerCase();
-
-    // Anything clearly heavy / commercial => air brakes
-    const isAirByVehicle =
+    injectAir =
       vt.includes("truck") ||
       vt.includes("bus") ||
       vt.includes("coach") ||
       vt.includes("trailer") ||
-      vt.includes("heavy") || // matches your custom builder "heavy"
+      vt.includes("heavy") ||
       vt.includes("medium-heavy") ||
       vt.includes("air");
-
-    injectAir = isAirByVehicle;
   }
 
   const injected = injectAir
@@ -164,10 +154,7 @@ function prepareSectionsWithCornerGrid(
 export default function MobileInspectionRunnerPage() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
-  const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
-    [],
-  );
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const lineId = params?.id ? String(params.id) : null;
   const workOrderId = search.get("workOrderId");
@@ -209,40 +196,35 @@ export default function MobileInspectionRunnerPage() {
           gridOverride,
         );
 
-        // Build params object the runtime expects
         const paramsObj: Record<string, string> = {};
         search.forEach((v, k) => {
           paramsObj[k] = v;
         });
 
+        // ✅ Force runtime identity
+        paramsObj.mode = "run";
+        paramsObj.view = "mobile";
+
+        // ✅ Canonical identifiers used by runtime/persistence
         paramsObj.workOrderLineId = lineId;
         if (workOrderId) paramsObj.workOrderId = workOrderId;
-        if (templateId) paramsObj.templateId = templateId;
-        paramsObj.view = "mobile"; // turn on mobile voice controls
+        paramsObj.templateId = templateId;
+        paramsObj.template = "generic"; // what your runtime expects
 
         if (typeof window !== "undefined") {
-          sessionStorage.setItem(
-            "inspection:sections",
-            JSON.stringify(sections),
-          );
+          // ✅ Runtime keys ONLY
+          sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
           sessionStorage.setItem("inspection:title", title);
           sessionStorage.setItem("inspection:vehicleType", vehicleType);
           sessionStorage.setItem("inspection:template", "generic");
-          sessionStorage.setItem(
-            "inspection:params",
-            JSON.stringify(paramsObj),
-          );
+          sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
 
-          // legacy/custom keys so older flows still work
-          sessionStorage.setItem(
-            "customInspection:sections",
-            JSON.stringify(sections),
-          );
-          sessionStorage.setItem("customInspection:title", title);
-          sessionStorage.setItem(
-            "customInspection:includeOil",
-            JSON.stringify(false),
-          );
+          // ❌ Kill legacy keys so builder UI can't “win”
+          sessionStorage.removeItem("customInspection:sections");
+          sessionStorage.removeItem("customInspection:title");
+          sessionStorage.removeItem("customInspection:includeOil");
+          sessionStorage.removeItem("customInspection:includeBatteryGrid");
+          sessionStorage.removeItem("customInspection:gridMode");
         }
       } catch (e) {
         console.error(e);
@@ -278,8 +260,6 @@ export default function MobileInspectionRunnerPage() {
     );
   }
 
-  // At this point sessionStorage is ready; GenericInspectionScreen
-  // will read sections + params and render the full template
   return (
     <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
       <GenericInspectionScreen />
