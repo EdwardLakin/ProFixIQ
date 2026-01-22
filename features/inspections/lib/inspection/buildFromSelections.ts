@@ -1,5 +1,8 @@
 // features/inspections/lib/inspection/buildFromSelections.ts
-import type { InspectionCategory, InspectionItem } from "@inspections/lib/inspection/types";
+import type {
+  InspectionCategory,
+  InspectionItem,
+} from "@inspections/lib/inspection/types";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
 
@@ -14,6 +17,11 @@ type BuildParams = {
   extraServiceItems?: string[];
 };
 
+/**
+ * IMPORTANT:
+ * We intentionally DO NOT include tire pressure / tread items in corner grids anymore.
+ * Tires now live in the dedicated Tire Grid.
+ */
 export function buildInspectionFromSelections({
   selections,
   axle,
@@ -27,8 +35,7 @@ export function buildInspectionFromSelections({
     const layout = generateAxleLayout(vt);
 
     if (vt === "car") {
-      // HYDRAULIC GRID — emit LF/RF/LR/RR (or "Left Front ..." etc).
-      // Using LF/RF/LR/RR to be maximally compatible with your CornerGrid regex.
+      // HYDRAULIC CORNER GRID — brakes/torque only (NO tires here)
       const corners = [
         { key: "LF", title: "LF" },
         { key: "RF", title: "RF" },
@@ -36,10 +43,7 @@ export function buildInspectionFromSelections({
         { key: "RR", title: "RR" },
       ] as const;
 
-      // Match your CornerGrid metric expectations/order
       const metrics: Array<{ label: string; unit: string | null }> = [
-        { label: "Tire Pressure", unit: "psi" },
-        { label: "Tire Tread", unit: "mm" },
         { label: "Brake Pad", unit: "mm" },
         { label: "Rotor", unit: "mm" },
         { label: "Rotor Condition", unit: null },
@@ -54,16 +58,15 @@ export function buildInspectionFromSelections({
         }
       }
 
-      sections.push({
-        title: "Corner Grid (Hydraulic)",
-        items,
-      });
+      if (items.length) {
+        sections.push({
+          title: "Corner Grid (Hydraulic)",
+          items,
+        });
+      }
     } else {
-      // AIR GRID — emit "<AxleLabel> Left/Right <Metric>"
-      // Your AirCornerGrid will split duals (Outer/Inner) as needed.
+      // AIR CORNER GRID — brakes/torque/push-rod only (NO tires here)
       const metrics: Array<{ label: string; unit: string | null }> = [
-        { label: "Tire Pressure", unit: "psi" },
-        { label: "Tread Depth", unit: "mm" },
         { label: "Lining/Shoe", unit: "mm" },
         { label: "Drum/Rotor", unit: "mm" },
         { label: "Push Rod Travel", unit: "in" },
@@ -75,17 +78,20 @@ export function buildInspectionFromSelections({
       for (const a of layout) {
         for (const side of ["Left", "Right"] as const) {
           for (const m of metrics) {
-            // For hydraulic trailers you won't hit this branch; vt !== "car" here is air.
-            // Units can be refined by your unitHint in the renderer.
-            items.push({ item: `${a.axleLabel} ${side} ${m.label}`, unit: m.unit });
+            items.push({
+              item: `${a.axleLabel} ${side} ${m.label}`,
+              unit: m.unit,
+            });
           }
         }
       }
 
-      sections.push({
-        title: "Corner Grid (Air)",
-        items,
-      });
+      if (items.length) {
+        sections.push({
+          title: "Corner Grid (Air)",
+          items,
+        });
+      }
     }
   }
 
@@ -96,7 +102,7 @@ export function buildInspectionFromSelections({
 
     const items: InspectionItem[] = sec.items
       .filter((i) => picked.includes(i.item))
-      .map((i) => ({ item: i.item }));
+      .map((i) => ({ item: i.item, unit: i.unit ?? null }));
 
     if (items.length) sections.push({ title: sec.title, items });
   }
