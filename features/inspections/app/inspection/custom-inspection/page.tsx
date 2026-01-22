@@ -8,6 +8,7 @@ import { masterInspectionList } from "@inspections/lib/inspection/masterInspecti
 
 type DutyClass = "light" | "medium" | "heavy";
 type GridMode = "hyd" | "air" | "none";
+type EngineType = "gas" | "diesel";
 
 // Minimal shape we care about when merging
 type Section = {
@@ -50,11 +51,9 @@ function stripExistingCornerGrids(sections: Section[]): Section[] {
   });
 }
 
-/** Canonical HYD corner grid (LF/RF/LR/RR) */
+/** Canonical HYD corner grid (LF/RF/LR/RR) — ✅ TIRES REMOVED */
 function buildHydraulicCornerSection(): Section {
   const metrics: Array<{ label: string; unit: string | null }> = [
-    { label: "Tire Pressure", unit: "psi" },
-    { label: "Tire Tread", unit: "mm" },
     { label: "Brake Pad", unit: "mm" },
     { label: "Rotor", unit: "mm" },
     { label: "Rotor Condition", unit: null },
@@ -71,13 +70,9 @@ function buildHydraulicCornerSection(): Section {
   return { title: "Corner Grid (Hydraulic)", items };
 }
 
-/** Canonical AIR corner grid: Steer 1 + Drive 1 with explicit Inner/Outer where needed */
+/** Canonical AIR corner grid: Steer 1 + Drive 1 — ✅ TIRES REMOVED */
 function buildAirCornerSection(): Section {
   const steer: { item: string; unit: string | null }[] = [
-    { item: "Steer 1 Left Tire Pressure", unit: "psi" },
-    { item: "Steer 1 Right Tire Pressure", unit: "psi" },
-    { item: "Steer 1 Left Tread Depth", unit: "mm" },
-    { item: "Steer 1 Right Tread Depth", unit: "mm" },
     { item: "Steer 1 Left Lining/Shoe", unit: "mm" },
     { item: "Steer 1 Right Lining/Shoe", unit: "mm" },
     { item: "Steer 1 Left Drum/Rotor", unit: "mm" },
@@ -87,12 +82,6 @@ function buildAirCornerSection(): Section {
   ];
 
   const drive: { item: string; unit: string | null }[] = [
-    { item: "Drive 1 Left Tire Pressure", unit: "psi" },
-    { item: "Drive 1 Right Tire Pressure", unit: "psi" },
-    { item: "Drive 1 Left Tread Depth (Outer)", unit: "mm" },
-    { item: "Drive 1 Left Tread Depth (Inner)", unit: "mm" },
-    { item: "Drive 1 Right Tread Depth (Outer)", unit: "mm" },
-    { item: "Drive 1 Right Tread Depth (Inner)", unit: "mm" },
     { item: "Drive 1 Left Lining/Shoe", unit: "mm" },
     { item: "Drive 1 Right Lining/Shoe", unit: "mm" },
     { item: "Drive 1 Left Drum/Rotor", unit: "mm" },
@@ -105,7 +94,38 @@ function buildAirCornerSection(): Section {
 }
 
 /* ------------------------------------------------------------------ */
-/* Battery grid helpers                                               */
+/* Tire grid helpers (separate from corner grids)                      */
+/* ------------------------------------------------------------------ */
+
+function hasTireGridSection(sections: Section[] | unknown): boolean {
+  const s = Array.isArray(sections) ? (sections as Section[]) : [];
+  return s.some((sec) => (sec.title || "").toLowerCase().includes("tire grid"));
+}
+
+/**
+ * NOTE: This is the custom-builder injector section. It only needs to
+ * create deterministic labels that your TireGrid renderer recognizes.
+ * If your TireGrid expects different labels, tell me and I’ll align it.
+ */
+function buildTireGridSection(): Section {
+  const items: Array<{ item: string; unit?: string | null }> = [
+    { item: "LF Tire Pressure", unit: "psi" },
+    { item: "RF Tire Pressure", unit: "psi" },
+    { item: "LR Tire Pressure", unit: "psi" },
+    { item: "RR Tire Pressure", unit: "psi" },
+
+    { item: "LF Tread Depth", unit: "mm" },
+    { item: "RF Tread Depth", unit: "mm" },
+    { item: "LR Tread Depth (Outer)", unit: "mm" },
+    { item: "LR Tread Depth (Inner)", unit: "mm" },
+    { item: "RR Tread Depth (Outer)", unit: "mm" },
+    { item: "RR Tread Depth (Inner)", unit: "mm" },
+  ];
+  return { title: "Tire Grid", items };
+}
+
+/* ------------------------------------------------------------------ */
+/* Battery grid helpers                                                */
 /* ------------------------------------------------------------------ */
 
 function hasBatterySection(sections: Section[] | unknown): boolean {
@@ -199,6 +219,9 @@ export default function CustomBuilderPage() {
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
 
+  // ✅ labor hours back (string so user can delete)
+  const [laborHours, setLaborHours] = useState<string>("");
+
   const [gridMode, setGridMode] = useState<GridMode>(
     dutyClass === "heavy" ? "air" : "hyd",
   );
@@ -206,7 +229,13 @@ export default function CustomBuilderPage() {
 
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [includeOil, setIncludeOil] = useState(true);
+  const [oilEngineType, setOilEngineType] = useState<EngineType>("diesel");
+
   const [includeBatteryGrid, setIncludeBatteryGrid] = useState(false);
+
+  // ✅ new toggles
+  const [includeTireGrid, setIncludeTireGrid] = useState(false);
+  const [includeGreaseChassis, setIncludeGreaseChassis] = useState(false);
 
   const [collapsedSections, setCollapsedSections] = useState<
     Record<string, boolean>
@@ -315,73 +344,107 @@ export default function CustomBuilderPage() {
     return Object.values(out).filter((s) => (s.items?.length ?? 0) > 0);
   }
 
-  function buildOilSection(): Section {
+  // ✅ Oil change: gas/diesel selection, simple checkbox items
+  function buildOilSection(engine: EngineType): Section {
     return {
-      title: "Oil Change",
+      title: engine === "diesel" ? "Oil Change (Diesel)" : "Oil Change (Gas)",
       items: [
-        { item: "Drain engine oil" },
+        { item: "Drain and fill engine oil" },
         { item: "Replace oil filter" },
-        { item: "Refill with correct viscosity" },
-        { item: "Reset maintenance reminder" },
-        { item: "Inspect for leaks after start" },
       ],
     };
   }
 
-  /**
-   * ✅ THIS IS THE KEY FIX:
-   * Stage into `inspection:*` keys and route into `/inspections/run`,
-   * so the runtime shows the real inspection controls (save inspection / finish).
-   */
-  function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
-  const withGrid = prepareSectionsWithCornerGrid(
-    sections,
-    dutyClass,
-    gridMode,
-  );
-
-  let withBattery = withGrid;
-  if (includeBatteryGrid && !hasBatterySection(withGrid)) {
-    if (withGrid.length > 0 && looksLikeCornerTitle(withGrid[0].title)) {
-      withBattery = [withGrid[0], buildBatterySection(), ...withGrid.slice(1)];
-    } else {
-      withBattery = [...withGrid, buildBatterySection()];
-    }
+  // ✅ Grease chassis: simple checkbox + notes
+  function buildGreaseChassisSection(): Section {
+    return {
+      title: "Grease Chassis",
+      items: [{ item: "Grease chassis" }],
+    };
   }
 
-  // ✅ Canonical runtime keys ONLY
-  sessionStorage.setItem("inspection:sections", JSON.stringify(withBattery));
-  sessionStorage.setItem("inspection:title", tplTitle);
-  sessionStorage.setItem("inspection:template", "generic");
+  /**
+   * ✅ Stage into `inspection:*` keys and route into `/inspections/run`
+   */
+  function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
+    const withCornerGrid = prepareSectionsWithCornerGrid(
+      sections,
+      dutyClass, // (kept as-is: existing logic uses "heavy" to infer air)
+      gridMode,
+    );
 
-  const qs = new URLSearchParams(sp.toString());
-  qs.set("template", "generic");
-  qs.set("title", tplTitle);
-  qs.set("mode", "run");
-  qs.set("grid", gridMode);
-  qs.set("dutyClass", dutyClass);
+    // ✅ inject Tire Grid if toggled
+    let withTire = withCornerGrid;
+    if (includeTireGrid && !hasTireGridSection(withCornerGrid)) {
+      if (withCornerGrid.length > 0 && looksLikeCornerTitle(withCornerGrid[0].title)) {
+        withTire = [withCornerGrid[0], buildTireGridSection(), ...withCornerGrid.slice(1)];
+      } else {
+        withTire = [...withCornerGrid, buildTireGridSection()];
+      }
+    }
 
-  // ✅ DO NOT write customInspection:* (removes builder-mode bleed)
-  sessionStorage.removeItem("customInspection:sections");
-  sessionStorage.removeItem("customInspection:title");
-  sessionStorage.removeItem("customInspection:gridMode");
-  sessionStorage.removeItem("customInspection:includeOil");
-  sessionStorage.removeItem("customInspection:includeBatteryGrid");
+    // ✅ inject Battery Grid if toggled
+    let withBattery = withTire;
+    if (includeBatteryGrid && !hasBatterySection(withTire)) {
+      if (withTire.length > 0 && looksLikeCornerTitle(withTire[0].title)) {
+        withBattery = [withTire[0], buildBatterySection(), ...withTire.slice(1)];
+      } else {
+        withBattery = [...withTire, buildBatterySection()];
+      }
+    }
 
-  sessionStorage.setItem(
-    "inspection:params",
-    JSON.stringify({
-      template: "generic",
-      mode: "run",
-      grid: gridMode,
-      dutyClass,
-      title: tplTitle,
-    }),
-  );
+    // ✅ inject Grease Chassis if toggled
+    let finalSections = withBattery;
+    if (
+      includeGreaseChassis &&
+      !finalSections.some((s) => normalizeTitle(s.title) === "grease chassis")
+    ) {
+      finalSections = [...finalSections, buildGreaseChassisSection()];
+    }
 
-  // ✅ Go through the same loader path as real inspections
-  router.push(`/inspections/run?${qs.toString()}`);
-}
+    // ✅ Canonical runtime keys ONLY
+    sessionStorage.setItem("inspection:sections", JSON.stringify(finalSections));
+    sessionStorage.setItem("inspection:title", tplTitle);
+    sessionStorage.setItem("inspection:template", "generic");
+
+    const qs = new URLSearchParams(sp.toString());
+    qs.set("template", "generic");
+    qs.set("title", tplTitle);
+    qs.set("mode", "run");
+    qs.set("grid", gridMode);
+    qs.set("dutyClass", dutyClass);
+
+    if (includeTireGrid) qs.set("tireGrid", "1");
+    if (includeBatteryGrid) qs.set("batteryGrid", "1");
+    if (includeGreaseChassis) qs.set("greaseChassis", "1");
+    if (includeOil) qs.set("oil", oilEngineType);
+    if (laborHours.trim()) qs.set("hours", laborHours.trim());
+
+    // ✅ DO NOT write customInspection:* (removes builder-mode bleed)
+    sessionStorage.removeItem("customInspection:sections");
+    sessionStorage.removeItem("customInspection:title");
+    sessionStorage.removeItem("customInspection:gridMode");
+    sessionStorage.removeItem("customInspection:includeOil");
+    sessionStorage.removeItem("customInspection:includeBatteryGrid");
+
+    sessionStorage.setItem(
+      "inspection:params",
+      JSON.stringify({
+        template: "generic",
+        mode: "run",
+        grid: gridMode,
+        dutyClass,
+        title: tplTitle,
+        tireGrid: includeTireGrid,
+        batteryGrid: includeBatteryGrid,
+        greaseChassis: includeGreaseChassis,
+        oil: includeOil ? oilEngineType : null,
+        laborHours: laborHours.trim() || null,
+      }),
+    );
+
+    router.push(`/inspections/run?${qs.toString()}`);
+  }
 
   function startManual() {
     const built = buildInspectionFromSelections({
@@ -390,8 +453,9 @@ export default function CustomBuilderPage() {
     }) as unknown as Section[];
 
     const withOil =
-      includeOil && !built.some((s) => normalizeTitle(s.title) === "oil change")
-        ? [...built, buildOilSection()]
+      includeOil &&
+      !built.some((s) => normalizeTitle(s.title).startsWith("oil change"))
+        ? [...built, buildOilSection(oilEngineType)]
         : built;
 
     goToRunWithSections(withOil, title);
@@ -422,11 +486,16 @@ export default function CustomBuilderPage() {
         extraServiceItems: [],
       }) as unknown as Section[];
 
+      const aiHasOil = aiSections.some((s) =>
+        normalizeTitle(s.title).startsWith("oil change"),
+      );
+      const manualHasOil = manualBuilt.some((s) =>
+        normalizeTitle(s.title).startsWith("oil change"),
+      );
+
       const base =
-        includeOil &&
-        !aiSections.some((s) => normalizeTitle(s.title) === "oil change") &&
-        !manualBuilt.some((s) => normalizeTitle(s.title) === "oil change")
-          ? [...aiSections, buildOilSection()]
+        includeOil && !aiHasOil && !manualHasOil
+          ? [...aiSections, buildOilSection(oilEngineType)]
           : aiSections;
 
       const merged = mergeSections(base, manualBuilt);
@@ -478,10 +547,30 @@ export default function CustomBuilderPage() {
 
             <span className="inline-flex items-center gap-1.5">
               <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Tire Grid
+              </span>
+              <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-200">
+                {includeTireGrid ? "Enabled" : "Off"}
+              </span>
+            </span>
+
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
                 Oil
               </span>
               <span className="rounded-full bg-zinc-700/60 px-2 py-1 text-[11px] font-semibold text-zinc-100">
-                {includeOil ? "Oil change section included" : "No oil section"}
+                {includeOil
+                  ? `Included (${oilEngineType.toUpperCase()})`
+                  : "No oil section"}
+              </span>
+            </span>
+
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Grease
+              </span>
+              <span className="rounded-full bg-lime-500/10 px-2 py-1 text-[11px] font-semibold text-lime-200">
+                {includeGreaseChassis ? "Chassis enabled" : "Off"}
               </span>
             </span>
 
@@ -491,6 +580,15 @@ export default function CustomBuilderPage() {
               </span>
               <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-300">
                 {includeBatteryGrid ? "Battery grid enabled" : "No battery grid"}
+              </span>
+            </span>
+
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Hours
+              </span>
+              <span className="rounded-full bg-neutral-800/80 px-2 py-1 text-[11px] font-semibold text-neutral-100">
+                {laborHours.trim() ? laborHours.trim() : "—"}
               </span>
             </span>
           </div>
@@ -513,22 +611,39 @@ export default function CustomBuilderPage() {
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-center md:text-left">
-            <span className="text-sm text-neutral-300">Duty Class</span>
-            <select
-              className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-              value={dutyClass}
-              onChange={(e) => setDutyClass(e.target.value as DutyClass)}
-            >
-              <option value="light">Light</option>
-              <option value="medium">Medium</option>
-              <option value="heavy">Heavy</option>
-            </select>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="flex flex-col gap-1 text-center md:text-left">
+              <span className="text-sm text-neutral-300">Duty Class</span>
+              <select
+                className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                value={dutyClass}
+                onChange={(e) => setDutyClass(e.target.value as DutyClass)}
+              >
+                <option value="light">Light</option>
+                <option value="medium">Medium</option>
+                <option value="heavy">Heavy</option>
+              </select>
 
-            <span className="mt-1 text-[11px] text-neutral-400">
-              Duty class influences suggested items. Corner grid is chosen below.
-            </span>
-          </label>
+              <span className="mt-1 text-[11px] text-neutral-400">
+                Duty class influences suggested items. Corner grid is chosen below.
+              </span>
+            </label>
+
+            {/* ✅ labor hours box restored (beside duty class) */}
+            <label className="flex flex-col gap-1 text-center md:text-left">
+              <span className="text-sm text-neutral-300">Labor hours</span>
+              <input
+                inputMode="decimal"
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                value={laborHours}
+                onChange={(e) => setLaborHours(e.target.value)}
+                placeholder="e.g. 2.5"
+              />
+              <span className="mt-1 text-[11px] text-neutral-500">
+                Optional. Stored in inspection params for downstream use.
+              </span>
+            </label>
+          </div>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
@@ -544,6 +659,51 @@ export default function CustomBuilderPage() {
             }
           >
             {includeOil ? "Oil Change Section: ON" : "Oil Change Section: OFF"}
+          </button>
+
+          {/* ✅ gas/diesel selector (only when oil is ON) */}
+          {includeOil && (
+            <div className="flex items-center gap-2 rounded-full border border-neutral-700 bg-black/70 px-3 py-2">
+              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                Engine
+              </span>
+              <select
+                className="rounded-full border border-neutral-700 bg-neutral-900/80 px-3 py-1 text-[12px] text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                value={oilEngineType}
+                onChange={(e) => setOilEngineType(e.target.value as EngineType)}
+              >
+                <option value="gas">Gas</option>
+                <option value="diesel">Diesel</option>
+              </select>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setIncludeTireGrid((v) => !v)}
+            className={
+              "rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]" +
+              " " +
+              (includeTireGrid
+                ? "bg-amber-400 text-black shadow-[0_0_18px_rgba(251,191,36,0.55)]"
+                : "border border-zinc-600 bg-zinc-800/80 text-white hover:bg-zinc-700")
+            }
+          >
+            {includeTireGrid ? "Tire Grid: ON" : "Tire Grid: OFF"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIncludeGreaseChassis((v) => !v)}
+            className={
+              "rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]" +
+              " " +
+              (includeGreaseChassis
+                ? "bg-lime-400 text-black shadow-[0_0_18px_rgba(163,230,53,0.55)]"
+                : "border border-zinc-600 bg-zinc-800/80 text-white hover:bg-zinc-700")
+            }
+          >
+            {includeGreaseChassis ? "Grease Chassis: ON" : "Grease Chassis: OFF"}
           </button>
 
           <button
@@ -683,7 +843,9 @@ export default function CustomBuilderPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => selectAllInSection(sec.title, sec.items as any)}
+                      onClick={() =>
+                        selectAllInSection(sec.title, sec.items as any)
+                      }
                       className="rounded-full bg-zinc-800 px-2 py-1 text-[11px] text-white hover:bg-zinc-700"
                     >
                       Select all
@@ -709,7 +871,9 @@ export default function CustomBuilderPage() {
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {sec.items.map((i) => {
                       const label = i.item;
-                      const checked = (selections[sec.title] ?? []).includes(label);
+                      const checked = (selections[sec.title] ?? []).includes(
+                        label,
+                      );
                       return (
                         <label
                           key={label}

@@ -54,9 +54,15 @@ export default function InspectionItemCard(_props: any) {
     variant = "card",
   } = _props as InspectionItemCardProps;
 
-  const name = item.item?.toLowerCase() || item.name?.toLowerCase() || "";
+  const name = (item.item ?? item.name ?? "").toLowerCase();
+
+  // Measurement items: show numeric value + unit inputs.
+  // NOTE: include "hours" + "labor" to bring labor-hours box back where applicable.
   const isMeasurementItem =
-    name.includes("wheel torque") || name.includes("park lining");
+    name.includes("wheel torque") ||
+    name.includes("park lining") ||
+    name.includes("labor hours") ||
+    name.includes("hours");
 
   const status = String(item.status ?? "").toLowerCase();
   const isFail = status === "fail";
@@ -88,6 +94,7 @@ export default function InspectionItemCard(_props: any) {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <input
               type="number"
+              inputMode="decimal"
               value={item.value ?? ""}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 onUpdateValue?.(sectionIndex, itemIndex, e.target.value)
@@ -134,7 +141,6 @@ export default function InspectionItemCard(_props: any) {
               "w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2",
               "text-[12px] text-white outline-none placeholder:text-neutral-500",
               "focus:border-accent focus:ring-2 focus:ring-accent/60",
-              // compact by default, still can expand
               "h-[40px] md:h-[42px]",
             ].join(" ")}
             placeholder="Enter notes..."
