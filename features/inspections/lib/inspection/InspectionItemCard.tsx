@@ -1,4 +1,4 @@
-//features/inspections/lib/inspection/InspectionItemCard.tsx
+///features/inspections/lib/inspection/InspectionItemCard.tsx
 "use client";
 
 import type React from "react";

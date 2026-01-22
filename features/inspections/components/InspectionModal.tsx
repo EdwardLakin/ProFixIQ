@@ -63,6 +63,11 @@ export default function InspectionModal({
       const template = deriveTemplateFromUrl(url);
       const params = paramsToObject(url.searchParams);
 
+      // ✅ Force embed mode in the modal so the inspection UI renders its embedded
+      // layout (and voice controls in the embedded header area).
+      params.embed = params.embed || "1";
+      params.compact = params.compact || "1";
+
       // Normalize legacy param keys
       const woId =
         url.searchParams.get("workOrderId") ||
@@ -90,7 +95,11 @@ export default function InspectionModal({
         embedParam === "1" ||
         embedParam === "true" ||
         embedParam === "yes" ||
-        embedParam === "embed";
+        embedParam === "embed" ||
+        params.embed === "1" ||
+        params.embed === "true" ||
+        params.embed === "yes" ||
+        params.embed === "embed";
 
       const hasWOLine =
         !!params.workOrderLineId || !!params.work_order_line_id || !!params.lineId;
@@ -168,8 +177,7 @@ export default function InspectionModal({
     "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] " +
     "shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
 
-  const innerShell =
-    "rounded-2xl border border-slate-700/70 bg-slate-950/95";
+  const innerShell = "rounded-2xl border border-slate-700/70 bg-slate-950/95";
 
   return (
     <Dialog
@@ -222,13 +230,16 @@ export default function InspectionModal({
         <div
           ref={scrollRef}
           className={`${bodyHeight} overflow-y-auto overscroll-contain ${innerShell} rounded-b-2xl p-4 text-foreground`}
-          style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable both-edges" }}
+          style={{
+            WebkitOverflowScrolling: "touch",
+            scrollbarGutter: "stable both-edges",
+          }}
         >
           {derived.missingWOLine && (
             <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-100">
               <strong>Heads up:</strong>{" "}
-              <code className="font-mono text-amber-50">workOrderLineId</code> is missing;
-              save/finish will be blocked.
+              <code className="font-mono text-amber-50">workOrderLineId</code> is
+              missing; save/finish will be blocked.
             </div>
           )}
 
@@ -238,6 +249,7 @@ export default function InspectionModal({
             </div>
           ) : (
             <div className="mx-auto w-full max-w-5xl">
+              {/* Voice buttons are rendered by the inspection screen itself now (desktop + mobile). */}
               <InspectionHost template={derived.template} embed params={derived.params} />
             </div>
           )}

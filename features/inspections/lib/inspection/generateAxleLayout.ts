@@ -1,5 +1,3 @@
-//features/inspections/lib/inspection/generateAxleLayout.ts
-
 import type { AxleInspection } from "./axleTypes";
 
 export function generateAxleLayout(

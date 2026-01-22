@@ -209,11 +209,17 @@ function isTireGridSection(
   // heuristics: tire pressure / tread + axle left/right or corners
   const tireSignals = items.filter((it) => {
     const l = (it.item ?? "").toLowerCase();
-    return l.includes("tire pressure") || l.includes("tire tread") || l.includes("tread depth");
+    return (
+      l.includes("tire pressure") ||
+      l.includes("tire tread") ||
+      l.includes("tread depth")
+    );
   });
   if (tireSignals.length >= 2) {
     // axle labels or corners usually imply grid
-    return tireSignals.some((it) => AIR_RE.test(it.item ?? "") || HYD_ABBR_RE.test(it.item ?? ""));
+    return tireSignals.some(
+      (it) => AIR_RE.test(it.item ?? "") || HYD_ABBR_RE.test(it.item ?? ""),
+    );
   }
 
   return false;
@@ -1067,6 +1073,7 @@ export default function GenericInspectionScreen(
     }));
   }
 
+  // Mobile footer uses these, but voice now also works on desktop via the top buttons.
   const handleStartMobile = (): void => {
     if (guardLocked()) return;
     setIsPaused(false);
@@ -1188,7 +1195,10 @@ export default function GenericInspectionScreen(
   };
 
   /** Add axle rows to an AIR corner grid section */
-  const handleAddAxleForSection = (sectionIndex: number, axleLabel: string): void => {
+  const handleAddAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1362,7 +1372,8 @@ export default function GenericInspectionScreen(
         </div>
 
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {isMobileView && !isLocked && (
+          {/* ✅ Voice controls now render on BOTH desktop and mobile (previously mobile-only) */}
+          {!isLocked && (
             <StartListeningButton
               isListening={isListening}
               setIsListening={setIsListening}
@@ -1370,7 +1381,7 @@ export default function GenericInspectionScreen(
             />
           )}
 
-          {isMobileView && !isLocked && (
+          {!isLocked && (
             <PauseResumeButton
               isPaused={isPaused}
               isListening={isListening}
@@ -1426,9 +1437,13 @@ export default function GenericInspectionScreen(
             const batterySection = isBatterySection(section.title, itemsWithHints);
             const airSection = isAirCornerSection(section.title, itemsWithHints);
             const tireSection = isTireGridSection(section.title, itemsWithHints);
-            const hydCornerSection = isHydraulicCornerSection(section.title, itemsWithHints);
+            const hydCornerSection = isHydraulicCornerSection(
+              section.title,
+              itemsWithHints,
+            );
 
-            const useGrid = batterySection || airSection || tireSection || hydCornerSection;
+            const useGrid =
+              batterySection || airSection || tireSection || hydCornerSection;
 
             const collapsed = collapsedSections[sectionIndex] ?? false;
 
@@ -1470,9 +1485,7 @@ export default function GenericInspectionScreen(
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() =>
-                          applyStatusToSection(sectionIndex, "recommend")
-                        }
+                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
                       >
                         All REC
                       </button>
@@ -1506,7 +1519,9 @@ export default function GenericInspectionScreen(
                   <>
                     {useGrid && (
                       <span className={hint}>
-                        {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
+                        {unit === "metric"
+                          ? "Enter mm / kPa / N·m"
+                          : "Enter in / psi / ft·lb"}
                       </span>
                     )}
 
@@ -1584,7 +1599,8 @@ export default function GenericInspectionScreen(
                             onUpload={(photoUrl, secIdx, itemIdx) => {
                               if (guardLocked()) return;
                               const prev =
-                                session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                                session.sections[secIdx].items[itemIdx].photoUrls ??
+                                [];
                               updateItem(secIdx, itemIdx, {
                                 photoUrls: [...prev, photoUrl],
                               });
@@ -1666,7 +1682,8 @@ export default function GenericInspectionScreen(
             inspectionId={inspectionId}
             role="customer"
             defaultName={
-              [customer.first_name, customer.last_name].filter(Boolean).join(" ") || undefined
+              [customer.first_name, customer.last_name].filter(Boolean).join(" ") ||
+              undefined
             }
             onSigned={handleSigned}
           />
@@ -1684,7 +1701,8 @@ export default function GenericInspectionScreen(
             </div>
 
             <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+              <span className="font-semibold text-neutral-200">Legend:</span> P =
+              Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}

@@ -10,69 +10,57 @@ type Props = {
   items: InspectionItem[];
   unitHint?: (label: string) => string;
   onAddAxle?: (axleLabel: string) => void;
-  /** Optional: show CVIP spec for a given metric label (e.g. "Brake Pad"). */
+  /** Kept for API compatibility, but AirCornerGrid no longer renders spec buttons. */
   onSpecHint?: (metricLabel: string) => void;
 };
 
 type Side = "Left" | "Right";
 
-type MetricCell = {
-  metric: string;
+type Cell = {
   idx: number;
+  axle: string;
+  side: Side;
+  metric: string;
   unit: string;
   fullLabel: string;
   initial: string;
 };
 
-type AxleGroup = { axle: string; left: MetricCell[]; right: MetricCell[] };
+type Row = {
+  metric: string;
+  left?: Cell;
+  right?: Cell;
+};
 
-type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
+type AxleTable = {
+  axle: string;
+  rows: Row[];
+};
 
-const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+const LABEL_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
-// ✅ HARD FILTER: brakes-only. Never render tire rows here.
-const isTireMetric = (metric: string) => {
+// ✅ AirCornerGrid: pads/shoes/rotors/drums + push rod travel. NO torque.
+const isAllowedAirMetric = (metric: string) => {
   const m = metric.toLowerCase();
-  return m.includes("tire") || m.includes("tread") || m.includes("pressure");
+  const isPadShoe = /(pad|lining|shoe)/i.test(m);
+  const isRotorDrum = /(rotor|drum)/i.test(m);
+  const isPushRod = /(push\s*rod)/i.test(m) && m.includes("travel");
+  return isPadShoe || isRotorDrum || isPushRod;
 };
 
-const airPriority = (metric: string): [number, number] => {
+const metricRank = (metric: string) => {
   const m = metric.toLowerCase();
-
-  if (/(lining|shoe|pad)/i.test(m)) return [0, 0];
-  if (/(drum|rotor)/i.test(m)) return [1, 0];
-  if (/push\s*rod/i.test(m)) return [2, 0];
-  if (/wheel\s*torque/i.test(m)) return [3, /inner/i.test(m) ? 1 : 0];
-
-  return [99, 0];
+  if (/(pad|lining|shoe)/i.test(m)) return 0;
+  if (/(rotor|drum)/i.test(m)) return 1;
+  if (/(push\s*rod)/i.test(m) && m.includes("travel")) return 2;
+  return 999;
 };
-
-const orderCompare = (a: string, b: string) => {
-  const [pa, sa] = airPriority(a);
-  const [pb, sb] = airPriority(b);
-  return pa !== pb ? pa - pb : sa - sb;
-};
-
-function buildTriplets(g: AxleGroup): RowTriplet[] {
-  const map = new Map<string, RowTriplet>();
-  const add = (c: MetricCell, which: "left" | "right") => {
-    const k = c.metric.toLowerCase();
-    const existing = map.get(k) || { metric: c.metric };
-    map.set(k, { ...existing, metric: c.metric, [which]: c });
-  };
-  g.left.forEach((c) => add(c, "left"));
-  g.right.forEach((c) => add(c, "right"));
-  return Array.from(map.values()).sort((a, b) =>
-    orderCompare(a.metric, b.metric),
-  );
-}
 
 export default function AirCornerGrid({
   sectionIndex,
   items,
   unitHint,
   onAddAxle,
-  onSpecHint,
 }: Props) {
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
@@ -81,181 +69,66 @@ export default function AirCornerGrid({
     updateItem(sectionIndex, idx, { value });
   };
 
-  const groups: AxleGroup[] = useMemo(() => {
-    const byAxle = new Map<
-      string,
-      { Left: MetricCell[]; Right: MetricCell[] }
-    >();
+  const tables = useMemo<AxleTable[]>(() => {
+    const byAxle = new Map<string, Cell[]>();
 
     items.forEach((it, idx) => {
       const label = it.item ?? "";
-      const m = label.match(labelRe);
+      if (!label) return;
+
+      const m = label.match(LABEL_RE);
       if (!m?.groups) return;
 
       const axle = m.groups.axle.trim();
       const side = (m.groups.side as Side) || "Left";
       const metric = m.groups.metric.trim();
 
-      // ✅ brakes-only (avoid the “tires + brakes” leak when adding an axle)
-      if (isTireMetric(metric)) return;
+      if (!isAllowedAirMetric(metric)) return;
 
-      if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
+      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
 
-      const unit =
-        (it.unit ?? "").trim() || (unitHint ? unitHint(label).trim() : "");
-
-      const cell: MetricCell = {
-        metric,
+      const cell: Cell = {
         idx,
+        axle,
+        side,
+        metric,
         unit,
         fullLabel: label,
         initial: String(it.value ?? ""),
       };
 
-      byAxle.get(axle)![side].push(cell);
+      const arr = byAxle.get(axle) ?? [];
+      arr.push(cell);
+      byAxle.set(axle, arr);
     });
 
-    return Array.from(byAxle.entries()).map(([axle, sides]) => {
-      const left = [...sides.Left].sort((a, b) =>
-        orderCompare(a.metric, b.metric),
-      );
-      const right = [...sides.Right].sort((a, b) =>
-        orderCompare(a.metric, b.metric),
-      );
-      return { axle, left, right };
-    });
+    const out: AxleTable[] = [];
+    for (const [axle, cells] of byAxle.entries()) {
+      const rowMap = new Map<string, Row>();
+
+      for (const c of cells) {
+        const key = c.metric.toLowerCase();
+        const existing = rowMap.get(key) ?? { metric: c.metric };
+        if (c.side === "Left") existing.left = c;
+        else existing.right = c;
+        rowMap.set(key, existing);
+      }
+
+      const rows = Array.from(rowMap.values()).sort((a, b) => {
+        const ra = metricRank(a.metric);
+        const rb = metricRank(b.metric);
+        if (ra !== rb) return ra - rb;
+        return a.metric.localeCompare(b.metric);
+      });
+
+      out.push({ axle, rows });
+    }
+
+    out.sort((a, b) => a.axle.localeCompare(b.axle));
+    return out;
   }, [items, unitHint]);
 
-  const AxleCard = ({ g }: { g: AxleGroup }) => {
-    const rows = buildTriplets(g);
-
-    // If an axle has no brake items, don't render an empty card.
-    if (!rows.length) return null;
-
-    return (
-      <div className="w-full overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div
-            className="text-base font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-            style={{
-              fontFamily: "var(--font-blackops), system-ui, sans-serif",
-            }}
-          >
-            {g.axle}
-          </div>
-        </div>
-
-        <div className="border-t border-white/10" />
-
-        {/* Match the “table-first” pattern so native TAB behaves consistently */}
-        {open && (
-          <div className="overflow-x-auto">
-            <div className="inline-block min-w-full align-middle">
-              <table className="min-w-full border-separate border-spacing-y-[2px]">
-                <thead>
-                  <tr className="text-xs text-muted-foreground">
-                    <th className="px-4 py-1.5 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
-                      Item
-                    </th>
-                    <th className="px-4 py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
-                      Left
-                    </th>
-                    <th className="px-4 py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
-                      Right
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {rows.map((row, rowIndex) => {
-                    const leftUnit = row.left?.unit ?? "";
-                    const rightUnit = row.right?.unit ?? "";
-
-                    return (
-                      <tr
-                        key={`${row.metric}-${rowIndex}`}
-                        className="align-middle hover:bg-white/[0.03]"
-                      >
-                        <td className="px-4 py-1.5 text-sm font-semibold text-foreground">
-                          <div className="flex items-center gap-2">
-                            <span className="leading-tight">{row.metric}</span>
-                            {onSpecHint && (
-                              <button
-                                type="button"
-                                tabIndex={-1}
-                                onClick={() => onSpecHint(row.metric)}
-                                className="rounded-full border border-orange-500/50 bg-orange-500/10 px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.16em] text-orange-300 hover:bg-orange-500/20"
-                                title="Show CVIP spec"
-                              >
-                                Spec
-                              </button>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-1.5 text-center">
-                          {row.left ? (
-                            <div className="relative w-full max-w-[8.5rem]">
-                              <input
-                                defaultValue={row.left.initial}
-                                className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
-                                placeholder="Value"
-                                autoComplete="off"
-                                inputMode="decimal"
-                                onBlur={(e) =>
-                                  commit(row.left!.idx, e.currentTarget.value)
-                                }
-                              />
-                              {leftUnit ? (
-                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-                                  {leftUnit}
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <div className="h-[32px]" />
-                          )}
-                        </td>
-
-                        <td className="px-4 py-1.5 text-center">
-                          {row.right ? (
-                            <div className="relative w-full max-w-[8.5rem]">
-                              <input
-                                defaultValue={row.right.initial}
-                                className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
-                                placeholder="Value"
-                                autoComplete="off"
-                                inputMode="decimal"
-                                onBlur={(e) =>
-                                  commit(row.right!.idx, e.currentTarget.value)
-                                }
-                              />
-                              {rightUnit ? (
-                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-                                  {rightUnit}
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <div className="h-[32px]" />
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // If nothing matched brakes-only, let parent decide fallback
-  if (!groups.length || groups.every((g) => !buildTriplets(g).length)) {
-    return null;
-  }
+  if (tables.length === 0) return null;
 
   return (
     <div className="grid w-full gap-3">
@@ -272,26 +145,98 @@ export default function AirCornerGrid({
         </button>
       </div>
 
-      {onAddAxle ? <AddAxlePicker groups={groups} onAddAxle={onAddAxle} /> : null}
+      {onAddAxle ? <AddAxlePicker tables={tables} onAddAxle={onAddAxle} /> : null}
 
-      <div className="grid w-full gap-4">
-        {groups.map((g) => (
-          <AxleCard key={g.axle} g={g} />
-        ))}
-      </div>
+      {tables.map((t) => (
+        <div
+          key={t.axle}
+          className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl"
+        >
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div
+              className="text-base font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+              style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+            >
+              {t.axle}
+            </div>
+          </div>
+
+          {open ? (
+            <div className="overflow-x-auto">
+              <div className="inline-block min-w-full align-middle">
+                <table className="min-w-full border-separate border-spacing-y-1">
+                  <thead>
+                    <tr className="text-xs text-muted-foreground">
+                      <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
+                        Item
+                      </th>
+                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
+                        Left
+                      </th>
+                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
+                        Right
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {t.rows.map((row, rowIdx) => (
+                      <tr key={`${row.metric}-${rowIdx}`} className="align-middle">
+                        <td className="px-3 py-2 text-sm font-semibold text-foreground">
+                          {row.metric}
+                        </td>
+
+                        {(["Left", "Right"] as const).map((side) => {
+                          const cell = side === "Left" ? row.left : row.right;
+                          if (!cell) {
+                            return (
+                              <td key={side} className="px-3 py-2">
+                                <div className="h-[32px]" />
+                              </td>
+                            );
+                          }
+
+                          return (
+                            <td key={side} className="px-3 py-2 text-center">
+                              <div className="relative w-full max-w-[9rem]">
+                                <input
+                                  defaultValue={cell.initial}
+                                  className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
+                                  placeholder="Value"
+                                  autoComplete="off"
+                                  inputMode="decimal"
+                                  onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
+                                />
+                                {cell.unit ? (
+                                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
+                                    {cell.unit}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }
 
-/** Inline axle picker with glassy styling */
 function AddAxlePicker({
-  groups,
+  tables,
   onAddAxle,
 }: {
-  groups: { axle: string }[];
+  tables: { axle: string }[];
   onAddAxle: (axleLabel: string) => void;
 }) {
-  const existing = useMemo(() => groups.map((g) => g.axle), [groups]);
+  const existing = useMemo(() => tables.map((t) => t.axle), [tables]);
   const [pending, setPending] = useState<string>("");
 
   const candidates = useMemo(() => {
@@ -316,10 +261,11 @@ function AddAxlePicker({
           </option>
         ))}
       </select>
-
       <button
         className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
-        onClick={() => (pending ? onAddAxle(pending) : null)}
+        onClick={() => {
+          if (pending) onAddAxle(pending);
+        }}
         disabled={!pending}
         type="button"
       >

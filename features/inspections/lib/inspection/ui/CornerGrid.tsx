@@ -9,13 +9,13 @@ type Props = {
   sectionIndex: number;
   items: InspectionItem[];
   unitHint?: (label: string) => string;
-  /** Optional: show CVIP spec for a full label like "LF Tire Tread". */
+  /** Kept for API compatibility, but CornerGrid no longer renders spec buttons. */
   onSpecHint?: (fullLabel: string) => void;
 };
 
 type Corner = "LF" | "RF" | "LR" | "RR";
 
-type CornerCell = {
+type Cell = {
   idx: number;
   corner: Corner;
   metric: string;
@@ -24,41 +24,33 @@ type CornerCell = {
   initial: string;
 };
 
-type CornerRow = {
+type Row = {
   metric: string;
-  cells: CornerCell[];
+  cellsByCorner: Partial<Record<Corner, Cell>>;
 };
 
 const CORNER_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 const CORNERS: Corner[] = ["LF", "RF", "LR", "RR"];
 
-// Brakes-first ordering (tires removed from this grid)
-const METRIC_ORDER = ["Brake Pad", "Rotor Thickness", "Wheel Torque"];
-
-const metricCompare = (a: string, b: string) => {
-  const ai = METRIC_ORDER.findIndex((m) =>
-    a.toLowerCase().includes(m.toLowerCase()),
-  );
-  const bi = METRIC_ORDER.findIndex((m) =>
-    b.toLowerCase().includes(m.toLowerCase()),
-  );
-
-  const A = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
-  const B = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
-  if (A !== B) return A - B;
-  return a.localeCompare(b);
+// ✅ CornerGrid: ONLY brake pads/shoes + rotors/drums (no torque/spec/condition)
+const isAllowedCornerMetric = (metric: string) => {
+  const m = metric.toLowerCase();
+  const isPadShoe = /(pad|lining|shoe)/i.test(m);
+  const isRotorDrum = /(rotor|drum)/i.test(m);
+  return isPadShoe || isRotorDrum;
 };
 
-const isTireMetric = (metric: string) => {
+const metricRank = (metric: string) => {
   const m = metric.toLowerCase();
-  return m.includes("tire") || m.includes("tread") || m.includes("pressure");
+  if (/(pad|lining|shoe)/i.test(m)) return 0;
+  if (/(rotor|drum)/i.test(m)) return 1;
+  return 999;
 };
 
 export default function CornerGrid({
   sectionIndex,
   items,
   unitHint,
-  onSpecHint,
 }: Props) {
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
@@ -67,11 +59,8 @@ export default function CornerGrid({
     updateItem(sectionIndex, idx, { value });
   };
 
-  const grid = useMemo<{
-    corners: Corner[];
-    rows: CornerRow[];
-  }>(() => {
-    const allCells: CornerCell[] = [];
+  const grid = useMemo(() => {
+    const cells: Cell[] = [];
 
     items.forEach((it, idx) => {
       const label = it.item ?? "";
@@ -84,14 +73,11 @@ export default function CornerGrid({
       if (!CORNERS.includes(corner)) return;
 
       const metric = m.groups.metric.trim();
+      if (!isAllowedCornerMetric(metric)) return;
 
-      // Keep this grid brakes-only: drop tire metrics here
-      if (isTireMetric(metric)) return;
+      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
 
-      const unit =
-        (it.unit ?? "").trim() || (unitHint ? unitHint(label).trim() : "");
-
-      allCells.push({
+      cells.push({
         idx,
         corner,
         metric,
@@ -101,40 +87,39 @@ export default function CornerGrid({
       });
     });
 
-    if (!allCells.length) return { corners: [], rows: [] };
+    if (cells.length === 0) return null;
 
-    const corners: Corner[] = CORNERS.filter((c) =>
-      allCells.some((cell) => cell.corner === c),
-    );
+    const corners = CORNERS.filter((c) => cells.some((x) => x.corner === c));
 
-    const byMetric = new Map<string, CornerRow>();
-    for (const cell of allCells) {
+    const byMetric = new Map<string, Row>();
+    for (const cell of cells) {
       const key = cell.metric.toLowerCase();
-      const existing = byMetric.get(key) || { metric: cell.metric, cells: [] };
-      byMetric.set(key, {
-        ...existing,
-        metric: cell.metric,
-        cells: [...existing.cells, cell],
-      });
+      const existing = byMetric.get(key);
+      if (!existing) {
+        byMetric.set(key, {
+          metric: cell.metric,
+          cellsByCorner: { [cell.corner]: cell },
+        });
+      } else {
+        existing.cellsByCorner[cell.corner] = cell;
+      }
     }
 
-    const rows = Array.from(byMetric.values())
-      .map((row) => ({
-        ...row,
-        cells: [...row.cells].sort(
-          (a, b) => CORNERS.indexOf(a.corner) - CORNERS.indexOf(b.corner),
-        ),
-      }))
-      .sort((a, b) => metricCompare(a.metric, b.metric));
+    const rows = Array.from(byMetric.values()).sort((a, b) => {
+      const ra = metricRank(a.metric);
+      const rb = metricRank(b.metric);
+      if (ra !== rb) return ra - rb;
+      return a.metric.localeCompare(b.metric);
+    });
 
     return { corners, rows };
   }, [items, unitHint]);
 
-  if (!grid.rows.length) return null;
+  if (!grid) return null;
 
   return (
-    <div className="grid gap-3">
-      <div className="flex items-center justify-end gap-3 px-1">
+    <div className="grid gap-2">
+      <div className="flex items-center justify-end px-1">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -149,7 +134,6 @@ export default function CornerGrid({
 
       <div className="overflow-x-auto">
         <div className="inline-block min-w-full align-middle">
-          {/* Match BatteryGrid structure so native Tab order behaves the same */}
           <div className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
             <table className="min-w-full border-separate border-spacing-y-1">
               <thead>
@@ -161,9 +145,7 @@ export default function CornerGrid({
                     <th
                       key={corner}
                       className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100"
-                      style={{
-                        fontFamily: "Black Ops One, system-ui, sans-serif",
-                      }}
+                      style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
                     >
                       {corner}
                     </th>
@@ -173,31 +155,18 @@ export default function CornerGrid({
 
               {open && (
                 <tbody>
-                  {grid.rows.map((row, rowIndex) => (
-                    <tr key={`${row.metric}-${rowIndex}`} className="align-middle">
+                  {grid.rows.map((row, rowIdx) => (
+                    <tr key={`${row.metric}-${rowIdx}`} className="align-middle">
                       <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                        <div className="flex items-center gap-2">
-                          <span className="leading-tight">{row.metric}</span>
-                          {onSpecHint && (
-                            <button
-                              type="button"
-                              tabIndex={-1}
-                              onClick={() => onSpecHint(row.metric)}
-                              className="rounded-full border border-orange-500/50 bg-orange-500/10 px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.16em] text-orange-300 hover:bg-orange-500/20"
-                              title="Show spec"
-                            >
-                              Spec
-                            </button>
-                          )}
-                        </div>
+                        {row.metric}
                       </td>
 
                       {grid.corners.map((corner) => {
-                        const cell = row.cells.find((c) => c.corner === corner);
+                        const cell = row.cellsByCorner[corner];
                         if (!cell) {
                           return (
                             <td key={corner} className="px-3 py-2">
-                              <div className="h-[34px]" />
+                              <div className="h-[32px]" />
                             </td>
                           );
                         }
