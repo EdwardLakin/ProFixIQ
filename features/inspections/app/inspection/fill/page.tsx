@@ -27,7 +27,6 @@ export default function InspectionFillPage() {
     const urlParams = paramsToObject(sp);
 
     let nextTemplate = urlTemplate ?? null;
-    let merged: Dict = { ...urlParams };
 
     if (typeof window !== "undefined") {
       const stagedParamsRaw = sessionStorage.getItem("inspection:params");
@@ -35,15 +34,28 @@ export default function InspectionFillPage() {
         ? (JSON.parse(stagedParamsRaw) as Dict)
         : {};
 
-      // staged values (from /inspections/run or WO modal) win, but URL can override
-      merged = { ...stagedParams, ...urlParams };
+      /**
+       * IMPORTANT:
+       * - When coming from /inspections/run, staged params should be authoritative.
+       * - URL params are allowed to add context (workOrderId, customerId, etc),
+       *   but should NOT be able to force us back into "draft/builder" mode.
+       *
+       * So: URL first, staged second (staged wins).
+       */
+      const merged: Dict = { ...urlParams, ...stagedParams };
+
+      // Hard safety: if we have staged mode, keep it.
+      // (Prevents mode=draft in URL from flipping runtime into builder UI.)
+      if (stagedParams.mode) merged.mode = stagedParams.mode;
+
+      // Same for template if staged already set it
+      if (stagedParams.template) merged.template = stagedParams.template;
+
       sessionStorage.setItem("inspection:params", JSON.stringify(merged));
 
       if (!nextTemplate) {
         const stagedTemplate = sessionStorage.getItem("inspection:template");
-        if (stagedTemplate) {
-          nextTemplate = stagedTemplate;
-        }
+        if (stagedTemplate) nextTemplate = stagedTemplate;
       }
     }
 
@@ -60,8 +72,7 @@ export default function InspectionFillPage() {
     "mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 " +
     "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] " +
     "shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
-  const cardInner =
-    "rounded-xl border border-slate-700/60 bg-slate-950/80";
+  const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/80";
 
   if (!ready || !template) {
     return (
@@ -75,8 +86,6 @@ export default function InspectionFillPage() {
     );
   }
 
-  // From this point on we always use the generic runtime.
-  // GenericInspectionScreen reads search params + sessionStorage internally.
   return (
     <div className="min-h-[80vh] bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
       <div className={cardBase}>

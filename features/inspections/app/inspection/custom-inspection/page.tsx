@@ -1,3 +1,4 @@
+// app/inspections/custom/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -104,10 +105,9 @@ function buildAirCornerSection(): Section {
 }
 
 /* ------------------------------------------------------------------ */
-/* Battery grid helpers (for BatteryGrid)                             */
+/* Battery grid helpers                                               */
 /* ------------------------------------------------------------------ */
 
-/** Do we already have any battery-style section/items? */
 function hasBatterySection(sections: Section[] | unknown): boolean {
   const s = Array.isArray(sections) ? (sections as Section[]) : [];
   return s.some((sec) => {
@@ -119,7 +119,6 @@ function hasBatterySection(sections: Section[] | unknown): boolean {
   });
 }
 
-/** Canonical battery grid that matches BatteryGrid’s BATTERY_RE pattern */
 function buildBatterySection(): Section {
   const metrics: Array<{ label: string; unit: string | null }> = [
     { label: "Rating CCA", unit: "CCA" },
@@ -142,17 +141,6 @@ function buildBatterySection(): Section {
   return { title: "Battery Grid", items };
 }
 
-/**
- * Deterministic corner-grid injector:
- * - If user/template already has a corner-grid-like title -> leave sections as-is.
- * - Else strip pattern-based corner grids, then inject based on gridParam:
- *   - "air"  → air corner grid
- *   - "hyd"  → hydraulic corner grid
- *   - "none" → no corner grid injected
- *   - "" / null → infer from vehicleType (kept for backward-compat).
- * - For air mode, drop any standalone "hydraulic + brake" section so you don't
- *   see a hydraulic-brake block under an air corner grid.
- */
 function prepareSectionsWithCornerGrid(
   sections: Section[] | unknown,
   vehicleType: string | null | undefined,
@@ -160,17 +148,14 @@ function prepareSectionsWithCornerGrid(
 ): Section[] {
   const s = Array.isArray(sections) ? (sections as Section[]) : [];
 
-  // 1) If there is already a corner-style title, trust the template
   const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
   if (hasCornerByTitle) return s;
 
-  // 2) Otherwise, strip out any corner-looking item patterns
   const withoutGrids = stripExistingCornerGrids(s);
   const gridMode = (gridParam || "").toLowerCase() as GridMode | "";
 
   if (gridMode === "none") return withoutGrids;
 
-  // 3) Decide air vs hyd
   let injectAir: boolean;
   if (gridMode === "air" || gridMode === "hyd") {
     injectAir = gridMode === "air";
@@ -191,7 +176,6 @@ function prepareSectionsWithCornerGrid(
     ? buildAirCornerSection()
     : buildHydraulicCornerSection();
 
-  // 4) If we're injecting AIR, drop any standalone "hydraulic brakes" section
   let rest = withoutGrids;
   if (injectAir) {
     rest = rest.filter((sec) => {
@@ -212,41 +196,30 @@ export default function CustomBuilderPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  // Prefills
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
 
-  /**
-   * Manual corner-grid mode (Hyd / Air / None)
-   * NOTE: we now keep gridMode synced to dutyClass UNTIL the user manually overrides it.
-   */
   const [gridMode, setGridMode] = useState<GridMode>(
     dutyClass === "heavy" ? "air" : "hyd",
   );
   const [gridTouched, setGridTouched] = useState(false);
 
-  // Manual builder state
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [includeOil, setIncludeOil] = useState(true);
   const [includeBatteryGrid, setIncludeBatteryGrid] = useState(false);
 
-  // Section collapse state
   const [collapsedSections, setCollapsedSections] = useState<
     Record<string, boolean>
   >({});
 
-  // AI builder state
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // Keep gridMode in sync with dutyClass until user touches it
   useEffect(() => {
     if (gridTouched) return;
     setGridMode(dutyClass === "heavy" ? "air" : "hyd");
   }, [dutyClass, gridTouched]);
-
-  /* --------------------------- derived helpers --------------------------- */
 
   const gridModeLabel =
     gridMode === "air"
@@ -267,7 +240,6 @@ export default function CustomBuilderPage() {
     0,
   );
 
-  /* ------------------------------- helpers ------------------------------- */
   const toggle = (section: string, item: string) =>
     setSelections((prev) => {
       const cur = new Set(prev[section] ?? []);
@@ -275,7 +247,6 @@ export default function CustomBuilderPage() {
       return { ...prev, [section]: [...cur] };
     });
 
-  // ---- Select-all helpers ----
   function selectAllInSection(sectionTitle: string, items: { item: string }[]) {
     setSelections((prev) => ({
       ...prev,
@@ -303,51 +274,6 @@ export default function CustomBuilderPage() {
     }));
   }
 
-  function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
-    // Inject the appropriate corner grid now, so the runtime just renders it.
-    const withGrid = prepareSectionsWithCornerGrid(
-      sections,
-      dutyClass, // still used for inference if gridMode is ""
-      gridMode,
-    );
-
-    // Optionally inject battery grid (only if there isn't already a battery section)
-    let withBattery = withGrid;
-    if (includeBatteryGrid && !hasBatterySection(withGrid)) {
-      if (withGrid.length > 0 && looksLikeCornerTitle(withGrid[0].title)) {
-        // Put battery grid directly under the corner grid
-        withBattery = [withGrid[0], buildBatterySection(), ...withGrid.slice(1)];
-      } else {
-        withBattery = [...withGrid, buildBatterySection()];
-      }
-    }
-
-    // Persist for downstream loaders/runtime
-    sessionStorage.setItem(
-      "customInspection:sections",
-      JSON.stringify(withBattery),
-    );
-    sessionStorage.setItem("customInspection:title", tplTitle);
-    sessionStorage.setItem(
-      "customInspection:includeOil",
-      JSON.stringify(includeOil),
-    );
-    sessionStorage.setItem("customInspection:dutyClass", dutyClass);
-    sessionStorage.setItem(
-      "customInspection:includeBatteryGrid",
-      JSON.stringify(includeBatteryGrid),
-    );
-    sessionStorage.setItem("customInspection:gridMode", gridMode);
-
-    const qs = new URLSearchParams(sp.toString());
-    qs.set("template", tplTitle);
-    qs.set("dutyClass", dutyClass);
-    qs.set("grid", gridMode); // explicit hint for any downstream grid-aware logic
-
-    router.push(`/inspections/custom-draft?${qs.toString()}`);
-  }
-
-  // Normalization + merge helpers
   function normalizeTitle(t: string) {
     return (t || "").trim().toLowerCase();
   }
@@ -358,7 +284,6 @@ export default function CustomBuilderPage() {
     return (raw.item ?? raw.name ?? "").trim();
   }
 
-  /** Merge two section lists, de-duping by title + item label */
   function mergeSections(a: Section[], b: Section[]): Section[] {
     const out: Record<
       string,
@@ -367,10 +292,11 @@ export default function CustomBuilderPage() {
 
     const addList = (list: Section[]) => {
       for (const sec of list || []) {
-        const title = sec?.title ?? "";
-        const key = normalizeTitle(title);
+        const sectionTitle = sec?.title ?? "";
+        const key = normalizeTitle(sectionTitle);
         if (!key) continue;
-        if (!out[key]) out[key] = { title, items: [] };
+        if (!out[key]) out[key] = { title: sectionTitle, items: [] };
+
         const seen = new Set(out[key].items.map((i) => normalizeItem(i.item)));
         for (const raw of sec.items || []) {
           const label = toLabel(raw);
@@ -386,11 +312,9 @@ export default function CustomBuilderPage() {
     addList(a);
     addList(b);
 
-    // drop genuinely empty sections
     return Object.values(out).filter((s) => (s.items?.length ?? 0) > 0);
   }
 
-  /** Oil block (only added if toggle on and not already present) */
   function buildOilSection(): Section {
     return {
       title: "Oil Change",
@@ -404,9 +328,62 @@ export default function CustomBuilderPage() {
     };
   }
 
-  /* ------------------------- Manual: Start Inspection ------------------------- */
+  /**
+   * ✅ THIS IS THE KEY FIX:
+   * Stage into `inspection:*` keys and route into `/inspections/run`,
+   * so the runtime shows the real inspection controls (save inspection / finish).
+   */
+  function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
+  const withGrid = prepareSectionsWithCornerGrid(
+    sections,
+    dutyClass,
+    gridMode,
+  );
+
+  let withBattery = withGrid;
+  if (includeBatteryGrid && !hasBatterySection(withGrid)) {
+    if (withGrid.length > 0 && looksLikeCornerTitle(withGrid[0].title)) {
+      withBattery = [withGrid[0], buildBatterySection(), ...withGrid.slice(1)];
+    } else {
+      withBattery = [...withGrid, buildBatterySection()];
+    }
+  }
+
+  // ✅ Canonical runtime keys ONLY
+  sessionStorage.setItem("inspection:sections", JSON.stringify(withBattery));
+  sessionStorage.setItem("inspection:title", tplTitle);
+  sessionStorage.setItem("inspection:template", "generic");
+
+  const qs = new URLSearchParams(sp.toString());
+  qs.set("template", "generic");
+  qs.set("title", tplTitle);
+  qs.set("mode", "run");
+  qs.set("grid", gridMode);
+  qs.set("dutyClass", dutyClass);
+
+  // ✅ DO NOT write customInspection:* (removes builder-mode bleed)
+  sessionStorage.removeItem("customInspection:sections");
+  sessionStorage.removeItem("customInspection:title");
+  sessionStorage.removeItem("customInspection:gridMode");
+  sessionStorage.removeItem("customInspection:includeOil");
+  sessionStorage.removeItem("customInspection:includeBatteryGrid");
+
+  sessionStorage.setItem(
+    "inspection:params",
+    JSON.stringify({
+      template: "generic",
+      mode: "run",
+      grid: gridMode,
+      dutyClass,
+      title: tplTitle,
+    }),
+  );
+
+  // ✅ Go through the same loader path as real inspections
+  router.push(`/inspections/run?${qs.toString()}`);
+}
+
   function startManual() {
-    // no axle, no vehicle type — just what the user picked
     const built = buildInspectionFromSelections({
       selections,
       extraServiceItems: [],
@@ -420,7 +397,6 @@ export default function CustomBuilderPage() {
     goToRunWithSections(withOil, title);
   }
 
-  /* --------------------------- AI: Build from prompt -------------------------- */
   async function buildFromPrompt() {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
@@ -429,10 +405,7 @@ export default function CustomBuilderPage() {
       const res = await fetch("/api/inspections/build-from-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: aiPrompt,
-          dutyClass,
-        }),
+        body: JSON.stringify({ prompt: aiPrompt, dutyClass }),
       });
 
       if (!res.ok) {
@@ -444,13 +417,11 @@ export default function CustomBuilderPage() {
         sections: Section[];
       };
 
-      // also mix in anything the user manually ticked
       const manualBuilt = buildInspectionFromSelections({
         selections,
         extraServiceItems: [],
       }) as unknown as Section[];
 
-      // add oil if neither side has it
       const base =
         includeOil &&
         !aiSections.some((s) => normalizeTitle(s.title) === "oil change") &&
@@ -459,8 +430,6 @@ export default function CustomBuilderPage() {
           : aiSections;
 
       const merged = mergeSections(base, manualBuilt);
-
-      // final safety: drop any empty sections so the runtime doesn’t render blank blocks
       const cleaned = merged.filter(
         (s) => Array.isArray(s.items) && s.items.length > 0,
       );
@@ -476,10 +445,10 @@ export default function CustomBuilderPage() {
   }
 
   /* ---------------------------------- UI ---------------------------------- */
+
   return (
     <div className="p-4 text-white">
       <div className="mx-auto w-full max-w-6xl rounded-2xl border border-white/10 bg-black/70 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-6">
-        {/* Title */}
         <h1
           className="mb-3 text-center text-2xl font-bold tracking-[0.18em] text-orange-400"
           style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
@@ -487,7 +456,6 @@ export default function CustomBuilderPage() {
           Build Custom Inspection
         </h1>
 
-        {/* Summary strip */}
         <div className="mb-5 rounded-2xl border border-white/10 bg-black/70 px-3 py-3 text-xs text-neutral-200 md:flex md:items-center md:justify-between md:px-4">
           <div className="space-y-1 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-1">
             <span className="inline-flex items-center gap-1.5">
@@ -535,7 +503,6 @@ export default function CustomBuilderPage() {
           </div>
         </div>
 
-        {/* Title + Duty class */}
         <div className="mb-5 grid gap-3 md:grid-cols-2">
           <label className="flex flex-col gap-1 text-center md:text-left">
             <span className="text-sm text-neutral-300">Template title</span>
@@ -551,9 +518,7 @@ export default function CustomBuilderPage() {
             <select
               className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
               value={dutyClass}
-              onChange={(e) => {
-                setDutyClass(e.target.value as DutyClass);
-              }}
+              onChange={(e) => setDutyClass(e.target.value as DutyClass)}
             >
               <option value="light">Light</option>
               <option value="medium">Medium</option>
@@ -561,13 +526,11 @@ export default function CustomBuilderPage() {
             </select>
 
             <span className="mt-1 text-[11px] text-neutral-400">
-              Duty class influences which CVIP/master items are suggested.
-              Corner grid style is chosen separately below.
+              Duty class influences suggested items. Corner grid is chosen below.
             </span>
           </label>
         </div>
 
-        {/* Toggles: Oil + Battery */}
         <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"
@@ -598,7 +561,6 @@ export default function CustomBuilderPage() {
           </button>
         </div>
 
-        {/* Corner grid mode selector */}
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
           <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
             Corner grid mode
@@ -637,9 +599,7 @@ export default function CustomBuilderPage() {
             Build with AI (optional)
           </div>
           <p className="mb-2 text-center text-sm text-neutral-300">
-            Describe what you want to inspect. We’ll generate sections &amp; items
-            and send them to the editor. Duty class &amp; corner grid mode are
-            respected.
+            Describe what you want to inspect. We’ll generate sections &amp; items.
           </p>
           <textarea
             className="mb-3 min-h-[90px] w-full rounded-xl border border-neutral-700 bg-neutral-900/80 p-3 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
@@ -648,7 +608,6 @@ export default function CustomBuilderPage() {
             onChange={(e) => setAiPrompt(e.target.value)}
           />
 
-          {/* Sample prompt chips */}
           <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
             {[
               "60-point light-duty car inspection with focus on tires, brakes, and fluids.",
@@ -724,9 +683,7 @@ export default function CustomBuilderPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() =>
-                        selectAllInSection(sec.title, sec.items as any)
-                      }
+                      onClick={() => selectAllInSection(sec.title, sec.items as any)}
                       className="rounded-full bg-zinc-800 px-2 py-1 text-[11px] text-white hover:bg-zinc-700"
                     >
                       Select all
@@ -752,9 +709,7 @@ export default function CustomBuilderPage() {
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {sec.items.map((i) => {
                       const label = i.item;
-                      const checked = (selections[sec.title] ?? []).includes(
-                        label,
-                      );
+                      const checked = (selections[sec.title] ?? []).includes(label);
                       return (
                         <label
                           key={label}
@@ -783,7 +738,6 @@ export default function CustomBuilderPage() {
           })}
         </div>
 
-        {/* Actions */}
         <div className="flex flex-wrap justify-center gap-3">
           <button
             onClick={startManual}
