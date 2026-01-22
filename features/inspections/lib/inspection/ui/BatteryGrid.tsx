@@ -37,11 +37,9 @@ const METRIC_ORDER: MetricKind[] = ["rating", "tested", "condition"];
 
 const classifyMetric = (label: string): MetricKind | null => {
   const lower = label.toLowerCase();
-
   if (lower.includes("rating")) return "rating";
   if (lower.includes("tested") || lower.includes("test")) return "tested";
   if (lower.includes("condition")) return "condition";
-
   return null;
 };
 
@@ -49,10 +47,8 @@ const metricCompare = (a: string, b: string) => {
   const ca = classifyMetric(a);
   const cb = classifyMetric(b);
 
-  const ai =
-    ca !== null ? METRIC_ORDER.indexOf(ca) : Number.MAX_SAFE_INTEGER;
-  const bi =
-    cb !== null ? METRIC_ORDER.indexOf(cb) : Number.MAX_SAFE_INTEGER;
+  const ai = ca !== null ? METRIC_ORDER.indexOf(ca) : Number.MAX_SAFE_INTEGER;
+  const bi = cb !== null ? METRIC_ORDER.indexOf(cb) : Number.MAX_SAFE_INTEGER;
 
   if (ai !== bi) return ai - bi;
   return a.localeCompare(b);
@@ -67,17 +63,11 @@ const batteryIndex = (battery: string): number => {
   return Number.MAX_SAFE_INTEGER;
 };
 
-export default function BatteryGrid({
-  sectionIndex,
-  items,
-  unitHint,
-}: Props) {
+export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
 
-  const commit = (idx: number, el: HTMLInputElement | null) => {
-    if (!el) return;
-    const value = el.value;
+  const commit = (idx: number, value: string) => {
     updateItem(sectionIndex, idx, { value });
   };
 
@@ -97,18 +87,15 @@ export default function BatteryGrid({
       const battery = m.groups.battery.trim();
       const metric = m.groups.metric.trim();
 
-      // Only keep metrics we care about
       const kind = classifyMetric(metric);
       if (!kind) return;
 
-      // 🔹 Force CCA units for rating & tested rows
       let unit = "";
       if (kind === "rating" || kind === "tested") {
         unit = "CCA";
       } else {
         unit =
-          (it.unit ?? "").trim() ||
-          (unitHint ? unitHint(label).trim() : "");
+          (it.unit ?? "").trim() || (unitHint ? unitHint(label).trim() : "");
       }
 
       allCells.push({
@@ -124,12 +111,11 @@ export default function BatteryGrid({
 
     if (!allCells.length) return { batteries: [], rows: [] };
 
-    const batteries = Array.from(
-      new Set(allCells.map((c) => c.battery)),
-    ).sort((a, b) => batteryIndex(a) - batteryIndex(b));
+    const batteries = Array.from(new Set(allCells.map((c) => c.battery))).sort(
+      (a, b) => batteryIndex(a) - batteryIndex(b),
+    );
 
     const byMetric = new Map<string, BatteryRow>();
-
     for (const cell of allCells) {
       const key = cell.metric.toLowerCase();
       const existing = byMetric.get(key) || {
@@ -152,7 +138,6 @@ export default function BatteryGrid({
       ),
     }));
 
-    // Final safety filter + sort (keeps Rating above Tested)
     rows = rows
       .filter((row) => classifyMetric(row.metric) !== null)
       .sort((a, b) => metricCompare(a.metric, b.metric));
@@ -160,13 +145,14 @@ export default function BatteryGrid({
     return { batteries, rows };
   }, [items, unitHint]);
 
-  if (!grid.rows.length) {
-    // Fallback: nothing matched "Battery N ..." + our 3 metrics — let parent fall back.
-    return null;
-  }
+  if (!grid.rows.length) return null;
 
+  // ✅ “Tighter” spacing vs previous:
+  // - smaller padding
+  // - slightly smaller max input width
+  // - smaller row vertical spacing
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-2">
       <div className="flex items-center justify-end gap-3 px-1">
         <button
           type="button"
@@ -183,16 +169,16 @@ export default function BatteryGrid({
       <div className="overflow-x-auto">
         <div className="inline-block min-w-full align-middle">
           <div className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-            <table className="min-w-full border-separate border-spacing-y-1">
+            <table className="min-w-full border-separate border-spacing-y-[2px]">
               <thead>
                 <tr className="text-xs text-muted-foreground">
-                  <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
+                  <th className="px-3 py-1.5 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
                     Metric
                   </th>
                   {grid.batteries.map((batt) => (
                     <th
                       key={batt}
-                      className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100"
+                      className="px-3 py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100"
                       style={{
                         fontFamily: "Black Ops One, system-ui, sans-serif",
                       }}
@@ -202,22 +188,21 @@ export default function BatteryGrid({
                   ))}
                 </tr>
               </thead>
+
               {open && (
                 <tbody>
-                  {grid.rows.map((row, rowIdx) => (
-                    <tr key={`${row.metric}-${rowIdx}`} className="align-middle">
-                      <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                        {/* 🔹 Rating row will naturally sort above Tested via METRIC_ORDER */}
+                  {grid.rows.map((row, rowIndex) => (
+                    <tr key={`${row.metric}-${rowIndex}`} className="align-middle">
+                      <td className="px-3 py-1.5 text-sm font-semibold text-foreground">
                         {row.metric}
                       </td>
+
                       {grid.batteries.map((batt) => {
-                        const cell = row.cells.find(
-                          (c) => c.battery === batt,
-                        );
+                        const cell = row.cells.find((c) => c.battery === batt);
                         if (!cell) {
                           return (
-                            <td key={batt} className="px-3 py-2">
-                              <div className="h-[34px]" />
+                            <td key={batt} className="px-3 py-1.5">
+                              <div className="h-[32px]" />
                             </td>
                           );
                         }
@@ -227,23 +212,21 @@ export default function BatteryGrid({
 
                         const placeholder =
                           cell.kind === "rating"
-                            ? "Rating CCA"
+                            ? "Rating"
                             : cell.kind === "tested"
-                            ? "Test CCA"
+                            ? "Test"
                             : "Notes";
 
                         return (
-                          <td key={batt} className="px-3 py-2 text-center">
-                            <div className="relative w-full max-w-[8.5rem]">
+                          <td key={batt} className="px-3 py-1.5 text-center">
+                            <div className="relative w-full max-w-[7.75rem]">
                               <input
                                 defaultValue={cell.initial}
-                                className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
+                                className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-12 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
                                 placeholder={placeholder}
                                 autoComplete="off"
                                 inputMode={isNumericRow ? "decimal" : "text"}
-                                onBlur={(e) =>
-                                  commit(cell.idx, e.currentTarget)
-                                }
+                                onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
                               />
                               {isNumericRow && (
                                 <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
