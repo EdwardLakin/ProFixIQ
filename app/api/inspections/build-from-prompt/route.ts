@@ -27,7 +27,8 @@ function unitHint(label: string): string | null {
   if (/(tread|pad|lining|rotor|drum|push ?rod|thickness)/.test(l)) return "mm";
   if (/(pressure|psi|kpa|leak rate|warning)/.test(l))
     return l.includes("kpa") ? "kPa" : "psi";
-  if (/(torque|ft·lb|ft-lb|nm|n·m)/.test(l)) return l.includes("n") ? "N·m" : "ft·lb";
+  if (/(torque|ft·lb|ft-lb|nm|n·m)/.test(l))
+    return l.includes("n") ? "N·m" : "ft·lb";
   return null;
 }
 
@@ -45,19 +46,20 @@ function sanitizeSections(input: unknown): SectionOut[] {
     const title = asString(sec.title)?.trim() ?? "";
     if (!title) continue;
 
-    const itemsIn: unknown[] = Array.isArray(sec.items) ? (sec.items as unknown[]) : [];
+    const itemsIn: unknown[] = Array.isArray(sec.items)
+      ? (sec.items as unknown[])
+      : [];
     const itemsOut: SectionItem[] = [];
 
     for (const raw of itemsIn) {
       if (!isRecord(raw)) continue;
       const label =
-        asString(raw.item)?.trim() ??
-        asString(raw.name)?.trim() ??
-        "";
+        asString(raw.item)?.trim() ?? asString(raw.name)?.trim() ?? "";
       if (!label) continue;
 
       const providedUnit = asString(raw.unit)?.trim();
-      const unit = providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
+      const unit =
+        providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
 
       itemsOut.push({ item: label, unit: unit ?? null });
     }
@@ -91,7 +93,8 @@ function looksAirBrakeItem(label: string): boolean {
   if (l.includes("air tank")) return true;
   if (l.includes("air leak")) return true;
   if (l.includes("governor")) return true;
-  if (/^(steer|drive|tag|trailer)\s*\d*\s+(left|right)\s+/i.test(label)) return true;
+  if (/^(steer|drive|tag|trailer)\s*\d*\s+(left|right)\s+/i.test(label))
+    return true;
   return false;
 }
 
@@ -221,7 +224,11 @@ export async function POST(req: Request) {
 
     // 2) infer duty class (body > prompt > vehicle fallback)
     let dutyClass: DutyClass;
-    if (dutyClassStr === "light" || dutyClassStr === "medium" || dutyClassStr === "heavy") {
+    if (
+      dutyClassStr === "light" ||
+      dutyClassStr === "medium" ||
+      dutyClassStr === "heavy"
+    ) {
       dutyClass = dutyClassStr;
     } else {
       const fromPrompt = inferDutyFromPrompt(prompt);
@@ -278,8 +285,8 @@ export async function POST(req: Request) {
         dutyClass === "light" || brakeSystem === "hyd_brake"
           ? "This is a light-duty / automotive inspection. Do NOT include heavy-duty truck or air-brake items such as push rod travel, slack adjusters, axle-by-axle dual tire rows, 5th wheel, or trailer air supply."
           : dutyClass === "medium"
-          ? "This is a medium-duty inspection. Prefer hydraulic/light-truck items, but medium truck chassis/suspension/steering items are OK. Avoid HD tractor-only items like fifth wheel unless the prompt explicitly asks."
-          : "This inspection may include heavy-duty / air-brake content.",
+            ? "This is a medium-duty inspection. Prefer hydraulic/light-truck items, but medium truck chassis/suspension/steering items are OK. Avoid HD tractor-only items like fifth wheel unless the prompt explicitly asks."
+            : "This inspection may include heavy-duty / air-brake content.",
         "Return ONLY JSON that follows the supplied schema.",
         `Aim for about ${targetCount} inspection items.`,
       ].join(" ");
@@ -297,31 +304,60 @@ export async function POST(req: Request) {
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        // @ts-expect-error - sdk typing lag
-        response_format: {
-          type: "json_schema",
-          json_schema: SectionsSchema,
+        // ✅ Responses API: response_format moved → text.format
+        text: {
+          format: {
+            type: "json_schema",
+            name: SectionsSchema.name,
+            schema: SectionsSchema.schema,
+            strict: true,
+          },
         },
         max_output_tokens: 4000,
       });
 
-      // extract JSON
+      // extract JSON (support both output_json and text fallbacks)
       let aiRaw: unknown = {};
       type ResponseOutput = {
         type?: string;
-        content?: Array<{ type?: string; output_json?: unknown; text?: string }>;
+        content?: Array<{
+          type?: string;
+          output_json?: unknown;
+          text?: string;
+        }>;
       };
+
       const firstOut = (resp.output?.[0] ?? {}) as ResponseOutput;
+
       if (firstOut.type === "message" && Array.isArray(firstOut.content)) {
-        const c0 = firstOut.content[0];
-        if (c0?.type === "output_json") {
-          aiRaw = c0.output_json;
-        } else if (c0?.type === "text" && typeof c0.text === "string") {
-          try {
-            aiRaw = JSON.parse(c0.text);
-          } catch {
-            aiRaw = {};
+        // Prefer output_json if present
+        const jsonNode = firstOut.content.find((c) => c?.type === "output_json");
+        if (jsonNode && "output_json" in jsonNode) {
+          aiRaw = jsonNode.output_json;
+        } else {
+          // Fall back to text content → JSON.parse
+          const textNode = firstOut.content.find((c) => c?.type === "text");
+          if (textNode?.text && typeof textNode.text === "string") {
+            try {
+              aiRaw = JSON.parse(textNode.text);
+            } catch {
+              aiRaw = {};
+            }
+          } else if ((resp as any).output_text && typeof (resp as any).output_text === "string") {
+            // Extra fallback: some SDK versions expose output_text
+            try {
+              aiRaw = JSON.parse((resp as any).output_text);
+            } catch {
+              aiRaw = {};
+            }
           }
+        }
+      } else if ((resp as any).output_text && typeof (resp as any).output_text === "string") {
+        // Non-message shape fallback
+        try {
+          aiRaw = JSON.parse((resp as any).output_text);
+        } catch {
+          aiRaw = {};
         }
       }
 
@@ -336,9 +372,7 @@ export async function POST(req: Request) {
       aiSections = aiSections
         .map((sec) => {
           if (looksAirBrakeSection(sec.title)) return null;
-          const filteredItems = sec.items.filter(
-            (it) => !looksAirBrakeItem(it.item),
-          );
+          const filteredItems = sec.items.filter((it) => !looksAirBrakeItem(it.item));
           if (!filteredItems.length) return null;
           return { ...sec, items: filteredItems };
         })
@@ -346,10 +380,7 @@ export async function POST(req: Request) {
     }
 
     // 8) merge if AI is good enough
-    const aiItemCount = aiSections.reduce(
-      (sum, s) => sum + (s.items?.length ?? 0),
-      0,
-    );
+    const aiItemCount = aiSections.reduce((sum, s) => sum + (s.items?.length ?? 0), 0);
     const minItemsToMerge = Math.max(10, Math.floor(targetCount * 0.5));
     const shouldMerge = aiSections.length >= 3 && aiItemCount >= minItemsToMerge;
 
