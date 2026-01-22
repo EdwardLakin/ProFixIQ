@@ -331,22 +331,22 @@ export default function OwnerSettingsPage() {
     setSeatsLimit(planSeatLimit(resolvedPlan));
 
     // Seats used = # of profiles in this shop
-    try {
-      const { count, error: cErr } = await supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("shop_id", sid);
+    // Seats used = # of profiles in this shop (use server route so RLS doesn't force 1)
+try {
+  const res = await fetch("/api/admin/user-count", { cache: "no-store" });
 
-      if (cErr) {
-        console.warn("[OwnerSettings] seat count error", cErr);
-      } else {
-        const used = typeof count === "number" ? count : 0;
-        setSeatsUsed(used);
-        maybeToastSeatInfo(used, planSeatLimit(resolvedPlan), resolvedPlan);
-      }
-    } catch (e) {
-      console.warn("[OwnerSettings] seat count exception", e);
-    }
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    console.warn("[OwnerSettings] user-count failed", res.status, t);
+  } else {
+    const j = (await res.json()) as { count?: number };
+    const used = typeof j.count === "number" ? j.count : 0;
+    setSeatsUsed(used);
+    maybeToastSeatInfo(used, planSeatLimit(resolvedPlan), resolvedPlan);
+  }
+} catch (e) {
+  console.warn("[OwnerSettings] user-count exception", e);
+}
 
     if (shop) {
       const resolvedShopName =
