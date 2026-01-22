@@ -38,9 +38,29 @@ type AxleTable = {
   rows: Row[];
 };
 
-const LABEL_SIDE_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+const LABEL_SIDE_RE =
+  /^(?<axle>.+?)\s+(?<side>Left|Right|LF|RF|LR|RR|L|R|Driver|Passenger|DS|PS)\s+(?<metric>.+)$/i;
+
 // Supports axle-only rows like: "Drive 1 Wheel Torque"
 const LABEL_AXLE_ONLY_RE = /^(?<axle>.+?)\s+(?<metric>.+)$/i;
+
+function normalizeSide(raw: string): Side | null {
+  const s = raw.trim().toLowerCase();
+
+  // full words
+  if (s === "left") return "Left";
+  if (s === "right") return "Right";
+
+  // abbreviations / corner-ish tokens -> map to left/right
+  if (s === "lf" || s === "lr" || s === "l") return "Left";
+  if (s === "rf" || s === "rr" || s === "r") return "Right";
+
+  // truck terms
+  if (s === "driver" || s === "ds") return "Left";
+  if (s === "passenger" || s === "ps") return "Right";
+
+  return null;
+}
 
 const isPressureMetric = (metric: string) => /tire\s*pressure/i.test(metric);
 const isTreadMetric = (metric: string) =>
@@ -89,7 +109,9 @@ export default function TireCornerGrid({
       const mSide = label.match(LABEL_SIDE_RE);
       if (mSide?.groups) {
         const axle = mSide.groups.axle.trim();
-        const side = (mSide.groups.side as Side) || "Left";
+        const sideNorm = normalizeSide(String(mSide.groups.side ?? ""));
+if (!sideNorm) return;
+const side = sideNorm;
         const metric = mSide.groups.metric.trim();
         if (!isAllowedTireMetric(metric)) return;
 

@@ -1032,15 +1032,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         sessionStorage.setItem("inspection:template", "generic");
         sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
 
-        sessionStorage.setItem(
-          "customInspection:sections",
-          JSON.stringify(sections),
-        );
-        sessionStorage.setItem("customInspection:title", title);
-        sessionStorage.setItem(
-          "customInspection:includeOil",
-          JSON.stringify(false),
-        );
+        
       }
 
       const sp = new URLSearchParams();
