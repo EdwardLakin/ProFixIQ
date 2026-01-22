@@ -1,7 +1,5 @@
 "use client";
 
-// --- Part 1/3 ---
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
@@ -31,7 +29,9 @@ import type {
 } from "@inspections/lib/inspection/types";
 
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
-import AxlesCornerGrid from "@inspections/lib/inspection/ui/AxlesCornerGrid";
+import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
+import AirCornerGrid from "@inspections/lib/inspection/ui/AirCornerGrid";
+import TireGrid from "@inspections/lib/inspection/ui/TireCornerGrid";
 import BatteryGrid from "@inspections/lib/inspection/ui/BatteryGrid";
 
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
@@ -43,13 +43,13 @@ import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 
 /* -------------------------- helpers -------------------------- */
-// match what inspectionHost passes in
+
 type GenericInspectionScreenProps = {
   embed?: boolean;
   template?: string | null;
   params?: Record<string, string | number | boolean | null | undefined>;
   onSpecHint?: (payload: {
-    source: "air_corner" | "corner" | "item" | "battery" | "other";
+    source: "air_corner" | "corner" | "tire" | "item" | "battery" | "other";
     label: string;
     specCode?: string | null;
     meta?: Record<string, string | number | boolean | null | undefined>;
@@ -82,7 +82,6 @@ function toHeaderVehicle(v?: SessionVehicle | null) {
   };
 }
 
-/** Try to give a sensible unit hint for common labels */
 function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
   const l = (label || "").toLowerCase();
   if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
@@ -99,7 +98,6 @@ function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
   return "";
 }
 
-/** Safe reader for sessionStorage JSON */
 function readStaged<T>(key: string): T | null {
   try {
     if (typeof window === "undefined") return null;
@@ -110,7 +108,6 @@ function readStaged<T>(key: string): T | null {
   }
 }
 
-/** Normalize + merge sections (copy name→item; merge same titles; dedupe items) */
 function normalizeSections(input: unknown): InspectionSection[] {
   try {
     const arr = Array.isArray(input) ? input : [];
@@ -152,7 +149,6 @@ function normalizeSections(input: unknown): InspectionSection[] {
   }
 }
 
-/** Strip statuses/notes/photos/etc and keep only shape needed for templates */
 function toTemplateSections(sections: InspectionSection[]): InspectionSection[] {
   return sections
     .map((sec) => ({
@@ -171,53 +167,76 @@ function toTemplateSections(sections: InspectionSection[]): InspectionSection[] 
     .filter((sec) => sec.items.length > 0);
 }
 
-/* -------- smarter corner-grid detector -------- */
+/* -------- smarter grid detectors -------- */
 
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 const HYD_FULL_RE =
   /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
-function shouldRenderCornerGrid(
-  title: string | undefined,
-  items: { item?: string | null }[] = [],
-): boolean {
-  const t = (title || "").toLowerCase();
-
-  // Never treat "Tires & Wheels" as a corner grid
-  if (t.includes("tires & wheels") || t.includes("tires and wheels")) {
-    return false;
-  }
-
-  // Titles that really *are* grids
-  if (
-    t.includes("corner grid") ||
-    t.includes("tires & brakes — truck") ||
-    t.includes("tires & brakes — air") ||
-    t.includes("axle grid")
-  ) {
-    return true;
-  }
-
-  if (!items || items.length < 4) return false;
-
-  const hasStrongPattern = items.some((it) => {
-    const label = it.item ?? "";
-    return AIR_RE.test(label) || HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
-  });
-
-  return hasStrongPattern;
-}
-
-/** battery-specific detector */
 function isBatterySection(
   title: string | undefined,
   items: { item?: string | null }[] = [],
 ): boolean {
   const t = (title || "").toLowerCase();
   if (t.includes("battery")) return true;
-
   return items.some((it) => (it.item || "").toLowerCase().includes("battery"));
+}
+
+function isAirCornerSection(
+  title: string | undefined,
+  items: { item?: string | null }[] = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+  if (t.includes("air corner") || t.includes("air corner grid")) return true;
+  if (t.includes("tires & brakes — air")) return true;
+  return items.some((it) => AIR_RE.test(it.item ?? ""));
+}
+
+function isTireGridSection(
+  title: string | undefined,
+  items: { item?: string | null }[] = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+
+  // explicit / intended naming
+  if (t.includes("tire grid") || t.includes("tires grid")) return true;
+  if (t.includes("tires") && t.includes("corner")) return true;
+
+  // if a section is explicitly tires/wheels, treat it as tire grid (not hydraulic corner grid)
+  if (t.includes("tires & wheels") || t.includes("tires and wheels")) return true;
+
+  // heuristics: tire pressure / tread + axle left/right or corners
+  const tireSignals = items.filter((it) => {
+    const l = (it.item ?? "").toLowerCase();
+    return l.includes("tire pressure") || l.includes("tire tread") || l.includes("tread depth");
+  });
+  if (tireSignals.length >= 2) {
+    // axle labels or corners usually imply grid
+    return tireSignals.some((it) => AIR_RE.test(it.item ?? "") || HYD_ABBR_RE.test(it.item ?? ""));
+  }
+
+  return false;
+}
+
+function isHydraulicCornerSection(
+  title: string | undefined,
+  items: { item?: string | null }[] = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+
+  // never treat tires-only sections as hydraulic corner grid
+  if (isTireGridSection(title, items)) return false;
+
+  if (t.includes("corner grid") || t.includes("tires & brakes — truck")) return true;
+  if (t.includes("axle grid")) return true;
+
+  if (!items || items.length < 4) return false;
+
+  return items.some((it) => {
+    const label = it.item ?? "";
+    return HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
+  });
 }
 
 /* --------------------------------- types / constants --------------------------------- */
@@ -231,7 +250,6 @@ type InsertTemplate =
 
 const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
 
-/** stable local key: prefer WO line (best resume), else WO+template, else template */
 function inspectionDraftKey(args: {
   inspectionId: string;
   workOrderLineId?: string | null;
@@ -244,7 +262,6 @@ function inspectionDraftKey(args: {
   return `inspection-draft:template:${t}:${args.inspectionId}`;
 }
 
-/** build cause/correction from session.sections */
 function buildCauseCorrectionFromSession(
   s: any,
 ): { cause: string; correction: string } {
@@ -299,7 +316,6 @@ export default function GenericInspectionScreen(
   const rootRef = useRef<HTMLDivElement | null>(null);
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
-  // Prefer staged params + merge with URL params
   const sp = useMemo(() => {
     const staged = readStaged<Record<string, string>>("inspection:params");
 
@@ -320,10 +336,8 @@ export default function GenericInspectionScreen(
     return routeSp;
   }, [routeSp]);
 
-  // only the mobile companion should use voice
   const isMobileView = (sp.get("view") || "").toLowerCase() === "mobile";
 
-  // Embed for iframe/modal
   const isEmbed = useMemo(
     () =>
       ["1", "true", "yes"].includes(
@@ -341,7 +355,6 @@ export default function GenericInspectionScreen(
       ? rawVehicleType
       : undefined;
 
-  // Only complain about missing line id when we're in embedded flow
   const showMissingLineWarning = isEmbed && !workOrderLineId;
 
   const templateName =
@@ -394,9 +407,6 @@ export default function GenericInspectionScreen(
     ];
   }, [sp]);
 
-  /**
-   * Make inspectionId stable:
-   */
   const inspectionId = useMemo(() => {
     const fromUrl = sp.get("inspectionId");
     if (fromUrl) return fromUrl;
@@ -417,7 +427,6 @@ export default function GenericInspectionScreen(
     return created;
   }, [sp, workOrderLineId, workOrderId, templateName]);
 
-  // draft key
   const draftKey = useMemo(
     () =>
       inspectionDraftKey({
@@ -448,19 +457,15 @@ export default function GenericInspectionScreen(
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
-  // per-section add item state
   const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>({});
   const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
 
-  // section collapse state
   const [collapsedSections, setCollapsedSections] =
     useState<Record<number, boolean>>({});
 
-  // wake-word state
   const [wakeActive, setWakeActive] = useState(false);
   const wakeTimeoutRef = useRef<number | null>(null);
 
-  // openai realtime refs
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -494,7 +499,6 @@ export default function GenericInspectionScreen(
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
 
-  // hydrate lock
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -511,9 +515,8 @@ export default function GenericInspectionScreen(
     return true;
   };
 
-  // --- Part 2/3 ---
+  /* ------------------------------ Part 2/3 ------------------------------ */
 
-  // start
   useEffect(() => {
     if (persistedSession) {
       startSession(persistedSession);
@@ -529,7 +532,6 @@ export default function GenericInspectionScreen(
     }
   }, [session, bootSections, updateInspection]);
 
-  // persist draft
   useEffect(() => {
     if (!session) return;
     try {
@@ -539,7 +541,6 @@ export default function GenericInspectionScreen(
     }
   }, [session, draftKey]);
 
-  // persist on unload
   useEffect(() => {
     const persistNow = () => {
       try {
@@ -560,7 +561,6 @@ export default function GenericInspectionScreen(
     };
   }, [session, draftKey, initialSession]);
 
-  // when finish fires, prefill cause/correction + clear draft
   useEffect(() => {
     const handler = (evt: Event) => {
       const e = evt as CustomEvent<any>;
@@ -590,18 +590,11 @@ export default function GenericInspectionScreen(
       } catch {}
     };
 
-    window.addEventListener(
-      "inspection:completed",
-      handler as EventListener,
-    );
+    window.addEventListener("inspection:completed", handler as EventListener);
     return () =>
-      window.removeEventListener(
-        "inspection:completed",
-        handler as EventListener,
-      );
+      window.removeEventListener("inspection:completed", handler as EventListener);
   }, [session, draftKey, lockKey]);
 
-  // transcript handler
   const handleTranscript = async (text: string): Promise<void> => {
     if (!session || guardLocked()) return;
     const commands: ParsedCommand[] = await interpretCommand(text);
@@ -619,7 +612,6 @@ export default function GenericInspectionScreen(
     }
   };
 
-  // wake-word helper
   function maybeHandleWakeWord(raw: string): string | null {
     const cleaned = raw.trim();
     const lower = cleaned.toLowerCase();
@@ -634,7 +626,6 @@ export default function GenericInspectionScreen(
             remainder: cleaned.slice(prefix.length).trimStart(),
           };
         }
-
         if (lower === prefix) {
           return { prefix, remainder: "" };
         }
@@ -668,7 +659,6 @@ export default function GenericInspectionScreen(
     return cleaned;
   }
 
-  // realtime start
   const startListening = async (): Promise<void> => {
     if (isListening) return;
     if (guardLocked()) return;
@@ -772,7 +762,6 @@ export default function GenericInspectionScreen(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // AI submit flow
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
@@ -931,15 +920,12 @@ export default function GenericInspectionScreen(
           } catch (err) {
             // eslint-disable-next-line no-console
             console.error("Parts request failed", err);
-            toast.error(
-              "Line added, but couldn't reach parts request service",
-              { id: toastId },
-            );
+            toast.error("Line added, but couldn't reach parts request service", {
+              id: toastId,
+            });
           }
         } else {
-          toast.success("Added to work order (no parts requested)", {
-            id: toastId,
-          });
+          toast.success("Added to work order (no parts requested)", { id: toastId });
         }
       } else {
         toast.error("Missing work order id — saved locally only", { id: toastId });
@@ -953,7 +939,6 @@ export default function GenericInspectionScreen(
     }
   };
 
-  // embed scrubber
   useEffect(() => {
     if (!isEmbed) return;
     const root = rootRef.current;
@@ -1017,7 +1002,6 @@ export default function GenericInspectionScreen(
     return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
-  // helpers that depend on live session
   const currentSectionIndex =
     typeof session.currentSectionIndex === "number"
       ? session.currentSectionIndex
@@ -1096,92 +1080,88 @@ export default function GenericInspectionScreen(
     stopListening();
   };
 
-  // Save current layout as template
-const saveCurrentAsTemplate = async (): Promise<void> => {
-  if (!session) return;
-  if (savingTemplate) return;
+  const saveCurrentAsTemplate = async (): Promise<void> => {
+    if (!session) return;
+    if (savingTemplate) return;
 
-  const cleanedSections = toTemplateSections(session.sections);
-  if (cleanedSections.length === 0) {
-    toast.error("Nothing to save — no sections with items.");
-    return;
-  }
-
-  try {
-    setSavingTemplate(true);
-
-    // ✅ auth + uid
-    const { data: auth } = await supabase.auth.getUser();
-    const uid = auth?.user?.id ?? null;
-    if (!uid) {
-      toast.error("Please sign in to save this as a template.");
+    const cleanedSections = toTemplateSections(session.sections);
+    if (cleanedSections.length === 0) {
+      toast.error("Nothing to save — no sections with items.");
       return;
     }
 
-    // ✅ resolve shop_id (profiles.user_id first, then profiles.id)
-    let resolvedShopId: string | null = null;
+    try {
+      setSavingTemplate(true);
 
-    const byUser = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("user_id", uid)
-      .maybeSingle();
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id ?? null;
+      if (!uid) {
+        toast.error("Please sign in to save this as a template.");
+        return;
+      }
 
-    if (byUser.data?.shop_id) {
-      resolvedShopId = String(byUser.data.shop_id);
-    } else {
-      const byId = await supabase
+      let resolvedShopId: string | null = null;
+
+      const byUser = await supabase
         .from("profiles")
         .select("shop_id")
-        .eq("id", uid)
+        .eq("user_id", uid)
         .maybeSingle();
-      resolvedShopId = byId.data?.shop_id ? String(byId.data.shop_id) : null;
+
+      if (byUser.data?.shop_id) {
+        resolvedShopId = String(byUser.data.shop_id);
+      } else {
+        const byId = await supabase
+          .from("profiles")
+          .select("shop_id")
+          .eq("id", uid)
+          .maybeSingle();
+        resolvedShopId = byId.data?.shop_id ? String(byId.data.shop_id) : null;
+      }
+
+      if (!resolvedShopId) {
+        toast.error("No shop_id found for your profile.");
+        return;
+      }
+
+      const baseName = session.templateitem || templateName || "Inspection Template";
+      const template_name = `${baseName} (from run)`;
+
+      const totalItems = cleanedSections.reduce((sum, s) => sum + s.items.length, 0);
+      const labor_hours = totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
+
+      const payload: InsertTemplate = {
+        user_id: uid,
+        shop_id: resolvedShopId,
+        template_name,
+        sections:
+          cleanedSections as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
+        description: "Saved from an in-progress inspection run.",
+        vehicle_type: templateVehicleType,
+        tags: ["run_saved", "custom"],
+        is_public: false,
+        labor_hours,
+      };
+
+      const { error, data } = await supabase
+        .from("inspection_templates")
+        .insert(payload)
+        .select("id")
+        .maybeSingle();
+
+      if (error || !data?.id) {
+        // eslint-disable-next-line no-console
+        console.error(error);
+        toast.error(error?.message || "Failed to save template from inspection.");
+        return;
+      }
+
+      toast.success("Template saved. You can reuse it under Templates.");
+    } finally {
+      setSavingTemplate(false);
     }
+  };
 
-    if (!resolvedShopId) {
-      toast.error("No shop_id found for your profile.");
-      return;
-    }
-
-    const baseName = session.templateitem || templateName || "Inspection Template";
-    const template_name = `${baseName} (from run)`;
-
-    const totalItems = cleanedSections.reduce((sum, s) => sum + s.items.length, 0);
-    const labor_hours = totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
-
-    const payload: InsertTemplate = {
-      user_id: uid,
-      shop_id: resolvedShopId,
-      template_name,
-      sections:
-        cleanedSections as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
-      description: "Saved from an in-progress inspection run.",
-      vehicle_type: templateVehicleType,
-      tags: ["run_saved", "custom"],
-      is_public: false,
-      labor_hours,
-    };
-
-    const { error, data } = await supabase
-      .from("inspection_templates")
-      .insert(payload)
-      .select("id")
-      .maybeSingle();
-
-    if (error || !data?.id) {
-      // eslint-disable-next-line no-console
-      console.error(error);
-      toast.error(error?.message || "Failed to save template from inspection.");
-      return;
-    }
-
-    toast.success("Template saved. You can reuse it under Templates.");
-  } finally {
-    setSavingTemplate(false);
-  }
-};
-
-  // Add new item inline to a section (non-grid)
   const handleAddCustomItem = (sectionIndex: number): void => {
     if (!session) return;
     if (guardLocked()) return;
@@ -1204,12 +1184,58 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
     ];
 
     updateSection(sectionIndex, { ...section, items: nextItems });
-
     setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
   };
 
   /** Add axle rows to an AIR corner grid section */
-  const handleAddAxleForSection = (
+  const handleAddAxleForSection = (sectionIndex: number, axleLabel: string): void => {
+    if (!session) return;
+    if (guardLocked()) return;
+
+    const section = session.sections[sectionIndex];
+    if (!section) return;
+
+    const existingItems = section.items ?? [];
+
+    const metrics: Array<{ label: string; unit: string | null }> = [
+      { label: "Tire Pressure", unit: "psi" },
+      { label: "Tread Depth (Outer)", unit: "mm" },
+      { label: "Tread Depth (Inner)", unit: "mm" },
+      { label: "Lining/Shoe", unit: "mm" },
+      { label: "Drum/Rotor", unit: "mm" },
+      { label: "Push Rod Travel", unit: "in" },
+    ];
+
+    const sides: Array<"Left" | "Right"> = ["Left", "Right"];
+
+    const existingLabels = new Set(
+      existingItems.map((it) =>
+        String(it.item ?? (it as any).name ?? "").toLowerCase(),
+      ),
+    );
+
+    const nextItems = [...existingItems];
+
+    for (const side of sides) {
+      for (const m of metrics) {
+        const label = `${axleLabel} ${side} ${m.label}`;
+        const key = label.toLowerCase();
+        if (existingLabels.has(key)) continue;
+
+        nextItems.push({
+          item: label,
+          unit: m.unit,
+          status: "na" as InspectionItemStatus,
+        });
+        existingLabels.add(key);
+      }
+    }
+
+    updateSection(sectionIndex, { ...section, items: nextItems });
+  };
+
+  /** Add axle rows to a TIRE grid section (tires only) */
+  const handleAddTireAxleForSection = (
     sectionIndex: number,
     axleLabel: string,
   ): void => {
@@ -1221,14 +1247,11 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
 
     const existingItems = section.items ?? [];
 
-    // Use the same metric pattern as the canonical AIR corner grid
     const metrics: Array<{ label: string; unit: string | null }> = [
       { label: "Tire Pressure", unit: "psi" },
       { label: "Tread Depth (Outer)", unit: "mm" },
       { label: "Tread Depth (Inner)", unit: "mm" },
-      { label: "Lining/Shoe", unit: "mm" },
-      { label: "Drum/Rotor", unit: "mm" },
-      { label: "Push Rod Travel", unit: "in" },
+      { label: "Wheel Torque", unit: "ft·lb" },
     ];
 
     const sides: Array<"Left" | "Right"> = ["Left", "Right"];
@@ -1269,7 +1292,6 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
     toast.success("Inspection snapshot locked by signature.");
   };
 
-  // shell classes
   const shell =
     isEmbed || isMobileView
       ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
@@ -1289,14 +1311,8 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
 
   const actions = (
     <>
-      <SaveInspectionButton
-        session={session as any}
-        workOrderLineId={workOrderLineId}
-      />
-      <FinishInspectionButton
-        session={session as any}
-        workOrderLineId={workOrderLineId}
-      />
+      <SaveInspectionButton session={session as any} workOrderLineId={workOrderLineId} />
+      <FinishInspectionButton session={session as any} workOrderLineId={workOrderLineId} />
       <Button
         type="button"
         variant="outline"
@@ -1309,7 +1325,7 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
     </>
   );
 
-  // --- Part 3/3 ---
+  /* ------------------------------ Part 3/3 ------------------------------ */
 
   const body = (
     <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
@@ -1322,14 +1338,12 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
         `}</style>
       )}
 
-      {/* metallic / burnt-copper wash */}
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
 
       <div className="relative space-y-4">
-        {/* Header card */}
         <div className={headerCard}>
           <div className="mb-3 border-b border-orange-500/40 pb-3 text-center">
             <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
@@ -1347,9 +1361,7 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
           />
         </div>
 
-        {/* Controls row */}
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {/* Voice only in mobile companion */}
           {isMobileView && !isLocked && (
             <StartListeningButton
               isListening={isListening}
@@ -1381,7 +1393,6 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
             />
           )}
 
-          {/* Unit toggle */}
           <Button
             type="button"
             variant="outline"
@@ -1394,7 +1405,6 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
           </Button>
         </div>
 
-        {/* Progress */}
         <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2.5 md:px-4 md:py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
           <ProgressTracker
             currentItem={session.currentItemIndex}
@@ -1407,280 +1417,279 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
         </div>
 
         <InspectionFormCtx.Provider value={{ updateItem }}>
-          {session.sections.map(
-            (section: InspectionSection, sectionIndex: number) => {
-              const itemsWithHints = section.items.map((it) => ({
-                ...it,
-                unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-              }));
+          {session.sections.map((section: InspectionSection, sectionIndex: number) => {
+            const itemsWithHints = section.items.map((it) => ({
+              ...it,
+              unit: it.unit || unitHintGeneric(it.item ?? "", unit),
+            }));
 
-              const batterySection = isBatterySection(
-                section.title,
-                itemsWithHints,
-              );
-              const useGrid =
-                batterySection ||
-                shouldRenderCornerGrid(section.title, itemsWithHints);
-              const collapsed = collapsedSections[sectionIndex] ?? false;
+            const batterySection = isBatterySection(section.title, itemsWithHints);
+            const airSection = isAirCornerSection(section.title, itemsWithHints);
+            const tireSection = isTireGridSection(section.title, itemsWithHints);
+            const hydCornerSection = isHydraulicCornerSection(section.title, itemsWithHints);
 
-              const newLabel = newItemLabels[sectionIndex] ?? "";
-              const newUnit = newItemUnits[sectionIndex] ?? "";
+            const useGrid = batterySection || airSection || tireSection || hydCornerSection;
 
-              return (
-                <div
-                  key={`${section.title}-${sectionIndex}`}
-                  className={sectionCard}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className={sectionTitle}>{section.title}</h2>
+            const collapsed = collapsedSections[sectionIndex] ?? false;
 
-                    {/* Section-level mass actions for the *current* section */}
-                    {safeSectionIndex === sectionIndex && (
-                      <div className="flex flex-wrap items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          disabled={isLocked}
-                          className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          onClick={() =>
-                            applyStatusToSection(sectionIndex, "ok")
-                          }
-                        >
-                          All OK
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isLocked}
-                          className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          onClick={() =>
-                            applyStatusToSection(sectionIndex, "fail")
-                          }
-                        >
-                          All Fail
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isLocked}
-                          className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          onClick={() =>
-                            applyStatusToSection(sectionIndex, "na")
-                          }
-                        >
-                          All NA
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isLocked}
-                          className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          onClick={() =>
-                            applyStatusToSection(sectionIndex, "recommend")
-                          }
-                        >
-                          All REC
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
-                          onClick={() => toggleSectionCollapsed(sectionIndex)}
-                        >
-                          {collapsed ? "Expand" : "Collapse"}
-                        </button>
-                      </div>
-                    )}
+            const newLabel = newItemLabels[sectionIndex] ?? "";
+            const newUnit = newItemUnits[sectionIndex] ?? "";
 
-                    {safeSectionIndex !== sectionIndex && (
+            return (
+              <div key={`${section.title}-${sectionIndex}`} className={sectionCard}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className={sectionTitle}>{section.title}</h2>
+
+                  {safeSectionIndex === sectionIndex && (
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
                       <button
                         type="button"
-                        className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+                        disabled={isLocked}
+                        className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "ok")}
+                      >
+                        All OK
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "fail")}
+                      >
+                        All Fail
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "na")}
+                      >
+                        All NA
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() =>
+                          applyStatusToSection(sectionIndex, "recommend")
+                        }
+                      >
+                        All REC
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
                         onClick={() => toggleSectionCollapsed(sectionIndex)}
                       >
                         {collapsed ? "Expand" : "Collapse"}
                       </button>
+                    </div>
+                  )}
+
+                  {safeSectionIndex !== sectionIndex && (
+                    <button
+                      type="button"
+                      className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+                      onClick={() => toggleSectionCollapsed(sectionIndex)}
+                    >
+                      {collapsed ? "Expand" : "Collapse"}
+                    </button>
+                  )}
+                </div>
+
+                {collapsed ? (
+                  <p className="mt-2 text-center text-[11px] text-neutral-400">
+                    Section collapsed. Tap{" "}
+                    <span className="font-semibold">Expand</span> to reopen.
+                  </p>
+                ) : (
+                  <>
+                    {useGrid && (
+                      <span className={hint}>
+                        {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
+                      </span>
                     )}
-                  </div>
 
-                  {collapsed ? (
-                    <p className="mt-2 text-center text-[11px] text-neutral-400">
-                      Section collapsed. Tap{" "}
-                      <span className="font-semibold">Expand</span> to reopen.
-                    </p>
-                  ) : (
-                    <>
-                      {useGrid && (
-                        <span className={hint}>
-                          {unit === "metric"
-                            ? "Enter mm / kPa / N·m"
-                            : "Enter in / psi / ft·lb"}
-                        </span>
-                      )}
-
-                      <div className="mt-3 md:mt-4">
-                        {useGrid ? (
-                          batterySection ? (
-                            <BatteryGrid
-                              sectionIndex={sectionIndex}
-                              items={itemsWithHints}
-                              unitHint={(label) => unitHintGeneric(label, unit)}
-                            />
-                          ) : (
-                            <AxlesCornerGrid
-                              sectionIndex={sectionIndex}
-                              items={itemsWithHints}
-                              unitHint={(label) => unitHintGeneric(label, unit)}
-                              onAddAxle={(axleLabel) =>
-                                handleAddAxleForSection(sectionIndex, axleLabel)
-                              }
-                            />
-                          )
+                    <div className="mt-3 md:mt-4">
+                      {useGrid ? (
+                        batterySection ? (
+                          <BatteryGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label) => unitHintGeneric(label, unit)}
+                          />
+                        ) : airSection ? (
+                          <AirCornerGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label) => unitHintGeneric(label, unit)}
+                            onAddAxle={(axleLabel) =>
+                              handleAddAxleForSection(sectionIndex, axleLabel)
+                            }
+                            onSpecHint={(metricLabel) =>
+                              _props.onSpecHint?.({
+                                source: "air_corner",
+                                label: metricLabel,
+                                meta: { sectionTitle: section.title },
+                              })
+                            }
+                          />
+                        ) : tireSection ? (
+                          <TireGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label) => unitHintGeneric(label, unit)}
+                            onAddAxle={(axleLabel) =>
+                              handleAddTireAxleForSection(sectionIndex, axleLabel)
+                            }
+                            onSpecHint={(metricLabel) =>
+                              _props.onSpecHint?.({
+                                source: "tire",
+                                label: metricLabel,
+                                meta: { sectionTitle: section.title },
+                              })
+                            }
+                          />
                         ) : (
-                          <>
-                            <SectionDisplay
-                              title=""
-                              section={{ ...section, items: itemsWithHints }}
-                              sectionIndex={sectionIndex}
-                              showNotes
-                              showPhotos
-                              onUpdateStatus={(
-                                secIdx,
-                                itemIdx,
-                                statusValue,
-                              ) => {
-                                if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, {
-                                  status: statusValue,
-                                });
-                                autoAdvanceFrom(secIdx, itemIdx);
-                              }}
-                              onUpdateNote={(secIdx, itemIdx, note) => {
-                                if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { notes: note });
-                              }}
-                              onUpload={(photoUrl, secIdx, itemIdx) => {
-                                if (guardLocked()) return;
-                                const prev =
-                                  session.sections[secIdx].items[itemIdx]
-                                    .photoUrls ?? [];
-                                updateItem(secIdx, itemIdx, {
-                                  photoUrls: [...prev, photoUrl],
-                                });
-                              }}
-                              onUpdateParts={(secIdx, itemIdx, parts) => {
-                                if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { parts });
-                              }}
-                              onUpdateLaborHours={(
-                                secIdx,
-                                itemIdx,
-                                hours,
-                              ) => {
-                                if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, {
-                                  laborHours: hours,
-                                });
-                              }}
-                              requireNoteForAI
-                              onSubmitAI={(secIdx, itemIdx) => {
-                                void submitAIForItem(secIdx, itemIdx);
-                              }}
-                              isSubmittingAI={isSubmittingAI}
-                            />
+                          <CornerGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label) => unitHintGeneric(label, unit)}
+                            onSpecHint={(label) =>
+                              _props.onSpecHint?.({
+                                source: "corner",
+                                label,
+                                meta: { sectionTitle: section.title },
+                              })
+                            }
+                          />
+                        )
+                      ) : (
+                        <>
+                          <SectionDisplay
+                            title=""
+                            section={{ ...section, items: itemsWithHints }}
+                            sectionIndex={sectionIndex}
+                            showNotes
+                            showPhotos
+                            onUpdateStatus={(secIdx, itemIdx, statusValue) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { status: statusValue });
+                              autoAdvanceFrom(secIdx, itemIdx);
+                            }}
+                            onUpdateNote={(secIdx, itemIdx, note) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { notes: note });
+                            }}
+                            onUpload={(photoUrl, secIdx, itemIdx) => {
+                              if (guardLocked()) return;
+                              const prev =
+                                session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                              updateItem(secIdx, itemIdx, {
+                                photoUrls: [...prev, photoUrl],
+                              });
+                            }}
+                            onUpdateParts={(secIdx, itemIdx, parts) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { parts });
+                            }}
+                            onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { laborHours: hours });
+                            }}
+                            requireNoteForAI
+                            onSubmitAI={(secIdx, itemIdx) => {
+                              void submitAIForItem(secIdx, itemIdx);
+                            }}
+                            isSubmittingAI={isSubmittingAI}
+                          />
 
-                            {/* Inline add-item row */}
-                            <div className="mt-4 border-t border-white/10 pt-3">
-                              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                                Add custom item
-                              </div>
-                              <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                                <input
-                                  className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                                  placeholder="Item label (e.g. Rear frame inspection)"
-                                  value={newLabel}
+                          <div className="mt-4 border-t border-white/10 pt-3">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                              Add custom item
+                            </div>
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                              <input
+                                className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                placeholder="Item label (e.g. Rear frame inspection)"
+                                value={newLabel}
+                                onChange={(e) =>
+                                  setNewItemLabels((prev) => ({
+                                    ...prev,
+                                    [sectionIndex]: e.target.value,
+                                  }))
+                                }
+                                disabled={isLocked}
+                              />
+                              <div className="flex items-center gap-2 md:w-auto">
+                                <select
+                                  className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                  value={newUnit}
                                   onChange={(e) =>
-                                    setNewItemLabels((prev) => ({
+                                    setNewItemUnits((prev) => ({
                                       ...prev,
                                       [sectionIndex]: e.target.value,
                                     }))
                                   }
+                                  title="Measurement unit"
                                   disabled={isLocked}
-                                />
-                                <div className="flex items-center gap-2 md:w-auto">
-                                  <select
-                                    className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                                    value={newUnit}
-                                    onChange={(e) =>
-                                      setNewItemUnits((prev) => ({
-                                        ...prev,
-                                        [sectionIndex]: e.target.value,
-                                      }))
-                                    }
-                                    title="Measurement unit"
-                                    disabled={isLocked}
-                                  >
-                                    {UNIT_OPTIONS.map((u) => (
-                                      <option key={u || "blank"} value={u}>
-                                        {u || "— unit —"}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <Button
-                                    type="button"
-                                    className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                                    onClick={() =>
-                                      handleAddCustomItem(sectionIndex)
-                                    }
-                                    disabled={isLocked}
-                                  >
-                                    + Add Item
-                                  </Button>
-                                </div>
+                                >
+                                  {UNIT_OPTIONS.map((u) => (
+                                    <option key={u || "blank"} value={u}>
+                                      {u || "— unit —"}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Button
+                                  type="button"
+                                  className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
+                                  onClick={() => handleAddCustomItem(sectionIndex)}
+                                  disabled={isLocked}
+                                >
+                                  + Add Item
+                                </Button>
                               </div>
                             </div>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            },
-          )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </InspectionFormCtx.Provider>
 
-        {/* Signature & lock */}
         <div className="mt-2">
           <InspectionSignaturePanel
             inspectionId={inspectionId}
             role="customer"
             defaultName={
-              [customer.first_name, customer.last_name]
-                .filter(Boolean)
-                .join(" ") || undefined
+              [customer.first_name, customer.last_name].filter(Boolean).join(" ") || undefined
             }
             onSigned={handleSigned}
           />
         </div>
 
-        {/* Footer actions – only non-embed desktop */}
         {!isEmbed && !isMobileView && (
           <div className="mt-4 md:mt-6 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap items-center gap-3">
               {actions}
               {showMissingLineWarning && (
                 <div className="text-xs text-red-400">
-                  Missing <code>workOrderLineId</code> — save/finish will be
-                  blocked.
+                  Missing <code>workOrderLineId</code> — save/finish will be blocked.
                 </div>
               )}
             </div>
 
             <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P =
-              Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+              <span className="font-semibold text-neutral-200">Legend:</span> P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}
       </div>
 
-      {/* Sticky bottom actions for EMBED desktop */}
       {isEmbed && !isMobileView && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 py-2 backdrop-blur">
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2">
@@ -1692,7 +1701,6 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
         </div>
       )}
 
-      {/* Mobile bottom bar */}
       {isMobileView && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-black/95 px-3 py-2 backdrop-blur md:hidden">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
@@ -1716,16 +1724,10 @@ const saveCurrentAsTemplate = async (): Promise<void> => {
             </div>
             <div className="flex gap-2">
               <div className="scale-90">
-                <SaveInspectionButton
-                  session={session as any}
-                  workOrderLineId={workOrderLineId}
-                />
+                <SaveInspectionButton session={session as any} workOrderLineId={workOrderLineId} />
               </div>
               <div className="scale-90">
-                <FinishInspectionButton
-                  session={session as any}
-                  workOrderLineId={workOrderLineId}
-                />
+                <FinishInspectionButton session={session as any} workOrderLineId={workOrderLineId} />
               </div>
             </div>
           </div>

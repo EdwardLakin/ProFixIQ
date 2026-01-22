@@ -109,7 +109,7 @@ function buildAirCornerSection(): Section {
 }
 
 /**
- * Deterministic corner-grid injector (for DB-backed templates):
+ * Deterministic corner-grid injector (for DB-backed templates OR staged templates):
  * - If template already has a corner-grid-style title, keep as-is.
  * - Else strip pattern-based grids, then inject based on ?grid= or vehicle_type.
  * - For air-brake templates, drop any “Hydraulic Brake” section.
@@ -154,8 +154,7 @@ function prepareSectionsWithCornerGrid(
   if (injectAir) {
     pool = pool.filter(
       (sec) =>
-        !sec.title ||
-        !sec.title.toLowerCase().includes("hydraulic brake"),
+        !sec.title || !sec.title.toLowerCase().includes("hydraulic brake"),
     );
   }
 
@@ -230,23 +229,28 @@ export default function RunInspectionPage() {
       mergedParams.template = mergedParams.template || "generic";
       mergedParams.mode = mergedParams.mode || "run";
 
-      // Persist for GenericInspectionScreen
-      sessionStorage.setItem(
-        "inspection:sections",
-        JSON.stringify(sections),
-      );
-      sessionStorage.setItem("inspection:title", title);
-      sessionStorage.setItem("inspection:template", mergedParams.template);
-      sessionStorage.setItem(
-        "inspection:params",
-        JSON.stringify(mergedParams),
+      // ✅ Ensure staged sections get corner grid injected if needed
+      const vt =
+        mergedParams.vehicleType ||
+        sessionStorage.getItem("inspection:vehicleType") ||
+        "";
+      const grid =
+        mergedParams.grid || gridOverride || sessionStorage.getItem("customInspection:gridMode");
+
+      const normalizedSections = prepareSectionsWithCornerGrid(
+        sections,
+        vt,
+        grid || null,
       );
 
+      // Persist for GenericInspectionScreen
+      sessionStorage.setItem("inspection:sections", JSON.stringify(normalizedSections));
+      sessionStorage.setItem("inspection:title", title);
+      sessionStorage.setItem("inspection:template", mergedParams.template);
+      sessionStorage.setItem("inspection:params", JSON.stringify(mergedParams));
+
       // Legacy keys (kept for backwards compatibility; safe no-op if unused)
-      sessionStorage.setItem(
-        "customInspection:sections",
-        JSON.stringify(sections),
-      );
+      sessionStorage.setItem("customInspection:sections", JSON.stringify(normalizedSections));
       sessionStorage.setItem("customInspection:title", title);
 
       const next = new URLSearchParams(mergedParams);
@@ -290,25 +294,16 @@ export default function RunInspectionPage() {
         params.vehicleType = vehicleType;
         params.mode = params.mode || "run";
 
-        sessionStorage.setItem(
-          "inspection:sections",
-          JSON.stringify(sections),
-        );
+        sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
         sessionStorage.setItem("inspection:title", title);
         sessionStorage.setItem("inspection:vehicleType", vehicleType);
         sessionStorage.setItem("inspection:template", params.template);
         sessionStorage.setItem("inspection:params", JSON.stringify(params));
 
         // Legacy keys
-        sessionStorage.setItem(
-          "customInspection:sections",
-          JSON.stringify(sections),
-        );
+        sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
         sessionStorage.setItem("customInspection:title", title);
-        sessionStorage.setItem(
-          "customInspection:includeOil",
-          JSON.stringify(false),
-        );
+        sessionStorage.setItem("customInspection:includeOil", JSON.stringify(false));
 
         const next = new URLSearchParams(params);
         next.delete("templateId");

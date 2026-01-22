@@ -18,6 +18,7 @@ const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
 
 type VehicleType = "car" | "truck" | "bus" | "trailer";
 type DutyClass = "light" | "medium" | "heavy";
+type GridMode = "hyd" | "air" | "none";
 
 /** Narrow Insert type to include labor_hours until your generated types include it */
 type InsertTemplate =
@@ -132,6 +133,12 @@ function hasBatterySection(sections: InspectionSection[] | unknown): boolean {
   });
 }
 
+function normalizeGridMode(v: string | null | undefined): GridMode | null {
+  const s = (v || "").toLowerCase();
+  if (s === "air" || s === "hyd" || s === "none") return s;
+  return null;
+}
+
 /* -------------------------------- component -------------------------------- */
 
 export default function CustomDraftPage() {
@@ -150,6 +157,26 @@ export default function CustomDraftPage() {
     (sp.get("dutyClass") as DutyClass | null) || null,
   );
 
+  // ✅ track grid mode explicitly (builder can set air/hyd/none)
+  const [gridMode, setGridMode] = useState<GridMode | null>(() => {
+    // try URL first
+    const fromUrl = normalizeGridMode(sp.get("grid"));
+    if (fromUrl) return fromUrl;
+
+    // then sessionStorage (what custom builder writes)
+    if (typeof window !== "undefined") {
+      const stored = normalizeGridMode(
+        sessionStorage.getItem("customInspection:gridMode"),
+      );
+      if (stored) return stored;
+    }
+
+    // fallback: infer from duty class if present (legacy)
+    const inferred =
+      dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
+    return inferred;
+  });
+
   const [sections, setSections] = useState<InspectionSection[]>([]);
   const [laborHours, setLaborHours] = useState<number>(0);
   const [savingNew, setSavingNew] = useState(false);
@@ -162,11 +189,7 @@ export default function CustomDraftPage() {
   // Derived summary values
   const totalSections = sections.length;
   const totalItems = useMemo(
-    () =>
-      sections.reduce(
-        (sum, s) => sum + (s.items?.length ?? 0),
-        0,
-      ),
+    () => sections.reduce((sum, s) => sum + (s.items?.length ?? 0), 0),
     [sections],
   );
 
@@ -179,22 +202,18 @@ export default function CustomDraftPage() {
           ? "Heavy duty"
           : "—";
 
-  const gridMode =
-    dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
-
   const gridModeLabel =
     gridMode === "air"
       ? "Air brake corner grid (Steer + Drive)"
       : gridMode === "hyd"
         ? "Hydraulic brake grid (LF / RF / LR / RR)"
-        : "Not specified";
+        : gridMode === "none"
+          ? "No corner grid"
+          : "Not specified";
 
   const vehicleLabel = vehicleType ? vehicleType : "—";
 
-  const batteryPresent = useMemo(
-    () => hasBatterySection(sections),
-    [sections],
-  );
+  const batteryPresent = useMemo(() => hasBatterySection(sections), [sections]);
 
   // build a quick lookup: normalized title -> master items (used for the add-item dropdown)
   const masterByTitle = useMemo(() => {
@@ -262,6 +281,12 @@ export default function CustomDraftPage() {
           ? sessionStorage.getItem("customInspection:dutyClass")
           : null;
 
+      // ✅ also read the builder’s grid mode
+      const storedGrid =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("customInspection:gridMode")
+          : null;
+
       const includeOil = includeOilRaw
         ? JSON.parse(includeOilRaw) === true
         : false;
@@ -269,6 +294,10 @@ export default function CustomDraftPage() {
       if (t && t.trim()) setTitle(t.trim());
       if (storedDuty) {
         setDutyClass(storedDuty as DutyClass);
+      }
+      if (storedGrid) {
+        const g = normalizeGridMode(storedGrid);
+        if (g) setGridMode(g);
       }
 
       if (raw) {
@@ -298,6 +327,17 @@ export default function CustomDraftPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // keep gridMode in sync if dutyClass changes and gridMode wasn't explicitly set
+  useEffect(() => {
+    // if user/builder already set a gridMode (air/hyd/none), don't override it
+    if (gridMode) return;
+
+    const inferred =
+      dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
+    if (inferred) setGridMode(inferred);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dutyClass]);
 
   // 2) if we came from "Edit template", pull it from Supabase and override
   useEffect(() => {
@@ -338,6 +378,8 @@ export default function CustomDraftPage() {
       if (data.shop_id && !shopId) {
         setShopId(data.shop_id);
       }
+
+      // NOTE: templates don't store gridMode explicitly; we leave current gridMode as-is
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId, supabase]);
@@ -438,7 +480,7 @@ export default function CustomDraftPage() {
     });
   }
 
-  /* --------------------------------- actions --------------------------------- */
+  /* --------------------------------- actions -------------------------------- */
 
   // INSERT: Save as new template
   const saveTemplate = async () => {
@@ -554,6 +596,7 @@ export default function CustomDraftPage() {
       qs.set("template", title || "Inspection");
       if (vehicleType) qs.set("vehicleType", vehicleType);
       if (dutyClass) qs.set("dutyClass", dutyClass);
+      if (gridMode) qs.set("grid", gridMode); // ✅ carry through (harmless even if unused)
       router.push(`/inspections/run?${qs.toString()}`);
     } finally {
       setRunning(false);
@@ -718,9 +761,7 @@ export default function CustomDraftPage() {
         {/* Sections editor */}
         <div className="space-y-4">
           {sections.map((sec, i) => {
-            const masterItemsForThisSection = getMasterItemsForSection(
-              sec.title,
-            );
+            const masterItemsForThisSection = getMasterItemsForSection(sec.title);
             return (
               <div
                 key={`${sec.title}-${i}`}
@@ -786,11 +827,7 @@ export default function CustomDraftPage() {
                             className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white"
                             value=""
                             onChange={(e) =>
-                              updateItemLabel(
-                                i,
-                                j,
-                                e.target.value || "New Item",
-                              )
+                              updateItemLabel(i, j, e.target.value || "New Item")
                             }
                           >
                             <option value="">— pick an item —</option>
@@ -805,9 +842,7 @@ export default function CustomDraftPage() {
                           <input
                             className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500"
                             value={it.item}
-                            onChange={(e) =>
-                              updateItemLabel(i, j, e.target.value)
-                            }
+                            onChange={(e) => updateItemLabel(i, j, e.target.value)}
                             placeholder="Item label"
                           />
                         )}

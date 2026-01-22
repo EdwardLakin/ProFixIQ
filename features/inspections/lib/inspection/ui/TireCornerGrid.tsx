@@ -1,4 +1,4 @@
-// features/inspections/lib/inspection/ui/AirCornerGrid.tsx
+// features/inspections/lib/inspection/ui/TireCornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
@@ -9,42 +9,93 @@ type Props = {
   sectionIndex: number;
   items: InspectionItem[];
   unitHint?: (label: string) => string;
+
+  /**
+   * Optional hook so the parent can add an axle group to the underlying template
+   * (same concept as AirCornerGrid). If omitted, we just render what exists.
+   */
   onAddAxle?: (axleLabel: string) => void;
-  /** Optional: show CVIP spec for a given metric label (e.g. "Brake Pad"). */
+
+  /** Optional: show CVIP spec for a metric label (e.g. "Tire Pressure"). */
   onSpecHint?: (metricLabel: string) => void;
 };
 
 type Side = "Left" | "Right";
+
 type MetricCell = {
   metric: string;
   idx: number;
   unit: string;
   fullLabel: string;
   initial: string;
+  isPressure: boolean;
+  isTread: boolean;
 };
+
 type AxleGroup = { axle: string; left: MetricCell[]; right: MetricCell[] };
 
 type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
 
+// Label format expected:
+// "<Axle> Left <Metric>" or "<Axle> Right <Metric>"
+// Example: "Steer 1 Left Tire Pressure" / "Drive 1 Right Tire Tread (Outer)"
 const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
-const airPriority = (metric: string): [number, number] => {
+const tirePriority = (metric: string): [number, number] => {
   const m = metric.toLowerCase();
 
-  // ✅ AirCornerGrid is now brakes-only: remove tire-related ordering.
-  if (/(lining|shoe|pad)/i.test(m)) return [0, 0];
-  if (/(drum|rotor)/i.test(m)) return [1, 0];
-  if (/push\s*rod/i.test(m)) return [2, 0];
-  if (/wheel\s*torque/i.test(m)) return [3, /inner/i.test(m) ? 1 : 0];
+  if (/tire\s*pressure/i.test(m)) {
+    // Outer before Inner when both exist
+    const second = /outer/i.test(m) ? 0 : /inner/i.test(m) ? 1 : 0;
+    return [0, second];
+  }
 
+  if (/(tire\s*)?tread\s*depth|tire\s*tread/i.test(m)) {
+    const second = /outer/i.test(m) ? 0 : /inner/i.test(m) ? 1 : 0;
+    return [1, second];
+  }
+
+  // Anything else stays at the bottom (future-proof)
   return [99, 0];
 };
 
 const orderCompare = (a: string, b: string) => {
-  const [pa, sa] = airPriority(a);
-  const [pb, sb] = airPriority(b);
+  const [pa, sa] = tirePriority(a);
+  const [pb, sb] = tirePriority(b);
   return pa !== pb ? pa - pb : sa - sb;
 };
+
+const isDualAxle = (axleLabel: string) => {
+  const a = axleLabel.toLowerCase();
+  if (a.startsWith("drive") || a.startsWith("trailer") || a.includes("rear"))
+    return true;
+  if (a.startsWith("tag") || a.startsWith("steer")) return false;
+  return false;
+};
+
+const isDualizableMetric = (metric: string) =>
+  /tire\s*pressure/i.test(metric) ||
+  /(tire\s*)?tread\s*depth|tire\s*tread/i.test(metric);
+
+const hasInnerOuter = (metric: string) => /(inner|outer)/i.test(metric);
+
+function expandDuals(axle: string, cells: MetricCell[]): MetricCell[] {
+  if (!isDualAxle(axle)) return cells;
+
+  const out: MetricCell[] = [];
+  for (const c of cells) {
+    if (isDualizableMetric(c.metric) && !hasInnerOuter(c.metric)) {
+      const base = c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim();
+      // Keep same idx/initial: these are "virtual splits" so UI can be dual-aware.
+      // Real templates can later include explicit inner/outer items.
+      out.push({ ...c, metric: `${base} (Outer)` });
+      out.push({ ...c, metric: `${base} (Inner)` });
+    } else {
+      out.push(c);
+    }
+  }
+  return out;
+}
 
 function buildTriplets(g: AxleGroup): RowTriplet[] {
   const map = new Map<string, RowTriplet>();
@@ -60,7 +111,7 @@ function buildTriplets(g: AxleGroup): RowTriplet[] {
   );
 }
 
-export default function AirCornerGrid({
+export default function TireCornerGrid({
   sectionIndex,
   items,
   unitHint,
@@ -70,6 +121,7 @@ export default function AirCornerGrid({
   const { updateItem } = useInspectionForm();
 
   const [open, setOpen] = useState(true);
+  const [showKpa, setShowKpa] = useState(true);
 
   const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
     const m: Record<number, boolean> = {};
@@ -111,23 +163,30 @@ export default function AirCornerGrid({
         unit,
         fullLabel: label,
         initial: String(it.value ?? ""),
+        isPressure: /pressure/i.test(metric),
+        isTread: /(tread\s*depth|tire\s*tread)/i.test(metric),
       };
 
       byAxle.get(axle)![side].push(cell);
     });
 
     return Array.from(byAxle.entries()).map(([axle, sides]) => {
-      const left = [...sides.Left].sort((a, b) =>
+      const left = expandDuals(axle, sides.Left).sort((a, b) =>
         orderCompare(a.metric, b.metric),
       );
-      const right = [...sides.Right].sort((a, b) =>
+      const right = expandDuals(axle, sides.Right).sort((a, b) =>
         orderCompare(a.metric, b.metric),
       );
       return { axle, left, right };
     });
   }, [items, unitHint]);
 
-  // ✅ Keep TAB focus cycling inside each axle card grid (modern + fast)
+  const kpaFromPsi = (psiStr: string) => {
+    const n = Number(psiStr);
+    return Number.isFinite(n) ? Math.round(n * 6.894757) : null;
+  };
+
+  // ✅ Keep TAB focus cycling inside each axle card grid
   // refsByAxle[axleIndex][rowIndex][colIndex(0=left,1=right)]
   const refsByAxle = useRef<(HTMLInputElement | null)[][][]>([]);
 
@@ -155,7 +214,7 @@ export default function AirCornerGrid({
 
     const colCount = 2;
     const total = rowCount * colCount;
-    let flat = startRow * colCount + startCol;
+    const flat = startRow * colCount + startCol;
 
     for (let step = 1; step <= total; step++) {
       const nextFlat = (flat + dir * step + total) % total;
@@ -176,17 +235,35 @@ export default function AirCornerGrid({
     axleIndex,
     rowIndex,
     colIndex,
-    idx,
-    unit,
-    defaultValue,
+    cell,
   }: {
     axleIndex: number;
     rowIndex: number;
     colIndex: 0 | 1;
-    idx: number;
-    unit: string;
-    defaultValue: string;
+    cell: MetricCell;
   }) => {
+    const spanRef = useRef<HTMLSpanElement | null>(null);
+
+    const seedText = () => {
+      // Pressure gets psi + kPa hint (optional), tread stays unit-only.
+      if (!cell.isPressure) return cell.unit || "";
+      const k = kpaFromPsi(cell.initial);
+      if (!showKpa) return "psi";
+      return k != null ? `psi (${k} kPa)` : "psi (— kPa)";
+    };
+
+    const onInput = (e: React.FormEvent<HTMLInputElement>) => {
+      if (!cell.isPressure || !spanRef.current) return;
+      const k = kpaFromPsi(e.currentTarget.value);
+      if (!showKpa) {
+        spanRef.current.textContent = "psi";
+      } else if (k != null) {
+        spanRef.current.textContent = `psi (${k} kPa)`;
+      } else {
+        spanRef.current.textContent = "psi (— kPa)";
+      }
+    };
+
     return (
       <div className="relative w-full">
         <input
@@ -194,24 +271,26 @@ export default function AirCornerGrid({
             const rowRef = ensureRowRef(axleIndex, rowIndex);
             rowRef[colIndex] = el;
           }}
-          defaultValue={defaultValue}
-          className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 pr-16 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.75)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+          defaultValue={cell.initial}
+          className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.75)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
+          onInput={onInput}
           onKeyDown={(e) => {
             if (!open) return;
             if (e.key === "Tab") {
               focusNext(e, axleIndex, rowIndex, colIndex, e.shiftKey ? -1 : 1);
             }
           }}
-          onBlur={(e) => commit(idx, e.currentTarget)}
+          onBlur={(e) => commit(cell.idx, e.currentTarget)}
         />
-        {unit ? (
-          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
-            {unit}
-          </span>
-        ) : null}
+        <span
+          ref={spanRef}
+          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400"
+        >
+          {seedText()}
+        </span>
       </div>
     );
   };
@@ -231,11 +310,24 @@ export default function AirCornerGrid({
             {g.axle}
           </div>
 
-          <div
-            className="text-[11px] uppercase tracking-[0.16em] text-neutral-500"
-            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-          >
-            {filled}/{total}
+          <div className="flex items-center gap-3">
+            <span
+              className="text-[11px] uppercase tracking-[0.16em] text-neutral-500"
+              style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+            >
+              {filled}/{total}
+            </span>
+
+            <label className="flex select-none items-center gap-2 text-xs text-neutral-300">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 accent-orange-500"
+                checked={showKpa}
+                onChange={(e) => setShowKpa(e.target.checked)}
+                tabIndex={-1}
+              />
+              kPa hint
+            </label>
           </div>
         </div>
 
@@ -252,15 +344,6 @@ export default function AirCornerGrid({
         {open && (
           <div className="divide-y divide-white/10">
             {rows.map((row, rowIndex) => {
-              const leftUnit =
-                row.left?.unit ??
-                (unitHint ? unitHint(row.left?.fullLabel ?? "") : "") ??
-                "";
-              const rightUnit =
-                row.right?.unit ??
-                (unitHint ? unitHint(row.right?.fullLabel ?? "") : "") ??
-                "";
-
               // Ensure null slots exist so focus cycling skips missing cells properly
               const rowRef = ensureRowRef(axleIndex, rowIndex);
               if (rowRef[0] === undefined) rowRef[0] = null;
@@ -269,7 +352,7 @@ export default function AirCornerGrid({
               return (
                 <div
                   key={`${row.metric}-${rowIndex}`}
-                  className="px-4 py-3 hover:bg-white/[0.03] transition-colors"
+                  className="px-4 py-3 transition-colors hover:bg-white/[0.03]"
                 >
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
                     <div>
@@ -278,9 +361,7 @@ export default function AirCornerGrid({
                           axleIndex={axleIndex}
                           rowIndex={rowIndex}
                           colIndex={0}
-                          idx={row.left.idx}
-                          unit={leftUnit}
-                          defaultValue={row.left.initial}
+                          cell={row.left}
                         />
                       ) : (
                         <div className="h-[34px]" />
@@ -317,9 +398,7 @@ export default function AirCornerGrid({
                           axleIndex={axleIndex}
                           rowIndex={rowIndex}
                           colIndex={1}
-                          idx={row.right.idx}
-                          unit={rightUnit}
-                          defaultValue={row.right.initial}
+                          cell={row.right}
                         />
                       ) : (
                         <div className="h-[34px]" />

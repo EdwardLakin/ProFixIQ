@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
@@ -216,10 +216,14 @@ export default function CustomBuilderPage() {
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
 
-  // Manual corner-grid mode (Hyd / Air / None)
+  /**
+   * Manual corner-grid mode (Hyd / Air / None)
+   * NOTE: we now keep gridMode synced to dutyClass UNTIL the user manually overrides it.
+   */
   const [gridMode, setGridMode] = useState<GridMode>(
     dutyClass === "heavy" ? "air" : "hyd",
   );
+  const [gridTouched, setGridTouched] = useState(false);
 
   // Manual builder state
   const [selections, setSelections] = useState<Record<string, string[]>>({});
@@ -235,6 +239,12 @@ export default function CustomBuilderPage() {
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  // Keep gridMode in sync with dutyClass until user touches it
+  useEffect(() => {
+    if (gridTouched) return;
+    setGridMode(dutyClass === "heavy" ? "air" : "hyd");
+  }, [dutyClass, gridTouched]);
 
   /* --------------------------- derived helpers --------------------------- */
 
@@ -541,9 +551,9 @@ export default function CustomBuilderPage() {
             <select
               className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
               value={dutyClass}
-              onChange={(e) =>
-                setDutyClass(e.target.value as DutyClass)
-              }
+              onChange={(e) => {
+                setDutyClass(e.target.value as DutyClass);
+              }}
             >
               <option value="light">Light</option>
               <option value="medium">Medium</option>
@@ -584,9 +594,7 @@ export default function CustomBuilderPage() {
                 : "border border-zinc-600 bg-zinc-800/80 text-white hover:bg-zinc-700")
             }
           >
-            {includeBatteryGrid
-              ? "Battery Grid: ON"
-              : "Battery Grid: OFF"}
+            {includeBatteryGrid ? "Battery Grid: ON" : "Battery Grid: OFF"}
           </button>
         </div>
 
@@ -605,7 +613,10 @@ export default function CustomBuilderPage() {
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => setGridMode(opt.value)}
+                onClick={() => {
+                  setGridTouched(true);
+                  setGridMode(opt.value);
+                }}
                 className={
                   "rounded-full px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]" +
                   " " +

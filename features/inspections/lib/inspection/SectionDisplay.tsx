@@ -1,5 +1,4 @@
 //features/inspections/lib/inspection/SectionDisplay.tsx
-
 "use client";
 
 import { useState, useMemo } from "react";
@@ -21,16 +20,8 @@ interface SectionDisplayProps {
     itemIndex: number,
     status: InspectionItemStatus,
   ) => void;
-  onUpdateNote: (
-    sectionIndex: number,
-    itemIndex: number,
-    note: string,
-  ) => void;
-  onUpload: (
-    photoUrl: string,
-    sectionIndex: number,
-    itemIndex: number,
-  ) => void;
+  onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
+  onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
 
   requireNoteForAI?: boolean;
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
@@ -79,9 +70,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
   const toggleOpen = () => {
     onToggleCollapse?.(sectionIndex);
-    if (!isControlled) {
-      setInternalOpen((v) => !v);
-    }
+    if (!isControlled) setInternalOpen((v) => !v);
   };
 
   const stats = useMemo(() => {
@@ -105,12 +94,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-        {/* Title still toggles open/closed */}
         <button
           onClick={toggleOpen}
           className="text-left text-lg font-semibold tracking-wide text-accent transition-colors hover:text-accent/80"
           style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
           aria-expanded={open}
+          type="button"
         >
           {title}
         </button>
@@ -166,7 +155,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               All REC
             </Button>
 
-            {/* explicit collapse/expand control */}
             <Button
               variant="ghost"
               size="sm"
@@ -184,189 +172,209 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
       {/* Body */}
       {open && (
-        <div className="space-y-3 pt-3">
-          {section.items.map((item, itemIndex) => {
-            const key =
-              (item.item ?? item.name ?? `item-${sectionIndex}-${itemIndex}`) +
-              `-${itemIndex}`;
+        <div className="pt-3">
+          {/* One modern container + divider rows (no more pill stack) */}
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)]">
+            <div className="divide-y divide-white/10">
+              {section.items.map((item, itemIndex) => {
+                const key =
+                  (item.item ?? item.name ?? `item-${sectionIndex}-${itemIndex}`) +
+                  `-${itemIndex}`;
 
-            const status = String(item.status ?? "").toLowerCase();
-            const isFailOrRec = status === "fail" || status === "recommend";
-            const note = (item.notes ?? "").trim();
-            const canShowSubmit =
-              !!requireNoteForAI &&
-              isFailOrRec &&
-              note.length > 0 &&
-              typeof onSubmitAI === "function";
+                const status = String(item.status ?? "").toLowerCase();
+                const isFail = status === "fail";
+                const isRec = status === "recommend";
+                const isFailOrRec = isFail || isRec;
 
-            const submitting =
-              isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
+                const note = (item.notes ?? "").trim();
+                const canShowSubmit =
+                  !!requireNoteForAI &&
+                  isFailOrRec &&
+                  note.length > 0 &&
+                  typeof onSubmitAI === "function";
 
-            return (
-              <div
-                key={key}
-                className="rounded-xl border border-white/10 bg-black/50 p-3 shadow-sm md:p-3.5"
-              >
-                <InspectionItemCard
-                  item={item}
-                  sectionIndex={sectionIndex}
-                  itemIndex={itemIndex}
-                  showNotes={showNotes}
-                  showPhotos={showPhotos}
-                  onUpdateStatus={onUpdateStatus}
-                  onUpdateNote={onUpdateNote}
-                  onUpload={onUpload}
-                />
+                const submitting =
+                  isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
 
-                {/* 🔹 Parts + Labor, only for FAIL / REC items */}
-                {(() => {
-                  if (!isFailOrRec) return null;
+                // Thin left rail for quick scanning (modern, non-generic)
+                const rail =
+                  isFail
+                    ? "before:bg-red-500/70"
+                    : isRec
+                      ? "before:bg-orange-500/70"
+                      : "before:bg-white/0";
 
-                  const currentParts = (item.parts ?? []) as {
-                    description: string;
-                    qty: number;
-                  }[];
-                  const currentLabor = item.laborHours ?? null;
+                return (
+                  <div
+                    key={key}
+                    className={[
+                      "relative px-3 py-3 md:px-4",
+                      "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
+                      rail,
+                      "bg-black/20 hover:bg-white/[0.03] transition-colors",
+                    ].join(" ")}
+                  >
+                    {/* Main row */}
+                    <InspectionItemCard
+                      item={item}
+                      sectionIndex={sectionIndex}
+                      itemIndex={itemIndex}
+                      showNotes={showNotes}
+                      showPhotos={showPhotos}
+                      onUpdateStatus={onUpdateStatus}
+                      onUpdateNote={onUpdateNote}
+                      onUpload={onUpload}
+                      variant="row"
+                    />
 
-                  const handlePartsChange = (
-                    parts: { description: string; qty: number }[],
-                  ) => {
-                    onUpdateParts?.(sectionIndex, itemIndex, parts);
-                  };
+                    {/* Parts + Labor, only for FAIL / REC items */}
+                    {(() => {
+                      if (!isFailOrRec) return null;
 
-                  const handleLaborChange = (hours: number | null) => {
-                    onUpdateLaborHours?.(sectionIndex, itemIndex, hours);
-                  };
+                      const currentParts = (item.parts ?? []) as {
+                        description: string;
+                        qty: number;
+                      }[];
+                      const currentLabor = item.laborHours ?? null;
 
-                  const addEmptyPart = () => {
-                    handlePartsChange([
-                      ...currentParts,
-                      { description: "", qty: 1 },
-                    ]);
-                  };
+                      const handlePartsChange = (
+                        parts: { description: string; qty: number }[],
+                      ) => {
+                        onUpdateParts?.(sectionIndex, itemIndex, parts);
+                      };
 
-                  const updatePart = (
-                    idx: number,
-                    patch: Partial<{
-                      description: string;
-                      qty: number;
-                    }>,
-                  ) => {
-                    const next = currentParts.map((p, i) =>
-                      i === idx ? { ...p, ...patch } : p,
-                    );
-                    handlePartsChange(next);
-                  };
+                      const handleLaborChange = (hours: number | null) => {
+                        onUpdateLaborHours?.(sectionIndex, itemIndex, hours);
+                      };
 
-                  const removePart = (idx: number) => {
-                    const next = currentParts.filter((_, i) => i !== idx);
-                    handlePartsChange(next);
-                  };
+                      const addEmptyPart = () => {
+                        handlePartsChange([
+                          ...currentParts,
+                          { description: "", qty: 1 },
+                        ]);
+                      };
 
-                  return (
-                    <div className="mt-3 rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-neutral-200">
-                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-semibold text-neutral-100">
-                          Parts &amp; Labor
-                        </span>
-                        <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                          Only for FAIL / REC items
-                        </span>
-                      </div>
+                      const updatePart = (
+                        idx: number,
+                        patch: Partial<{ description: string; qty: number }>,
+                      ) => {
+                        const next = currentParts.map((p, i) =>
+                          i === idx ? { ...p, ...patch } : p,
+                        );
+                        handlePartsChange(next);
+                      };
 
-                      {/* Parts list */}
-                      <div className="space-y-2">
-                        {currentParts.map((p, pIdx) => (
-                          <div
-                            key={pIdx}
-                            className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-black/50 px-2 py-2"
-                          >
-                            <input
-                              className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/70"
-                              placeholder="Part description"
-                              value={p.description}
-                              onChange={(e) =>
-                                updatePart(pIdx, {
-                                  description: e.target.value,
-                                })
-                              }
-                            />
-                            <input
-                              className="w-16 rounded-md border border-neutral-700 bg-neutral-950/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/70"
-                              placeholder="Qty"
-                              type="number"
-                              min={1}
-                              value={Number.isFinite(p.qty) ? p.qty : ""}
-                              onChange={(e) =>
-                                updatePart(pIdx, {
-                                  qty: Number(e.target.value) || 1,
-                                })
-                              }
-                            />
+                      const removePart = (idx: number) => {
+                        const next = currentParts.filter((_, i) => i !== idx);
+                        handlePartsChange(next);
+                      };
+
+                      return (
+                        <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[12px] font-semibold text-neutral-100">
+                              Parts &amp; Labor
+                            </span>
+                            <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                              FAIL / REC only
+                            </span>
+                          </div>
+
+                          {/* Parts list */}
+                          <div className="space-y-2">
+                            {currentParts.map((p, pIdx) => (
+                              <div
+                                key={pIdx}
+                                className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
+                              >
+                                <input
+                                  className="min-w-0 flex-1 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+                                  placeholder="Part description"
+                                  value={p.description}
+                                  onChange={(e) =>
+                                    updatePart(pIdx, {
+                                      description: e.target.value,
+                                    })
+                                  }
+                                />
+                                <input
+                                  className="w-16 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+                                  placeholder="Qty"
+                                  type="number"
+                                  min={1}
+                                  value={Number.isFinite(p.qty) ? p.qty : ""}
+                                  onChange={(e) =>
+                                    updatePart(pIdx, {
+                                      qty: Number(e.target.value) || 1,
+                                    })
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-red-300 hover:text-red-200"
+                                  onClick={() => removePart(pIdx)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+
                             <button
                               type="button"
-                              className="text-[11px] text-red-300 hover:text-red-200"
-                              onClick={() => removePart(pIdx)}
+                              onClick={addEmptyPart}
+                              className="mt-1 inline-flex items-center rounded-full border border-white/20 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-accent/80 hover:text-accent"
                             >
-                              Remove
+                              + Add Part
                             </button>
                           </div>
-                        ))}
 
-                        <button
+                          {/* Labor */}
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] text-neutral-400">
+                              Labor hours
+                            </span>
+                            <input
+                              className="w-20 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+                              placeholder="0.0"
+                              type="number"
+                              min={0}
+                              step={0.1}
+                              value={currentLabor ?? ""}
+                              onChange={(e) =>
+                                handleLaborChange(
+                                  e.target.value === ""
+                                    ? null
+                                    : Number(e.target.value) || 0,
+                                )
+                              }
+                            />
+                            <span className="text-[10px] text-neutral-500">
+                              (rate + pricing handled later)
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {canShowSubmit && (
+                      <div className="mt-2 flex items-center justify-end">
+                        <Button
                           type="button"
-                          onClick={addEmptyPart}
-                          className="mt-1 inline-flex items-center rounded-full border border-white/30 bg-black/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-accent/80 hover:text-accent"
+                          variant="outline"
+                          size="sm"
+                          className="px-3"
+                          disabled={submitting}
+                          onClick={() => onSubmitAI!(sectionIndex, itemIndex)}
                         >
-                          + Add Part
-                        </button>
+                          {submitting ? "Submitting…" : "Submit for estimate"}
+                        </Button>
                       </div>
-
-                      {/* Labor */}
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] text-neutral-400">
-                          Labor hours
-                        </span>
-                        <input
-                          className="w-20 rounded-md border border-neutral-700 bg-neutral-950/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/70"
-                          placeholder="0.0"
-                          type="number"
-                          min={0}
-                          step={0.1}
-                          value={currentLabor ?? ""}
-                          onChange={(e) =>
-                            handleLaborChange(
-                              e.target.value === ""
-                                ? null
-                                : Number(e.target.value) || 0,
-                            )
-                          }
-                        />
-                        <span className="text-[10px] text-neutral-500">
-                          (rate + pricing handled later)
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {canShowSubmit && (
-                  <div className="mt-3 flex items-center justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="px-3"
-                      disabled={submitting}
-                      onClick={() => onSubmitAI!(sectionIndex, itemIndex)}
-                    >
-                      {submitting ? "Submitting…" : "Submit for estimate"}
-                    </Button>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>
