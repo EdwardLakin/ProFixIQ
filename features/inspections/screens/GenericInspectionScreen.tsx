@@ -193,6 +193,37 @@ function isAirCornerSection(
   return items.some((it) => AIR_RE.test(it.item ?? ""));
 }
 
+/**
+ * TireGrid expects items shaped like:
+ *   "<Axle> Left Tire Pressure"
+ *   "<Axle> Right Tread Depth (Inner)"
+ *   "<Axle> Left Wheel Torque"
+ *
+ * If we force "Tires & Wheels" (generic) into TireGrid, it renders blank.
+ * So: only use TireGrid when the section actually contains grid-shaped rows.
+ */
+const LABEL_SIDE_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+
+function isAllowedTireMetric(metric: string): boolean {
+  const m = (metric || "").toLowerCase();
+  return (
+    m.includes("tire pressure") ||
+    m.includes("tire tread") ||
+    m.includes("tread depth") ||
+    m.includes("wheel torque")
+  );
+}
+
+function hasTireGridData(items: { item?: string | null }[] = []): boolean {
+  return items.some((it) => {
+    const label = it.item ?? "";
+    if (!LABEL_SIDE_RE.test(label)) return false;
+    const match = label.match(LABEL_SIDE_RE);
+    const metric = match?.groups?.metric ?? "";
+    return isAllowedTireMetric(metric);
+  });
+}
+
 function isTireGridSection(
   title: string | undefined,
   items: { item?: string | null }[] = [],
@@ -203,26 +234,8 @@ function isTireGridSection(
   if (t.includes("tire grid") || t.includes("tires grid")) return true;
   if (t.includes("tires") && t.includes("corner")) return true;
 
-  // if a section is explicitly tires/wheels, treat it as tire grid (not hydraulic corner grid)
-  if (t.includes("tires & wheels") || t.includes("tires and wheels")) return true;
-
-  // heuristics: tire pressure / tread + axle left/right or corners
-  const tireSignals = items.filter((it) => {
-    const l = (it.item ?? "").toLowerCase();
-    return (
-      l.includes("tire pressure") ||
-      l.includes("tire tread") ||
-      l.includes("tread depth")
-    );
-  });
-  if (tireSignals.length >= 2) {
-    // axle labels or corners usually imply grid
-    return tireSignals.some(
-      (it) => AIR_RE.test(it.item ?? "") || HYD_ABBR_RE.test(it.item ?? ""),
-    );
-  }
-
-  return false;
+  // heuristic: only treat as tire grid if the items look like a tire grid
+  return hasTireGridData(items);
 }
 
 function isHydraulicCornerSection(
@@ -352,8 +365,15 @@ export default function GenericInspectionScreen(
     [sp],
   );
 
-  const workOrderId = sp.get("workOrderId") || null;
-  const workOrderLineId = sp.get("workOrderLineId") || "";
+  // ✅ Accept common param variants (camel + snake + legacy)
+  const workOrderId =
+    sp.get("workOrderId") || sp.get("work_order_id") || null;
+
+  const workOrderLineId =
+    sp.get("workOrderLineId") ||
+    sp.get("work_order_line_id") ||
+    sp.get("lineId") ||
+    "";
 
   const rawVehicleType = sp.get("vehicleType") as VehicleTypeParam | null;
   const templateVehicleType: VehicleTypeParam | undefined =
