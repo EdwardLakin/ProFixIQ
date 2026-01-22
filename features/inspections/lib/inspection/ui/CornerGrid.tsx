@@ -33,7 +33,7 @@ const CORNER_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 
 const cornerOrder: Corner[] = ["LF", "RF", "LR", "RR"];
 
-// ✅ Brakes-only ordering (tires removed)
+// Brakes-first ordering (tires removed from this grid)
 const metricOrder = ["Brake Pad", "Rotor Thickness", "Wheel Torque"];
 
 const metricCompare = (a: string, b: string) => {
@@ -51,8 +51,11 @@ const metricCompare = (a: string, b: string) => {
 
 const isTireMetric = (metric: string) => {
   const m = metric.toLowerCase();
-  // Remove any tire-related rows (pressure/tread/etc.)
-  return m.includes("tire") || m.includes("tread") || m.includes("pressure");
+  return (
+    m.includes("tire") ||
+    m.includes("tread") ||
+    m.includes("pressure")
+  );
 };
 
 export default function CornerGrid({
@@ -86,7 +89,8 @@ export default function CornerGrid({
       if (!cornerOrder.includes(corner)) return;
 
       const metric = m.groups.metric.trim();
-      // ✅ Brakes-only: ignore tires here, keep everything else as-is
+
+      // ✅ Keep this grid brakes-only: drop tire metrics here
       if (isTireMetric(metric)) return;
 
       const unit =
@@ -124,8 +128,7 @@ export default function CornerGrid({
       .map((row) => ({
         ...row,
         cells: [...row.cells].sort(
-          (a, b) =>
-            cornerOrder.indexOf(a.corner) - cornerOrder.indexOf(b.corner),
+          (a, b) => cornerOrder.indexOf(a.corner) - cornerOrder.indexOf(b.corner),
         ),
       }))
       .sort((a, b) => metricCompare(a.metric, b.metric));
@@ -133,8 +136,8 @@ export default function CornerGrid({
     return { corners, rows };
   }, [items, unitHint]);
 
-  // ✅ Fix TAB behavior: keep focus cycling within the grid inputs
-  // refs[rowIndex][colIndex]
+  // ✅ TAB trap inside this grid
+  // inputRefs[rowIndex][colIndex]
   const inputRefs = useRef<(HTMLInputElement | null)[][]>([]);
 
   const ensureRowRef = (rowIndex: number) => {
@@ -150,10 +153,8 @@ export default function CornerGrid({
   ) => {
     const refs = inputRefs.current;
     const rowCount = refs.length;
-    if (rowCount === 0) return;
-
     const colCount = grid.corners.length;
-    if (colCount === 0) return;
+    if (rowCount === 0 || colCount === 0) return;
 
     const total = rowCount * colCount;
     const flat = startRow * colCount + startCol;
@@ -173,67 +174,57 @@ export default function CornerGrid({
     }
   };
 
-  const handleKeyDown =
-    (rowIndex: number, colIndex: number) =>
-    (e: KeyboardEvent<HTMLInputElement>) => {
-      if (!open) return;
+  const handleKeyDown = (
+    e: KeyboardEvent<HTMLInputElement>,
+    rowIndex: number,
+    colIndex: number,
+  ) => {
+    if (!open) return;
 
-      // Tab stays within grid
-      if (e.key === "Tab") {
-        focusNext(e, rowIndex, colIndex, e.shiftKey ? -1 : 1);
-        return;
-      }
+    if (e.key === "Tab") {
+      focusNext(e, rowIndex, colIndex, e.shiftKey ? -1 : 1);
+      return;
+    }
 
-      // Optional: arrow keys (nice with tables)
-      if (
-        e.key !== "ArrowUp" &&
-        e.key !== "ArrowDown" &&
-        e.key !== "ArrowLeft" &&
-        e.key !== "ArrowRight"
-      ) {
-        return;
-      }
+    // Optional arrows (nice for grids)
+    if (
+      e.key !== "ArrowUp" &&
+      e.key !== "ArrowDown" &&
+      e.key !== "ArrowLeft" &&
+      e.key !== "ArrowRight"
+    ) {
+      return;
+    }
 
-      const refs = inputRefs.current;
-      const rowCount = refs.length;
-      const colCount = grid.corners.length;
+    const refs = inputRefs.current;
+    const rowCount = refs.length;
+    const colCount = grid.corners.length;
 
-      const focusCell = (r: number, c: number) => {
-        const el = refs[r]?.[c] ?? null;
-        if (!el) return false;
-        e.preventDefault();
-        el.focus();
-        el.select?.();
-        return true;
-      };
-
-      if (e.key === "ArrowLeft") {
-        for (let c = colIndex - 1; c >= 0; c--) {
-          if (focusCell(rowIndex, c)) return;
-        }
-        return;
-      }
-
-      if (e.key === "ArrowRight") {
-        for (let c = colIndex + 1; c < colCount; c++) {
-          if (focusCell(rowIndex, c)) return;
-        }
-        return;
-      }
-
-      if (e.key === "ArrowUp") {
-        for (let r = rowIndex - 1; r >= 0; r--) {
-          if (focusCell(r, colIndex)) return;
-        }
-        return;
-      }
-
-      if (e.key === "ArrowDown") {
-        for (let r = rowIndex + 1; r < rowCount; r++) {
-          if (focusCell(r, colIndex)) return;
-        }
-      }
+    const focusCell = (r: number, c: number) => {
+      const el = refs[r]?.[c] ?? null;
+      if (!el) return false;
+      e.preventDefault();
+      el.focus();
+      el.select?.();
+      return true;
     };
+
+    if (e.key === "ArrowLeft") {
+      for (let c = colIndex - 1; c >= 0; c--) if (focusCell(rowIndex, c)) return;
+      return;
+    }
+    if (e.key === "ArrowRight") {
+      for (let c = colIndex + 1; c < colCount; c++) if (focusCell(rowIndex, c)) return;
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      for (let r = rowIndex - 1; r >= 0; r--) if (focusCell(r, colIndex)) return;
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      for (let r = rowIndex + 1; r < rowCount; r++) if (focusCell(r, colIndex)) return;
+    }
+  };
 
   if (!grid.rows.length) return null;
 
@@ -254,7 +245,6 @@ export default function CornerGrid({
 
       <div className="overflow-x-auto">
         <div className="inline-block min-w-full align-middle">
-          {/* ✅ UI: tighter, less “pilly”: one container + row dividers */}
           <div className="overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
             <table className="min-w-full">
               <thead className="bg-black/35">
@@ -266,10 +256,7 @@ export default function CornerGrid({
                     <th
                       key={corner}
                       className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300"
-                      style={{
-                        fontFamily:
-                          "var(--font-blackops), system-ui, sans-serif",
-                      }}
+                      style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
                     >
                       {corner}
                     </th>
@@ -304,9 +291,9 @@ export default function CornerGrid({
                       {grid.corners.map((corner, colIdx) => {
                         const cell = row.cells.find((c) => c.corner === corner);
 
+                        // keep alignment: also keep a null ref slot
+                        const rowRef = ensureRowRef(rowIdx);
                         if (!cell) {
-                          // keep alignment: also keep a null ref slot
-                          const rowRef = ensureRowRef(rowIdx);
                           rowRef[colIdx] = null;
                           return (
                             <td key={corner} className="px-3 py-2">
@@ -315,20 +302,22 @@ export default function CornerGrid({
                           );
                         }
 
+                        rowRef[colIdx] ??= null;
+
                         return (
                           <td key={corner} className="px-3 py-2 text-center">
                             <div className="relative w-full max-w-[9rem]">
                               <input
                                 ref={(el) => {
-                                  const rowRef = ensureRowRef(rowIdx);
-                                  rowRef[colIdx] = el;
+                                  const rr = ensureRowRef(rowIdx);
+                                  rr[colIdx] = el;
                                 }}
                                 defaultValue={cell.initial}
                                 className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 pr-11 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                                 placeholder="Value"
                                 autoComplete="off"
                                 inputMode="decimal"
-                                onKeyDown={handleKeyDown(rowIdx, colIdx)}
+                                onKeyDown={(e) => handleKeyDown(e, rowIdx, colIdx)}
                                 onBlur={(e) => commit(cell.idx, e.currentTarget)}
                               />
                               {cell.unit && (

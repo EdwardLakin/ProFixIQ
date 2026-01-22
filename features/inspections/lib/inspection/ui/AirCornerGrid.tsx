@@ -1,7 +1,7 @@
 // features/inspections/lib/inspection/ui/AirCornerGrid.tsx
 "use client";
 
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -28,10 +28,15 @@ type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
 
 const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
+// ✅ HARD FILTER: AirCornerGrid is brakes-only. Never render tire rows here.
+const isTireMetric = (metric: string) => {
+  const m = metric.toLowerCase();
+  return m.includes("tire") || m.includes("tread") || m.includes("pressure");
+};
+
 const airPriority = (metric: string): [number, number] => {
   const m = metric.toLowerCase();
 
-  // ✅ AirCornerGrid is now brakes-only: remove tire-related ordering.
   if (/(lining|shoe|pad)/i.test(m)) return [0, 0];
   if (/(drum|rotor)/i.test(m)) return [1, 0];
   if (/push\s*rod/i.test(m)) return [2, 0];
@@ -68,7 +73,6 @@ export default function AirCornerGrid({
   onSpecHint,
 }: Props) {
   const { updateItem } = useInspectionForm();
-
   const [open, setOpen] = useState(true);
 
   const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
@@ -100,6 +104,9 @@ export default function AirCornerGrid({
       const side = (m.groups.side as Side) || "Left";
       const metric = m.groups.metric.trim();
 
+      // ✅ FIX: never render tire items in the brake grid
+      if (isTireMetric(metric)) return;
+
       if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
 
       const unit =
@@ -127,96 +134,7 @@ export default function AirCornerGrid({
     });
   }, [items, unitHint]);
 
-  // ✅ Keep TAB focus cycling inside each axle card grid (modern + fast)
-  // refsByAxle[axleIndex][rowIndex][colIndex(0=left,1=right)]
-  const refsByAxle = useRef<(HTMLInputElement | null)[][][]>([]);
-
-  const ensureAxleRef = (axleIndex: number) => {
-    if (!refsByAxle.current[axleIndex]) refsByAxle.current[axleIndex] = [];
-    return refsByAxle.current[axleIndex];
-  };
-
-  const ensureRowRef = (axleIndex: number, rowIndex: number) => {
-    const axleRef = ensureAxleRef(axleIndex);
-    if (!axleRef[rowIndex]) axleRef[rowIndex] = [];
-    return axleRef[rowIndex];
-  };
-
-  const focusNext = (
-    e: KeyboardEvent<HTMLInputElement>,
-    axleIndex: number,
-    startRow: number,
-    startCol: number,
-    dir: 1 | -1,
-  ) => {
-    const axleRef = refsByAxle.current[axleIndex] || [];
-    const rowCount = axleRef.length;
-    if (rowCount === 0) return;
-
-    const colCount = 2;
-    const total = rowCount * colCount;
-    let flat = startRow * colCount + startCol;
-
-    for (let step = 1; step <= total; step++) {
-      const nextFlat = (flat + dir * step + total) % total;
-      const r = Math.floor(nextFlat / colCount);
-      const c = nextFlat % colCount;
-
-      const el = axleRef[r]?.[c] ?? null;
-      if (el) {
-        e.preventDefault();
-        el.focus();
-        el.select?.();
-        return;
-      }
-    }
-  };
-
-  const InputWithInlineUnit = ({
-    axleIndex,
-    rowIndex,
-    colIndex,
-    idx,
-    unit,
-    defaultValue,
-  }: {
-    axleIndex: number;
-    rowIndex: number;
-    colIndex: 0 | 1;
-    idx: number;
-    unit: string;
-    defaultValue: string;
-  }) => {
-    return (
-      <div className="relative w-full">
-        <input
-          ref={(el) => {
-            const rowRef = ensureRowRef(axleIndex, rowIndex);
-            rowRef[colIndex] = el;
-          }}
-          defaultValue={defaultValue}
-          className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 pr-16 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.75)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-          placeholder="Value"
-          autoComplete="off"
-          inputMode="decimal"
-          onKeyDown={(e) => {
-            if (!open) return;
-            if (e.key === "Tab") {
-              focusNext(e, axleIndex, rowIndex, colIndex, e.shiftKey ? -1 : 1);
-            }
-          }}
-          onBlur={(e) => commit(idx, e.currentTarget)}
-        />
-        {unit ? (
-          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
-            {unit}
-          </span>
-        ) : null}
-      </div>
-    );
-  };
-
-  const AxleCard = ({ g, axleIndex }: { g: AxleGroup; axleIndex: number }) => {
+  const AxleCard = ({ g }: { g: AxleGroup }) => {
     const rows = buildTriplets(g);
     const filled = count(g.left) + count(g.right);
     const total = g.left.length + g.right.length;
@@ -261,27 +179,29 @@ export default function AirCornerGrid({
                 (unitHint ? unitHint(row.right?.fullLabel ?? "") : "") ??
                 "";
 
-              // Ensure null slots exist so focus cycling skips missing cells properly
-              const rowRef = ensureRowRef(axleIndex, rowIndex);
-              if (rowRef[0] === undefined) rowRef[0] = null;
-              if (rowRef[1] === undefined) rowRef[1] = null;
-
               return (
                 <div
                   key={`${row.metric}-${rowIndex}`}
-                  className="px-4 py-3 hover:bg-white/[0.03] transition-colors"
+                  className="px-4 py-3 transition-colors hover:bg-white/[0.03]"
                 >
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
                     <div>
                       {row.left ? (
-                        <InputWithInlineUnit
-                          axleIndex={axleIndex}
-                          rowIndex={rowIndex}
-                          colIndex={0}
-                          idx={row.left.idx}
-                          unit={leftUnit}
-                          defaultValue={row.left.initial}
-                        />
+                        <div className="relative w-full">
+                          <input
+                            defaultValue={row.left.initial}
+                            className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 pr-16 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.75)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                            placeholder="Value"
+                            autoComplete="off"
+                            inputMode="decimal"
+                            onBlur={(e) => commit(row.left!.idx, e.currentTarget)}
+                          />
+                          {leftUnit ? (
+                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
+                              {leftUnit}
+                            </span>
+                          ) : null}
+                        </div>
                       ) : (
                         <div className="h-[34px]" />
                       )}
@@ -313,14 +233,23 @@ export default function AirCornerGrid({
 
                     <div className="justify-self-end">
                       {row.right ? (
-                        <InputWithInlineUnit
-                          axleIndex={axleIndex}
-                          rowIndex={rowIndex}
-                          colIndex={1}
-                          idx={row.right.idx}
-                          unit={rightUnit}
-                          defaultValue={row.right.initial}
-                        />
+                        <div className="relative w-full">
+                          <input
+                            defaultValue={row.right.initial}
+                            className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 pr-16 text-sm text-white placeholder:text-neutral-500 shadow-[0_10px_25px_rgba(0,0,0,0.75)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                            placeholder="Value"
+                            autoComplete="off"
+                            inputMode="decimal"
+                            onBlur={(e) =>
+                              commit(row.right!.idx, e.currentTarget)
+                            }
+                          />
+                          {rightUnit ? (
+                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
+                              {rightUnit}
+                            </span>
+                          ) : null}
+                        </div>
                       ) : (
                         <div className="h-[34px]" />
                       )}
@@ -353,8 +282,8 @@ export default function AirCornerGrid({
       {onAddAxle && <AddAxlePicker groups={groups} onAddAxle={onAddAxle} />}
 
       <div className="grid w-full gap-4">
-        {groups.map((g, axleIndex) => (
-          <AxleCard key={g.axle} g={g} axleIndex={axleIndex} />
+        {groups.map((g) => (
+          <AxleCard key={g.axle} g={g} />
         ))}
       </div>
     </div>
