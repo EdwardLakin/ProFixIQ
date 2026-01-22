@@ -22,6 +22,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
+
 function unitHint(label: string): string | null {
   const l = label.toLowerCase();
   if (/(tread|pad|lining|rotor|drum|push ?rod|thickness)/.test(l)) return "mm";
@@ -35,9 +36,7 @@ function unitHint(label: string): string | null {
 /** model → safe SectionOut[] */
 function sanitizeSections(input: unknown): SectionOut[] {
   const sectionsIn: unknown[] =
-    isRecord(input) && Array.isArray((input as Record<string, unknown>).sections)
-      ? ((input as Record<string, unknown>).sections as unknown[])
-      : [];
+    isRecord(input) && Array.isArray(input.sections) ? input.sections : [];
 
   const clean: SectionOut[] = [];
 
@@ -46,9 +45,7 @@ function sanitizeSections(input: unknown): SectionOut[] {
     const title = asString(sec.title)?.trim() ?? "";
     if (!title) continue;
 
-    const itemsIn: unknown[] = Array.isArray(sec.items)
-      ? (sec.items as unknown[])
-      : [];
+    const itemsIn: unknown[] = Array.isArray(sec.items) ? sec.items : [];
     const itemsOut: SectionItem[] = [];
 
     for (const raw of itemsIn) {
@@ -78,6 +75,7 @@ function sanitizeSections(input: unknown): SectionOut[] {
       },
     ];
   }
+
   return clean;
 }
 
@@ -112,7 +110,6 @@ function looksAirBrakeSection(title: string): boolean {
   );
 }
 
-/** does the prompt sound like light-duty/automotive? */
 function promptSaysAutomotive(p: string): boolean {
   const l = p.toLowerCase();
   return (
@@ -125,18 +122,14 @@ function promptSaysAutomotive(p: string): boolean {
   );
 }
 
-/** try to infer duty class from prompt text */
 function inferDutyFromPrompt(p: string): DutyClass | null {
   const l = p.toLowerCase();
-  if (l.includes("light duty") || l.includes("automotive") || l.includes("passenger")) {
+  if (l.includes("light duty") || l.includes("automotive") || l.includes("passenger"))
     return "light";
-  }
-  if (l.includes("medium duty") || l.includes("class 5") || l.includes("class 6")) {
+  if (l.includes("medium duty") || l.includes("class 5") || l.includes("class 6"))
     return "medium";
-  }
-  if (l.includes("heavy duty") || l.includes("class 7") || l.includes("class 8")) {
+  if (l.includes("heavy duty") || l.includes("class 7") || l.includes("class 8"))
     return "heavy";
-  }
   return null;
 }
 
@@ -183,6 +176,67 @@ const SectionsSchema = {
 export const runtime = "edge";
 
 /* ------------------------------------------------------------------ */
+/* Response parsing (NO any)                                          */
+/* ------------------------------------------------------------------ */
+
+type RespContentNode = {
+  type?: unknown;
+  output_json?: unknown;
+  text?: unknown;
+};
+
+
+function extractOutputJson(resp: unknown): unknown | null {
+  if (!isRecord(resp)) return null;
+
+  // Shape 1: resp.output is an array of message-like nodes
+  const out = resp.output;
+  if (Array.isArray(out) && out.length > 0) {
+    const first = out[0];
+    if (isRecord(first)) {
+      const outType = asString(first.type);
+      const content = first.content;
+
+      if (outType === "message" && Array.isArray(content)) {
+        const nodes: RespContentNode[] = content
+          .filter((n): n is Record<string, unknown> => isRecord(n))
+          .map((n) => ({
+            type: n.type,
+            output_json: (n as Record<string, unknown>).output_json,
+            text: (n as Record<string, unknown>).text,
+          }));
+
+        const jsonNode = nodes.find((n) => asString(n.type) === "output_json");
+        if (jsonNode) return jsonNode.output_json ?? null;
+
+        const textNode = nodes.find((n) => asString(n.type) === "text");
+        if (textNode) {
+          const txt = asString(textNode.text);
+          if (!txt) return null;
+          try {
+            return JSON.parse(txt);
+          } catch {
+            return null;
+          }
+        }
+      }
+    }
+  }
+
+  // Shape 2: some SDKs expose resp.output_text
+  const outputText = asString(resp.output_text);
+  if (outputText) {
+    try {
+      return JSON.parse(outputText);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
 /* Route                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -196,8 +250,8 @@ export async function POST(req: Request) {
     const prompt = asString(body.prompt);
     const vehicleTypeStr = asString(body.vehicleType);
     const brakeSystemStr = asString(body.brakeSystem);
-    const dutyClassStr = asString((body as Record<string, unknown>).dutyClass);
-    const targetCountRaw = (body as Record<string, unknown>).targetCount;
+    const dutyClassStr = asString(body.dutyClass);
+    const targetCountRaw = body.targetCount;
 
     if (!prompt) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
@@ -212,31 +266,24 @@ export async function POST(req: Request) {
     } else if (vehicleTypeStr) {
       vehicleType = vehicleTypeStr as VehicleType;
     } else {
+      const p = prompt.toLowerCase();
       vehicleType =
-        prompt.toLowerCase().includes("truck") ||
-        prompt.toLowerCase().includes("bus") ||
-        prompt.toLowerCase().includes("trailer") ||
-        prompt.toLowerCase().includes("hd") ||
-        prompt.toLowerCase().includes("heavy duty")
+        p.includes("truck") ||
+        p.includes("bus") ||
+        p.includes("trailer") ||
+        p.includes("hd") ||
+        p.includes("heavy duty")
           ? "truck"
           : "car";
     }
 
     // 2) infer duty class (body > prompt > vehicle fallback)
     let dutyClass: DutyClass;
-    if (
-      dutyClassStr === "light" ||
-      dutyClassStr === "medium" ||
-      dutyClassStr === "heavy"
-    ) {
+    if (dutyClassStr === "light" || dutyClassStr === "medium" || dutyClassStr === "heavy") {
       dutyClass = dutyClassStr;
     } else {
       const fromPrompt = inferDutyFromPrompt(prompt);
-      if (fromPrompt) {
-        dutyClass = fromPrompt;
-      } else {
-        dutyClass = vehicleType === "car" ? "light" : "heavy";
-      }
+      dutyClass = fromPrompt ?? (vehicleType === "car" ? "light" : "heavy");
     }
 
     // 3) infer brake system (hyd = light/auto, air = HD)
@@ -246,11 +293,8 @@ export async function POST(req: Request) {
     } else if (brakeSystemStr) {
       brakeSystem = brakeSystemStr as BrakeSystem;
     } else {
-      if (dutyClass === "light") {
-        brakeSystem = "hyd_brake";
-      } else {
-        brakeSystem = vehicleType === "car" ? "hyd_brake" : "air_brake";
-      }
+      brakeSystem =
+        dutyClass === "light" ? "hyd_brake" : vehicleType === "car" ? "hyd_brake" : "air_brake";
     }
 
     // 4) target size
@@ -262,7 +306,7 @@ export async function POST(req: Request) {
       targetCount = m ? parseInt(m[1]!, 10) : 20;
     }
 
-    // 5) deterministic base — now aware of duty class
+    // 5) deterministic base — duty-aware
     const baseSections = buildFromMaster({
       vehicleType,
       brakeSystem,
@@ -278,7 +322,7 @@ export async function POST(req: Request) {
     // 6) try to augment with OpenAI
     let aiSections: SectionOut[] = [];
     try {
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
       const system = [
         "You are an AI assistant for generating vehicle inspection templates.",
@@ -298,13 +342,12 @@ export async function POST(req: Request) {
         "Generate inspection sections and items suitable for a professional repair shop.",
       ].join("\n");
 
-      const resp = await openai.responses.create({
+      const params = {
         model: "gpt-4o-mini",
         input: [
-          { role: "system", content: system },
-          { role: "user", content: user },
+          { role: "system" as const, content: system },
+          { role: "user" as const, content: user },
         ],
-        // ✅ Responses API: response_format moved → text.format
         text: {
           format: {
             type: "json_schema",
@@ -314,60 +357,18 @@ export async function POST(req: Request) {
           },
         },
         max_output_tokens: 4000,
-      });
+      } as unknown as Parameters<typeof openai.responses.create>[0];
 
-      // extract JSON (support both output_json and text fallbacks)
-      let aiRaw: unknown = {};
-      type ResponseOutput = {
-        type?: string;
-        content?: Array<{
-          type?: string;
-          output_json?: unknown;
-          text?: string;
-        }>;
-      };
+      const resp = await openai.responses.create(params);
 
-      const firstOut = (resp.output?.[0] ?? {}) as ResponseOutput;
-
-      if (firstOut.type === "message" && Array.isArray(firstOut.content)) {
-        // Prefer output_json if present
-        const jsonNode = firstOut.content.find((c) => c?.type === "output_json");
-        if (jsonNode && "output_json" in jsonNode) {
-          aiRaw = jsonNode.output_json;
-        } else {
-          // Fall back to text content → JSON.parse
-          const textNode = firstOut.content.find((c) => c?.type === "text");
-          if (textNode?.text && typeof textNode.text === "string") {
-            try {
-              aiRaw = JSON.parse(textNode.text);
-            } catch {
-              aiRaw = {};
-            }
-          } else if ((resp as any).output_text && typeof (resp as any).output_text === "string") {
-            // Extra fallback: some SDK versions expose output_text
-            try {
-              aiRaw = JSON.parse((resp as any).output_text);
-            } catch {
-              aiRaw = {};
-            }
-          }
-        }
-      } else if ((resp as any).output_text && typeof (resp as any).output_text === "string") {
-        // Non-message shape fallback
-        try {
-          aiRaw = JSON.parse((resp as any).output_text);
-        } catch {
-          aiRaw = {};
-        }
-      }
-
+      const aiRaw = extractOutputJson(resp) ?? {};
       aiSections = sanitizeSections(aiRaw);
     } catch (err) {
       console.error("OpenAI augmentation failed, returning base only:", err);
       return NextResponse.json({ sections: baseSections }, { status: 200 });
     }
 
-    // 7) if this is light-duty, strip HD/air stuff from AI
+    // 7) if light-duty, strip HD/air from AI
     if (dutyClass === "light" || brakeSystem === "hyd_brake") {
       aiSections = aiSections
         .map((sec) => {
@@ -376,7 +377,7 @@ export async function POST(req: Request) {
           if (!filteredItems.length) return null;
           return { ...sec, items: filteredItems };
         })
-        .filter(Boolean) as SectionOut[];
+        .filter((v): v is SectionOut => v !== null);
     }
 
     // 8) merge if AI is good enough
@@ -394,9 +395,7 @@ export async function POST(req: Request) {
           const seen = new Set(existing.items.map((i) => i.item.toLowerCase()));
           for (const it of aiSec.items) {
             const key = it.item.toLowerCase();
-            if (!seen.has(key)) {
-              existing.items.push(it);
-            }
+            if (!seen.has(key)) existing.items.push(it);
           }
         } else {
           merged.push(aiSec);
@@ -410,10 +409,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         sections: [
-          {
-            title: "General",
-            items: [{ item: "Visual walkaround", unit: null }],
-          },
+          { title: "General", items: [{ item: "Visual walkaround", unit: null }] },
         ],
       },
       { status: 200 },
