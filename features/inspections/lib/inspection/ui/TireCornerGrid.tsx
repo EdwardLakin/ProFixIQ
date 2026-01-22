@@ -1,7 +1,13 @@
 // features/inspections/lib/inspection/ui/TireCornerGrid.tsx
 "use client";
 
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -41,11 +47,17 @@ type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
 // Example: "Steer 1 Left Tire Pressure" / "Drive 1 Right Tire Tread (Outer)"
 const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
+const isTireMetric = (metric: string) => {
+  const m = metric.toLowerCase();
+  return m.includes("tire") || m.includes("tread") || m.includes("pressure");
+};
+
+const isWheelTorqueMetric = (metric: string) => /wheel\s*torque/i.test(metric);
+
 const tirePriority = (metric: string): [number, number] => {
   const m = metric.toLowerCase();
 
   if (/tire\s*pressure/i.test(m)) {
-    // Outer before Inner when both exist
     const second = /outer/i.test(m) ? 0 : /inner/i.test(m) ? 1 : 0;
     return [0, second];
   }
@@ -55,7 +67,6 @@ const tirePriority = (metric: string): [number, number] => {
     return [1, second];
   }
 
-  // Anything else stays at the bottom (future-proof)
   return [99, 0];
 };
 
@@ -86,8 +97,6 @@ function expandDuals(axle: string, cells: MetricCell[]): MetricCell[] {
   for (const c of cells) {
     if (isDualizableMetric(c.metric) && !hasInnerOuter(c.metric)) {
       const base = c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim();
-      // Keep same idx/initial: these are "virtual splits" so UI can be dual-aware.
-      // Real templates can later include explicit inner/outer items.
       out.push({ ...c, metric: `${base} (Outer)` });
       out.push({ ...c, metric: `${base} (Inner)` });
     } else {
@@ -152,10 +161,15 @@ export default function TireCornerGrid({
       const side = (m.groups.side as Side) || "Left";
       const metric = m.groups.metric.trim();
 
+      // ✅ Tire grid only: keep only tire metrics
+      if (!isTireMetric(metric)) return;
+
+      // ✅ Never show wheel torque in tire grid
+      if (isWheelTorqueMetric(metric)) return;
+
       if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
 
-      const unit =
-        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
+      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
 
       const cell: MetricCell = {
         metric,
@@ -245,14 +259,13 @@ export default function TireCornerGrid({
     const spanRef = useRef<HTMLSpanElement | null>(null);
 
     const seedText = () => {
-      // Pressure gets psi + kPa hint (optional), tread stays unit-only.
       if (!cell.isPressure) return cell.unit || "";
       const k = kpaFromPsi(cell.initial);
       if (!showKpa) return "psi";
       return k != null ? `psi (${k} kPa)` : "psi (— kPa)";
     };
 
-    const onInput = (e: React.FormEvent<HTMLInputElement>) => {
+    const onInput = (e: FormEvent<HTMLInputElement>) => {
       if (!cell.isPressure || !spanRef.current) return;
       const k = kpaFromPsi(e.currentTarget.value);
       if (!showKpa) {
@@ -300,6 +313,13 @@ export default function TireCornerGrid({
     const filled = count(g.left) + count(g.right);
     const total = g.left.length + g.right.length;
 
+    // Ensure null slots exist so focus cycling skips missing cells properly
+    rows.forEach((_, rowIndex) => {
+      const rowRef = ensureRowRef(axleIndex, rowIndex);
+      if (rowRef[0] === undefined) rowRef[0] = null;
+      if (rowRef[1] === undefined) rowRef[1] = null;
+    });
+
     return (
       <div className="w-full overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -343,71 +363,63 @@ export default function TireCornerGrid({
 
         {open && (
           <div className="divide-y divide-white/10">
-            {rows.map((row, rowIndex) => {
-              // Ensure null slots exist so focus cycling skips missing cells properly
-              const rowRef = ensureRowRef(axleIndex, rowIndex);
-              if (rowRef[0] === undefined) rowRef[0] = null;
-              if (rowRef[1] === undefined) rowRef[1] = null;
+            {rows.map((row, rowIndex) => (
+              <div
+                key={`${row.metric}-${rowIndex}`}
+                className="px-4 py-3 transition-colors hover:bg-white/[0.03]"
+              >
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+                  <div>
+                    {row.left ? (
+                      <InputWithInlineUnit
+                        axleIndex={axleIndex}
+                        rowIndex={rowIndex}
+                        colIndex={0}
+                        cell={row.left}
+                      />
+                    ) : (
+                      <div className="h-[34px]" />
+                    )}
+                  </div>
 
-              return (
-                <div
-                  key={`${row.metric}-${rowIndex}`}
-                  className="px-4 py-3 transition-colors hover:bg-white/[0.03]"
-                >
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-                    <div>
-                      {row.left ? (
-                        <InputWithInlineUnit
-                          axleIndex={axleIndex}
-                          rowIndex={rowIndex}
-                          colIndex={0}
-                          cell={row.left}
-                        />
-                      ) : (
-                        <div className="h-[34px]" />
-                      )}
-                    </div>
-
-                    <div className="flex min-w-0 items-center justify-center gap-2">
-                      <span
-                        className="truncate text-center text-sm font-semibold text-neutral-100"
-                        style={{
-                          fontFamily:
-                            "var(--font-blackops), system-ui, sans-serif",
-                        }}
-                        title={row.metric}
+                  <div className="flex min-w-0 items-center justify-center gap-2">
+                    <span
+                      className="truncate text-center text-sm font-semibold text-neutral-100"
+                      style={{
+                        fontFamily: "var(--font-blackops), system-ui, sans-serif",
+                      }}
+                      title={row.metric}
+                    >
+                      {row.metric}
+                    </span>
+                    {onSpecHint && (
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => onSpecHint(row.metric)}
+                        className="rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.16em] text-orange-300 hover:bg-orange-500/20"
+                        title="Show CVIP spec"
                       >
-                        {row.metric}
-                      </span>
-                      {onSpecHint && (
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          onClick={() => onSpecHint(row.metric)}
-                          className="rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.16em] text-orange-300 hover:bg-orange-500/20"
-                          title="Show CVIP spec"
-                        >
-                          Spec
-                        </button>
-                      )}
-                    </div>
+                        Spec
+                      </button>
+                    )}
+                  </div>
 
-                    <div className="justify-self-end">
-                      {row.right ? (
-                        <InputWithInlineUnit
-                          axleIndex={axleIndex}
-                          rowIndex={rowIndex}
-                          colIndex={1}
-                          cell={row.right}
-                        />
-                      ) : (
-                        <div className="h-[34px]" />
-                      )}
-                    </div>
+                  <div className="justify-self-end">
+                    {row.right ? (
+                      <InputWithInlineUnit
+                        axleIndex={axleIndex}
+                        rowIndex={rowIndex}
+                        colIndex={1}
+                        cell={row.right}
+                      />
+                    ) : (
+                      <div className="h-[34px]" />
+                    )}
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>
