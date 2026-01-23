@@ -13,12 +13,13 @@ type DutyClass = "light" | "medium" | "heavy";
 /* Types & helpers                                                    */
 /* ------------------------------------------------------------------ */
 
-type SectionItem = { item: string; unit?: string | null };
+type SectionItem = { item: string; unit: string | null };
 type SectionOut = { title: string; items: SectionItem[] };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
+
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
@@ -54,11 +55,11 @@ function sanitizeSections(input: unknown): SectionOut[] {
         asString(raw.item)?.trim() ?? asString(raw.name)?.trim() ?? "";
       if (!label) continue;
 
-      const providedUnit = asString(raw.unit)?.trim();
+      const providedUnit = asString(raw.unit)?.trim() ?? "";
       const unit =
-        providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
+        providedUnit.length > 0 ? providedUnit : unitHint(label) ?? null;
 
-      itemsOut.push({ item: label, unit: unit ?? null });
+      itemsOut.push({ item: label, unit });
     }
 
     if (itemsOut.length) clean.push({ title, items: itemsOut });
@@ -124,7 +125,11 @@ function promptSaysAutomotive(p: string): boolean {
 
 function inferDutyFromPrompt(p: string): DutyClass | null {
   const l = p.toLowerCase();
-  if (l.includes("light duty") || l.includes("automotive") || l.includes("passenger"))
+  if (
+    l.includes("light duty") ||
+    l.includes("automotive") ||
+    l.includes("passenger")
+  )
     return "light";
   if (l.includes("medium duty") || l.includes("class 5") || l.includes("class 6"))
     return "medium";
@@ -161,7 +166,8 @@ const SectionsSchema = {
                   item: { type: "string", minLength: 1 },
                   unit: { type: ["string", "null"] },
                 },
-                required: ["item"],
+                // IMPORTANT: json_schema format requires required to include every property key
+                required: ["item", "unit"],
               },
             },
           },
@@ -184,7 +190,6 @@ type RespContentNode = {
   output_json?: unknown;
   text?: unknown;
 };
-
 
 function extractOutputJson(resp: unknown): unknown | null {
   if (!isRecord(resp)) return null;
@@ -224,7 +229,7 @@ function extractOutputJson(resp: unknown): unknown | null {
   }
 
   // Shape 2: some SDKs expose resp.output_text
-  const outputText = asString(resp.output_text);
+  const outputText = asString((resp as Record<string, unknown>).output_text);
   if (outputText) {
     try {
       return JSON.parse(outputText);
@@ -259,7 +264,7 @@ export async function POST(req: Request) {
 
     const promptIsAuto = promptSaysAutomotive(prompt);
 
-    // 1) infer vehicle / brake — prompt wins if it says automotive
+    // 1) infer vehicle — prompt wins if it says automotive
     let vehicleType: VehicleType;
     if (promptIsAuto) {
       vehicleType = "car";
@@ -279,7 +284,11 @@ export async function POST(req: Request) {
 
     // 2) infer duty class (body > prompt > vehicle fallback)
     let dutyClass: DutyClass;
-    if (dutyClassStr === "light" || dutyClassStr === "medium" || dutyClassStr === "heavy") {
+    if (
+      dutyClassStr === "light" ||
+      dutyClassStr === "medium" ||
+      dutyClassStr === "heavy"
+    ) {
       dutyClass = dutyClassStr;
     } else {
       const fromPrompt = inferDutyFromPrompt(prompt);
@@ -294,7 +303,11 @@ export async function POST(req: Request) {
       brakeSystem = brakeSystemStr as BrakeSystem;
     } else {
       brakeSystem =
-        dutyClass === "light" ? "hyd_brake" : vehicleType === "car" ? "hyd_brake" : "air_brake";
+        dutyClass === "light"
+          ? "hyd_brake"
+          : vehicleType === "car"
+            ? "hyd_brake"
+            : "air_brake";
     }
 
     // 4) target size
@@ -303,7 +316,7 @@ export async function POST(req: Request) {
       targetCount = targetCountRaw;
     } else {
       const m = prompt.match(/(\d{2,3})\s*(point|pt)?/i);
-      targetCount = m ? parseInt(m[1]!, 10) : 20;
+      targetCount = m ? parseInt(m[1] ?? "20", 10) : 20;
     }
 
     // 5) deterministic base — duty-aware
@@ -342,24 +355,21 @@ export async function POST(req: Request) {
         "Generate inspection sections and items suitable for a professional repair shop.",
       ].join("\n");
 
-      const params = {
+      const resp = await openai.responses.create({
         model: "gpt-4o-mini",
         input: [
-          { role: "system" as const, content: system },
-          { role: "user" as const, content: user },
+          { role: "system", content: system },
+          { role: "user", content: user },
         ],
         text: {
           format: {
             type: "json_schema",
             name: SectionsSchema.name,
             schema: SectionsSchema.schema,
-            strict: true,
           },
         },
         max_output_tokens: 4000,
-      } as unknown as Parameters<typeof openai.responses.create>[0];
-
-      const resp = await openai.responses.create(params);
+      });
 
       const aiRaw = extractOutputJson(resp) ?? {};
       aiSections = sanitizeSections(aiRaw);
@@ -381,7 +391,7 @@ export async function POST(req: Request) {
     }
 
     // 8) merge if AI is good enough
-    const aiItemCount = aiSections.reduce((sum, s) => sum + (s.items?.length ?? 0), 0);
+    const aiItemCount = aiSections.reduce((sum, s) => sum + s.items.length, 0);
     const minItemsToMerge = Math.max(10, Math.floor(targetCount * 0.5));
     const shouldMerge = aiSections.length >= 3 && aiItemCount >= minItemsToMerge;
 
