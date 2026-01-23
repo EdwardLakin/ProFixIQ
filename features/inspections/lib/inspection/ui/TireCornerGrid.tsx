@@ -43,6 +43,12 @@ type Cell = {
 
 type TireCellGroup = {
   pressure?: Cell;
+
+  // Single tires can track both tread measurements (Outer/Inner shoulder)
+  treadOuter?: Cell;
+  treadInner?: Cell;
+
+  // Dual axles keep a single tread per tire position (Outer tire / Inner tire)
   tread?: Cell;
 };
 
@@ -206,6 +212,27 @@ function placeDualCell(
   }
 }
 
+/**
+ * Single tire tread placement:
+ * - If "(Outer)" / "(Inner)" exists → map to treadOuter/treadInner.
+ * - If missing, first tread seen -> treadOuter, second -> treadInner.
+ */
+function placeSingleTread(group: TireCellGroup, pos: DualPos | null, cell: Cell) {
+  if (pos === "Outer") {
+    if (!group.treadOuter) group.treadOuter = cell;
+    else if (!group.treadInner) group.treadInner = cell;
+    return;
+  }
+  if (pos === "Inner") {
+    if (!group.treadInner) group.treadInner = cell;
+    else if (!group.treadOuter) group.treadOuter = cell;
+    return;
+  }
+
+  if (!group.treadOuter) group.treadOuter = cell;
+  else if (!group.treadInner) group.treadInner = cell;
+}
+
 export default function TireGrid({
   sectionIndex,
   items,
@@ -284,8 +311,12 @@ export default function TireGrid({
 
       if (!row.isDual) {
         const grp = side === "Left" ? row.single.left : row.single.right;
+
         if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-        if (kind === "tread" && !grp.tread) grp.tread = cell;
+
+        if (kind === "tread") {
+          placeSingleTread(grp, dualPos, cell);
+        }
       } else {
         // kind here is pressure|tread because other/torque are handled above
         placeDualCell(row, side, dualPos, kind, cell);
@@ -301,7 +332,8 @@ export default function TireGrid({
       if (!r.isDual) {
         [r.single.left, r.single.right].forEach((g) => {
           if (g.pressure) allCells.push(g.pressure);
-          if (g.tread) allCells.push(g.tread);
+          if (g.treadOuter) allCells.push(g.treadOuter);
+          if (g.treadInner) allCells.push(g.treadInner);
         });
       } else {
         (Object.keys(r.dual) as TireKey[]).forEach((k) => {
@@ -401,14 +433,16 @@ export default function TireGrid({
     return (
       <div className="flex items-center justify-center gap-4">
         <div className="flex flex-col items-center gap-2">
-          <TireInput cell={L.tread} placeholder="TD" />
+          <TireInput cell={L.treadOuter} placeholder="TD (Out)" />
+          <TireInput cell={L.treadInner} placeholder="TD (In)" />
           <TireInput cell={L.pressure} placeholder="TP" />
         </div>
 
         <div className="h-[64px] w-[140px] rounded-xl border border-white/10 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] shadow-[0_18px_45px_rgba(0,0,0,0.65)]" />
 
         <div className="flex flex-col items-center gap-2">
-          <TireInput cell={R.tread} placeholder="TD" />
+          <TireInput cell={R.treadOuter} placeholder="TD (Out)" />
+          <TireInput cell={R.treadInner} placeholder="TD (In)" />
           <TireInput cell={R.pressure} placeholder="TP" />
         </div>
       </div>

@@ -69,13 +69,21 @@ const classifyMetric = (label: string): MetricKind | null => {
     return "rating";
 
   // tested (load test / measured CCA / test result)
-  if (lower.includes("tested") || lower.includes("test") || lower.includes("load"))
+  if (
+    lower.includes("tested") ||
+    lower.includes("test") ||
+    lower.includes("load")
+  )
     return "tested";
   if (/\bmeasured\s*cca\b/i.test(label) || /\btest(ed)?\s*cca\b/i.test(label))
     return "tested";
 
   // voltage
-  if (lower.includes("voltage") || /\bvolts?\b/i.test(label) || /\b\d+(\.\d+)?\s*v\b/i.test(label))
+  if (
+    lower.includes("voltage") ||
+    /\bvolts?\b/i.test(label) ||
+    /\b\d+(\.\d+)?\s*v\b/i.test(label)
+  )
     return "voltage";
 
   // condition / pass fail / notes
@@ -99,7 +107,6 @@ const metricCompare = (a: BatteryRow, b: BatteryRow) => {
 };
 
 function prettyMetric(kind: MetricKind, metricRaw: string): string {
-  // Keep template wording if it's already clean, but normalize common messy labels.
   const m = metricRaw.trim();
 
   if (kind === "rating") return /rating/i.test(m) ? m : "Rating";
@@ -208,12 +215,24 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
   if (!grid.rows.length) return null;
 
   return (
-    <div className="grid gap-2">
-      <div className="flex items-center justify-end gap-3 px-1">
+    <div className="grid w-full gap-3">
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div className="flex flex-col gap-1">
+          <div
+            className="text-base font-semibold uppercase tracking-[0.18em] text-orange-300"
+            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          >
+            Battery Measurements
+          </div>
+          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+            Rating/Tested: CCA • Voltage: V
+          </div>
+        </div>
+
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-md border border-slate-600/50 bg-slate-900/40 px-2 py-1 text-xs text-slate-100 hover:border-orange-400/70 hover:bg-slate-900/70"
+          className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -224,18 +243,20 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
 
       <div className="overflow-x-auto">
         <div className="inline-block min-w-full align-middle">
-          <div className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-            <table className="min-w-full border-separate border-spacing-y-[2px]">
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+            <table className="min-w-full table-fixed border-separate border-spacing-y-[2px]">
               <thead>
-                <tr className="text-xs text-muted-foreground">
-                  <th className="px-3 py-1.5 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
+                <tr>
+                  <th className="w-[180px] px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
                     Metric
                   </th>
                   {grid.batteries.map((batt) => (
                     <th
                       key={batt}
-                      className="px-3 py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100"
-                      style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                      className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100"
+                      style={{
+                        fontFamily: "Black Ops One, system-ui, sans-serif",
+                      }}
                     >
                       {batt}
                     </th>
@@ -246,17 +267,21 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
               {open && (
                 <tbody>
                   {grid.rows.map((row, rowIndex) => (
-                    <tr key={`${row.kind}-${row.metric}-${rowIndex}`} className="align-middle">
-                      <td className="px-3 py-1.5 text-sm font-semibold text-foreground">
+                    <tr
+                      key={`${row.kind}-${row.metric}-${rowIndex}`}
+                      className="align-middle"
+                    >
+                      <td className="px-3 py-1.5 text-sm font-semibold text-neutral-100">
                         {row.metric}
                       </td>
 
                       {grid.batteries.map((batt) => {
                         const cell = row.cells.find((c) => c.battery === batt);
+
                         if (!cell) {
                           return (
                             <td key={batt} className="px-3 py-1.5">
-                              <div className="h-[32px]" />
+                              <div className="h-[34px]" />
                             </td>
                           );
                         }
@@ -278,18 +303,20 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
                         const rightUnit = cell.unit?.trim();
 
                         return (
-                          <td key={batt} className="px-3 py-1.5 text-center">
-                            <div className="relative w-full max-w-[7.75rem]">
+                          <td key={batt} className="px-3 py-1.5">
+                            <div className="relative mx-auto w-full max-w-[7.75rem]">
                               <input
                                 defaultValue={cell.initial}
-                                className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-12 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
+                                className="h-[34px] w-full rounded-lg border border-white/10 bg-black/55 px-3 py-1.5 pr-12 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                                 placeholder={placeholder}
                                 autoComplete="off"
                                 inputMode={isNumericRow ? "decimal" : "text"}
-                                onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
+                                onBlur={(e) =>
+                                  commit(cell.idx, e.currentTarget.value)
+                                }
                               />
                               {rightUnit ? (
-                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
                                   {rightUnit}
                                 </span>
                               ) : null}
