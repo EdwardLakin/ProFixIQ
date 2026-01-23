@@ -1053,9 +1053,6 @@ export default function GenericInspectionScreen(
     return () => obs.disconnect();
   }, [isEmbed]);
 
-  if (!session || !session.sections || session.sections.length === 0) {
-    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
-  }
 
   const currentSectionIndex =
     typeof session.currentSectionIndex === "number"
@@ -1389,8 +1386,15 @@ export default function GenericInspectionScreen(
 
   /* ------------------------------ render pairing plan ------------------------------ */
 
-  const rendered = useMemo(() => {
-  const sections = session.sections;
+  /* ------------------------------ render pairing plan ------------------------------ */
+
+const safeSections = session?.sections ?? [];
+
+const rendered = useMemo(() => {
+  const sections = safeSections;
+
+  // nothing to render yet
+  if (!sections.length) return [];
 
   // Identify "kind" for each section (grid detector)
   const kindAt: PairKind[] = sections.map((s) => {
@@ -1410,7 +1414,7 @@ export default function GenericInspectionScreen(
     none: null,
   };
 
-  // First checkbox pair target per kind (Brakes — Hydraulic, Brakes — Air, Tires & Wheels, Battery)
+  // First checkbox pair target per kind
   const firstCheckboxIdx: Record<PairKind, number | null> = {
     hyd: null,
     air: null,
@@ -1423,12 +1427,10 @@ export default function GenericInspectionScreen(
     const s = sections[i];
     const kind = kindAt[i];
 
-    // capture first GRID of this kind
     if (kind !== "none" && firstGridIdx[kind] == null) {
       firstGridIdx[kind] = i;
     }
 
-    // capture first CHECKBOX target of this kind (by canonical titles)
     if (firstCheckboxIdx.hyd == null && isCheckboxPairTitle("hyd", s.title))
       firstCheckboxIdx.hyd = i;
     if (firstCheckboxIdx.air == null && isCheckboxPairTitle("air", s.title))
@@ -1453,7 +1455,7 @@ export default function GenericInspectionScreen(
     blocks.push({ type: "set", indices: uniq });
   };
 
-  // 1) Emit ONE combined block per kind, in the order the grid appears in the template
+  // Emit ONE combined block per kind, ordered by where the grid appears
   const kindOrder: PairKind[] = ["battery", "tire", "air", "hyd"];
   const gridKindsInOrder = kindOrder
     .map((k) => ({ kind: k, idx: firstGridIdx[k] }))
@@ -1464,23 +1466,20 @@ export default function GenericInspectionScreen(
     const gridIdx = idx;
     const pairIdx = firstCheckboxIdx[kind];
 
-    // Grid + checkbox section if present
     addBlock(pairIdx != null && pairIdx !== gridIdx ? [gridIdx, pairIdx] : [gridIdx]);
 
-    // Mark ALL other sections of this kind as used (dedup completely)
+    // Dedup other sections of this kind + extra checkbox targets
     for (let i = 0; i < sections.length; i++) {
       if (used.has(i)) continue;
       if (kindAt[i] === kind) used.add(i);
-      // also dedup additional checkbox targets of same kind
       if (isCheckboxPairTitle(kind, sections[i].title)) used.add(i);
     }
   }
 
-  // 2) Render everything else (non-grid + non-paired leftovers) in original order
+  // Render everything else in original order
   for (let i = 0; i < sections.length; i++) {
     if (used.has(i)) continue;
 
-    // If it matches a checkbox pair title but we already had a grid for that kind, skip it
     const s = sections[i];
     if (
       (isCheckboxPairTitle("hyd", s.title) && firstGridIdx.hyd != null) ||
@@ -1496,9 +1495,16 @@ export default function GenericInspectionScreen(
   }
 
   return blocks;
-}, [session.sections, unit]);
+}, [safeSections, unit]);
 
+
+
+if (!session || safeSections.length === 0) {
+  return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
+}
   /* ------------------------------ Part 3/3 ------------------------------ */
+
+
 
   const body = (
     <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
