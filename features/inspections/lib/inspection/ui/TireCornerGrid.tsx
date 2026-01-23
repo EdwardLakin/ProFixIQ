@@ -84,6 +84,31 @@ const metricRank = (metric: string) => {
   return 999;
 };
 
+type TireMetricKind =
+  | "pressure"
+  | "tread_outer"
+  | "tread_inner"
+  | "tread"
+  | "torque"
+  | "other";
+
+function tireMetricKind(metric: string): TireMetricKind {
+  const m = (metric || "").toLowerCase().trim();
+  if (isPressureMetric(m)) return "pressure";
+  if (isWheelTorqueMetric(m)) return "torque";
+  if (isTreadMetric(m)) {
+    if (m.includes("outer") || m.includes("out")) return "tread_outer";
+    if (m.includes("inner") || m.includes("in")) return "tread_inner";
+    return "tread";
+  }
+  return "other";
+}
+
+function bestUnitFromCells(cells: Cell[], fallback: string): string {
+  const u = cells.map((c) => (c.unit || "").trim()).find((x) => x.length > 0);
+  return u || fallback;
+}
+
 export default function TireCornerGrid({
   sectionIndex,
   items,
@@ -97,7 +122,10 @@ export default function TireCornerGrid({
     updateItem(sectionIndex, idx, { value });
   };
 
-  const cornerTable = useMemo(() => {
+  // ------------------------------------------------------------
+  // Corner-mode: build cells
+  // ------------------------------------------------------------
+  const cornerCells = useMemo(() => {
     const cells: Cell[] = [];
 
     items.forEach((it, idx) => {
@@ -129,31 +157,85 @@ export default function TireCornerGrid({
       });
     });
 
-    if (cells.length === 0) return null;
-
-    const rowMap = new Map<string, Row>();
-    for (const c of cells) {
-      const key = c.metric.toLowerCase();
-      const existing = rowMap.get(key) ?? { metric: c.metric };
-      if (c.corner === "LF") existing.lf = c;
-      if (c.corner === "RF") existing.rf = c;
-      if (c.corner === "LR") existing.lr = c;
-      if (c.corner === "RR") existing.rr = c;
-      rowMap.set(key, existing);
-    }
-
-    const rows = Array.from(rowMap.values())
-      .filter((r) => isAllowedTireMetric(r.metric) && !isWheelTorqueMetric(r.metric))
-      .sort((a, b) => {
-        const ra = metricRank(a.metric);
-        const rb = metricRank(b.metric);
-        if (ra !== rb) return ra - rb;
-        return a.metric.localeCompare(b.metric);
-      });
-
-    return rows.length ? rows : null;
+    return cells;
   }, [items, unitHint]);
 
+  // New corner layout: rows = corners, columns = Outer | Pressure | Inner
+  const cornerGrid = useMemo(() => {
+    if (cornerCells.length === 0) return null;
+
+    type CornerRow = {
+      corner: Corner;
+      treadOuter?: Cell;
+      pressure?: Cell;
+      treadInner?: Cell;
+      treadGeneric?: Cell;
+    };
+
+    const byCorner = new Map<Corner, CornerRow>();
+    const ensure = (c: Corner): CornerRow => {
+      const ex = byCorner.get(c);
+      if (ex) return ex;
+      const fresh: CornerRow = { corner: c };
+      byCorner.set(c, fresh);
+      return fresh;
+    };
+
+    for (const cell of cornerCells) {
+      const corner = cell.corner!;
+      const kind = tireMetricKind(cell.metric);
+      const row = ensure(corner);
+
+      if (kind === "pressure") row.pressure = row.pressure ?? cell;
+      else if (kind === "tread_outer") row.treadOuter = row.treadOuter ?? cell;
+      else if (kind === "tread_inner") row.treadInner = row.treadInner ?? cell;
+      else if (kind === "tread") row.treadGeneric = row.treadGeneric ?? cell;
+    }
+
+    const orderedCorners: Corner[] = ["LF", "RF", "LR", "RR"];
+    const rows = orderedCorners
+      .map((c) => byCorner.get(c))
+      .filter((r): r is CornerRow => !!r);
+
+    if (rows.length === 0) return null;
+
+    // If template only gives a single tread depth per corner, use it as both outside/inside
+    const normalizedRows = rows.map((r) => {
+      const outer = r.treadOuter ?? r.treadGeneric;
+      const inner = r.treadInner ?? r.treadGeneric;
+      return { ...r, treadOuter: outer, treadInner: inner };
+    });
+
+    const allPressure = cornerCells.filter((c) => tireMetricKind(c.metric) === "pressure");
+    const allTread = cornerCells.filter((c) => {
+      const k = tireMetricKind(c.metric);
+      return k === "tread_outer" || k === "tread_inner" || k === "tread";
+    });
+
+    const pressureUnitGuess =
+      unitHint?.("Tire Pressure") ||
+      bestUnitFromCells(allPressure, "");
+
+    // ✅ add back the kPa hint behavior:
+    // if unitHint would have returned kPa in metric mode, show it even if no explicit item.unit was set.
+    const pressureUnit = pressureUnitGuess || bestUnitFromCells(allPressure, "");
+
+    const treadUnitGuess =
+      unitHint?.("Tread Depth") ||
+      bestUnitFromCells(allTread, "");
+
+    const treadUnit = treadUnitGuess || bestUnitFromCells(allTread, "");
+
+    return {
+      rows: normalizedRows,
+      pressureUnit,
+      treadUnit,
+    };
+  }, [cornerCells, unitHint]);
+
+  // ------------------------------------------------------------
+  // Axle-mode (unchanged structure, but we’ll keep it)
+  // ------------------------------------------------------------
   const axleTables = useMemo<AxleTable[]>(() => {
     const byAxle = new Map<string, { sideCells: Cell[]; axleTorque?: Cell }>();
 
@@ -264,11 +346,19 @@ export default function TireCornerGrid({
     return out.filter((t) => t.rows.length > 0);
   }, [items, unitHint]);
 
-  // If we have a corner table, use it. Otherwise use axle tables.
+  // Prefer cornerGrid (new layout) when available
   const mode: "corner" | "axle" | "none" =
-    cornerTable && cornerTable.length ? "corner" : axleTables.length ? "axle" : "none";
+    cornerGrid && cornerGrid.rows.length ? "corner" : axleTables.length ? "axle" : "none";
 
   if (mode === "none") return null;
+
+  const headerHints =
+    mode === "corner"
+      ? {
+          pressure: cornerGrid?.pressureUnit || "",
+          tread: cornerGrid?.treadUnit || "",
+        }
+      : null;
 
   return (
     <div className="grid w-full gap-3">
@@ -292,81 +382,92 @@ export default function TireCornerGrid({
       {mode === "corner" ? (
         <div className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div
-              className="text-base font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-              style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-            >
-              Tire Measurements
+            <div className="flex flex-col gap-1">
+              <div
+                className="text-base font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+              >
+                Tire Measurements
+              </div>
+
+              {/* ✅ bring back explicit kPa/psi hint (derived from unitHint / cells) */}
+              {(headerHints?.pressure || headerHints?.tread) && (
+                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                  {headerHints.pressure ? `Pressure: ${headerHints.pressure}` : null}
+                  {headerHints.pressure && headerHints.tread ? " • " : null}
+                  {headerHints.tread ? `Tread: ${headerHints.tread}` : null}
+                </div>
+              )}
             </div>
           </div>
 
           {open ? (
             <div className="overflow-x-auto">
               <div className="inline-block min-w-full align-middle">
+                {/* New layout: corners down the side, pressure in the middle */}
                 <table className="min-w-full border-separate border-spacing-y-1">
                   <thead>
                     <tr className="text-xs text-muted-foreground">
                       <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
-                        Item
+                        Corner
                       </th>
-                      {(["LF", "RF", "LR", "RR"] as const).map((c) => (
-                        <th
-                          key={c}
-                          className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100"
-                        >
-                          {c}
-                        </th>
-                      ))}
+                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
+                        Tread (Outer)
+                      </th>
+                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
+                        Tire Pressure
+                      </th>
+                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
+                        Tread (Inner)
+                      </th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {cornerTable!.map((row, rowIdx) => (
-                      <tr key={`${row.metric}-${rowIdx}`} className="align-middle">
-                        <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                          {row.metric}
-                        </td>
+                    {cornerGrid!.rows.map((r) => {
+                      const corner = r.corner;
 
-                        {(["LF", "RF", "LR", "RR"] as const).map((corner) => {
-                          const cell =
-                            corner === "LF"
-                              ? row.lf
-                              : corner === "RF"
-                                ? row.rf
-                                : corner === "LR"
-                                  ? row.lr
-                                  : row.rr;
+                      const renderCell = (cell?: Cell, maxW = "max-w-[9rem]") => {
+                        if (!cell) return <div className="h-[32px]" />;
+                        return (
+                          <div className={`relative w-full ${maxW}`}>
+                            <input
+                              defaultValue={cell.initial}
+                              className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
+                              placeholder="Value"
+                              autoComplete="off"
+                              inputMode="decimal"
+                              onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
+                            />
+                            {cell.unit ? (
+                              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
+                                {cell.unit}
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      };
 
-                          if (!cell) {
-                            return (
-                              <td key={corner} className="px-3 py-2">
-                                <div className="h-[32px]" />
-                              </td>
-                            );
-                          }
+                      return (
+                        <tr key={`corner-${corner}`} className="align-middle">
+                          <td className="px-3 py-2 text-sm font-semibold text-foreground">
+                            {corner}
+                          </td>
 
-                          return (
-                            <td key={corner} className="px-3 py-2 text-center">
-                              <div className="relative w-full max-w-[9rem]">
-                                <input
-                                  defaultValue={cell.initial}
-                                  className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
-                                  placeholder="Value"
-                                  autoComplete="off"
-                                  inputMode="decimal"
-                                  onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
-                                />
-                                {cell.unit ? (
-                                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-                                    {cell.unit}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                          <td className="px-3 py-2 text-center">
+                            {renderCell(r.treadOuter)}
+                          </td>
+
+                          <td className="px-3 py-2 text-center">
+                            {renderCell(r.pressure)}
+                          </td>
+
+                          <td className="px-3 py-2 text-center">
+                            {renderCell(r.treadInner)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
