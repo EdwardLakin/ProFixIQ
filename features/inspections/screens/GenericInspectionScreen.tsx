@@ -174,13 +174,28 @@ const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 const HYD_FULL_RE =
   /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
+const BATTERY_SIGNAL_RE =
+  /(battery|voltage|v\b|cca|cranking|load\s*test|alternator|charging|charge\s*rate|state\s*of\s*charge|soc)/i;
+
 function isBatterySection(
   title: string | undefined,
   items: { item?: string | null }[] = [],
 ): boolean {
   const t = (title || "").toLowerCase();
+
+  // Title match is always strongest
   if (t.includes("battery")) return true;
-  return items.some((it) => (it.item || "").toLowerCase().includes("battery"));
+
+  // Otherwise require multiple battery-ish signals (prevents false positives)
+  let hits = 0;
+  for (const it of items) {
+    const label = (it.item || "").trim();
+    if (!label) continue;
+    if (BATTERY_SIGNAL_RE.test(label)) hits += 1;
+    if (hits >= 2) return true;
+  }
+
+  return false;
 }
 
 function isAirCornerSection(
@@ -1375,64 +1390,113 @@ export default function GenericInspectionScreen(
   /* ------------------------------ render pairing plan ------------------------------ */
 
   const rendered = useMemo(() => {
-    const sections = session.sections;
+  const sections = session.sections;
 
-    // locate checkbox “pair targets” by title (first occurrence, per kind)
-    const firstPairIdx: Record<PairKind, number | null> = {
-      hyd: null,
-      air: null,
-      tire: null,
-      battery: null,
-      none: null,
-    };
+  // Identify "kind" for each section (grid detector)
+  const kindAt: PairKind[] = sections.map((s) => {
+    const itemsWithHints = (s.items ?? []).map((it) => ({
+      ...it,
+      unit: it.unit || unitHintGeneric(it.item ?? "", unit),
+    }));
+    return kindForGridSection(s.title, itemsWithHints);
+  });
 
-    sections.forEach((s, idx) => {
-      const title = s.title;
-      if (firstPairIdx.hyd == null && isCheckboxPairTitle("hyd", title))
-        firstPairIdx.hyd = idx;
-      if (firstPairIdx.air == null && isCheckboxPairTitle("air", title))
-        firstPairIdx.air = idx;
-      if (firstPairIdx.tire == null && isCheckboxPairTitle("tire", title))
-        firstPairIdx.tire = idx;
-      if (firstPairIdx.battery == null && isCheckboxPairTitle("battery", title))
-        firstPairIdx.battery = idx;
-    });
+  // First grid index per kind (battery/air/tire/hyd)
+  const firstGridIdx: Record<PairKind, number | null> = {
+    hyd: null,
+    air: null,
+    tire: null,
+    battery: null,
+    none: null,
+  };
 
-    const used = new Set<number>();
-    const blocks: Array<{ type: "set"; indices: number[] }> = [];
+  // First checkbox pair target per kind (Brakes — Hydraulic, Brakes — Air, Tires & Wheels, Battery)
+  const firstCheckboxIdx: Record<PairKind, number | null> = {
+    hyd: null,
+    air: null,
+    tire: null,
+    battery: null,
+    none: null,
+  };
 
-    const addBlock = (indices: number[]) => {
-      const uniq = indices.filter((i) => i >= 0 && i < sections.length);
-      const filtered = uniq.filter((i) => !used.has(i));
-      if (filtered.length === 0) return;
-      filtered.forEach((i) => used.add(i));
-      blocks.push({ type: "set", indices: filtered });
-    };
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i];
+    const kind = kindAt[i];
 
-    // Render in original order, but when we hit a GRID, we also pull its paired checkbox section.
-    for (let i = 0; i < sections.length; i++) {
-      if (used.has(i)) continue;
-
-      const section = sections[i];
-      const itemsWithHints = (section.items ?? []).map((it) => ({
-        ...it,
-        unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-      }));
-
-      const kind = kindForGridSection(section.title, itemsWithHints);
-
-      if (kind !== "none") {
-        const pairIdx = firstPairIdx[kind];
-        // Grid + pair section (if pair exists and isn't the same index)
-        const indices = pairIdx != null && pairIdx !== i ? [i, pairIdx] : [i];
-        addBlock(indices);
-      } else {
-        addBlock([i]);
-      }
+    // capture first GRID of this kind
+    if (kind !== "none" && firstGridIdx[kind] == null) {
+      firstGridIdx[kind] = i;
     }
 
-    return blocks;
-  }, [session.sections, unit]);
+    // capture first CHECKBOX target of this kind (by canonical titles)
+    if (firstCheckboxIdx.hyd == null && isCheckboxPairTitle("hyd", s.title))
+      firstCheckboxIdx.hyd = i;
+    if (firstCheckboxIdx.air == null && isCheckboxPairTitle("air", s.title))
+      firstCheckboxIdx.air = i;
+    if (firstCheckboxIdx.tire == null && isCheckboxPairTitle("tire", s.title))
+      firstCheckboxIdx.tire = i;
+    if (firstCheckboxIdx.battery == null && isCheckboxPairTitle("battery", s.title))
+      firstCheckboxIdx.battery = i;
+  }
+
+  const used = new Set<number>();
+  const blocks: Array<{ type: "set"; indices: number[] }> = [];
+
+  const addBlock = (indices: number[]) => {
+    const uniq = indices
+      .filter((i) => i >= 0 && i < sections.length)
+      .filter((i, pos, arr) => arr.indexOf(i) === pos)
+      .filter((i) => !used.has(i));
+
+    if (uniq.length === 0) return;
+    uniq.forEach((i) => used.add(i));
+    blocks.push({ type: "set", indices: uniq });
+  };
+
+  // 1) Emit ONE combined block per kind, in the order the grid appears in the template
+  const kindOrder: PairKind[] = ["battery", "tire", "air", "hyd"];
+  const gridKindsInOrder = kindOrder
+    .map((k) => ({ kind: k, idx: firstGridIdx[k] }))
+    .filter((x): x is { kind: PairKind; idx: number } => typeof x.idx === "number")
+    .sort((a, b) => a.idx - b.idx);
+
+  for (const { kind, idx } of gridKindsInOrder) {
+    const gridIdx = idx;
+    const pairIdx = firstCheckboxIdx[kind];
+
+    // Grid + checkbox section if present
+    addBlock(pairIdx != null && pairIdx !== gridIdx ? [gridIdx, pairIdx] : [gridIdx]);
+
+    // Mark ALL other sections of this kind as used (dedup completely)
+    for (let i = 0; i < sections.length; i++) {
+      if (used.has(i)) continue;
+      if (kindAt[i] === kind) used.add(i);
+      // also dedup additional checkbox targets of same kind
+      if (isCheckboxPairTitle(kind, sections[i].title)) used.add(i);
+    }
+  }
+
+  // 2) Render everything else (non-grid + non-paired leftovers) in original order
+  for (let i = 0; i < sections.length; i++) {
+    if (used.has(i)) continue;
+
+    // If it matches a checkbox pair title but we already had a grid for that kind, skip it
+    const s = sections[i];
+    if (
+      (isCheckboxPairTitle("hyd", s.title) && firstGridIdx.hyd != null) ||
+      (isCheckboxPairTitle("air", s.title) && firstGridIdx.air != null) ||
+      (isCheckboxPairTitle("tire", s.title) && firstGridIdx.tire != null) ||
+      (isCheckboxPairTitle("battery", s.title) && firstGridIdx.battery != null)
+    ) {
+      used.add(i);
+      continue;
+    }
+
+    addBlock([i]);
+  }
+
+  return blocks;
+}, [session.sections, unit]);
 
   /* ------------------------------ Part 3/3 ------------------------------ */
 
