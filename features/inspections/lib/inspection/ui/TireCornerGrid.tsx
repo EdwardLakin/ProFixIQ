@@ -164,15 +164,13 @@ function placeDualCell(
   row: AxleRow,
   side: Side,
   pos: DualPos | null,
-  kind: Exclude<MetricKind, "other" | "torque">,
+  kind: "pressure" | "tread",
   cell: Cell,
 ) {
   const keyOuter: TireKey =
     side === "Left" ? "dual_left_outer" : "dual_right_outer";
   const keyInner: TireKey =
     side === "Left" ? "dual_left_inner" : "dual_right_inner";
-
-  const pickBucket = (k: TireKey) => row.dual[k];
 
   const assign = (bucket: TireCellGroup) => {
     if (kind === "pressure") {
@@ -181,31 +179,30 @@ function placeDualCell(
     }
     if (kind === "tread") {
       if (!bucket.tread) bucket.tread = cell;
-      return;
     }
   };
 
   // Explicit pos
   if (pos) {
-    assign(pickBucket(pos === "Inner" ? keyInner : keyOuter));
+    assign(row.dual[pos === "Inner" ? keyInner : keyOuter]);
     return;
   }
 
-  // No pos: pick the first bucket that doesn't already have this metric kind
-  const outerBucket = pickBucket(keyOuter);
-  const innerBucket = pickBucket(keyInner);
+  // No pos: first seen -> Outer, second -> Inner (per metric type)
+  const outerBucket = row.dual[keyOuter];
+  const innerBucket = row.dual[keyInner];
 
   if (kind === "pressure") {
     if (!outerBucket.pressure) assign(outerBucket);
     else if (!innerBucket.pressure) assign(innerBucket);
-    else assign(outerBucket); // fallback
+    else assign(outerBucket);
     return;
   }
 
   if (kind === "tread") {
     if (!outerBucket.tread) assign(outerBucket);
     else if (!innerBucket.tread) assign(innerBucket);
-    else assign(outerBucket); // fallback
+    else assign(outerBucket);
   }
 }
 
@@ -271,7 +268,7 @@ export default function TireGrid({
         metricKind: kind,
       };
 
-      // axle-only torque: allow "Rear 1 Wheel Torque" etc.
+      // axle-only torque
       if (kind === "torque") {
         row.torque = row.torque ?? cell;
         continue;
@@ -290,6 +287,7 @@ export default function TireGrid({
         if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
         if (kind === "tread" && !grp.tread) grp.tread = cell;
       } else {
+        // kind here is pressure|tread because other/torque are handled above
         placeDualCell(row, side, dualPos, kind, cell);
       }
     }
@@ -298,7 +296,6 @@ export default function TireGrid({
       (a, b) => a.axleOrder - b.axleOrder,
     );
 
-    // Units for header
     const allCells: Cell[] = [];
     rows.forEach((r) => {
       if (!r.isDual) {
@@ -397,7 +394,6 @@ export default function TireGrid({
     );
   };
 
-  // “Diesel silhouette” row: (Left tires) — chassis — (Right tires)
   const SingleAxleRow = ({ row }: { row: AxleRow }) => {
     const L = row.single.left;
     const R = row.single.right;
@@ -425,26 +421,18 @@ export default function TireGrid({
     const RI = row.dual.dual_right_inner;
     const RO = row.dual.dual_right_outer;
 
-    const DualStack = ({
-      a,
-      b,
-    }: {
-      a: TireCellGroup; // outer
-      b: TireCellGroup; // inner
-    }) => {
-      return (
-        <div className="flex items-center gap-2">
-          <div className="flex flex-col items-center gap-2">
-            <TireInput cell={a.tread} placeholder="TD" compact />
-            <TireInput cell={a.pressure} placeholder="TP" compact />
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <TireInput cell={b.tread} placeholder="TD" compact />
-            <TireInput cell={b.pressure} placeholder="TP" compact />
-          </div>
+    const DualStack = ({ a, b }: { a: TireCellGroup; b: TireCellGroup }) => (
+      <div className="flex items-center gap-2">
+        <div className="flex flex-col items-center gap-2">
+          <TireInput cell={a.tread} placeholder="TD" compact />
+          <TireInput cell={a.pressure} placeholder="TP" compact />
         </div>
-      );
-    };
+        <div className="flex flex-col items-center gap-2">
+          <TireInput cell={b.tread} placeholder="TD" compact />
+          <TireInput cell={b.pressure} placeholder="TP" compact />
+        </div>
+      </div>
+    );
 
     return (
       <div className="flex items-center justify-center gap-4">
@@ -452,7 +440,6 @@ export default function TireGrid({
 
         <div className="h-[64px] w-[140px] rounded-xl border border-white/10 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] shadow-[0_18px_45px_rgba(0,0,0,0.65)]" />
 
-        {/* Right inner is closer to chassis; render (inner, outer) */}
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-center gap-2">
             <TireInput cell={RI.tread} placeholder="TD" compact />
@@ -501,7 +488,6 @@ export default function TireGrid({
         </button>
       </div>
 
-      {/* Add axle controls */}
       {onAddAxle ? (
         <div className="flex flex-wrap items-center gap-2 px-1">
           <button
