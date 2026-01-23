@@ -8,50 +8,110 @@ type Props = {
   sectionIndex: number;
   items: InspectionItem[];
   unitHint?: (label: string) => string;
+
+  /**
+   * Parent-owned “add axle” (kept for API compatibility).
+   * We will call this with: "Steer 1", "Steer 2", "Tag", "Rear 1".."Rear 5", "Trailer 1".."Trailer 5"
+   * Parent should add the correct item labels for that axle (including duals for rear/trailer).
+   */
   onAddAxle?: (axleLabel: string) => void;
+
   /** Kept for API compatibility */
   onSpecHint?: (metricLabel: string) => void;
 };
 
+type AxleType = "steer" | "tag" | "rear" | "trailer";
 type Side = "Left" | "Right";
-type Corner = "LF" | "RF" | "LR" | "RR";
+type DualPos = "Outer" | "Inner";
+type MetricKind = "pressure" | "tread" | "torque" | "other";
+
+type TireKey =
+  | "single_left"
+  | "single_right"
+  | "dual_left_outer"
+  | "dual_left_inner"
+  | "dual_right_inner"
+  | "dual_right_outer";
 
 type Cell = {
   idx: number;
-  axle?: string; // for axle mode
-  side?: Side; // axle mode
-  corner?: Corner; // corner mode
-  metric: string;
+  label: string;
   unit: string;
-  fullLabel: string;
   initial: string;
+  metricKind: MetricKind;
 };
 
-type Row = {
-  metric: string;
-  left?: Cell;
-  right?: Cell;
-  axleOnly?: Cell;
-  lf?: Cell;
-  rf?: Cell;
-  lr?: Cell;
-  rr?: Cell;
+type TireCellGroup = {
+  pressure?: Cell;
+  tread?: Cell;
 };
 
-type AxleTable = {
-  axle: string;
-  rows: Row[];
+type AxleRow = {
+  axleLabel: string; // "Steer 1" | "Rear 2" | "Trailer 3" | "Tag"
+  axleType: AxleType;
+  axleOrder: number; // for sorting
+  isDual: boolean;
+
+  // for single axles: left/right tire
+  single: {
+    left: TireCellGroup;
+    right: TireCellGroup;
+  };
+
+  // for dual axles: 4 tires (LO, LI, RI, RO)
+  dual: Record<TireKey, TireCellGroup>;
+
+  // optional axle-only torque (rare)
+  torque?: Cell | null;
 };
 
-const LABEL_AXLE_SIDE_RE =
-  /^(?<axle>.+?)\s+(?<side>Left|Right|L|R|Driver|Passenger|DS|PS)\s+(?<metric>.+)$/i;
+const MAX = {
+  steer: 2,
+  tag: 1,
+  rear: 5,
+  trailer: 5,
+};
 
-// Corner-first patterns like: "LF Tire Pressure", "Left Front Tread Depth (Outer)"
-const LABEL_CORNER_FIRST_RE =
-  /^(?<corner>LF|RF|LR|RR|Left\s+Front|Right\s+Front|Left\s+Rear|Right\s+Rear)\s+(?<metric>.+)$/i;
+const AXLE_LABEL_RE =
+  /^(?<axle>Steer\s+\d+|Rear\s+\d+|Trailer\s+\d+|Tag)\s+(?<rest>.+)$/i;
 
-// Supports axle-only rows like: "Drive 1 Wheel Torque"
-const LABEL_AXLE_ONLY_RE = /^(?<axle>.+?)\s+(?<metric>.+)$/i;
+const SIDE_RE = /\b(Left|Right|L|R|Driver|Passenger|DS|PS)\b/i;
+const DUAL_POS_RE = /\b(Inner|Outer|In|Out)\b/i;
+
+const isPressureMetric = (s: string) => /tire\s*pressure|pressure\b|tp\b/i.test(s);
+const isTreadMetric = (s: string) =>
+  /tread\s*depth|tire\s*tread|tread\b|td\b/i.test(s);
+const isWheelTorqueMetric = (s: string) => /wheel\s*torque|torque\b/i.test(s);
+
+function metricKindFrom(label: string): MetricKind {
+  if (isWheelTorqueMetric(label)) return "torque";
+  if (isPressureMetric(label)) return "pressure";
+  if (isTreadMetric(label)) return "tread";
+  return "other";
+}
+
+function normalizeAxleType(axleLabel: string): AxleType {
+  const l = axleLabel.toLowerCase();
+  if (l.startsWith("steer")) return "steer";
+  if (l.startsWith("rear")) return "rear";
+  if (l.startsWith("trailer")) return "trailer";
+  return "tag";
+}
+
+function axleNumber(axleLabel: string): number {
+  const m = axleLabel.match(/\b(\d+)\b/);
+  return m ? Number(m[1]) : 0;
+}
+
+function axleOrder(axleLabel: string): number {
+  // Steer first, then Tag, then Rear, then Trailer
+  const t = normalizeAxleType(axleLabel);
+  const n = axleNumber(axleLabel);
+  if (t === "steer") return 10 + n;
+  if (t === "tag") return 30;
+  if (t === "rear") return 50 + n;
+  return 80 + n; // trailer
+}
 
 function normalizeSide(raw: string): Side | null {
   const s = raw.trim().toLowerCase();
@@ -60,48 +120,23 @@ function normalizeSide(raw: string): Side | null {
   return null;
 }
 
-function normalizeCorner(raw: string): Corner | null {
+function normalizeDualPos(raw: string): DualPos | null {
   const s = raw.trim().toLowerCase();
-  if (s === "lf" || s === "left front") return "LF";
-  if (s === "rf" || s === "right front") return "RF";
-  if (s === "lr" || s === "left rear") return "LR";
-  if (s === "rr" || s === "right rear") return "RR";
+  if (s === "outer" || s === "out") return "Outer";
+  if (s === "inner" || s === "in") return "Inner";
   return null;
 }
 
-const isPressureMetric = (metric: string) => /tire\s*pressure/i.test(metric);
-const isTreadMetric = (metric: string) =>
-  /(tread\s*depth|tire\s*tread|tread\s*depth)/i.test(metric);
-const isWheelTorqueMetric = (metric: string) => /wheel\s*torque/i.test(metric);
+function getTireKey(side: Side, pos?: DualPos | null, dual?: boolean): TireKey {
+  if (!dual) return side === "Left" ? "single_left" : "single_right";
+  // dual axle: Left Outer/Inner, Right Inner/Outer (inside tires face each other)
+  if (side === "Left") return pos === "Inner" ? "dual_left_inner" : "dual_left_outer";
+  return pos === "Inner" ? "dual_right_inner" : "dual_right_outer";
+}
 
-const isAllowedTireMetric = (metric: string) =>
-  isPressureMetric(metric) || isTreadMetric(metric) || isWheelTorqueMetric(metric);
-
-const metricRank = (metric: string) => {
-  if (isPressureMetric(metric)) return 0;
-  if (isTreadMetric(metric)) return 1;
-  if (isWheelTorqueMetric(metric)) return 2;
-  return 999;
-};
-
-type TireMetricKind =
-  | "pressure"
-  | "tread_outer"
-  | "tread_inner"
-  | "tread"
-  | "torque"
-  | "other";
-
-function tireMetricKind(metric: string): TireMetricKind {
-  const m = (metric || "").toLowerCase().trim();
-  if (isPressureMetric(m)) return "pressure";
-  if (isWheelTorqueMetric(m)) return "torque";
-  if (isTreadMetric(m)) {
-    if (m.includes("outer") || m.includes("out")) return "tread_outer";
-    if (m.includes("inner") || m.includes("in")) return "tread_inner";
-    return "tread";
-  }
-  return "other";
+function pickUnit(itUnit: unknown, hint: string): string {
+  const u = typeof itUnit === "string" ? itUnit.trim() : "";
+  return u || hint || "";
 }
 
 function bestUnitFromCells(cells: Cell[], fallback: string): string {
@@ -109,7 +144,7 @@ function bestUnitFromCells(cells: Cell[], fallback: string): string {
   return u || fallback;
 }
 
-export default function TireCornerGrid({
+export default function TireGrid({
   sectionIndex,
   items,
   unitHint,
@@ -122,251 +157,287 @@ export default function TireCornerGrid({
     updateItem(sectionIndex, idx, { value });
   };
 
-  // ------------------------------------------------------------
-  // Corner-mode: build cells
-  // ------------------------------------------------------------
-  const cornerCells = useMemo(() => {
-    const cells: Cell[] = [];
+  const parsed = useMemo(() => {
+    const byAxle = new Map<string, AxleRow>();
 
-    items.forEach((it, idx) => {
-      const label = it.item ?? "";
-      if (!label) return;
-
-      const m = label.match(LABEL_CORNER_FIRST_RE);
-      if (!m?.groups) return;
-
-      const corner = normalizeCorner(String(m.groups.corner ?? ""));
-      if (!corner) return;
-
-      const metric = String(m.groups.metric ?? "").trim();
-      if (!isAllowedTireMetric(metric)) return;
-
-      // In corner mode we do not accept wheel torque (usually axle-based)
-      if (isWheelTorqueMetric(metric)) return;
-
-      const unit =
-        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
-
-      cells.push({
-        idx,
-        corner,
-        metric,
-        unit,
-        fullLabel: label,
-        initial: String(it.value ?? ""),
-      });
-    });
-
-    return cells;
-  }, [items, unitHint]);
-
-  // New corner layout: rows = corners, columns = Outer | Pressure | Inner
-  const cornerGrid = useMemo(() => {
-    if (cornerCells.length === 0) return null;
-
-    type CornerRow = {
-      corner: Corner;
-      treadOuter?: Cell;
-      pressure?: Cell;
-      treadInner?: Cell;
-      treadGeneric?: Cell;
-    };
-
-    const byCorner = new Map<Corner, CornerRow>();
-    const ensure = (c: Corner): CornerRow => {
-      const ex = byCorner.get(c);
-      if (ex) return ex;
-      const fresh: CornerRow = { corner: c };
-      byCorner.set(c, fresh);
-      return fresh;
-    };
-
-    for (const cell of cornerCells) {
-      const corner = cell.corner!;
-      const kind = tireMetricKind(cell.metric);
-      const row = ensure(corner);
-
-      if (kind === "pressure") row.pressure = row.pressure ?? cell;
-      else if (kind === "tread_outer") row.treadOuter = row.treadOuter ?? cell;
-      else if (kind === "tread_inner") row.treadInner = row.treadInner ?? cell;
-      else if (kind === "tread") row.treadGeneric = row.treadGeneric ?? cell;
-    }
-
-    const orderedCorners: Corner[] = ["LF", "RF", "LR", "RR"];
-    const rows = orderedCorners
-      .map((c) => byCorner.get(c))
-      .filter((r): r is CornerRow => !!r);
-
-    if (rows.length === 0) return null;
-
-    // If template only gives a single tread depth per corner, use it as both outside/inside
-    const normalizedRows = rows.map((r) => {
-      const outer = r.treadOuter ?? r.treadGeneric;
-      const inner = r.treadInner ?? r.treadGeneric;
-      return { ...r, treadOuter: outer, treadInner: inner };
-    });
-
-    const allPressure = cornerCells.filter((c) => tireMetricKind(c.metric) === "pressure");
-    const allTread = cornerCells.filter((c) => {
-      const k = tireMetricKind(c.metric);
-      return k === "tread_outer" || k === "tread_inner" || k === "tread";
-    });
-
-    const pressureUnitGuess =
-      unitHint?.("Tire Pressure") ||
-      bestUnitFromCells(allPressure, "");
-
-    // ✅ add back the kPa hint behavior:
-    // if unitHint would have returned kPa in metric mode, show it even if no explicit item.unit was set.
-    const pressureUnit = pressureUnitGuess || bestUnitFromCells(allPressure, "");
-
-    const treadUnitGuess =
-      unitHint?.("Tread Depth") ||
-      bestUnitFromCells(allTread, "");
-
-    const treadUnit = treadUnitGuess || bestUnitFromCells(allTread, "");
-
-    return {
-      rows: normalizedRows,
-      pressureUnit,
-      treadUnit,
-    };
-  }, [cornerCells, unitHint]);
-
-  // ------------------------------------------------------------
-  // Axle-mode (unchanged structure, but we’ll keep it)
-  // ------------------------------------------------------------
-  const axleTables = useMemo<AxleTable[]>(() => {
-    const byAxle = new Map<string, { sideCells: Cell[]; axleTorque?: Cell }>();
-
-    const ensure = (axle: string) => {
-      const existing = byAxle.get(axle);
+    const ensure = (axleLabel: string): AxleRow => {
+      const existing = byAxle.get(axleLabel);
       if (existing) return existing;
-      const fresh = { sideCells: [] as Cell[], axleTorque: undefined as Cell | undefined };
-      byAxle.set(axle, fresh);
-      return fresh;
-    };
 
-    items.forEach((it, idx) => {
-      const label = it.item ?? "";
-      if (!label) return;
+      const t = normalizeAxleType(axleLabel);
+      const isDual = t === "rear" || t === "trailer";
 
-      // axle + side
-      const mSide = label.match(LABEL_AXLE_SIDE_RE);
-      if (mSide?.groups) {
-        const axle = String(mSide.groups.axle ?? "").trim();
-        const sideNorm = normalizeSide(String(mSide.groups.side ?? ""));
-        if (!axle || !sideNorm) return;
-
-        const metric = String(mSide.groups.metric ?? "").trim();
-        if (!isAllowedTireMetric(metric)) return;
-
-        const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
-
-        const cell: Cell = {
-          idx,
-          axle,
-          side: sideNorm,
-          metric,
-          unit,
-          fullLabel: label,
-          initial: String(it.value ?? ""),
-        };
-
-        const bucket = ensure(axle);
-
-        // consolidate wheel torque to axle-only
-        if (isWheelTorqueMetric(metric)) {
-          if (!bucket.axleTorque) bucket.axleTorque = cell;
-          return;
-        }
-
-        bucket.sideCells.push(cell);
-        return;
-      }
-
-      // axle-only (wheel torque)
-      const mAxle = label.match(LABEL_AXLE_ONLY_RE);
-      if (!mAxle?.groups) return;
-
-      const axle = String(mAxle.groups.axle ?? "").trim();
-      const metric = String(mAxle.groups.metric ?? "").trim();
-      if (!axle || !isAllowedTireMetric(metric)) return;
-
-      if (!isWheelTorqueMetric(metric)) return;
-
-      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
-
-      const cell: Cell = {
-        idx,
-        axle,
-        metric,
-        unit,
-        fullLabel: label,
-        initial: String(it.value ?? ""),
+      const emptyGroup = (): TireCellGroup => ({});
+      const row: AxleRow = {
+        axleLabel,
+        axleType: t,
+        axleOrder: axleOrder(axleLabel),
+        isDual,
+        single: { left: emptyGroup(), right: emptyGroup() },
+        dual: {
+          single_left: emptyGroup(),
+          single_right: emptyGroup(),
+          dual_left_outer: emptyGroup(),
+          dual_left_inner: emptyGroup(),
+          dual_right_inner: emptyGroup(),
+          dual_right_outer: emptyGroup(),
+        },
+        torque: null,
       };
 
-      const bucket = ensure(axle);
-      if (!bucket.axleTorque) bucket.axleTorque = cell;
-    });
+      byAxle.set(axleLabel, row);
+      return row;
+    };
 
-    const out: AxleTable[] = [];
+    for (let idx = 0; idx < items.length; idx++) {
+      const it = items[idx];
+      const label = String(it.item ?? "").trim();
+      if (!label) continue;
 
-    for (const [axle, bucket] of byAxle.entries()) {
-      const rowMap = new Map<string, Row>();
+      const axleMatch = label.match(AXLE_LABEL_RE);
+      if (!axleMatch?.groups?.axle) continue;
 
-      for (const c of bucket.sideCells) {
-        const key = c.metric.toLowerCase();
-        const existing = rowMap.get(key) ?? { metric: c.metric };
-        if (c.side === "Left") existing.left = c;
-        if (c.side === "Right") existing.right = c;
-        rowMap.set(key, existing);
+      const axleLabel = String(axleMatch.groups.axle).trim();
+      const rest = String(axleMatch.groups.rest ?? "").trim();
+
+      const row = ensure(axleLabel);
+      const kind = metricKindFrom(label);
+      if (kind === "other") continue;
+
+      const sideRaw = rest.match(SIDE_RE)?.[1] ?? "";
+      const side = sideRaw ? normalizeSide(sideRaw) : null;
+
+      const dualPosRaw = rest.match(DUAL_POS_RE)?.[1] ?? "";
+      const dualPos = dualPosRaw ? normalizeDualPos(dualPosRaw) : null;
+
+      const unit = pickUnit(it.unit, unitHint ? unitHint(label) : "");
+      const cell: Cell = {
+        idx,
+        label,
+        unit,
+        initial: String((it as any).value ?? ""),
+        metricKind: kind,
+      };
+
+      // axle-only torque: allow "Rear 1 Wheel Torque" etc.
+      if (kind === "torque") {
+        row.torque = row.torque ?? cell;
+        continue;
       }
 
-      if (bucket.axleTorque) {
-        rowMap.set("wheel torque", {
-          metric: "Wheel Torque",
-          axleOnly: bucket.axleTorque,
-        });
+      // If no side found, we can’t place it
+      if (!side) continue;
+
+      if (!row.isDual) {
+        const grp = side === "Left" ? row.single.left : row.single.right;
+        if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
+        if (kind === "tread" && !grp.tread) grp.tread = cell;
+      } else {
+        const key = getTireKey(side, dualPos, true);
+        const grp = row.dual[key];
+        if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
+        if (kind === "tread" && !grp.tread) grp.tread = cell;
       }
-
-      const rows = Array.from(rowMap.values())
-        .filter((r) => isAllowedTireMetric(r.metric))
-        .sort((a, b) => {
-          const ra = metricRank(a.metric);
-          const rb = metricRank(b.metric);
-          if (ra !== rb) return ra - rb;
-          return a.metric.localeCompare(b.metric);
-        });
-
-      out.push({ axle, rows });
     }
 
-    out.sort((a, b) => a.axle.localeCompare(b.axle));
-    return out.filter((t) => t.rows.length > 0);
+    const rows = Array.from(byAxle.values()).sort((a, b) => a.axleOrder - b.axleOrder);
+
+    // Unit hints for header (derived from unitHint/cells)
+    const allCells: Cell[] = [];
+    rows.forEach((r) => {
+      if (!r.isDual) {
+        [r.single.left, r.single.right].forEach((g) => {
+          if (g.pressure) allCells.push(g.pressure);
+          if (g.tread) allCells.push(g.tread);
+        });
+      } else {
+        (Object.keys(r.dual) as TireKey[]).forEach((k) => {
+          const g = r.dual[k];
+          if (g.pressure) allCells.push(g.pressure);
+          if (g.tread) allCells.push(g.tread);
+        });
+      }
+      if (r.torque) allCells.push(r.torque);
+    });
+
+    const pressureCells = allCells.filter((c) => c.metricKind === "pressure");
+    const treadCells = allCells.filter((c) => c.metricKind === "tread");
+
+    const pressureUnit =
+      unitHint?.("Tire Pressure") || bestUnitFromCells(pressureCells, "");
+    const treadUnit = unitHint?.("Tread Depth") || bestUnitFromCells(treadCells, "");
+
+    const existingCounts = {
+      steer: rows.filter((r) => r.axleType === "steer").length,
+      tag: rows.filter((r) => r.axleType === "tag").length,
+      rear: rows.filter((r) => r.axleType === "rear").length,
+      trailer: rows.filter((r) => r.axleType === "trailer").length,
+    };
+
+    return { rows, pressureUnit, treadUnit, existingCounts };
   }, [items, unitHint]);
 
-  // Prefer cornerGrid (new layout) when available
-  const mode: "corner" | "axle" | "none" =
-    cornerGrid && cornerGrid.rows.length ? "corner" : axleTables.length ? "axle" : "none";
+  const canAdd = {
+    steer: parsed.existingCounts.steer < MAX.steer,
+    tag: parsed.existingCounts.tag < MAX.tag,
+    rear: parsed.existingCounts.rear < MAX.rear,
+    trailer: parsed.existingCounts.trailer < MAX.trailer,
+  };
 
-  if (mode === "none") return null;
+  const nextLabel = (t: AxleType): string => {
+    if (t === "tag") return "Tag";
+    const n = parsed.existingCounts[t] + 1;
+    if (t === "steer") return `Steer ${n}`;
+    if (t === "rear") return `Rear ${n}`;
+    return `Trailer ${n}`;
+  };
 
-  const headerHints =
-    mode === "corner"
-      ? {
-          pressure: cornerGrid?.pressureUnit || "",
-          tread: cornerGrid?.treadUnit || "",
-        }
-      : null;
+  const addAxle = (t: AxleType) => {
+    if (!onAddAxle) return;
+    if (t === "tag" && !canAdd.tag) return;
+    if (t !== "tag" && !canAdd[t]) return;
+    onAddAxle(nextLabel(t));
+  };
+
+  if (parsed.rows.length === 0) return null;
+
+  const TireInput = ({
+    cell,
+    kind,
+    compact,
+  }: {
+    cell?: Cell;
+    kind: "TD" | "TP";
+    compact?: boolean;
+  }) => {
+    if (!cell) {
+      return (
+        <div
+          className={[
+            "h-[34px] rounded-lg border border-white/10 bg-black/25",
+            compact ? "w-[86px]" : "w-[112px]",
+          ].join(" ")}
+        />
+      );
+    }
+
+    const placeholder = kind === "TD" ? "TD" : "TP";
+    const maxW = compact ? "w-[86px]" : "w-[112px]";
+
+    return (
+      <div className={`relative ${maxW}`}>
+        <input
+          defaultValue={cell.initial}
+          className="w-full rounded-lg border border-white/10 bg-black/55 px-3 py-1.5 pr-10 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+          placeholder={placeholder}
+          autoComplete="off"
+          inputMode="decimal"
+          onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
+        />
+        {cell.unit ? (
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
+            {cell.unit}
+          </span>
+        ) : null}
+      </div>
+    );
+  };
+
+  // “Diesel silhouette” row: (Left tires) — chassis — (Right tires)
+  const SingleAxleRow = ({ row }: { row: AxleRow }) => {
+    const L = row.single.left;
+    const R = row.single.right;
+
+    return (
+      <div className="flex items-center justify-center gap-4">
+        <div className="flex flex-col items-center gap-2">
+          <TireInput cell={L.tread} kind="TD" />
+          <TireInput cell={L.pressure} kind="TP" />
+        </div>
+
+        <div className="h-[64px] w-[140px] rounded-xl border border-white/10 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] shadow-[0_18px_45px_rgba(0,0,0,0.65)]" />
+
+        <div className="flex flex-col items-center gap-2">
+          <TireInput cell={R.tread} kind="TD" />
+          <TireInput cell={R.pressure} kind="TP" />
+        </div>
+      </div>
+    );
+  };
+
+  const DualAxleRow = ({ row }: { row: AxleRow }) => {
+    const LO = row.dual.dual_left_outer;
+    const LI = row.dual.dual_left_inner;
+    const RI = row.dual.dual_right_inner;
+    const RO = row.dual.dual_right_outer;
+
+    const DualStack = ({
+      a,
+      b,
+    }: {
+      a: TireCellGroup; // outer
+      b: TireCellGroup; // inner
+    }) => {
+      return (
+        <div className="flex items-center gap-2">
+          <div className="flex flex-col items-center gap-2">
+            <TireInput cell={a.tread} kind="TD" compact />
+            <TireInput cell={a.pressure} kind="TP" compact />
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <TireInput cell={b.tread} kind="TD" compact />
+            <TireInput cell={b.pressure} kind="TP" compact />
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <div className="flex items-center justify-center gap-4">
+        <DualStack a={LO} b={LI} />
+
+        <div className="h-[64px] w-[140px] rounded-xl border border-white/10 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] shadow-[0_18px_45px_rgba(0,0,0,0.65)]" />
+
+        {/* Right side inner is closer to chassis; we still render outer+inner as a pair,
+            but we arrange as (inner, outer) so it “faces” the chassis */}
+        <div className="flex items-center gap-2">
+          <div className="flex flex-col items-center gap-2">
+            <TireInput cell={RI.tread} kind="TD" compact />
+            <TireInput cell={RI.pressure} kind="TP" compact />
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <TireInput cell={RO.tread} kind="TD" compact />
+            <TireInput cell={RO.pressure} kind="TP" compact />
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="grid w-full gap-3">
-      <div className="flex items-center justify-end gap-3 px-1">
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div className="flex flex-col gap-1">
+          <div
+            className="text-base font-semibold uppercase tracking-[0.18em] text-orange-300"
+            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          >
+            Tire Measurements
+          </div>
+
+          {(parsed.pressureUnit || parsed.treadUnit) && (
+            <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+              {parsed.pressureUnit ? `Pressure: ${parsed.pressureUnit}` : null}
+              {parsed.pressureUnit && parsed.treadUnit ? " • " : null}
+              {parsed.treadUnit ? `Tread: ${parsed.treadUnit}` : null}
+            </div>
+          )}
+        </div>
+
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-md border border-slate-600/50 bg-slate-900/40 px-2 py-1 text-xs text-slate-100 hover:border-orange-400/70 hover:bg-slate-900/70"
+          className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -375,263 +446,77 @@ export default function TireCornerGrid({
         </button>
       </div>
 
-      {mode === "axle" && onAddAxle ? (
-        <AddAxlePicker tables={axleTables} onAddAxle={onAddAxle} />
+      {/* Add axle controls (explicit buttons, no “location labels”) */}
+      {onAddAxle ? (
+        <div className="flex flex-wrap items-center gap-2 px-1">
+          <button
+            type="button"
+            onClick={() => addAxle("steer")}
+            disabled={!canAdd.steer}
+            className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70 disabled:opacity-40"
+          >
+            + Steer
+          </button>
+          <button
+            type="button"
+            onClick={() => addAxle("tag")}
+            disabled={!canAdd.tag}
+            className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70 disabled:opacity-40"
+          >
+            + Tag
+          </button>
+          <button
+            type="button"
+            onClick={() => addAxle("rear")}
+            disabled={!canAdd.rear}
+            className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70 disabled:opacity-40"
+          >
+            + Rear axle (duals)
+          </button>
+          <button
+            type="button"
+            onClick={() => addAxle("trailer")}
+            disabled={!canAdd.trailer}
+            className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70 disabled:opacity-40"
+          >
+            + Trailer axle (4 tires)
+          </button>
+
+          <div className="ml-auto text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+            {parsed.existingCounts.steer}/{MAX.steer} steer • {parsed.existingCounts.tag}/{MAX.tag} tag •{" "}
+            {parsed.existingCounts.rear}/{MAX.rear} rear • {parsed.existingCounts.trailer}/{MAX.trailer} trailer
+          </div>
+        </div>
       ) : null}
 
-      {mode === "corner" ? (
-        <div className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="flex flex-col gap-1">
-              <div
-                className="text-base font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-              >
-                Tire Measurements
-              </div>
-
-              {/* ✅ bring back explicit kPa/psi hint (derived from unitHint / cells) */}
-              {(headerHints?.pressure || headerHints?.tread) && (
-                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
-                  {headerHints.pressure ? `Pressure: ${headerHints.pressure}` : null}
-                  {headerHints.pressure && headerHints.tread ? " • " : null}
-                  {headerHints.tread ? `Tread: ${headerHints.tread}` : null}
+      {open ? (
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+          <div className="grid gap-6 px-4 py-4 md:px-6 md:py-5">
+            {parsed.rows.map((row) => (
+              <div key={row.axleLabel} className="grid gap-3">
+                {/* NOTE: no location labels; axle label is allowed so user knows what axle they’re on */}
+                <div className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                  {row.axleLabel}
                 </div>
-              )}
-            </div>
-          </div>
 
-          {open ? (
-            <div className="overflow-x-auto">
-              <div className="inline-block min-w-full align-middle">
-                {/* New layout: corners down the side, pressure in the middle */}
-                <table className="min-w-full border-separate border-spacing-y-1">
-                  <thead>
-                    <tr className="text-xs text-muted-foreground">
-                      <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
-                        Corner
-                      </th>
-                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
-                        Tread (Outer)
-                      </th>
-                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
-                        Tire Pressure
-                      </th>
-                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
-                        Tread (Inner)
-                      </th>
-                    </tr>
-                  </thead>
+                {row.isDual ? <DualAxleRow row={row} /> : <SingleAxleRow row={row} />}
 
-                  <tbody>
-                    {cornerGrid!.rows.map((r) => {
-                      const corner = r.corner;
-
-                      const renderCell = (cell?: Cell, maxW = "max-w-[9rem]") => {
-                        if (!cell) return <div className="h-[32px]" />;
-                        return (
-                          <div className={`relative w-full ${maxW}`}>
-                            <input
-                              defaultValue={cell.initial}
-                              className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
-                              placeholder="Value"
-                              autoComplete="off"
-                              inputMode="decimal"
-                              onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
-                            />
-                            {cell.unit ? (
-                              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-                                {cell.unit}
-                              </span>
-                            ) : null}
-                          </div>
-                        );
-                      };
-
-                      return (
-                        <tr key={`corner-${corner}`} className="align-middle">
-                          <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                            {corner}
-                          </td>
-
-                          <td className="px-3 py-2 text-center">
-                            {renderCell(r.treadOuter)}
-                          </td>
-
-                          <td className="px-3 py-2 text-center">
-                            {renderCell(r.pressure)}
-                          </td>
-
-                          <td className="px-3 py-2 text-center">
-                            {renderCell(r.treadInner)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                {/* Optional torque (rare, and not part of the silhouette) */}
+                {row.torque ? (
+                  <div className="mt-1 flex items-center justify-center gap-2">
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                      Wheel Torque
+                    </span>
+                    <div className="w-[160px]">
+                      <TireInput cell={row.torque} kind="TP" />
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            </div>
-          ) : null}
+            ))}
+          </div>
         </div>
-      ) : (
-        axleTables.map((t) => (
-          <div
-            key={t.axle}
-            className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl"
-          >
-            <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <div
-                className="text-base font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-              >
-                {t.axle}
-              </div>
-            </div>
-
-            {open ? (
-              <div className="overflow-x-auto">
-                <div className="inline-block min-w-full align-middle">
-                  <table className="min-w-full border-separate border-spacing-y-1">
-                    <thead>
-                      <tr className="text-xs text-muted-foreground">
-                        <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
-                          Item
-                        </th>
-                        <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
-                          Left
-                        </th>
-                        <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
-                          Right
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {t.rows.map((row, rowIdx) => {
-                        if (row.axleOnly) {
-                          const cell = row.axleOnly;
-                          return (
-                            <tr key={`${row.metric}-${rowIdx}`} className="align-middle">
-                              <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                                {row.metric}
-                              </td>
-                              <td className="px-3 py-2" colSpan={2}>
-                                <div className="relative w-full max-w-[18rem]">
-                                  <input
-                                    defaultValue={cell.initial}
-                                    className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
-                                    placeholder="Value"
-                                    autoComplete="off"
-                                    inputMode="decimal"
-                                    onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
-                                  />
-                                  {cell.unit ? (
-                                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-                                      {cell.unit}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        }
-
-                        return (
-                          <tr key={`${row.metric}-${rowIdx}`} className="align-middle">
-                            <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                              {row.metric}
-                            </td>
-
-                            {(["Left", "Right"] as const).map((side) => {
-                              const cell = side === "Left" ? row.left : row.right;
-                              if (!cell) {
-                                return (
-                                  <td key={side} className="px-3 py-2">
-                                    <div className="h-[32px]" />
-                                  </td>
-                                );
-                              }
-
-                              return (
-                                <td key={side} className="px-3 py-2 text-center">
-                                  <div className="relative w-full max-w-[9rem]">
-                                    <input
-                                      defaultValue={cell.initial}
-                                      className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
-                                      placeholder="Value"
-                                      autoComplete="off"
-                                      inputMode="decimal"
-                                      onBlur={(e) =>
-                                        commit(cell.idx, e.currentTarget.value)
-                                      }
-                                    />
-                                    {cell.unit ? (
-                                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-                                        {cell.unit}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
-
-function AddAxlePicker({
-  tables,
-  onAddAxle,
-}: {
-  tables: { axle: string }[];
-  onAddAxle: (axleLabel: string) => void;
-}) {
-  const existing = useMemo(() => tables.map((t) => t.axle), [tables]);
-  const [pending, setPending] = useState<string>("");
-
-  const candidates = useMemo(() => {
-    const wants: string[] = [];
-    for (let i = 1; i <= 2; i++) wants.push(`Steer ${i}`);
-    for (let i = 1; i <= 4; i++) wants.push(`Drive ${i}`);
-    wants.push("Tag", "Trailer 1", "Trailer 2", "Trailer 3");
-    return wants.filter((l) => !existing.includes(l));
-  }, [existing]);
-
-  return (
-    <div className="flex items-center gap-2 px-1">
-      <select
-        className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-xs text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
-        value={pending}
-        onChange={(e) => setPending(e.target.value)}
-      >
-        <option value="">Add axle…</option>
-        {candidates.map((l) => (
-          <option key={l} value={l}>
-            {l}
-          </option>
-        ))}
-      </select>
-      <button
-        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
-        onClick={() => {
-          if (pending) onAddAxle(pending);
-        }}
-        disabled={!pending}
-        type="button"
-      >
-        + Add
-      </button>
+      ) : null}
     </div>
   );
 }
