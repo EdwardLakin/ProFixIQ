@@ -78,10 +78,12 @@ const AXLE_LABEL_RE =
 const SIDE_RE = /\b(Left|Right|L|R|Driver|Passenger|DS|PS)\b/i;
 const DUAL_POS_RE = /\b(Inner|Outer|In|Out)\b/i;
 
-const isPressureMetric = (s: string) => /tire\s*pressure|pressure\b|tp\b/i.test(s);
+const isPressureMetric = (s: string) =>
+  /tire\s*pressure|pressure\b|tp\b/i.test(s);
 const isTreadMetric = (s: string) =>
   /tread\s*depth|tire\s*tread|tread\b|td\b/i.test(s);
-const isWheelTorqueMetric = (s: string) => /wheel\s*torque|torque\b/i.test(s);
+const isWheelTorqueMetric = (s: string) =>
+  /wheel\s*torque|torque\b/i.test(s);
 
 function metricKindFrom(label: string): MetricKind {
   if (isWheelTorqueMetric(label)) return "torque";
@@ -116,7 +118,8 @@ function axleOrder(axleLabel: string): number {
 function normalizeSide(raw: string): Side | null {
   const s = raw.trim().toLowerCase();
   if (s === "left" || s === "l" || s === "driver" || s === "ds") return "Left";
-  if (s === "right" || s === "r" || s === "passenger" || s === "ps") return "Right";
+  if (s === "right" || s === "r" || s === "passenger" || s === "ps")
+    return "Right";
   return null;
 }
 
@@ -127,13 +130,6 @@ function normalizeDualPos(raw: string): DualPos | null {
   return null;
 }
 
-function getTireKey(side: Side, pos?: DualPos | null, dual?: boolean): TireKey {
-  if (!dual) return side === "Left" ? "single_left" : "single_right";
-  // dual axle: Left Outer/Inner, Right Inner/Outer (inside tires face each other)
-  if (side === "Left") return pos === "Inner" ? "dual_left_inner" : "dual_left_outer";
-  return pos === "Inner" ? "dual_right_inner" : "dual_right_outer";
-}
-
 function pickUnit(itUnit: unknown, hint: string): string {
   const u = typeof itUnit === "string" ? itUnit.trim() : "";
   return u || hint || "";
@@ -142,6 +138,75 @@ function pickUnit(itUnit: unknown, hint: string): string {
 function bestUnitFromCells(cells: Cell[], fallback: string): string {
   const u = cells.map((c) => (c.unit || "").trim()).find((x) => x.length > 0);
   return u || fallback;
+}
+
+function emptyGroup(): TireCellGroup {
+  return {};
+}
+
+function makeDualMap(): Record<TireKey, TireCellGroup> {
+  return {
+    single_left: emptyGroup(),
+    single_right: emptyGroup(),
+    dual_left_outer: emptyGroup(),
+    dual_left_inner: emptyGroup(),
+    dual_right_inner: emptyGroup(),
+    dual_right_outer: emptyGroup(),
+  };
+}
+
+/**
+ * Dual placement rules:
+ * - If Inner/Outer exists → use it.
+ * - If missing, place first seen per-side into Outer, second into Inner.
+ */
+function placeDualCell(
+  row: AxleRow,
+  side: Side,
+  pos: DualPos | null,
+  kind: Exclude<MetricKind, "other" | "torque">,
+  cell: Cell,
+) {
+  const keyOuter: TireKey =
+    side === "Left" ? "dual_left_outer" : "dual_right_outer";
+  const keyInner: TireKey =
+    side === "Left" ? "dual_left_inner" : "dual_right_inner";
+
+  const pickBucket = (k: TireKey) => row.dual[k];
+
+  const assign = (bucket: TireCellGroup) => {
+    if (kind === "pressure") {
+      if (!bucket.pressure) bucket.pressure = cell;
+      return;
+    }
+    if (kind === "tread") {
+      if (!bucket.tread) bucket.tread = cell;
+      return;
+    }
+  };
+
+  // Explicit pos
+  if (pos) {
+    assign(pickBucket(pos === "Inner" ? keyInner : keyOuter));
+    return;
+  }
+
+  // No pos: pick the first bucket that doesn't already have this metric kind
+  const outerBucket = pickBucket(keyOuter);
+  const innerBucket = pickBucket(keyInner);
+
+  if (kind === "pressure") {
+    if (!outerBucket.pressure) assign(outerBucket);
+    else if (!innerBucket.pressure) assign(innerBucket);
+    else assign(outerBucket); // fallback
+    return;
+  }
+
+  if (kind === "tread") {
+    if (!outerBucket.tread) assign(outerBucket);
+    else if (!innerBucket.tread) assign(innerBucket);
+    else assign(outerBucket); // fallback
+  }
 }
 
 export default function TireGrid({
@@ -167,21 +232,13 @@ export default function TireGrid({
       const t = normalizeAxleType(axleLabel);
       const isDual = t === "rear" || t === "trailer";
 
-      const emptyGroup = (): TireCellGroup => ({});
       const row: AxleRow = {
         axleLabel,
         axleType: t,
         axleOrder: axleOrder(axleLabel),
         isDual,
         single: { left: emptyGroup(), right: emptyGroup() },
-        dual: {
-          single_left: emptyGroup(),
-          single_right: emptyGroup(),
-          dual_left_outer: emptyGroup(),
-          dual_left_inner: emptyGroup(),
-          dual_right_inner: emptyGroup(),
-          dual_right_outer: emptyGroup(),
-        },
+        dual: makeDualMap(),
         torque: null,
       };
 
@@ -201,21 +258,16 @@ export default function TireGrid({
       const rest = String(axleMatch.groups.rest ?? "").trim();
 
       const row = ensure(axleLabel);
+
       const kind = metricKindFrom(label);
       if (kind === "other") continue;
-
-      const sideRaw = rest.match(SIDE_RE)?.[1] ?? "";
-      const side = sideRaw ? normalizeSide(sideRaw) : null;
-
-      const dualPosRaw = rest.match(DUAL_POS_RE)?.[1] ?? "";
-      const dualPos = dualPosRaw ? normalizeDualPos(dualPosRaw) : null;
 
       const unit = pickUnit(it.unit, unitHint ? unitHint(label) : "");
       const cell: Cell = {
         idx,
         label,
         unit,
-        initial: String((it as any).value ?? ""),
+        initial: String((it as any)?.value ?? (it as any)?.initial ?? ""),
         metricKind: kind,
       };
 
@@ -225,24 +277,28 @@ export default function TireGrid({
         continue;
       }
 
-      // If no side found, we can’t place it
+      // Need side for pressure/tread
+      const sideRaw = rest.match(SIDE_RE)?.[1] ?? "";
+      const side = sideRaw ? normalizeSide(sideRaw) : null;
       if (!side) continue;
+
+      const dualPosRaw = rest.match(DUAL_POS_RE)?.[1] ?? "";
+      const dualPos = dualPosRaw ? normalizeDualPos(dualPosRaw) : null;
 
       if (!row.isDual) {
         const grp = side === "Left" ? row.single.left : row.single.right;
         if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
         if (kind === "tread" && !grp.tread) grp.tread = cell;
       } else {
-        const key = getTireKey(side, dualPos, true);
-        const grp = row.dual[key];
-        if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-        if (kind === "tread" && !grp.tread) grp.tread = cell;
+        placeDualCell(row, side, dualPos, kind, cell);
       }
     }
 
-    const rows = Array.from(byAxle.values()).sort((a, b) => a.axleOrder - b.axleOrder);
+    const rows = Array.from(byAxle.values()).sort(
+      (a, b) => a.axleOrder - b.axleOrder,
+    );
 
-    // Unit hints for header (derived from unitHint/cells)
+    // Units for header
     const allCells: Cell[] = [];
     rows.forEach((r) => {
       if (!r.isDual) {
@@ -265,7 +321,8 @@ export default function TireGrid({
 
     const pressureUnit =
       unitHint?.("Tire Pressure") || bestUnitFromCells(pressureCells, "");
-    const treadUnit = unitHint?.("Tread Depth") || bestUnitFromCells(treadCells, "");
+    const treadUnit =
+      unitHint?.("Tread Depth") || bestUnitFromCells(treadCells, "");
 
     const existingCounts = {
       steer: rows.filter((r) => r.axleType === "steer").length,
@@ -299,30 +356,27 @@ export default function TireGrid({
     onAddAxle(nextLabel(t));
   };
 
-  if (parsed.rows.length === 0) return null;
-
   const TireInput = ({
     cell,
-    kind,
+    placeholder,
     compact,
   }: {
     cell?: Cell;
-    kind: "TD" | "TP";
+    placeholder: string;
     compact?: boolean;
   }) => {
+    const maxW = compact ? "w-[86px]" : "w-[112px]";
+
     if (!cell) {
       return (
         <div
           className={[
             "h-[34px] rounded-lg border border-white/10 bg-black/25",
-            compact ? "w-[86px]" : "w-[112px]",
+            maxW,
           ].join(" ")}
         />
       );
     }
-
-    const placeholder = kind === "TD" ? "TD" : "TP";
-    const maxW = compact ? "w-[86px]" : "w-[112px]";
 
     return (
       <div className={`relative ${maxW}`}>
@@ -351,15 +405,15 @@ export default function TireGrid({
     return (
       <div className="flex items-center justify-center gap-4">
         <div className="flex flex-col items-center gap-2">
-          <TireInput cell={L.tread} kind="TD" />
-          <TireInput cell={L.pressure} kind="TP" />
+          <TireInput cell={L.tread} placeholder="TD" />
+          <TireInput cell={L.pressure} placeholder="TP" />
         </div>
 
         <div className="h-[64px] w-[140px] rounded-xl border border-white/10 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] shadow-[0_18px_45px_rgba(0,0,0,0.65)]" />
 
         <div className="flex flex-col items-center gap-2">
-          <TireInput cell={R.tread} kind="TD" />
-          <TireInput cell={R.pressure} kind="TP" />
+          <TireInput cell={R.tread} placeholder="TD" />
+          <TireInput cell={R.pressure} placeholder="TP" />
         </div>
       </div>
     );
@@ -381,12 +435,12 @@ export default function TireGrid({
       return (
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-center gap-2">
-            <TireInput cell={a.tread} kind="TD" compact />
-            <TireInput cell={a.pressure} kind="TP" compact />
+            <TireInput cell={a.tread} placeholder="TD" compact />
+            <TireInput cell={a.pressure} placeholder="TP" compact />
           </div>
           <div className="flex flex-col items-center gap-2">
-            <TireInput cell={b.tread} kind="TD" compact />
-            <TireInput cell={b.pressure} kind="TP" compact />
+            <TireInput cell={b.tread} placeholder="TD" compact />
+            <TireInput cell={b.pressure} placeholder="TP" compact />
           </div>
         </div>
       );
@@ -398,21 +452,22 @@ export default function TireGrid({
 
         <div className="h-[64px] w-[140px] rounded-xl border border-white/10 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] shadow-[0_18px_45px_rgba(0,0,0,0.65)]" />
 
-        {/* Right side inner is closer to chassis; we still render outer+inner as a pair,
-            but we arrange as (inner, outer) so it “faces” the chassis */}
+        {/* Right inner is closer to chassis; render (inner, outer) */}
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-center gap-2">
-            <TireInput cell={RI.tread} kind="TD" compact />
-            <TireInput cell={RI.pressure} kind="TP" compact />
+            <TireInput cell={RI.tread} placeholder="TD" compact />
+            <TireInput cell={RI.pressure} placeholder="TP" compact />
           </div>
           <div className="flex flex-col items-center gap-2">
-            <TireInput cell={RO.tread} kind="TD" compact />
-            <TireInput cell={RO.pressure} kind="TP" compact />
+            <TireInput cell={RO.tread} placeholder="TD" compact />
+            <TireInput cell={RO.pressure} placeholder="TP" compact />
           </div>
         </div>
       </div>
     );
   };
+
+  const showEmptyState = parsed.rows.length === 0;
 
   return (
     <div className="grid w-full gap-3">
@@ -446,7 +501,7 @@ export default function TireGrid({
         </button>
       </div>
 
-      {/* Add axle controls (explicit buttons, no “location labels”) */}
+      {/* Add axle controls */}
       {onAddAxle ? (
         <div className="flex flex-wrap items-center gap-2 px-1">
           <button
@@ -483,38 +538,53 @@ export default function TireGrid({
           </button>
 
           <div className="ml-auto text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-            {parsed.existingCounts.steer}/{MAX.steer} steer • {parsed.existingCounts.tag}/{MAX.tag} tag •{" "}
-            {parsed.existingCounts.rear}/{MAX.rear} rear • {parsed.existingCounts.trailer}/{MAX.trailer} trailer
+            {parsed.existingCounts.steer}/{MAX.steer} steer •{" "}
+            {parsed.existingCounts.tag}/{MAX.tag} tag •{" "}
+            {parsed.existingCounts.rear}/{MAX.rear} rear •{" "}
+            {parsed.existingCounts.trailer}/{MAX.trailer} trailer
           </div>
         </div>
       ) : null}
 
       {open ? (
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-          <div className="grid gap-6 px-4 py-4 md:px-6 md:py-5">
-            {parsed.rows.map((row) => (
-              <div key={row.axleLabel} className="grid gap-3">
-                {/* NOTE: no location labels; axle label is allowed so user knows what axle they’re on */}
-                <div className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
-                  {row.axleLabel}
-                </div>
-
-                {row.isDual ? <DualAxleRow row={row} /> : <SingleAxleRow row={row} />}
-
-                {/* Optional torque (rare, and not part of the silhouette) */}
-                {row.torque ? (
-                  <div className="mt-1 flex items-center justify-center gap-2">
-                    <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                      Wheel Torque
-                    </span>
-                    <div className="w-[160px]">
-                      <TireInput cell={row.torque} kind="TP" />
-                    </div>
-                  </div>
-                ) : null}
+          {showEmptyState ? (
+            <div className="px-4 py-5 text-center md:px-6 md:py-6">
+              <div className="text-sm font-semibold text-neutral-200">
+                No axles added yet.
               </div>
-            ))}
-          </div>
+              <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                Use the buttons above to add Steer / Tag / Rear / Trailer axles.
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-6 px-4 py-4 md:px-6 md:py-5">
+              {parsed.rows.map((row) => (
+                <div key={row.axleLabel} className="grid gap-3">
+                  <div className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                    {row.axleLabel}
+                  </div>
+
+                  {row.isDual ? (
+                    <DualAxleRow row={row} />
+                  ) : (
+                    <SingleAxleRow row={row} />
+                  )}
+
+                  {row.torque ? (
+                    <div className="mt-1 flex items-center justify-center gap-2">
+                      <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                        Wheel Torque
+                      </span>
+                      <div className="w-[160px]">
+                        <TireInput cell={row.torque} placeholder="Torque" />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
     </div>

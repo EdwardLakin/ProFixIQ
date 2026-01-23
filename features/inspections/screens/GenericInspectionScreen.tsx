@@ -182,11 +182,8 @@ function isBatterySection(
   items: { item?: string | null }[] = [],
 ): boolean {
   const t = (title || "").toLowerCase();
-
-  // Title match is always strongest
   if (t.includes("battery")) return true;
 
-  // Otherwise require multiple battery-ish signals (prevents false positives)
   let hits = 0;
   for (const it of items) {
     const label = (it.item || "").trim();
@@ -214,13 +211,9 @@ function isTireGridSection(
 ): boolean {
   const t = (title || "").toLowerCase();
 
-  // explicit / intended naming
   if (t.includes("tire grid") || t.includes("tires grid")) return true;
-
-  // corner-ish tires section name
   if (t.includes("tires") && t.includes("corner")) return true;
 
-  // heuristics: tire pressure / tread + axle/corner tokens
   const tireSignals = items.filter((it) => {
     const l = (it.item ?? "").toLowerCase();
     return (
@@ -245,7 +238,6 @@ function isHydraulicCornerSection(
 ): boolean {
   const t = (title || "").toLowerCase();
 
-  // never treat tires-only sections as hydraulic corner grid
   if (isTireGridSection(title, items)) return false;
 
   if (t.includes("corner grid") || t.includes("tires & brakes — truck")) return true;
@@ -257,41 +249,6 @@ function isHydraulicCornerSection(
     const label = it.item ?? "";
     return HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
   });
-}
-
-/* -------------------- pairing helpers (GRID + CHECKBOX SECTION) -------------------- */
-
-/**
- * The “checkbox sections” are the normal SectionDisplay blocks (no measurements grid),
- * and they must be rendered as a set with their matching grid.
- *
- * Pair rules:
- * - Hydraulic CornerGrid pairs with section title containing "Brakes — Hydraulic"
- * - AirCornerGrid pairs with section title containing "Brakes — Air"
- * - TireGrid pairs with section title containing "Tires & Wheels"
- *
- * This does NOT guess based on item content — it pairs by the canonical category titles.
- */
-type PairKind = "hyd" | "air" | "tire" | "battery" | "none";
-
-function kindForGridSection(
-  title: string | undefined,
-  items: { item?: string | null }[],
-): PairKind {
-  if (isBatterySection(title, items)) return "battery";
-  if (isAirCornerSection(title, items)) return "air";
-  if (isTireGridSection(title, items)) return "tire";
-  if (isHydraulicCornerSection(title, items)) return "hyd";
-  return "none";
-}
-
-function isCheckboxPairTitle(kind: PairKind, title: string | undefined): boolean {
-  const t = (title || "").toLowerCase();
-  if (kind === "hyd") return t.includes("brakes") && t.includes("hydraulic");
-  if (kind === "air") return t.includes("brakes") && t.includes("air");
-  if (kind === "tire") return t.includes("tires") && t.includes("wheels");
-  if (kind === "battery") return t.includes("battery");
-  return false;
 }
 
 /* --------------------------------- types / constants --------------------------------- */
@@ -367,6 +324,7 @@ function buildCauseCorrectionFromSession(
 export default function GenericInspectionScreen(
   _props: GenericInspectionScreenProps,
 ): JSX.Element {
+
   const routeSp = useSearchParams();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
@@ -1053,17 +1011,18 @@ export default function GenericInspectionScreen(
     return () => obs.disconnect();
   }, [isEmbed]);
 
-
   const currentSectionIndex =
-    typeof session.currentSectionIndex === "number"
+    typeof session?.currentSectionIndex === "number"
       ? session.currentSectionIndex
       : 0;
+
   const safeSectionIndex =
-    currentSectionIndex >= 0 && currentSectionIndex < session.sections.length
+    session && currentSectionIndex >= 0 && currentSectionIndex < session.sections.length
       ? currentSectionIndex
       : 0;
 
   function autoAdvanceFrom(secIdx: number, itemIdx: number): void {
+    if (!session) return;
     const sections = session.sections;
     if (!sections || sections.length === 0) return;
 
@@ -1098,6 +1057,7 @@ export default function GenericInspectionScreen(
     sectionIndex: number,
     status: InspectionItemStatus,
   ): void {
+    if (!session) return;
     if (guardLocked()) return;
     const section = session.sections[sectionIndex];
     if (!section) return;
@@ -1384,127 +1344,11 @@ export default function GenericInspectionScreen(
     </>
   );
 
-  /* ------------------------------ render pairing plan ------------------------------ */
-
-  /* ------------------------------ render pairing plan ------------------------------ */
-
-const safeSections = session?.sections ?? [];
-
-const rendered = useMemo(() => {
-  const sections = safeSections;
-
-  // nothing to render yet
-  if (!sections.length) return [];
-
-  // Identify "kind" for each section (grid detector)
-  const kindAt: PairKind[] = sections.map((s) => {
-    const itemsWithHints = (s.items ?? []).map((it) => ({
-      ...it,
-      unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-    }));
-    return kindForGridSection(s.title, itemsWithHints);
-  });
-
-  // First grid index per kind (battery/air/tire/hyd)
-  const firstGridIdx: Record<PairKind, number | null> = {
-    hyd: null,
-    air: null,
-    tire: null,
-    battery: null,
-    none: null,
-  };
-
-  // First checkbox pair target per kind
-  const firstCheckboxIdx: Record<PairKind, number | null> = {
-    hyd: null,
-    air: null,
-    tire: null,
-    battery: null,
-    none: null,
-  };
-
-  for (let i = 0; i < sections.length; i++) {
-    const s = sections[i];
-    const kind = kindAt[i];
-
-    if (kind !== "none" && firstGridIdx[kind] == null) {
-      firstGridIdx[kind] = i;
-    }
-
-    if (firstCheckboxIdx.hyd == null && isCheckboxPairTitle("hyd", s.title))
-      firstCheckboxIdx.hyd = i;
-    if (firstCheckboxIdx.air == null && isCheckboxPairTitle("air", s.title))
-      firstCheckboxIdx.air = i;
-    if (firstCheckboxIdx.tire == null && isCheckboxPairTitle("tire", s.title))
-      firstCheckboxIdx.tire = i;
-    if (firstCheckboxIdx.battery == null && isCheckboxPairTitle("battery", s.title))
-      firstCheckboxIdx.battery = i;
+  if (!session || (session.sections?.length ?? 0) === 0) {
+    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
-
-  const used = new Set<number>();
-  const blocks: Array<{ type: "set"; indices: number[] }> = [];
-
-  const addBlock = (indices: number[]) => {
-    const uniq = indices
-      .filter((i) => i >= 0 && i < sections.length)
-      .filter((i, pos, arr) => arr.indexOf(i) === pos)
-      .filter((i) => !used.has(i));
-
-    if (uniq.length === 0) return;
-    uniq.forEach((i) => used.add(i));
-    blocks.push({ type: "set", indices: uniq });
-  };
-
-  // Emit ONE combined block per kind, ordered by where the grid appears
-  const kindOrder: PairKind[] = ["battery", "tire", "air", "hyd"];
-  const gridKindsInOrder = kindOrder
-    .map((k) => ({ kind: k, idx: firstGridIdx[k] }))
-    .filter((x): x is { kind: PairKind; idx: number } => typeof x.idx === "number")
-    .sort((a, b) => a.idx - b.idx);
-
-  for (const { kind, idx } of gridKindsInOrder) {
-    const gridIdx = idx;
-    const pairIdx = firstCheckboxIdx[kind];
-
-    addBlock(pairIdx != null && pairIdx !== gridIdx ? [gridIdx, pairIdx] : [gridIdx]);
-
-    // Dedup other sections of this kind + extra checkbox targets
-    for (let i = 0; i < sections.length; i++) {
-      if (used.has(i)) continue;
-      if (kindAt[i] === kind) used.add(i);
-      if (isCheckboxPairTitle(kind, sections[i].title)) used.add(i);
-    }
-  }
-
-  // Render everything else in original order
-  for (let i = 0; i < sections.length; i++) {
-    if (used.has(i)) continue;
-
-    const s = sections[i];
-    if (
-      (isCheckboxPairTitle("hyd", s.title) && firstGridIdx.hyd != null) ||
-      (isCheckboxPairTitle("air", s.title) && firstGridIdx.air != null) ||
-      (isCheckboxPairTitle("tire", s.title) && firstGridIdx.tire != null) ||
-      (isCheckboxPairTitle("battery", s.title) && firstGridIdx.battery != null)
-    ) {
-      used.add(i);
-      continue;
-    }
-
-    addBlock([i]);
-  }
-
-  return blocks;
-}, [safeSections, unit]);
-
-
-
-if (!session || safeSections.length === 0) {
-  return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
-}
-  /* ------------------------------ Part 3/3 ------------------------------ */
-
-
+  
+    /* ------------------------------ render (no pairing / no auto-dedup) ------------------------------ */
 
   const body = (
     <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
@@ -1596,268 +1440,254 @@ if (!session || safeSections.length === 0) {
         </div>
 
         <InspectionFormCtx.Provider value={{ updateItem }}>
-          {rendered.map((block, blockIdx) => {
-            const indices = block.indices;
+          {session.sections.map((section, sectionIndex) => {
+            const itemsWithHints = (section.items ?? []).map((it) => ({
+              ...it,
+              unit: it.unit || unitHintGeneric(it.item ?? "", unit),
+            }));
+
+            const batterySection = isBatterySection(section.title, itemsWithHints);
+            const airSection = isAirCornerSection(section.title, itemsWithHints);
+            const tireSection = isTireGridSection(section.title, itemsWithHints);
+            const hydCornerSection = isHydraulicCornerSection(
+              section.title,
+              itemsWithHints,
+            );
+
+            const useGrid =
+              batterySection || airSection || tireSection || hydCornerSection;
+
+            const collapsed = collapsedSections[sectionIndex] ?? false;
+
+            const newLabel = newItemLabels[sectionIndex] ?? "";
+            const newUnit = newItemUnits[sectionIndex] ?? "";
 
             return (
-              <div key={`block-${blockIdx}`} className="space-y-4">
-                {indices.map((sectionIndex) => {
-                  const section = session.sections[sectionIndex];
+              <div
+                key={`${section.title}-${sectionIndex}`}
+                className={sectionCard}
+                data-section-index={sectionIndex}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className={sectionTitle}>{section.title}</h2>
 
-                  const itemsWithHints = (section.items ?? []).map((it) => ({
-                    ...it,
-                    unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-                  }));
+                  {safeSectionIndex === sectionIndex && (
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "ok")}
+                      >
+                        All OK
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "fail")}
+                      >
+                        All Fail
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "na")}
+                      >
+                        All NA
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
+                      >
+                        All REC
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
+                        onClick={() => toggleSectionCollapsed(sectionIndex)}
+                      >
+                        {collapsed ? "Expand" : "Collapse"}
+                      </button>
+                    </div>
+                  )}
 
-                  const batterySection = isBatterySection(section.title, itemsWithHints);
-                  const airSection = isAirCornerSection(section.title, itemsWithHints);
-                  const tireSection = isTireGridSection(section.title, itemsWithHints);
-                  const hydCornerSection = isHydraulicCornerSection(
-                    section.title,
-                    itemsWithHints,
-                  );
-
-                  const useGrid =
-                    batterySection || airSection || tireSection || hydCornerSection;
-
-                  const collapsed = collapsedSections[sectionIndex] ?? false;
-
-                  const newLabel = newItemLabels[sectionIndex] ?? "";
-                  const newUnit = newItemUnits[sectionIndex] ?? "";
-
-                  return (
-                    <div
-                      key={`${section.title}-${sectionIndex}`}
-                      className={sectionCard}
-                      data-section-index={sectionIndex}
+                  {safeSectionIndex !== sectionIndex && (
+                    <button
+                      type="button"
+                      className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+                      onClick={() => toggleSectionCollapsed(sectionIndex)}
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h2 className={sectionTitle}>{section.title}</h2>
+                      {collapsed ? "Expand" : "Collapse"}
+                    </button>
+                  )}
+                </div>
 
-                        {safeSectionIndex === sectionIndex && (
-                          <div className="flex flex-wrap items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              disabled={isLocked}
-                              className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => applyStatusToSection(sectionIndex, "ok")}
-                            >
-                              All OK
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isLocked}
-                              className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => applyStatusToSection(sectionIndex, "fail")}
-                            >
-                              All Fail
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isLocked}
-                              className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => applyStatusToSection(sectionIndex, "na")}
-                            >
-                              All NA
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isLocked}
-                              className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() =>
-                                applyStatusToSection(sectionIndex, "recommend")
-                              }
-                            >
-                              All REC
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
-                              onClick={() => toggleSectionCollapsed(sectionIndex)}
-                            >
-                              {collapsed ? "Expand" : "Collapse"}
-                            </button>
-                          </div>
-                        )}
+                {collapsed ? (
+                  <p className="mt-2 text-center text-[11px] text-neutral-400">
+                    Section collapsed. Tap{" "}
+                    <span className="font-semibold">Expand</span> to reopen.
+                  </p>
+                ) : (
+                  <>
+                    {useGrid && (
+                      <span className={hint}>
+                        {unit === "metric"
+                          ? "Enter mm / kPa / N·m"
+                          : "Enter in / psi / ft·lb"}
+                      </span>
+                    )}
 
-                        {safeSectionIndex !== sectionIndex && (
-                          <button
-                            type="button"
-                            className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
-                            onClick={() => toggleSectionCollapsed(sectionIndex)}
-                          >
-                            {collapsed ? "Expand" : "Collapse"}
-                          </button>
-                        )}
-                      </div>
-
-                      {collapsed ? (
-                        <p className="mt-2 text-center text-[11px] text-neutral-400">
-                          Section collapsed. Tap{" "}
-                          <span className="font-semibold">Expand</span> to reopen.
-                        </p>
+                    <div className="mt-3 md:mt-4">
+                      {useGrid ? (
+                        batterySection ? (
+                          <BatteryGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label) => unitHintGeneric(label, unit)}
+                          />
+                        ) : airSection ? (
+                          <AirCornerGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label) => unitHintGeneric(label, unit)}
+                            onAddAxle={(axleLabel) =>
+                              handleAddAxleForSection(sectionIndex, axleLabel)
+                            }
+                            onSpecHint={(metricLabel) =>
+                              _props.onSpecHint?.({
+                                source: "air_corner",
+                                label: metricLabel,
+                                meta: { sectionTitle: section.title },
+                              })
+                            }
+                          />
+                        ) : tireSection ? (
+                          <TireGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label) => unitHintGeneric(label, unit)}
+                            onAddAxle={(axleLabel) =>
+                              handleAddTireAxleForSection(sectionIndex, axleLabel)
+                            }
+                            onSpecHint={(metricLabel) =>
+                              _props.onSpecHint?.({
+                                source: "tire",
+                                label: metricLabel,
+                                meta: { sectionTitle: section.title },
+                              })
+                            }
+                          />
+                        ) : (
+                          <CornerGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label) => unitHintGeneric(label, unit)}
+                            onSpecHint={(label) =>
+                              _props.onSpecHint?.({
+                                source: "corner",
+                                label,
+                                meta: { sectionTitle: section.title },
+                              })
+                            }
+                          />
+                        )
                       ) : (
                         <>
-                          {useGrid && (
-                            <span className={hint}>
-                              {unit === "metric"
-                                ? "Enter mm / kPa / N·m"
-                                : "Enter in / psi / ft·lb"}
-                            </span>
-                          )}
+                          <SectionDisplay
+                            title=""
+                            section={{ ...section, items: itemsWithHints }}
+                            sectionIndex={sectionIndex}
+                            showNotes
+                            showPhotos
+                            onUpdateStatus={(secIdx, itemIdx, statusValue) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { status: statusValue });
+                              autoAdvanceFrom(secIdx, itemIdx);
+                            }}
+                            onUpdateNote={(secIdx, itemIdx, note) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { notes: note });
+                            }}
+                            onUpload={(photoUrl, secIdx, itemIdx) => {
+                              if (guardLocked()) return;
+                              const prev =
+                                session.sections[secIdx].items[itemIdx].photoUrls ??
+                                [];
+                              updateItem(secIdx, itemIdx, {
+                                photoUrls: [...prev, photoUrl],
+                              });
+                            }}
+                            onUpdateParts={(secIdx, itemIdx, parts) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { parts });
+                            }}
+                            onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { laborHours: hours });
+                            }}
+                            requireNoteForAI
+                            onSubmitAI={(secIdx, itemIdx) => {
+                              void submitAIForItem(secIdx, itemIdx);
+                            }}
+                            isSubmittingAI={isSubmittingAI}
+                          />
 
-                          <div className="mt-3 md:mt-4">
-                            {useGrid ? (
-                              batterySection ? (
-                                <BatteryGrid
-                                  sectionIndex={sectionIndex}
-                                  items={itemsWithHints}
-                                  unitHint={(label) => unitHintGeneric(label, unit)}
-                                />
-                              ) : airSection ? (
-                                <AirCornerGrid
-                                  sectionIndex={sectionIndex}
-                                  items={itemsWithHints}
-                                  unitHint={(label) => unitHintGeneric(label, unit)}
-                                  onAddAxle={(axleLabel) =>
-                                    handleAddAxleForSection(sectionIndex, axleLabel)
+                          <div className="mt-4 border-t border-white/10 pt-3">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                              Add custom item
+                            </div>
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                              <input
+                                className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                placeholder="Item label (e.g. Rear frame inspection)"
+                                value={newLabel}
+                                onChange={(e) =>
+                                  setNewItemLabels((prev) => ({
+                                    ...prev,
+                                    [sectionIndex]: e.target.value,
+                                  }))
+                                }
+                                disabled={isLocked}
+                              />
+                              <div className="flex items-center gap-2 md:w-auto">
+                                <select
+                                  className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                  value={newUnit}
+                                  onChange={(e) =>
+                                    setNewItemUnits((prev) => ({
+                                      ...prev,
+                                      [sectionIndex]: e.target.value,
+                                    }))
                                   }
-                                  onSpecHint={(metricLabel) =>
-                                    _props.onSpecHint?.({
-                                      source: "air_corner",
-                                      label: metricLabel,
-                                      meta: { sectionTitle: section.title },
-                                    })
-                                  }
-                                />
-                              ) : tireSection ? (
-                                <TireGrid
-                                  sectionIndex={sectionIndex}
-                                  items={itemsWithHints}
-                                  unitHint={(label) => unitHintGeneric(label, unit)}
-                                  onAddAxle={(axleLabel) =>
-                                    handleAddTireAxleForSection(sectionIndex, axleLabel)
-                                  }
-                                  onSpecHint={(metricLabel) =>
-                                    _props.onSpecHint?.({
-                                      source: "tire",
-                                      label: metricLabel,
-                                      meta: { sectionTitle: section.title },
-                                    })
-                                  }
-                                />
-                              ) : (
-                                <CornerGrid
-                                  sectionIndex={sectionIndex}
-                                  items={itemsWithHints}
-                                  unitHint={(label) => unitHintGeneric(label, unit)}
-                                  onSpecHint={(label) =>
-                                    _props.onSpecHint?.({
-                                      source: "corner",
-                                      label,
-                                      meta: { sectionTitle: section.title },
-                                    })
-                                  }
-                                />
-                              )
-                            ) : (
-                              <>
-                                <SectionDisplay
-                                  title=""
-                                  section={{ ...section, items: itemsWithHints }}
-                                  sectionIndex={sectionIndex}
-                                  showNotes
-                                  showPhotos
-                                  onUpdateStatus={(secIdx, itemIdx, statusValue) => {
-                                    if (guardLocked()) return;
-                                    updateItem(secIdx, itemIdx, {
-                                      status: statusValue,
-                                    });
-                                    autoAdvanceFrom(secIdx, itemIdx);
-                                  }}
-                                  onUpdateNote={(secIdx, itemIdx, note) => {
-                                    if (guardLocked()) return;
-                                    updateItem(secIdx, itemIdx, { notes: note });
-                                  }}
-                                  onUpload={(photoUrl, secIdx, itemIdx) => {
-                                    if (guardLocked()) return;
-                                    const prev =
-                                      session.sections[secIdx].items[itemIdx]
-                                        .photoUrls ?? [];
-                                    updateItem(secIdx, itemIdx, {
-                                      photoUrls: [...prev, photoUrl],
-                                    });
-                                  }}
-                                  onUpdateParts={(secIdx, itemIdx, parts) => {
-                                    if (guardLocked()) return;
-                                    updateItem(secIdx, itemIdx, { parts });
-                                  }}
-                                  onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-                                    if (guardLocked()) return;
-                                    updateItem(secIdx, itemIdx, { laborHours: hours });
-                                  }}
-                                  requireNoteForAI
-                                  onSubmitAI={(secIdx, itemIdx) => {
-                                    void submitAIForItem(secIdx, itemIdx);
-                                  }}
-                                  isSubmittingAI={isSubmittingAI}
-                                />
-
-                                <div className="mt-4 border-t border-white/10 pt-3">
-                                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                                    Add custom item
-                                  </div>
-                                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                                    <input
-                                      className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                                      placeholder="Item label (e.g. Rear frame inspection)"
-                                      value={newLabel}
-                                      onChange={(e) =>
-                                        setNewItemLabels((prev) => ({
-                                          ...prev,
-                                          [sectionIndex]: e.target.value,
-                                        }))
-                                      }
-                                      disabled={isLocked}
-                                    />
-                                    <div className="flex items-center gap-2 md:w-auto">
-                                      <select
-                                        className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                                        value={newUnit}
-                                        onChange={(e) =>
-                                          setNewItemUnits((prev) => ({
-                                            ...prev,
-                                            [sectionIndex]: e.target.value,
-                                          }))
-                                        }
-                                        title="Measurement unit"
-                                        disabled={isLocked}
-                                      >
-                                        {UNIT_OPTIONS.map((u) => (
-                                          <option key={u || "blank"} value={u}>
-                                            {u || "— unit —"}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <Button
-                                        type="button"
-                                        className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                                        onClick={() => handleAddCustomItem(sectionIndex)}
-                                        disabled={isLocked}
-                                      >
-                                        + Add Item
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </>
-                            )}
+                                  title="Measurement unit"
+                                  disabled={isLocked}
+                                >
+                                  {UNIT_OPTIONS.map((u) => (
+                                    <option key={u || "blank"} value={u}>
+                                      {u || "— unit —"}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Button
+                                  type="button"
+                                  className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
+                                  onClick={() => handleAddCustomItem(sectionIndex)}
+                                  disabled={isLocked}
+                                >
+                                  + Add Item
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         </>
                       )}
                     </div>
-                  );
-                })}
+                  </>
+                )}
               </div>
             );
           })}
@@ -1875,7 +1705,6 @@ if (!session || safeSections.length === 0) {
           />
         </div>
 
-        {/* Desktop legend stays in content; actions are now always in sticky bar below */}
         {!isEmbed && !isMobileView && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
             <div className="text-xs text-neutral-400 md:text-right">
@@ -1886,7 +1715,6 @@ if (!session || safeSections.length === 0) {
         )}
       </div>
 
-      {/* Sticky actions: embed + normal desktop */}
       {!isMobileView && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 py-2 backdrop-blur">
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2">
