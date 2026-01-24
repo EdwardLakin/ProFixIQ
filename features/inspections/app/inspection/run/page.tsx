@@ -54,17 +54,15 @@ function stripExistingCornerGrids(sections: Section[]): Section[] {
   });
 }
 
-/** Canonical HYD corner grid (LF/RF/LR/RR) */
+/** Canonical HYD corner grid (LF/RF/LR/RR) — BRAKES ONLY */
 function buildHydraulicCornerSection(): Section {
   const metrics: Array<{ label: string; unit: string | null }> = [
-    { label: "Tire Pressure", unit: "psi" },
-    { label: "Tire Tread", unit: "mm" },
     { label: "Brake Pad", unit: "mm" },
     { label: "Rotor", unit: "mm" },
     { label: "Rotor Condition", unit: null },
     { label: "Rotor Thickness", unit: "mm" },
-    { label: "Wheel Torque", unit: "ft·lb" },
   ];
+
   const corners = ["LF", "RF", "LR", "RR"];
   const items: SectionItem[] = [];
   for (const c of corners) {
@@ -75,13 +73,9 @@ function buildHydraulicCornerSection(): Section {
   return { title: "Corner Grid (Hydraulic)", items };
 }
 
-/** Canonical AIR corner grid: Steer 1 + Drive 1 with explicit Inner/Outer where needed */
+/** Canonical AIR corner grid — BRAKES ONLY (+ push rod travel) */
 function buildAirCornerSection(): Section {
   const steer: SectionItem[] = [
-    { item: "Steer 1 Left Tire Pressure", unit: "psi" },
-    { item: "Steer 1 Right Tire Pressure", unit: "psi" },
-    { item: "Steer 1 Left Tread Depth", unit: "mm" },
-    { item: "Steer 1 Right Tread Depth", unit: "mm" },
     { item: "Steer 1 Left Lining/Shoe", unit: "mm" },
     { item: "Steer 1 Right Lining/Shoe", unit: "mm" },
     { item: "Steer 1 Left Drum/Rotor", unit: "mm" },
@@ -91,12 +85,6 @@ function buildAirCornerSection(): Section {
   ];
 
   const drive: SectionItem[] = [
-    { item: "Drive 1 Left Tire Pressure", unit: "psi" },
-    { item: "Drive 1 Right Tire Pressure", unit: "psi" },
-    { item: "Drive 1 Left Tread Depth (Outer)", unit: "mm" },
-    { item: "Drive 1 Left Tread Depth (Inner)", unit: "mm" },
-    { item: "Drive 1 Right Tread Depth (Outer)", unit: "mm" },
-    { item: "Drive 1 Right Tread Depth (Inner)", unit: "mm" },
     { item: "Drive 1 Left Lining/Shoe", unit: "mm" },
     { item: "Drive 1 Right Lining/Shoe", unit: "mm" },
     { item: "Drive 1 Left Drum/Rotor", unit: "mm" },
@@ -186,7 +174,6 @@ export default function RunInspectionPage() {
         return;
       }
 
-      // Prefer the newer staging keys, fall back to legacy custom builder keys
       const stagedSectionsRaw =
         sessionStorage.getItem("inspection:sections") ??
         sessionStorage.getItem("customInspection:sections");
@@ -209,7 +196,6 @@ export default function RunInspectionPage() {
 
       const title = stagedTitle || "Inspection";
 
-      // Build params from current URL, but allow staged params to win if present
       const currentParams: Record<string, string> = {};
       sp.forEach((value, key) => {
         currentParams[key] = value;
@@ -225,17 +211,18 @@ export default function RunInspectionPage() {
         ...currentParams,
       };
 
-      // Normalize core fields for the runtime
       mergedParams.template = mergedParams.template || "generic";
       mergedParams.mode = mergedParams.mode || "run";
 
-      // ✅ Ensure staged sections get corner grid injected if needed
       const vt =
         mergedParams.vehicleType ||
         sessionStorage.getItem("inspection:vehicleType") ||
         "";
+
       const grid =
-        mergedParams.grid || gridOverride || sessionStorage.getItem("customInspection:gridMode");
+        mergedParams.grid ||
+        gridOverride ||
+        sessionStorage.getItem("customInspection:gridMode");
 
       const normalizedSections = prepareSectionsWithCornerGrid(
         sections,
@@ -243,14 +230,19 @@ export default function RunInspectionPage() {
         grid || null,
       );
 
-      // Persist for GenericInspectionScreen
-      sessionStorage.setItem("inspection:sections", JSON.stringify(normalizedSections));
+      sessionStorage.setItem(
+        "inspection:sections",
+        JSON.stringify(normalizedSections),
+      );
       sessionStorage.setItem("inspection:title", title);
       sessionStorage.setItem("inspection:template", mergedParams.template);
       sessionStorage.setItem("inspection:params", JSON.stringify(mergedParams));
 
-      // Legacy keys (kept for backwards compatibility; safe no-op if unused)
-      sessionStorage.setItem("customInspection:sections", JSON.stringify(normalizedSections));
+      // Legacy keys
+      sessionStorage.setItem(
+        "customInspection:sections",
+        JSON.stringify(normalizedSections),
+      );
       sessionStorage.setItem("customInspection:title", title);
 
       const next = new URLSearchParams(mergedParams);
@@ -312,7 +304,6 @@ export default function RunInspectionPage() {
     })();
   }, [sp, router, supabase]);
 
-  // Loader shell to match the fill loader styling
   return (
     <div className="flex min-h-[60vh] items-center justify-center bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
       <div className="mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl px-4 py-3 text-sm text-muted-foreground">

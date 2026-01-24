@@ -1,3 +1,4 @@
+// features/inspections/screens/GenericInspectionScreen.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -182,6 +183,9 @@ function isBatterySection(
   items: { item?: string | null }[] = [],
 ): boolean {
   const t = (title || "").toLowerCase();
+
+  // ✅ explicit title support
+  if (t.includes("battery grid")) return true;
   if (t.includes("battery")) return true;
 
   let hits = 0;
@@ -324,7 +328,6 @@ function buildCauseCorrectionFromSession(
 export default function GenericInspectionScreen(
   _props: GenericInspectionScreenProps,
 ): JSX.Element {
-
   const routeSp = useSearchParams();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
@@ -517,9 +520,7 @@ export default function GenericInspectionScreen(
     try {
       const raw = localStorage.getItem(lockKey);
       setIsLocked(raw === "1");
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [lockKey]);
 
   const guardLocked = (): boolean => {
@@ -549,9 +550,7 @@ export default function GenericInspectionScreen(
     if (!session) return;
     try {
       localStorage.setItem(draftKey, JSON.stringify(session));
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [session, draftKey]);
 
   useEffect(() => {
@@ -726,9 +725,7 @@ export default function GenericInspectionScreen(
           }
 
           await handleTranscript(maybeText);
-        } catch {
-          // ignore
-        }
+        } catch {}
       };
 
       ws.onerror = (err) => {
@@ -1301,13 +1298,10 @@ export default function GenericInspectionScreen(
     setIsLocked(true);
     try {
       localStorage.setItem(lockKey, "1");
-    } catch {
-      // ignore
-    }
+    } catch {}
     toast.success("Inspection snapshot locked by signature.");
   };
 
-  // give extra bottom padding because desktop now uses a sticky action bar too
   const shell =
     isEmbed || isMobileView
       ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
@@ -1347,8 +1341,6 @@ export default function GenericInspectionScreen(
   if (!session || (session.sections?.length ?? 0) === 0) {
     return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
-  
-    /* ------------------------------ render (no pairing / no auto-dedup) ------------------------------ */
 
   const body = (
     <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
@@ -1501,7 +1493,9 @@ export default function GenericInspectionScreen(
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
+                        onClick={() =>
+                          applyStatusToSection(sectionIndex, "recommend")
+                        }
                       >
                         All REC
                       </button>
