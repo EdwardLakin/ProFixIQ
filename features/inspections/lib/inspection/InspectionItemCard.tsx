@@ -34,6 +34,20 @@ interface InspectionItemCardProps {
   variant?: "card" | "row";
 }
 
+function getItemLabel(raw: InspectionItem): string {
+  const it = raw as unknown as {
+    item?: unknown;
+    name?: unknown;
+    label?: unknown;
+    description?: unknown;
+    title?: unknown;
+  };
+
+  return String(
+    it.item ?? it.name ?? it.label ?? it.description ?? it.title ?? "",
+  ).trim();
+}
+
 /**
  * NOTE: Accept `any` at the export boundary to avoid Next.js
  * “props must be serializable” warnings for Client Components that receive
@@ -54,15 +68,16 @@ export default function InspectionItemCard(_props: any) {
     variant = "card",
   } = _props as InspectionItemCardProps;
 
-  const name = (item.item ?? item.name ?? "").toLowerCase();
+  const label = getItemLabel(item);
+  const nameLower = label.toLowerCase();
 
   // Measurement items: show numeric value + unit inputs.
   // NOTE: include "hours" + "labor" to bring labor-hours box back where applicable.
   const isMeasurementItem =
-    name.includes("wheel torque") ||
-    name.includes("park lining") ||
-    name.includes("labor hours") ||
-    name.includes("hours");
+    nameLower.includes("wheel torque") ||
+    nameLower.includes("park lining") ||
+    nameLower.includes("labor hours") ||
+    nameLower.includes("hours");
 
   const status = String(item.status ?? "").toLowerCase();
   const isFail = status === "fail";
@@ -82,7 +97,7 @@ export default function InspectionItemCard(_props: any) {
           {/* Item */}
           <div className="min-w-0">
             <div className="truncate text-[15px] font-semibold text-white">
-              {item.item ?? item.name}
+              {label || "—"}
             </div>
           </div>
 
@@ -182,12 +197,12 @@ export default function InspectionItemCard(_props: any) {
     );
   }
 
-  // Card variant (kept as-is)
+  // Card variant (kept as-is, but with hardened label)
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">
         <h3 className="truncate text-[15px] font-semibold text-white">
-          {item.item ?? item.name}
+          {label || "—"}
         </h3>
 
         {isMeasurementItem ? (

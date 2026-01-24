@@ -1,5 +1,4 @@
-//features/inspections/app/inspection/custom-draft/page.tsx
-
+// /features/inspections/app/inspection/custom-draft/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -50,25 +49,49 @@ function normalizeItemLike(i: unknown): {
   unit: InspectionItem["unit"];
   status: InspectionItem["status"] | undefined;
   notes: InspectionItem["notes"] | undefined;
+  value?: InspectionItem["value"];
+  laborHours?: InspectionItem["laborHours"];
+  parts?: InspectionItem["parts"];
 } {
   if (!isRecord(i)) {
     return { item: "", unit: null, status: "na", notes: "" };
   }
-  const label = asString(i.item ?? i.name).trim();
+
+  // ✅ MAIN FIX: support label/title/description keys used by grid builders
+  const label = asString(
+    i.item ?? i.name ?? i.label ?? i.title ?? i.description,
+  ).trim();
+
   const unit = (isRecord(i) ? (i.unit as InspectionItem["unit"]) : null) ?? null;
 
-  const rawStatus = isRecord(i) ? i.status : undefined;
+    const rawStatus = isRecord(i) ? i.status : undefined;
+
   const status: InspectionItem["status"] | undefined =
     rawStatus === "ok" ||
     rawStatus === "fail" ||
     rawStatus === "na" ||
     rawStatus === "recommend"
       ? rawStatus
-      : "na";
+      : rawStatus === "unset"
+        ? undefined
+        : "na";
 
   const notes = asNullableString(isRecord(i) ? i.notes : null) ?? "";
 
-  return { item: label, unit, status, notes };
+  // Preserve optional fields if present (prevents losing measurement/grid info)
+  const value =
+    typeof i.value === "string" || typeof i.value === "number"
+      ? (i.value as InspectionItem["value"])
+      : undefined;
+
+  const laborHours =
+    typeof i.laborHours === "number" ? i.laborHours : undefined;
+
+  const parts = Array.isArray(i.parts)
+    ? (i.parts as InspectionItem["parts"])
+    : undefined;
+
+  return { item: label, unit, status, notes, value, laborHours, parts };
 }
 
 /** Merge sections by title & dedupe items by label (case-insensitive) */
@@ -172,8 +195,7 @@ export default function CustomDraftPage() {
     }
 
     // fallback: infer from duty class if present (legacy)
-    const inferred =
-      dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
+    const inferred = dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
     return inferred;
   });
 
@@ -287,14 +309,10 @@ export default function CustomDraftPage() {
           ? sessionStorage.getItem("customInspection:gridMode")
           : null;
 
-      const includeOil = includeOilRaw
-        ? JSON.parse(includeOilRaw) === true
-        : false;
+      const includeOil = includeOilRaw ? JSON.parse(includeOilRaw) === true : false;
 
       if (t && t.trim()) setTitle(t.trim());
-      if (storedDuty) {
-        setDutyClass(storedDuty as DutyClass);
-      }
+      if (storedDuty) setDutyClass(storedDuty as DutyClass);
       if (storedGrid) {
         const g = normalizeGridMode(storedGrid);
         if (g) setGridMode(g);
@@ -330,11 +348,8 @@ export default function CustomDraftPage() {
 
   // keep gridMode in sync if dutyClass changes and gridMode wasn't explicitly set
   useEffect(() => {
-    // if user/builder already set a gridMode (air/hyd/none), don't override it
     if (gridMode) return;
-
-    const inferred =
-      dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
+    const inferred = dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
     if (inferred) setGridMode(inferred);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dutyClass]);
@@ -374,12 +389,9 @@ export default function CustomDraftPage() {
         setLaborHours(hours);
       }
 
-      // If existing template already has a shop_id, keep it
       if (data.shop_id && !shopId) {
         setShopId(data.shop_id);
       }
-
-      // NOTE: templates don't store gridMode explicitly; we leave current gridMode as-is
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId, supabase]);
@@ -556,7 +568,6 @@ export default function CustomDraftPage() {
           cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Update"]["sections"],
         vehicle_type: vehicleType || undefined,
         labor_hours: Number.isFinite(laborHours) ? laborHours : null,
-        // we deliberately do NOT override user_id / shop_id / tags / is_public here
       };
 
       const { error, data } = await supabase
@@ -596,7 +607,7 @@ export default function CustomDraftPage() {
       qs.set("template", title || "Inspection");
       if (vehicleType) qs.set("vehicleType", vehicleType);
       if (dutyClass) qs.set("dutyClass", dutyClass);
-      if (gridMode) qs.set("grid", gridMode); // ✅ carry through (harmless even if unused)
+      if (gridMode) qs.set("grid", gridMode);
       router.push(`/inspections/run?${qs.toString()}`);
     } finally {
       setRunning(false);
@@ -707,9 +718,7 @@ export default function CustomDraftPage() {
               value={vehicleType ?? ""}
               onChange={(e) =>
                 setVehicleType(
-                  e.target.value
-                    ? (e.target.value as VehicleType)
-                    : null,
+                  e.target.value ? (e.target.value as VehicleType) : null,
                 )
               }
             >
@@ -793,7 +802,7 @@ export default function CustomDraftPage() {
                     >
                       ↑
                     </button>
-                    <button
+                                        <button
                       onClick={() => moveSection(i, +1)}
                       className="rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800 disabled:opacity-40"
                       disabled={i === sections.length - 1}
@@ -816,6 +825,7 @@ export default function CustomDraftPage() {
                   {(sec.items ?? []).map((it, j) => {
                     const isPlaceholder = it.item === "New Item";
                     const hasMaster = masterItemsForThisSection.length > 0;
+
                     return (
                       <div
                         key={`${i}-${j}-${it.item}-${j}`}
@@ -827,7 +837,11 @@ export default function CustomDraftPage() {
                             className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white"
                             value=""
                             onChange={(e) =>
-                              updateItemLabel(i, j, e.target.value || "New Item")
+                              updateItemLabel(
+                                i,
+                                j,
+                                e.target.value || "New Item",
+                              )
                             }
                           >
                             <option value="">— pick an item —</option>
@@ -842,7 +856,9 @@ export default function CustomDraftPage() {
                           <input
                             className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500"
                             value={it.item}
-                            onChange={(e) => updateItemLabel(i, j, e.target.value)}
+                            onChange={(e) =>
+                              updateItemLabel(i, j, e.target.value)
+                            }
                             placeholder="Item label"
                           />
                         )}
