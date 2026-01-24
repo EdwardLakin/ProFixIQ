@@ -60,8 +60,14 @@ function batteryIndex(battery: string): number {
   return Number.MAX_SAFE_INTEGER;
 }
 
+/**
+ * Classify metric into one of the rows the grid supports.
+ * - rating/tested: always CCA
+ * - voltage: always V
+ * - condition: anything else (SOH/SOC/visual condition/notes/etc.)
+ */
 const classifyMetric = (label: string): MetricKind | null => {
-  const lower = label.toLowerCase();
+  const lower = label.toLowerCase().trim();
 
   // rating (CCA rated)
   if (lower.includes("rating") || lower.includes("rated")) return "rating";
@@ -86,13 +92,24 @@ const classifyMetric = (label: string): MetricKind | null => {
   )
     return "voltage";
 
-  // condition / pass fail / notes
+  // condition / health / charge / notes
   if (
     lower.includes("condition") ||
     lower.includes("pass") ||
     lower.includes("fail") ||
     lower.includes("status") ||
     lower.includes("notes")
+  )
+    return "condition";
+
+  // explicit SOH / SOC / charge keywords (your builder injects these)
+  if (
+    lower.includes("state of health") ||
+    /\bsoh\b/i.test(label) ||
+    lower.includes("state of charge") ||
+    /\bsoc\b/i.test(label) ||
+    lower.includes("charge") ||
+    lower.includes("charging")
   )
     return "condition";
 
@@ -109,10 +126,25 @@ const metricCompare = (a: BatteryRow, b: BatteryRow) => {
 function prettyMetric(kind: MetricKind, metricRaw: string): string {
   const m = metricRaw.trim();
 
-  if (kind === "rating") return /rating/i.test(m) ? m : "Rating";
-  if (kind === "tested") return /test/i.test(m) ? m : "Tested";
-  if (kind === "voltage") return /volt/i.test(m) ? m : "Voltage";
-  return /condition/i.test(m) ? m : "Condition";
+  if (kind === "rating") {
+    // Keep "Rating CCA" if provided, else "Rating"
+    if (/rating/i.test(m)) return m;
+    return "Rating";
+  }
+
+  if (kind === "tested") {
+    if (/test/i.test(m) || /measured/i.test(m)) return m;
+    return "Tested";
+  }
+
+  if (kind === "voltage") {
+    if (/volt/i.test(m)) return m;
+    return "Voltage";
+  }
+
+  // condition: preserve helpful labels (SOH/SOC/Visual Condition/etc.)
+  if (m.length > 0) return m;
+  return "Condition";
 }
 
 function unitForKind(
@@ -128,7 +160,20 @@ function unitForKind(
   if (u) return u;
 
   const hinted = (unitHint ? unitHint(label) : "").trim();
-  return hinted;
+  if (hinted) return hinted;
+
+  // Good defaults for common battery condition metrics
+  const lower = (label || "").toLowerCase();
+  if (lower.includes("state of health") || /\bsoh\b/i.test(label)) return "%";
+  if (lower.includes("state of charge") || /\bsoc\b/i.test(label)) return "%";
+
+  return "";
+}
+
+function getLabel(it: InspectionItem): string {
+  // Align with GenericInspectionScreen normalization (item preferred, name fallback)
+  const anyIt = it as unknown as { item?: unknown; name?: unknown };
+  return String(anyIt.item ?? anyIt.name ?? "").trim();
 }
 
 export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
@@ -146,7 +191,7 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
     const allCells: BatteryCell[] = [];
 
     items.forEach((it, idx) => {
-      const label = (it.item ?? "").trim();
+      const label = getLabel(it);
       if (!label) return;
 
       const m = label.match(BATTERY_RE);
@@ -161,7 +206,7 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
       if (!kind) return;
 
       const metric = prettyMetric(kind, metricRaw);
-      const unit = unitForKind(kind, label, it.unit ?? null, unitHint);
+      const unit = unitForKind(kind, label, (it as any)?.unit ?? null, unitHint);
 
       allCells.push({
         idx,
@@ -170,7 +215,7 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
         kind,
         unit,
         fullLabel: label,
-        initial: String(it.value ?? ""),
+        initial: String((it as any)?.value ?? ""),
       });
     });
 
@@ -225,7 +270,7 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
             Battery Measurements
           </div>
           <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-            Rating/Tested: CCA • Voltage: V
+            Rating/Tested: CCA • Voltage: V • Health/Charge: %
           </div>
         </div>
 
@@ -289,7 +334,9 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
                         const isNumericRow =
                           cell.kind === "rating" ||
                           cell.kind === "tested" ||
-                          cell.kind === "voltage";
+                          cell.kind === "voltage" ||
+                          // condition can be numeric too (SOH/SOC)
+                          /%$/.test(cell.unit?.trim() || "");
 
                         const placeholder =
                           cell.kind === "rating"
@@ -298,7 +345,7 @@ export default function BatteryGrid({ sectionIndex, items, unitHint }: Props) {
                               ? "Test"
                               : cell.kind === "voltage"
                                 ? "Volts"
-                                : "Notes";
+                                : "Value";
 
                         const rightUnit = cell.unit?.trim();
 

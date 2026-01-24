@@ -1,8 +1,8 @@
-//features/inspections/lib/inspection/SectionDisplay.tsx
+// /features/inspections/lib/inspection/SectionDisplay.tsx
 "use client";
 
 import { useState, useMemo } from "react";
-import {
+import type {
   InspectionSection,
   InspectionItemStatus,
 } from "@inspections/lib/inspection/types";
@@ -173,8 +173,23 @@ export default function SectionDisplay(props: SectionDisplayProps) {
       {/* Body */}
       {open && (
         <div className="pt-3">
-          {/* One modern container + divider rows (no more pill stack) */}
+          {/* One modern container + divider rows */}
           <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)]">
+            {/* Inline header row (desktop) */}
+            <div className="hidden border-b border-white/10 bg-black/25 px-3 py-2 md:block md:px-4">
+              <div className="grid items-center gap-3 md:grid-cols-[minmax(0,1fr)_320px_360px]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                  Item
+                </div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                  Checkboxes
+                </div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                  Notes
+                </div>
+              </div>
+            </div>
+
             <div className="divide-y divide-white/10">
               {section.items.map((item, itemIndex) => {
                 const key =
@@ -196,7 +211,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                 const submitting =
                   isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
 
-                // Thin left rail for quick scanning (modern, non-generic)
+                // Thin left rail for quick scanning
                 const rail =
                   isFail
                     ? "before:bg-red-500/70"
@@ -214,7 +229,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                       "bg-black/20 hover:bg-white/[0.03] transition-colors",
                     ].join(" ")}
                   >
-                    {/* Main row */}
+                    {/* Main row (inline: Item | Checkboxes | Notes) */}
                     <InspectionItemCard
                       item={item}
                       sectionIndex={sectionIndex}
