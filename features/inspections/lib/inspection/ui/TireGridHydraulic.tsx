@@ -7,7 +7,6 @@ import type { InspectionItem } from "@inspections/lib/inspection/types";
 const POSITIONS = ["LF", "RF", "LR", "RR"] as const;
 type Position = (typeof POSITIONS)[number];
 
-type TreadPos = "Outer" | "Inner";
 
 type RowKey = "Tire Pressure" | "Tread Depth (Outer)" | "Tread Depth (Inner)";
 
