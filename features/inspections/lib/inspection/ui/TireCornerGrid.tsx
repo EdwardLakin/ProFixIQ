@@ -1,4 +1,3 @@
-// features/inspections/lib/inspection/ui/TireCornerGrid.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -10,14 +9,13 @@ type Props = {
   items: InspectionItem[];
   unitHint?: (label: string) => string;
   onAddAxle?: (axleLabel: string) => void;
-  /** Kept for API compatibility, but TireGrid no longer renders spec buttons. */
   onSpecHint?: (metricLabel: string) => void;
 };
 
 type Side = "Left" | "Right";
 type DualPos = "Inner" | "Outer";
 
-type MetricKind = "pressure" | "tread" | "torque" | "other";
+type MetricKind = "pressure" | "tread" | "other";
 
 type Cell = {
   idx: number;
@@ -28,7 +26,7 @@ type Cell = {
 
 type SingleSide = {
   pressure?: Cell;
-  tread?: Cell; // single tread depth (no inner/outer)
+  tread?: Cell;
 };
 
 type DualSide = {
@@ -42,16 +40,14 @@ type AxleRow = {
   isDual: boolean;
   single: { left: SingleSide; right: SingleSide };
   dual: { left: DualSide; right: DualSide };
-  torque?: Cell;
 };
 
 /**
  * Supported formats:
  *  - Heavy-duty: "Steer 1 Left Tire Pressure", "Drive 1 Right Tread Depth (Outer)"
- *  - Hydraulic corners: "LF Tire Pressure", "RR Tread Depth", "LR Wheel Torque"
+ *  - Hydraulic corners: "LF Tire Pressure", "RR Tread Depth", "LR Tread Depth (Inner)"
  */
-const AXLE_LABEL_RE =
-  /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+const AXLE_LABEL_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
 const HYD_CORNER_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 type HydCorner = "LF" | "RF" | "LR" | "RR";
@@ -71,18 +67,8 @@ function cornerToAxleSide(corner: HydCorner): { axleLabel: string; side: Side } 
 
 function metricKindFrom(label: string): MetricKind {
   const l = label.toLowerCase();
-
   if (l.includes("tire pressure") || l.includes("pressure")) return "pressure";
-
-  if (
-    l.includes("tread depth") ||
-    l.includes("tread") ||
-    l.includes("tire tread")
-  )
-    return "tread";
-
-  if (l.includes("wheel torque") || l.includes("torque")) return "torque";
-
+  if (l.includes("tread depth") || l.includes("tread") || l.includes("tire tread")) return "tread";
   return "other";
 }
 
@@ -93,20 +79,24 @@ function extractTreadPos(metricLabel: string): DualPos | null {
   return null;
 }
 
-function pickUnit(
-  explicit: string | null | undefined,
-  hinted: string | null | undefined,
-): string {
+function pickUnit(explicit: string | null | undefined, hinted: string | null | undefined): string {
   const e = (explicit ?? "").trim();
   if (e) return e;
   return (hinted ?? "").trim();
 }
 
-function placeSingleTread(
-  side: SingleSide,
-  _pos: DualPos | null,
-  cell: Cell,
-): void {
+function isDualAxleLabel(axle: string): boolean {
+  const l = axle.toLowerCase();
+  // Steer is single. Everything else (drive/rear/tag/trailer) is dual.
+  if (l.startsWith("steer")) return false;
+  if (l.startsWith("drive")) return true;
+  if (l.startsWith("rear")) return true;
+  if (l.startsWith("tag")) return true;
+  if (l.startsWith("trailer")) return true;
+  return true; // default to dual for unknown axle types (safe per your “duals on both” note)
+}
+
+function placeSingleTread(side: SingleSide, cell: Cell): void {
   if (!side.tread) side.tread = cell;
 }
 
@@ -119,17 +109,12 @@ function placeDualTread(side: DualSide, pos: DualPos | null, cell: Cell): void {
     if (!side.treadInner) side.treadInner = cell;
     return;
   }
-  // If no pos, prefer Outer slot first, then Inner
+  // no pos -> fill outer then inner
   if (!side.treadOuter) side.treadOuter = cell;
   else if (!side.treadInner) side.treadInner = cell;
 }
 
-export default function TireGrid({
-  sectionIndex,
-  items,
-  unitHint,
-  onAddAxle,
-}: Props) {
+export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
 
@@ -146,7 +131,7 @@ export default function TireGrid({
 
       const next: AxleRow = {
         axle,
-        isDual: false,
+        isDual: isDualAxleLabel(axle),
         single: { left: {}, right: {} },
         dual: { left: {}, right: {} },
       };
@@ -155,12 +140,12 @@ export default function TireGrid({
     };
 
     items.forEach((it, idx) => {
-      const label = (it.item ?? "").trim();
+      const label = String(it.item ?? it.name ?? "").trim();
       if (!label) return;
 
       const hintedUnit = unitHint ? unitHint(label) : "";
 
-      // ✅ 1) Hydraulic corner style: "LF Tire Pressure"
+      // 1) Hydraulic corner style: "LF Tire Pressure"
       const hyd = label.match(HYD_CORNER_RE);
       if (hyd?.groups?.corner && hyd.groups.metric) {
         const corner = String(hyd.groups.corner).toUpperCase() as HydCorner;
@@ -171,9 +156,8 @@ export default function TireGrid({
         if (kind === "other") return;
 
         const row = ensure(axleLabel);
-
-        // ✅ Force non-dual mapping for hyd corners
-        row.isDual = false;
+        // force: steer single, rear dual
+        row.isDual = isDualAxleLabel(axleLabel);
 
         const cell: Cell = {
           idx,
@@ -182,20 +166,20 @@ export default function TireGrid({
           initial: String(it.value ?? ""),
         };
 
-        if (kind === "torque") {
-          row.torque = row.torque ?? cell;
+        if (!row.isDual) {
+          const grp = side === "Left" ? row.single.left : row.single.right;
+          if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
+          if (kind === "tread") placeSingleTread(grp, cell);
           return;
         }
 
-        const grp = side === "Left" ? row.single.left : row.single.right;
-
+        const grp = side === "Left" ? row.dual.left : row.dual.right;
         if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-        if (kind === "tread") placeSingleTread(grp, null, cell);
-
+        if (kind === "tread") placeDualTread(grp, extractTreadPos(metric), cell);
         return;
       }
 
-      // ✅ 2) Heavy-duty axle style: "Drive 1 Left Tread Depth (Outer)"
+      // 2) Heavy-duty axle style: "Drive 1 Left Tread Depth (Outer)"
       const m = label.match(AXLE_LABEL_RE);
       if (!m?.groups) return;
 
@@ -209,9 +193,8 @@ export default function TireGrid({
 
       const row = ensure(axle);
 
-      // Detect dual by tread pos tokens or explicit “Inner/Outer”
-      const pos = extractTreadPos(metric);
-      if (pos) row.isDual = true;
+      // enforce dual by axle type (per your spec), not by presence of “Inner/Outer”
+      row.isDual = isDualAxleLabel(axle);
 
       const cell: Cell = {
         idx,
@@ -220,26 +203,20 @@ export default function TireGrid({
         initial: String(it.value ?? ""),
       };
 
-      if (kind === "torque") {
-        row.torque = row.torque ?? cell;
-        return;
-      }
-
       if (!row.isDual) {
         const grp = side === "Left" ? row.single.left : row.single.right;
         if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-        if (kind === "tread") placeSingleTread(grp, pos, cell);
+        if (kind === "tread") placeSingleTread(grp, cell);
         return;
       }
 
       const grp = side === "Left" ? row.dual.left : row.dual.right;
       if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-      if (kind === "tread") placeDualTread(grp, pos, cell);
+      if (kind === "tread") placeDualTread(grp, extractTreadPos(metric), cell);
     });
 
     const out = Array.from(byAxle.values());
 
-    // sort axles nicely (Steer 1, Drive 1, Drive 2, Tag, Trailer 1, etc.)
     const score = (ax: string): number => {
       const l = ax.toLowerCase();
       if (l.startsWith("steer")) return 0;
@@ -279,9 +256,7 @@ export default function TireGrid({
         </button>
       </div>
 
-      {onAddAxle ? (
-        <AddAxlePicker existing={existingAxles} onAddAxle={onAddAxle} />
-      ) : null}
+      {onAddAxle ? <AddAxlePicker existing={existingAxles} onAddAxle={onAddAxle} /> : null}
 
       {tables.map((t) => (
         <div
@@ -327,53 +302,33 @@ export default function TireGrid({
                             ? (t.isDual ? t.dual.left.pressure : t.single.left.pressure)
                             : (t.isDual ? t.dual.right.pressure : t.single.right.pressure);
 
-                        if (!cell) {
-                          return (
-                            <td key={side} className="px-3 py-2">
-                              <div className="h-[32px]" />
-                            </td>
-                          );
-                        }
-
                         return (
                           <td key={side} className="px-3 py-2 text-center">
-                            <ValueInput
-                              cell={cell}
-                              placeholder="Value"
-                              onCommit={commit}
-                            />
+                            {cell ? (
+                              <ValueInput cell={cell} placeholder="Value" onCommit={commit} />
+                            ) : (
+                              <div className="h-[32px]" />
+                            )}
                           </td>
                         );
                       })}
                     </tr>
 
-                    {/* Tread row(s) */}
+                    {/* Tread rows */}
                     {!t.isDual ? (
                       <tr className="align-middle">
                         <td className="px-3 py-2 text-sm font-semibold text-foreground">
                           Tread Depth
                         </td>
                         {(["Left", "Right"] as const).map((side) => {
-                          const cell =
-                            side === "Left"
-                              ? t.single.left.tread
-                              : t.single.right.tread;
-
-                          if (!cell) {
-                            return (
-                              <td key={side} className="px-3 py-2">
-                                <div className="h-[32px]" />
-                              </td>
-                            );
-                          }
-
+                          const cell = side === "Left" ? t.single.left.tread : t.single.right.tread;
                           return (
                             <td key={side} className="px-3 py-2 text-center">
-                              <ValueInput
-                                cell={cell}
-                                placeholder="Value"
-                                onCommit={commit}
-                              />
+                              {cell ? (
+                                <ValueInput cell={cell} placeholder="Value" onCommit={commit} />
+                              ) : (
+                                <div className="h-[32px]" />
+                              )}
                             </td>
                           );
                         })}
@@ -386,25 +341,14 @@ export default function TireGrid({
                           </td>
                           {(["Left", "Right"] as const).map((side) => {
                             const cell =
-                              side === "Left"
-                                ? t.dual.left.treadOuter
-                                : t.dual.right.treadOuter;
-
-                            if (!cell) {
-                              return (
-                                <td key={side} className="px-3 py-2">
-                                  <div className="h-[32px]" />
-                                </td>
-                              );
-                            }
-
+                              side === "Left" ? t.dual.left.treadOuter : t.dual.right.treadOuter;
                             return (
                               <td key={side} className="px-3 py-2 text-center">
-                                <ValueInput
-                                  cell={cell}
-                                  placeholder="Outer"
-                                  onCommit={commit}
-                                />
+                                {cell ? (
+                                  <ValueInput cell={cell} placeholder="Outer" onCommit={commit} />
+                                ) : (
+                                  <div className="h-[32px]" />
+                                )}
                               </td>
                             );
                           })}
@@ -416,49 +360,20 @@ export default function TireGrid({
                           </td>
                           {(["Left", "Right"] as const).map((side) => {
                             const cell =
-                              side === "Left"
-                                ? t.dual.left.treadInner
-                                : t.dual.right.treadInner;
-
-                            if (!cell) {
-                              return (
-                                <td key={side} className="px-3 py-2">
-                                  <div className="h-[32px]" />
-                                </td>
-                              );
-                            }
-
+                              side === "Left" ? t.dual.left.treadInner : t.dual.right.treadInner;
                             return (
                               <td key={side} className="px-3 py-2 text-center">
-                                <ValueInput
-                                  cell={cell}
-                                  placeholder="Inner"
-                                  onCommit={commit}
-                                />
+                                {cell ? (
+                                  <ValueInput cell={cell} placeholder="Inner" onCommit={commit} />
+                                ) : (
+                                  <div className="h-[32px]" />
+                                )}
                               </td>
                             );
                           })}
                         </tr>
                       </>
                     )}
-
-                    {/* Torque row (optional) */}
-                    {t.torque ? (
-                      <tr className="align-middle">
-                        <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                          Wheel Torque
-                        </td>
-                        <td className="px-3 py-2 text-center" colSpan={2}>
-                          <div className="mx-auto w-full max-w-[12rem]">
-                            <ValueInput
-                              cell={t.torque}
-                              placeholder="Torque"
-                              onCommit={commit}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
                   </tbody>
                 </table>
               </div>

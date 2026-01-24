@@ -1,10 +1,10 @@
 // features/inspections/lib/inspection/prepareSectionsWithCornerGrid.ts
+
 export type CornerGridItem = { item: string; unit?: string | null };
 export type CornerGridSection = { title: string; items: CornerGridItem[] };
 
 const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
-const AIR_ITEM_RE =
-  /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
+const AIR_ITEM_RE = /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
 
 function looksLikeCornerTitle(title: string | undefined | null): boolean {
   if (!title) return false;
@@ -18,9 +18,7 @@ function looksLikeCornerTitle(title: string | undefined | null): boolean {
   );
 }
 
-function stripExistingCornerGrids<T extends CornerGridSection>(
-  sections: T[],
-): T[] {
+function stripExistingCornerGrids<T extends CornerGridSection>(sections: T[]): T[] {
   return sections.filter((s) => {
     if (looksLikeCornerTitle(s.title)) return false;
     const items = s.items ?? [];
@@ -30,10 +28,12 @@ function stripExistingCornerGrids<T extends CornerGridSection>(
   });
 }
 
+/**
+ * IMPORTANT:
+ * Corner grids are BRAKES/torque/push-rod ONLY (tires moved to Tire Grid).
+ */
 function buildHydraulicCornerSection(): CornerGridSection {
   const metrics: Array<{ label: string; unit: string | null }> = [
-    { label: "Tire Pressure", unit: "psi" },
-    { label: "Tire Tread", unit: "mm" },
     { label: "Brake Pad", unit: "mm" },
     { label: "Rotor", unit: "mm" },
     { label: "Rotor Condition", unit: null },
@@ -50,33 +50,36 @@ function buildHydraulicCornerSection(): CornerGridSection {
   return { title: "Corner Grid (Hydraulic)", items };
 }
 
+/**
+ * IMPORTANT:
+ * Corner grids are BRAKES/torque/push-rod ONLY (tires moved to Tire Grid).
+ * This legacy helper injects a minimal “Steer 1 / Drive 1” set when needed.
+ */
 function buildAirCornerSection(): CornerGridSection {
   const steer: CornerGridItem[] = [
-    { item: "Steer 1 Left Tire Pressure", unit: "psi" },
-    { item: "Steer 1 Right Tire Pressure", unit: "psi" },
-    { item: "Steer 1 Left Tread Depth", unit: "mm" },
-    { item: "Steer 1 Right Tread Depth", unit: "mm" },
     { item: "Steer 1 Left Lining/Shoe", unit: "mm" },
     { item: "Steer 1 Right Lining/Shoe", unit: "mm" },
     { item: "Steer 1 Left Drum/Rotor", unit: "mm" },
     { item: "Steer 1 Right Drum/Rotor", unit: "mm" },
     { item: "Steer 1 Left Push Rod Travel", unit: "in" },
     { item: "Steer 1 Right Push Rod Travel", unit: "in" },
+    { item: "Steer 1 Left Wheel Torque Outer", unit: "ft·lb" },
+    { item: "Steer 1 Right Wheel Torque Outer", unit: "ft·lb" },
+    { item: "Steer 1 Left Wheel Torque Inner", unit: "ft·lb" },
+    { item: "Steer 1 Right Wheel Torque Inner", unit: "ft·lb" },
   ];
 
   const drive: CornerGridItem[] = [
-    { item: "Drive 1 Left Tire Pressure", unit: "psi" },
-    { item: "Drive 1 Right Tire Pressure", unit: "psi" },
-    { item: "Drive 1 Left Tread Depth (Outer)", unit: "mm" },
-    { item: "Drive 1 Left Tread Depth (Inner)", unit: "mm" },
-    { item: "Drive 1 Right Tread Depth (Outer)", unit: "mm" },
-    { item: "Drive 1 Right Tread Depth (Inner)", unit: "mm" },
     { item: "Drive 1 Left Lining/Shoe", unit: "mm" },
     { item: "Drive 1 Right Lining/Shoe", unit: "mm" },
     { item: "Drive 1 Left Drum/Rotor", unit: "mm" },
     { item: "Drive 1 Right Drum/Rotor", unit: "mm" },
     { item: "Drive 1 Left Push Rod Travel", unit: "in" },
     { item: "Drive 1 Right Push Rod Travel", unit: "in" },
+    { item: "Drive 1 Left Wheel Torque Outer", unit: "ft·lb" },
+    { item: "Drive 1 Right Wheel Torque Outer", unit: "ft·lb" },
+    { item: "Drive 1 Left Wheel Torque Inner", unit: "ft·lb" },
+    { item: "Drive 1 Right Wheel Torque Inner", unit: "ft·lb" },
   ];
 
   return { title: "Corner Grid (Air)", items: [...steer, ...drive] };

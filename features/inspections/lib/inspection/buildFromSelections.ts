@@ -1,8 +1,6 @@
 // features/inspections/lib/inspection/buildFromSelections.ts
-import type {
-  InspectionCategory,
-  InspectionItem,
-} from "@inspections/lib/inspection/types";
+
+import type { InspectionCategory, InspectionItem } from "@inspections/lib/inspection/types";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
 

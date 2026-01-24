@@ -1,7 +1,7 @@
 // app/inspections/custom/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
@@ -10,204 +10,254 @@ type DutyClass = "light" | "medium" | "heavy";
 type GridMode = "hyd" | "air" | "none";
 type EngineType = "gas" | "diesel";
 
-// Minimal shape we care about when merging
+// Minimal shape we care about when merging/staging
 type Section = {
   title: string;
   items: Array<{ item?: string; name?: string; unit?: string | null }>;
 };
 
 /* ------------------------------------------------------------------ */
-/* Corner-grid detection + builders (aligned with run/mobile)         */
+/* Corner-grid detection + builders (FINAL / CANONICAL)               */
 /* ------------------------------------------------------------------ */
 
-// LF/RF/LR/RR ...
+// LF/RF/LR/RR
 const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
 
-// Steer/Drive/Tag/Trailer <N> Left|Right ...
-const AIR_ITEM_RE =
-  /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
+// Steer / Drive / Tag / Trailer
+const AIR_ITEM_RE = /^(Steer|Drive|Tag|Trailer)\s*\d*\s+(Left|Right)\s+/i;
 
-function looksLikeCornerTitle(title: string | undefined | null): boolean {
+function looksLikeCornerTitle(title?: string | null): boolean {
   if (!title) return false;
   const t = title.toLowerCase();
-  return (
-    t.includes("corner grid") ||
-    t.includes("tires & brakes") ||
-    t.includes("tires and brakes") ||
-    t.includes("air brake") ||
-    t.includes("hydraulic brake")
-  );
+  return t.includes("corner grid") || t.includes("brake corner");
 }
 
-/** Remove any section that appears to be a corner grid to prevent duplicates. */
-function stripExistingCornerGrids(sections: Section[]): Section[] {
-  return sections.filter((s) => {
-    if (looksLikeCornerTitle(s.title)) return false;
+/* ---------------- HYDRAULIC BRAKE CORNER GRID ---------------- */
+
+function buildHydraulicCornerSection(): Section {
+  const corners = ["LF", "RF", "LR", "RR"];
+  const metrics = [
+    { label: "Brake Pad Thickness", unit: "mm" },
+    { label: "Rotor Thickness", unit: "mm" },
+  ];
+
+  const items = corners.flatMap((c) =>
+    metrics.map((m) => ({
+      item: `${c} ${m.label}`,
+      unit: m.unit,
+    })),
+  );
+
+  return {
+    title: "Corner Grid – Hydraulic Brakes",
+    items,
+  };
+}
+
+/* ---------------- AIR BRAKE CORNER GRID ---------------- */
+
+function buildAirCornerSection(): Section {
+  const axles = ["Steer 1", "Drive 1"];
+  const sides = ["Left", "Right"];
+
+  const metrics = [
+    { label: "Brake Pad / Shoe Thickness", unit: "mm" },
+    { label: "Brake Drum / Rotor Thickness", unit: "mm" },
+    { label: "Push Rod Travel", unit: "in" },
+  ];
+
+  const items: Section["items"] = [];
+
+  for (const axle of axles) {
+    for (const side of sides) {
+      for (const m of metrics) {
+        items.push({
+          item: `${axle} ${side} ${m.label}`,
+          unit: m.unit,
+        });
+      }
+    }
+  }
+
+  return {
+    title: "Corner Grid – Air Brakes",
+    items,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* TIRE GRIDS (SEPARATE FROM BRAKES)                                  */
+/* ------------------------------------------------------------------ */
+
+function hasTireGrid(sections: Section[]): boolean {
+  return sections.some((s) => (s.title || "").toLowerCase().includes("tire grid"));
+}
+
+/* ---- AIR BRAKE TIRE GRID (axles) ---- */
+function buildAirTireGrid(): Section {
+  const axles = ["Steer 1", "Drive 1"];
+  const sides = ["Left", "Right"];
+
+  const metrics = [
+    { label: "Tire Pressure", unit: "psi" },
+    { label: "Tread Depth", unit: "mm" },
+  ];
+
+  const items: Section["items"] = [];
+
+  for (const axle of axles) {
+    for (const side of sides) {
+      for (const m of metrics) {
+        items.push({
+          item: `${axle} ${side} ${m.label}`,
+          unit: m.unit,
+        });
+      }
+    }
+  }
+
+  return {
+    title: "Tire Grid – Air Brake",
+    items,
+  };
+}
+
+/* ---- HYDRAULIC TIRE GRID (automotive) ---- */
+function buildHydraulicTireGrid(): Section {
+  const corners = ["LF", "RF", "LR", "RR"];
+  const metrics = [
+    { label: "Tire Pressure", unit: "psi" },
+    { label: "Tread Depth", unit: "mm" },
+  ];
+
+  const items = corners.flatMap((c) =>
+    metrics.map((m) => ({
+      item: `${c} ${m.label}`,
+      unit: m.unit,
+    })),
+  );
+
+  return {
+    title: "Tire Grid – Hydraulic",
+    items,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* BATTERY GRID (CCA ONLY, 1–5 BATTERIES)                             */
+/* ------------------------------------------------------------------ */
+
+function hasBatteryGrid(sections: Section[]): boolean {
+  return sections.some((s) => (s.title || "").toLowerCase().includes("battery grid"));
+}
+
+function buildBatteryGrid(count = 1): Section {
+  const batteries = Array.from({ length: Math.min(5, Math.max(1, count)) }, (_, i) => `Battery ${i + 1}`);
+
+  const metrics = [
+    { label: "Rated CCA", unit: "CCA" },
+    { label: "Tested CCA", unit: "CCA" },
+  ];
+
+  const items = batteries.flatMap((b) =>
+    metrics.map((m) => ({
+      item: `${b} ${m.label}`,
+      unit: m.unit,
+    })),
+  );
+
+  return {
+    title: "Battery Grid",
+    items,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* SECTION UTILITIES                                                  */
+/* ------------------------------------------------------------------ */
+
+function normalizeTitle(t: string) {
+  return (t || "").trim().toLowerCase();
+}
+function normalizeItem(i: string) {
+  return (i || "").trim().toLowerCase();
+}
+function toLabel(raw: { item?: string; name?: string }) {
+  return (raw.item ?? raw.name ?? "").trim();
+}
+
+function mergeSections(a: Section[], b: Section[]): Section[] {
+  const out: Record<string, { title: string; items: { item: string; unit?: string | null }[] }> = {};
+
+  const addList = (list: Section[]) => {
+    for (const sec of list || []) {
+      const sectionTitle = sec?.title ?? "";
+      const key = normalizeTitle(sectionTitle);
+      if (!key) continue;
+      if (!out[key]) out[key] = { title: sectionTitle, items: [] };
+
+      const seen = new Set(out[key].items.map((i) => normalizeItem(i.item)));
+      for (const raw of sec.items || []) {
+        const label = toLabel(raw);
+        if (!label) continue;
+        const lk = normalizeItem(label);
+        if (seen.has(lk)) continue;
+        out[key].items.push({ item: label, unit: raw.unit ?? null });
+        seen.add(lk);
+      }
+    }
+  };
+
+  addList(a);
+  addList(b);
+
+  return Object.values(out).filter((s) => (s.items?.length ?? 0) > 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* FINAL SECTION ASSEMBLER                                            */
+/* ------------------------------------------------------------------ */
+
+function prepareSections(
+  base: Section[],
+  gridMode: GridMode,
+  includeTires: boolean,
+  includeBattery: boolean,
+  batteryCount: number,
+): Section[] {
+  // Strip any pre-existing corner-grid-ish sections to prevent duplicates
+  let sections = (base || []).filter((s) => {
+    const title = s?.title ?? "";
+    if (looksLikeCornerTitle(title)) return false;
 
     const items = s.items ?? [];
-    const looksHyd = items.some((it) => HYD_ITEM_RE.test(it.item || ""));
-    const looksAir = items.some((it) => AIR_ITEM_RE.test(it.item || ""));
+    const looksHyd = items.some((it) => HYD_ITEM_RE.test((it.item || it.name || "").trim()));
+    const looksAir = items.some((it) => AIR_ITEM_RE.test((it.item || it.name || "").trim()));
     return !(looksHyd || looksAir);
   });
-}
 
-/** Canonical HYD corner grid (LF/RF/LR/RR) — ✅ TIRES REMOVED */
-function buildHydraulicCornerSection(): Section {
-  const metrics: Array<{ label: string; unit: string | null }> = [
-    { label: "Brake Pad", unit: "mm" },
-    { label: "Rotor", unit: "mm" },
-    { label: "Rotor Condition", unit: null },
-    { label: "Rotor Thickness", unit: "mm" },
-    { label: "Wheel Torque", unit: "ft·lb" },
-  ];
-  const corners = ["LF", "RF", "LR", "RR"];
-  const items: { item: string; unit: string | null }[] = [];
-  for (const c of corners) {
-    for (const m of metrics) {
-      items.push({ item: `${c} ${m.label}`, unit: m.unit });
-    }
-  }
-  return { title: "Corner Grid (Hydraulic)", items };
-}
+  // Inject corner grid FIRST
+  if (gridMode === "air") sections = [buildAirCornerSection(), ...sections];
+  if (gridMode === "hyd") sections = [buildHydraulicCornerSection(), ...sections];
 
-/** Canonical AIR corner grid: Steer 1 + Drive 1 — ✅ TIRES REMOVED */
-function buildAirCornerSection(): Section {
-  const steer: { item: string; unit: string | null }[] = [
-    { item: "Steer 1 Left Lining/Shoe", unit: "mm" },
-    { item: "Steer 1 Right Lining/Shoe", unit: "mm" },
-    { item: "Steer 1 Left Drum/Rotor", unit: "mm" },
-    { item: "Steer 1 Right Drum/Rotor", unit: "mm" },
-    { item: "Steer 1 Left Push Rod Travel", unit: "in" },
-    { item: "Steer 1 Right Push Rod Travel", unit: "in" },
-  ];
-
-  const drive: { item: string; unit: string | null }[] = [
-    { item: "Drive 1 Left Lining/Shoe", unit: "mm" },
-    { item: "Drive 1 Right Lining/Shoe", unit: "mm" },
-    { item: "Drive 1 Left Drum/Rotor", unit: "mm" },
-    { item: "Drive 1 Right Drum/Rotor", unit: "mm" },
-    { item: "Drive 1 Left Push Rod Travel", unit: "in" },
-    { item: "Drive 1 Right Push Rod Travel", unit: "in" },
-  ];
-
-  return { title: "Corner Grid (Air)", items: [...steer, ...drive] };
-}
-
-/* ------------------------------------------------------------------ */
-/* Tire grid helpers (separate from corner grids)                      */
-/* ------------------------------------------------------------------ */
-
-function hasTireGridSection(sections: Section[] | unknown): boolean {
-  const s = Array.isArray(sections) ? (sections as Section[]) : [];
-  return s.some((sec) => (sec.title || "").toLowerCase().includes("tire grid"));
-}
-
-/**
- * NOTE: This is the custom-builder injector section. It only needs to
- * create deterministic labels that your TireGrid renderer recognizes.
- * If your TireGrid expects different labels, tell me and I’ll align it.
- */
-function buildTireGridSection(): Section {
-  const items: Array<{ item: string; unit?: string | null }> = [
-    { item: "LF Tire Pressure", unit: "psi" },
-    { item: "RF Tire Pressure", unit: "psi" },
-    { item: "LR Tire Pressure", unit: "psi" },
-    { item: "RR Tire Pressure", unit: "psi" },
-
-    { item: "LF Tread Depth", unit: "mm" },
-    { item: "RF Tread Depth", unit: "mm" },
-    { item: "LR Tread Depth (Outer)", unit: "mm" },
-    { item: "LR Tread Depth (Inner)", unit: "mm" },
-    { item: "RR Tread Depth (Outer)", unit: "mm" },
-    { item: "RR Tread Depth (Inner)", unit: "mm" },
-  ];
-  return { title: "Tire Grid", items };
-}
-
-/* ------------------------------------------------------------------ */
-/* Battery grid helpers                                                */
-/* ------------------------------------------------------------------ */
-
-function hasBatterySection(sections: Section[] | unknown): boolean {
-  const s = Array.isArray(sections) ? (sections as Section[]) : [];
-  return s.some((sec) => {
-    const title = (sec.title || "").toLowerCase();
-    if (title.includes("battery")) return true;
-    return (sec.items ?? []).some((raw) =>
-      (raw.item ?? raw.name ?? "").toLowerCase().includes("battery"),
-    );
-  });
-}
-
-function buildBatterySection(): Section {
-  const metrics: Array<{ label: string; unit: string | null }> = [
-    { label: "Rating CCA", unit: "CCA" },
-    { label: "Tested CCA", unit: "CCA" },
-    { label: "Voltage", unit: "V" },
-    { label: "State of Health", unit: "%" },
-    { label: "State of Charge", unit: "%" },
-    { label: "Visual Condition", unit: "" },
-  ];
-
-  const batteries = ["Battery 1", "Battery 2"];
-
-  const items: { item: string; unit: string | null }[] = [];
-  for (const b of batteries) {
-    for (const m of metrics) {
-      items.push({ item: `${b} ${m.label}`, unit: m.unit });
-    }
+  // Inject tire grid AFTER corner grid
+  if (includeTires && !hasTireGrid(sections)) {
+    const tire = gridMode === "air" ? buildAirTireGrid() : buildHydraulicTireGrid();
+    const insertAt = sections.length > 0 ? 1 : 0;
+    sections = [...sections.slice(0, insertAt), tire, ...sections.slice(insertAt)];
   }
 
-  return { title: "Battery Grid", items };
-}
-
-function prepareSectionsWithCornerGrid(
-  sections: Section[] | unknown,
-  vehicleType: string | null | undefined,
-  gridParam: GridMode | "" | null,
-): Section[] {
-  const s = Array.isArray(sections) ? (sections as Section[]) : [];
-
-  const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
-  if (hasCornerByTitle) return s;
-
-  const withoutGrids = stripExistingCornerGrids(s);
-  const gridMode = (gridParam || "").toLowerCase() as GridMode | "";
-
-  if (gridMode === "none") return withoutGrids;
-
-  let injectAir: boolean;
-  if (gridMode === "air" || gridMode === "hyd") {
-    injectAir = gridMode === "air";
-  } else {
-    const vt = (vehicleType || "").toLowerCase();
-    const isAirByVehicle =
-      vt.includes("truck") ||
-      vt.includes("bus") ||
-      vt.includes("coach") ||
-      vt.includes("trailer") ||
-      vt.includes("heavy") ||
-      vt.includes("medium-heavy") ||
-      vt.includes("air");
-    injectAir = isAirByVehicle;
+  // Inject battery grid AFTER tires (or after corner grid if no tires)
+  if (includeBattery && !hasBatteryGrid(sections)) {
+    const insertAt = sections.length >= 2 ? 2 : sections.length; // best-effort
+    sections = [
+      ...sections.slice(0, insertAt),
+      buildBatteryGrid(batteryCount),
+      ...sections.slice(insertAt),
+    ];
   }
 
-  const injected = injectAir
-    ? buildAirCornerSection()
-    : buildHydraulicCornerSection();
-
-  let rest = withoutGrids;
-  if (injectAir) {
-    rest = rest.filter((sec) => {
-      const t = (sec.title || "").toLowerCase();
-      if (!t) return true;
-      const hasHydraulic = t.includes("hydraulic");
-      const hasBrake = t.includes("brake");
-      return !(hasHydraulic && hasBrake);
-    });
-  }
-
-  return [injected, ...rest];
+  return sections;
 }
 
 /* ------------------------------------------------------------------ */
@@ -219,12 +269,10 @@ export default function CustomBuilderPage() {
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
 
-  // ✅ labor hours back (string so user can delete)
+  // labor hours (string so user can delete)
   const [laborHours, setLaborHours] = useState<string>("");
 
-  const [gridMode, setGridMode] = useState<GridMode>(
-    dutyClass === "heavy" ? "air" : "hyd",
-  );
+  const [gridMode, setGridMode] = useState<GridMode>(dutyClass === "heavy" ? "air" : "hyd");
   const [gridTouched, setGridTouched] = useState(false);
 
   const [selections, setSelections] = useState<Record<string, string[]>>({});
@@ -232,14 +280,13 @@ export default function CustomBuilderPage() {
   const [oilEngineType, setOilEngineType] = useState<EngineType>("diesel");
 
   const [includeBatteryGrid, setIncludeBatteryGrid] = useState(false);
+  const [batteryCount, setBatteryCount] = useState<number>(2);
 
-  // ✅ new toggles
+  // toggles
   const [includeTireGrid, setIncludeTireGrid] = useState(false);
   const [includeGreaseChassis, setIncludeGreaseChassis] = useState(false);
 
-  const [collapsedSections, setCollapsedSections] = useState<
-    Record<string, boolean>
-  >({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -258,15 +305,11 @@ export default function CustomBuilderPage() {
         : "No corner grid";
 
   const dutyLabel =
-    dutyClass === "light"
-      ? "Light duty"
-      : dutyClass === "medium"
-        ? "Medium duty"
-        : "Heavy duty";
+    dutyClass === "light" ? "Light duty" : dutyClass === "medium" ? "Medium duty" : "Heavy duty";
 
-  const totalSelected = Object.values(selections).reduce(
-    (sum, arr) => sum + (arr?.length ?? 0),
-    0,
+  const totalSelected = useMemo(
+    () => Object.values(selections).reduce((sum, arr) => sum + (arr?.length ?? 0), 0),
+    [selections],
   );
 
   const toggle = (section: string, item: string) =>
@@ -276,7 +319,7 @@ export default function CustomBuilderPage() {
       return { ...prev, [section]: [...cur] };
     });
 
-  function selectAllInSection(sectionTitle: string, items: { item: string }[]) {
+  function selectAllInSection(sectionTitle: string, items: Array<{ item: string }>) {
     setSelections((prev) => ({
       ...prev,
       [sectionTitle]: items.map((i) => i.item),
@@ -303,59 +346,15 @@ export default function CustomBuilderPage() {
     }));
   }
 
-  function normalizeTitle(t: string) {
-    return (t || "").trim().toLowerCase();
-  }
-  function normalizeItem(i: string) {
-    return (i || "").trim().toLowerCase();
-  }
-  function toLabel(raw: { item?: string; name?: string }) {
-    return (raw.item ?? raw.name ?? "").trim();
-  }
-
-  function mergeSections(a: Section[], b: Section[]): Section[] {
-    const out: Record<
-      string,
-      { title: string; items: { item: string; unit?: string | null }[] }
-    > = {};
-
-    const addList = (list: Section[]) => {
-      for (const sec of list || []) {
-        const sectionTitle = sec?.title ?? "";
-        const key = normalizeTitle(sectionTitle);
-        if (!key) continue;
-        if (!out[key]) out[key] = { title: sectionTitle, items: [] };
-
-        const seen = new Set(out[key].items.map((i) => normalizeItem(i.item)));
-        for (const raw of sec.items || []) {
-          const label = toLabel(raw);
-          if (!label) continue;
-          const lk = normalizeItem(label);
-          if (seen.has(lk)) continue;
-          out[key].items.push({ item: label, unit: raw.unit ?? null });
-          seen.add(lk);
-        }
-      }
-    };
-
-    addList(a);
-    addList(b);
-
-    return Object.values(out).filter((s) => (s.items?.length ?? 0) > 0);
-  }
-
-  // ✅ Oil change: gas/diesel selection, simple checkbox items
+  // Oil change section
   function buildOilSection(engine: EngineType): Section {
     return {
       title: engine === "diesel" ? "Oil Change (Diesel)" : "Oil Change (Gas)",
-      items: [
-        { item: "Drain and fill engine oil" },
-        { item: "Replace oil filter" },
-      ],
+      items: [{ item: "Drain and fill engine oil" }, { item: "Replace oil filter" }],
     };
   }
 
-  // ✅ Grease chassis: simple checkbox + notes
+  // Grease chassis section
   function buildGreaseChassisSection(): Section {
     return {
       title: "Grease Chassis",
@@ -364,37 +363,21 @@ export default function CustomBuilderPage() {
   }
 
   /**
-   * ✅ Stage into `inspection:*` keys and route into `/inspections/run`
+   * Stage into `inspection:*` keys and route into `/inspections/run`
+   * (Canonical runtime keys only — avoids builder-mode bleed)
    */
   function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
-    const withCornerGrid = prepareSectionsWithCornerGrid(
-      sections,
-      dutyClass, // (kept as-is: existing logic uses "heavy" to infer air)
+    const base = Array.isArray(sections) ? (sections as Section[]) : [];
+
+    let finalSections = prepareSections(
+      base,
       gridMode,
+      includeTireGrid,
+      includeBatteryGrid,
+      batteryCount,
     );
 
-    // ✅ inject Tire Grid if toggled
-    let withTire = withCornerGrid;
-    if (includeTireGrid && !hasTireGridSection(withCornerGrid)) {
-      if (withCornerGrid.length > 0 && looksLikeCornerTitle(withCornerGrid[0].title)) {
-        withTire = [withCornerGrid[0], buildTireGridSection(), ...withCornerGrid.slice(1)];
-      } else {
-        withTire = [...withCornerGrid, buildTireGridSection()];
-      }
-    }
-
-    // ✅ inject Battery Grid if toggled
-    let withBattery = withTire;
-    if (includeBatteryGrid && !hasBatterySection(withTire)) {
-      if (withTire.length > 0 && looksLikeCornerTitle(withTire[0].title)) {
-        withBattery = [withTire[0], buildBatterySection(), ...withTire.slice(1)];
-      } else {
-        withBattery = [...withTire, buildBatterySection()];
-      }
-    }
-
-    // ✅ inject Grease Chassis if toggled
-    let finalSections = withBattery;
+    // Inject Grease Chassis at end if enabled
     if (
       includeGreaseChassis &&
       !finalSections.some((s) => normalizeTitle(s.title) === "grease chassis")
@@ -402,7 +385,7 @@ export default function CustomBuilderPage() {
       finalSections = [...finalSections, buildGreaseChassisSection()];
     }
 
-    // ✅ Canonical runtime keys ONLY
+    // Canonical runtime keys ONLY
     sessionStorage.setItem("inspection:sections", JSON.stringify(finalSections));
     sessionStorage.setItem("inspection:title", tplTitle);
     sessionStorage.setItem("inspection:template", "generic");
@@ -415,12 +398,15 @@ export default function CustomBuilderPage() {
     qs.set("dutyClass", dutyClass);
 
     if (includeTireGrid) qs.set("tireGrid", "1");
-    if (includeBatteryGrid) qs.set("batteryGrid", "1");
+    if (includeBatteryGrid) {
+      qs.set("batteryGrid", "1");
+      qs.set("batteryCount", String(batteryCount));
+    }
     if (includeGreaseChassis) qs.set("greaseChassis", "1");
     if (includeOil) qs.set("oil", oilEngineType);
     if (laborHours.trim()) qs.set("hours", laborHours.trim());
 
-    // ✅ DO NOT write customInspection:* (removes builder-mode bleed)
+    // Remove builder keys
     sessionStorage.removeItem("customInspection:sections");
     sessionStorage.removeItem("customInspection:title");
     sessionStorage.removeItem("customInspection:gridMode");
@@ -437,6 +423,7 @@ export default function CustomBuilderPage() {
         title: tplTitle,
         tireGrid: includeTireGrid,
         batteryGrid: includeBatteryGrid,
+        batteryCount: includeBatteryGrid ? batteryCount : null,
         greaseChassis: includeGreaseChassis,
         oil: includeOil ? oilEngineType : null,
         laborHours: laborHours.trim() || null,
@@ -453,8 +440,7 @@ export default function CustomBuilderPage() {
     }) as unknown as Section[];
 
     const withOil =
-      includeOil &&
-      !built.some((s) => normalizeTitle(s.title).startsWith("oil change"))
+      includeOil && !built.some((s) => normalizeTitle(s.title).startsWith("oil change"))
         ? [...built, buildOilSection(oilEngineType)]
         : built;
 
@@ -465,6 +451,7 @@ export default function CustomBuilderPage() {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
     setAiError(null);
+
     try {
       const res = await fetch("/api/inspections/build-from-prompt", {
         method: "POST",
@@ -473,47 +460,36 @@ export default function CustomBuilderPage() {
       });
 
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(j.error || `Generate failed (${res.status})`);
       }
 
-      const { sections: aiSections } = (await res.json()) as {
-        sections: Section[];
-      };
+      const payload = (await res.json()) as { sections: Section[] };
+      const aiSections = Array.isArray(payload.sections) ? payload.sections : [];
 
       const manualBuilt = buildInspectionFromSelections({
         selections,
         extraServiceItems: [],
       }) as unknown as Section[];
 
-      const aiHasOil = aiSections.some((s) =>
-        normalizeTitle(s.title).startsWith("oil change"),
-      );
-      const manualHasOil = manualBuilt.some((s) =>
-        normalizeTitle(s.title).startsWith("oil change"),
-      );
+      const aiHasOil = aiSections.some((s) => normalizeTitle(s.title).startsWith("oil change"));
+      const manualHasOil = manualBuilt.some((s) => normalizeTitle(s.title).startsWith("oil change"));
 
       const base =
-        includeOil && !aiHasOil && !manualHasOil
-          ? [...aiSections, buildOilSection(oilEngineType)]
-          : aiSections;
+        includeOil && !aiHasOil && !manualHasOil ? [...aiSections, buildOilSection(oilEngineType)] : aiSections;
 
-      const merged = mergeSections(base, manualBuilt);
-      const cleaned = merged.filter(
+      const merged = mergeSections(base, manualBuilt).filter(
         (s) => Array.isArray(s.items) && s.items.length > 0,
       );
 
-      goToRunWithSections(cleaned, title || "AI Inspection");
+      goToRunWithSections(merged, title || "AI Inspection");
     } catch (e) {
-      const msg =
-        e instanceof Error ? e.message : "Failed to generate inspection.";
+      const msg = e instanceof Error ? e.message : "Failed to generate inspection.";
       setAiError(msg);
     } finally {
       setAiLoading(false);
     }
   }
-
-  /* ---------------------------------- UI ---------------------------------- */
 
   return (
     <div className="p-4 text-white">
@@ -526,67 +502,51 @@ export default function CustomBuilderPage() {
         </h1>
 
         <div className="mb-5 rounded-2xl border border-white/10 bg-black/70 px-3 py-3 text-xs text-neutral-200 md:flex md:items-center md:justify-between md:px-4">
-          <div className="space-y-1 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-1">
+          <div className="space-y-1 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-1 md:space-y-0">
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Duty
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Duty</span>
               <span className="rounded-full bg-orange-500/10 px-2 py-1 text-[11px] font-semibold text-orange-300">
                 {dutyLabel}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Corner Grid
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Corner Grid</span>
               <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">
                 {gridModeLabel}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Tire Grid
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Tire Grid</span>
               <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-200">
                 {includeTireGrid ? "Enabled" : "Off"}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Oil
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Oil</span>
               <span className="rounded-full bg-zinc-700/60 px-2 py-1 text-[11px] font-semibold text-zinc-100">
-                {includeOil
-                  ? `Included (${oilEngineType.toUpperCase()})`
-                  : "No oil section"}
+                {includeOil ? `Included (${oilEngineType.toUpperCase()})` : "No oil section"}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Grease
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Grease</span>
               <span className="rounded-full bg-lime-500/10 px-2 py-1 text-[11px] font-semibold text-lime-200">
                 {includeGreaseChassis ? "Chassis enabled" : "Off"}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Batteries
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Batteries</span>
               <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-300">
-                {includeBatteryGrid ? "Battery grid enabled" : "No battery grid"}
+                {includeBatteryGrid ? `Battery grid enabled (${batteryCount})` : "No battery grid"}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Hours
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Hours</span>
               <span className="rounded-full bg-neutral-800/80 px-2 py-1 text-[11px] font-semibold text-neutral-100">
                 {laborHours.trim() ? laborHours.trim() : "—"}
               </span>
@@ -595,9 +555,7 @@ export default function CustomBuilderPage() {
 
           <div className="mt-2 text-[11px] text-neutral-400 md:mt-0">
             Selected items:{" "}
-            <span className="font-semibold text-neutral-100">
-              {totalSelected}
-            </span>
+            <span className="font-semibold text-neutral-100">{totalSelected}</span>
           </div>
         </div>
 
@@ -629,7 +587,6 @@ export default function CustomBuilderPage() {
               </span>
             </label>
 
-            {/* ✅ labor hours box restored (beside duty class) */}
             <label className="flex flex-col gap-1 text-center md:text-left">
               <span className="text-sm text-neutral-300">Labor hours</span>
               <input
@@ -661,12 +618,9 @@ export default function CustomBuilderPage() {
             {includeOil ? "Oil Change Section: ON" : "Oil Change Section: OFF"}
           </button>
 
-          {/* ✅ gas/diesel selector (only when oil is ON) */}
           {includeOil && (
             <div className="flex items-center gap-2 rounded-full border border-neutral-700 bg-black/70 px-3 py-2">
-              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                Engine
-              </span>
+              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">Engine</span>
               <select
                 className="rounded-full border border-neutral-700 bg-neutral-900/80 px-3 py-1 text-[12px] text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                 value={oilEngineType}
@@ -719,6 +673,28 @@ export default function CustomBuilderPage() {
           >
             {includeBatteryGrid ? "Battery Grid: ON" : "Battery Grid: OFF"}
           </button>
+
+          {includeBatteryGrid && (
+            <div className="flex items-center gap-2 rounded-full border border-neutral-700 bg-black/70 px-3 py-2">
+              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                Count
+              </span>
+              <select
+                className="rounded-full border border-neutral-700 bg-neutral-900/80 px-3 py-1 text-[12px] text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                value={String(batteryCount)}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  setBatteryCount(Number.isFinite(next) ? next : 2);
+                }}
+              >
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <option key={n} value={String(n)}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
@@ -793,9 +769,7 @@ export default function CustomBuilderPage() {
             >
               {aiLoading ? "Generating…" : "Build from AI Prompt"}
             </button>
-            {aiError ? (
-              <span className="text-xs text-red-400">{aiError}</span>
-            ) : null}
+            {aiError ? <span className="text-xs text-red-400">{aiError}</span> : null}
           </div>
         </div>
 
@@ -833,9 +807,7 @@ export default function CustomBuilderPage() {
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-semibold text-orange-300">
-                      {sec.title}
-                    </div>
+                    <div className="font-semibold text-orange-300">{sec.title}</div>
                     <span className="rounded-full bg-zinc-800 px-2 py-[2px] text-[11px] text-zinc-300">
                       {selectedCount}/{sec.items.length} selected
                     </span>
@@ -843,9 +815,7 @@ export default function CustomBuilderPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() =>
-                        selectAllInSection(sec.title, sec.items as any)
-                      }
+                      onClick={() => selectAllInSection(sec.title, sec.items)}
                       className="rounded-full bg-zinc-800 px-2 py-1 text-[11px] text-white hover:bg-zinc-700"
                     >
                       Select all
@@ -871,9 +841,7 @@ export default function CustomBuilderPage() {
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {sec.items.map((i) => {
                       const label = i.item;
-                      const checked = (selections[sec.title] ?? []).includes(
-                        label,
-                      );
+                      const checked = (selections[sec.title] ?? []).includes(label);
                       return (
                         <label
                           key={label}

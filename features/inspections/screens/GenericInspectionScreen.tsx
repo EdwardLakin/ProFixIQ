@@ -1,4 +1,3 @@
-// features/inspections/screens/GenericInspectionScreen.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -70,6 +69,7 @@ function toHeaderCustomer(c?: SessionCustomer | null) {
     postal_code: c?.postal_code ?? "",
   };
 }
+
 function toHeaderVehicle(v?: SessionVehicle | null) {
   return {
     year: v?.year ?? "",
@@ -110,47 +110,68 @@ function readStaged<T>(key: string): T | null {
   }
 }
 
+type NormalizedItem = {
+  item: string;
+  unit: string | null;
+  status?: InspectionItemStatus;
+  notes?: string;
+  note?: string;
+  value?: string | number | null;
+  photoUrls?: string[];
+  recommend?: string[];
+  parts?: Array<{ description: string; qty: number }>;
+  laborHours?: number | null;
+};
+
 function normalizeSections(input: unknown): InspectionSection[] {
   try {
     const arr = Array.isArray(input) ? input : [];
     const byTitle = new Map<string, InspectionSection>();
 
-    for (const s of arr as unknown[]) {
-      const sObj = s as { title?: unknown; items?: unknown };
-      const title = String(sObj?.title ?? "").trim();
+    for (const s of arr) {
+      const sObj = (s ?? {}) as { title?: unknown; items?: unknown };
+      const title = String(sObj.title ?? "").trim();
       if (!title) continue;
 
-      const itemsRaw = Array.isArray(sObj?.items) ? (sObj.items as unknown[]) : [];
-      const items = itemsRaw
-        .map((it) => {
-          const itObj = it as Record<string, unknown>;
-          const label = String(itObj?.item ?? itObj?.name ?? "").trim();
-          if (!label) return null;
+      const itemsRaw = Array.isArray(sObj.items) ? sObj.items : [];
+      const normalized: NormalizedItem[] = [];
 
-          return {
-            ...(itObj as object),
-            item: label,
-            unit: (itObj?.unit as string | null | undefined) ?? null,
-          };
-        })
-        .filter(
-          (x): x is Record<string, unknown> & { item: string; unit: string | null } =>
-            !!x,
-        );
+      for (const it of itemsRaw) {
+        const itObj = (it ?? {}) as Record<string, unknown>;
+        const label = String(itObj.item ?? itObj.name ?? "").trim();
+        if (!label) continue;
 
-      if (!byTitle.has(title)) byTitle.set(title, { title, items: [] });
+        normalized.push({
+          ...(itObj as object),
+          item: label,
+          unit:
+            (itObj.unit as string | null | undefined) === undefined
+              ? null
+              : ((itObj.unit as string | null) ?? null),
+        } as NormalizedItem);
+      }
+
+      if (!byTitle.has(title)) {
+        byTitle.set(title, { title, items: [] });
+      }
+
       const bucket = byTitle.get(title)!;
+      const existing = Array.isArray(bucket.items) ? bucket.items : [];
 
-      const seen = new Set(
-        (bucket.items ?? []).map((x) => String(x.item ?? "").toLowerCase()),
+      const seen = new Set<string>(
+        existing.map((x) => String((x as { item?: unknown }).item ?? "").toLowerCase()),
       );
 
-      for (const it of items) {
+      const merged: Array<InspectionSection["items"][number]> = [...existing];
+
+      for (const it of normalized) {
         const key = String(it.item ?? "").toLowerCase();
-        if (seen.has(key)) continue;
-        bucket.items = [...(bucket.items ?? []), it as any];
+        if (!key || seen.has(key)) continue;
+        merged.push(it);
         seen.add(key);
       }
+
+      bucket.items = merged;
     }
 
     return Array.from(byTitle.values()).filter((s) => (s.items?.length ?? 0) > 0);
@@ -165,11 +186,11 @@ function toTemplateSections(sections: InspectionSection[]): InspectionSection[] 
       title: sec.title,
       items: (sec.items ?? [])
         .map((it) => {
-          const label = (it.item ?? "").trim();
+          const label = String(it.item ?? "").trim();
           if (!label) return null;
           return {
             item: label,
-            unit: it.unit ?? null,
+            unit: (it.unit as string | null | undefined) ?? null,
           };
         })
         .filter((x): x is { item: string; unit: string | null } => !!x),
@@ -331,7 +352,6 @@ function buildCauseCorrectionFromSession(
     correction: parts.join(" "),
   };
 }
-
 /* -------------------------------------------------------------------- */
 /* Component                                                            */
 /* -------------------------------------------------------------------- */
@@ -400,6 +420,7 @@ export default function GenericInspectionScreen(
     province: sp.get("province") || "",
     postal_code: sp.get("postal_code") || "",
   };
+
   const vehicle: SessionVehicle = {
     year: sp.get("year") || "",
     make: sp.get("make") || "",
@@ -510,6 +531,10 @@ export default function GenericInspectionScreen(
       customer,
       vehicle,
       sections: [],
+      currentSectionIndex: 0,
+      currentItemIndex: 0,
+      started: false,
+      completed: false,
     }),
     [inspectionId, templateName, customer, vehicle],
   );
@@ -587,7 +612,11 @@ export default function GenericInspectionScreen(
 
   useEffect(() => {
     const handler = (evt: Event) => {
-      const e = evt as CustomEvent<{ workOrderLineId?: unknown; cause?: unknown; correction?: unknown }>;
+      const e = evt as CustomEvent<{
+        workOrderLineId?: unknown;
+        cause?: unknown;
+        correction?: unknown;
+      }>;
       const detail = e.detail || {};
       const wol = String(detail.workOrderLineId || "");
       if (!wol) return;
@@ -617,13 +646,14 @@ export default function GenericInspectionScreen(
     window.addEventListener("inspection:completed", handler as EventListener);
     return () =>
       window.removeEventListener("inspection:completed", handler as EventListener);
-  }, [session, draftKey, lockKey]);
+  }, [session, draftKey, lockKey, initialSession]);
 
   const handleTranscript = async (text: string): Promise<void> => {
     if (!session || guardLocked()) return;
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess = session;
     if (!sess) return;
+
     for (const command of commands) {
       await handleTranscriptFn({
         command,
@@ -686,6 +716,7 @@ export default function GenericInspectionScreen(
   const startListening = async (): Promise<void> => {
     if (isListening) return;
     if (guardLocked()) return;
+
     try {
       const res = await fetch("/api/openai/realtime-token");
       const { apiKey } = (await res.json()) as { apiKey: string };
@@ -709,13 +740,14 @@ export default function GenericInspectionScreen(
 
         const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
         mediaRecorderRef.current = mr;
+
         mr.ondataavailable = (evt) => {
           if (evt.data.size > 0 && ws.readyState === WebSocket.OPEN) {
             ws.send(evt.data);
           }
         };
-        mr.start(250);
 
+        mr.start(250);
         setIsListening(true);
       };
 
@@ -758,8 +790,7 @@ export default function GenericInspectionScreen(
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
       console.error(e);
-      const msg =
-        e instanceof Error ? e.message : "Unable to start voice";
+      const msg = e instanceof Error ? e.message : "Unable to start voice";
       toast.error(msg);
       stopListening();
     }
@@ -795,11 +826,9 @@ export default function GenericInspectionScreen(
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (
-    secIdx: number,
-    itemIdx: number,
-  ): Promise<void> => {
+  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
     if (!session) return;
+
     if (isLocked) {
       toast.error("Inspection is locked; AI suggestions are disabled.");
       return;
@@ -812,15 +841,15 @@ export default function GenericInspectionScreen(
     if (!it) return;
 
     const status = String(it.status ?? "").toLowerCase();
-    const note = (it.notes ?? "").trim();
+    const note = String(it.notes ?? "").trim();
 
     if (!(status === "fail" || status === "recommend")) return;
+
     if (note.length === 0) {
       toast.error("Add a note before submitting.");
       return;
     }
 
-    // no-`any`: read optional fields via safe casts
     const itExt = it as unknown as {
       parts?: { description: string; qty: number }[];
       laborHours?: number | null;
@@ -832,13 +861,16 @@ export default function GenericInspectionScreen(
     )
       ? itExt.parts
       : [];
+
     const manualLaborHours =
       typeof itExt.laborHours === "number" ? itExt.laborHours : null;
 
     inFlightRef.current.add(key);
+
     let toastId: string | undefined;
+
     try {
-      const desc = it.item ?? itExt.name ?? "Item";
+      const desc = String(it.item ?? itExt.name ?? "Item");
 
       const id = uuidv4();
       const placeholder: QuoteLineItem = {
@@ -847,23 +879,24 @@ export default function GenericInspectionScreen(
         item: desc,
         name: desc,
         status: status as "fail" | "recommend",
-        notes: it.notes ?? "",
+        notes: String(it.notes ?? ""),
         price: 0,
         laborTime: 0.5,
         laborRate: 0,
         editable: true,
         source: "inspection",
-        value: it.value ?? "",
-        photoUrls: it.photoUrls ?? [],
+        value: (it as unknown as { value?: unknown }).value as string | number | null | undefined,
+        photoUrls: (it as unknown as { photoUrls?: unknown }).photoUrls as string[] | undefined,
         aiState: "loading",
       };
       addQuoteLine(placeholder);
 
       toastId = toast.loading("Building estimate from inspection item…");
+
       const suggestion = await requestQuoteSuggestion({
         item: desc,
-        notes: it.notes ?? "",
-        section: session.sections[secIdx].title,
+        notes: String(it.notes ?? ""),
+        section: String(session.sections[secIdx]?.title ?? ""),
         status,
         vehicle: session.vehicle ?? undefined,
       });
@@ -876,10 +909,7 @@ export default function GenericInspectionScreen(
 
       const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
         ...((suggestion.parts ?? []) as Array<{ name: string; qty: number; cost?: number }>),
-        ...manualParts.map((p) => ({
-          name: p.description,
-          qty: p.qty,
-        })),
+        ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
       ];
 
       const laborTime =
@@ -888,11 +918,13 @@ export default function GenericInspectionScreen(
           : suggestion.laborHours ?? 0.5;
 
       const laborRate = suggestion.laborRate ?? 0;
+
       const partsTotal =
         mergedParts.reduce(
           (sum, p) => sum + (typeof p.cost === "number" ? p.cost : 0),
           0,
         ) ?? 0;
+
       const price = Math.max(0, partsTotal + laborRate * laborTime);
 
       updateQuoteLine(id, {
@@ -913,7 +945,7 @@ export default function GenericInspectionScreen(
         const created = await addWorkOrderLineFromSuggestion({
           workOrderId,
           description: desc,
-          section: session.sections[secIdx].title,
+          section: String(session.sections[secIdx]?.title ?? ""),
           status: status as "fail" | "recommend",
           suggestion: {
             ...suggestion,
@@ -925,12 +957,13 @@ export default function GenericInspectionScreen(
         });
 
         const createdId = (created as unknown as { id?: unknown })?.id;
-        createdJobId = (createdId ? String(createdId) : null) || workOrderLineId || null;
+        createdJobId =
+          (createdId ? String(createdId) : null) || workOrderLineId || null;
 
         const cleanParts = manualParts
           .map((p) => ({
-            description: p.description.trim(),
-            qty: p.qty,
+            description: String(p.description ?? "").trim(),
+            qty: Number(p.qty ?? 0),
           }))
           .filter((p) => p.description.length > 0 && p.qty > 0);
 
@@ -942,7 +975,7 @@ export default function GenericInspectionScreen(
               body: JSON.stringify({
                 workOrderId,
                 jobId: createdJobId,
-                notes: it.notes ?? null,
+                notes: String(it.notes ?? "") || null,
                 items: cleanParts,
               }),
             });
@@ -982,6 +1015,7 @@ export default function GenericInspectionScreen(
 
   useEffect(() => {
     if (!isEmbed) return;
+
     const root = rootRef.current;
     if (!root) return;
 
@@ -999,11 +1033,14 @@ export default function GenericInspectionScreen(
 
     const scrub = (el: HTMLElement) => {
       if (!el.className) return;
+
       const classes = el.className.split(" ");
       const filtered = classes.filter((c) => c && !BAD.includes(c));
+
       if (filtered.length !== classes.length) {
         el.className = filtered.join(" ");
       }
+
       if (el.style?.overflow === "hidden") {
         el.style.overflow = "visible";
       }
@@ -1021,7 +1058,7 @@ export default function GenericInspectionScreen(
             if (n instanceof HTMLElement) {
               scrub(n);
               n.querySelectorAll?.("*")?.forEach((child) => {
-                if (child instanceof HTMLElement) scrub(child as HTMLElement);
+                if (child instanceof HTMLElement) scrub(child);
               });
             }
           });
@@ -1081,18 +1118,18 @@ export default function GenericInspectionScreen(
     });
   }
 
-  function applyStatusToSection(
-    sectionIndex: number,
-    status: InspectionItemStatus,
-  ): void {
+  function applyStatusToSection(sectionIndex: number, status: InspectionItemStatus): void {
     if (!session) return;
     if (guardLocked()) return;
+
     const section = session.sections[sectionIndex];
     if (!section) return;
+
     const nextItems = (section.items ?? []).map((it) => ({
       ...it,
       status,
     }));
+
     updateSection(sectionIndex, { ...section, items: nextItems });
     updateInspection({
       currentSectionIndex: sectionIndex,
@@ -1156,6 +1193,7 @@ export default function GenericInspectionScreen(
           .select("shop_id")
           .eq("id", uid)
           .maybeSingle();
+
         resolvedShopId = byId.data?.shop_id ? String(byId.data.shop_id) : null;
       }
 
@@ -1203,41 +1241,35 @@ export default function GenericInspectionScreen(
   };
 
   const handleAddCustomItem = (sectionIndex: number): void => {
-  if (!session) return;
-  if (guardLocked()) return;
+    if (!session) return;
+    if (guardLocked()) return;
 
-  const label = (newItemLabels[sectionIndex] || "").trim();
-  if (!label) {
-    toast.error("Enter a label for the new item.");
-    return;
-  }
+    const label = (newItemLabels[sectionIndex] || "").trim();
+    if (!label) {
+      toast.error("Enter a label for the new item.");
+      return;
+    }
 
-  const unitRaw = newItemUnits[sectionIndex] ?? "";
-  const unitValue = unitRaw || null;
+    const unitRaw = newItemUnits[sectionIndex] ?? "";
+    const unitValue = unitRaw || null;
 
-  const section = session.sections[sectionIndex];
-  if (!section) return;
+    const section = session.sections[sectionIndex];
+    if (!section) return;
 
-  const nextItems = [
-    ...(section.items ?? []),
-    { item: label, unit: unitValue, status: "na" as InspectionItemStatus },
-  ];
+    const nextItems = [
+      ...(section.items ?? []),
+      { item: label, unit: unitValue, status: "na" as InspectionItemStatus },
+    ];
 
-  updateSection(sectionIndex, { ...section, items: nextItems });
+    updateSection(sectionIndex, { ...section, items: nextItems });
 
-  // ✅ reset the inputs for just this section
-  setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
-  setNewItemUnits((prev) => ({ ...prev, [sectionIndex]: "" }));
-};
-
-
-  
+    // reset inputs for just this section
+    setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
+    setNewItemUnits((prev) => ({ ...prev, [sectionIndex]: "" }));
+  };
 
   /** Add axle rows to an AIR corner grid section */
-  const handleAddAxleForSection = (
-    sectionIndex: number,
-    axleLabel: string,
-  ): void => {
+  const handleAddAxleForSection = (sectionIndex: number, axleLabel: string): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1282,10 +1314,7 @@ export default function GenericInspectionScreen(
   };
 
   /** Add axle rows to a TIRE grid section (tires only) */
-  const handleAddTireAxleForSection = (
-    sectionIndex: number,
-    axleLabel: string,
-  ): void => {
+  const handleAddTireAxleForSection = (sectionIndex: number, axleLabel: string): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1349,19 +1378,14 @@ export default function GenericInspectionScreen(
 
   const sectionTitle =
     "text-base md:text-xl font-semibold text-orange-300 text-center tracking-[0.16em] uppercase";
+
   const hint =
     "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
 
   const actions = (
     <>
-      <SaveInspectionButton
-        session={session}
-        workOrderLineId={workOrderLineId}
-      />
-      <FinishInspectionButton
-        session={session}
-        workOrderLineId={workOrderLineId}
-      />
+      <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
+      <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
       <Button
         type="button"
         variant="outline"
@@ -1378,7 +1402,7 @@ export default function GenericInspectionScreen(
     return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
-  const body = (
+    const body = (
     <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
       {isEmbed && (
         <style jsx global>{`
@@ -1461,7 +1485,9 @@ export default function GenericInspectionScreen(
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
-            totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
+            totalItems={
+              session.sections[session.currentSectionIndex]?.items.length || 0
+            }
           />
         </div>
 
@@ -1527,7 +1553,9 @@ export default function GenericInspectionScreen(
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
+                        onClick={() =>
+                          applyStatusToSection(sectionIndex, "recommend")
+                        }
                       >
                         All REC
                       </button>
@@ -1573,13 +1601,17 @@ export default function GenericInspectionScreen(
                           <BatteryGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            unitHint={(label: string) =>
+                              unitHintGeneric(label, unit)
+                            }
                           />
                         ) : airSection ? (
                           <AirCornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            unitHint={(label: string) =>
+                              unitHintGeneric(label, unit)
+                            }
                             onAddAxle={(axleLabel: string) =>
                               handleAddAxleForSection(sectionIndex, axleLabel)
                             }
@@ -1601,7 +1633,9 @@ export default function GenericInspectionScreen(
                             <TireGrid
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
-                              unitHint={(label: string) => unitHintGeneric(label, unit)}
+                              unitHint={(label: string) =>
+                                unitHintGeneric(label, unit)
+                              }
                               onAddAxle={(axleLabel: string) =>
                                 handleAddTireAxleForSection(sectionIndex, axleLabel)
                               }
@@ -1618,7 +1652,9 @@ export default function GenericInspectionScreen(
                           <CornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            unitHint={(label: string) =>
+                              unitHintGeneric(label, unit)
+                            }
                             onSpecHint={(label: string) =>
                               _props.onSpecHint?.({
                                 source: "corner",
@@ -1645,14 +1681,23 @@ export default function GenericInspectionScreen(
                               updateItem(secIdx, itemIdx, { status: statusValue });
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
-                            onUpdateNote={(secIdx: number, itemIdx: number, note: string) => {
+                            onUpdateNote={(
+                              secIdx: number,
+                              itemIdx: number,
+                              noteText: string,
+                            ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { notes: note });
+                              updateItem(secIdx, itemIdx, { notes: noteText });
                             }}
-                            onUpload={(photoUrl: string, secIdx: number, itemIdx: number) => {
+                            onUpload={(
+                              photoUrl: string,
+                              secIdx: number,
+                              itemIdx: number,
+                            ) => {
                               if (guardLocked()) return;
                               const prev =
-                                session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                                session.sections[secIdx].items[itemIdx].photoUrls ??
+                                [];
                               updateItem(secIdx, itemIdx, {
                                 photoUrls: [...prev, photoUrl],
                               });
@@ -1666,13 +1711,13 @@ export default function GenericInspectionScreen(
                               updateItem(secIdx, itemIdx, { parts });
                             }}
                             onUpdateLaborHours={(
-  secIdx: number,
-  itemIdx: number,
-  hours: number | null,
-) => {
-  if (guardLocked()) return;
-  updateItem(secIdx, itemIdx, { laborHours: hours });
-}}
+                              secIdx: number,
+                              itemIdx: number,
+                              hours: number | null,
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { laborHours: hours });
+                            }}
                             requireNoteForAI
                             onSubmitAI={(secIdx: number, itemIdx: number) => {
                               void submitAIForItem(secIdx, itemIdx);
@@ -1742,8 +1787,9 @@ export default function GenericInspectionScreen(
             inspectionId={inspectionId}
             role="customer"
             defaultName={
-              [customer.first_name, customer.last_name].filter(Boolean).join(" ") ||
-              undefined
+              [customer.first_name, customer.last_name]
+                .filter(Boolean)
+                .join(" ") || undefined
             }
             onSigned={handleSigned}
           />
@@ -1791,6 +1837,7 @@ export default function GenericInspectionScreen(
                 {isPaused ? "Resume" : "Pause"}
               </Button>
             </div>
+
             <div className="flex gap-2">
               <div className="scale-90">
                 <SaveInspectionButton

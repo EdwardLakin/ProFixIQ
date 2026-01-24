@@ -1,17 +1,17 @@
-//features/inspections/lib/inspection/types.ts
+// features/inspections/lib/inspection/types.ts
 
 /** ---------- Item / Section ---------- */
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 export type BrakeType = "air" | "hydraulic";
 
 export interface InspectionItem {
-  /** Primary label. Some code uses `item`, some uses `name` — support both. */
+  /** Primary label. Some code uses item, some uses name — support both. */
   item?: string;
   name?: string;
 
   status?: InspectionItemStatus;
   notes?: string;
-  /** Some AI/normalizers use singular `note`. */
+  /** Some AI/normalizers use singular note. */
   note?: string;
 
   value?: string | number | null;
@@ -35,13 +35,18 @@ export interface InspectionCategory {
   items: InspectionItem[];
 }
 
-/** Many places import `InspectionSection`; keep it as an alias. */
+/** Many places import InspectionSection; keep it as an alias. */
 export type InspectionSection = InspectionCategory;
 
 /** ---------- Parsed voice/AI commands (support both shapes) ---------- */
 /** Older, name-based command shape used by dispatchCommand/interpreter */
 export type ParsedCommandNameBased =
-  | { type: "status"; section: string; item: string; status: InspectionItemStatus }
+  | {
+      type: "status";
+      section: string;
+      item: string;
+      status: InspectionItemStatus;
+    }
   | { type: "add"; section: string; item: string; note: string }
   | { type: "recommend"; section: string; item: string; note: string }
   | {
@@ -140,9 +145,9 @@ export interface QuoteLine {
   source?: QuoteSource;
 
   /** Names used across flows */
-  item?: string;             // selected service/menu name
-  name?: string;             // occasional alias
-  inspectionItem?: string;   // originating inspection item text
+  item?: string; // selected service/menu name
+  name?: string; // occasional alias
+  inspectionItem?: string; // originating inspection item text
 
   /** Status / notes */
   status?: InspectionItemStatus;
@@ -153,7 +158,7 @@ export interface QuoteLine {
   rate?: number;
   total?: number;
   laborHours?: number | null;
-  laborTime?: number;        // alias used on some screens
+  laborTime?: number; // alias used on some screens
   laborRate?: number;
 
   /** Parts */
@@ -164,7 +169,7 @@ export interface QuoteLine {
 
   /** Roll-up / pricing */
   qty?: number;
-  price?: number;            // some code writes final line price here
+  price?: number; // some code writes final line price here
   totalCost?: number;
 }
 
@@ -172,7 +177,7 @@ export interface QuoteLine {
 export interface QuoteLineItem {
   id: string;
 
-  /** Some places map description into both `item` and `name`. */
+  /** Some places map description into both item and name. */
   item?: string;
   name?: string;
   description: string;

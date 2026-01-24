@@ -42,9 +42,22 @@ function isBatteryTitle(title: string | undefined | null): boolean {
   return title.toLowerCase().includes("battery");
 }
 
+function isTireGridTitle(title: string | undefined | null): boolean {
+  if (!title) return false;
+  return title.toLowerCase().includes("tire grid");
+}
+
 /** Strip any existing corner-grid style sections (title or pattern based). */
 function stripExistingCornerGrids(sections: Section[]): Section[] {
   return sections.filter((s) => {
+    const title = (s.title || "").toLowerCase();
+
+    // ✅ CRITICAL: Do NOT strip Tire Grid / Battery sections
+    // The HYD_ITEM_RE matches labels like "LF Tire Pressure" which would
+    // otherwise cause Tire Grid sections to be removed here.
+    if (title.includes("tire grid")) return true;
+    if (title.includes("battery")) return true;
+
     if (looksLikeCornerTitle(s.title)) return false;
 
     const items = s.items ?? [];
@@ -151,7 +164,12 @@ function prepareSectionsWithCornerGrid(
   const batterySections = pool.filter((sec) => isBatteryTitle(sec.title));
   const rest = pool.filter((sec) => !isBatteryTitle(sec.title));
 
-  return [cornerSection, ...batterySections, ...rest];
+  // If a Tire Grid exists, keep it near the top (under corner grid),
+  // but don't force creation here (that's handled by builder / template).
+  const tireSections = rest.filter((sec) => isTireGridTitle(sec.title));
+  const remaining = rest.filter((sec) => !isTireGridTitle(sec.title));
+
+  return [cornerSection, ...tireSections, ...batterySections, ...remaining];
 }
 
 /* ------------------------------------------------------------------ */
@@ -293,9 +311,15 @@ export default function RunInspectionPage() {
         sessionStorage.setItem("inspection:params", JSON.stringify(params));
 
         // Legacy keys
-        sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
+        sessionStorage.setItem(
+          "customInspection:sections",
+          JSON.stringify(sections),
+        );
         sessionStorage.setItem("customInspection:title", title);
-        sessionStorage.setItem("customInspection:includeOil", JSON.stringify(false));
+        sessionStorage.setItem(
+          "customInspection:includeOil",
+          JSON.stringify(false),
+        );
 
         const next = new URLSearchParams(params);
         next.delete("templateId");

@@ -12,7 +12,6 @@ type CornerGridProps = {
 };
 
 const CORNERS = ["LF", "RF", "LR", "RR"] as const;
-
 const HYD_ITEM_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 
 type Corner = (typeof CORNERS)[number];
@@ -23,6 +22,20 @@ type Cell = {
   metric: string;
   item: InspectionItem;
 };
+
+function isAllowedCornerMetric(metric: string): boolean {
+  const m = metric.toLowerCase();
+  const isPadShoe = /(pad|lining|shoe)/i.test(m);
+  const isRotorDrum = /(rotor|drum)/i.test(m);
+  return isPadShoe || isRotorDrum;
+}
+
+function cornerMetricRank(metric: string): number {
+  const m = metric.toLowerCase();
+  if (/(pad|lining|shoe)/i.test(m)) return 0;
+  if (/(rotor|drum)/i.test(m)) return 1;
+  return 999;
+}
 
 export default function CornerGrid(props: CornerGridProps) {
   const { sectionIndex, items, unitHint, onSpecHint } = props;
@@ -41,12 +54,18 @@ export default function CornerGrid(props: CornerGridProps) {
       const metric = String(m.groups.metric || "").trim();
       if (!CORNERS.includes(corner) || !metric) return;
 
+      if (!isAllowedCornerMetric(metric)) return;
+
       metricsSet.add(metric);
       cells.push({ idx, corner, metric, item: it });
     });
 
-    const metrics = Array.from(metricsSet.values());
-    metrics.sort((a, b) => a.localeCompare(b));
+    const metrics = Array.from(metricsSet.values()).sort((a, b) => {
+      const ra = cornerMetricRank(a);
+      const rb = cornerMetricRank(b);
+      if (ra !== rb) return ra - rb;
+      return a.localeCompare(b);
+    });
 
     const byMetric = new Map<string, Record<Corner, Cell | null>>();
     for (const metric of metrics) {
@@ -56,7 +75,7 @@ export default function CornerGrid(props: CornerGridProps) {
     for (const c of cells) {
       const row = byMetric.get(c.metric);
       if (!row) continue;
-      row[c.corner] = c;
+      if (!row[c.corner]) row[c.corner] = c;
     }
 
     return { metrics, byMetric };
@@ -65,7 +84,7 @@ export default function CornerGrid(props: CornerGridProps) {
   if (parsed.metrics.length === 0) {
     return (
       <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-neutral-300">
-        No corner-grid items detected in this section.
+        No corner-grid items detected (expected LF/RF/LR/RR with Pads/Shoes + Rotor/Drum).
       </div>
     );
   }
@@ -73,7 +92,6 @@ export default function CornerGrid(props: CornerGridProps) {
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)]">
       <div className="grid grid-cols-[minmax(160px,1fr)_repeat(4,minmax(0,1fr))] gap-px bg-white/10">
-        {/* header row */}
         <div className="bg-black/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
           Metric
         </div>
@@ -86,16 +104,12 @@ export default function CornerGrid(props: CornerGridProps) {
           </div>
         ))}
 
-        {/* body */}
         {parsed.metrics.map((metric) => {
           const row = parsed.byMetric.get(metric);
           const hint = unitHint ? unitHint(metric) : "";
 
           return (
-            <div
-              key={metric}
-              className="contents"
-            >
+            <div key={metric} className="contents">
               <div className="bg-black/45 px-3 py-2 text-[12px] text-neutral-100">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{metric}</span>
@@ -121,9 +135,7 @@ export default function CornerGrid(props: CornerGridProps) {
                       onFocus={() => onSpecHint?.(metric)}
                       onChange={(e) => {
                         if (!cell) return;
-                        updateItem(sectionIndex, cell.idx, {
-                          value: e.currentTarget.value,
-                        });
+                        updateItem(sectionIndex, cell.idx, { value: e.currentTarget.value });
                       }}
                       placeholder="—"
                       disabled={!cell}
