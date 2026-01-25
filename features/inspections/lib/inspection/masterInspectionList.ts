@@ -949,6 +949,83 @@ export const masterInspectionList: InspectionCategory[] = [
     ],
   },
 
+    /* --------------------------- TIRE GRID (HYD) --------------------------- */
+      {
+    title: "Tire Grid — Hydraulic",
+    items: [
+      // ---------------- FRONT (single) ----------------
+      { item: "LF Tire Pressure", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+      { item: "RF Tire Pressure", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+
+      { item: "LF Tread Depth (Outer)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+      { item: "RF Tread Depth (Outer)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+
+      // optional front inners (keep if you want)
+      { item: "LF Tread Depth (Inner)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 80 },
+      { item: "RF Tread Depth (Inner)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 80 },
+
+      // ---------------- REAR (dual default) ----------------
+      // TP outer/inner
+      { item: "LR Tire Pressure (Outer)", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+      { item: "LR Tire Pressure (Inner)", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 85 },
+      { item: "RR Tire Pressure (Outer)", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+      { item: "RR Tire Pressure (Inner)", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 85 },
+
+      // TD outer/inner
+      { item: "LR Tread Depth (Outer)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+      { item: "LR Tread Depth (Inner)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 85 },
+      { item: "RR Tread Depth (Outer)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+      { item: "RR Tread Depth (Inner)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 85 },
+
+      // ---------------- Per-tire status toggles (fail from grid) ----------------
+      { item: "LF Tire Condition", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 98 },
+      { item: "RF Tire Condition", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 98 },
+      { item: "LR Tire Condition", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 98 },
+      { item: "RR Tire Condition", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 98 },
+    ],
+  },
+
+    /* ---------------------------- TIRE GRID (AIR) ---------------------------- */
+  {
+    title: "Tire Grid — Air Brake (HD)",
+    items: [
+      // Start minimal (your AddAxle UI can add more axles later)
+      // Steer 1 (single)
+      { item: "Steer 1 Left Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      { item: "Steer 1 Right Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 95 },
+
+      { item: "Steer 1 Left Tread Depth", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      { item: "Steer 1 Right Tread Depth", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 95 },
+
+      { item: "Steer 1 Left Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 98 },
+      { item: "Steer 1 Right Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 98 },
+
+      // Drive 1 (dual)
+      { item: "Drive 1 Left Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      { item: "Drive 1 Right Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+
+      { item: "Drive 1 Left Tread Depth (Outer)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      { item: "Drive 1 Left Tread Depth (Inner)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 85 },
+      { item: "Drive 1 Right Tread Depth (Outer)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      { item: "Drive 1 Right Tread Depth (Inner)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 85 },
+
+      { item: "Drive 1 Left Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 98 },
+      { item: "Drive 1 Right Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 98 },
+
+      // Rear 1 (dual) — matches your corner mapping in UI
+      { item: "Rear 1 Left Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      { item: "Rear 1 Right Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+
+      { item: "Rear 1 Left Tread Depth (Outer)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      { item: "Rear 1 Left Tread Depth (Inner)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 85 },
+      { item: "Rear 1 Right Tread Depth (Outer)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      { item: "Rear 1 Right Tread Depth (Inner)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 85 },
+
+      { item: "Rear 1 Left Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 98 },
+      { item: "Rear 1 Right Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 98 },
+    ],
+  },
+
   /* ------------------------- POWERTRAIN / BAY ------------------------ */
   {
     title: "Powertrain / Engine Bay",
