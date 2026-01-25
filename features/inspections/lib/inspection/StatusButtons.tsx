@@ -1,3 +1,5 @@
+//features/inspections/lib/inspection/StatusButtons.tsx
+
 "use client";
 
 import type React from "react";

@@ -98,20 +98,27 @@ function buildAirTireGrid(): Section {
   const axles = ["Steer 1", "Drive 1"];
   const sides = ["Left", "Right"];
 
-  const metrics = [
-    { label: "Tire Pressure", unit: "psi" },
-    { label: "Tread Depth", unit: "mm" },
-  ];
-
   const items: Section["items"] = [];
 
   for (const axle of axles) {
+    const isDual =
+      axle.toLowerCase().startsWith("drive") ||
+      axle.toLowerCase().startsWith("rear") ||
+      axle.toLowerCase().startsWith("tag") ||
+      axle.toLowerCase().startsWith("trailer");
+
     for (const side of sides) {
-      for (const m of metrics) {
-        items.push({
-          item: `${axle} ${side} ${m.label}`,
-          unit: m.unit,
-        });
+      if (!isDual) {
+        // SINGLE (Steer): 1 TP + 1 TD
+        items.push({ item: `${axle} ${side} Tire Pressure`, unit: "psi" });
+        items.push({ item: `${axle} ${side} Tread Depth`, unit: "mm" });
+      } else {
+        // DUAL (Drive/Rear/Tag/Trailer): TP + TD inner/outer
+        items.push({ item: `${axle} ${side} Tire Pressure (Outer)`, unit: "psi" });
+        items.push({ item: `${axle} ${side} Tire Pressure (Inner)`, unit: "psi" });
+
+        items.push({ item: `${axle} ${side} Tread Depth (Outer)`, unit: "mm" });
+        items.push({ item: `${axle} ${side} Tread Depth (Inner)`, unit: "mm" });
       }
     }
   }
@@ -121,28 +128,36 @@ function buildAirTireGrid(): Section {
     items,
   };
 }
-
 /* ---- HYDRAULIC TIRE GRID (automotive) ---- */
 function buildHydraulicTireGrid(): Section {
-  const corners = ["LF", "RF", "LR", "RR"];
-  const metrics = [
-    { label: "Tire Pressure", unit: "psi" },
-    { label: "Tread Depth", unit: "mm" },
-  ];
+  // front is single
+  const front = ["LF", "RF"] as const;
 
-  const items = corners.flatMap((c) =>
-    metrics.map((m) => ({
-      item: `${c} ${m.label}`,
-      unit: m.unit,
-    })),
-  );
+  // rear defaults to dual-capable (inner/outer labels always present)
+  const rear = ["LR", "RR"] as const;
+
+  const items: Section["items"] = [];
+
+  for (const c of front) {
+    items.push({ item: `${c} Tire Pressure`, unit: "psi" });
+    items.push({ item: `${c} Tread Depth (Outer)`, unit: "mm" }); // keep label consistent with grid parser
+  }
+
+  for (const c of rear) {
+    // pressure
+    items.push({ item: `${c} Tire Pressure (Outer)`, unit: "psi" });
+    items.push({ item: `${c} Tire Pressure (Inner)`, unit: "psi" });
+
+    // tread depth
+    items.push({ item: `${c} Tread Depth (Outer)`, unit: "mm" });
+    items.push({ item: `${c} Tread Depth (Inner)`, unit: "mm" });
+  }
 
   return {
     title: "Tire Grid – Hydraulic",
     items,
   };
 }
-
 /* ------------------------------------------------------------------ */
 /* BATTERY GRID (CCA ONLY, 1–5 BATTERIES)                             */
 /* ------------------------------------------------------------------ */
