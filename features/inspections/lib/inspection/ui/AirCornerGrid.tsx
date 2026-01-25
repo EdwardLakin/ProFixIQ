@@ -1,4 +1,3 @@
-// features/inspections/lib/inspection/ui/AirCornerGrid.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -15,6 +14,7 @@ type Props = {
 };
 
 type Side = "Left" | "Right";
+type UnitMode = "standard" | "metric";
 
 type Cell = {
   idx: number;
@@ -56,6 +56,21 @@ const metricRank = (metric: string) => {
   return 999;
 };
 
+function axleSortScore(axle: string): number {
+  const l = axle.toLowerCase().trim();
+  if (l.startsWith("steer")) return 0;
+  if (l.startsWith("drive")) return 1;
+  if (l.startsWith("rear")) return 2;
+  if (l.startsWith("tag")) return 3;
+  if (l.startsWith("trailer")) return 4;
+  return 9;
+}
+
+function modeHint(mode: UnitMode): string {
+  // UI hint only (we are not converting values)
+  return mode === "metric" ? "ENTER MM / KPA / N·M" : "ENTER IN / PSI / FT·LB";
+}
+
 export default function AirCornerGrid({
   sectionIndex,
   items,
@@ -64,6 +79,7 @@ export default function AirCornerGrid({
 }: Props) {
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
+  const [unitMode, setUnitMode] = useState<UnitMode>("standard");
 
   const commit = (idx: number, value: string) => {
     updateItem(sectionIndex, idx, { value });
@@ -73,19 +89,21 @@ export default function AirCornerGrid({
     const byAxle = new Map<string, Cell[]>();
 
     items.forEach((it, idx) => {
-      const label = it.item ?? "";
+      const label = String(it.item ?? it.name ?? "").trim();
       if (!label) return;
 
       const m = label.match(LABEL_RE);
       if (!m?.groups) return;
 
-      const axle = m.groups.axle.trim();
-      const side = (m.groups.side as Side) || "Left";
-      const metric = m.groups.metric.trim();
+      const axle = String(m.groups.axle ?? "").trim();
+      const side = (String(m.groups.side ?? "") as Side) || "Left";
+      const metric = String(m.groups.metric ?? "").trim();
+      if (!axle || !metric) return;
 
       if (!isAllowedAirMetric(metric)) return;
 
-      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
+      const hinted = unitHint ? unitHint(label) : "";
+      const unit = String(it.unit ?? "").trim() || String(hinted ?? "").trim() || "";
 
       const cell: Cell = {
         idx,
@@ -124,7 +142,14 @@ export default function AirCornerGrid({
       out.push({ axle, rows });
     }
 
-    out.sort((a, b) => a.axle.localeCompare(b.axle));
+    // ✅ Steer always first, then Drive, etc.
+    out.sort((a, b) => {
+      const sa = axleSortScore(a.axle);
+      const sb = axleSortScore(b.axle);
+      if (sa !== sb) return sa - sb;
+      return a.axle.localeCompare(b.axle);
+    });
+
     return out;
   }, [items, unitHint]);
 
@@ -132,11 +157,43 @@ export default function AirCornerGrid({
 
   return (
     <div className="grid w-full gap-3">
-      <div className="flex items-center justify-end gap-3 px-1">
+      {/* Header row: toggle + collapse */}
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setUnitMode("standard")}
+            className={[
+              "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
+              unitMode === "standard"
+                ? "border-orange-500/70 bg-orange-500/10 text-orange-100"
+                : "border-white/10 bg-black/55 text-neutral-200 hover:border-orange-500/50",
+            ].join(" ")}
+          >
+            Standard
+          </button>
+          <button
+            type="button"
+            onClick={() => setUnitMode("metric")}
+            className={[
+              "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
+              unitMode === "metric"
+                ? "border-orange-500/70 bg-orange-500/10 text-orange-100"
+                : "border-white/10 bg-black/55 text-neutral-200 hover:border-orange-500/50",
+            ].join(" ")}
+          >
+            Metric
+          </button>
+
+          <div className="hidden text-[10px] uppercase tracking-[0.16em] text-neutral-500 md:block">
+            {modeHint(unitMode)}
+          </div>
+        </div>
+
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-md border border-slate-600/50 bg-slate-900/40 px-2 py-1 text-xs text-slate-100 hover:border-orange-400/70 hover:bg-slate-900/70"
+          className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -261,6 +318,7 @@ function AddAxlePicker({
           </option>
         ))}
       </select>
+
       <button
         className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
         onClick={() => {

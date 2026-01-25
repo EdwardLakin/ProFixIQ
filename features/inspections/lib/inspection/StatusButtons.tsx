@@ -16,14 +16,27 @@ type StatusButtonsProps = {
     updates: Partial<InspectionItem>,
   ) => void;
   onStatusChange: (status: InspectionItemStatus) => void;
+
+  /**
+   * Optional UI tweaks:
+   * - compact: tighter buttons for dense lists
+   * - wrap: allow wrapping (default true). Set false to keep single-line.
+   */
+  compact?: boolean;
+  wrap?: boolean;
 };
 
 /**
  * Glassy, metallic status pills with clear status colors:
  * - OK        → green
  * - FAIL      → red
- * - RECOMMEND → yellow
+ * - RECOMMEND → amber
  * - N/A       → blue
+ *
+ * Updated to reduce height/scroll:
+ * - Buttons are smaller by default (still readable)
+ * - Uses gap instead of mr/mb (cleaner wrapping)
+ * - Supports compact mode
  */
 export default function StatusButtons(_props: any) {
   const {
@@ -32,13 +45,26 @@ export default function StatusButtons(_props: any) {
     itemIndex,
     updateItem,
     onStatusChange,
+    compact = false,
+    wrap = true,
   } = _props as StatusButtonsProps;
 
   const selected = item.status;
 
+  const size = compact
+    ? "h-7 px-2.5 text-[10px]"
+    : "h-8 px-3 text-[11px]";
+
+  const container = wrap
+    ? "mt-1 flex flex-wrap items-center gap-2"
+    : "mt-1 flex items-center gap-2 overflow-x-auto";
+
   const base =
-    "inline-flex items-center justify-center px-3 py-1 rounded-md " +
-    "text-[11px] font-semibold tracking-[0.16em] uppercase mr-2 mb-2 " +
+    "inline-flex items-center justify-center rounded-md " +
+    size +
+    " " +
+    "select-none " +
+    "font-semibold uppercase tracking-[0.16em] " +
     "border border-white/15 bg-black/30 text-neutral-200 " +
     "backdrop-blur-sm transition-colors duration-150 " +
     "focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.55)] " + // copper focus ring
@@ -49,7 +75,6 @@ export default function StatusButtons(_props: any) {
 
     switch (key) {
       case "ok": {
-        // ✅ green
         const selectedClasses =
           " border-emerald-400/90 text-emerald-50 " +
           "bg-emerald-900/40 shadow-[0_0_0_1px_rgba(52,211,153,0.7)]";
@@ -59,7 +84,6 @@ export default function StatusButtons(_props: any) {
       }
 
       case "fail": {
-        // ❌ red
         const selectedClasses =
           " border-red-500/90 text-red-50 " +
           "bg-red-950/50 shadow-[0_0_0_1px_rgba(248,113,113,0.8)]";
@@ -69,7 +93,6 @@ export default function StatusButtons(_props: any) {
       }
 
       case "recommend": {
-        // ⚠️ yellow / amber
         const selectedClasses =
           " border-amber-400/90 text-amber-50 " +
           "bg-amber-950/40 shadow-[0_0_0_1px_rgba(251,191,36,0.85)]";
@@ -80,7 +103,6 @@ export default function StatusButtons(_props: any) {
 
       case "na":
       default: {
-        // 🔵 blue
         const selectedClasses =
           " border-sky-400/90 text-sky-50 " +
           "bg-sky-950/40 shadow-[0_0_0_1px_rgba(56,189,248,0.8)]";
@@ -107,7 +129,7 @@ export default function StatusButtons(_props: any) {
   };
 
   return (
-    <div className="mt-2 flex flex-wrap">
+    <div className={container}>
       <button
         type="button"
         tabIndex={0}
@@ -119,6 +141,7 @@ export default function StatusButtons(_props: any) {
       >
         OK
       </button>
+
       <button
         type="button"
         tabIndex={0}
@@ -130,6 +153,7 @@ export default function StatusButtons(_props: any) {
       >
         Fail
       </button>
+
       <button
         type="button"
         tabIndex={0}
@@ -139,8 +163,9 @@ export default function StatusButtons(_props: any) {
         aria-pressed={selected === "recommend"}
         title="Mark Recommend"
       >
-        Recommend
+        Rec
       </button>
+
       <button
         type="button"
         tabIndex={0}

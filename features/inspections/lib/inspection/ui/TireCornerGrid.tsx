@@ -14,7 +14,6 @@ type Props = {
 
 type Side = "Left" | "Right";
 type DualPos = "Inner" | "Outer";
-
 type MetricKind = "pressure" | "tread" | "other";
 
 type Cell = {
@@ -93,7 +92,7 @@ function isDualAxleLabel(axle: string): boolean {
   if (l.startsWith("rear")) return true;
   if (l.startsWith("tag")) return true;
   if (l.startsWith("trailer")) return true;
-  return true; // default to dual for unknown axle types (safe per your “duals on both” note)
+  return true;
 }
 
 function placeSingleTread(side: SingleSide, cell: Cell): void {
@@ -109,11 +108,42 @@ function placeDualTread(side: DualSide, pos: DualPos | null, cell: Cell): void {
     if (!side.treadInner) side.treadInner = cell;
     return;
   }
-  // no pos -> fill outer then inner
   if (!side.treadOuter) side.treadOuter = cell;
   else if (!side.treadInner) side.treadInner = cell;
 }
 
+function scoreAxle(ax: string): number {
+  const l = ax.toLowerCase();
+  if (l.startsWith("steer")) return 0;
+  if (l.startsWith("drive")) return 1;
+  if (l.startsWith("rear")) return 2;
+  if (l.startsWith("tag")) return 3;
+  if (l.startsWith("trailer")) return 4;
+  return 9;
+}
+
+function inputCls() {
+  return [
+    "h-[34px] w-full rounded-lg border border-white/10 bg-black/55",
+    "px-3 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500",
+    "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
+  ].join(" ");
+}
+
+function unitCls() {
+  return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400";
+}
+
+function cornerShellCls() {
+  return "rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)] backdrop-blur-xl";
+}
+
+/**
+ * Sketch layout per axle:
+ * - TD lives OUTSIDE (left corner + right corner)
+ * - TP lives INSIDE (between tires on each side)
+ * - For duals: stack TD Outer + TD Inner on outside corners
+ */
 export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
@@ -156,7 +186,6 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
         if (kind === "other") return;
 
         const row = ensure(axleLabel);
-        // force: steer single, rear dual
         row.isDual = isDualAxleLabel(axleLabel);
 
         const cell: Cell = {
@@ -192,8 +221,6 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
       if (kind === "other") return;
 
       const row = ensure(axle);
-
-      // enforce dual by axle type (per your spec), not by presence of “Inner/Outer”
       row.isDual = isDualAxleLabel(axle);
 
       const cell: Cell = {
@@ -216,20 +243,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     });
 
     const out = Array.from(byAxle.values());
-
-    const score = (ax: string): number => {
-      const l = ax.toLowerCase();
-      if (l.startsWith("steer")) return 0;
-      if (l.startsWith("drive")) return 1;
-      if (l.startsWith("rear")) return 2;
-      if (l.startsWith("tag")) return 3;
-      if (l.startsWith("trailer")) return 4;
-      return 9;
-    };
-
     out.sort((a, b) => {
-      const sa = score(a.axle);
-      const sb = score(b.axle);
+      const sa = scoreAxle(a.axle);
+      const sb = scoreAxle(b.axle);
       if (sa !== sb) return sa - sb;
       return a.axle.localeCompare(b.axle);
     });
@@ -241,13 +257,111 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
   const existingAxles = tables.map((t) => t.axle);
 
+  const TDStack = (cells: { outer?: Cell; inner?: Cell; single?: Cell }, label: string) => {
+    const hasDual = !!(cells.outer || cells.inner);
+    const showInner = !!cells.inner;
+
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+          {label}
+        </div>
+
+        {/* Single uses one box; dual uses outer (+inner if present) */}
+        {!hasDual ? (
+          <div className="relative">
+            <input
+              defaultValue={cells.single?.initial ?? ""}
+              className={inputCls()}
+              placeholder={cells.single ? "TD" : "—"}
+              inputMode="decimal"
+              type="number"
+              onBlur={(e) => {
+                if (!cells.single) return;
+                commit(cells.single.idx, e.currentTarget.value);
+              }}
+              disabled={!cells.single}
+            />
+            <span className={unitCls()}>{(cells.single?.unit ?? "mm").trim() || "mm"}</span>
+          </div>
+        ) : (
+          <>
+            <div className="relative">
+              <input
+                defaultValue={cells.outer?.initial ?? ""}
+                className={inputCls()}
+                placeholder={cells.outer ? "TD Outer" : "—"}
+                inputMode="decimal"
+                type="number"
+                onBlur={(e) => {
+                  if (!cells.outer) return;
+                  commit(cells.outer.idx, e.currentTarget.value);
+                }}
+                disabled={!cells.outer}
+              />
+              <span className={unitCls()}>{(cells.outer?.unit ?? "mm").trim() || "mm"}</span>
+            </div>
+
+            {showInner ? (
+              <div className="relative">
+                <input
+                  defaultValue={cells.inner?.initial ?? ""}
+                  className={inputCls()}
+                  placeholder="TD Inner"
+                  inputMode="decimal"
+                  type="number"
+                  onBlur={(e) => {
+                    if (!cells.inner) return;
+                    commit(cells.inner.idx, e.currentTarget.value);
+                  }}
+                  disabled={!cells.inner}
+                />
+                <span className={unitCls()}>{(cells.inner?.unit ?? "mm").trim() || "mm"}</span>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const TPBox = (cell: Cell | undefined, label: string) => {
+    const u = (cell?.unit ?? "").trim();
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+          {label}
+        </div>
+        <div className="relative">
+          <input
+            defaultValue={cell?.initial ?? ""}
+            className={inputCls()}
+            placeholder={cell ? "TP" : "—"}
+            inputMode="decimal"
+            type="number"
+            onBlur={(e) => {
+              if (!cell) return;
+              commit(cell.idx, e.currentTarget.value);
+            }}
+            disabled={!cell}
+          />
+          <span className={unitCls()}>{u || "psi"}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="grid w-full gap-3">
-      <div className="flex items-center justify-end gap-3 px-1">
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+          Tire Grid – Air Brake (sketch layout)
+        </div>
+
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-md border border-slate-600/50 bg-slate-900/40 px-2 py-1 text-xs text-slate-100 hover:border-orange-400/70 hover:bg-slate-900/70"
+          className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -258,158 +372,59 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
       {onAddAxle ? <AddAxlePicker existing={existingAxles} onAddAxle={onAddAxle} /> : null}
 
-      {tables.map((t) => (
-        <div
-          key={t.axle}
-          className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl"
-        >
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div
-              className="text-base font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-              style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-            >
-              {t.axle}
-            </div>
-          </div>
+      {open ? (
+        <div className="grid gap-4">
+          {tables.map((t) => {
+            const isDual = t.isDual;
 
-          {open ? (
-            <div className="overflow-x-auto">
-              <div className="inline-block min-w-full align-middle">
-                <table className="min-w-full border-separate border-spacing-y-1">
-                  <thead>
-                    <tr className="text-xs text-muted-foreground">
-                      <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
-                        Item
-                      </th>
-                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
-                        Left
-                      </th>
-                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
-                        Right
-                      </th>
-                    </tr>
-                  </thead>
+            const leftTD = isDual
+              ? { outer: t.dual.left.treadOuter, inner: t.dual.left.treadInner }
+              : { single: t.single.left.tread };
 
-                  <tbody>
-                    {/* Pressure row */}
-                    <tr className="align-middle">
-                      <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                        Tire Pressure
-                      </td>
-                      {(["Left", "Right"] as const).map((side) => {
-                        const cell =
-                          side === "Left"
-                            ? (t.isDual ? t.dual.left.pressure : t.single.left.pressure)
-                            : (t.isDual ? t.dual.right.pressure : t.single.right.pressure);
+            const rightTD = isDual
+              ? { outer: t.dual.right.treadOuter, inner: t.dual.right.treadInner }
+              : { single: t.single.right.tread };
 
-                        return (
-                          <td key={side} className="px-3 py-2 text-center">
-                            {cell ? (
-                              <ValueInput cell={cell} placeholder="Value" onCommit={commit} />
-                            ) : (
-                              <div className="h-[32px]" />
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
+            const leftTP = isDual ? t.dual.left.pressure : t.single.left.pressure;
+            const rightTP = isDual ? t.dual.right.pressure : t.single.right.pressure;
 
-                    {/* Tread rows */}
-                    {!t.isDual ? (
-                      <tr className="align-middle">
-                        <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                          Tread Depth
-                        </td>
-                        {(["Left", "Right"] as const).map((side) => {
-                          const cell = side === "Left" ? t.single.left.tread : t.single.right.tread;
-                          return (
-                            <td key={side} className="px-3 py-2 text-center">
-                              {cell ? (
-                                <ValueInput cell={cell} placeholder="Value" onCommit={commit} />
-                              ) : (
-                                <div className="h-[32px]" />
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ) : (
-                      <>
-                        <tr className="align-middle">
-                          <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                            Tread Depth (Outer)
-                          </td>
-                          {(["Left", "Right"] as const).map((side) => {
-                            const cell =
-                              side === "Left" ? t.dual.left.treadOuter : t.dual.right.treadOuter;
-                            return (
-                              <td key={side} className="px-3 py-2 text-center">
-                                {cell ? (
-                                  <ValueInput cell={cell} placeholder="Outer" onCommit={commit} />
-                                ) : (
-                                  <div className="h-[32px]" />
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
+            return (
+              <div key={t.axle} className={["p-4", cornerShellCls()].join(" ")}>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div
+                    className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                  >
+                    {t.axle}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    TD outside • TP inside{isDual ? " • Duals" : " • Single"}
+                  </div>
+                </div>
 
-                        <tr className="align-middle">
-                          <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                            Tread Depth (Inner)
-                          </td>
-                          {(["Left", "Right"] as const).map((side) => {
-                            const cell =
-                              side === "Left" ? t.dual.left.treadInner : t.dual.right.treadInner;
-                            return (
-                              <td key={side} className="px-3 py-2 text-center">
-                                {cell ? (
-                                  <ValueInput cell={cell} placeholder="Inner" onCommit={commit} />
-                                ) : (
-                                  <div className="h-[32px]" />
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      </>
-                    )}
-                  </tbody>
-                </table>
+                {/* Sketch layout per axle: TD | TP | spacer(body) | TP | TD */}
+                <div className="grid grid-cols-[minmax(150px,1fr)_minmax(130px,1fr)_48px_minmax(130px,1fr)_minmax(150px,1fr)] items-start gap-3">
+                  {/* Left TD */}
+                  {TDStack(leftTD as any, "Left TD")}
+
+                  {/* Left TP */}
+                  {TPBox(leftTP, "Left TP")}
+
+                  {/* Center body spacer */}
+                  <div className="flex h-full items-center justify-center">
+                    <div className="h-[120px] w-full rounded-xl border border-white/10 bg-black/25" />
+                  </div>
+
+                  {/* Right TP */}
+                  {TPBox(rightTP, "Right TP")}
+
+                  {/* Right TD */}
+                  {TDStack(rightTD as any, "Right TD")}
+                </div>
               </div>
-            </div>
-          ) : null}
+            );
+          })}
         </div>
-      ))}
-    </div>
-  );
-}
-
-function ValueInput({
-  cell,
-  placeholder,
-  onCommit,
-}: {
-  cell: Cell;
-  placeholder: string;
-  onCommit: (idx: number, value: string) => void;
-}) {
-  const rightUnit = (cell.unit ?? "").trim();
-
-  return (
-    <div className="relative w-full max-w-[9rem]">
-      <input
-        defaultValue={cell.initial}
-        className="w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 py-1.5 pr-14 text-sm text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
-        placeholder={placeholder}
-        autoComplete="off"
-        inputMode="decimal"
-        onBlur={(e) => onCommit(cell.idx, e.currentTarget.value)}
-      />
-      {rightUnit ? (
-        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-          {rightUnit}
-        </span>
       ) : null}
     </div>
   );

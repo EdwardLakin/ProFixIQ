@@ -1,4 +1,3 @@
-// /features/inspections/lib/inspection/InspectionItemCard.tsx
 "use client";
 
 import type React from "react";
@@ -23,11 +22,7 @@ interface InspectionItemCardProps {
     itemIndex: number,
     status: InspectionItemStatus,
   ) => void;
-  onUpdateValue?: (
-    sectionIndex: number,
-    itemIndex: number,
-    value: string,
-  ) => void;
+  onUpdateValue?: (sectionIndex: number, itemIndex: number, value: string) => void;
   onUpdateUnit?: (sectionIndex: number, itemIndex: number, unit: string) => void;
 
   /** UI only: render as compact row */
@@ -71,8 +66,6 @@ export default function InspectionItemCard(_props: any) {
   const label = getItemLabel(item);
   const nameLower = label.toLowerCase();
 
-  // Measurement items: show numeric value + unit inputs.
-  // NOTE: include "hours" + "labor" to bring labor-hours box back where applicable.
   const isMeasurementItem =
     nameLower.includes("wheel torque") ||
     nameLower.includes("park lining") ||
@@ -92,8 +85,8 @@ export default function InspectionItemCard(_props: any) {
   if (variant === "row") {
     return (
       <div className={["grid gap-2", rowGlow].join(" ")}>
-        {/* Inline row: Item | Checkboxes (or Measurement) | Notes */}
-        <div className="grid items-start gap-2 md:grid-cols-[minmax(0,1fr)_320px_360px] md:gap-3">
+        {/* Row 1: Item | Checkboxes */}
+        <div className="grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_360px]">
           {/* Item */}
           <div className="min-w-0">
             <div className="truncate text-[15px] font-semibold text-white">
@@ -143,32 +136,30 @@ export default function InspectionItemCard(_props: any) {
               />
             )}
           </div>
-
-          {/* Notes */}
-          <div className="min-w-0">
-            {showNotes ? (
-              <textarea
-                rows={1}
-                className={[
-                  "h-9 w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2",
-                  "text-[12px] text-white outline-none placeholder:text-neutral-500",
-                  "focus:border-accent focus:ring-2 focus:ring-accent/60",
-                ].join(" ")}
-                placeholder="Notes…"
-                value={item.notes || ""}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  onUpdateNote(sectionIndex, itemIndex, e.target.value)
-                }
-              />
-            ) : (
-              <div className="h-9 w-full" />
-            )}
-          </div>
         </div>
+
+        {/* Row 2: Notes (full width under) */}
+        {showNotes ? (
+          <div className="min-w-0">
+            <textarea
+              rows={1}
+              className={[
+                "h-9 w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2",
+                "text-[12px] text-white outline-none placeholder:text-neutral-500",
+                "focus:border-accent focus:ring-2 focus:ring-accent/60",
+              ].join(" ")}
+              placeholder="Notes…"
+              value={item.notes || ""}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                onUpdateNote(sectionIndex, itemIndex, e.target.value)
+              }
+            />
+          </div>
+        ) : null}
 
         {/* Photos (only for FAIL/REC) */}
         {showPhotos && (item.status === "fail" || item.status === "recommend") && (
-          <div className="mt-2">
+          <div className="mt-1">
             <div className="rounded-lg border border-white/10 bg-black/25 p-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
@@ -197,7 +188,7 @@ export default function InspectionItemCard(_props: any) {
     );
   }
 
-  // Card variant (kept as-is, but with hardened label)
+  // Card variant (unchanged from your version)
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">

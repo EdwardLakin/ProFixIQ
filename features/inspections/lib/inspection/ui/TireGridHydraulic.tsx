@@ -1,90 +1,105 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
 const POSITIONS = ["LF", "RF", "LR", "RR"] as const;
 type Position = (typeof POSITIONS)[number];
 
-
-type RowKey = "Tire Pressure" | "Tread Depth (Outer)" | "Tread Depth (Inner)";
-
 type Cell = {
   idx: number;
-  pos: Position;
-  row: RowKey;
   item: InspectionItem;
+};
+
+type PosCells = {
+  pressure?: Cell;
+  treadOuter?: Cell;
+  treadInner?: Cell;
 };
 
 const LABEL_RE = /^(?<pos>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 
-function normalizeRow(metricRaw: string): RowKey | null {
+type MetricKind = "pressure" | "treadOuter" | "treadInner" | "other";
+
+function metricKindFrom(metricRaw: string): MetricKind {
   const m = metricRaw.trim().toLowerCase();
 
   // pressure
-  if (m.includes("tire pressure") || m === "pressure") return "Tire Pressure";
+  if (m.includes("tire pressure") || m === "pressure" || m.includes("pressure")) {
+    return "pressure";
+  }
 
   // tread
   if (m.includes("tread")) {
-    if (m.includes("outer")) return "Tread Depth (Outer)";
-    if (m.includes("inner")) return "Tread Depth (Inner)";
-    // If no pos, default it to outer row (common label "Tread Depth")
-    return "Tread Depth (Outer)";
+    if (m.includes("outer")) return "treadOuter";
+    if (m.includes("inner")) return "treadInner";
+    // If no explicit inner/outer, default to outer
+    return "treadOuter";
   }
 
-  return null;
+  return "other";
 }
 
-function unitForRow(row: RowKey): string {
-  if (row === "Tire Pressure") return "psi";
+function unitFor(kind: MetricKind): string {
+  if (kind === "pressure") return "psi";
   return "mm";
 }
 
-export default function TireGridHydraulic(props: {
-  sectionIndex: number;
-  items: InspectionItem[];
-}) {
+function getLabel(it: InspectionItem): string {
+  const anyIt = it as unknown as { item?: unknown; name?: unknown };
+  return String(anyIt.item ?? anyIt.name ?? "").trim();
+}
+
+function inputBaseClass() {
+  return [
+    "h-[34px] w-full rounded-lg border border-white/10 bg-black/55",
+    "px-3 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500",
+    "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
+  ].join(" ");
+}
+
+function smallUnitClass() {
+  return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400";
+}
+
+export default function TireGridHydraulic(props: { sectionIndex: number; items: InspectionItem[] }) {
   const { sectionIndex, items } = props;
   const { updateItem } = useInspectionForm();
+  const [open, setOpen] = useState(true);
 
   const parsed = useMemo(() => {
-    const cells: Cell[] = [];
-    const byRow = new Map<RowKey, Record<Position, Cell | null>>();
-
-    const rows: RowKey[] = ["Tire Pressure", "Tread Depth (Outer)", "Tread Depth (Inner)"];
-    rows.forEach((r) => {
-      byRow.set(r, { LF: null, RF: null, LR: null, RR: null });
-    });
+    const byPos: Record<Position, PosCells> = { LF: {}, RF: {}, LR: {}, RR: {} };
 
     items.forEach((it, idx) => {
-      const raw = String(it.item ?? it.name ?? "").trim();
+      const raw = getLabel(it);
+      if (!raw) return;
+
       const m = raw.match(LABEL_RE);
       if (!m?.groups) return;
 
-      const pos = String(m.groups.pos || "").toUpperCase() as Position;
-      const metric = String(m.groups.metric || "").trim();
+      const pos = String(m.groups.pos ?? "").toUpperCase() as Position;
+      const metric = String(m.groups.metric ?? "").trim();
       if (!POSITIONS.includes(pos) || !metric) return;
 
-      const row = normalizeRow(metric);
-      if (!row) return;
+      const kind = metricKindFrom(metric);
+      if (kind === "other") return;
 
-      const cell: Cell = { idx, pos, row, item: it };
-      cells.push(cell);
+      const cell: Cell = { idx, item: it };
 
-      const bucket = byRow.get(row);
-      if (!bucket) return;
-
-      // If duplicates exist, prefer the first (stable)
-      if (!bucket[pos]) bucket[pos] = cell;
+      // Prefer first match (stable) to avoid duplicates overwriting
+      const bucket = byPos[pos];
+      if (kind === "pressure" && !bucket.pressure) bucket.pressure = cell;
+      if (kind === "treadOuter" && !bucket.treadOuter) bucket.treadOuter = cell;
+      if (kind === "treadInner" && !bucket.treadInner) bucket.treadInner = cell;
     });
 
-    const hasAny = rows.some((r) => {
-      const row = byRow.get(r);
-      return !!row && POSITIONS.some((p) => !!row[p]);
+    const hasAny = POSITIONS.some((p) => {
+      const b = byPos[p];
+      return !!(b.pressure || b.treadOuter || b.treadInner);
     });
 
-    return { rows, byRow, hasAny };
+    return { byPos, hasAny };
   }, [items]);
 
   if (!parsed.hasAny) {
@@ -98,60 +113,208 @@ export default function TireGridHydraulic(props: {
     );
   }
 
-  return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)]">
-      <div className="grid grid-cols-[minmax(160px,1fr)_repeat(4,minmax(0,1fr))] gap-px bg-white/10">
-        <div className="bg-black/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
-          Metric
+  const commit = (cell: Cell | undefined, value: string) => {
+    if (!cell) return;
+    updateItem(sectionIndex, cell.idx, { value });
+  };
+
+  const TDBox = (pos: Position) => {
+    const b = parsed.byPos[pos];
+    const hasOuter = !!b.treadOuter;
+    const hasInner = !!b.treadInner;
+
+    return (
+      <div className="flex flex-col gap-2">
+        {/* Outer */}
+        <div className="relative">
+          <input
+            className={inputBaseClass()}
+            type="number"
+            inputMode="decimal"
+            placeholder={hasOuter ? "TD Outer" : "—"}
+            value={String(b.treadOuter?.item?.value ?? "")}
+            onChange={(e) => commit(b.treadOuter, e.currentTarget.value)}
+            disabled={!b.treadOuter}
+          />
+          <span className={smallUnitClass()}>{unitFor("treadOuter")}</span>
         </div>
-        {POSITIONS.map((p) => (
-          <div
-            key={p}
-            className="bg-black/60 px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300"
-          >
-            {p}
+
+        {/* Inner (only if exists in template) */}
+        {hasInner ? (
+          <div className="relative">
+            <input
+              className={inputBaseClass()}
+              type="number"
+              inputMode="decimal"
+              placeholder="TD Inner"
+              value={String(b.treadInner?.item?.value ?? "")}
+              onChange={(e) => commit(b.treadInner, e.currentTarget.value)}
+              disabled={!b.treadInner}
+            />
+            <span className={smallUnitClass()}>{unitFor("treadInner")}</span>
           </div>
-        ))}
+        ) : null}
+      </div>
+    );
+  };
 
-        {parsed.rows.map((rowKey) => {
-          const row = parsed.byRow.get(rowKey);
+  const TPBox = (pos: Position) => {
+    const b = parsed.byPos[pos];
+    return (
+      <div className="relative">
+        <input
+          className={inputBaseClass()}
+          type="number"
+          inputMode="decimal"
+          placeholder={b.pressure ? "TP" : "—"}
+          value={String(b.pressure?.item?.value ?? "")}
+          onChange={(e) => commit(b.pressure, e.currentTarget.value)}
+          disabled={!b.pressure}
+        />
+        <span className={smallUnitClass()}>{unitFor("pressure")}</span>
+      </div>
+    );
+  };
 
-          return (
-            <div key={rowKey} className="contents">
-              <div className="bg-black/45 px-3 py-2 text-[12px] font-medium text-neutral-100">
-                <div className="flex items-center justify-between gap-2">
-                  <span>{rowKey}</span>
-                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                    {unitForRow(rowKey)}
-                  </span>
+  return (
+    <div className="grid w-full gap-3">
+      {/* Header / Collapse */}
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+          Tire Grid – Hydraulic (layout)
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
+          aria-expanded={open}
+          title={open ? "Collapse" : "Expand"}
+          tabIndex={-1}
+        >
+          {open ? "Collapse" : "Expand"}
+        </button>
+      </div>
+
+      {open ? (
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/35 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
+          <div className="p-4">
+            {/* Top-down vehicle layout */}
+            <div className="grid gap-6">
+              {/* FRONT (LF/RF) */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <div
+                    className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                  >
+                    Front
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    TD at corners • TP center
+                  </div>
+                </div>
+
+                {/* 5 columns: TD | TP | spacer | TP | TD  */}
+                <div className="grid grid-cols-[minmax(140px,1fr)_minmax(130px,1fr)_48px_minmax(130px,1fr)_minmax(140px,1fr)] items-start gap-3">
+                  {/* LF TD */}
+                  <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      LF TD
+                    </div>
+                    {TDBox("LF")}
+                  </div>
+
+                  {/* LF TP */}
+                  <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      LF TP
+                    </div>
+                    {TPBox("LF")}
+                  </div>
+
+                  {/* center spacer (truck body) */}
+                  <div className="flex h-full items-center justify-center">
+                    <div className="h-[110px] w-full rounded-xl border border-white/10 bg-black/25" />
+                  </div>
+
+                  {/* RF TP */}
+                  <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      RF TP
+                    </div>
+                    {TPBox("RF")}
+                  </div>
+
+                  {/* RF TD */}
+                  <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      RF TD
+                    </div>
+                    {TDBox("RF")}
+                  </div>
                 </div>
               </div>
 
-              {POSITIONS.map((p) => {
-                const cell = row ? row[p] : null;
-                const v = cell?.item?.value ?? "";
-
-                return (
-                  <div key={p} className="bg-black/25 px-2 py-2">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      className="w-full rounded-md border border-white/10 bg-black/60 px-2 py-1 text-[12px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
-                      value={String(v ?? "")}
-                      onChange={(e) => {
-                        if (!cell) return;
-                        updateItem(sectionIndex, cell.idx, { value: e.currentTarget.value });
-                      }}
-                      placeholder="—"
-                      disabled={!cell}
-                    />
+              {/* REAR (LR/RR) */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <div
+                    className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                  >
+                    Rear
                   </div>
-                );
-              })}
+                </div>
+
+                <div className="grid grid-cols-[minmax(140px,1fr)_minmax(130px,1fr)_48px_minmax(130px,1fr)_minmax(140px,1fr)] items-start gap-3">
+                  {/* LR TD */}
+                  <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      LR TD
+                    </div>
+                    {TDBox("LR")}
+                  </div>
+
+                  {/* LR TP */}
+                  <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      LR TP
+                    </div>
+                    {TPBox("LR")}
+                  </div>
+
+                  {/* center spacer */}
+                  <div className="flex h-full items-center justify-center">
+                    <div className="h-[110px] w-full rounded-xl border border-white/10 bg-black/25" />
+                  </div>
+
+                  {/* RR TP */}
+                  <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      RR TP
+                    </div>
+                    {TPBox("RR")}
+                  </div>
+
+                  {/* RR TD */}
+                  <div>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                      RR TD
+                    </div>
+                    {TDBox("RR")}
+                  </div>
+                </div>
+              </div>
+
+              {/* Unit hint */}
+              <div className="pt-1 text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                TP = {unitFor("pressure")} • TD = {unitFor("treadOuter")}
+              </div>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
