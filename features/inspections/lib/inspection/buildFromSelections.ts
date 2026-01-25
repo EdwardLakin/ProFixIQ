@@ -1,6 +1,9 @@
 // features/inspections/lib/inspection/buildFromSelections.ts
 
-import type { InspectionCategory, InspectionItem } from "@inspections/lib/inspection/types";
+import type {
+  InspectionCategory,
+  InspectionItem,
+} from "@inspections/lib/inspection/types";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
 
@@ -15,10 +18,63 @@ type BuildParams = {
   extraServiceItems?: string[];
 };
 
+function buildTireGridSection(vt: VehicleType): InspectionCategory | null {
+  // You said: tire corner grid should ONLY show tires.
+  // So we generate a dedicated “Tire Grid” section here (labels that your Tire grids parse).
+  // - Car (hydraulic): LF/RF/LR/RR
+  // - Truck/bus/trailer (air): Steer/Drive/etc from axle layout with Left/Right
+
+  if (vt === "car") {
+    const corners = ["LF", "RF", "LR", "RR"] as const;
+
+    // Only tires:
+    const metrics: Array<{ label: string; unit: string | null }> = [
+      { label: "Tire Pressure", unit: "psi" },
+      { label: "Tread Depth (Outer)", unit: "mm" },
+      { label: "Tread Depth (Inner)", unit: "mm" },
+    ];
+
+    const items: InspectionItem[] = [];
+    for (const c of corners) {
+      for (const m of metrics) {
+        items.push({ item: `${c} ${m.label}`, unit: m.unit });
+      }
+    }
+
+    if (!items.length) return null;
+    return { title: "Tire Grid", items };
+  }
+
+  // Air brake vehicles: build from axle layout
+  const layout = generateAxleLayout(vt);
+
+  // Only tires:
+  const metrics: Array<{ label: string; unit: string | null }> = [
+    { label: "Tire Pressure", unit: "psi" },
+    { label: "Tread Depth (Outer)", unit: "mm" },
+    { label: "Tread Depth (Inner)", unit: "mm" },
+  ];
+
+  const items: InspectionItem[] = [];
+  for (const a of layout) {
+    for (const side of ["Left", "Right"] as const) {
+      for (const m of metrics) {
+        items.push({
+          item: `${a.axleLabel} ${side} ${m.label}`,
+          unit: m.unit,
+        });
+      }
+    }
+  }
+
+  if (!items.length) return null;
+  return { title: "Tire Grid", items };
+}
+
 /**
  * IMPORTANT:
- * We intentionally DO NOT include tire pressure / tread items in corner grids anymore.
- * Tires now live in the dedicated Tire Grid.
+ * - Corner grids are BRAKES/torque/push-rod ONLY.
+ * - Tires live in the dedicated Tire Grid.
  */
 export function buildInspectionFromSelections({
   selections,
@@ -27,7 +83,7 @@ export function buildInspectionFromSelections({
 }: BuildParams): InspectionCategory[] {
   const sections: InspectionCategory[] = [];
 
-  // 1) Corner/Axle block first
+  // 1) Corner/Axle block first (BRAKES ONLY) + Tire Grid (TIRES ONLY)
   if (axle) {
     const vt = axle.vehicleType;
     const layout = generateAxleLayout(vt);
@@ -91,6 +147,10 @@ export function buildInspectionFromSelections({
         });
       }
     }
+
+    // Always add Tire Grid when axle mode is enabled (TIRES ONLY)
+    const tireGrid = buildTireGridSection(vt);
+    if (tireGrid) sections.push(tireGrid);
   }
 
   // 2) Selected content from masterInspectionList

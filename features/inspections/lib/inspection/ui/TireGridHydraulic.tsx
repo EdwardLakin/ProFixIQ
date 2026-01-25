@@ -13,20 +13,33 @@ type Cell = {
 };
 
 type PosCells = {
+  // TP (single or dual)
   pressure?: Cell;
+  pressureOuter?: Cell;
+  pressureInner?: Cell;
+
+  // TD
   treadOuter?: Cell;
   treadInner?: Cell;
 };
 
 const LABEL_RE = /^(?<pos>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 
-type MetricKind = "pressure" | "treadOuter" | "treadInner" | "other";
+type MetricKind =
+  | "pressure"
+  | "pressureOuter"
+  | "pressureInner"
+  | "treadOuter"
+  | "treadInner"
+  | "other";
 
 function metricKindFrom(metricRaw: string): MetricKind {
   const m = metricRaw.trim().toLowerCase();
 
   // pressure
-  if (m.includes("tire pressure") || m === "pressure" || m.includes("pressure")) {
+  if (m.includes("pressure") || m.includes("tire pressure")) {
+    if (m.includes("outer")) return "pressureOuter";
+    if (m.includes("inner")) return "pressureInner";
     return "pressure";
   }
 
@@ -34,7 +47,6 @@ function metricKindFrom(metricRaw: string): MetricKind {
   if (m.includes("tread")) {
     if (m.includes("outer")) return "treadOuter";
     if (m.includes("inner")) return "treadInner";
-    // If no explicit inner/outer, default to outer
     return "treadOuter";
   }
 
@@ -42,7 +54,7 @@ function metricKindFrom(metricRaw: string): MetricKind {
 }
 
 function unitFor(kind: MetricKind): string {
-  if (kind === "pressure") return "psi";
+  if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") return "psi";
   return "mm";
 }
 
@@ -56,11 +68,20 @@ function inputBaseClass() {
     "h-[34px] w-full rounded-lg border border-white/10 bg-black/55",
     "px-3 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500",
     "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
+    "disabled:opacity-50 disabled:cursor-not-allowed",
   ].join(" ");
 }
 
 function smallUnitClass() {
   return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400";
+}
+
+function sectionTitleClass() {
+  return "text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]";
+}
+
+function tinyLabelClass() {
+  return "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400";
 }
 
 export default function TireGridHydraulic(props: { sectionIndex: number; items: InspectionItem[] }) {
@@ -86,17 +107,26 @@ export default function TireGridHydraulic(props: { sectionIndex: number; items: 
       if (kind === "other") return;
 
       const cell: Cell = { idx, item: it };
+      const bucket = byPos[pos];
 
       // Prefer first match (stable) to avoid duplicates overwriting
-      const bucket = byPos[pos];
       if (kind === "pressure" && !bucket.pressure) bucket.pressure = cell;
+      if (kind === "pressureOuter" && !bucket.pressureOuter) bucket.pressureOuter = cell;
+      if (kind === "pressureInner" && !bucket.pressureInner) bucket.pressureInner = cell;
+
       if (kind === "treadOuter" && !bucket.treadOuter) bucket.treadOuter = cell;
       if (kind === "treadInner" && !bucket.treadInner) bucket.treadInner = cell;
     });
 
     const hasAny = POSITIONS.some((p) => {
       const b = byPos[p];
-      return !!(b.pressure || b.treadOuter || b.treadInner);
+      return !!(
+        b.pressure ||
+        b.pressureOuter ||
+        b.pressureInner ||
+        b.treadOuter ||
+        b.treadInner
+      );
     });
 
     return { byPos, hasAny };
@@ -118,14 +148,15 @@ export default function TireGridHydraulic(props: { sectionIndex: number; items: 
     updateItem(sectionIndex, cell.idx, { value });
   };
 
-  const TDBox = (pos: Position) => {
+  const TDStack = (pos: Position, label: string) => {
     const b = parsed.byPos[pos];
     const hasOuter = !!b.treadOuter;
     const hasInner = !!b.treadInner;
 
     return (
       <div className="flex flex-col gap-2">
-        {/* Outer */}
+        <div className={tinyLabelClass()}>{label}</div>
+
         <div className="relative">
           <input
             className={inputBaseClass()}
@@ -139,7 +170,6 @@ export default function TireGridHydraulic(props: { sectionIndex: number; items: 
           <span className={smallUnitClass()}>{unitFor("treadOuter")}</span>
         </div>
 
-        {/* Inner (only if exists in template) */}
         {hasInner ? (
           <div className="relative">
             <input
@@ -158,20 +188,196 @@ export default function TireGridHydraulic(props: { sectionIndex: number; items: 
     );
   };
 
-  const TPBox = (pos: Position) => {
-    const b = parsed.byPos[pos];
+  /**
+   * Split TP box (2 inputs side-by-side) for FRONT
+   * LF + RF
+   */
+  const FrontTPSplit = () => {
+    const lf = parsed.byPos.LF;
+    const rf = parsed.byPos.RF;
+
+    const lfCell = lf.pressureOuter ?? lf.pressure ?? lf.pressureInner;
+    const rfCell = rf.pressureOuter ?? rf.pressure ?? rf.pressureInner;
+
     return (
-      <div className="relative">
-        <input
-          className={inputBaseClass()}
-          type="number"
-          inputMode="decimal"
-          placeholder={b.pressure ? "TP" : "—"}
-          value={String(b.pressure?.item?.value ?? "")}
-          onChange={(e) => commit(b.pressure, e.currentTarget.value)}
-          disabled={!b.pressure}
-        />
-        <span className={smallUnitClass()}>{unitFor("pressure")}</span>
+      <div className="flex flex-col gap-2">
+        <div className={tinyLabelClass()}>Tire Pressure</div>
+
+        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
+          <div className="grid grid-cols-2 gap-px bg-white/10">
+            {/* LF */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                LF
+              </div>
+              <div className="relative">
+                <input
+                  className={inputBaseClass()}
+                  type="number"
+                  inputMode="decimal"
+                  placeholder={lfCell ? "TP" : "—"}
+                  value={String(lfCell?.item?.value ?? "")}
+                  onChange={(e) => commit(lfCell, e.currentTarget.value)}
+                  disabled={!lfCell}
+                />
+                <span className={smallUnitClass()}>{unitFor("pressure")}</span>
+              </div>
+            </div>
+
+            {/* RF */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                RF
+              </div>
+              <div className="relative">
+                <input
+                  className={inputBaseClass()}
+                  type="number"
+                  inputMode="decimal"
+                  placeholder={rfCell ? "TP" : "—"}
+                  value={String(rfCell?.item?.value ?? "")}
+                  onChange={(e) => commit(rfCell, e.currentTarget.value)}
+                  disabled={!rfCell}
+                />
+                <span className={smallUnitClass()}>{unitFor("pressure")}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /**
+   * Quad TP box (2x2) for REAR
+   * Goal: split into 4.
+   *
+   * If you only have "LR Tire Pressure" / "RR Tire Pressure" (no inner/outer),
+   * we still render 2 boxes and disable the other 2.
+   *
+   * If you add labels later like:
+   * - "LR Tire Pressure (Outer)" + "LR Tire Pressure (Inner)"
+   * - "RR Tire Pressure (Outer)" + "RR Tire Pressure (Inner)"
+   * it will automatically fill all 4.
+   */
+  const RearTPQuad = () => {
+    const lr = parsed.byPos.LR;
+    const rr = parsed.byPos.RR;
+
+    const lrOuter = lr.pressureOuter ?? lr.pressure;
+    const lrInner = lr.pressureInner;
+    const rrOuter = rr.pressureOuter ?? rr.pressure;
+    const rrInner = rr.pressureInner;
+
+    return (
+      <div className="flex flex-col gap-2">
+        <div className={tinyLabelClass()}>Tire Pressure</div>
+
+        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
+          <div className="grid grid-cols-2 gap-px bg-white/10">
+            {/* LR Outer */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  LR
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Outer
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  className={inputBaseClass()}
+                  type="number"
+                  inputMode="decimal"
+                  placeholder={lrOuter ? "TP" : "—"}
+                  value={String(lrOuter?.item?.value ?? "")}
+                  onChange={(e) => commit(lrOuter, e.currentTarget.value)}
+                  disabled={!lrOuter}
+                />
+                <span className={smallUnitClass()}>{unitFor("pressure")}</span>
+              </div>
+            </div>
+
+            {/* RR Outer */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  RR
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Outer
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  className={inputBaseClass()}
+                  type="number"
+                  inputMode="decimal"
+                  placeholder={rrOuter ? "TP" : "—"}
+                  value={String(rrOuter?.item?.value ?? "")}
+                  onChange={(e) => commit(rrOuter, e.currentTarget.value)}
+                  disabled={!rrOuter}
+                />
+                <span className={smallUnitClass()}>{unitFor("pressure")}</span>
+              </div>
+            </div>
+
+            {/* LR Inner */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  LR
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Inner
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  className={inputBaseClass()}
+                  type="number"
+                  inputMode="decimal"
+                  placeholder={lrInner ? "TP" : "—"}
+                  value={String(lrInner?.item?.value ?? "")}
+                  onChange={(e) => commit(lrInner, e.currentTarget.value)}
+                  disabled={!lrInner}
+                />
+                <span className={smallUnitClass()}>{unitFor("pressure")}</span>
+              </div>
+            </div>
+
+            {/* RR Inner */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  RR
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Inner
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  className={inputBaseClass()}
+                  type="number"
+                  inputMode="decimal"
+                  placeholder={rrInner ? "TP" : "—"}
+                  value={String(rrInner?.item?.value ?? "")}
+                  onChange={(e) => commit(rrInner, e.currentTarget.value)}
+                  disabled={!rrInner}
+                />
+                <span className={smallUnitClass()}>{unitFor("pressure")}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+          If you want all 4 active, add labels like{" "}
+          <span className="text-neutral-300">LR Tire Pressure (Inner/Outer)</span> and{" "}
+          <span className="text-neutral-300">RR Tire Pressure (Inner/Outer)</span>.
+        </div>
       </div>
     );
   };
@@ -181,7 +387,7 @@ export default function TireGridHydraulic(props: { sectionIndex: number; items: 
       {/* Header / Collapse */}
       <div className="flex items-center justify-between gap-3 px-1">
         <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-          Tire Grid – Hydraulic (layout)
+          Tire Grid – Hydraulic (sketch layout)
         </div>
 
         <button
@@ -199,111 +405,66 @@ export default function TireGridHydraulic(props: { sectionIndex: number; items: 
       {open ? (
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/35 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
           <div className="p-4">
-            {/* Top-down vehicle layout */}
-            <div className="grid gap-6">
-              {/* FRONT (LF/RF) */}
+            <div className="grid gap-7">
+              {/* FRONT */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <div
-                    className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-                  >
+                  <div className={sectionTitleClass()} style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
                     Front
                   </div>
                   <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                    TD at corners • TP center
+                    TP center • TD corners
                   </div>
                 </div>
 
-                {/* 5 columns: TD | TP | spacer | TP | TD  */}
-                <div className="grid grid-cols-[minmax(140px,1fr)_minmax(130px,1fr)_48px_minmax(130px,1fr)_minmax(140px,1fr)] items-start gap-3">
+                {/* 3 columns: TD | TP cluster | TD */}
+                <div className="grid grid-cols-[minmax(170px,1fr)_minmax(260px,1.2fr)_minmax(170px,1fr)] items-start gap-4">
                   {/* LF TD */}
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                      LF TD
-                    </div>
-                    {TDBox("LF")}
-                  </div>
+                  {TDStack("LF", "LF Tread Depth")}
 
-                  {/* LF TP */}
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                      LF TP
-                    </div>
-                    {TPBox("LF")}
-                  </div>
-
-                  {/* center spacer (truck body) */}
-                  <div className="flex h-full items-center justify-center">
-                    <div className="h-[110px] w-full rounded-xl border border-white/10 bg-black/25" />
-                  </div>
-
-                  {/* RF TP */}
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                      RF TP
-                    </div>
-                    {TPBox("RF")}
-                  </div>
+                  {/* TP split cluster */}
+                  <FrontTPSplit />
 
                   {/* RF TD */}
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                      RF TD
-                    </div>
-                    {TDBox("RF")}
-                  </div>
+                  {TDStack("RF", "RF Tread Depth")}
+                </div>
+
+                {/* Tall center spacer to visually match sketch */}
+                <div className="mt-4 grid grid-cols-[minmax(170px,1fr)_minmax(260px,1.2fr)_minmax(170px,1fr)] gap-4">
+                  <div />
+                  <div className="h-[140px] w-full rounded-2xl border border-white/10 bg-black/25" />
+                  <div />
                 </div>
               </div>
 
-              {/* REAR (LR/RR) */}
+              {/* REAR */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <div
-                    className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-                  >
+                  <div className={sectionTitleClass()} style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
                     Rear
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    TP center (quad) • TD corners
                   </div>
                 </div>
 
-                <div className="grid grid-cols-[minmax(140px,1fr)_minmax(130px,1fr)_48px_minmax(130px,1fr)_minmax(140px,1fr)] items-start gap-3">
+                {/* 3 columns: TD | TP quad | TD */}
+                <div className="grid grid-cols-[minmax(170px,1fr)_minmax(320px,1.4fr)_minmax(170px,1fr)] items-start gap-4">
                   {/* LR TD */}
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                      LR TD
-                    </div>
-                    {TDBox("LR")}
-                  </div>
+                  {TDStack("LR", "LR Tread Depth")}
 
-                  {/* LR TP */}
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                      LR TP
-                    </div>
-                    {TPBox("LR")}
-                  </div>
-
-                  {/* center spacer */}
-                  <div className="flex h-full items-center justify-center">
-                    <div className="h-[110px] w-full rounded-xl border border-white/10 bg-black/25" />
-                  </div>
-
-                  {/* RR TP */}
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                      RR TP
-                    </div>
-                    {TPBox("RR")}
-                  </div>
+                  {/* TP quad cluster */}
+                  <RearTPQuad />
 
                   {/* RR TD */}
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                      RR TD
-                    </div>
-                    {TDBox("RR")}
-                  </div>
+                  {TDStack("RR", "RR Tread Depth")}
+                </div>
+
+                {/* Taller center body */}
+                <div className="mt-4 grid grid-cols-[minmax(170px,1fr)_minmax(320px,1.4fr)_minmax(170px,1fr)] gap-4">
+                  <div />
+                  <div className="h-[170px] w-full rounded-2xl border border-white/10 bg-black/25" />
+                  <div />
                 </div>
               </div>
 

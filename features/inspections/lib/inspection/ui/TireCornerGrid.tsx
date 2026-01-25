@@ -14,7 +14,7 @@ type Props = {
 
 type Side = "Left" | "Right";
 type DualPos = "Inner" | "Outer";
-type MetricKind = "pressure" | "tread" | "other";
+type MetricKind = "pressure" | "pressureOuter" | "pressureInner" | "tread" | "other";
 
 type Cell = {
   idx: number;
@@ -29,7 +29,9 @@ type SingleSide = {
 };
 
 type DualSide = {
-  pressure?: Cell;
+  pressure?: Cell; // if only one TP is provided for a dual side
+  pressureOuter?: Cell;
+  pressureInner?: Cell;
   treadOuter?: Cell;
   treadInner?: Cell;
 };
@@ -47,8 +49,8 @@ type AxleRow = {
  *  - Hydraulic corners: "LF Tire Pressure", "RR Tread Depth", "LR Tread Depth (Inner)"
  */
 const AXLE_LABEL_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
-
 const HYD_CORNER_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
+
 type HydCorner = "LF" | "RF" | "LR" | "RR";
 
 function cornerToAxleSide(corner: HydCorner): { axleLabel: string; side: Side } {
@@ -66,12 +68,25 @@ function cornerToAxleSide(corner: HydCorner): { axleLabel: string; side: Side } 
 
 function metricKindFrom(label: string): MetricKind {
   const l = label.toLowerCase();
-  if (l.includes("tire pressure") || l.includes("pressure")) return "pressure";
+
+  if (l.includes("tire pressure") || l.includes("pressure")) {
+    if (l.includes("outer")) return "pressureOuter";
+    if (l.includes("inner")) return "pressureInner";
+    return "pressure";
+  }
+
   if (l.includes("tread depth") || l.includes("tread") || l.includes("tire tread")) return "tread";
   return "other";
 }
 
 function extractTreadPos(metricLabel: string): DualPos | null {
+  const l = metricLabel.toLowerCase();
+  if (l.includes("outer")) return "Outer";
+  if (l.includes("inner")) return "Inner";
+  return null;
+}
+
+function extractPressurePos(metricLabel: string): DualPos | null {
   const l = metricLabel.toLowerCase();
   if (l.includes("outer")) return "Outer";
   if (l.includes("inner")) return "Inner";
@@ -112,6 +127,18 @@ function placeDualTread(side: DualSide, pos: DualPos | null, cell: Cell): void {
   else if (!side.treadInner) side.treadInner = cell;
 }
 
+function placeDualPressure(side: DualSide, pos: DualPos | null, cell: Cell): void {
+  if (pos === "Outer") {
+    if (!side.pressureOuter) side.pressureOuter = cell;
+    return;
+  }
+  if (pos === "Inner") {
+    if (!side.pressureInner) side.pressureInner = cell;
+    return;
+  }
+  if (!side.pressure) side.pressure = cell;
+}
+
 function scoreAxle(ax: string): number {
   const l = ax.toLowerCase();
   if (l.startsWith("steer")) return 0;
@@ -127,6 +154,7 @@ function inputCls() {
     "h-[34px] w-full rounded-lg border border-white/10 bg-black/55",
     "px-3 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500",
     "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
+    "disabled:opacity-50 disabled:cursor-not-allowed",
   ].join(" ");
 }
 
@@ -138,11 +166,19 @@ function cornerShellCls() {
   return "rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)] backdrop-blur-xl";
 }
 
+function axleTitleCls() {
+  return "text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]";
+}
+
+function tinyLabelCls() {
+  return "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400";
+}
+
 /**
- * Sketch layout per axle:
- * - TD lives OUTSIDE (left corner + right corner)
- * - TP lives INSIDE (between tires on each side)
- * - For duals: stack TD Outer + TD Inner on outside corners
+ * Updated layout (matches Hydraulic TireGrid layout style):
+ * - TD on LEFT + RIGHT columns (stack Outer + Inner if available)
+ * - TP in CENTER as a split (2) for single axle, or quad (2x2) for dual axle
+ * - Center spacer underneath is taller than side blocks
  */
 export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
   const { updateItem } = useInspectionForm();
@@ -191,8 +227,8 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
         const cell: Cell = {
           idx,
           label,
-          unit: pickUnit(it.unit ?? null, hintedUnit),
-          initial: String(it.value ?? ""),
+          unit: pickUnit((it as any).unit ?? null, hintedUnit),
+          initial: String((it as any).value ?? ""),
         };
 
         if (!row.isDual) {
@@ -203,7 +239,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
         }
 
         const grp = side === "Left" ? row.dual.left : row.dual.right;
-        if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
+        if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") {
+          placeDualPressure(grp, extractPressurePos(metric), cell);
+        }
         if (kind === "tread") placeDualTread(grp, extractTreadPos(metric), cell);
         return;
       }
@@ -226,8 +264,8 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
       const cell: Cell = {
         idx,
         label,
-        unit: pickUnit(it.unit ?? null, hintedUnit),
-        initial: String(it.value ?? ""),
+        unit: pickUnit((it as any).unit ?? null, hintedUnit),
+        initial: String((it as any).value ?? ""),
       };
 
       if (!row.isDual) {
@@ -238,7 +276,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
       }
 
       const grp = side === "Left" ? row.dual.left : row.dual.right;
-      if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
+      if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") {
+        placeDualPressure(grp, extractPressurePos(metric), cell);
+      }
       if (kind === "tread") placeDualTread(grp, extractTreadPos(metric), cell);
     });
 
@@ -257,17 +297,14 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
   const existingAxles = tables.map((t) => t.axle);
 
-  const TDStack = (cells: { outer?: Cell; inner?: Cell; single?: Cell }, label: string) => {
+  const TDColumn = (cells: { outer?: Cell; inner?: Cell; single?: Cell }, label: string) => {
     const hasDual = !!(cells.outer || cells.inner);
     const showInner = !!cells.inner;
 
     return (
       <div className="flex flex-col gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-          {label}
-        </div>
+        <div className={tinyLabelCls()}>{label}</div>
 
-        {/* Single uses one box; dual uses outer (+inner if present) */}
         {!hasDual ? (
           <div className="relative">
             <input
@@ -325,27 +362,194 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     );
   };
 
-  const TPBox = (cell: Cell | undefined, label: string) => {
-    const u = (cell?.unit ?? "").trim();
+  /**
+   * Center TP cluster:
+   * - Single axle => split (Left/Right)
+   * - Dual axle => quad (Left Outer/Inner + Right Outer/Inner)
+   *
+   * If only one TP exists per side (common), we populate Outer and leave Inner disabled.
+   */
+  const TPCenter = (args: {
+    axle: string;
+    isDual: boolean;
+    left: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell };
+    right: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell };
+  }) => {
+    const { isDual, left, right } = args;
+
+    const leftOuter = left.pressureOuter ?? left.pressure;
+    const leftInner = left.pressureInner;
+    const rightOuter = right.pressureOuter ?? right.pressure;
+    const rightInner = right.pressureInner;
+
+    const U = (cell: Cell | undefined) => (cell?.unit ?? "").trim() || "psi";
+
+    if (!isDual) {
+      return (
+        <div className="flex flex-col gap-2">
+          <div className={tinyLabelCls()}>Tire Pressure</div>
+
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
+            <div className="grid grid-cols-2 gap-px bg-white/10">
+              <div className="bg-black/40 p-2">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Left
+                </div>
+                <div className="relative">
+                  <input
+                    defaultValue={leftOuter?.initial ?? ""}
+                    className={inputCls()}
+                    placeholder={leftOuter ? "TP" : "—"}
+                    inputMode="decimal"
+                    type="number"
+                    onBlur={(e) => {
+                      if (!leftOuter) return;
+                      commit(leftOuter.idx, e.currentTarget.value);
+                    }}
+                    disabled={!leftOuter}
+                  />
+                  <span className={unitCls()}>{U(leftOuter)}</span>
+                </div>
+              </div>
+
+              <div className="bg-black/40 p-2">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Right
+                </div>
+                <div className="relative">
+                  <input
+                    defaultValue={rightOuter?.initial ?? ""}
+                    className={inputCls()}
+                    placeholder={rightOuter ? "TP" : "—"}
+                    inputMode="decimal"
+                    type="number"
+                    onBlur={(e) => {
+                      if (!rightOuter) return;
+                      commit(rightOuter.idx, e.currentTarget.value);
+                    }}
+                    disabled={!rightOuter}
+                  />
+                  <span className={unitCls()}>{U(rightOuter)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-          {label}
+        <div className={tinyLabelCls()}>Tire Pressure</div>
+
+        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
+          <div className="grid grid-cols-2 gap-px bg-white/10">
+            {/* Left Outer */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Left
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Outer</span>
+              </div>
+              <div className="relative">
+                <input
+                  defaultValue={leftOuter?.initial ?? ""}
+                  className={inputCls()}
+                  placeholder={leftOuter ? "TP" : "—"}
+                  inputMode="decimal"
+                  type="number"
+                  onBlur={(e) => {
+                    if (!leftOuter) return;
+                    commit(leftOuter.idx, e.currentTarget.value);
+                  }}
+                  disabled={!leftOuter}
+                />
+                <span className={unitCls()}>{U(leftOuter)}</span>
+              </div>
+            </div>
+
+            {/* Right Outer */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Right
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Outer</span>
+              </div>
+              <div className="relative">
+                <input
+                  defaultValue={rightOuter?.initial ?? ""}
+                  className={inputCls()}
+                  placeholder={rightOuter ? "TP" : "—"}
+                  inputMode="decimal"
+                  type="number"
+                  onBlur={(e) => {
+                    if (!rightOuter) return;
+                    commit(rightOuter.idx, e.currentTarget.value);
+                  }}
+                  disabled={!rightOuter}
+                />
+                <span className={unitCls()}>{U(rightOuter)}</span>
+              </div>
+            </div>
+
+            {/* Left Inner */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Left
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Inner</span>
+              </div>
+              <div className="relative">
+                <input
+                  defaultValue={leftInner?.initial ?? ""}
+                  className={inputCls()}
+                  placeholder={leftInner ? "TP" : "—"}
+                  inputMode="decimal"
+                  type="number"
+                  onBlur={(e) => {
+                    if (!leftInner) return;
+                    commit(leftInner.idx, e.currentTarget.value);
+                  }}
+                  disabled={!leftInner}
+                />
+                <span className={unitCls()}>{U(leftInner)}</span>
+              </div>
+            </div>
+
+            {/* Right Inner */}
+            <div className="bg-black/40 p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Right
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Inner</span>
+              </div>
+              <div className="relative">
+                <input
+                  defaultValue={rightInner?.initial ?? ""}
+                  className={inputCls()}
+                  placeholder={rightInner ? "TP" : "—"}
+                  inputMode="decimal"
+                  type="number"
+                  onBlur={(e) => {
+                    if (!rightInner) return;
+                    commit(rightInner.idx, e.currentTarget.value);
+                  }}
+                  disabled={!rightInner}
+                />
+                <span className={unitCls()}>{U(rightInner)}</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="relative">
-          <input
-            defaultValue={cell?.initial ?? ""}
-            className={inputCls()}
-            placeholder={cell ? "TP" : "—"}
-            inputMode="decimal"
-            type="number"
-            onBlur={(e) => {
-              if (!cell) return;
-              commit(cell.idx, e.currentTarget.value);
-            }}
-            disabled={!cell}
-          />
-          <span className={unitCls()}>{u || "psi"}</span>
+
+        <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+          If you want all 4 active, add labels like{" "}
+          <span className="text-neutral-300">Left Tire Pressure (Inner/Outer)</span> and{" "}
+          <span className="text-neutral-300">Right Tire Pressure (Inner/Outer)</span>.
         </div>
       </div>
     );
@@ -355,7 +559,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
         <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-          Tire Grid – Air Brake (sketch layout)
+          Tire Grid – Air Brake (hydraulic-style layout)
         </div>
 
         <button
@@ -385,41 +589,55 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
               ? { outer: t.dual.right.treadOuter, inner: t.dual.right.treadInner }
               : { single: t.single.right.tread };
 
-            const leftTP = isDual ? t.dual.left.pressure : t.single.left.pressure;
-            const rightTP = isDual ? t.dual.right.pressure : t.single.right.pressure;
+            const leftTP = isDual
+              ? {
+                  pressure: t.dual.left.pressure,
+                  pressureOuter: t.dual.left.pressureOuter,
+                  pressureInner: t.dual.left.pressureInner,
+                }
+              : { pressure: t.single.left.pressure };
+
+            const rightTP = isDual
+              ? {
+                  pressure: t.dual.right.pressure,
+                  pressureOuter: t.dual.right.pressureOuter,
+                  pressureInner: t.dual.right.pressureInner,
+                }
+              : { pressure: t.single.right.pressure };
 
             return (
               <div key={t.axle} className={["p-4", cornerShellCls()].join(" ")}>
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <div
-                    className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-                  >
+                  <div className={axleTitleCls()} style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
                     {t.axle}
                   </div>
                   <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-                    TD outside • TP inside{isDual ? " • Duals" : " • Single"}
+                    TP center • TD corners{isDual ? " • Dual" : " • Single"}
                   </div>
                 </div>
 
-                {/* Sketch layout per axle: TD | TP | spacer(body) | TP | TD */}
-                <div className="grid grid-cols-[minmax(150px,1fr)_minmax(130px,1fr)_48px_minmax(130px,1fr)_minmax(150px,1fr)] items-start gap-3">
+                {/* 3 columns: TD | TP cluster | TD */}
+                <div className="grid grid-cols-[minmax(170px,1fr)_minmax(320px,1.35fr)_minmax(170px,1fr)] items-start gap-4">
                   {/* Left TD */}
-                  {TDStack(leftTD as any, "Left TD")}
+                  {TDColumn(leftTD, "Left Tread Depth")}
 
-                  {/* Left TP */}
-                  {TPBox(leftTP, "Left TP")}
-
-                  {/* Center body spacer */}
-                  <div className="flex h-full items-center justify-center">
-                    <div className="h-[120px] w-full rounded-xl border border-white/10 bg-black/25" />
-                  </div>
-
-                  {/* Right TP */}
-                  {TPBox(rightTP, "Right TP")}
+                  {/* Center TP split/quad */}
+                  {TPCenter({
+                    axle: t.axle,
+                    isDual,
+                    left: leftTP,
+                    right: rightTP,
+                  })}
 
                   {/* Right TD */}
-                  {TDStack(rightTD as any, "Right TD")}
+                  {TDColumn(rightTD, "Right Tread Depth")}
+                </div>
+
+                {/* Taller center spacer underneath */}
+                <div className="mt-4 grid grid-cols-[minmax(170px,1fr)_minmax(320px,1.35fr)_minmax(170px,1fr)] gap-4">
+                  <div />
+                  <div className="h-[160px] w-full rounded-2xl border border-white/10 bg-black/25" />
+                  <div />
                 </div>
               </div>
             );

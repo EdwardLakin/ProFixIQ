@@ -4,27 +4,69 @@ export type CornerGridItem = { item: string; unit?: string | null };
 export type CornerGridSection = { title: string; items: CornerGridItem[] };
 
 const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
-const AIR_ITEM_RE = /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
+const AIR_ITEM_RE =
+  /^(Steer\s*\d*|Drive\s*\d+|Rear\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
+
+// Brake/corner-only signals (NOT tires)
+function isBrakeCornerMetric(label: string): boolean {
+  const l = (label || "").toLowerCase();
+  return (
+    l.includes("lining") ||
+    l.includes("shoe") ||
+    l.includes("pad") ||
+    l.includes("rotor") ||
+    l.includes("drum") ||
+    l.includes("push rod") ||
+    l.includes("pushrod") ||
+    l.includes("wheel torque") ||
+    l.includes("torque")
+  );
+}
 
 function looksLikeCornerTitle(title: string | undefined | null): boolean {
   if (!title) return false;
   const t = title.toLowerCase();
   return (
     t.includes("corner grid") ||
-    t.includes("tires & brakes") ||
-    t.includes("tires and brakes") ||
     t.includes("air brake") ||
-    t.includes("hydraulic brake")
+    t.includes("hydraulic brake") ||
+    t.includes("tires & brakes") ||
+    t.includes("tires and brakes")
   );
+}
+
+function looksLikeTireGridTitle(title: string | undefined | null): boolean {
+  if (!title) return false;
+  const t = title.toLowerCase();
+  return t.includes("tire grid") || (t.includes("tires") && t.includes("grid"));
 }
 
 function stripExistingCornerGrids<T extends CornerGridSection>(sections: T[]): T[] {
   return sections.filter((s) => {
-    if (looksLikeCornerTitle(s.title)) return false;
     const items = s.items ?? [];
-    const looksHyd = items.some((it) => HYD_ITEM_RE.test(it.item || ""));
-    const looksAir = items.some((it) => AIR_ITEM_RE.test(it.item || ""));
-    return !(looksHyd || looksAir);
+
+    // Never strip a Tire Grid section (titles)
+    if (looksLikeTireGridTitle(s.title)) return true;
+
+    // Strip only if it is clearly a BRAKE corner grid section
+    const titleLooksCorner = looksLikeCornerTitle(s.title);
+    const hasBrakeItems = items.some((it) => isBrakeCornerMetric(it.item || ""));
+
+    // If the title indicates corner/brakes and it contains brake metrics, strip it
+    if (titleLooksCorner && hasBrakeItems) return false;
+
+    // If it looks like an injected grid (air/hyd patterns) AND it contains brake metrics, strip it
+    const looksHydBrake = items.some(
+      (it) => HYD_ITEM_RE.test(it.item || "") && isBrakeCornerMetric(it.item || ""),
+    );
+    const looksAirBrake = items.some(
+      (it) => AIR_ITEM_RE.test(it.item || "") && isBrakeCornerMetric(it.item || ""),
+    );
+
+    if (looksHydBrake || looksAirBrake) return false;
+
+    // Otherwise keep it (this preserves Tire Grid sections that use axle labels)
+    return true;
   });
 }
 
@@ -40,13 +82,15 @@ function buildHydraulicCornerSection(): CornerGridSection {
     { label: "Rotor Thickness", unit: "mm" },
     { label: "Wheel Torque", unit: "ft·lb" },
   ];
-  const corners = ["LF", "RF", "LR", "RR"];
+  const corners = ["LF", "RF", "LR", "RR"] as const;
+
   const items: CornerGridItem[] = [];
   for (const c of corners) {
     for (const m of metrics) {
       items.push({ item: `${c} ${m.label}`, unit: m.unit });
     }
   }
+
   return { title: "Corner Grid (Hydraulic)", items };
 }
 
@@ -92,12 +136,15 @@ export function prepareSectionsWithCornerGrid<T extends CornerGridSection>(
 ): T[] {
   const s = Array.isArray(sections) ? sections : [];
 
+  // If a corner grid already exists by title, do nothing.
+  // NOTE: we intentionally do NOT treat tire grids as “corner grids” here.
   const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
   if (hasCornerByTitle) return s;
 
+  // Remove any previously injected/legacy brake corner grids, but preserve tire grids
   const withoutGrids = stripExistingCornerGrids(s);
-  const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
 
+  const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
   if (gridMode === "none") return withoutGrids;
 
   let injectAir: boolean;
