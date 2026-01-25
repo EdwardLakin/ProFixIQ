@@ -6,175 +6,13 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
+import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
 type DB = Database;
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
 
 type SectionItem = { item: string; unit?: string | null };
 type Section = { title: string; items: SectionItem[] };
-
-/* ------------------------------------------------------------------ */
-/* Corner-grid + battery helpers (aligned with mobile loader)         */
-/* ------------------------------------------------------------------ */
-
-// LF/RF/LR/RR ...
-const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
-
-// Steer/Drive/Tag/Trailer <N> Left|Right ...
-const AIR_ITEM_RE =
-  /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
-
-/** Titles that clearly mean “this is already a corner grid” */
-function looksLikeCornerTitle(title: string | undefined | null): boolean {
-  if (!title) return false;
-  const t = title.toLowerCase();
-  return (
-    t.includes("corner grid") ||
-    t.includes("tires & brakes") ||
-    t.includes("tires and brakes") ||
-    t.includes("air brake") ||
-    t.includes("hydraulic brake")
-  );
-}
-
-function isBatteryTitle(title: string | undefined | null): boolean {
-  if (!title) return false;
-  return title.toLowerCase().includes("battery");
-}
-
-function isTireGridTitle(title: string | undefined | null): boolean {
-  if (!title) return false;
-  return title.toLowerCase().includes("tire grid");
-}
-
-/** Strip any existing corner-grid style sections (title or pattern based). */
-function stripExistingCornerGrids(sections: Section[]): Section[] {
-  return sections.filter((s) => {
-    const title = (s.title || "").toLowerCase();
-
-    // ✅ CRITICAL: Do NOT strip Tire Grid / Battery sections
-    // The HYD_ITEM_RE matches labels like "LF Tire Pressure" which would
-    // otherwise cause Tire Grid sections to be removed here.
-    if (title.includes("tire grid")) return true;
-    if (title.includes("battery")) return true;
-
-    if (looksLikeCornerTitle(s.title)) return false;
-
-    const items = s.items ?? [];
-    const looksHyd = items.some((it) => HYD_ITEM_RE.test(it.item || ""));
-    const looksAir = items.some((it) => AIR_ITEM_RE.test(it.item || ""));
-    return !(looksHyd || looksAir);
-  });
-}
-
-/** Canonical HYD corner grid (LF/RF/LR/RR) — BRAKES ONLY */
-function buildHydraulicCornerSection(): Section {
-  const metrics: Array<{ label: string; unit: string | null }> = [
-    { label: "Brake Pad", unit: "mm" },
-    { label: "Rotor", unit: "mm" },
-    { label: "Rotor Condition", unit: null },
-    { label: "Rotor Thickness", unit: "mm" },
-  ];
-
-  const corners = ["LF", "RF", "LR", "RR"];
-  const items: SectionItem[] = [];
-  for (const c of corners) {
-    for (const m of metrics) {
-      items.push({ item: `${c} ${m.label}`, unit: m.unit });
-    }
-  }
-  return { title: "Corner Grid (Hydraulic)", items };
-}
-
-/** Canonical AIR corner grid — BRAKES ONLY (+ push rod travel) */
-function buildAirCornerSection(): Section {
-  const steer: SectionItem[] = [
-    { item: "Steer 1 Left Lining/Shoe", unit: "mm" },
-    { item: "Steer 1 Right Lining/Shoe", unit: "mm" },
-    { item: "Steer 1 Left Drum/Rotor", unit: "mm" },
-    { item: "Steer 1 Right Drum/Rotor", unit: "mm" },
-    { item: "Steer 1 Left Push Rod Travel", unit: "in" },
-    { item: "Steer 1 Right Push Rod Travel", unit: "in" },
-  ];
-
-  const drive: SectionItem[] = [
-    { item: "Drive 1 Left Lining/Shoe", unit: "mm" },
-    { item: "Drive 1 Right Lining/Shoe", unit: "mm" },
-    { item: "Drive 1 Left Drum/Rotor", unit: "mm" },
-    { item: "Drive 1 Right Drum/Rotor", unit: "mm" },
-    { item: "Drive 1 Left Push Rod Travel", unit: "in" },
-    { item: "Drive 1 Right Push Rod Travel", unit: "in" },
-  ];
-
-  return { title: "Corner Grid (Air)", items: [...steer, ...drive] };
-}
-
-/**
- * Deterministic corner-grid injector (for DB-backed templates OR staged templates):
- * - If template already has a corner-grid-style title, keep as-is.
- * - Else strip pattern-based grids, then inject based on ?grid= or vehicle_type.
- * - For air-brake templates, drop any “Hydraulic Brake” section.
- * - Keep Battery sections immediately under the corner grid.
- */
-function prepareSectionsWithCornerGrid(
-  sections: Section[],
-  vehicleType: string | null | undefined,
-  gridParam: string | null,
-): Section[] {
-  const s = Array.isArray(sections) ? sections : [];
-
-  const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
-  if (hasCornerByTitle) return s;
-
-  const withoutGrids = stripExistingCornerGrids(s);
-  const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
-
-  if (gridMode === "none") return withoutGrids;
-
-  let injectAir: boolean;
-  if (gridMode === "air" || gridMode === "hyd") {
-    injectAir = gridMode === "air";
-  } else {
-    const vt = (vehicleType || "").toLowerCase();
-    const isAirByVehicle =
-      vt.includes("truck") ||
-      vt.includes("bus") ||
-      vt.includes("coach") ||
-      vt.includes("trailer") ||
-      vt.includes("heavy") ||
-      vt.includes("medium-heavy") ||
-      vt.includes("air");
-    injectAir = isAirByVehicle;
-  }
-
-  const cornerSection = injectAir
-    ? buildAirCornerSection()
-    : buildHydraulicCornerSection();
-
-  let pool = withoutGrids;
-  if (injectAir) {
-    pool = pool.filter(
-      (sec) =>
-        !sec.title || !sec.title.toLowerCase().includes("hydraulic brake"),
-    );
-  }
-
-  if (!pool.length) return [cornerSection];
-
-  const batterySections = pool.filter((sec) => isBatteryTitle(sec.title));
-  const rest = pool.filter((sec) => !isBatteryTitle(sec.title));
-
-  // If a Tire Grid exists, keep it near the top (under corner grid),
-  // but don't force creation here (that's handled by builder / template).
-  const tireSections = rest.filter((sec) => isTireGridTitle(sec.title));
-  const remaining = rest.filter((sec) => !isTireGridTitle(sec.title));
-
-  return [cornerSection, ...tireSections, ...batterySections, ...remaining];
-}
-
-/* ------------------------------------------------------------------ */
-/* Loader component                                                   */
-/* ------------------------------------------------------------------ */
 
 export default function RunInspectionPage() {
   const sp = useSearchParams();
@@ -242,11 +80,12 @@ export default function RunInspectionPage() {
         gridOverride ||
         sessionStorage.getItem("customInspection:gridMode");
 
+      // ✅ Single canonical normalizer (shared with other flows)
       const normalizedSections = prepareSectionsWithCornerGrid(
         sections,
         vt,
         grid || null,
-      );
+      ) as unknown as Section[];
 
       sessionStorage.setItem(
         "inspection:sections",
@@ -287,11 +126,12 @@ export default function RunInspectionPage() {
       const title = data.template_name ?? "Inspection";
       const vehicleType = String(data.vehicle_type ?? "");
 
+      // ✅ Single canonical normalizer (shared with other flows)
       const sections = prepareSectionsWithCornerGrid(
         rawSections,
         vehicleType,
         gridOverride,
-      );
+      ) as unknown as Section[];
 
       if (typeof window !== "undefined") {
         const params: Record<string, string> = {};
@@ -311,15 +151,9 @@ export default function RunInspectionPage() {
         sessionStorage.setItem("inspection:params", JSON.stringify(params));
 
         // Legacy keys
-        sessionStorage.setItem(
-          "customInspection:sections",
-          JSON.stringify(sections),
-        );
+        sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
         sessionStorage.setItem("customInspection:title", title);
-        sessionStorage.setItem(
-          "customInspection:includeOil",
-          JSON.stringify(false),
-        );
+        sessionStorage.setItem("customInspection:includeOil", JSON.stringify(false));
 
         const next = new URLSearchParams(params);
         next.delete("templateId");

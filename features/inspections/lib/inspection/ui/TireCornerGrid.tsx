@@ -40,11 +40,11 @@ type SingleSide = {
 };
 
 type DualSide = {
-  pressure?: Cell; // if only one TP is provided for a dual side
+  pressure?: Cell;
   pressureOuter?: Cell;
   pressureInner?: Cell;
 
-  tread?: Cell; // if only one TD is provided for a dual side
+  tread?: Cell;
   treadOuter?: Cell;
   treadInner?: Cell;
 
@@ -56,11 +56,6 @@ type AxleRow = {
   isDual: boolean;
   single: { left: SingleSide; right: SingleSide };
   dual: { left: DualSide; right: DualSide };
-
-  /**
-   * Optional row-level fallback status carrier (if your builder provides one).
-   * Prefer per-side "Tire Condition" items if present.
-   */
   statusCell?: Cell;
 };
 
@@ -71,26 +66,56 @@ type AxleRow = {
 const AXLE_LABEL_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
 function metricKindFrom(label: string): MetricKind {
-  const l = label.toLowerCase();
+  const l = label.toLowerCase().trim();
 
   // Per-side condition item (drives OK/FAIL/REC/NA + notes)
-  if (l.includes("tire condition") || l.includes("tyre condition") || l.includes("condition"))
+  if (
+    l.includes("tire condition") ||
+    l.includes("tyre condition") ||
+    // NOTE: keep "condition" last-ish so it doesn't accidentally match other words.
+    /\bcondition\b/i.test(l)
+  ) {
     return "condition";
+  }
 
   // Optional “row-level” carrier (ex: "Drive 1 Tire Status")
-  if (l.includes("tire status") || l.includes("tyre status")) return "status";
+  if (l.includes("tire status") || l.includes("tyre status") || /\bstatus\b/i.test(l)) {
+    // Be careful not to treat unrelated “status” strings as tire status:
+    // prefer explicit "tire status"/"tyre status".
+    if (l.includes("tire status") || l.includes("tyre status")) return "status";
+  }
 
-  if (l.includes("tire pressure") || l.includes("pressure")) {
+  // -------- Pressure (supports full + abbreviations) --------
+  // Common abbreviations seen in HD templates: TP, PSI, kPa
+  const hasPressureWord =
+    l.includes("tire pressure") ||
+    l.includes("tyre pressure") ||
+    l.includes("pressure");
+
+  const hasPressureAbbrev =
+    /\b(tp)\b/i.test(l) || /\bpsi\b/i.test(l) || /\bkpa\b/i.test(l);
+
+  if (hasPressureWord || hasPressureAbbrev) {
     if (l.includes("outer")) return "pressureOuter";
     if (l.includes("inner")) return "pressureInner";
     return "pressure";
   }
 
-  if (l.includes("tread depth") || l.includes("tread") || l.includes("tire tread")) {
+  // -------- Tread depth (supports full + abbreviations) --------
+  // Common abbreviations: TD
+  const hasTreadWord =
+    l.includes("tread depth") || l.includes("tread") || l.includes("tire tread") || l.includes("tyre tread");
+
+  const hasTreadAbbrev = /\b(td)\b/i.test(l);
+
+  if (hasTreadWord || hasTreadAbbrev) {
     if (l.includes("outer")) return "treadOuter";
     if (l.includes("inner")) return "treadInner";
     return "tread";
   }
+
+  // Row-level “tire status” (exact)
+  if (l.includes("tire status") || l.includes("tyre status")) return "status";
 
   return "other";
 }
@@ -110,7 +135,6 @@ function pickUnit(explicit: string | null | undefined, hinted: string | null | u
 
 function isDualAxleLabel(axle: string): boolean {
   const l = axle.toLowerCase();
-  // Steer is single. Everything else (drive/rear/tag/trailer) is dual.
   if (l.startsWith("steer")) return false;
   if (l.startsWith("drive")) return true;
   if (l.startsWith("rear")) return true;
@@ -137,7 +161,6 @@ function placeDualTread(side: DualSide, kind: MetricKind, metricLabel: string, c
     return;
   }
 
-  // fallback
   const pos = extractPos(metricLabel);
   if (pos === "Outer") {
     if (!side.treadOuter) side.treadOuter = cell;
@@ -165,7 +188,6 @@ function placeDualPressure(side: DualSide, kind: MetricKind, metricLabel: string
     return;
   }
 
-  // fallback
   const pos = extractPos(metricLabel);
   if (pos === "Outer") {
     if (!side.pressureOuter) side.pressureOuter = cell;
@@ -231,24 +253,19 @@ function notesCls() {
   ].join(" ");
 }
 
-/** ✅ Parse axle from "Steer 1 Tire Status", "Drive 2 Tire Status", "Tag Tire Status", "Trailer 3 Tire Status", "Rear 1 Tire Status" */
 function axleFromRowStatusLabel(label: string): string | null {
   const m = label.match(/^(?<axle>.+?)\s+Tire\s+Status$/i);
   const raw = String(m?.groups?.axle ?? "").trim();
   if (!raw) return null;
 
   const l = raw.toLowerCase();
-  // Keep canonical casing patterns used elsewhere
-  if (l.startsWith("steer")) return raw; // e.g. "Steer 1"
-  if (l.startsWith("drive")) return raw; // e.g. "Drive 1"
-  if (l.startsWith("rear")) return raw; // e.g. "Rear 1"
-  if (l.startsWith("tag")) return raw; // e.g. "Tag"
-  if (l.startsWith("trailer")) return raw; // e.g. "Trailer 1"
+  if (l.startsWith("steer")) return raw;
+  if (l.startsWith("drive")) return raw;
+  if (l.startsWith("rear")) return raw;
+  if (l.startsWith("tag")) return raw;
+  if (l.startsWith("trailer")) return raw;
 
-  // If someone put "Front 1 Tire Status", treat as Steer 1.
   if (l.startsWith("front")) return raw.replace(/^front/i, "Steer");
-
-  // Unknown -> null so we don't mis-assign to Rear 1.
   return null;
 }
 
@@ -292,8 +309,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           ? ((it as unknown as { unit?: string | null }).unit ?? null)
           : null;
 
-      // Row-level tire status carrier (optional)
       const kindLoose = metricKindFrom(label);
+
+      // Row-level tire status carrier (optional)
       if (kindLoose === "status" && !AXLE_LABEL_RE.test(label)) {
         const axleLabel = axleFromRowStatusLabel(label);
         if (!axleLabel) return;
@@ -347,6 +365,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
       const grp = side === "Left" ? row.dual.left : row.dual.right;
       if (kind === "condition" && !grp.condition) grp.condition = cell;
+
       if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") {
         placeDualPressure(grp, kind, metric, cell);
       }
@@ -721,7 +740,6 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     const rightCond = t.isDual ? t.dual.right.condition : t.single.right.condition;
     if (!leftCond && !rightCond && !t.statusCell) return null;
 
-    // Prefer per-side conditions
     if (leftCond || rightCond) {
       return (
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -731,7 +749,6 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
       );
     }
 
-    // Fallback: row-level status carrier (if you have it)
     if (!t.statusCell) return null;
 
     const it = items[t.statusCell.idx];

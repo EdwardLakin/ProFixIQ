@@ -23,13 +23,17 @@ function isBrakeCornerMetric(label: string): boolean {
   );
 }
 
+/**
+ * IMPORTANT:
+ * We must NOT treat "Tire Grid – Air Brake" as a "corner grid".
+ * So this is intentionally strict and only matches true corner-grid sections.
+ */
 function looksLikeCornerTitle(title: string | undefined | null): boolean {
   if (!title) return false;
   const t = title.toLowerCase();
   return (
     t.includes("corner grid") ||
-    t.includes("air brake") ||
-    t.includes("hydraulic brake") ||
+    t.includes("brake corner") ||
     t.includes("tires & brakes") ||
     t.includes("tires and brakes")
   );
@@ -41,12 +45,22 @@ function looksLikeTireGridTitle(title: string | undefined | null): boolean {
   return t.includes("tire grid") || (t.includes("tires") && t.includes("grid"));
 }
 
+function isBatteryTitle(title: string | undefined | null): boolean {
+  if (!title) return false;
+  return title.toLowerCase().includes("battery");
+}
+
+function isTireGridTitle(title: string | undefined | null): boolean {
+  return looksLikeTireGridTitle(title);
+}
+
 function stripExistingCornerGrids<T extends CornerGridSection>(sections: T[]): T[] {
   return sections.filter((s) => {
     const items = s.items ?? [];
 
-    // Never strip a Tire Grid section (titles)
+    // ✅ Never strip Tire Grid / Battery sections (title-based)
     if (looksLikeTireGridTitle(s.title)) return true;
+    if (isBatteryTitle(s.title)) return true;
 
     // Strip only if it is clearly a BRAKE corner grid section
     const titleLooksCorner = looksLikeCornerTitle(s.title);
@@ -55,7 +69,7 @@ function stripExistingCornerGrids<T extends CornerGridSection>(sections: T[]): T
     // If the title indicates corner/brakes and it contains brake metrics, strip it
     if (titleLooksCorner && hasBrakeItems) return false;
 
-    // If it looks like an injected grid (air/hyd patterns) AND it contains brake metrics, strip it
+    // If it matches injected grid (air/hyd patterns) AND contains brake metrics, strip it
     const looksHydBrake = items.some(
       (it) => HYD_ITEM_RE.test(it.item || "") && isBrakeCornerMetric(it.item || ""),
     );
@@ -65,7 +79,7 @@ function stripExistingCornerGrids<T extends CornerGridSection>(sections: T[]): T
 
     if (looksHydBrake || looksAirBrake) return false;
 
-    // Otherwise keep it (this preserves Tire Grid sections that use axle labels)
+    // Otherwise keep it (preserves Tire Grid sections that use axle labels)
     return true;
   });
 }
@@ -97,7 +111,7 @@ function buildHydraulicCornerSection(): CornerGridSection {
 /**
  * IMPORTANT:
  * Corner grids are BRAKES/torque/push-rod ONLY (tires moved to Tire Grid).
- * This legacy helper injects a minimal “Steer 1 / Drive 1” set when needed.
+ * This helper injects a minimal “Steer 1 / Drive 1” set when needed.
  */
 function buildAirCornerSection(): CornerGridSection {
   const steer: CornerGridItem[] = [
@@ -136,12 +150,12 @@ export function prepareSectionsWithCornerGrid<T extends CornerGridSection>(
 ): T[] {
   const s = Array.isArray(sections) ? sections : [];
 
-  // If a corner grid already exists by title, do nothing.
-  // NOTE: we intentionally do NOT treat tire grids as “corner grids” here.
+  // If a REAL corner grid already exists by title, do nothing.
+  // NOTE: tire grids are NOT treated as “corner grids”.
   const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
   if (hasCornerByTitle) return s;
 
-  // Remove any previously injected/legacy brake corner grids, but preserve tire grids
+  // Remove any previously injected/legacy brake corner grids, but preserve tire/battery grids
   const withoutGrids = stripExistingCornerGrids(s);
 
   const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
@@ -167,6 +181,28 @@ export function prepareSectionsWithCornerGrid<T extends CornerGridSection>(
     ? (buildAirCornerSection() as T)
     : (buildHydraulicCornerSection() as T);
 
-  if (!withoutGrids.length) return [cornerSection];
-  return [cornerSection, ...withoutGrids];
+  // If air mode, optionally drop any legacy "hydraulic brake" sections (title-based)
+  // BUT do not touch tire/battery grids since those are preserved above.
+  let pool = withoutGrids;
+  if (injectAir) {
+    pool = pool.filter((sec) => {
+      const t = (sec.title || "").toLowerCase();
+      if (!t.includes("hydraulic")) return true;
+      const hasBrakeItems = (sec.items ?? []).some((it) =>
+        isBrakeCornerMetric(it.item || ""),
+      );
+      return !hasBrakeItems;
+    });
+  }
+
+  if (!pool.length) return [cornerSection];
+
+  // Keep Tire Grid immediately under corner grid, then Battery, then remaining
+  const tireSections = pool.filter((sec) => isTireGridTitle(sec.title));
+  const batterySections = pool.filter((sec) => isBatteryTitle(sec.title));
+  const remaining = pool.filter(
+    (sec) => !isTireGridTitle(sec.title) && !isBatteryTitle(sec.title),
+  );
+
+  return [cornerSection, ...tireSections, ...batterySections, ...remaining];
 }
