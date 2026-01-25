@@ -107,6 +107,10 @@ function buildAirTireGrid(): Section {
       axle.toLowerCase().startsWith("tag") ||
       axle.toLowerCase().startsWith("trailer");
 
+    // ✅ ADDED: row-level status carrier so TireGrid can render StatusButtons
+    // even when only pressure/tread fields exist.
+    items.push({ item: `${axle} Tire Status`, unit: null });
+
     for (const side of sides) {
       if (!isDual) {
         // SINGLE (Steer): 1 TP + 1 TD
@@ -138,6 +142,10 @@ function buildHydraulicTireGrid(): Section {
 
   const items: Section["items"] = [];
 
+  // ✅ ADDED: row-level status carriers (matches TireGrid fallback paths)
+  items.push({ item: "Steer 1 Tire Status", unit: null });
+  items.push({ item: "Rear 1 Tire Status", unit: null });
+
   for (const c of front) {
     items.push({ item: `${c} Tire Pressure`, unit: "psi" });
     items.push({ item: `${c} Tread Depth (Outer)`, unit: "mm" }); // keep label consistent with grid parser
@@ -167,7 +175,10 @@ function hasBatteryGrid(sections: Section[]): boolean {
 }
 
 function buildBatteryGrid(count = 1): Section {
-  const batteries = Array.from({ length: Math.min(5, Math.max(1, count)) }, (_, i) => `Battery ${i + 1}`);
+  const batteries = Array.from(
+    { length: Math.min(5, Math.max(1, count)) },
+    (_, i) => `Battery ${i + 1}`,
+  );
 
   const metrics = [
     { label: "Rated CCA", unit: "CCA" },
@@ -202,7 +213,10 @@ function toLabel(raw: { item?: string; name?: string }) {
 }
 
 function mergeSections(a: Section[], b: Section[]): Section[] {
-  const out: Record<string, { title: string; items: { item: string; unit?: string | null }[] }> = {};
+  const out: Record<
+    string,
+    { title: string; items: { item: string; unit?: string | null }[] }
+  > = {};
 
   const addList = (list: Section[]) => {
     for (const sec of list || []) {
@@ -491,7 +505,9 @@ export default function CustomBuilderPage() {
       const manualHasOil = manualBuilt.some((s) => normalizeTitle(s.title).startsWith("oil change"));
 
       const base =
-        includeOil && !aiHasOil && !manualHasOil ? [...aiSections, buildOilSection(oilEngineType)] : aiSections;
+        includeOil && !aiHasOil && !manualHasOil
+          ? [...aiSections, buildOilSection(oilEngineType)]
+          : aiSections;
 
       const merged = mergeSections(base, manualBuilt).filter(
         (s) => Array.isArray(s.items) && s.items.length > 0,

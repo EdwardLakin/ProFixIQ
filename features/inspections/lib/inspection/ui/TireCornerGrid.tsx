@@ -65,35 +65,19 @@ type AxleRow = {
 };
 
 /**
- * Supported formats:
- *  - Heavy-duty: "Steer 1 Left Tire Pressure", "Drive 1 Right Tread Depth (Outer)", "Drive 1 Left Tire Condition"
- *  - Hydraulic corners: "LF Tire Pressure", "RR Tread Depth", "LR Tread Depth (Inner)", "RF Tire Condition"
+ * Supported format (AIR ONLY):
+ *  - "Steer 1 Left Tire Pressure", "Drive 1 Right Tread Depth (Outer)", "Drive 1 Left Tire Condition"
  */
 const AXLE_LABEL_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
-const HYD_CORNER_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
-
-type HydCorner = "LF" | "RF" | "LR" | "RR";
-
-function cornerToAxleSide(corner: HydCorner): { axleLabel: string; side: Side } {
-  switch (corner) {
-    case "LF":
-      return { axleLabel: "Steer 1", side: "Left" };
-    case "RF":
-      return { axleLabel: "Steer 1", side: "Right" };
-    case "LR":
-      return { axleLabel: "Rear 1", side: "Left" };
-    case "RR":
-      return { axleLabel: "Rear 1", side: "Right" };
-  }
-}
 
 function metricKindFrom(label: string): MetricKind {
   const l = label.toLowerCase();
 
   // Per-side condition item (drives OK/FAIL/REC/NA + notes)
-  if (l.includes("tire condition") || l.includes("tyre condition") || l.includes("condition")) return "condition";
+  if (l.includes("tire condition") || l.includes("tyre condition") || l.includes("condition"))
+    return "condition";
 
-  // Optional “row-level” carrier if you ever add one (ex: "Rear 1 Tire Status")
+  // Optional “row-level” carrier (ex: "Drive 1 Tire Status")
   if (l.includes("tire status") || l.includes("tyre status")) return "status";
 
   if (l.includes("tire pressure") || l.includes("pressure")) {
@@ -247,6 +231,27 @@ function notesCls() {
   ].join(" ");
 }
 
+/** ✅ Parse axle from "Steer 1 Tire Status", "Drive 2 Tire Status", "Tag Tire Status", "Trailer 3 Tire Status", "Rear 1 Tire Status" */
+function axleFromRowStatusLabel(label: string): string | null {
+  const m = label.match(/^(?<axle>.+?)\s+Tire\s+Status$/i);
+  const raw = String(m?.groups?.axle ?? "").trim();
+  if (!raw) return null;
+
+  const l = raw.toLowerCase();
+  // Keep canonical casing patterns used elsewhere
+  if (l.startsWith("steer")) return raw; // e.g. "Steer 1"
+  if (l.startsWith("drive")) return raw; // e.g. "Drive 1"
+  if (l.startsWith("rear")) return raw; // e.g. "Rear 1"
+  if (l.startsWith("tag")) return raw; // e.g. "Tag"
+  if (l.startsWith("trailer")) return raw; // e.g. "Trailer 1"
+
+  // If someone put "Front 1 Tire Status", treat as Steer 1.
+  if (l.startsWith("front")) return raw.replace(/^front/i, "Steer");
+
+  // Unknown -> null so we don't mis-assign to Rear 1.
+  return null;
+}
+
 export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
@@ -282,16 +287,17 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
       const hintedUnit = unitHint ? unitHint(label) : "";
       const explicitUnit =
-        (it as unknown as { unit?: unknown }).unit === null || typeof (it as unknown as { unit?: unknown }).unit === "string"
+        (it as unknown as { unit?: unknown }).unit === null ||
+        typeof (it as unknown as { unit?: unknown }).unit === "string"
           ? ((it as unknown as { unit?: string | null }).unit ?? null)
           : null;
 
       // Row-level tire status carrier (optional)
       const kindLoose = metricKindFrom(label);
-      if (kindLoose === "status" && !AXLE_LABEL_RE.test(label) && !HYD_CORNER_RE.test(label)) {
-        const l = label.toLowerCase();
-        const axleLabel =
-          l.includes("rear") ? "Rear 1" : l.includes("front") || l.includes("steer") ? "Steer 1" : "Rear 1";
+      if (kindLoose === "status" && !AXLE_LABEL_RE.test(label)) {
+        const axleLabel = axleFromRowStatusLabel(label);
+        if (!axleLabel) return;
+
         const row = ensure(axleLabel);
         if (!row.statusCell) {
           row.statusCell = {
@@ -304,51 +310,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
         return;
       }
 
-      // 1) Hydraulic corner style: "LF Tire Pressure", "RR Tread Depth (Inner)", "RF Tire Condition"
-      const hyd = label.match(HYD_CORNER_RE);
-      if (hyd?.groups?.corner && hyd.groups.metric) {
-        const corner = String(hyd.groups.corner).toUpperCase() as HydCorner;
-        const metric = String(hyd.groups.metric).trim();
-        const { axleLabel, side } = cornerToAxleSide(corner);
-
-        const kind = metricKindFrom(metric);
-        if (kind === "other") return;
-
-        const row = ensure(axleLabel);
-        row.isDual = isDualAxleLabel(axleLabel);
-
-        const cell: Cell = {
-          idx,
-          label,
-          unit: pickUnit(explicitUnit, hintedUnit),
-          initial: String((it as unknown as { value?: unknown }).value ?? ""),
-        };
-
-        if (kind === "status") {
-          if (!row.statusCell) row.statusCell = cell;
-          return;
-        }
-
-        if (!row.isDual) {
-          const grp = side === "Left" ? row.single.left : row.single.right;
-          if (kind === "condition" && !grp.condition) grp.condition = cell;
-          if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-          if (kind === "tread" && !grp.tread) placeSingleTread(grp, cell);
-          return;
-        }
-
-        const grp = side === "Left" ? row.dual.left : row.dual.right;
-        if (kind === "condition" && !grp.condition) grp.condition = cell;
-        if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") {
-          placeDualPressure(grp, kind, metric, cell);
-        }
-        if (kind === "tread" || kind === "treadOuter" || kind === "treadInner") {
-          placeDualTread(grp, kind, metric, cell);
-        }
-        return;
-      }
-
-      // 2) Heavy-duty axle style: "Drive 1 Left Tread Depth (Outer)", "Drive 1 Right Tire Condition"
+      // Air axle style: "Drive 1 Left Tread Depth (Outer)", "Drive 1 Right Tire Condition"
       const m = label.match(AXLE_LABEL_RE);
       if (!m?.groups) return;
 
@@ -439,7 +401,11 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     );
   };
 
-  const TDColumn = (cells: { outer?: Cell; inner?: Cell; single?: Cell }, label: string, showInnerAlways: boolean) => {
+  const TDColumn = (
+    cells: { outer?: Cell; inner?: Cell; single?: Cell },
+    label: string,
+    showInnerAlways: boolean,
+  ) => {
     const hasDual = !!(cells.outer || cells.inner);
     const shouldShowInner = showInnerAlways || !!cells.inner;
     const U = (cell: Cell | undefined) => (cell?.unit ?? "").trim() || "mm";
@@ -539,7 +505,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
             <div className="grid grid-cols-2 gap-px bg-white/10">
               <div className="bg-black/40 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Left</div>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Left
+                </div>
 
                 <div className="relative">
                   <input
@@ -561,7 +529,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
               </div>
 
               <div className="bg-black/40 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Right</div>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Right
+                </div>
 
                 <div className="relative">
                   <input
@@ -595,8 +565,12 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           <div className="grid grid-cols-2 gap-px bg-white/10">
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Left</span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Outer</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Left
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Outer
+                </span>
               </div>
 
               <div className="relative">
@@ -620,8 +594,12 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Right</span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Outer</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Right
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Outer
+                </span>
               </div>
 
               <div className="relative">
@@ -645,8 +623,12 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Left</span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Inner</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Left
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Inner
+                </span>
               </div>
 
               <div className="relative">
@@ -670,8 +652,12 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Right</span>
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Inner</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Right
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  Inner
+                </span>
               </div>
 
               <div className="relative">
@@ -775,7 +761,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
   return (
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
-        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">Tire Grid – Air Brake</div>
+        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+          Tire Grid – Air Brake
+        </div>
 
         <button
           type="button"
@@ -823,7 +811,10 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
             return (
               <div key={t.axle} className={["p-4", cornerShellCls()].join(" ")}>
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className={axleTitleCls()} style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
+                  <div
+                    className={axleTitleCls()}
+                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                  >
                     {t.axle}
                   </div>
                   <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">

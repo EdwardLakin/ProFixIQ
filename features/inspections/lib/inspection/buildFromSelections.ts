@@ -1,5 +1,3 @@
-// features/inspections/lib/inspection/buildFromSelections.ts
-
 import type {
   InspectionCategory,
   InspectionItem,
@@ -30,80 +28,87 @@ function mkItem(args: {
     item: args.item,
     unit: args.unit ?? null,
 
-    // IMPORTANT: status + notes must exist for StatusButtons + fail/recommend flows
-    status: args.status ?? null,
+    // ✅ keep status/notes present so StatusButtons + fail/recommend flows work
+    status: (args.status ?? "na") as InspectionItemStatus,
     notes: args.notes ?? "",
 
-    // value can be null initially
     value: args.value ?? null,
   } as InspectionItem;
 }
 
 function buildTireGridSection(vt: VehicleType): InspectionCategory | null {
   /**
-   * You said:
-   * - Tire grid is TIRES ONLY (no brake items)
-   * - Hydraulic should default to dual rear capability
-   *   (rear gets Inner/Outer TP + TD items by default; front stays single)
+   * Canonical rules for TireGrid parsing:
+   * - AIR: "<Axle> <Left|Right> Tire Pressure", "<Axle> <Left|Right> Tread Depth" (Steer single)
+   * - AIR dual: include "(Outer)/(Inner)" only for non-steer axles
+   * - HYD: "LF|RF|LR|RR <Metric>" labels
+   * - StatusButtons require either:
+   *    - per-side "Tire Condition" items, OR
+   *    - row-level "<Axle> Tire Status" (this file adds row-level)
    */
 
-  // Hydraulic (car): corners LF/RF/LR/RR
+  // HYDRAULIC (car): corners LF/RF/LR/RR
   if (vt === "car") {
     const items: InspectionItem[] = [];
 
-    // FRONT (single)
+    // FRONT (single tires)
     for (const c of ["LF", "RF"] as const) {
       items.push(mkItem({ item: `${c} Tire Pressure`, unit: "psi" }));
       items.push(mkItem({ item: `${c} Tread Depth (Outer)`, unit: "mm" }));
-      // no front inner by default (single tires)
+      // no inner by default (single)
     }
 
     // REAR (dual-capable by default)
     for (const c of ["LR", "RR"] as const) {
-      // TP dual default
       items.push(mkItem({ item: `${c} Tire Pressure (Outer)`, unit: "psi" }));
       items.push(mkItem({ item: `${c} Tire Pressure (Inner)`, unit: "psi" }));
-
-      // TD dual default
       items.push(mkItem({ item: `${c} Tread Depth (Outer)`, unit: "mm" }));
       items.push(mkItem({ item: `${c} Tread Depth (Inner)`, unit: "mm" }));
     }
 
-    if (!items.length) return null;
-    return { title: "Tire Grid", items };
+    // ✅ Row-level status carriers so TireGrid renders StatusButtons (fallback path)
+    // TireGrid maps corners -> Steer 1 (LF/RF) and Rear 1 (LR/RR)
+    items.push(mkItem({ item: "Steer 1 Tire Status", unit: null }));
+    items.push(mkItem({ item: "Rear 1 Tire Status", unit: null }));
+
+    return items.length ? { title: "Tire Grid – Hydraulic", items } : null;
   }
 
-  // Air brake vehicles: build from axle layout (Steer/Drive/etc)
+  // AIR BRAKE vehicles: build from axle layout
   const layout = generateAxleLayout(vt);
 
   const items: InspectionItem[] = [];
+
   for (const a of layout) {
-    const isSteer = a.axleLabel.toLowerCase().startsWith("steer");
+    const axleLabel = a.axleLabel;
+    const isSteer = axleLabel.toLowerCase().startsWith("steer");
+
+    // ✅ Row-level status carrier for each axle
+    items.push(mkItem({ item: `${axleLabel} Tire Status`, unit: null }));
 
     for (const side of ["Left", "Right"] as const) {
       if (isSteer) {
         // Steer is single
-        items.push(mkItem({ item: `${a.axleLabel} ${side} Tire Pressure`, unit: "psi" }));
-        items.push(mkItem({ item: `${a.axleLabel} ${side} Tread Depth`, unit: "mm" }));
+        items.push(mkItem({ item: `${axleLabel} ${side} Tire Pressure`, unit: "psi" }));
+        items.push(mkItem({ item: `${axleLabel} ${side} Tread Depth`, unit: "mm" }));
       } else {
         // Non-steer axles are dual-capable by default
-        items.push(mkItem({ item: `${a.axleLabel} ${side} Tire Pressure (Outer)`, unit: "psi" }));
-        items.push(mkItem({ item: `${a.axleLabel} ${side} Tire Pressure (Inner)`, unit: "psi" }));
-        items.push(mkItem({ item: `${a.axleLabel} ${side} Tread Depth (Outer)`, unit: "mm" }));
-        items.push(mkItem({ item: `${a.axleLabel} ${side} Tread Depth (Inner)`, unit: "mm" }));
+        items.push(mkItem({ item: `${axleLabel} ${side} Tire Pressure (Outer)`, unit: "psi" }));
+        items.push(mkItem({ item: `${axleLabel} ${side} Tire Pressure (Inner)`, unit: "psi" }));
+        items.push(mkItem({ item: `${axleLabel} ${side} Tread Depth (Outer)`, unit: "mm" }));
+        items.push(mkItem({ item: `${axleLabel} ${side} Tread Depth (Inner)`, unit: "mm" }));
       }
     }
   }
 
-  if (!items.length) return null;
-  return { title: "Tire Grid", items };
+  return items.length ? { title: "Tire Grid – Air Brake", items } : null;
 }
 
 /**
  * IMPORTANT:
  * - Corner grids are BRAKES/torque/push-rod ONLY.
  * - Tires live in the dedicated Tire Grid.
- * - Every generated item must include status + notes defaults (for StatusButtons + fail/recommend flows).
+ * - Every generated item must include status + notes defaults.
  */
 export function buildInspectionFromSelections({
   selections,
@@ -179,7 +184,7 @@ export function buildInspectionFromSelections({
       }
     }
 
-    // Always add Tire Grid when axle mode is enabled (TIRES ONLY)
+    // ✅ Add Tire Grid when axle mode is enabled (TIRES ONLY + Tire Status carriers)
     const tireGrid = buildTireGridSection(vt);
     if (tireGrid) sections.push(tireGrid);
   }
