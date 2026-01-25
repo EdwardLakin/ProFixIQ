@@ -3,10 +3,7 @@
 import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import StatusButtons from "@inspections/lib/inspection/StatusButtons";
-import type {
-  InspectionItem,
-  InspectionItemStatus,
-} from "@inspections/lib/inspection/types";
+import type { InspectionItem, InspectionItemStatus } from "@inspections/lib/inspection/types";
 
 type Props = {
   sectionIndex: number;
@@ -23,6 +20,10 @@ type MetricKind =
   | "pressureOuter"
   | "pressureInner"
   | "tread"
+  | "treadOuter"
+  | "treadInner"
+  | "condition"
+  | "status"
   | "other";
 
 type Cell = {
@@ -35,6 +36,7 @@ type Cell = {
 type SingleSide = {
   pressure?: Cell;
   tread?: Cell;
+  condition?: Cell;
 };
 
 type DualSide = {
@@ -42,8 +44,11 @@ type DualSide = {
   pressureOuter?: Cell;
   pressureInner?: Cell;
 
+  tread?: Cell; // if only one TD is provided for a dual side
   treadOuter?: Cell;
   treadInner?: Cell;
+
+  condition?: Cell;
 };
 
 type AxleRow = {
@@ -51,12 +56,18 @@ type AxleRow = {
   isDual: boolean;
   single: { left: SingleSide; right: SingleSide };
   dual: { left: DualSide; right: DualSide };
+
+  /**
+   * Optional row-level fallback status carrier (if your builder provides one).
+   * Prefer per-side "Tire Condition" items if present.
+   */
+  statusCell?: Cell;
 };
 
 /**
  * Supported formats:
- *  - Heavy-duty: "Steer 1 Left Tire Pressure", "Drive 1 Right Tread Depth (Outer)"
- *  - Hydraulic corners: "LF Tire Pressure", "RR Tread Depth", "LR Tread Depth (Inner)"
+ *  - Heavy-duty: "Steer 1 Left Tire Pressure", "Drive 1 Right Tread Depth (Outer)", "Drive 1 Left Tire Condition"
+ *  - Hydraulic corners: "LF Tire Pressure", "RR Tread Depth", "LR Tread Depth (Inner)", "RF Tire Condition"
  */
 const AXLE_LABEL_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_CORNER_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
@@ -79,6 +90,12 @@ function cornerToAxleSide(corner: HydCorner): { axleLabel: string; side: Side } 
 function metricKindFrom(label: string): MetricKind {
   const l = label.toLowerCase();
 
+  // Per-side condition item (drives OK/FAIL/REC/NA + notes)
+  if (l.includes("tire condition") || l.includes("tyre condition") || l.includes("condition")) return "condition";
+
+  // Optional “row-level” carrier if you ever add one (ex: "Rear 1 Tire Status")
+  if (l.includes("tire status") || l.includes("tyre status")) return "status";
+
   if (l.includes("tire pressure") || l.includes("pressure")) {
     if (l.includes("outer")) return "pressureOuter";
     if (l.includes("inner")) return "pressureInner";
@@ -86,20 +103,15 @@ function metricKindFrom(label: string): MetricKind {
   }
 
   if (l.includes("tread depth") || l.includes("tread") || l.includes("tire tread")) {
+    if (l.includes("outer")) return "treadOuter";
+    if (l.includes("inner")) return "treadInner";
     return "tread";
   }
 
   return "other";
 }
 
-function extractTreadPos(metricLabel: string): DualPos | null {
-  const l = metricLabel.toLowerCase();
-  if (l.includes("outer")) return "Outer";
-  if (l.includes("inner")) return "Inner";
-  return null;
-}
-
-function extractPressurePos(metricLabel: string): DualPos | null {
+function extractPos(metricLabel: string): DualPos | null {
   const l = metricLabel.toLowerCase();
   if (l.includes("outer")) return "Outer";
   if (l.includes("inner")) return "Inner";
@@ -127,7 +139,22 @@ function placeSingleTread(side: SingleSide, cell: Cell): void {
   if (!side.tread) side.tread = cell;
 }
 
-function placeDualTread(side: DualSide, pos: DualPos | null, cell: Cell): void {
+function placeDualTread(side: DualSide, kind: MetricKind, metricLabel: string, cell: Cell): void {
+  if (kind === "treadOuter") {
+    if (!side.treadOuter) side.treadOuter = cell;
+    return;
+  }
+  if (kind === "treadInner") {
+    if (!side.treadInner) side.treadInner = cell;
+    return;
+  }
+  if (kind === "tread") {
+    if (!side.tread) side.tread = cell;
+    return;
+  }
+
+  // fallback
+  const pos = extractPos(metricLabel);
   if (pos === "Outer") {
     if (!side.treadOuter) side.treadOuter = cell;
     return;
@@ -136,12 +163,26 @@ function placeDualTread(side: DualSide, pos: DualPos | null, cell: Cell): void {
     if (!side.treadInner) side.treadInner = cell;
     return;
   }
-  // no explicit pos -> fill Outer first, then Inner
   if (!side.treadOuter) side.treadOuter = cell;
   else if (!side.treadInner) side.treadInner = cell;
 }
 
-function placeDualPressure(side: DualSide, pos: DualPos | null, cell: Cell): void {
+function placeDualPressure(side: DualSide, kind: MetricKind, metricLabel: string, cell: Cell): void {
+  if (kind === "pressureOuter") {
+    if (!side.pressureOuter) side.pressureOuter = cell;
+    return;
+  }
+  if (kind === "pressureInner") {
+    if (!side.pressureInner) side.pressureInner = cell;
+    return;
+  }
+  if (kind === "pressure") {
+    if (!side.pressure) side.pressure = cell;
+    return;
+  }
+
+  // fallback
+  const pos = extractPos(metricLabel);
   if (pos === "Outer") {
     if (!side.pressureOuter) side.pressureOuter = cell;
     return;
@@ -170,8 +211,7 @@ function getLabel(it: InspectionItem): string {
 
 function readNotes(it: InspectionItem): string {
   const anyIt = it as unknown as { notes?: unknown; note?: unknown };
-  const n = String(anyIt.notes ?? anyIt.note ?? "").trim();
-  return n;
+  return String(anyIt.notes ?? anyIt.note ?? "").trim();
 }
 
 function inputCls() {
@@ -215,6 +255,10 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     updateItem(sectionIndex, idx, { value });
   };
 
+  const commitNotes = (idx: number, notes: string) => {
+    updateItem(sectionIndex, idx, { notes });
+  };
+
   const tables = useMemo<AxleRow[]>(() => {
     const byAxle = new Map<string, AxleRow>();
 
@@ -238,12 +282,29 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
       const hintedUnit = unitHint ? unitHint(label) : "";
       const explicitUnit =
-        (it as unknown as { unit?: unknown }).unit === null ||
-        typeof (it as unknown as { unit?: unknown }).unit === "string"
+        (it as unknown as { unit?: unknown }).unit === null || typeof (it as unknown as { unit?: unknown }).unit === "string"
           ? ((it as unknown as { unit?: string | null }).unit ?? null)
           : null;
 
-      // 1) Hydraulic corner style: "LF Tire Pressure"
+      // Row-level tire status carrier (optional)
+      const kindLoose = metricKindFrom(label);
+      if (kindLoose === "status" && !AXLE_LABEL_RE.test(label) && !HYD_CORNER_RE.test(label)) {
+        const l = label.toLowerCase();
+        const axleLabel =
+          l.includes("rear") ? "Rear 1" : l.includes("front") || l.includes("steer") ? "Steer 1" : "Rear 1";
+        const row = ensure(axleLabel);
+        if (!row.statusCell) {
+          row.statusCell = {
+            idx,
+            label,
+            unit: pickUnit(explicitUnit, hintedUnit),
+            initial: String((it as unknown as { value?: unknown }).value ?? ""),
+          };
+        }
+        return;
+      }
+
+      // 1) Hydraulic corner style: "LF Tire Pressure", "RR Tread Depth (Inner)", "RF Tire Condition"
       const hyd = label.match(HYD_CORNER_RE);
       if (hyd?.groups?.corner && hyd.groups.metric) {
         const corner = String(hyd.groups.corner).toUpperCase() as HydCorner;
@@ -263,22 +324,31 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           initial: String((it as unknown as { value?: unknown }).value ?? ""),
         };
 
+        if (kind === "status") {
+          if (!row.statusCell) row.statusCell = cell;
+          return;
+        }
+
         if (!row.isDual) {
           const grp = side === "Left" ? row.single.left : row.single.right;
+          if (kind === "condition" && !grp.condition) grp.condition = cell;
           if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-          if (kind === "tread") placeSingleTread(grp, cell);
+          if (kind === "tread" && !grp.tread) placeSingleTread(grp, cell);
           return;
         }
 
         const grp = side === "Left" ? row.dual.left : row.dual.right;
+        if (kind === "condition" && !grp.condition) grp.condition = cell;
         if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") {
-          placeDualPressure(grp, extractPressurePos(metric), cell);
+          placeDualPressure(grp, kind, metric, cell);
         }
-        if (kind === "tread") placeDualTread(grp, extractTreadPos(metric), cell);
+        if (kind === "tread" || kind === "treadOuter" || kind === "treadInner") {
+          placeDualTread(grp, kind, metric, cell);
+        }
         return;
       }
 
-      // 2) Heavy-duty axle style: "Drive 1 Left Tread Depth (Outer)"
+      // 2) Heavy-duty axle style: "Drive 1 Left Tread Depth (Outer)", "Drive 1 Right Tire Condition"
       const m = label.match(AXLE_LABEL_RE);
       if (!m?.groups) return;
 
@@ -300,18 +370,27 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
         initial: String((it as unknown as { value?: unknown }).value ?? ""),
       };
 
+      if (kind === "status") {
+        if (!row.statusCell) row.statusCell = cell;
+        return;
+      }
+
       if (!row.isDual) {
         const grp = side === "Left" ? row.single.left : row.single.right;
+        if (kind === "condition" && !grp.condition) grp.condition = cell;
         if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-        if (kind === "tread") placeSingleTread(grp, cell);
+        if (kind === "tread" && !grp.tread) placeSingleTread(grp, cell);
         return;
       }
 
       const grp = side === "Left" ? row.dual.left : row.dual.right;
+      if (kind === "condition" && !grp.condition) grp.condition = cell;
       if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") {
-        placeDualPressure(grp, extractPressurePos(metric), cell);
+        placeDualPressure(grp, kind, metric, cell);
       }
-      if (kind === "tread") placeDualTread(grp, extractTreadPos(metric), cell);
+      if (kind === "tread" || kind === "treadOuter" || kind === "treadInner") {
+        placeDualTread(grp, kind, metric, cell);
+      }
     });
 
     const out = Array.from(byAxle.values());
@@ -342,11 +421,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           sectionIndex={sectionIndex}
           itemIndex={cell.idx}
           updateItem={updateItem}
-          onStatusChange={(_s: InspectionItemStatus) => {
-            // GenericInspectionScreen listens to item.status changes elsewhere.
-            // We don't need to do anything extra here.
-          }}
+          onStatusChange={(_s: InspectionItemStatus) => {}}
           compact
+          wrap
         />
 
         <textarea
@@ -354,7 +431,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           placeholder="Notes…"
           defaultValue={readNotes(it)}
           onBlur={(e) => {
-            updateItem(sectionIndex, cell.idx, { notes: e.currentTarget.value } as unknown as Partial<InspectionItem>);
+            commitNotes(cell.idx, e.currentTarget.value);
           }}
           rows={2}
         />
@@ -362,10 +439,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     );
   };
 
-  const TDColumn = (cells: { outer?: Cell; inner?: Cell; single?: Cell }, label: string) => {
+  const TDColumn = (cells: { outer?: Cell; inner?: Cell; single?: Cell }, label: string, showInnerAlways: boolean) => {
     const hasDual = !!(cells.outer || cells.inner);
-    const showInner = !!cells.inner;
-
+    const shouldShowInner = showInnerAlways || !!cells.inner;
     const U = (cell: Cell | undefined) => (cell?.unit ?? "").trim() || "mm";
 
     return (
@@ -414,7 +490,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
               {ItemActions(cells.outer)}
             </div>
 
-            {showInner ? (
+            {shouldShowInner ? (
               <div>
                 <div className="relative">
                   <input
@@ -441,13 +517,6 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     );
   };
 
-  /**
-   * Center TP cluster:
-   * - Single axle => split (Left/Right)
-   * - Dual axle => quad (Left Outer/Inner + Right Outer/Inner)
-   *
-   * Inner boxes are only enabled if those items exist in the section.
-   */
   const TPCenter = (args: {
     isDual: boolean;
     left: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell };
@@ -470,9 +539,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
             <div className="grid grid-cols-2 gap-px bg-white/10">
               <div className="bg-black/40 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Left
-                </div>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Left</div>
 
                 <div className="relative">
                   <input
@@ -494,9 +561,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
               </div>
 
               <div className="bg-black/40 p-2">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Right
-                </div>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Right</div>
 
                 <div className="relative">
                   <input
@@ -528,12 +593,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
         <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
           <div className="grid grid-cols-2 gap-px bg-white/10">
-            {/* Left Outer */}
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Left
-                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Left</span>
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Outer</span>
               </div>
 
@@ -556,12 +618,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
               {ItemActions(leftOuter)}
             </div>
 
-            {/* Right Outer */}
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Right
-                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Right</span>
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Outer</span>
               </div>
 
@@ -584,12 +643,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
               {ItemActions(rightOuter)}
             </div>
 
-            {/* Left Inner */}
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Left
-                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Left</span>
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Inner</span>
               </div>
 
@@ -612,12 +668,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
               {ItemActions(leftInner)}
             </div>
 
-            {/* Right Inner */}
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Right
-                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">Right</span>
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Inner</span>
               </div>
 
@@ -641,6 +694,80 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
             </div>
           </div>
         </div>
+      </div>
+    );
+  };
+
+  const ConditionPanel = (args: { label: string; cell?: Cell }) => {
+    const { label, cell } = args;
+    if (!cell) return null;
+
+    const it = items[cell.idx];
+    if (!it) return null;
+
+    return (
+      <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+        <div className={tinyLabelCls()}>{label}</div>
+
+        <StatusButtons
+          item={it}
+          sectionIndex={sectionIndex}
+          itemIndex={cell.idx}
+          updateItem={updateItem}
+          onStatusChange={(_s: InspectionItemStatus) => {}}
+          compact
+          wrap
+        />
+
+        <textarea
+          className={notesCls()}
+          placeholder="Notes…"
+          defaultValue={readNotes(it)}
+          onBlur={(e) => commitNotes(cell.idx, e.currentTarget.value)}
+          rows={2}
+        />
+      </div>
+    );
+  };
+
+  const RowCondition = (t: AxleRow) => {
+    const leftCond = t.isDual ? t.dual.left.condition : t.single.left.condition;
+    const rightCond = t.isDual ? t.dual.right.condition : t.single.right.condition;
+    if (!leftCond && !rightCond && !t.statusCell) return null;
+
+    // Prefer per-side conditions
+    if (leftCond || rightCond) {
+      return (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {ConditionPanel({ label: "Left Tire Condition", cell: leftCond })}
+          {ConditionPanel({ label: "Right Tire Condition", cell: rightCond })}
+        </div>
+      );
+    }
+
+    // Fallback: row-level status carrier (if you have it)
+    if (!t.statusCell) return null;
+
+    const it = items[t.statusCell.idx];
+    return (
+      <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
+        <div className={tinyLabelCls()}>Tire Status</div>
+        <StatusButtons
+          item={it}
+          sectionIndex={sectionIndex}
+          itemIndex={t.statusCell.idx}
+          updateItem={updateItem}
+          onStatusChange={(_s: InspectionItemStatus) => {}}
+          compact
+          wrap
+        />
+        <textarea
+          className={notesCls()}
+          placeholder="Notes…"
+          defaultValue={readNotes(it)}
+          onBlur={(e) => commitNotes(t.statusCell!.idx, e.currentTarget.value)}
+          rows={2}
+        />
       </div>
     );
   };
@@ -670,11 +797,11 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
             const isDual = t.isDual;
 
             const leftTD = isDual
-              ? { outer: t.dual.left.treadOuter, inner: t.dual.left.treadInner }
+              ? { outer: t.dual.left.treadOuter ?? t.dual.left.tread, inner: t.dual.left.treadInner }
               : { single: t.single.left.tread };
 
             const rightTD = isDual
-              ? { outer: t.dual.right.treadOuter, inner: t.dual.right.treadInner }
+              ? { outer: t.dual.right.treadOuter ?? t.dual.right.tread, inner: t.dual.right.treadInner }
               : { single: t.single.right.tread };
 
             const leftTP = isDual
@@ -705,10 +832,12 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 </div>
 
                 <div className="grid grid-cols-[minmax(170px,1fr)_minmax(320px,1.35fr)_minmax(170px,1fr)] items-start gap-4">
-                  {TDColumn(leftTD, "Left Tread Depth")}
+                  {TDColumn(leftTD, "Left Tread Depth", isDual)}
                   {TPCenter({ isDual, left: leftTP, right: rightTP })}
-                  {TDColumn(rightTD, "Right Tread Depth")}
+                  {TDColumn(rightTD, "Right Tread Depth", isDual)}
                 </div>
+
+                {RowCondition(t)}
               </div>
             );
           })}

@@ -1,19 +1,38 @@
-//features/inspections/lib/inspections/ui/InspectionFormContext.tsx
-
+// /features/inspections/lib/inspections/ui/InspectionFormContext.tsx
 "use client";
 
 import { createContext, useContext } from "react";
-import type { InspectionItem } from "@inspections/lib/inspection/types";
+import type { InspectionItem, InspectionSection } from "@inspections/lib/inspection/types";
 
-// The shape of the context value (includes a function—totally fine here)
+// Update a single item in a section
 export type UpdateItemFn = (
   sectionIdx: number,
   itemIdx: number,
-  patch: Partial<InspectionItem>
+  patch: Partial<InspectionItem>,
 ) => void;
+
+// Update a section (title and/or items array) - REQUIRED for dynamic grids (BatteryGrid / AddAxle)
+export type UpdateSectionFn = (
+  sectionIdx: number,
+  patch: Partial<Pick<InspectionSection, "title" | "items">>,
+) => void;
+
+// Optional helper (safe read)
+export type GetSectionFn = (sectionIdx: number) => InspectionSection | null;
 
 type Ctx = {
   updateItem: UpdateItemFn;
+
+  /**
+   * Needed for grids that add/remove items (BatteryGrid, AddAxle).
+   * Your provider must implement this and pass it in.
+   */
+  updateSection?: UpdateSectionFn;
+
+  /**
+   * Optional helper for components that need to inspect the live section.
+   */
+  getSection?: GetSectionFn;
 };
 
 // Export the context itself (no wrapper component!)

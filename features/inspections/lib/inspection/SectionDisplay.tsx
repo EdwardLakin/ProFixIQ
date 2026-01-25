@@ -44,6 +44,15 @@ interface SectionDisplayProps {
   onToggleCollapse?: (sectionIndex: number) => void;
 }
 
+function isGridSection(title: string): boolean {
+  const t = (title || "").toLowerCase();
+  return (
+    t.includes("corner grid") ||
+    t.includes("tire grid") ||
+    t.includes("battery grid")
+  );
+}
+
 export default function SectionDisplay(props: SectionDisplayProps) {
   const {
     title,
@@ -63,12 +72,17 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     onToggleCollapse,
   } = props;
 
+  const gridSection = isGridSection(title);
+
   // If parent passes isCollapsed, we become "controlled".
+  // For grid sections, we DO NOT use wrapper collapse (grids manage their own UI collapse),
+  // so we force open=true to avoid "double collapse" controls.
   const [internalOpen, setInternalOpen] = useState(true);
   const isControlled = typeof isCollapsed === "boolean";
-  const open = isControlled ? !isCollapsed : internalOpen;
+  const open = gridSection ? true : isControlled ? !isCollapsed : internalOpen;
 
   const toggleOpen = () => {
+    if (gridSection) return; // grids handle their own collapse button inside the grid component
     onToggleCollapse?.(sectionIndex);
     if (!isControlled) setInternalOpen((v) => !v);
   };
@@ -90,19 +104,31 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     );
   };
 
+  const showBulkButtons = !gridSection; // disable for Corner/Tire/Battery grids to avoid unwanted header controls
+  const showWrapperCollapse = !gridSection; // remove duplicate collapse (grid components have their own collapse)
+
   return (
     <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-        <button
-          onClick={toggleOpen}
-          className="text-left text-lg font-semibold tracking-wide text-accent transition-colors hover:text-accent/80"
-          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-          aria-expanded={open}
-          type="button"
-        >
-          {title}
-        </button>
+        {gridSection ? (
+          <div
+            className="text-left text-lg font-semibold tracking-wide text-accent"
+            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          >
+            {title}
+          </div>
+        ) : (
+          <button
+            onClick={toggleOpen}
+            className="text-left text-lg font-semibold tracking-wide text-accent transition-colors hover:text-accent/80"
+            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+            aria-expanded={open}
+            type="button"
+          >
+            {title}
+          </button>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <span
@@ -113,60 +139,79 @@ export default function SectionDisplay(props: SectionDisplayProps) {
             {stats.recommend} REC · {stats.unset} —
           </span>
 
-          <div className="flex flex-wrap items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => markAll("ok")}
-              title="Mark all OK"
-              type="button"
-            >
-              All OK
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => markAll("fail")}
-              title="Mark all FAIL"
-              type="button"
-            >
-              All FAIL
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => markAll("na")}
-              title="Mark all NA"
-              type="button"
-            >
-              All NA
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => markAll("recommend")}
-              title="Mark all Recommend"
-              type="button"
-            >
-              All REC
-            </Button>
+          {showBulkButtons ? (
+            <div className="flex flex-wrap items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => markAll("ok")}
+                title="Mark all OK"
+                type="button"
+              >
+                All OK
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => markAll("fail")}
+                title="Mark all FAIL"
+                type="button"
+              >
+                All FAIL
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => markAll("na")}
+                title="Mark all NA"
+                type="button"
+              >
+                All NA
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => markAll("recommend")}
+                title="Mark all Recommend"
+                type="button"
+              >
+                All REC
+              </Button>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-1 h-7 px-2 text-[11px]"
-              onClick={toggleOpen}
-              aria-expanded={open}
-              title={open ? "Collapse section" : "Expand section"}
-              type="button"
-            >
-              {open ? "Collapse" : "Expand"}
-            </Button>
-          </div>
+              {showWrapperCollapse ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-1 h-7 px-2 text-[11px]"
+                  onClick={toggleOpen}
+                  aria-expanded={open}
+                  title={open ? "Collapse section" : "Expand section"}
+                  type="button"
+                >
+                  {open ? "Collapse" : "Expand"}
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            // No bulk status buttons for grids; also no wrapper collapse button to avoid duplicates.
+            showWrapperCollapse ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={toggleOpen}
+                aria-expanded={open}
+                title={open ? "Collapse section" : "Expand section"}
+                type="button"
+              >
+                {open ? "Collapse" : "Expand"}
+              </Button>
+            ) : null
+          )}
         </div>
       </div>
 
@@ -193,8 +238,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
             <div className="divide-y divide-white/10">
               {section.items.map((item, itemIndex) => {
                 const key =
-                  (item.item ?? item.name ?? `item-${sectionIndex}-${itemIndex}`) +
-                  `-${itemIndex}`;
+                  (item.item ??
+                    item.name ??
+                    `item-${sectionIndex}-${itemIndex}`) + `-${itemIndex}`;
 
                 const status = String(item.status ?? "").toLowerCase();
                 const isFail = status === "fail";
