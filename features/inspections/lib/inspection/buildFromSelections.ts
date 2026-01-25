@@ -3,6 +3,7 @@
 import type {
   InspectionCategory,
   InspectionItem,
+  InspectionItemStatus,
 } from "@inspections/lib/inspection/types";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
@@ -18,51 +19,78 @@ type BuildParams = {
   extraServiceItems?: string[];
 };
 
+function mkItem(args: {
+  item: string;
+  unit?: string | null;
+  value?: string | number | null;
+  status?: InspectionItemStatus | null;
+  notes?: string | null;
+}): InspectionItem {
+  return {
+    item: args.item,
+    unit: args.unit ?? null,
+
+    // IMPORTANT: status + notes must exist for StatusButtons + fail/recommend flows
+    status: args.status ?? null,
+    notes: args.notes ?? "",
+
+    // value can be null initially
+    value: args.value ?? null,
+  } as InspectionItem;
+}
+
 function buildTireGridSection(vt: VehicleType): InspectionCategory | null {
-  // You said: tire corner grid should ONLY show tires.
-  // So we generate a dedicated “Tire Grid” section here (labels that your Tire grids parse).
-  // - Car (hydraulic): LF/RF/LR/RR
-  // - Truck/bus/trailer (air): Steer/Drive/etc from axle layout with Left/Right
+  /**
+   * You said:
+   * - Tire grid is TIRES ONLY (no brake items)
+   * - Hydraulic should default to dual rear capability
+   *   (rear gets Inner/Outer TP + TD items by default; front stays single)
+   */
 
+  // Hydraulic (car): corners LF/RF/LR/RR
   if (vt === "car") {
-    const corners = ["LF", "RF", "LR", "RR"] as const;
-
-    // Only tires:
-    const metrics: Array<{ label: string; unit: string | null }> = [
-      { label: "Tire Pressure", unit: "psi" },
-      { label: "Tread Depth (Outer)", unit: "mm" },
-      { label: "Tread Depth (Inner)", unit: "mm" },
-    ];
-
     const items: InspectionItem[] = [];
-    for (const c of corners) {
-      for (const m of metrics) {
-        items.push({ item: `${c} ${m.label}`, unit: m.unit });
-      }
+
+    // FRONT (single)
+    for (const c of ["LF", "RF"] as const) {
+      items.push(mkItem({ item: `${c} Tire Pressure`, unit: "psi" }));
+      items.push(mkItem({ item: `${c} Tread Depth (Outer)`, unit: "mm" }));
+      // no front inner by default (single tires)
+    }
+
+    // REAR (dual-capable by default)
+    for (const c of ["LR", "RR"] as const) {
+      // TP dual default
+      items.push(mkItem({ item: `${c} Tire Pressure (Outer)`, unit: "psi" }));
+      items.push(mkItem({ item: `${c} Tire Pressure (Inner)`, unit: "psi" }));
+
+      // TD dual default
+      items.push(mkItem({ item: `${c} Tread Depth (Outer)`, unit: "mm" }));
+      items.push(mkItem({ item: `${c} Tread Depth (Inner)`, unit: "mm" }));
     }
 
     if (!items.length) return null;
     return { title: "Tire Grid", items };
   }
 
-  // Air brake vehicles: build from axle layout
+  // Air brake vehicles: build from axle layout (Steer/Drive/etc)
   const layout = generateAxleLayout(vt);
-
-  // Only tires:
-  const metrics: Array<{ label: string; unit: string | null }> = [
-    { label: "Tire Pressure", unit: "psi" },
-    { label: "Tread Depth (Outer)", unit: "mm" },
-    { label: "Tread Depth (Inner)", unit: "mm" },
-  ];
 
   const items: InspectionItem[] = [];
   for (const a of layout) {
+    const isSteer = a.axleLabel.toLowerCase().startsWith("steer");
+
     for (const side of ["Left", "Right"] as const) {
-      for (const m of metrics) {
-        items.push({
-          item: `${a.axleLabel} ${side} ${m.label}`,
-          unit: m.unit,
-        });
+      if (isSteer) {
+        // Steer is single
+        items.push(mkItem({ item: `${a.axleLabel} ${side} Tire Pressure`, unit: "psi" }));
+        items.push(mkItem({ item: `${a.axleLabel} ${side} Tread Depth`, unit: "mm" }));
+      } else {
+        // Non-steer axles are dual-capable by default
+        items.push(mkItem({ item: `${a.axleLabel} ${side} Tire Pressure (Outer)`, unit: "psi" }));
+        items.push(mkItem({ item: `${a.axleLabel} ${side} Tire Pressure (Inner)`, unit: "psi" }));
+        items.push(mkItem({ item: `${a.axleLabel} ${side} Tread Depth (Outer)`, unit: "mm" }));
+        items.push(mkItem({ item: `${a.axleLabel} ${side} Tread Depth (Inner)`, unit: "mm" }));
       }
     }
   }
@@ -75,6 +103,7 @@ function buildTireGridSection(vt: VehicleType): InspectionCategory | null {
  * IMPORTANT:
  * - Corner grids are BRAKES/torque/push-rod ONLY.
  * - Tires live in the dedicated Tire Grid.
+ * - Every generated item must include status + notes defaults (for StatusButtons + fail/recommend flows).
  */
 export function buildInspectionFromSelections({
   selections,
@@ -108,7 +137,7 @@ export function buildInspectionFromSelections({
       const items: InspectionItem[] = [];
       for (const c of corners) {
         for (const m of metrics) {
-          items.push({ item: `${c.title} ${m.label}`, unit: m.unit });
+          items.push(mkItem({ item: `${c.title} ${m.label}`, unit: m.unit }));
         }
       }
 
@@ -132,10 +161,12 @@ export function buildInspectionFromSelections({
       for (const a of layout) {
         for (const side of ["Left", "Right"] as const) {
           for (const m of metrics) {
-            items.push({
-              item: `${a.axleLabel} ${side} ${m.label}`,
-              unit: m.unit,
-            });
+            items.push(
+              mkItem({
+                item: `${a.axleLabel} ${side} ${m.label}`,
+                unit: m.unit,
+              }),
+            );
           }
         }
       }
@@ -160,7 +191,12 @@ export function buildInspectionFromSelections({
 
     const items: InspectionItem[] = sec.items
       .filter((i) => picked.includes(i.item))
-      .map((i) => ({ item: i.item, unit: i.unit ?? null }));
+      .map((i) =>
+        mkItem({
+          item: i.item,
+          unit: i.unit ?? null,
+        }),
+      );
 
     if (items.length) sections.push({ title: sec.title, items });
   }
@@ -169,7 +205,12 @@ export function buildInspectionFromSelections({
   if (extraServiceItems.length) {
     sections.push({
       title: "Services",
-      items: extraServiceItems.map((name) => ({ item: name })),
+      items: extraServiceItems.map((name) =>
+        mkItem({
+          item: name,
+          unit: null,
+        }),
+      ),
     });
   }
 

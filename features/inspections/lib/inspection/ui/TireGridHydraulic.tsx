@@ -578,11 +578,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           </div>
         </div>
 
-        <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
-          If you want all 4 active, add labels like{" "}
-          <span className="text-neutral-300">Left Tire Pressure (Inner/Outer)</span> and{" "}
-          <span className="text-neutral-300">Right Tire Pressure (Inner/Outer)</span>.
-        </div>
+        
       </div>
     );
   };

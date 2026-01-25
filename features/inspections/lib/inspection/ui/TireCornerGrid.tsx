@@ -2,7 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
-import type { InspectionItem, InspectionItemStatus } from "@inspections/lib/inspection/types";
+import StatusButtons from "@inspections/lib/inspection/StatusButtons";
+import type {
+  InspectionItem,
+  InspectionItemStatus,
+} from "@inspections/lib/inspection/types";
 
 type Props = {
   sectionIndex: number;
@@ -19,7 +23,6 @@ type MetricKind =
   | "pressureOuter"
   | "pressureInner"
   | "tread"
-  | "condition"
   | "other";
 
 type Cell = {
@@ -27,13 +30,11 @@ type Cell = {
   label: string;
   unit: string;
   initial: string;
-  status?: InspectionItemStatus;
 };
 
 type SingleSide = {
   pressure?: Cell;
   tread?: Cell;
-  condition?: Cell;
 };
 
 type DualSide = {
@@ -43,8 +44,6 @@ type DualSide = {
 
   treadOuter?: Cell;
   treadInner?: Cell;
-
-  condition?: Cell;
 };
 
 type AxleRow = {
@@ -80,15 +79,16 @@ function cornerToAxleSide(corner: HydCorner): { axleLabel: string; side: Side } 
 function metricKindFrom(label: string): MetricKind {
   const l = label.toLowerCase();
 
-  if (l.includes("tire condition") || (l.includes("condition") && !l.includes("rotor"))) return "condition";
-
   if (l.includes("tire pressure") || l.includes("pressure")) {
     if (l.includes("outer")) return "pressureOuter";
     if (l.includes("inner")) return "pressureInner";
     return "pressure";
   }
 
-  if (l.includes("tread depth") || l.includes("tread") || l.includes("tire tread")) return "tread";
+  if (l.includes("tread depth") || l.includes("tread") || l.includes("tire tread")) {
+    return "tread";
+  }
+
   return "other";
 }
 
@@ -110,13 +110,6 @@ function pickUnit(explicit: string | null | undefined, hinted: string | null | u
   const e = (explicit ?? "").trim();
   if (e) return e;
   return (hinted ?? "").trim();
-}
-
-function readStatus(it: InspectionItem): InspectionItemStatus | undefined {
-  const anyIt = it as unknown as { status?: unknown };
-  const s = anyIt.status;
-  if (s === "ok" || s === "fail" || s === "na" || s === "recommend") return s;
-  return undefined;
 }
 
 function isDualAxleLabel(axle: string): boolean {
@@ -143,6 +136,7 @@ function placeDualTread(side: DualSide, pos: DualPos | null, cell: Cell): void {
     if (!side.treadInner) side.treadInner = cell;
     return;
   }
+  // no explicit pos -> fill Outer first, then Inner
   if (!side.treadOuter) side.treadOuter = cell;
   else if (!side.treadInner) side.treadInner = cell;
 }
@@ -167,6 +161,17 @@ function scoreAxle(ax: string): number {
   if (l.startsWith("tag")) return 3;
   if (l.startsWith("trailer")) return 4;
   return 9;
+}
+
+function getLabel(it: InspectionItem): string {
+  const anyIt = it as unknown as { item?: unknown; name?: unknown };
+  return String(anyIt.item ?? anyIt.name ?? "").trim();
+}
+
+function readNotes(it: InspectionItem): string {
+  const anyIt = it as unknown as { notes?: unknown; note?: unknown };
+  const n = String(anyIt.notes ?? anyIt.note ?? "").trim();
+  return n;
 }
 
 function inputCls() {
@@ -194,13 +199,11 @@ function tinyLabelCls() {
   return "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400";
 }
 
-function pillBase(active: boolean) {
+function notesCls() {
   return [
-    "h-7 rounded-full border px-3 text-[10px] font-semibold uppercase tracking-[0.16em]",
-    "transition",
-    active
-      ? "border-orange-500/70 bg-black/75 text-neutral-100 shadow-[0_0_18px_rgba(212,118,49,0.25)]"
-      : "border-white/10 bg-black/45 text-neutral-300 hover:border-orange-500/40 hover:bg-black/60",
+    "mt-2 w-full rounded-lg border border-white/10 bg-black/55",
+    "px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500",
+    "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
   ].join(" ");
 }
 
@@ -210,10 +213,6 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
   const commitValue = (idx: number, value: string) => {
     updateItem(sectionIndex, idx, { value });
-  };
-
-  const commitStatus = (idx: number, status: InspectionItemStatus) => {
-    updateItem(sectionIndex, idx, { status });
   };
 
   const tables = useMemo<AxleRow[]>(() => {
@@ -234,10 +233,15 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     };
 
     items.forEach((it, idx) => {
-      const label = String((it as unknown as { item?: unknown; name?: unknown }).item ?? (it as any).name ?? "").trim();
+      const label = getLabel(it);
       if (!label) return;
 
       const hintedUnit = unitHint ? unitHint(label) : "";
+      const explicitUnit =
+        (it as unknown as { unit?: unknown }).unit === null ||
+        typeof (it as unknown as { unit?: unknown }).unit === "string"
+          ? ((it as unknown as { unit?: string | null }).unit ?? null)
+          : null;
 
       // 1) Hydraulic corner style: "LF Tire Pressure"
       const hyd = label.match(HYD_CORNER_RE);
@@ -255,21 +259,18 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
         const cell: Cell = {
           idx,
           label,
-          unit: pickUnit((it as any).unit ?? null, hintedUnit),
-          initial: String((it as any).value ?? ""),
-          status: readStatus(it),
+          unit: pickUnit(explicitUnit, hintedUnit),
+          initial: String((it as unknown as { value?: unknown }).value ?? ""),
         };
 
         if (!row.isDual) {
           const grp = side === "Left" ? row.single.left : row.single.right;
-          if (kind === "condition" && !grp.condition) grp.condition = cell;
           if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
           if (kind === "tread") placeSingleTread(grp, cell);
           return;
         }
 
         const grp = side === "Left" ? row.dual.left : row.dual.right;
-        if (kind === "condition" && !grp.condition) grp.condition = cell;
         if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") {
           placeDualPressure(grp, extractPressurePos(metric), cell);
         }
@@ -295,21 +296,18 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
       const cell: Cell = {
         idx,
         label,
-        unit: pickUnit((it as any).unit ?? null, hintedUnit),
-        initial: String((it as any).value ?? ""),
-        status: readStatus(it),
+        unit: pickUnit(explicitUnit, hintedUnit),
+        initial: String((it as unknown as { value?: unknown }).value ?? ""),
       };
 
       if (!row.isDual) {
         const grp = side === "Left" ? row.single.left : row.single.right;
-        if (kind === "condition" && !grp.condition) grp.condition = cell;
         if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
         if (kind === "tread") placeSingleTread(grp, cell);
         return;
       }
 
       const grp = side === "Left" ? row.dual.left : row.dual.right;
-      if (kind === "condition" && !grp.condition) grp.condition = cell;
       if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") {
         placeDualPressure(grp, extractPressurePos(metric), cell);
       }
@@ -331,103 +329,129 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
   const existingAxles = tables.map((t) => t.axle);
 
-  const ConditionPills = (cell: Cell | undefined) => {
+  const ItemActions = (cell: Cell | undefined) => {
     if (!cell) return null;
-    const s = cell.status;
+
+    const it = items[cell.idx];
+    if (!it) return null;
 
     return (
-      <div className="mt-2 flex flex-wrap gap-2">
-        <button type="button" className={pillBase(s === "ok")} onClick={() => commitStatus(cell.idx, "ok")}>
-          OK
-        </button>
-        <button type="button" className={pillBase(s === "fail")} onClick={() => commitStatus(cell.idx, "fail")}>
-          Fail
-        </button>
-        <button type="button" className={pillBase(s === "na")} onClick={() => commitStatus(cell.idx, "na")}>
-          NA
-        </button>
-        <button
-          type="button"
-          className={pillBase(s === "recommend")}
-          onClick={() => commitStatus(cell.idx, "recommend")}
-        >
-          Rec
-        </button>
+      <div className="mt-2">
+        <StatusButtons
+          item={it}
+          sectionIndex={sectionIndex}
+          itemIndex={cell.idx}
+          updateItem={updateItem}
+          onStatusChange={(_s: InspectionItemStatus) => {
+            // GenericInspectionScreen listens to item.status changes elsewhere.
+            // We don't need to do anything extra here.
+          }}
+          compact
+        />
+
+        <textarea
+          className={notesCls()}
+          placeholder="Notes…"
+          defaultValue={readNotes(it)}
+          onBlur={(e) => {
+            updateItem(sectionIndex, cell.idx, { notes: e.currentTarget.value } as unknown as Partial<InspectionItem>);
+          }}
+          rows={2}
+        />
       </div>
     );
   };
 
-  const TDColumn = (cells: { outer?: Cell; inner?: Cell; single?: Cell; condition?: Cell }, label: string) => {
+  const TDColumn = (cells: { outer?: Cell; inner?: Cell; single?: Cell }, label: string) => {
     const hasDual = !!(cells.outer || cells.inner);
     const showInner = !!cells.inner;
+
+    const U = (cell: Cell | undefined) => (cell?.unit ?? "").trim() || "mm";
 
     return (
       <div className="flex flex-col gap-2">
         <div className={tinyLabelCls()}>{label}</div>
 
         {!hasDual ? (
-          <div className="relative">
-            <input
-              defaultValue={cells.single?.initial ?? ""}
-              className={inputCls()}
-              placeholder={cells.single ? "TD" : "—"}
-              inputMode="decimal"
-              type="number"
-              onBlur={(e) => {
-                if (!cells.single) return;
-                commitValue(cells.single.idx, e.currentTarget.value);
-              }}
-              disabled={!cells.single}
-            />
-            <span className={unitCls()}>{(cells.single?.unit ?? "mm").trim() || "mm"}</span>
-          </div>
-        ) : (
-          <>
+          <div>
             <div className="relative">
               <input
-                defaultValue={cells.outer?.initial ?? ""}
+                defaultValue={cells.single?.initial ?? ""}
                 className={inputCls()}
-                placeholder={cells.outer ? "TD Outer" : "—"}
+                placeholder={cells.single ? "TD" : "—"}
                 inputMode="decimal"
                 type="number"
                 onBlur={(e) => {
-                  if (!cells.outer) return;
-                  commitValue(cells.outer.idx, e.currentTarget.value);
+                  if (!cells.single) return;
+                  commitValue(cells.single.idx, e.currentTarget.value);
                 }}
-                disabled={!cells.outer}
+                disabled={!cells.single}
               />
-              <span className={unitCls()}>{(cells.outer?.unit ?? "mm").trim() || "mm"}</span>
+              <span className={unitCls()}>{U(cells.single)}</span>
             </div>
 
-            {showInner ? (
+            {ItemActions(cells.single)}
+          </div>
+        ) : (
+          <>
+            <div>
               <div className="relative">
                 <input
-                  defaultValue={cells.inner?.initial ?? ""}
+                  defaultValue={cells.outer?.initial ?? ""}
                   className={inputCls()}
-                  placeholder="TD Inner"
+                  placeholder={cells.outer ? "TD Outer" : "—"}
                   inputMode="decimal"
                   type="number"
                   onBlur={(e) => {
-                    if (!cells.inner) return;
-                    commitValue(cells.inner.idx, e.currentTarget.value);
+                    if (!cells.outer) return;
+                    commitValue(cells.outer.idx, e.currentTarget.value);
                   }}
-                  disabled={!cells.inner}
+                  disabled={!cells.outer}
                 />
-                <span className={unitCls()}>{(cells.inner?.unit ?? "mm").trim() || "mm"}</span>
+                <span className={unitCls()}>{U(cells.outer)}</span>
+              </div>
+
+              {ItemActions(cells.outer)}
+            </div>
+
+            {showInner ? (
+              <div>
+                <div className="relative">
+                  <input
+                    defaultValue={cells.inner?.initial ?? ""}
+                    className={inputCls()}
+                    placeholder="TD Inner"
+                    inputMode="decimal"
+                    type="number"
+                    onBlur={(e) => {
+                      if (!cells.inner) return;
+                      commitValue(cells.inner.idx, e.currentTarget.value);
+                    }}
+                    disabled={!cells.inner}
+                  />
+                  <span className={unitCls()}>{U(cells.inner)}</span>
+                </div>
+
+                {ItemActions(cells.inner)}
               </div>
             ) : null}
           </>
         )}
-
-        {ConditionPills(cells.condition)}
       </div>
     );
   };
 
+  /**
+   * Center TP cluster:
+   * - Single axle => split (Left/Right)
+   * - Dual axle => quad (Left Outer/Inner + Right Outer/Inner)
+   *
+   * Inner boxes are only enabled if those items exist in the section.
+   */
   const TPCenter = (args: {
     isDual: boolean;
-    left: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell; condition?: Cell };
-    right: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell; condition?: Cell };
+    left: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell };
+    right: { pressure?: Cell; pressureOuter?: Cell; pressureInner?: Cell };
   }) => {
     const { isDual, left, right } = args;
 
@@ -449,6 +473,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
                   Left
                 </div>
+
                 <div className="relative">
                   <input
                     defaultValue={leftOuter?.initial ?? ""}
@@ -464,13 +489,15 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                   />
                   <span className={unitCls()}>{U(leftOuter)}</span>
                 </div>
-                {ConditionPills(left.condition)}
+
+                {ItemActions(leftOuter)}
               </div>
 
               <div className="bg-black/40 p-2">
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
                   Right
                 </div>
+
                 <div className="relative">
                   <input
                     defaultValue={rightOuter?.initial ?? ""}
@@ -486,7 +513,8 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                   />
                   <span className={unitCls()}>{U(rightOuter)}</span>
                 </div>
-                {ConditionPills(right.condition)}
+
+                {ItemActions(rightOuter)}
               </div>
             </div>
           </div>
@@ -500,6 +528,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
         <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35">
           <div className="grid grid-cols-2 gap-px bg-white/10">
+            {/* Left Outer */}
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
@@ -507,6 +536,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 </span>
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Outer</span>
               </div>
+
               <div className="relative">
                 <input
                   defaultValue={leftOuter?.initial ?? ""}
@@ -522,8 +552,11 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 />
                 <span className={unitCls()}>{U(leftOuter)}</span>
               </div>
+
+              {ItemActions(leftOuter)}
             </div>
 
+            {/* Right Outer */}
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
@@ -531,6 +564,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 </span>
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Outer</span>
               </div>
+
               <div className="relative">
                 <input
                   defaultValue={rightOuter?.initial ?? ""}
@@ -546,8 +580,11 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 />
                 <span className={unitCls()}>{U(rightOuter)}</span>
               </div>
+
+              {ItemActions(rightOuter)}
             </div>
 
+            {/* Left Inner */}
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
@@ -555,6 +592,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 </span>
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Inner</span>
               </div>
+
               <div className="relative">
                 <input
                   defaultValue={leftInner?.initial ?? ""}
@@ -570,8 +608,11 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 />
                 <span className={unitCls()}>{U(leftInner)}</span>
               </div>
+
+              {ItemActions(leftInner)}
             </div>
 
+            {/* Right Inner */}
             <div className="bg-black/40 p-2">
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
@@ -579,6 +620,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 </span>
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Inner</span>
               </div>
+
               <div className="relative">
                 <input
                   defaultValue={rightInner?.initial ?? ""}
@@ -594,13 +636,10 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 />
                 <span className={unitCls()}>{U(rightInner)}</span>
               </div>
+
+              {ItemActions(rightInner)}
             </div>
           </div>
-        </div>
-
-        <div className="mt-2 grid grid-cols-2 gap-3">
-          <div>{ConditionPills(left.condition)}</div>
-          <div>{ConditionPills(right.condition)}</div>
         </div>
       </div>
     );
@@ -609,9 +648,7 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
   return (
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
-        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-          Tire Grid – Air Brake
-        </div>
+        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">Tire Grid – Air Brake</div>
 
         <button
           type="button"
@@ -633,30 +670,28 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
             const isDual = t.isDual;
 
             const leftTD = isDual
-              ? { outer: t.dual.left.treadOuter, inner: t.dual.left.treadInner, condition: t.dual.left.condition }
-              : { single: t.single.left.tread, condition: t.single.left.condition };
+              ? { outer: t.dual.left.treadOuter, inner: t.dual.left.treadInner }
+              : { single: t.single.left.tread };
 
             const rightTD = isDual
-              ? { outer: t.dual.right.treadOuter, inner: t.dual.right.treadInner, condition: t.dual.right.condition }
-              : { single: t.single.right.tread, condition: t.single.right.condition };
+              ? { outer: t.dual.right.treadOuter, inner: t.dual.right.treadInner }
+              : { single: t.single.right.tread };
 
             const leftTP = isDual
               ? {
                   pressure: t.dual.left.pressure,
                   pressureOuter: t.dual.left.pressureOuter,
                   pressureInner: t.dual.left.pressureInner,
-                  condition: t.dual.left.condition,
                 }
-              : { pressure: t.single.left.pressure, condition: t.single.left.condition };
+              : { pressure: t.single.left.pressure };
 
             const rightTP = isDual
               ? {
                   pressure: t.dual.right.pressure,
                   pressureOuter: t.dual.right.pressureOuter,
                   pressureInner: t.dual.right.pressureInner,
-                  condition: t.dual.right.condition,
                 }
-              : { pressure: t.single.right.pressure, condition: t.single.right.condition };
+              : { pressure: t.single.right.pressure };
 
             return (
               <div key={t.axle} className={["p-4", cornerShellCls()].join(" ")}>
@@ -673,12 +708,6 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                   {TDColumn(leftTD, "Left Tread Depth")}
                   {TPCenter({ isDual, left: leftTP, right: rightTP })}
                   {TDColumn(rightTD, "Right Tread Depth")}
-                </div>
-
-                <div className="mt-4 grid grid-cols-[minmax(170px,1fr)_minmax(320px,1.35fr)_minmax(170px,1fr)] gap-4">
-                  <div />
-                  <div className="h-[160px] w-full rounded-2xl border border-white/10 bg-black/25" />
-                  <div />
                 </div>
               </div>
             );
