@@ -459,7 +459,7 @@ export default function CustomBuilderPage() {
       }),
     );
 
-    router.push(`/inspections/run?${qs.toString()}`);
+    router.push(`/inspections/custom-draft?${qs.toString()}`);
   }
 
   function startManual() {

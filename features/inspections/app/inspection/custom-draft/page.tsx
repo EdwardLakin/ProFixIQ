@@ -283,52 +283,71 @@ export default function CustomDraftPage() {
     })();
   }, [supabase]);
 
-  // 1) try to load from sessionStorage (what custom builder wrote)
+    // 1) load staged sections (canonical: inspection:*), fallback to legacy customInspection:*
   useEffect(() => {
     try {
-      const raw =
-        typeof window !== "undefined"
-          ? sessionStorage.getItem("customInspection:sections")
-          : null;
-      const t =
-        typeof window !== "undefined"
-          ? sessionStorage.getItem("customInspection:title")
-          : null;
-      const includeOilRaw =
-        typeof window !== "undefined"
-          ? sessionStorage.getItem("customInspection:includeOil")
-          : null;
-      const storedDuty =
-        typeof window !== "undefined"
-          ? sessionStorage.getItem("customInspection:dutyClass")
-          : null;
+      if (typeof window === "undefined") return;
 
-      // ✅ also read the builder’s grid mode
-      const storedGrid =
-        typeof window !== "undefined"
-          ? sessionStorage.getItem("customInspection:gridMode")
-          : null;
+      // ✅ CANONICAL (builder writes these)
+      const rawInspection = sessionStorage.getItem("inspection:sections");
+      const titleInspection = sessionStorage.getItem("inspection:title");
+      const paramsRaw = sessionStorage.getItem("inspection:params");
 
-      const includeOil = includeOilRaw ? JSON.parse(includeOilRaw) === true : false;
+      // 🧯 LEGACY fallback (older flows)
+      const rawLegacy = sessionStorage.getItem("customInspection:sections");
+      const titleLegacy = sessionStorage.getItem("customInspection:title");
+      const includeOilRawLegacy = sessionStorage.getItem("customInspection:includeOil");
+      const storedDutyLegacy = sessionStorage.getItem("customInspection:dutyClass");
+      const storedGridLegacy = sessionStorage.getItem("customInspection:gridMode");
+
+      // Prefer canonical first
+      const raw = rawInspection ?? rawLegacy;
+      const t = titleInspection ?? titleLegacy;
+
+      // ✅ URL still wins for these if present (keeps "Edit template" behavior)
+      let nextDuty: DutyClass | null = dutyClass;
+      let nextGrid: GridMode | null = gridMode;
+
+      // Pull duty/grid from canonical params if present
+      if (paramsRaw) {
+        try {
+          const parsed = JSON.parse(paramsRaw) as unknown;
+          if (isRecord(parsed)) {
+            const dc = asString(parsed.dutyClass);
+            const gm = normalizeGridMode(asString(parsed.grid));
+            if (dc === "light" || dc === "medium" || dc === "heavy") nextDuty = dc;
+            if (gm) nextGrid = gm;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Legacy duty/grid if canonical didn’t provide
+      if (!nextDuty && storedDutyLegacy) nextDuty = storedDutyLegacy as DutyClass;
+      if (!nextGrid && storedGridLegacy) {
+        const g = normalizeGridMode(storedGridLegacy);
+        if (g) nextGrid = g;
+      }
 
       if (t && t.trim()) setTitle(t.trim());
-      if (storedDuty) setDutyClass(storedDuty as DutyClass);
-      if (storedGrid) {
-        const g = normalizeGridMode(storedGrid);
-        if (g) setGridMode(g);
-      }
+      if (nextDuty) setDutyClass(nextDuty);
+      if (nextGrid) setGridMode(nextGrid);
 
       if (raw) {
         const parsedUnknown = JSON.parse(raw) as unknown;
         const parsed = normalizeSections(parsedUnknown);
 
-        // ✅ builder already injects oil; only add here if missing
+        // Legacy oil handling only (canonical builder already injects oil and removes legacy keys)
+        const includeOilLegacy =
+          includeOilRawLegacy ? JSON.parse(includeOilRawLegacy) === true : false;
+
         const hasOil = parsed.some(
           (s) => (s.title || "").trim().toLowerCase() === "oil change",
         );
 
         const withOil =
-          includeOil && !hasOil
+          includeOilLegacy && !hasOil
             ? normalizeSections([...parsed, buildOilChangeSection()])
             : parsed;
 
