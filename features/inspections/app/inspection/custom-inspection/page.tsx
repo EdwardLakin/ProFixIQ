@@ -143,8 +143,11 @@ function buildHydraulicTireGrid(): Section {
   const items: Section["items"] = [];
 
   // ✅ ADDED: row-level status carriers (matches TireGrid fallback paths)
-  items.push({ item: "Steer 1 Tire Status", unit: null });
-  items.push({ item: "Rear 1 Tire Status", unit: null });
+  items.push({ item: "LF Tire Status", unit: null });
+  items.push({ item: "RF Tire Status", unit: null });
+  items.push({ item: "LR Tire Status", unit: null });
+  items.push({ item: "RR Tire Status", unit: null });
+
 
   for (const c of front) {
     items.push({ item: `${c} Tire Pressure`, unit: "psi" });

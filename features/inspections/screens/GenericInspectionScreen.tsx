@@ -364,13 +364,13 @@ export default function GenericInspectionScreen(
     if (staged && Object.keys(staged).length > 0) {
       const merged = new URLSearchParams();
 
-      Object.entries(staged).forEach(([key, value]) => {
-        if (value != null) merged.set(key, String(value));
-      });
+// URL first
+routeSp.forEach((value, key) => merged.set(key, value));
 
-      routeSp.forEach((value, key) => {
-        merged.set(key, value);
-      });
+// staged second (wins)
+Object.entries(staged).forEach(([key, value]) => {
+  if (value != null) merged.set(key, String(value));
+});
 
       return merged;
     }
