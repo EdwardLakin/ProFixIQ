@@ -86,17 +86,26 @@ function toHeaderVehicle(v?: SessionVehicle | null) {
 
 function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
   const l = (label || "").toLowerCase();
-  if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
+
+  // ✅ pressure ALWAYS psi
+  if (l.includes("pressure")) return "psi";
+
+  // ✅ tread + thickness metrics follow toggle
   if (l.includes("tread")) return mode === "metric" ? "mm" : "in";
   if (l.includes("pad") || l.includes("lining") || l.includes("shoe"))
     return mode === "metric" ? "mm" : "in";
   if (l.includes("rotor") || l.includes("drum"))
     return mode === "metric" ? "mm" : "in";
   if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
+
+  // torque can still follow toggle (your call)
   if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
+
+  // leak rate / gov cut can be whatever you want — leaving as-is
   if (l.includes("leak rate")) return mode === "metric" ? "kPa/min" : "psi/min";
   if (l.includes("gov cut") || l.includes("warning"))
     return mode === "metric" ? "kPa" : "psi";
+
   return "";
 }
 

@@ -655,6 +655,10 @@ export default function TireGrid(props: Props) {
     const hasDual = !!(cells.outer || cells.inner);
     const shouldShowInner = showInnerAlways || !!cells.inner;
     const U = (cell: Cell | undefined) => (cell?.unit ?? "").trim() || "mm";
+    const isInches = (u: string) =>
+    u.toLowerCase() === "in" || u.toLowerCase() === "inch" || u === '"';
+
+  const isText = (cell: Cell | undefined) => isInches(U(cell));
 
     return (
       <div className="flex flex-col gap-2">
@@ -667,8 +671,8 @@ export default function TireGrid(props: Props) {
                 defaultValue={cells.single?.initial ?? ""}
                 className={inputCls()}
                 placeholder={cells.single ? "TD" : "—"}
-                inputMode="decimal"
-                type="number"
+                inputMode={isText(cells.single) ? "text" : "decimal"}
+                type={isText(cells.single) ? "text" : "number"}
                 onBlur={(e) => {
                   if (!cells.single) return;
                   commitValue(cells.single.idx, e.currentTarget.value);
@@ -688,8 +692,8 @@ export default function TireGrid(props: Props) {
                   defaultValue={cells.outer?.initial ?? ""}
                   className={inputCls()}
                   placeholder={cells.outer ? "TD Outer" : "—"}
-                  inputMode="decimal"
-                  type="number"
+                  inputMode={isText(cells.outer) ? "text" : "decimal"}
+                  type={isText(cells.outer) ? "text" : "number"}                  
                   onBlur={(e) => {
                     if (!cells.outer) return;
                     commitValue(cells.outer.idx, e.currentTarget.value);
@@ -709,8 +713,8 @@ export default function TireGrid(props: Props) {
                     defaultValue={cells.inner?.initial ?? ""}
                     className={inputCls()}
                     placeholder="TD Inner"
-                    inputMode="decimal"
-                    type="number"
+                    inputMode={isText(cells.inner) ? "text" : "decimal"}
+                    type={isText(cells.inner) ? "text" : "number"}
                     onBlur={(e) => {
                       if (!cells.inner) return;
                       commitValue(cells.inner.idx, e.currentTarget.value);
@@ -741,7 +745,7 @@ export default function TireGrid(props: Props) {
     const rightOuter = right.pressureOuter ?? right.pressure;
     const rightInner = right.pressureInner;
 
-    const U = (cell: Cell | undefined) => (cell?.unit ?? "").trim() || "psi";
+    const U = (_cell: Cell | undefined) => "psi";
 
     if (!isDual) {
       return (

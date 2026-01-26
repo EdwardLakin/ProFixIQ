@@ -627,6 +627,8 @@ export default function TireGridHydraulic(props: Props) {
     const shouldShowInner = showInnerAlways || !!cells.inner;
 
     const U = (c?: Cell) => (c?.unit ?? "").trim() || "mm";
+    const isInches = (u: string) => u.toLowerCase() === "in" || u.toLowerCase() === "inch" || u === '"';
+    const isText = (c?: Cell) => isInches(U(c));
 
     return (
       <div className="flex flex-col gap-2">
@@ -638,8 +640,8 @@ export default function TireGridHydraulic(props: Props) {
               value={cells.single ? valOf(cells.single) : ""}
               className={inputCls()}
               placeholder={cells.single ? "TD" : "—"}
-              inputMode="decimal"
-              type="number"
+              inputMode={isText(cells.single) ? "text" : "decimal"}
+              type={isText(cells.single) ? "text" : "number"}
               onChange={(e) => {
                 if (!cells.single) return;
                 commitValue(cells.single.idx, e.currentTarget.value);
@@ -655,8 +657,8 @@ export default function TireGridHydraulic(props: Props) {
                 value={cells.outer ? valOf(cells.outer) : ""}
                 className={inputCls()}
                 placeholder={cells.outer ? "TD Outer" : "—"}
-                inputMode="decimal"
-                type="number"
+                inputMode={isText(cells.outer) ? "text" : "decimal"}
+                type={isText(cells.outer) ? "text" : "number"}
                 onChange={(e) => {
                   if (!cells.outer) return;
                   commitValue(cells.outer.idx, e.currentTarget.value);
@@ -672,8 +674,8 @@ export default function TireGridHydraulic(props: Props) {
                   value={cells.inner ? valOf(cells.inner) : ""}
                   className={inputCls()}
                   placeholder="TD Inner"
-                  inputMode="decimal"
-                  type="number"
+                  inputMode={isText(cells.inner) ? "text" : "decimal"}
+                  type={isText(cells.inner) ? "text" : "number"}
                   onChange={(e) => {
                     if (!cells.inner) return;
                     commitValue(cells.inner.idx, e.currentTarget.value);
@@ -701,7 +703,7 @@ export default function TireGridHydraulic(props: Props) {
     const rightOuter = right.pressureOuter ?? right.pressure;
     const rightInner = right.pressureInner;
 
-    const U = (c?: Cell) => (c?.unit ?? "").trim() || "psi";
+    const U = (_c?: Cell) => "psi";
 
     if (!isDual) {
       return (
