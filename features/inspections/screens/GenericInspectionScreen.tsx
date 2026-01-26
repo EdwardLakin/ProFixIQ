@@ -4,8 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
 
 import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
@@ -193,24 +191,6 @@ function normalizeSections(input: unknown): InspectionSection[] {
   }
 }
 
-function toTemplateSections(sections: InspectionSection[]): InspectionSection[] {
-  return sections
-    .map((sec) => ({
-      title: sec.title,
-      items: (sec.items ?? [])
-        .map((it) => {
-          const label = String(it.item ?? "").trim();
-          if (!label) return null;
-          return {
-            item: label,
-            unit: (it.unit as string | null | undefined) ?? null,
-          };
-        })
-        .filter((x): x is { item: string; unit: string | null } => !!x),
-    }))
-    .filter((sec) => sec.items.length > 0);
-}
-
 /* -------- smarter grid detectors -------- */
 
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
@@ -297,14 +277,7 @@ function isHydraulicCornerSection(
   });
 }
 
-/* --------------------------------- types / constants --------------------------------- */
-
-type VehicleTypeParam = "car" | "truck" | "bus" | "trailer";
-
-type InsertTemplate =
-  Database["public"]["Tables"]["inspection_templates"]["Insert"] & {
-    labor_hours?: number | null;
-  };
+/* --------------------------------- constants --------------------------------- */
 
 const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
 
@@ -384,7 +357,6 @@ export default function GenericInspectionScreen(
 ): JSX.Element {
   const routeSp = useSearchParams();
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const sp = useMemo(() => {
     const staged = readStaged<Record<string, string>>("inspection:params");
@@ -418,13 +390,6 @@ export default function GenericInspectionScreen(
 
   const workOrderId = sp.get("workOrderId") || null;
   const workOrderLineId = sp.get("workOrderLineId") || "";
-
-  const rawVehicleType = sp.get("vehicleType") as VehicleTypeParam | null;
-  const templateVehicleType: VehicleTypeParam | undefined =
-    rawVehicleType &&
-    ["car", "truck", "bus", "trailer"].includes(rawVehicleType)
-      ? rawVehicleType
-      : undefined;
 
   const showMissingLineWarning = isEmbed && !workOrderLineId;
 
@@ -532,7 +497,6 @@ export default function GenericInspectionScreen(
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [savingTemplate, setSavingTemplate] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
   const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>(
@@ -684,7 +648,7 @@ export default function GenericInspectionScreen(
         "inspection:completed",
         handler as EventListener,
       );
-  }, [session, draftKey, lockKey, initialSession]);
+  }, [session, draftKey, lockKey]);
 
   const handleTranscript = async (text: string): Promise<void> => {
     if (!session || guardLocked()) return;
@@ -1211,96 +1175,6 @@ export default function GenericInspectionScreen(
     }));
   }
 
-    const saveCurrentAsTemplate = async (): Promise<void> => {
-    if (!session) return;
-    if (savingTemplate) return;
-
-    const cleanedSections = toTemplateSections(session.sections);
-    if (cleanedSections.length === 0) {
-      toast.error("Nothing to save — no sections with items.");
-      return;
-    }
-
-    try {
-      setSavingTemplate(true);
-
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth?.user?.id ?? null;
-      if (!uid) {
-        toast.error("Please sign in to save this as a template.");
-        return;
-      }
-
-      let resolvedShopId: string | null = null;
-
-      const byUser = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("user_id", uid)
-        .maybeSingle();
-
-      if (byUser.data?.shop_id) {
-        resolvedShopId = String(byUser.data.shop_id);
-      } else {
-        const byId = await supabase
-          .from("profiles")
-          .select("shop_id")
-          .eq("id", uid)
-          .maybeSingle();
-
-        resolvedShopId = byId.data?.shop_id ? String(byId.data.shop_id) : null;
-      }
-
-      if (!resolvedShopId) {
-        toast.error("No shop_id found for your profile.");
-        return;
-      }
-
-      const baseName =
-        session.templateitem || templateName || "Inspection Template";
-      const template_name = `${baseName} (from run)`;
-
-      const totalItems = cleanedSections.reduce(
-        (sum, s) => sum + s.items.length,
-        0,
-      );
-      const labor_hours =
-        totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
-
-      const payload: InsertTemplate = {
-        user_id: uid,
-        shop_id: resolvedShopId,
-        template_name,
-        sections:
-          cleanedSections as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
-        description: "Saved from an in-progress inspection run.",
-        vehicle_type: templateVehicleType,
-        tags: ["run_saved", "custom"],
-        is_public: false,
-        labor_hours,
-      };
-
-      const { error, data } = await supabase
-        .from("inspection_templates")
-        .insert(payload)
-        .select("id")
-        .maybeSingle();
-
-      if (error || !data?.id) {
-        // eslint-disable-next-line no-console
-        console.error(error);
-        toast.error(
-          error?.message || "Failed to save template from inspection.",
-        );
-        return;
-      }
-
-      toast.success("Template saved. You can reuse it under Templates.");
-    } finally {
-      setSavingTemplate(false);
-    }
-  };
-
   const handleAddCustomItem = (sectionIndex: number): void => {
     if (!session) return;
     if (guardLocked()) return;
@@ -1448,6 +1322,7 @@ export default function GenericInspectionScreen(
   const hint =
     "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
 
+  // Bottom bar: ONLY Save progress + Finish inspection
   const actions = (
     <>
       <SaveInspectionButton
@@ -1458,15 +1333,6 @@ export default function GenericInspectionScreen(
         session={session}
         workOrderLineId={workOrderLineId}
       />
-      <Button
-        type="button"
-        variant="outline"
-        className="border-sky-500/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-sky-100 hover:border-sky-400 hover:bg-black/80"
-        onClick={saveCurrentAsTemplate}
-        disabled={savingTemplate}
-      >
-        {savingTemplate ? "Saving Template…" : "Save as Template"}
-      </Button>
     </>
   );
 
@@ -1745,9 +1611,10 @@ export default function GenericInspectionScreen(
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitAIForItem(secIdx, itemIdx);
                               }}
-                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                                isSubmittingAI(secIdx, itemIdx)
-                              }
+                              isSubmittingAI={(
+                                secIdx: number,
+                                itemIdx: number,
+                              ) => isSubmittingAI(secIdx, itemIdx)}
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts });
@@ -1765,7 +1632,10 @@ export default function GenericInspectionScreen(
                                 unitHintGeneric(label, unit)
                               }
                               onAddAxle={(axleLabel: string) =>
-                                handleAddTireAxleForSection(sectionIndex, axleLabel)
+                                handleAddTireAxleForSection(
+                                  sectionIndex,
+                                  axleLabel,
+                                )
                               }
                               onSpecHint={(metricLabel: string) =>
                                 _props.onSpecHint?.({
@@ -1778,9 +1648,10 @@ export default function GenericInspectionScreen(
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitAIForItem(secIdx, itemIdx);
                               }}
-                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                                isSubmittingAI(secIdx, itemIdx)
-                              }
+                              isSubmittingAI={(
+                                secIdx: number,
+                                itemIdx: number,
+                              ) => isSubmittingAI(secIdx, itemIdx)}
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts });
@@ -1954,7 +1825,6 @@ export default function GenericInspectionScreen(
         )}
       </div>
 
-      {/* Bottom action bar: always show (even in embed). If you want it hidden in embed, wrap with {!isEmbed && ...} */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 py-2 backdrop-blur">
         <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">{actions}</div>

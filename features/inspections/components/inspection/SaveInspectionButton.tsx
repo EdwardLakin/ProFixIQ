@@ -35,7 +35,7 @@ export function SaveInspectionButton({ session, workOrderLineId }: Props) {
       size="sm"
       className="font-medium border-[rgba(184,115,51,0.75)] text-[11px] tracking-[0.16em] uppercase"
     >
-      Save draft
+      Save Progress
     </Button>
   );
 }
