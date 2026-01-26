@@ -159,7 +159,9 @@ function normalizeSections(input: unknown): InspectionSection[] {
       const existing = Array.isArray(bucket.items) ? bucket.items : [];
 
       const seen = new Set<string>(
-        existing.map((x) => String((x as { item?: unknown }).item ?? "").toLowerCase()),
+        existing.map((x) =>
+          String((x as { item?: unknown }).item ?? "").toLowerCase(),
+        ),
       );
 
       const merged: Array<InspectionSection["items"][number]> = [...existing];
@@ -174,13 +176,17 @@ function normalizeSections(input: unknown): InspectionSection[] {
       bucket.items = merged;
     }
 
-    return Array.from(byTitle.values()).filter((s) => (s.items?.length ?? 0) > 0);
+    return Array.from(byTitle.values()).filter(
+      (s) => (s.items?.length ?? 0) > 0,
+    );
   } catch {
     return [];
   }
 }
 
-function toTemplateSections(sections: InspectionSection[]): InspectionSection[] {
+function toTemplateSections(
+  sections: InspectionSection[],
+): InspectionSection[] {
   return sections
     .map((sec) => ({
       title: sec.title,
@@ -202,8 +208,7 @@ function toTemplateSections(sections: InspectionSection[]): InspectionSection[] 
 
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
-const HYD_FULL_RE =
-  /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
 const BATTERY_SIGNAL_RE =
   /(battery|voltage|v\b|cca|cranking|load\s*test|alternator|charging|charge\s*rate|state\s*of\s*charge|soc)/i;
@@ -272,7 +277,8 @@ function isHydraulicCornerSection(
   // IMPORTANT: if this is a Tire Grid section, it is NOT the hydraulic corner grid
   if (isTireGridSection(title, items)) return false;
 
-  if (t.includes("corner grid") || t.includes("tires & brakes — truck")) return true;
+  if (t.includes("corner grid") || t.includes("tires & brakes — truck"))
+    return true;
   if (t.includes("axle grid")) return true;
 
   if (!items || items.length < 4) return false;
@@ -301,16 +307,20 @@ function inspectionDraftKey(args: {
   templateName?: string | null;
 }) {
   const t = (args.templateName || "Inspection").toLowerCase().trim();
-  if (args.workOrderLineId) return `inspection-draft:line:${args.workOrderLineId}`;
+  if (args.workOrderLineId)
+    return `inspection-draft:line:${args.workOrderLineId}`;
   if (args.workOrderId) return `inspection-draft:wo:${args.workOrderId}:${t}`;
   return `inspection-draft:template:${t}:${args.inspectionId}`;
 }
 
-function buildCauseCorrectionFromSession(
-  s: unknown,
-): { cause: string; correction: string } {
+function buildCauseCorrectionFromSession(s: unknown): {
+  cause: string;
+  correction: string;
+} {
   const sess = s as { sections?: unknown };
-  const sections: unknown[] = Array.isArray(sess?.sections) ? (sess.sections as unknown[]) : [];
+  const sections: unknown[] = Array.isArray(sess?.sections)
+    ? (sess.sections as unknown[])
+    : [];
 
   const failed: string[] = [];
   const rec: string[] = [];
@@ -318,14 +328,18 @@ function buildCauseCorrectionFromSession(
   for (const secRaw of sections) {
     const sec = secRaw as { title?: unknown; items?: unknown };
     const title = String(sec?.title ?? "").trim();
-    const items: unknown[] = Array.isArray(sec?.items) ? (sec.items as unknown[]) : [];
+    const items: unknown[] = Array.isArray(sec?.items)
+      ? (sec.items as unknown[])
+      : [];
 
     for (const itRaw of items) {
       const it = itRaw as Record<string, unknown>;
       const st = String(it?.status ?? "").toLowerCase();
       if (st !== "fail" && st !== "recommend") continue;
 
-      const label = String(it?.item ?? it?.name ?? it?.description ?? "Item").trim();
+      const label = String(
+        it?.item ?? it?.name ?? it?.description ?? "Item",
+      ).trim();
       const note = String(it?.notes ?? "").trim();
       const chunk = note ? `${label} — ${note}` : label;
       const line = title ? `${title}: ${chunk}` : chunk;
@@ -399,7 +413,8 @@ export default function GenericInspectionScreen(
 
   const rawVehicleType = sp.get("vehicleType") as VehicleTypeParam | null;
   const templateVehicleType: VehicleTypeParam | undefined =
-    rawVehicleType && ["car", "truck", "bus", "trailer"].includes(rawVehicleType)
+    rawVehicleType &&
+    ["car", "truck", "bus", "trailer"].includes(rawVehicleType)
       ? rawVehicleType
       : undefined;
 
@@ -408,7 +423,9 @@ export default function GenericInspectionScreen(
   const templateName =
     (typeof window !== "undefined"
       ? sessionStorage.getItem("inspection:title")
-      : null) || sp.get("template") || "Inspection";
+      : null) ||
+    sp.get("template") ||
+    "Inspection";
 
   const customer: SessionCustomer = {
     first_name: sp.get("first_name") || "",
@@ -435,7 +452,8 @@ export default function GenericInspectionScreen(
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
+    if (Array.isArray(staged) && staged.length)
+      return normalizeSections(staged);
 
     try {
       const legacy =
@@ -451,7 +469,10 @@ export default function GenericInspectionScreen(
     return [
       {
         title: "General",
-        items: [{ item: "Visual walkaround" }, { item: "Record warning lights" }],
+        items: [
+          { item: "Visual walkaround" },
+          { item: "Record warning lights" },
+        ],
       },
     ];
   }, [sp]);
@@ -506,11 +527,14 @@ export default function GenericInspectionScreen(
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
-  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>({});
+  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>(
+    {},
+  );
   const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
 
-  const [collapsedSections, setCollapsedSections] =
-    useState<Record<number, boolean>>({});
+  const [collapsedSections, setCollapsedSections] = useState<
+    Record<number, boolean>
+  >({});
 
   const [wakeActive, setWakeActive] = useState(false);
   const wakeTimeoutRef = useRef<number | null>(null);
@@ -623,7 +647,10 @@ export default function GenericInspectionScreen(
 
       const merged =
         detail.cause && detail.correction
-          ? { cause: String(detail.cause), correction: String(detail.correction) }
+          ? {
+              cause: String(detail.cause),
+              correction: String(detail.correction),
+            }
           : buildCauseCorrectionFromSession(session);
 
       window.dispatchEvent(
@@ -645,7 +672,10 @@ export default function GenericInspectionScreen(
 
     window.addEventListener("inspection:completed", handler as EventListener);
     return () =>
-      window.removeEventListener("inspection:completed", handler as EventListener);
+      window.removeEventListener(
+        "inspection:completed",
+        handler as EventListener,
+      );
   }, [session, draftKey, lockKey, initialSession]);
 
   const handleTranscript = async (text: string): Promise<void> => {
@@ -735,7 +765,9 @@ export default function GenericInspectionScreen(
           }),
         );
 
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
         mediaRef.current = stream;
 
         const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
@@ -826,7 +858,10 @@ export default function GenericInspectionScreen(
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
+  const submitAIForItem = async (
+    secIdx: number,
+    itemIdx: number,
+  ): Promise<void> => {
     if (!session) return;
 
     if (isLocked) {
@@ -885,8 +920,14 @@ export default function GenericInspectionScreen(
         laborRate: 0,
         editable: true,
         source: "inspection",
-        value: (it as unknown as { value?: unknown }).value as string | number | null | undefined,
-        photoUrls: (it as unknown as { photoUrls?: unknown }).photoUrls as string[] | undefined,
+        value: (it as unknown as { value?: unknown }).value as
+          | string
+          | number
+          | null
+          | undefined,
+        photoUrls: (it as unknown as { photoUrls?: unknown }).photoUrls as
+          | string[]
+          | undefined,
         aiState: "loading",
       };
       addQuoteLine(placeholder);
@@ -908,14 +949,18 @@ export default function GenericInspectionScreen(
       }
 
       const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
-        ...((suggestion.parts ?? []) as Array<{ name: string; qty: number; cost?: number }>),
+        ...((suggestion.parts ?? []) as Array<{
+          name: string;
+          qty: number;
+          cost?: number;
+        }>),
         ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
       ];
 
       const laborTime =
         manualLaborHours != null && !Number.isNaN(manualLaborHours)
           ? manualLaborHours
-          : suggestion.laborHours ?? 0.5;
+          : (suggestion.laborHours ?? 0.5);
 
       const laborRate = suggestion.laborRate ?? 0;
 
@@ -984,7 +1029,9 @@ export default function GenericInspectionScreen(
               const body = (await res.json().catch(() => null)) as unknown;
               // eslint-disable-next-line no-console
               console.error("Parts request error", body);
-              toast.error("Line added, but parts request failed", { id: toastId });
+              toast.error("Line added, but parts request failed", {
+                id: toastId,
+              });
               return;
             }
 
@@ -994,15 +1041,22 @@ export default function GenericInspectionScreen(
           } catch (err: unknown) {
             // eslint-disable-next-line no-console
             console.error("Parts request failed", err);
-            toast.error("Line added, but couldn't reach parts request service", {
-              id: toastId,
-            });
+            toast.error(
+              "Line added, but couldn't reach parts request service",
+              {
+                id: toastId,
+              },
+            );
           }
         } else {
-          toast.success("Added to work order (no parts requested)", { id: toastId });
+          toast.success("Added to work order (no parts requested)", {
+            id: toastId,
+          });
         }
       } else {
-        toast.error("Missing work order id — saved locally only", { id: toastId });
+        toast.error("Missing work order id — saved locally only", {
+          id: toastId,
+        });
       }
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
@@ -1082,7 +1136,9 @@ export default function GenericInspectionScreen(
       : 0;
 
   const safeSectionIndex =
-    session && currentSectionIndex >= 0 && currentSectionIndex < session.sections.length
+    session &&
+    currentSectionIndex >= 0 &&
+    currentSectionIndex < session.sections.length
       ? currentSectionIndex
       : 0;
 
@@ -1118,7 +1174,10 @@ export default function GenericInspectionScreen(
     });
   }
 
-  function applyStatusToSection(sectionIndex: number, status: InspectionItemStatus): void {
+  function applyStatusToSection(
+    sectionIndex: number,
+    status: InspectionItemStatus,
+  ): void {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1202,11 +1261,16 @@ export default function GenericInspectionScreen(
         return;
       }
 
-      const baseName = session.templateitem || templateName || "Inspection Template";
+      const baseName =
+        session.templateitem || templateName || "Inspection Template";
       const template_name = `${baseName} (from run)`;
 
-      const totalItems = cleanedSections.reduce((sum, s) => sum + s.items.length, 0);
-      const labor_hours = totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
+      const totalItems = cleanedSections.reduce(
+        (sum, s) => sum + s.items.length,
+        0,
+      );
+      const labor_hours =
+        totalItems > 0 ? Number((totalItems * 0.1).toFixed(2)) : null;
 
       const payload: InsertTemplate = {
         user_id: uid,
@@ -1230,7 +1294,9 @@ export default function GenericInspectionScreen(
       if (error || !data?.id) {
         // eslint-disable-next-line no-console
         console.error(error);
-        toast.error(error?.message || "Failed to save template from inspection.");
+        toast.error(
+          error?.message || "Failed to save template from inspection.",
+        );
         return;
       }
 
@@ -1269,7 +1335,10 @@ export default function GenericInspectionScreen(
   };
 
   /** Add axle rows to an AIR corner grid section */
-  const handleAddAxleForSection = (sectionIndex: number, axleLabel: string): void => {
+  const handleAddAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1314,7 +1383,10 @@ export default function GenericInspectionScreen(
   };
 
   /** Add axle rows to a TIRE grid section (tires only) */
-  const handleAddTireAxleForSection = (sectionIndex: number, axleLabel: string): void => {
+  const handleAddTireAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1384,8 +1456,14 @@ export default function GenericInspectionScreen(
 
   const actions = (
     <>
-      <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
-      <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
+      <SaveInspectionButton
+        session={session}
+        workOrderLineId={workOrderLineId}
+      />
+      <FinishInspectionButton
+        session={session}
+        workOrderLineId={workOrderLineId}
+      />
       <Button
         type="button"
         variant="outline"
@@ -1399,10 +1477,12 @@ export default function GenericInspectionScreen(
   );
 
   if (!session || (session.sections?.length ?? 0) === 0) {
-    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
+    return (
+      <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
+    );
   }
 
-    const body = (
+  const body = (
     <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
       {isEmbed && (
         <style jsx global>{`
@@ -1476,7 +1556,8 @@ export default function GenericInspectionScreen(
               setUnit(unit === "metric" ? "imperial" : "metric")
             }
           >
-            Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+            Unit:{" "}
+            {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
           </Button>
         </div>
 
@@ -1493,14 +1574,42 @@ export default function GenericInspectionScreen(
 
         <InspectionFormCtx.Provider value={{ updateItem }}>
           {session.sections.map((section, sectionIndex) => {
-            const itemsWithHints = (section.items ?? []).map((it) => ({
-              ...it,
-              unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-            }));
+            const itemsWithHints = (section.items ?? []).map((it) => {
+              const stRaw = String(
+                (it as { status?: unknown }).status ?? "",
+              ).toLowerCase();
+              const safeStatus =
+                stRaw === "ok" ||
+                stRaw === "fail" ||
+                stRaw === "na" ||
+                stRaw === "recommend"
+                  ? (stRaw as InspectionItemStatus)
+                  : ("na" as InspectionItemStatus);
 
-            const batterySection = isBatterySection(section.title, itemsWithHints);
-            const airSection = isAirCornerSection(section.title, itemsWithHints);
-            const tireSection = isTireGridSection(section.title, itemsWithHints);
+              const notesRaw = (it as { notes?: unknown; note?: unknown })
+                .notes;
+              const legacyNoteRaw = (it as { note?: unknown }).note;
+
+              return {
+                ...it,
+                status: safeStatus,
+                notes: String(notesRaw ?? legacyNoteRaw ?? ""),
+                unit:
+                  (it as { unit?: string | null }).unit ||
+                  unitHintGeneric(String(it.item ?? ""), unit),
+              };
+            });
+
+            const batterySection = isBatterySection(
+              section.title,
+              itemsWithHints,
+            );
+            const tireSection = isTireGridSection(
+              section.title,
+              itemsWithHints,
+            );
+            const airSection =
+              !tireSection && isAirCornerSection(section.title, itemsWithHints);
             const hydCornerSection = isHydraulicCornerSection(
               section.title,
               itemsWithHints,
@@ -1537,7 +1646,9 @@ export default function GenericInspectionScreen(
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "fail")}
+                        onClick={() =>
+                          applyStatusToSection(sectionIndex, "fail")
+                        }
                       >
                         All Fail
                       </button>
@@ -1637,7 +1748,10 @@ export default function GenericInspectionScreen(
                                 unitHintGeneric(label, unit)
                               }
                               onAddAxle={(axleLabel: string) =>
-                                handleAddTireAxleForSection(sectionIndex, axleLabel)
+                                handleAddTireAxleForSection(
+                                  sectionIndex,
+                                  axleLabel,
+                                )
                               }
                               onSpecHint={(metricLabel: string) =>
                                 _props.onSpecHint?.({
@@ -1678,7 +1792,9 @@ export default function GenericInspectionScreen(
                               statusValue: InspectionItemStatus,
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { status: statusValue });
+                              updateItem(secIdx, itemIdx, {
+                                status: statusValue,
+                              });
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
                             onUpdateNote={(
@@ -1696,8 +1812,8 @@ export default function GenericInspectionScreen(
                             ) => {
                               if (guardLocked()) return;
                               const prev =
-                                session.sections[secIdx].items[itemIdx].photoUrls ??
-                                [];
+                                session.sections[secIdx].items[itemIdx]
+                                  .photoUrls ?? [];
                               updateItem(secIdx, itemIdx, {
                                 photoUrls: [...prev, photoUrl],
                               });
@@ -1716,7 +1832,9 @@ export default function GenericInspectionScreen(
                               hours: number | null,
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { laborHours: hours });
+                              updateItem(secIdx, itemIdx, {
+                                laborHours: hours,
+                              });
                             }}
                             requireNoteForAI
                             onSubmitAI={(secIdx: number, itemIdx: number) => {
@@ -1764,7 +1882,9 @@ export default function GenericInspectionScreen(
                                 <Button
                                   type="button"
                                   className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                                  onClick={() => handleAddCustomItem(sectionIndex)}
+                                  onClick={() =>
+                                    handleAddCustomItem(sectionIndex)
+                                  }
                                   disabled={isLocked}
                                 >
                                   + Add Item
@@ -1798,8 +1918,8 @@ export default function GenericInspectionScreen(
         {!isEmbed && !isMobileView && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
             <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P =
-              Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+              <span className="font-semibold text-neutral-200">Legend:</span> P
+              = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}
