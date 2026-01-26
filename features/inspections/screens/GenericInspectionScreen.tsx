@@ -1435,35 +1435,28 @@ export default function GenericInspectionScreen(
         <InspectionFormCtx.Provider value={{ updateItem }}>
           {session.sections.map((section, sectionIndex) => {
             const itemsWithHints = (section.items ?? []).map((it) => {
-              const stRaw = String(
-                (it as { status?: unknown }).status ?? "",
-              ).toLowerCase();
-              const safeStatus =
-                stRaw === "ok" ||
-                stRaw === "fail" ||
-                stRaw === "na" ||
-                stRaw === "recommend"
-                  ? (stRaw as InspectionItemStatus)
-                  : ("na" as InspectionItemStatus);
+  const stRaw = String(it.status ?? "").toLowerCase();
+  const safeStatus: InspectionItemStatus =
+    stRaw === "ok" || stRaw === "fail" || stRaw === "na" || stRaw === "recommend"
+      ? (stRaw as InspectionItemStatus)
+      : "na";
 
-              const notesRaw = (it as { notes?: unknown; note?: unknown }).notes;
-              const legacyNoteRaw = (it as { note?: unknown }).note;
+  const label = String(it.item ?? "");
+  const explicitUnit = it.unit ?? null;
 
-              const label = String(it.item ?? "");
-              const explicitUnit = (it as { unit?: string | null }).unit ?? null;
+  const toggleControlled =
+    /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
 
-              const toggleControlled =
-                /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
-
-              return {
-                ...it,
-                status: safeStatus,
-                notes: String(notesRaw ?? legacyNoteRaw ?? ""),
-                unit: toggleControlled
-                  ? unitHintGeneric(label, unit)
-                  : explicitUnit || unitHintGeneric(label, unit),
-              };
-            });
+  return {
+    ...it,                 // ✅ KEEP ORIGINAL SHAPE
+    value: it.value ?? "", // ✅ CRITICAL: preserve controlled input value
+    status: safeStatus,
+    notes: String(it.notes ?? it.note ?? ""),
+    unit: toggleControlled
+      ? unitHintGeneric(label, unit)
+      : explicitUnit || unitHintGeneric(label, unit),
+  };
+});
 
             const batterySection = isBatterySection(
               section.title,
