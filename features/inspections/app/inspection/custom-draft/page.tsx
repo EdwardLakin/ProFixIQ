@@ -193,7 +193,8 @@ export default function CustomDraftPage() {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const nextKeyRef = useRef(1);
-  const mkKey = () => `k_${Date.now().toString(36)}_${(nextKeyRef.current++).toString(36)}`;
+  const mkKey = () =>
+    `k_${Date.now().toString(36)}_${(nextKeyRef.current++).toString(36)}`;
 
   // if the user clicked "Edit" from the template list we expect ?templateId=...
   const templateId = sp.get("templateId");
@@ -224,7 +225,7 @@ export default function CustomDraftPage() {
 
   const [sections, setSections] = useState<DraftSection[]>([]);
 
-  // ✅ labor hours input as string (so user can clear it)
+  // labor hours input as string (so user can clear it)
   const [laborHoursInput, setLaborHoursInput] = useState<string>("");
 
   const [savingNew, setSavingNew] = useState(false);
@@ -293,7 +294,9 @@ export default function CustomDraftPage() {
     return masterByTitle.get(key) ?? [];
   }
 
-  function attachKeysFromNormalized(normalized: InspectionSection[]): DraftSection[] {
+  function attachKeysFromNormalized(
+    normalized: InspectionSection[],
+  ): DraftSection[] {
     return normalized.map((s) => ({
       title: s.title,
       items: (s.items ?? []).map((it) => ({
@@ -301,6 +304,17 @@ export default function CustomDraftPage() {
         _key: mkKey(),
       })),
     }));
+  }
+
+  /** Items currently in the section, normalized for quick “already added” checks */
+  function getSectionItemSet(secIdx: number): Set<string> {
+    const s = sections[secIdx];
+    const set = new Set<string>();
+    for (const it of s?.items ?? []) {
+      const k = (it.item ?? "").trim().toLowerCase();
+      if (k) set.add(k);
+    }
+    return set;
   }
 
   /* ----------------------------- load shop_id ----------------------------- */
@@ -336,7 +350,6 @@ export default function CustomDraftPage() {
 
   /* ----------------------- load staged draft (session) ---------------------- */
 
-  // load staged sections (canonical: inspection:*), fallback to legacy customInspection:*
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -366,7 +379,8 @@ export default function CustomDraftPage() {
           if (isRecord(parsed)) {
             const dc = asString(parsed.dutyClass);
             const gm = normalizeGridMode(asString(parsed.grid));
-            if (dc === "light" || dc === "medium" || dc === "heavy") nextDuty = dc;
+            if (dc === "light" || dc === "medium" || dc === "heavy")
+              nextDuty = dc;
             if (gm) nextGrid = gm;
           }
         } catch {
@@ -408,8 +422,9 @@ export default function CustomDraftPage() {
           sections: withOil,
         });
 
-        // set as string so user can clear it later
-        setLaborHoursInput(Number.isFinite(initialHours) ? initialHours.toFixed(2) : "");
+        setLaborHoursInput(
+          Number.isFinite(initialHours) ? initialHours.toFixed(2) : "",
+        );
       }
     } catch {
       /* ignore bad session data */
@@ -417,7 +432,6 @@ export default function CustomDraftPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // keep gridMode in sync if dutyClass changes and gridMode wasn't explicitly set
   useEffect(() => {
     if (gridMode) return;
     const inferred = dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
@@ -492,6 +506,7 @@ export default function CustomDraftPage() {
     }));
 
     setSections((prev) => [...prev, { title: found.title, items }]);
+    toast.success(`Added section: ${found.title}`);
   }
 
   function removeSection(idx: number) {
@@ -529,11 +544,21 @@ export default function CustomDraftPage() {
       };
       return next;
     });
+    toast.success("Item added");
   }
 
-  function addItemFromMaster(secIdx: number, label: string, unit?: string | null) {
+  /**
+   * Returns true if added, false if skipped (already exists / empty)
+   */
+  function addItemFromMaster(
+    secIdx: number,
+    label: string,
+    unit?: string | null,
+  ): boolean {
     const trimmed = (label || "").trim();
-    if (!trimmed) return;
+    if (!trimmed) return false;
+
+    let didAdd = false;
 
     setSections((prev) => {
       const next = [...prev];
@@ -543,6 +568,7 @@ export default function CustomDraftPage() {
       );
       if (exists) return prev;
 
+      didAdd = true;
       next[secIdx] = {
         ...s,
         items: [
@@ -557,6 +583,14 @@ export default function CustomDraftPage() {
       };
       return next;
     });
+
+    if (didAdd) {
+      toast.success(`Added: ${trimmed}`);
+    } else {
+      toast.message("Already added");
+    }
+
+    return didAdd;
   }
 
   function removeItem(secIdx: number, itemIdx: number) {
@@ -634,7 +668,6 @@ export default function CustomDraftPage() {
         tags: ["custom", "draft"],
         is_public: false,
         labor_hours: hours,
-        // user_id + shop_id injected by trigger
       };
 
       const { error, data } = await supabase
@@ -897,13 +930,9 @@ export default function CustomDraftPage() {
               placeholder="e.g. 2.50"
               onChange={(e) => setLaborHoursInput(e.target.value)}
               onBlur={() => {
-                // normalize formatting on blur (but allow empty)
                 const n = coerceNumberOrNull(laborHoursInput);
-                if (n === null) {
-                  setLaborHoursInput("");
-                } else {
-                  setLaborHoursInput(n.toFixed(2));
-                }
+                if (n === null) setLaborHoursInput("");
+                else setLaborHoursInput(n.toFixed(2));
               }}
             />
           </label>
@@ -964,11 +993,21 @@ export default function CustomDraftPage() {
         <div className="space-y-4">
           {sections.map((sec, i) => {
             const masterItemsForThisSection = getMasterItemsForSection(sec.title);
+
+            // ✅ Remove already-added items from dropdown
+            const existingSet = getSectionItemSet(i);
+
+            const availableMasterItems = masterItemsForThisSection.filter((mi) => {
+              const k = (mi.item || "").trim().toLowerCase();
+              if (!k) return false;
+              return !existingSet.has(k);
+            });
+
             const q = itemSearch.trim().toLowerCase();
             const filteredMasterItems =
               q.length === 0
-                ? masterItemsForThisSection
-                : masterItemsForThisSection.filter((mi) =>
+                ? availableMasterItems
+                : availableMasterItems.filter((mi) =>
                     mi.item.toLowerCase().includes(q),
                   );
 
@@ -1026,7 +1065,7 @@ export default function CustomDraftPage() {
                   </div>
                 </div>
 
-                {/* Add-item picker (dropdown + search + custom) */}
+                {/* Add-item picker */}
                 <div className="mb-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -1056,7 +1095,7 @@ export default function CustomDraftPage() {
 
                     <span className="text-[11px] text-neutral-500">
                       {masterItemsForThisSection.length
-                        ? "Master items available for this section."
+                        ? `${availableMasterItems.length} available from master (excluding already added).`
                         : "No master section match — add custom items."}
                     </span>
                   </div>
@@ -1085,29 +1124,46 @@ export default function CustomDraftPage() {
                             onChange={(e) => setItemSearch(e.target.value)}
                           />
 
-                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                            {filteredMasterItems.slice(0, 45).map((mi) => (
-                              <button
-                                key={mi.item}
-                                type="button"
-                                onClick={() => addItemFromMaster(i, mi.item, mi.unit ?? null)}
-                                className="rounded-xl border border-neutral-800 bg-black/60 px-3 py-2 text-left text-sm text-neutral-100 hover:bg-black/70"
-                                title="Add item"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="truncate">{mi.item}</span>
-                                  <span className="rounded-full bg-neutral-800 px-2 py-[2px] text-[10px] text-neutral-300">
-                                    {mi.unit ?? "—"}
-                                  </span>
+                          {filteredMasterItems.length === 0 ? (
+                            <div className="rounded-xl border border-neutral-800 bg-black/30 px-3 py-2 text-xs text-neutral-400">
+                              No items available (either all are added already, or none match your search).
+                            </div>
+                          ) : (
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              {filteredMasterItems.slice(0, 45).map((mi) => (
+                                <button
+                                  key={mi.item}
+                                  type="button"
+                                  onClick={() => {
+                                    const added = addItemFromMaster(
+                                      i,
+                                      mi.item,
+                                      mi.unit ?? null,
+                                    );
+
+                                    // ✅ Remove from dropdown immediately + give feedback
+                                    if (added) {
+                                      setItemSearch("");
+                                    }
+                                  }}
+                                  className="rounded-xl border border-neutral-800 bg-black/60 px-3 py-2 text-left text-sm text-neutral-100 hover:bg-black/70"
+                                  title="Add item"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="truncate">{mi.item}</span>
+                                    <span className="rounded-full bg-neutral-800 px-2 py-[2px] text-[10px] text-neutral-300">
+                                      {mi.unit ?? "—"}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
+                              {filteredMasterItems.length > 45 ? (
+                                <div className="rounded-xl border border-neutral-800 bg-black/30 px-3 py-2 text-xs text-neutral-400">
+                                  Showing first 45 results — refine your search.
                                 </div>
-                              </button>
-                            ))}
-                            {filteredMasterItems.length > 45 ? (
-                              <div className="rounded-xl border border-neutral-800 bg-black/30 px-3 py-2 text-xs text-neutral-400">
-                                Showing first 45 results — refine your search.
-                              </div>
-                            ) : null}
-                          </div>
+                              ) : null}
+                            </div>
+                          )}
                         </>
                       ) : null}
 
@@ -1123,8 +1179,8 @@ export default function CustomDraftPage() {
                           value=""
                           onChange={(e) => {
                             const unit = e.target.value || null;
-                            addItemFromMaster(i, customItemText, unit);
-                            setCustomItemText("");
+                            const added = addItemFromMaster(i, customItemText, unit);
+                            if (added) setCustomItemText("");
                           }}
                           title="Add custom item with unit"
                         >
@@ -1139,8 +1195,8 @@ export default function CustomDraftPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            addItemFromMaster(i, customItemText, null);
-                            setCustomItemText("");
+                            const added = addItemFromMaster(i, customItemText, null);
+                            if (added) setCustomItemText("");
                           }}
                           className="rounded-full bg-orange-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-orange-500"
                         >
@@ -1149,7 +1205,7 @@ export default function CustomDraftPage() {
                       </div>
 
                       <div className="mt-2 text-[11px] text-neutral-500">
-                        Tip: clicking master items won’t steal focus from your text inputs anymore (stable keys).
+                        Added items disappear from this list automatically.
                       </div>
                     </div>
                   ) : null}
@@ -1274,7 +1330,6 @@ export default function CustomDraftPage() {
           </button>
         </div>
 
-        {/* dev hint (kept subtle) */}
         <div className="mt-4 text-[11px] text-neutral-600">
           {shopId ? null : "Loading shop scope…"}
         </div>
