@@ -44,6 +44,9 @@ export default function InspectionFillPage() {
        */
       const merged: Dict = { ...urlParams, ...stagedParams };
 
+// allow URL to override for grid specifically
+if (urlParams.grid) merged.grid = urlParams.grid;
+
       // Hard safety: if we have staged mode, keep it.
       if (stagedParams.mode) merged.mode = stagedParams.mode;
 
