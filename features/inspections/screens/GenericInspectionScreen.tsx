@@ -193,9 +193,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
   }
 }
 
-function toTemplateSections(
-  sections: InspectionSection[],
-): InspectionSection[] {
+function toTemplateSections(sections: InspectionSection[]): InspectionSection[] {
   return sections
     .map((sec) => ({
       title: sec.title,
@@ -217,7 +215,8 @@ function toTemplateSections(
 
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
-const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const HYD_FULL_RE =
+  /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
 const BATTERY_SIGNAL_RE =
   /(battery|voltage|v\b|cca|cranking|load\s*test|alternator|charging|charge\s*rate|state\s*of\s*charge|soc)/i;
@@ -375,6 +374,7 @@ function buildCauseCorrectionFromSession(s: unknown): {
     correction: parts.join(" "),
   };
 }
+
 /* -------------------------------------------------------------------- */
 /* Component                                                            */
 /* -------------------------------------------------------------------- */
@@ -407,7 +407,6 @@ export default function GenericInspectionScreen(
   }, [routeSp]);
 
   const gridParam = (sp.get("grid") || "").toLowerCase(); // used for tire-grid selection (hyd vs air)
-  const isMobileView = (sp.get("view") || "").toLowerCase() === "mobile";
 
   const isEmbed = useMemo(
     () =>
@@ -484,7 +483,7 @@ export default function GenericInspectionScreen(
         ],
       },
     ];
-  }, [sp]);
+  }, []);
 
   const inspectionId = useMemo(() => {
     const fromUrl = sp.get("inspectionId");
@@ -808,8 +807,8 @@ export default function GenericInspectionScreen(
           const maybeText = maybeHandleWakeWord(text);
           if (!maybeText) return;
 
-          const lower = maybeText.toLowerCase();
-          if (lower === "stop listening" || lower === "go to sleep") {
+          const lower2 = maybeText.toLowerCase();
+          if (lower2 === "stop listening" || lower2 === "go to sleep") {
             setWakeActive(false);
             return;
           }
@@ -1212,20 +1211,7 @@ export default function GenericInspectionScreen(
     }));
   }
 
-  const handleStartMobile = (): void => {
-    if (guardLocked()) return;
-    setIsPaused(false);
-    resumeSession();
-    void startListening();
-  };
-
-  const handlePauseMobile = (): void => {
-    setIsPaused(true);
-    pauseSession();
-    stopListening();
-  };
-
-  const saveCurrentAsTemplate = async (): Promise<void> => {
+    const saveCurrentAsTemplate = async (): Promise<void> => {
     if (!session) return;
     if (savingTemplate) return;
 
@@ -1445,10 +1431,9 @@ export default function GenericInspectionScreen(
     toast.success("Inspection snapshot locked by signature.");
   };
 
-  const shell =
-    isEmbed || isMobileView
-      ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
-      : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
+  const shell = isEmbed
+    ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
+    : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
 
   const cardBase =
     "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
@@ -1584,34 +1569,35 @@ export default function GenericInspectionScreen(
         <InspectionFormCtx.Provider value={{ updateItem }}>
           {session.sections.map((section, sectionIndex) => {
             const itemsWithHints = (section.items ?? []).map((it) => {
-  const stRaw = String((it as { status?: unknown }).status ?? "").toLowerCase();
-  const safeStatus =
-    stRaw === "ok" ||
-    stRaw === "fail" ||
-    stRaw === "na" ||
-    stRaw === "recommend"
-      ? (stRaw as InspectionItemStatus)
-      : ("na" as InspectionItemStatus);
+              const stRaw = String(
+                (it as { status?: unknown }).status ?? "",
+              ).toLowerCase();
+              const safeStatus =
+                stRaw === "ok" ||
+                stRaw === "fail" ||
+                stRaw === "na" ||
+                stRaw === "recommend"
+                  ? (stRaw as InspectionItemStatus)
+                  : ("na" as InspectionItemStatus);
 
-  const notesRaw = (it as { notes?: unknown; note?: unknown }).notes;
-  const legacyNoteRaw = (it as { note?: unknown }).note;
+              const notesRaw = (it as { notes?: unknown; note?: unknown }).notes;
+              const legacyNoteRaw = (it as { note?: unknown }).note;
 
-  // ✅ MOVE THESE HERE
-  const label = String(it.item ?? "");
-  const explicitUnit = (it as { unit?: string | null }).unit ?? null;
+              const label = String(it.item ?? "");
+              const explicitUnit = (it as { unit?: string | null }).unit ?? null;
 
-  const toggleControlled =
-    /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
+              const toggleControlled =
+                /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
 
-  return {
-    ...it,
-    status: safeStatus,
-    notes: String(notesRaw ?? legacyNoteRaw ?? ""),
-    unit: toggleControlled
-      ? unitHintGeneric(label, unit)
-      : explicitUnit || unitHintGeneric(label, unit),
-  };
-});
+              return {
+                ...it,
+                status: safeStatus,
+                notes: String(notesRaw ?? legacyNoteRaw ?? ""),
+                unit: toggleControlled
+                  ? unitHintGeneric(label, unit)
+                  : explicitUnit || unitHintGeneric(label, unit),
+              };
+            });
 
             const batterySection = isBatterySection(
               section.title,
@@ -1750,56 +1736,60 @@ export default function GenericInspectionScreen(
                         ) : tireSection ? (
                           gridParam === "hyd" ? (
                             <TireGridHydraulic
-  sectionIndex={sectionIndex}
-  items={itemsWithHints}
-  unitHint={(label: string) => unitHintGeneric(label, unit)}
-  requireNoteForAI
-  onSubmitAI={(secIdx: number, itemIdx: number) => {
-    void submitAIForItem(secIdx, itemIdx);
-  }}
-  isSubmittingAI={(secIdx: number, itemIdx: number) =>
-    isSubmittingAI(secIdx, itemIdx)
-  }
-  onUpdateParts={(secIdx, itemIdx, parts) => {
-    if (guardLocked()) return;
-    updateItem(secIdx, itemIdx, { parts });
-  }}
-  onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-    if (guardLocked()) return;
-    updateItem(secIdx, itemIdx, { laborHours: hours });
-  }}
-/>
+                              sectionIndex={sectionIndex}
+                              items={itemsWithHints}
+                              unitHint={(label: string) =>
+                                unitHintGeneric(label, unit)
+                              }
+                              requireNoteForAI
+                              onSubmitAI={(secIdx: number, itemIdx: number) => {
+                                void submitAIForItem(secIdx, itemIdx);
+                              }}
+                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
+                                isSubmittingAI(secIdx, itemIdx)
+                              }
+                              onUpdateParts={(secIdx, itemIdx, parts) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { parts });
+                              }}
+                              onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { laborHours: hours });
+                              }}
+                            />
                           ) : (
                             <TireGrid
-  sectionIndex={sectionIndex}
-  items={itemsWithHints}
-  unitHint={(label: string) => unitHintGeneric(label, unit)}
-  onAddAxle={(axleLabel: string) =>
-    handleAddTireAxleForSection(sectionIndex, axleLabel)
-  }
-  onSpecHint={(metricLabel: string) =>
-    _props.onSpecHint?.({
-      source: "tire",
-      label: metricLabel,
-      meta: { sectionTitle: section.title },
-    })
-  }
-  requireNoteForAI
-  onSubmitAI={(secIdx: number, itemIdx: number) => {
-    void submitAIForItem(secIdx, itemIdx);
-  }}
-  isSubmittingAI={(secIdx: number, itemIdx: number) =>
-    isSubmittingAI(secIdx, itemIdx)
-  }
-  onUpdateParts={(secIdx, itemIdx, parts) => {
-    if (guardLocked()) return;
-    updateItem(secIdx, itemIdx, { parts });
-  }}
-  onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-    if (guardLocked()) return;
-    updateItem(secIdx, itemIdx, { laborHours: hours });
-  }}
-/>
+                              sectionIndex={sectionIndex}
+                              items={itemsWithHints}
+                              unitHint={(label: string) =>
+                                unitHintGeneric(label, unit)
+                              }
+                              onAddAxle={(axleLabel: string) =>
+                                handleAddTireAxleForSection(sectionIndex, axleLabel)
+                              }
+                              onSpecHint={(metricLabel: string) =>
+                                _props.onSpecHint?.({
+                                  source: "tire",
+                                  label: metricLabel,
+                                  meta: { sectionTitle: section.title },
+                                })
+                              }
+                              requireNoteForAI
+                              onSubmitAI={(secIdx: number, itemIdx: number) => {
+                                void submitAIForItem(secIdx, itemIdx);
+                              }}
+                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
+                                isSubmittingAI(secIdx, itemIdx)
+                              }
+                              onUpdateParts={(secIdx, itemIdx, parts) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { parts });
+                              }}
+                              onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { laborHours: hours });
+                              }}
+                            />
                           )
                         ) : (
                           <CornerGrid
@@ -1954,7 +1944,7 @@ export default function GenericInspectionScreen(
           />
         </div>
 
-        {!isEmbed && !isMobileView && (
+        {!isEmbed && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
             <div className="text-xs text-neutral-400 md:text-right">
               <span className="font-semibold text-neutral-200">Legend:</span> P
@@ -1964,56 +1954,15 @@ export default function GenericInspectionScreen(
         )}
       </div>
 
-      {!isMobileView && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 py-2 backdrop-blur">
-          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">{actions}</div>
-            <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-              Draft auto-saves locally
-            </div>
+      {/* Bottom action bar: always show (even in embed). If you want it hidden in embed, wrap with {!isEmbed && ...} */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 py-2 backdrop-blur">
+        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+            Draft auto-saves locally
           </div>
         </div>
-      )}
-
-      {isMobileView && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-black/95 px-3 py-2 backdrop-blur md:hidden">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                className="px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                onClick={handleStartMobile}
-                disabled={isLocked}
-              >
-                {isLocked ? "Locked" : "Start"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                onClick={handlePauseMobile}
-              >
-                {isPaused ? "Resume" : "Pause"}
-              </Button>
-            </div>
-
-            <div className="flex gap-2">
-              <div className="scale-90">
-                <SaveInspectionButton
-                  session={session}
-                  workOrderLineId={workOrderLineId}
-                />
-              </div>
-              <div className="scale-90">
-                <FinishInspectionButton
-                  session={session}
-                  workOrderLineId={workOrderLineId}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
 
       {showMissingLineWarning && (
         <div className="fixed inset-x-0 bottom-[52px] z-50 px-3">
@@ -2025,7 +1974,7 @@ export default function GenericInspectionScreen(
     </div>
   );
 
-  if (isEmbed || isMobileView) {
+  if (isEmbed) {
     return body;
   }
 
