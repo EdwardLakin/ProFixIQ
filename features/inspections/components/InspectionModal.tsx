@@ -20,21 +20,44 @@ function paramsToObject(sp: URLSearchParams) {
   return out;
 }
 
-function deriveTemplateFromUrl(url: URL): string | null {
+/**
+ * We have TWO concepts:
+ * 1) screenTemplate: which inspection screen to render (e.g. "generic")
+ * 2) displayTemplate: the human template identity (e.g. "Air Brake Test" or templateId)
+ */
+function deriveScreenTemplateFromUrl(url: URL): string | null {
   const parts = url.pathname.split("/").filter(Boolean);
   const last = parts[parts.length - 1] || "";
 
-  // ✅ If we're on the fill route, template must come from ?template=
+  // ✅ If we're on the fill route, screen template comes from ?template=
   if (last === "fill") {
     return url.searchParams.get("template") || null;
   }
 
   // fallback to your previous logic
   const idx = parts.findIndex((p) => p === "inspection" || p === "inspections");
-  if (idx >= 0 && parts[idx + 1] && parts[idx + 1] !== "fill") return parts[idx + 1];
+  if (idx >= 0 && parts[idx + 1] && parts[idx + 1] !== "fill") {
+    return parts[idx + 1];
+  }
 
   // last resort
   return last || null;
+}
+
+function deriveDisplayTemplateFromUrl(url: URL): string | null {
+  // Prefer explicit name/id when present (work-order embed flow)
+  const name =
+    url.searchParams.get("templateName") ||
+    url.searchParams.get("template_name") ||
+    null;
+
+  const id =
+    url.searchParams.get("templateId") ||
+    url.searchParams.get("template_id") ||
+    null;
+
+  // If we have a name, show it; else show an id; else fall back to screen template
+  return name || id || deriveScreenTemplateFromUrl(url);
 }
 
 export default function InspectionModal({
@@ -49,7 +72,8 @@ export default function InspectionModal({
   const derived = useMemo(() => {
     if (!src) {
       return {
-        template: null as string | null,
+        screenTemplate: null as string | null,
+        displayTemplate: null as string | null,
         params: {} as Record<string, string>,
         missingWOLine: false,
       };
@@ -60,7 +84,8 @@ export default function InspectionModal({
         typeof window !== "undefined" ? window.location.origin : "http://localhost";
       const url = new URL(src, base);
 
-      const template = deriveTemplateFromUrl(url);
+      const screenTemplate = deriveScreenTemplateFromUrl(url);
+      const displayTemplate = deriveDisplayTemplateFromUrl(url);
       const params = paramsToObject(url.searchParams);
 
       // ✅ Force embed mode in the modal so the inspection UI renders its embedded
@@ -90,6 +115,25 @@ export default function InspectionModal({
         params.lineId = lineId;
       }
 
+      // Also normalize template identity keys (for screens that read params)
+      const tName =
+        url.searchParams.get("templateName") ||
+        url.searchParams.get("template_name") ||
+        undefined;
+      const tId =
+        url.searchParams.get("templateId") ||
+        url.searchParams.get("template_id") ||
+        undefined;
+
+      if (tName) {
+        params.templateName = tName;
+        params.template_name = tName;
+      }
+      if (tId) {
+        params.templateId = tId;
+        params.template_id = tId;
+      }
+
       const embedParam = url.searchParams.get("embed");
       const isEmbed =
         embedParam === "1" ||
@@ -110,9 +154,14 @@ export default function InspectionModal({
 
       const missingWOLine = isEmbed && isWorkOrderContext && !hasWOLine;
 
-      return { template, params, missingWOLine };
+      return { screenTemplate, displayTemplate, params, missingWOLine };
     } catch {
-      return { template: null, params: {}, missingWOLine: false };
+      return {
+        screenTemplate: null,
+        displayTemplate: null,
+        params: {},
+        missingWOLine: false,
+      };
     }
   }, [src]);
 
@@ -198,15 +247,17 @@ export default function InspectionModal({
             <Dialog.Title className="text-base font-semibold tracking-wide text-foreground sm:text-lg">
               {title}
             </Dialog.Title>
-            {derived.template && (
+
+            {derived.displayTemplate && (
               <p className="text-[11px] text-muted-foreground">
                 Template:{" "}
                 <span className="font-mono text-[rgba(184,115,51,0.95)]">
-                  {derived.template}
+                  {derived.displayTemplate}
                 </span>
               </p>
             )}
           </div>
+
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -243,14 +294,18 @@ export default function InspectionModal({
             </div>
           )}
 
-          {!derived.template ? (
+          {!derived.screenTemplate ? (
             <div className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-6 text-center text-sm text-muted-foreground">
               No inspection selected.
             </div>
           ) : (
             <div className="mx-auto w-full max-w-5xl">
               {/* Voice buttons are rendered by the inspection screen itself now (desktop + mobile). */}
-              <InspectionHost template={derived.template} embed params={derived.params} />
+              <InspectionHost
+                template={derived.screenTemplate}
+                embed
+                params={derived.params}
+              />
             </div>
           )}
 

@@ -888,41 +888,67 @@ export default function CreateWorkOrderPage() {
     [supabase, wo?.id, wo?.shop_id, fetchLines, setLines],
   );
 
-  // 🔍 open inspection
-  const openInspectionForLine = useCallback(
-    async (ln: WorkOrderLine) => {
-      if (!ln?.id) return;
+  // ✅ UPDATED openInspectionForLine (Create Work Order page)
+// - Adds templateName (if available) and keeps templateId
+// - Uses /inspections/run (your create flow) and keeps embed/mobile view
+// - No DB fetch needed here (fast)
 
-      const anyLine = ln as WorkOrderLineWithInspectionMeta;
-      const templateId = extractInspectionTemplateId(anyLine);
+const openInspectionForLine = useCallback(
+  async (ln: WorkOrderLine) => {
+    if (!ln?.id) return;
 
-      if (!templateId) {
-        toast.error(
-          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
-        );
-        return;
-      }
+    const anyLine = ln as WorkOrderLineWithInspectionMeta;
+    const templateId = extractInspectionTemplateId(anyLine);
 
-      const sp = new URLSearchParams();
+    if (!templateId) {
+      toast.error(
+        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+      );
+      return;
+    }
 
-      if (wo?.id) sp.set("workOrderId", wo.id);
-      sp.set("workOrderLineId", ln.id);
-      sp.set("templateId", templateId);
-      sp.set("embed", "1");
-      sp.set("view", "mobile");
+    const templateName =
+      anyLine.inspection_template ??
+      anyLine.inspectionTemplate ??
+      anyLine.template ??
+      getMetaString(anyLine.metadata, "inspection_template") ??
+      getMetaString(anyLine.metadata, "template") ??
+      null;
 
-      if (ln.description) {
-        sp.set("seed", String(ln.description));
-      }
+    const sp = new URLSearchParams();
 
-      const url = `/inspections/run?${sp.toString()}`;
+    if (wo?.id) {
+      sp.set("workOrderId", wo.id);
+      sp.set("work_order_id", wo.id);
+    }
 
-      setInspectionSrc(url);
-      setInspectionOpen(true);
-      toast.success("Inspection opened");
-    },
-    [wo?.id],
-  );
+    sp.set("workOrderLineId", ln.id);
+    sp.set("work_order_line_id", ln.id);
+    sp.set("lineId", ln.id);
+
+    sp.set("templateId", templateId);
+    sp.set("template_id", templateId);
+
+    if (templateName) {
+      sp.set("templateName", templateName);
+      sp.set("template_name", templateName);
+    }
+
+    sp.set("embed", "1");
+    sp.set("view", "mobile");
+
+    if (ln.description) {
+      sp.set("seed", String(ln.description));
+    }
+
+    const url = `/inspections/run?${sp.toString()}`;
+
+    setInspectionSrc(url);
+    setInspectionOpen(true);
+    toast.success("Inspection opened");
+  },
+  [wo?.id],
+);
 
   // Submit → Review & Sign
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {

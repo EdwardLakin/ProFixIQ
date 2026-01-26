@@ -36,7 +36,7 @@ export default function InspectionFillPage() {
 
       /**
        * IMPORTANT:
-       * - When coming from /inspections/run, staged params should be authoritative.
+       * - When coming from work order embed, staged params should be authoritative.
        * - URL params are allowed to add context (workOrderId, customerId, etc),
        *   but should NOT be able to force us back into "draft/builder" mode.
        *
@@ -45,11 +45,16 @@ export default function InspectionFillPage() {
       const merged: Dict = { ...urlParams, ...stagedParams };
 
       // Hard safety: if we have staged mode, keep it.
-      // (Prevents mode=draft in URL from flipping runtime into builder UI.)
       if (stagedParams.mode) merged.mode = stagedParams.mode;
 
-      // Same for template if staged already set it
+      // Same for screen template if staged already set it
       if (stagedParams.template) merged.template = stagedParams.template;
+
+      // Also preserve template identity helpers if staged has them
+      if (stagedParams.templateId) merged.templateId = stagedParams.templateId;
+      if (stagedParams.template_id) merged.template_id = stagedParams.template_id;
+      if (stagedParams.templateName) merged.templateName = stagedParams.templateName;
+      if (stagedParams.template_name) merged.template_name = stagedParams.template_name;
 
       sessionStorage.setItem("inspection:params", JSON.stringify(merged));
 
@@ -90,6 +95,7 @@ export default function InspectionFillPage() {
     <div className="min-h-[80vh] bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
       <div className={cardBase}>
         <div className={`${cardInner} p-0 sm:p-0`}>
+          {/* The actual screen is selected by InspectionHost via ?template=... */}
           <GenericInspectionScreen />
         </div>
       </div>

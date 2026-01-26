@@ -948,117 +948,129 @@ export default function WorkOrderIdClient(): JSX.Element {
     [fetchAll],
   );
 
-  const openInspectionForLine = useCallback(
-    async (ln: WorkOrderLine) => {
-      if (!ln?.id) return;
+  // ✅ UPDATED openInspectionForLine (WorkOrderIdClient)
+// - Keeps your existing fill + sessionStorage staging
+// - Adds templateId + templateName into BOTH sessionStorage params + URL params
+// - The modal will now show Template: <template_name> instead of "generic"
 
-      const anyLine = ln as WorkOrderLineWithInspectionMeta;
-      const templateId = extractInspectionTemplateId(anyLine);
+const openInspectionForLine = useCallback(
+  async (ln: WorkOrderLine) => {
+    if (!ln?.id) return;
 
-      if (!templateId) {
-        toast.error(
-          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
-        );
-        return;
-      }
+    const anyLine = ln as WorkOrderLineWithInspectionMeta;
+    const templateId = extractInspectionTemplateId(anyLine);
 
-      const { data, error } = await supabase
-        .from("inspection_templates")
-        .select("template_name, sections, vehicle_type")
-        .eq("id", templateId)
-        .maybeSingle();
-
-      if (error || !data) {
-        toast.error("Unable to load inspection template.");
-        return;
-      }
-
-      const rawSections = (data.sections ?? []) as TemplateSection[];
-      const vehicleType = String(data.vehicle_type ?? "");
-      const sections = prepareSectionsWithCornerGrid(
-        rawSections,
-        vehicleType,
-        null,
+    if (!templateId) {
+      toast.error(
+        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
       );
+      return;
+    }
 
-      const title = data.template_name ?? "Inspection";
+    const { data, error } = await supabase
+      .from("inspection_templates")
+      .select("template_name, sections, vehicle_type")
+      .eq("id", templateId)
+      .maybeSingle();
 
-      if (typeof window !== "undefined") {
-        const paramsObj: Record<string, string> = {};
+    if (error || !data) {
+      toast.error("Unable to load inspection template.");
+      return;
+    }
 
-        if (wo?.id) {
-          paramsObj.workOrderId = wo.id;
-          paramsObj.work_order_id = wo.id;
-        }
+    const rawSections = (data.sections ?? []) as TemplateSection[];
+    const vehicleType = String(data.vehicle_type ?? "");
+    const sections = prepareSectionsWithCornerGrid(rawSections, vehicleType, null);
 
-        paramsObj.workOrderLineId = ln.id;
-        paramsObj.work_order_line_id = ln.id;
-        paramsObj.lineId = ln.id;
+    const templateName = data.template_name ?? null;
+    const title = templateName ?? "Inspection";
 
-        paramsObj.embed = "1";
-
-        if (ln.description) paramsObj.seed = String(ln.description);
-
-        if (customer) {
-          if (customer.first_name) paramsObj.first_name = customer.first_name;
-          if (customer.last_name) paramsObj.last_name = customer.last_name;
-          if (customer.phone) paramsObj.phone = customer.phone;
-          if (customer.email) paramsObj.email = customer.email;
-          if (customer.address) paramsObj.address = customer.address;
-          if (customer.city) paramsObj.city = customer.city;
-          if (customer.province) paramsObj.province = customer.province;
-          if (customer.postal_code)
-            paramsObj.postal_code = customer.postal_code;
-        }
-
-        if (vehicle) {
-          if (vehicle.year != null)
-            paramsObj.year = String(vehicle.year as string | number);
-          if (vehicle.make) paramsObj.make = vehicle.make;
-          if (vehicle.model) paramsObj.model = vehicle.model;
-          if (vehicle.vin) paramsObj.vin = vehicle.vin;
-          if (vehicle.license_plate)
-            paramsObj.license_plate = vehicle.license_plate;
-          if (vehicle.mileage != null) paramsObj.mileage = String(vehicle.mileage);
-          if (vehicle.color) paramsObj.color = vehicle.color;
-          if (vehicle.unit_number) paramsObj.unit_number = vehicle.unit_number;
-          if (vehicle.engine_hours != null)
-            paramsObj.engine_hours = String(vehicle.engine_hours);
-        }
-
-        sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
-        sessionStorage.setItem("inspection:title", title);
-        sessionStorage.setItem("inspection:vehicleType", vehicleType);
-        sessionStorage.setItem("inspection:template", "generic");
-        sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
-
-        
-      }
-
-      const sp = new URLSearchParams();
-      sp.set("template", "generic");
+    if (typeof window !== "undefined") {
+      const paramsObj: Record<string, string> = {};
 
       if (wo?.id) {
-        sp.set("workOrderId", wo.id);
-        sp.set("work_order_id", wo.id);
+        paramsObj.workOrderId = wo.id;
+        paramsObj.work_order_id = wo.id;
       }
 
-      sp.set("workOrderLineId", ln.id);
-      sp.set("work_order_line_id", ln.id);
-      sp.set("lineId", ln.id);
+      paramsObj.workOrderLineId = ln.id;
+      paramsObj.work_order_line_id = ln.id;
+      paramsObj.lineId = ln.id;
 
-      sp.set("embed", "1");
+      paramsObj.embed = "1";
 
-      if (ln.description) sp.set("seed", String(ln.description));
+      // ✅ NEW: template identity for modal + downstream
+      paramsObj.templateId = templateId;
+      paramsObj.template_id = templateId;
+      if (templateName) {
+        paramsObj.templateName = templateName;
+        paramsObj.template_name = templateName;
+      }
 
-      const url = `/inspections/fill?${sp.toString()}`;
+      if (ln.description) paramsObj.seed = String(ln.description);
 
-      setInspectionSrc(url);
-      setInspectionOpen(true);
-      toast.success("Inspection opened");
-    },
-    [wo?.id, customer, vehicle],
-  );
+      if (customer) {
+        if (customer.first_name) paramsObj.first_name = customer.first_name;
+        if (customer.last_name) paramsObj.last_name = customer.last_name;
+        if (customer.phone) paramsObj.phone = customer.phone;
+        if (customer.email) paramsObj.email = customer.email;
+        if (customer.address) paramsObj.address = customer.address;
+        if (customer.city) paramsObj.city = customer.city;
+        if (customer.province) paramsObj.province = customer.province;
+        if (customer.postal_code) paramsObj.postal_code = customer.postal_code;
+      }
+
+      if (vehicle) {
+        if (vehicle.year != null) paramsObj.year = String(vehicle.year as string | number);
+        if (vehicle.make) paramsObj.make = vehicle.make;
+        if (vehicle.model) paramsObj.model = vehicle.model;
+        if (vehicle.vin) paramsObj.vin = vehicle.vin;
+        if (vehicle.license_plate) paramsObj.license_plate = vehicle.license_plate;
+        if (vehicle.mileage != null) paramsObj.mileage = String(vehicle.mileage);
+        if (vehicle.color) paramsObj.color = vehicle.color;
+        if (vehicle.unit_number) paramsObj.unit_number = vehicle.unit_number;
+        if (vehicle.engine_hours != null) paramsObj.engine_hours = String(vehicle.engine_hours);
+      }
+
+      sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
+      sessionStorage.setItem("inspection:title", title);
+      sessionStorage.setItem("inspection:vehicleType", vehicleType);
+      sessionStorage.setItem("inspection:template", "generic");
+      sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
+    }
+
+    const sp = new URLSearchParams();
+    sp.set("template", "generic");
+
+    if (wo?.id) {
+      sp.set("workOrderId", wo.id);
+      sp.set("work_order_id", wo.id);
+    }
+
+    sp.set("workOrderLineId", ln.id);
+    sp.set("work_order_line_id", ln.id);
+    sp.set("lineId", ln.id);
+
+    // ✅ NEW: template identity also in URL (modal derives displayTemplate from URL too)
+    sp.set("templateId", templateId);
+    sp.set("template_id", templateId);
+    if (templateName) {
+      sp.set("templateName", templateName);
+      sp.set("template_name", templateName);
+    }
+
+    sp.set("embed", "1");
+
+    if (ln.description) sp.set("seed", String(ln.description));
+
+    const url = `/inspections/fill?${sp.toString()}`;
+
+    setInspectionSrc(url);
+    setInspectionOpen(true);
+    toast.success("Inspection opened");
+  },
+  [wo?.id, customer, vehicle, fetchLatestReview],
+);
 
   useEffect(() => {
     if (!partsLineId) return;
