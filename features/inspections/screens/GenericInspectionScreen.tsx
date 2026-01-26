@@ -1584,30 +1584,34 @@ export default function GenericInspectionScreen(
         <InspectionFormCtx.Provider value={{ updateItem }}>
           {session.sections.map((section, sectionIndex) => {
             const itemsWithHints = (section.items ?? []).map((it) => {
-              const stRaw = String(
-                (it as { status?: unknown }).status ?? "",
-              ).toLowerCase();
-              const safeStatus =
-                stRaw === "ok" ||
-                stRaw === "fail" ||
-                stRaw === "na" ||
-                stRaw === "recommend"
-                  ? (stRaw as InspectionItemStatus)
-                  : ("na" as InspectionItemStatus);
+  const stRaw = String((it as { status?: unknown }).status ?? "").toLowerCase();
+  const safeStatus =
+    stRaw === "ok" ||
+    stRaw === "fail" ||
+    stRaw === "na" ||
+    stRaw === "recommend"
+      ? (stRaw as InspectionItemStatus)
+      : ("na" as InspectionItemStatus);
 
-              const notesRaw = (it as { notes?: unknown; note?: unknown })
-                .notes;
-              const legacyNoteRaw = (it as { note?: unknown }).note;
+  const notesRaw = (it as { notes?: unknown; note?: unknown }).notes;
+  const legacyNoteRaw = (it as { note?: unknown }).note;
 
-              return {
-                ...it,
-                status: safeStatus,
-                notes: String(notesRaw ?? legacyNoteRaw ?? ""),
-                unit:
-                  (it as { unit?: string | null }).unit ||
-                  unitHintGeneric(String(it.item ?? ""), unit),
-              };
-            });
+  // ✅ MOVE THESE HERE
+  const label = String(it.item ?? "");
+  const explicitUnit = (it as { unit?: string | null }).unit ?? null;
+
+  const toggleControlled =
+    /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
+
+  return {
+    ...it,
+    status: safeStatus,
+    notes: String(notesRaw ?? legacyNoteRaw ?? ""),
+    unit: toggleControlled
+      ? unitHintGeneric(label, unit)
+      : explicitUnit || unitHintGeneric(label, unit),
+  };
+});
 
             const batterySection = isBatterySection(
               section.title,
