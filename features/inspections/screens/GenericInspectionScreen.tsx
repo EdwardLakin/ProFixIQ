@@ -1324,17 +1324,20 @@ export default function GenericInspectionScreen(
 
   // Bottom bar: ONLY Save progress + Finish inspection
   const actions = (
-    <>
-      <SaveInspectionButton
-        session={session}
-        workOrderLineId={workOrderLineId}
-      />
+  <>
+    <SaveInspectionButton
+      session={session}
+      workOrderLineId={workOrderLineId}
+    />
+
+    {workOrderLineId && (
       <FinishInspectionButton
         session={session}
         workOrderLineId={workOrderLineId}
       />
-    </>
-  );
+    )}
+  </>
+);
 
   if (!session || (session.sections?.length ?? 0) === 0) {
     return (
