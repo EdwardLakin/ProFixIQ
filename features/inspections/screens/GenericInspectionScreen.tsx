@@ -1737,30 +1737,56 @@ export default function GenericInspectionScreen(
                         ) : tireSection ? (
                           gridParam === "hyd" ? (
                             <TireGridHydraulic
-                              sectionIndex={sectionIndex}
-                              items={itemsWithHints}
-                            />
+  sectionIndex={sectionIndex}
+  items={itemsWithHints}
+  unitHint={(label: string) => unitHintGeneric(label, unit)}
+  requireNoteForAI
+  onSubmitAI={(secIdx: number, itemIdx: number) => {
+    void submitAIForItem(secIdx, itemIdx);
+  }}
+  isSubmittingAI={(secIdx: number, itemIdx: number) =>
+    isSubmittingAI(secIdx, itemIdx)
+  }
+  onUpdateParts={(secIdx, itemIdx, parts) => {
+    if (guardLocked()) return;
+    updateItem(secIdx, itemIdx, { parts });
+  }}
+  onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+    if (guardLocked()) return;
+    updateItem(secIdx, itemIdx, { laborHours: hours });
+  }}
+/>
                           ) : (
                             <TireGrid
-                              sectionIndex={sectionIndex}
-                              items={itemsWithHints}
-                              unitHint={(label: string) =>
-                                unitHintGeneric(label, unit)
-                              }
-                              onAddAxle={(axleLabel: string) =>
-                                handleAddTireAxleForSection(
-                                  sectionIndex,
-                                  axleLabel,
-                                )
-                              }
-                              onSpecHint={(metricLabel: string) =>
-                                _props.onSpecHint?.({
-                                  source: "tire",
-                                  label: metricLabel,
-                                  meta: { sectionTitle: section.title },
-                                })
-                              }
-                            />
+  sectionIndex={sectionIndex}
+  items={itemsWithHints}
+  unitHint={(label: string) => unitHintGeneric(label, unit)}
+  onAddAxle={(axleLabel: string) =>
+    handleAddTireAxleForSection(sectionIndex, axleLabel)
+  }
+  onSpecHint={(metricLabel: string) =>
+    _props.onSpecHint?.({
+      source: "tire",
+      label: metricLabel,
+      meta: { sectionTitle: section.title },
+    })
+  }
+  requireNoteForAI
+  onSubmitAI={(secIdx: number, itemIdx: number) => {
+    void submitAIForItem(secIdx, itemIdx);
+  }}
+  isSubmittingAI={(secIdx: number, itemIdx: number) =>
+    isSubmittingAI(secIdx, itemIdx)
+  }
+  onUpdateParts={(secIdx, itemIdx, parts) => {
+    if (guardLocked()) return;
+    updateItem(secIdx, itemIdx, { parts });
+  }}
+  onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+    if (guardLocked()) return;
+    updateItem(secIdx, itemIdx, { laborHours: hours });
+  }}
+/>
                           )
                         ) : (
                           <CornerGrid

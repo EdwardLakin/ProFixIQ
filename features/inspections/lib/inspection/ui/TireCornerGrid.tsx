@@ -1,9 +1,16 @@
+// features/inspections/lib/inspection/ui/TireCornerGrid.tsx
 "use client";
 
 import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import StatusButtons from "@inspections/lib/inspection/StatusButtons";
-import type { InspectionItem, InspectionItemStatus } from "@inspections/lib/inspection/types";
+import type {
+  InspectionItem,
+  InspectionItemStatus,
+} from "@inspections/lib/inspection/types";
+import { Button } from "@shared/components/ui/Button";
+
+type PartLine = { description: string; qty: number };
 
 type Props = {
   sectionIndex: number;
@@ -11,6 +18,23 @@ type Props = {
   unitHint?: (label: string) => string;
   onAddAxle?: (axleLabel: string) => void;
   onSpecHint?: (metricLabel: string) => void;
+
+  /** Fail/Rec recommend logic (mirrors SectionDisplay) */
+  requireNoteForAI?: boolean;
+  onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
+  isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
+
+  onUpdateParts?: (
+    sectionIndex: number,
+    itemIndex: number,
+    parts: PartLine[],
+  ) => void;
+
+  onUpdateLaborHours?: (
+    sectionIndex: number,
+    itemIndex: number,
+    hours: number | null,
+  ) => void;
 };
 
 type Side = "Left" | "Right";
@@ -68,25 +92,22 @@ const AXLE_LABEL_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 function metricKindFrom(label: string): MetricKind {
   const l = label.toLowerCase().trim();
 
-  // Per-side condition item (drives OK/FAIL/REC/NA + notes)
   if (
     l.includes("tire condition") ||
     l.includes("tyre condition") ||
-    // NOTE: keep "condition" last-ish so it doesn't accidentally match other words.
     /\bcondition\b/i.test(l)
   ) {
     return "condition";
   }
 
-  // Optional “row-level” carrier (ex: "Drive 1 Tire Status")
-  if (l.includes("tire status") || l.includes("tyre status") || /\bstatus\b/i.test(l)) {
-    // Be careful not to treat unrelated “status” strings as tire status:
-    // prefer explicit "tire status"/"tyre status".
+  if (
+    l.includes("tire status") ||
+    l.includes("tyre status") ||
+    /\bstatus\b/i.test(l)
+  ) {
     if (l.includes("tire status") || l.includes("tyre status")) return "status";
   }
 
-  // -------- Pressure (supports full + abbreviations) --------
-  // Common abbreviations seen in HD templates: TP, PSI, kPa
   const hasPressureWord =
     l.includes("tire pressure") ||
     l.includes("tyre pressure") ||
@@ -101,10 +122,11 @@ function metricKindFrom(label: string): MetricKind {
     return "pressure";
   }
 
-  // -------- Tread depth (supports full + abbreviations) --------
-  // Common abbreviations: TD
   const hasTreadWord =
-    l.includes("tread depth") || l.includes("tread") || l.includes("tire tread") || l.includes("tyre tread");
+    l.includes("tread depth") ||
+    l.includes("tread") ||
+    l.includes("tire tread") ||
+    l.includes("tyre tread");
 
   const hasTreadAbbrev = /\b(td)\b/i.test(l);
 
@@ -114,7 +136,6 @@ function metricKindFrom(label: string): MetricKind {
     return "tread";
   }
 
-  // Row-level “tire status” (exact)
   if (l.includes("tire status") || l.includes("tyre status")) return "status";
 
   return "other";
@@ -127,7 +148,10 @@ function extractPos(metricLabel: string): DualPos | null {
   return null;
 }
 
-function pickUnit(explicit: string | null | undefined, hinted: string | null | undefined): string {
+function pickUnit(
+  explicit: string | null | undefined,
+  hinted: string | null | undefined,
+): string {
   const e = (explicit ?? "").trim();
   if (e) return e;
   return (hinted ?? "").trim();
@@ -147,7 +171,12 @@ function placeSingleTread(side: SingleSide, cell: Cell): void {
   if (!side.tread) side.tread = cell;
 }
 
-function placeDualTread(side: DualSide, kind: MetricKind, metricLabel: string, cell: Cell): void {
+function placeDualTread(
+  side: DualSide,
+  kind: MetricKind,
+  metricLabel: string,
+  cell: Cell,
+): void {
   if (kind === "treadOuter") {
     if (!side.treadOuter) side.treadOuter = cell;
     return;
@@ -174,7 +203,12 @@ function placeDualTread(side: DualSide, kind: MetricKind, metricLabel: string, c
   else if (!side.treadInner) side.treadInner = cell;
 }
 
-function placeDualPressure(side: DualSide, kind: MetricKind, metricLabel: string, cell: Cell): void {
+function placeDualPressure(
+  side: DualSide,
+  kind: MetricKind,
+  metricLabel: string,
+  cell: Cell,
+): void {
   if (kind === "pressureOuter") {
     if (!side.pressureOuter) side.pressureOuter = cell;
     return;
@@ -218,6 +252,27 @@ function getLabel(it: InspectionItem): string {
 function readNotes(it: InspectionItem): string {
   const anyIt = it as unknown as { notes?: unknown; note?: unknown };
   return String(anyIt.notes ?? anyIt.note ?? "").trim();
+}
+
+function readParts(it: InspectionItem): PartLine[] {
+  const anyIt = it as unknown as { parts?: unknown };
+  if (!Array.isArray(anyIt.parts)) return [];
+  return anyIt.parts
+    .map((p) => {
+      const obj = p as { description?: unknown; qty?: unknown };
+      const description = String(obj.description ?? "").trim();
+      const qty = Number(obj.qty ?? 0);
+      return { description, qty };
+    })
+    .filter((p) => p.description.length > 0 || p.qty > 0);
+}
+
+function readLaborHours(it: InspectionItem): number | null {
+  const anyIt = it as unknown as { laborHours?: unknown };
+  if (typeof anyIt.laborHours === "number" && !Number.isNaN(anyIt.laborHours)) {
+    return anyIt.laborHours;
+  }
+  return null;
 }
 
 function inputCls() {
@@ -269,7 +324,19 @@ function axleFromRowStatusLabel(label: string): string | null {
   return null;
 }
 
-export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
+export default function TireGrid(props: Props) {
+  const {
+    sectionIndex,
+    items,
+    unitHint,
+    onAddAxle,
+    requireNoteForAI,
+    onSubmitAI,
+    isSubmittingAI,
+    onUpdateParts,
+    onUpdateLaborHours,
+  } = props;
+
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
 
@@ -279,6 +346,22 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
   const commitNotes = (idx: number, notes: string) => {
     updateItem(sectionIndex, idx, { notes });
+  };
+
+  const commitParts = (idx: number, parts: PartLine[]) => {
+    if (typeof onUpdateParts === "function") {
+      onUpdateParts(sectionIndex, idx, parts);
+      return;
+    }
+    updateItem(sectionIndex, idx, { parts });
+  };
+
+  const commitLabor = (idx: number, hours: number | null) => {
+    if (typeof onUpdateLaborHours === "function") {
+      onUpdateLaborHours(sectionIndex, idx, hours);
+      return;
+    }
+    updateItem(sectionIndex, idx, { laborHours: hours });
   };
 
   const tables = useMemo<AxleRow[]>(() => {
@@ -311,7 +394,6 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
 
       const kindLoose = metricKindFrom(label);
 
-      // Row-level tire status carrier (optional)
       if (kindLoose === "status" && !AXLE_LABEL_RE.test(label)) {
         const axleLabel = axleFromRowStatusLabel(label);
         if (!axleLabel) return;
@@ -328,7 +410,6 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
         return;
       }
 
-      // Air axle style: "Drive 1 Left Tread Depth (Outer)", "Drive 1 Right Tire Condition"
       const m = label.match(AXLE_LABEL_RE);
       if (!m?.groups) return;
 
@@ -366,7 +447,11 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
       const grp = side === "Left" ? row.dual.left : row.dual.right;
       if (kind === "condition" && !grp.condition) grp.condition = cell;
 
-      if (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") {
+      if (
+        kind === "pressure" ||
+        kind === "pressureOuter" ||
+        kind === "pressureInner"
+      ) {
         placeDualPressure(grp, kind, metric, cell);
       }
       if (kind === "tread" || kind === "treadOuter" || kind === "treadInner") {
@@ -388,6 +473,146 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
   if (tables.length === 0) return null;
 
   const existingAxles = tables.map((t) => t.axle);
+
+  const FailRecActions = (itemIndex: number) => {
+    const it = items[itemIndex];
+    if (!it) return null;
+
+    const status = String((it as { status?: unknown }).status ?? "").toLowerCase();
+    const isFail = status === "fail";
+    const isRec = status === "recommend";
+    const isFailOrRec = isFail || isRec;
+
+    if (!isFailOrRec && !requireNoteForAI) return null;
+
+    const note = readNotes(it).trim();
+    const canShowSubmit =
+      !!requireNoteForAI &&
+      isFailOrRec &&
+      note.length > 0 &&
+      typeof onSubmitAI === "function";
+
+    const submitting =
+      typeof isSubmittingAI === "function"
+        ? isSubmittingAI(sectionIndex, itemIndex)
+        : false;
+
+    const currentParts = readParts(it);
+    const currentLabor = readLaborHours(it);
+
+    const addEmptyPart = () => {
+      commitParts(itemIndex, [...currentParts, { description: "", qty: 1 }]);
+    };
+
+    const updatePart = (idx: number, patch: Partial<PartLine>) => {
+      const next = currentParts.map((p, i) => (i === idx ? { ...p, ...patch } : p));
+      commitParts(itemIndex, next);
+    };
+
+    const removePart = (idx: number) => {
+      const next = currentParts.filter((_, i) => i !== idx);
+      commitParts(itemIndex, next);
+    };
+
+    return (
+      <>
+        {/* Parts + Labor, only for FAIL / REC items */}
+        {isFailOrRec ? (
+          <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[12px] font-semibold text-neutral-100">
+                Parts &amp; Labor
+              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                FAIL / REC only
+              </span>
+            </div>
+
+            {/* Parts list */}
+            <div className="space-y-2">
+              {currentParts.map((p, pIdx) => (
+                <div
+                  key={pIdx}
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
+                >
+                  <input
+                    className="min-w-0 flex-1 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                    placeholder="Part description"
+                    value={p.description}
+                    onChange={(e) =>
+                      updatePart(pIdx, { description: e.target.value })
+                    }
+                  />
+                  <input
+                    className="w-16 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                    placeholder="Qty"
+                    type="number"
+                    min={1}
+                    value={Number.isFinite(p.qty) ? p.qty : ""}
+                    onChange={(e) =>
+                      updatePart(pIdx, { qty: Number(e.target.value) || 1 })
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="text-[11px] text-red-300 hover:text-red-200"
+                    onClick={() => removePart(pIdx)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={addEmptyPart}
+                className="mt-1 inline-flex items-center rounded-full border border-white/20 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/80 hover:text-orange-200"
+              >
+                + Add Part
+              </button>
+            </div>
+
+            {/* Labor */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-neutral-400">Labor hours</span>
+              <input
+                className="w-20 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                placeholder="0.0"
+                type="number"
+                min={0}
+                step={0.1}
+                value={currentLabor ?? ""}
+                onChange={(e) =>
+                  commitLabor(
+                    itemIndex,
+                    e.target.value === "" ? null : Number(e.target.value) || 0,
+                  )
+                }
+              />
+              <span className="text-[10px] text-neutral-500">
+                (rate + pricing handled later)
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {canShowSubmit ? (
+          <div className="mt-2 flex items-center justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="px-3"
+              disabled={submitting}
+              onClick={() => onSubmitAI!(sectionIndex, itemIndex)}
+            >
+              {submitting ? "Submitting…" : "Submit for estimate"}
+            </Button>
+          </div>
+        ) : null}
+      </>
+    );
+  };
 
   const ItemActions = (cell: Cell | undefined) => {
     if (!cell) return null;
@@ -416,6 +641,8 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           }}
           rows={2}
         />
+
+        {FailRecActions(cell.idx)}
       </div>
     );
   };
@@ -731,13 +958,17 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           onBlur={(e) => commitNotes(cell.idx, e.currentTarget.value)}
           rows={2}
         />
+
+        {FailRecActions(cell.idx)}
       </div>
     );
   };
 
   const RowCondition = (t: AxleRow) => {
     const leftCond = t.isDual ? t.dual.left.condition : t.single.left.condition;
-    const rightCond = t.isDual ? t.dual.right.condition : t.single.right.condition;
+    const rightCond = t.isDual
+      ? t.dual.right.condition
+      : t.single.right.condition;
     if (!leftCond && !rightCond && !t.statusCell) return null;
 
     if (leftCond || rightCond) {
@@ -752,6 +983,8 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
     if (!t.statusCell) return null;
 
     const it = items[t.statusCell.idx];
+    if (!it) return null;
+
     return (
       <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
         <div className={tinyLabelCls()}>Tire Status</div>
@@ -771,6 +1004,8 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
           onBlur={(e) => commitNotes(t.statusCell!.idx, e.currentTarget.value)}
           rows={2}
         />
+
+        {FailRecActions(t.statusCell.idx)}
       </div>
     );
   };
@@ -794,7 +1029,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
         </button>
       </div>
 
-      {onAddAxle ? <AddAxlePicker existing={existingAxles} onAddAxle={onAddAxle} /> : null}
+      {onAddAxle ? (
+        <AddAxlePicker existing={existingAxles} onAddAxle={onAddAxle} />
+      ) : null}
 
       {open ? (
         <div className="grid gap-4">
@@ -802,11 +1039,17 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
             const isDual = t.isDual;
 
             const leftTD = isDual
-              ? { outer: t.dual.left.treadOuter ?? t.dual.left.tread, inner: t.dual.left.treadInner }
+              ? {
+                  outer: t.dual.left.treadOuter ?? t.dual.left.tread,
+                  inner: t.dual.left.treadInner,
+                }
               : { single: t.single.left.tread };
 
             const rightTD = isDual
-              ? { outer: t.dual.right.treadOuter ?? t.dual.right.tread, inner: t.dual.right.treadInner }
+              ? {
+                  outer: t.dual.right.treadOuter ?? t.dual.right.tread,
+                  inner: t.dual.right.treadInner,
+                }
               : { single: t.single.right.tread };
 
             const leftTP = isDual
@@ -830,7 +1073,9 @@ export default function TireGrid({ sectionIndex, items, unitHint, onAddAxle }: P
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div
                     className={axleTitleCls()}
-                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                    style={{
+                      fontFamily: "Black Ops One, system-ui, sans-serif",
+                    }}
                   >
                     {t.axle}
                   </div>
