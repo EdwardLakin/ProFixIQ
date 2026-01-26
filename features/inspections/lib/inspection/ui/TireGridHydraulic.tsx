@@ -393,12 +393,26 @@ export default function TireGridHydraulic(props: Props) {
         }
 
         if (!row.isDual) {
-          const grp = side === "Left" ? row.single.left : row.single.right;
-          if (kind === "condition" && !grp.condition) grp.condition = cell;
-          if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-          if (kind === "tread" && !grp.tread) grp.tread = cell;
-          return;
-        }
+  const grp = side === "Left" ? row.single.left : row.single.right;
+
+  if (kind === "condition" && !grp.condition) grp.condition = cell;
+
+  if (
+    (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") &&
+    !grp.pressure
+  ) {
+    grp.pressure = cell;
+  }
+
+  if (
+    (kind === "tread" || kind === "treadOuter" || kind === "treadInner") &&
+    !grp.tread
+  ) {
+    grp.tread = cell;
+  }
+
+  return;
+}
 
         const grp = side === "Left" ? row.dual.left : row.dual.right;
         if (kind === "condition" && !grp.condition) grp.condition = cell;
@@ -434,12 +448,27 @@ export default function TireGridHydraulic(props: Props) {
       }
 
       if (!row.isDual) {
-        const grp = side === "Left" ? row.single.left : row.single.right;
-        if (kind === "condition" && !grp.condition) grp.condition = cell;
-        if (kind === "pressure" && !grp.pressure) grp.pressure = cell;
-        if (kind === "tread" && !grp.tread) grp.tread = cell;
-        return;
-      }
+  const grp = side === "Left" ? row.single.left : row.single.right;
+
+  if (kind === "condition" && !grp.condition) grp.condition = cell;
+
+  if (
+    (kind === "pressure" || kind === "pressureOuter" || kind === "pressureInner") &&
+    !grp.pressure
+  ) {
+    grp.pressure = cell;
+  }
+
+  if (
+    (kind === "tread" || kind === "treadOuter" || kind === "treadInner") &&
+    !grp.tread
+  ) {
+    grp.tread = cell;
+  }
+
+  return;
+}
+      
 
       const grp = side === "Left" ? row.dual.left : row.dual.right;
       if (kind === "condition" && !grp.condition) grp.condition = cell;
