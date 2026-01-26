@@ -1,7 +1,7 @@
 // /features/inspections/app/inspection/custom-draft/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -30,6 +30,10 @@ type UpdateTemplate =
     labor_hours?: number | null;
   };
 
+/** UI-only keys so inputs don't remount on every keystroke (fixes focus loss) */
+type DraftItem = InspectionItem & { _key: string };
+type DraftSection = { title: string; items: DraftItem[] };
+
 /* ---------------------------- safe type helpers ---------------------------- */
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -57,14 +61,14 @@ function normalizeItemLike(i: unknown): {
     return { item: "", unit: null, status: "na", notes: "" };
   }
 
-  // ✅ MAIN FIX: support label/title/description keys used by grid builders
+  // support label/title/description keys used by grid builders
   const label = asString(
     i.item ?? i.name ?? i.label ?? i.title ?? i.description,
   ).trim();
 
   const unit = (isRecord(i) ? (i.unit as InspectionItem["unit"]) : null) ?? null;
 
-    const rawStatus = isRecord(i) ? i.status : undefined;
+  const rawStatus = isRecord(i) ? i.status : undefined;
 
   const status: InspectionItem["status"] | undefined =
     rawStatus === "ok" ||
@@ -78,7 +82,6 @@ function normalizeItemLike(i: unknown): {
 
   const notes = asNullableString(isRecord(i) ? i.notes : null) ?? "";
 
-  // Preserve optional fields if present (prevents losing measurement/grid info)
   const value =
     typeof i.value === "string" || typeof i.value === "number"
       ? (i.value as InspectionItem["value"])
@@ -162,12 +165,35 @@ function normalizeGridMode(v: string | null | undefined): GridMode | null {
   return null;
 }
 
+/* ---------------------------- UI key helpers ---------------------------- */
+
+function stripKeys(sections: DraftSection[]): InspectionSection[] {
+  return sections.map((s) => ({
+    title: s.title,
+    items: (s.items ?? []).map((it) => {
+      const { _key: _ignored, ...rest } = it;
+      return rest;
+    }),
+  }));
+}
+
+function coerceNumberOrNull(s: string): number | null {
+  const t = s.trim();
+  if (!t) return null;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
 /* -------------------------------- component -------------------------------- */
 
 export default function CustomDraftPage() {
   const router = useRouter();
   const sp = useSearchParams();
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+
+  const nextKeyRef = useRef(1);
+  const mkKey = () => `k_${Date.now().toString(36)}_${(nextKeyRef.current++).toString(36)}`;
 
   // if the user clicked "Edit" from the template list we expect ?templateId=...
   const templateId = sp.get("templateId");
@@ -180,13 +206,11 @@ export default function CustomDraftPage() {
     (sp.get("dutyClass") as DutyClass | null) || null,
   );
 
-  // ✅ track grid mode explicitly (builder can set air/hyd/none)
+  // track grid mode explicitly (builder can set air/hyd/none)
   const [gridMode, setGridMode] = useState<GridMode | null>(() => {
-    // try URL first
     const fromUrl = normalizeGridMode(sp.get("grid"));
     if (fromUrl) return fromUrl;
 
-    // then sessionStorage (what custom builder writes)
     if (typeof window !== "undefined") {
       const stored = normalizeGridMode(
         sessionStorage.getItem("customInspection:gridMode"),
@@ -194,21 +218,36 @@ export default function CustomDraftPage() {
       if (stored) return stored;
     }
 
-    // fallback: infer from duty class if present (legacy)
     const inferred = dutyClass === "heavy" ? "air" : dutyClass ? "hyd" : null;
     return inferred;
   });
 
-  const [sections, setSections] = useState<InspectionSection[]>([]);
-  const [laborHours, setLaborHours] = useState<number>(0);
+  const [sections, setSections] = useState<DraftSection[]>([]);
+
+  // ✅ labor hours input as string (so user can clear it)
+  const [laborHoursInput, setLaborHoursInput] = useState<string>("");
+
   const [savingNew, setSavingNew] = useState(false);
   const [savingExisting, setSavingExisting] = useState(false);
   const [running, setRunning] = useState(false);
 
-  // 🔐 current user's shop (for shop-scoped templates)
+  // shop scope
   const [shopId, setShopId] = useState<string | null>(null);
 
-  // Derived summary values
+  // per-section add-item picker UI
+  const [openAddItemFor, setOpenAddItemFor] = useState<number | null>(null);
+  const [itemSearch, setItemSearch] = useState<string>("");
+  const [customItemText, setCustomItemText] = useState<string>("");
+
+  // add-section-from-master UI
+  const [showSectionPicker, setShowSectionPicker] = useState(false);
+  const [sectionSearch, setSectionSearch] = useState("");
+
+  const laborHoursNumber = useMemo(() => {
+    const n = coerceNumberOrNull(laborHoursInput);
+    return n ?? 0;
+  }, [laborHoursInput]);
+
   const totalSections = sections.length;
   const totalItems = useMemo(
     () => sections.reduce((sum, s) => sum + (s.items?.length ?? 0), 0),
@@ -235,9 +274,12 @@ export default function CustomDraftPage() {
 
   const vehicleLabel = vehicleType ? vehicleType : "—";
 
-  const batteryPresent = useMemo(() => hasBatterySection(sections), [sections]);
+  const batteryPresent = useMemo(
+    () => hasBatterySection(stripKeys(sections)),
+    [sections],
+  );
 
-  // build a quick lookup: normalized title -> master items (used for the add-item dropdown)
+  // master lookups
   const masterByTitle = useMemo(() => {
     const out = new Map<string, { item: string; unit?: string | null }[]>();
     for (const sec of masterInspectionList) {
@@ -246,19 +288,29 @@ export default function CustomDraftPage() {
     return out;
   }, []);
 
-  function getMasterItemsForSection(title: string) {
-    const key = (title || "").trim().toLowerCase();
+  function getMasterItemsForSection(titleStr: string) {
+    const key = (titleStr || "").trim().toLowerCase();
     return masterByTitle.get(key) ?? [];
   }
 
-  // 0) load current user's shop_id so new templates are shop-scoped
+  function attachKeysFromNormalized(normalized: InspectionSection[]): DraftSection[] {
+    return normalized.map((s) => ({
+      title: s.title,
+      items: (s.items ?? []).map((it) => ({
+        ...it,
+        _key: mkKey(),
+      })),
+    }));
+  }
+
+  /* ----------------------------- load shop_id ----------------------------- */
+
   useEffect(() => {
     (async () => {
       const { data: auth } = await supabase.auth.getUser();
       const uid = auth?.user?.id;
       if (!uid) return;
 
-      // try profiles.user_id first
       const byUser = await supabase
         .from("profiles")
         .select("shop_id")
@@ -270,7 +322,6 @@ export default function CustomDraftPage() {
         return;
       }
 
-      // fallback: profiles.id == auth uid
       const byId = await supabase
         .from("profiles")
         .select("shop_id")
@@ -283,32 +334,32 @@ export default function CustomDraftPage() {
     })();
   }, [supabase]);
 
-    // 1) load staged sections (canonical: inspection:*), fallback to legacy customInspection:*
+  /* ----------------------- load staged draft (session) ---------------------- */
+
+  // load staged sections (canonical: inspection:*), fallback to legacy customInspection:*
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
 
-      // ✅ CANONICAL (builder writes these)
       const rawInspection = sessionStorage.getItem("inspection:sections");
       const titleInspection = sessionStorage.getItem("inspection:title");
       const paramsRaw = sessionStorage.getItem("inspection:params");
 
-      // 🧯 LEGACY fallback (older flows)
       const rawLegacy = sessionStorage.getItem("customInspection:sections");
       const titleLegacy = sessionStorage.getItem("customInspection:title");
-      const includeOilRawLegacy = sessionStorage.getItem("customInspection:includeOil");
-      const storedDutyLegacy = sessionStorage.getItem("customInspection:dutyClass");
-      const storedGridLegacy = sessionStorage.getItem("customInspection:gridMode");
+      const includeOilRawLegacy =
+        sessionStorage.getItem("customInspection:includeOil");
+      const storedDutyLegacy =
+        sessionStorage.getItem("customInspection:dutyClass");
+      const storedGridLegacy =
+        sessionStorage.getItem("customInspection:gridMode");
 
-      // Prefer canonical first
       const raw = rawInspection ?? rawLegacy;
       const t = titleInspection ?? titleLegacy;
 
-      // ✅ URL still wins for these if present (keeps "Edit template" behavior)
       let nextDuty: DutyClass | null = dutyClass;
       let nextGrid: GridMode | null = gridMode;
 
-      // Pull duty/grid from canonical params if present
       if (paramsRaw) {
         try {
           const parsed = JSON.parse(paramsRaw) as unknown;
@@ -323,7 +374,6 @@ export default function CustomDraftPage() {
         }
       }
 
-      // Legacy duty/grid if canonical didn’t provide
       if (!nextDuty && storedDutyLegacy) nextDuty = storedDutyLegacy as DutyClass;
       if (!nextGrid && storedGridLegacy) {
         const g = normalizeGridMode(storedGridLegacy);
@@ -338,7 +388,6 @@ export default function CustomDraftPage() {
         const parsedUnknown = JSON.parse(raw) as unknown;
         const parsed = normalizeSections(parsedUnknown);
 
-        // Legacy oil handling only (canonical builder already injects oil and removes legacy keys)
         const includeOilLegacy =
           includeOilRawLegacy ? JSON.parse(includeOilRawLegacy) === true : false;
 
@@ -351,13 +400,16 @@ export default function CustomDraftPage() {
             ? normalizeSections([...parsed, buildOilChangeSection()])
             : parsed;
 
-        setSections(withOil);
+        const draft = attachKeysFromNormalized(withOil);
+        setSections(draft);
 
         const initialHours = computeDefaultLaborHours({
           vehicleType: vehicleType ?? "truck",
           sections: withOil,
         });
-        setLaborHours(initialHours);
+
+        // set as string so user can clear it later
+        setLaborHoursInput(Number.isFinite(initialHours) ? initialHours.toFixed(2) : "");
       }
     } catch {
       /* ignore bad session data */
@@ -373,7 +425,8 @@ export default function CustomDraftPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dutyClass]);
 
-  // 2) if we came from "Edit template", pull it from Supabase and override
+  /* ------------------- if editing existing template, load DB ------------------- */
+
   useEffect(() => {
     if (!templateId) return;
 
@@ -391,40 +444,54 @@ export default function CustomDraftPage() {
       }
 
       const normalized = normalizeSections(data.sections as unknown);
-      setSections(normalized);
+      setSections(attachKeysFromNormalized(normalized));
       setTitle(data.template_name || "Custom Inspection");
 
-      if (data.vehicle_type) {
-        setVehicleType(data.vehicle_type as VehicleType);
-      }
+      if (data.vehicle_type) setVehicleType(data.vehicle_type as VehicleType);
 
       if (typeof data.labor_hours === "number") {
-        setLaborHours(data.labor_hours);
+        setLaborHoursInput(data.labor_hours.toFixed(2));
       } else {
         const hours = computeDefaultLaborHours({
           vehicleType: (data.vehicle_type as VehicleType) ?? "truck",
           sections: normalized,
         });
-        setLaborHours(hours);
+        setLaborHoursInput(Number.isFinite(hours) ? hours.toFixed(2) : "");
       }
 
-      if (data.shop_id && !shopId) {
-        setShopId(data.shop_id);
-      }
+      if (data.shop_id && !shopId) setShopId(data.shop_id);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId, supabase]);
 
   /* ----------------------------- editing helpers ----------------------------- */
 
-  function addSection() {
+  function addSectionBlank() {
     setSections((prev) => [
       ...prev,
       {
         title: "New Section",
-        items: [{ item: "New Item", unit: null, status: "na" }],
+        items: [
+          { item: "", unit: null, status: "na", _key: mkKey() } as DraftItem,
+        ],
       },
     ]);
+  }
+
+  function addSectionFromMaster(sectionTitle: string) {
+    const found = masterInspectionList.find(
+      (s) => s.title.trim().toLowerCase() === sectionTitle.trim().toLowerCase(),
+    );
+    if (!found) return;
+
+    const items: DraftItem[] = found.items.map((it) => ({
+      item: it.item,
+      unit: it.unit ?? null,
+      status: "na",
+      _key: mkKey(),
+    }));
+
+    setSections((prev) => [...prev, { title: found.title, items }]);
   }
 
   function removeSection(idx: number) {
@@ -449,7 +516,7 @@ export default function CustomDraftPage() {
     });
   }
 
-  function addItem(secIdx: number) {
+  function addItemBlank(secIdx: number) {
     setSections((prev) => {
       const next = [...prev];
       const s = next[secIdx];
@@ -457,7 +524,35 @@ export default function CustomDraftPage() {
         ...s,
         items: [
           ...(s.items ?? []),
-          { item: "New Item", unit: null, status: "na" },
+          { item: "", unit: null, status: "na", _key: mkKey() } as DraftItem,
+        ],
+      };
+      return next;
+    });
+  }
+
+  function addItemFromMaster(secIdx: number, label: string, unit?: string | null) {
+    const trimmed = (label || "").trim();
+    if (!trimmed) return;
+
+    setSections((prev) => {
+      const next = [...prev];
+      const s = next[secIdx];
+      const exists = (s.items ?? []).some(
+        (it) => (it.item ?? "").trim().toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (exists) return prev;
+
+      next[secIdx] = {
+        ...s,
+        items: [
+          ...(s.items ?? []),
+          {
+            item: trimmed,
+            unit: unit ?? null,
+            status: "na",
+            _key: mkKey(),
+          } as DraftItem,
         ],
       };
       return next;
@@ -513,7 +608,6 @@ export default function CustomDraftPage() {
 
   /* --------------------------------- actions -------------------------------- */
 
-  // INSERT: Save as new template
   const saveTemplate = async () => {
     try {
       setSavingNew(true);
@@ -523,11 +617,13 @@ export default function CustomDraftPage() {
         return;
       }
 
-      const cleaned = normalizeSections(sections);
+      const cleaned = normalizeSections(stripKeys(sections));
       if (cleaned.length === 0) {
         toast.error("Add at least one section with items.");
         return;
       }
+
+      const hours = coerceNumberOrNull(laborHoursInput);
 
       const payload: InsertTemplate = {
         template_name: (title || "").trim() || "Custom Template",
@@ -537,8 +633,8 @@ export default function CustomDraftPage() {
         vehicle_type: vehicleType || undefined,
         tags: ["custom", "draft"],
         is_public: false,
-        labor_hours: Number.isFinite(laborHours) ? laborHours : null,
-        // user_id + shop_id are now injected by the trigger
+        labor_hours: hours,
+        // user_id + shop_id injected by trigger
       };
 
       const { error, data } = await supabase
@@ -560,7 +656,6 @@ export default function CustomDraftPage() {
     }
   };
 
-  // UPDATE: Save changes to existing template (only if templateId present)
   const saveChanges = async () => {
     if (!templateId) {
       toast.error("No template to update.");
@@ -575,18 +670,20 @@ export default function CustomDraftPage() {
         return;
       }
 
-      const cleaned = normalizeSections(sections);
+      const cleaned = normalizeSections(stripKeys(sections));
       if (cleaned.length === 0) {
         toast.error("Add at least one section with items.");
         return;
       }
+
+      const hours = coerceNumberOrNull(laborHoursInput);
 
       const payload: UpdateTemplate = {
         template_name: (title || "").trim() || "Custom Template",
         sections:
           cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Update"]["sections"],
         vehicle_type: vehicleType || undefined,
-        labor_hours: Number.isFinite(laborHours) ? laborHours : null,
+        labor_hours: hours,
       };
 
       const { error, data } = await supabase
@@ -611,7 +708,7 @@ export default function CustomDraftPage() {
   const saveAndRun = () => {
     try {
       setRunning(true);
-      const cleaned = normalizeSections(sections);
+      const cleaned = normalizeSections(stripKeys(sections));
       if (cleaned.length === 0) {
         toast.error("Add at least one section with items.");
         return;
@@ -632,6 +729,25 @@ export default function CustomDraftPage() {
       setRunning(false);
     }
   };
+
+  /* ------------------------------ derived pickers ------------------------------ */
+
+  const masterSectionTitles = useMemo(() => {
+    const titles = masterInspectionList.map((s) => s.title);
+    return titles.sort((a, b) => a.localeCompare(b));
+  }, []);
+
+  const filteredMasterSectionTitles = useMemo(() => {
+    const q = sectionSearch.trim().toLowerCase();
+    if (!q) return masterSectionTitles;
+    return masterSectionTitles.filter((t) => t.toLowerCase().includes(q));
+  }, [masterSectionTitles, sectionSearch]);
+
+  function closeAddItemPicker() {
+    setOpenAddItemFor(null);
+    setItemSearch("");
+    setCustomItemText("");
+  }
 
   /* ---------------------------------- UI ---------------------------------- */
 
@@ -712,7 +828,9 @@ export default function CustomDraftPage() {
             <span>
               Labor:{" "}
               <span className="font-semibold text-neutral-100">
-                {Number.isFinite(laborHours) ? laborHours.toFixed(2) : "0.00"}
+                {Number.isFinite(laborHoursNumber)
+                  ? laborHoursNumber.toFixed(2)
+                  : "0.00"}
               </span>{" "}
               hrs
             </span>
@@ -772,24 +890,90 @@ export default function CustomDraftPage() {
               Labor hours (inspection total)
             </span>
             <input
-              type="number"
-              min={0}
-              step={0.25}
+              type="text"
               inputMode="decimal"
-              className="w-40 rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-              value={Number.isFinite(laborHours) ? laborHours : 0}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                setLaborHours(Number.isFinite(next) ? next : 0);
+              className="w-40 rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+              value={laborHoursInput}
+              placeholder="e.g. 2.50"
+              onChange={(e) => setLaborHoursInput(e.target.value)}
+              onBlur={() => {
+                // normalize formatting on blur (but allow empty)
+                const n = coerceNumberOrNull(laborHoursInput);
+                if (n === null) {
+                  setLaborHoursInput("");
+                } else {
+                  setLaborHoursInput(n.toFixed(2));
+                }
               }}
             />
           </label>
         </div>
 
+        {/* Master section picker */}
+        {showSectionPicker ? (
+          <div className="mb-5 rounded-2xl border border-neutral-800 bg-neutral-950/85 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-orange-300">
+                Add Section from Master List
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSectionPicker(false);
+                  setSectionSearch("");
+                }}
+                className="rounded-full border border-neutral-700 bg-black/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <input
+              className="mb-3 w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+              placeholder="Search sections…"
+              value={sectionSearch}
+              onChange={(e) => setSectionSearch(e.target.value)}
+            />
+
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredMasterSectionTitles.slice(0, 60).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => {
+                    addSectionFromMaster(t);
+                    setShowSectionPicker(false);
+                    setSectionSearch("");
+                  }}
+                  className="rounded-xl border border-neutral-800 bg-black/60 px-3 py-2 text-left text-sm text-neutral-100 hover:bg-black/70"
+                  title="Add section"
+                >
+                  {t}
+                </button>
+              ))}
+              {filteredMasterSectionTitles.length > 60 ? (
+                <div className="rounded-xl border border-neutral-800 bg-black/30 px-3 py-2 text-xs text-neutral-400">
+                  Showing first 60 results — refine your search to narrow down.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         {/* Sections editor */}
         <div className="space-y-4">
           {sections.map((sec, i) => {
             const masterItemsForThisSection = getMasterItemsForSection(sec.title);
+            const q = itemSearch.trim().toLowerCase();
+            const filteredMasterItems =
+              q.length === 0
+                ? masterItemsForThisSection
+                : masterItemsForThisSection.filter((mi) =>
+                    mi.item.toLowerCase().includes(q),
+                  );
+
+            const addPanelOpen = openAddItemFor === i;
+
             return (
               <div
                 key={`${sec.title}-${i}`}
@@ -814,6 +998,7 @@ export default function CustomDraftPage() {
 
                   <div className="flex flex-wrap gap-2">
                     <button
+                      type="button"
                       onClick={() => moveSection(i, -1)}
                       className="rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800 disabled:opacity-40"
                       disabled={i === 0}
@@ -821,7 +1006,8 @@ export default function CustomDraftPage() {
                     >
                       ↑
                     </button>
-                                        <button
+                    <button
+                      type="button"
                       onClick={() => moveSection(i, +1)}
                       className="rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800 disabled:opacity-40"
                       disabled={i === sections.length - 1}
@@ -830,6 +1016,7 @@ export default function CustomDraftPage() {
                       ↓
                     </button>
                     <button
+                      type="button"
                       onClick={() => removeSection(i)}
                       className="rounded-full border border-red-600 bg-red-900/30 px-3 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-900/60"
                       title="Remove section"
@@ -839,48 +1026,150 @@ export default function CustomDraftPage() {
                   </div>
                 </div>
 
+                {/* Add-item picker (dropdown + search + custom) */}
+                <div className="mb-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (addPanelOpen) {
+                          closeAddItemPicker();
+                        } else {
+                          setOpenAddItemFor(i);
+                          setItemSearch("");
+                          setCustomItemText("");
+                        }
+                      }}
+                      className="rounded-full bg-neutral-800 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-neutral-700"
+                    >
+                      + Add Item
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => addItemBlank(i)}
+                      className="rounded-full border border-neutral-700 bg-black/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+                      title="Add a blank item field"
+                    >
+                      Add blank
+                    </button>
+
+                    <span className="text-[11px] text-neutral-500">
+                      {masterItemsForThisSection.length
+                        ? "Master items available for this section."
+                        : "No master section match — add custom items."}
+                    </span>
+                  </div>
+
+                  {addPanelOpen ? (
+                    <div className="mt-3 rounded-2xl border border-neutral-800 bg-black/40 p-3">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-orange-300">
+                          Add items to “{sec.title || "Section"}”
+                        </div>
+                        <button
+                          type="button"
+                          onClick={closeAddItemPicker}
+                          className="rounded-full border border-neutral-700 bg-black/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+                        >
+                          Close
+                        </button>
+                      </div>
+
+                      {masterItemsForThisSection.length ? (
+                        <>
+                          <input
+                            className="mb-3 w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                            placeholder="Search master items…"
+                            value={itemSearch}
+                            onChange={(e) => setItemSearch(e.target.value)}
+                          />
+
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {filteredMasterItems.slice(0, 45).map((mi) => (
+                              <button
+                                key={mi.item}
+                                type="button"
+                                onClick={() => addItemFromMaster(i, mi.item, mi.unit ?? null)}
+                                className="rounded-xl border border-neutral-800 bg-black/60 px-3 py-2 text-left text-sm text-neutral-100 hover:bg-black/70"
+                                title="Add item"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="truncate">{mi.item}</span>
+                                  <span className="rounded-full bg-neutral-800 px-2 py-[2px] text-[10px] text-neutral-300">
+                                    {mi.unit ?? "—"}
+                                  </span>
+                                </div>
+                              </button>
+                            ))}
+                            {filteredMasterItems.length > 45 ? (
+                              <div className="rounded-xl border border-neutral-800 bg-black/30 px-3 py-2 text-xs text-neutral-400">
+                                Showing first 45 results — refine your search.
+                              </div>
+                            ) : null}
+                          </div>
+                        </>
+                      ) : null}
+
+                      <div className="mt-3 grid gap-2 md:grid-cols-[1fr,140px,auto] md:items-center">
+                        <input
+                          className="w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                          placeholder="Custom item label…"
+                          value={customItemText}
+                          onChange={(e) => setCustomItemText(e.target.value)}
+                        />
+                        <select
+                          className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-2 py-2 text-sm text-white"
+                          value=""
+                          onChange={(e) => {
+                            const unit = e.target.value || null;
+                            addItemFromMaster(i, customItemText, unit);
+                            setCustomItemText("");
+                          }}
+                          title="Add custom item with unit"
+                        >
+                          <option value="">— unit —</option>
+                          {UNIT_OPTIONS.filter((u) => u !== "").map((u) => (
+                            <option key={u || "blank"} value={u}>
+                              {u || "—"}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addItemFromMaster(i, customItemText, null);
+                            setCustomItemText("");
+                          }}
+                          className="rounded-full bg-orange-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-orange-500"
+                        >
+                          Add custom
+                        </button>
+                      </div>
+
+                      <div className="mt-2 text-[11px] text-neutral-500">
+                        Tip: clicking master items won’t steal focus from your text inputs anymore (stable keys).
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
                 {/* Items list */}
                 <div className="space-y-2">
                   {(sec.items ?? []).map((it, j) => {
-                    const isPlaceholder = it.item === "New Item";
-                    const hasMaster = masterItemsForThisSection.length > 0;
-
                     return (
                       <div
-                        key={`${i}-${j}-${it.item}-${j}`}
+                        key={it._key}
                         className="grid grid-cols-1 gap-2 rounded-xl bg-black/55 p-2 sm:grid-cols-[minmax(0,1.4fr),140px,auto,auto] sm:items-center"
                       >
-                        {/* label or dropdown */}
-                        {isPlaceholder && hasMaster ? (
-                          <select
-                            className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white"
-                            value=""
-                            onChange={(e) =>
-                              updateItemLabel(
-                                i,
-                                j,
-                                e.target.value || "New Item",
-                              )
-                            }
-                          >
-                            <option value="">— pick an item —</option>
-                            {masterItemsForThisSection.map((mi) => (
-                              <option key={mi.item} value={mi.item}>
-                                {mi.item}
-                              </option>
-                            ))}
-                            <option value="Custom item…">Custom item…</option>
-                          </select>
-                        ) : (
-                          <input
-                            className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500"
-                            value={it.item}
-                            onChange={(e) =>
-                              updateItemLabel(i, j, e.target.value)
-                            }
-                            placeholder="Item label"
-                          />
-                        )}
+                        {/* label */}
+                        <input
+                          className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500"
+                          value={it.item ?? ""}
+                          onChange={(e) => updateItemLabel(i, j, e.target.value)}
+                          placeholder="Item label"
+                        />
 
                         {/* unit */}
                         <select
@@ -899,6 +1188,7 @@ export default function CustomDraftPage() {
                         {/* reorder */}
                         <div className="flex gap-2">
                           <button
+                            type="button"
                             onClick={() => moveItem(i, j, -1)}
                             className="rounded-full border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-neutral-100 hover:bg-neutral-800 disabled:opacity-40"
                             disabled={j === 0}
@@ -907,6 +1197,7 @@ export default function CustomDraftPage() {
                             ↑
                           </button>
                           <button
+                            type="button"
                             onClick={() => moveItem(i, j, +1)}
                             className="rounded-full border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-neutral-100 hover:bg-neutral-800 disabled:opacity-40"
                             disabled={j === (sec.items?.length ?? 0) - 1}
@@ -918,6 +1209,7 @@ export default function CustomDraftPage() {
 
                         {/* remove */}
                         <button
+                          type="button"
                           onClick={() => removeItem(i, j)}
                           className="justify-self-start rounded-full border border-red-600 bg-red-900/30 px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-900/60 sm:justify-self-end"
                           title="Remove item"
@@ -927,15 +1219,6 @@ export default function CustomDraftPage() {
                       </div>
                     );
                   })}
-
-                  <div>
-                    <button
-                      onClick={() => addItem(i)}
-                      className="mt-2 rounded-full bg-neutral-800 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-neutral-700"
-                    >
-                      + Add Item
-                    </button>
-                  </div>
                 </div>
               </div>
             );
@@ -945,14 +1228,24 @@ export default function CustomDraftPage() {
         {/* Footer actions */}
         <div className="mt-6 flex flex-wrap gap-3">
           <button
-            onClick={addSection}
+            type="button"
+            onClick={addSectionBlank}
             className="rounded-full bg-neutral-800 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white hover:bg-neutral-700"
           >
-            + Add Section
+            + Add Blank Section
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowSectionPicker((v) => !v)}
+            className="rounded-full border border-neutral-700 bg-black/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+          >
+            + Add Section from Master
           </button>
 
           {templateId && (
             <button
+              type="button"
               onClick={saveChanges}
               disabled={savingExisting}
               className="rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-sky-400 disabled:opacity-60"
@@ -962,6 +1255,7 @@ export default function CustomDraftPage() {
           )}
 
           <button
+            type="button"
             onClick={saveTemplate}
             disabled={savingNew}
             className="rounded-full bg-amber-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-amber-400 disabled:opacity-60"
@@ -970,6 +1264,7 @@ export default function CustomDraftPage() {
           </button>
 
           <button
+            type="button"
             onClick={saveAndRun}
             disabled={running}
             className="rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-emerald-400 disabled:opacity-60"
@@ -977,6 +1272,11 @@ export default function CustomDraftPage() {
           >
             {running ? "Opening…" : "Save & Run"}
           </button>
+        </div>
+
+        {/* dev hint (kept subtle) */}
+        <div className="mt-4 text-[11px] text-neutral-600">
+          {shopId ? null : "Loading shop scope…"}
         </div>
       </div>
     </div>
