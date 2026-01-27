@@ -79,19 +79,47 @@ type VoiceCommand =
   | { command: "pause_inspection" }
   | { command: "finish_inspection" };
 
+function norm(s: unknown): string {
+  return String(s ?? "").trim();
+}
+
+function parseInterpretMode(input: unknown): InterpretMode {
+  const v = norm(input).toLowerCase();
+  if (v === "strict_context") return "strict_context";
+  return "open";
+}
+
 function safeJsonParseArray(input: string): VoiceCommand[] {
   try {
-    const parsed = JSON.parse(input);
-    return Array.isArray(parsed) ? (parsed as VoiceCommand[]) : [];
+    const parsed: unknown = JSON.parse(input);
+    if (!Array.isArray(parsed)) return [];
+    // Keep permissive; downstream UI also handles unknown fields safely.
+    return parsed.filter((x): x is VoiceCommand => {
+      if (!x || typeof x !== "object") return false;
+      const o = x as Record<string, unknown>;
+      return typeof o.command === "string";
+    });
   } catch {
     return [];
   }
 }
 
-function norm(s: unknown): string {
-  return String(s ?? "").trim();
+function isInterpretContext(x: unknown): x is InterpretContext {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  if (o.sectionTitle !== undefined && typeof o.sectionTitle !== "string") return false;
+  if (o.items !== undefined) {
+    if (!Array.isArray(o.items)) return false;
+    if (!o.items.every((v) => typeof v === "string")) return false;
+  }
+  return true;
 }
 
+function isBodyShape(
+  x: unknown,
+): x is { transcript?: unknown; context?: unknown; mode?: unknown } {
+  return !!x && typeof x === "object";
+}
 
 function findExactAllowedItem(allowed: string[], candidate: string): string | null {
   const c = candidate.trim();
@@ -106,25 +134,33 @@ function findExactAllowedItem(allowed: string[], candidate: string): string | nu
   return hit ?? null;
 }
 
+function withExactItem(cmd: VoiceCommand, exactItem: string): VoiceCommand {
+  // Only commands that carry "item" should get item normalized.
+  if (!("item" in cmd)) return cmd;
+
+  // Spread is safe; we’re just overriding item when it exists on this variant.
+  return { ...cmd, item: exactItem } as VoiceCommand;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => null)) as
-      | { transcript?: unknown; context?: unknown; mode?: unknown }
-      | null;
+    const rawBody: unknown = await req.json().catch(() => null);
+    const body = isBodyShape(rawBody) ? (rawBody as { transcript?: unknown; context?: unknown; mode?: unknown }) : null;
 
     const transcript = norm(body?.transcript);
     if (!transcript) return NextResponse.json([]);
 
-    const mode = (norm(body?.mode) as InterpretMode) || "open";
+    const mode = parseInterpretMode(body?.mode);
 
-    const ctxRaw = (body?.context ?? null) as InterpretContext | null;
-    const ctx: InterpretContext | null =
-      ctxRaw && typeof ctxRaw === "object"
-        ? {
-            sectionTitle: norm(ctxRaw.sectionTitle ?? ""),
-            items: Array.isArray(ctxRaw.items) ? ctxRaw.items.map((x) => norm(x)).filter(Boolean) : undefined,
-          }
-        : null;
+    const ctxCandidate: unknown = body?.context ?? null;
+    const ctx: InterpretContext | null = isInterpretContext(ctxCandidate)
+      ? {
+          sectionTitle: norm(ctxCandidate.sectionTitle ?? ""),
+          items: Array.isArray(ctxCandidate.items)
+            ? ctxCandidate.items.map((x) => norm(x)).filter(Boolean)
+            : undefined,
+        }
+      : null;
 
     const allowedItems = (ctx?.items ?? []).filter(Boolean);
     const hasContext = allowedItems.length > 0;
@@ -196,21 +232,31 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
     // If we are in strict mode with context, drop anything that references an unknown item.
     if (mode === "strict_context" && hasContext) {
       const allowed = allowedItems;
-      commands = commands
-        .map((cmd) => {
-          const item = (cmd as any)?.item;
-          if (!item) return cmd;
 
-          const exact = findExactAllowedItem(allowed, String(item));
-          if (!exact) return null;
+      const filtered: VoiceCommand[] = [];
+      for (const cmd of commands) {
+        if ("item" in cmd) {
+          const itemVal = cmd.item;
+          if (!itemVal) {
+            filtered.push(cmd);
+            continue;
+          }
 
-          return { ...(cmd as any), item: exact } as VoiceCommand;
-        })
-        .filter(Boolean) as VoiceCommand[];
+          const exact = findExactAllowedItem(allowed, String(itemVal));
+          if (!exact) continue;
+
+          filtered.push(withExactItem(cmd, exact));
+          continue;
+        }
+
+        filtered.push(cmd);
+      }
+
+      commands = filtered;
     }
 
     return NextResponse.json(commands);
-  } catch (err) {
+  } catch (err: unknown) {
     // eslint-disable-next-line no-console
     console.error("[api/ai/interpret] error:", err);
     return NextResponse.json([]);
