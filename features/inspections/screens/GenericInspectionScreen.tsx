@@ -364,13 +364,13 @@ export default function GenericInspectionScreen(
     if (staged && Object.keys(staged).length > 0) {
       const merged = new URLSearchParams();
 
-      Object.entries(staged).forEach(([key, value]) => {
-        if (value != null) merged.set(key, String(value));
-      });
+// URL first
+routeSp.forEach((value, key) => merged.set(key, value));
 
-      routeSp.forEach((value, key) => {
-        merged.set(key, value);
-      });
+// staged second (wins)
+Object.entries(staged).forEach(([key, value]) => {
+  if (value != null) merged.set(key, String(value));
+});
 
       return merged;
     }
@@ -662,6 +662,7 @@ export default function GenericInspectionScreen(
         session: sess,
         updateInspection,
         updateItem,
+        updateSection,
         finishSession,
       });
     }
@@ -1451,9 +1452,9 @@ export default function GenericInspectionScreen(
 
   return {
     ...it,                 // ✅ KEEP ORIGINAL SHAPE
-    value: it.value ?? null, // ✅ CRITICAL: preserve controlled input value
+    value: it.value ?? "", // ✅ CRITICAL: preserve controlled input value
     status: safeStatus,
-    notes: String(it.notes ?? it.note ?? undefined),
+    notes: String(it.notes ?? it.note ?? ""),
     unit: toggleControlled
       ? unitHintGeneric(label, unit)
       : explicitUnit || unitHintGeneric(label, unit),
