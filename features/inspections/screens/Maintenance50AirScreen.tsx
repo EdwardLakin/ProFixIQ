@@ -246,6 +246,7 @@ export default function Maintenance50AirScreen(
     session,
     updateInspection,
     updateItem,
+    updateSection,
     startSession,
     finishSession,
     resumeSession,
@@ -441,6 +442,7 @@ export default function Maintenance50AirScreen(
         session: sess,
         updateInspection,
         updateItem,
+        updateSection,
         finishSession,
       });
     }
