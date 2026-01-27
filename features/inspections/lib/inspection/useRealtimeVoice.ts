@@ -14,6 +14,56 @@ function base64FromArrayBuffer(buf: ArrayBuffer): string {
   return btoa(binary);
 }
 
+function safeBeep(
+  ctx: AudioContext | null,
+  opts?: { freq?: number; ms?: number; gain?: number },
+) {
+  try {
+    const audioCtx = ctx ?? new AudioContext();
+    // Some browsers start suspended until user gesture; this is called from a user-initiated start.
+    if (audioCtx.state === "suspended") {
+      void audioCtx.resume().catch(() => undefined);
+    }
+
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.value = opts?.freq ?? 880;
+
+    g.gain.value = opts?.gain ?? 0.04;
+
+    osc.connect(g);
+    g.connect(audioCtx.destination);
+
+    osc.start();
+
+    const ms = opts?.ms ?? 120;
+    window.setTimeout(() => {
+      try {
+        osc.stop();
+        osc.disconnect();
+        g.disconnect();
+      } catch {}
+      // If we created a temporary AudioContext, close it.
+      if (!ctx) {
+        try {
+          void audioCtx.close();
+        } catch {}
+      }
+    }, ms);
+  } catch {
+    // noop
+  }
+}
+
+function startsWithWakeWord(text: string): boolean {
+  const lower = (text || "").trim().toLowerCase();
+  if (!lower) return false;
+  const prefixes = ["techy", "techie", "tekky", "teki"];
+  return prefixes.some((p) => lower === p || lower.startsWith(p + " "));
+}
+
 export function useRealtimeVoice(
   handleTranscript: HandleTranscriptFn,
   maybeHandleWakeWord: (text: string) => string | null,
@@ -45,7 +95,7 @@ export function useRealtimeVoice(
     });
     mediaStreamRef.current = stream;
 
-    // ✅ Realtime transcription: audio/pcm @ 24kHz only  [oai_citation:4‡OpenAI Platform](https://platform.openai.com/docs/guides/realtime-transcription)
+    // ✅ Realtime transcription: audio/pcm @ 24kHz only
     const audioCtx = new AudioContext({ sampleRate: 24000 });
     audioCtxRef.current = audioCtx;
 
@@ -59,13 +109,12 @@ export function useRealtimeVoice(
     // WS connect
     const ws = new WebSocket(
       "wss://api.openai.com/v1/realtime?intent=transcription",
-      // browser auth via subprotocol token
       ["realtime", `openai-insecure-api-key.${token}`],
     );
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // ✅ configure transcription + server VAD  [oai_citation:5‡OpenAI Platform](https://platform.openai.com/docs/guides/realtime-transcription)
+      // ✅ configure transcription + server VAD
       ws.send(
         JSON.stringify({
           type: "session.update",
@@ -90,6 +139,9 @@ export function useRealtimeVoice(
           },
         }),
       );
+
+      // ✅ ready beep (WS connected + session configured)
+      safeBeep(audioCtxRef.current, { freq: 880, ms: 120, gain: 0.04 });
     };
 
     // Send audio chunks
@@ -123,7 +175,7 @@ export function useRealtimeVoice(
         return;
       }
 
-      // ✅ partial transcript event  [oai_citation:6‡OpenAI Platform](https://platform.openai.com/docs/guides/realtime-transcription)
+      // partial transcript
       if (msg.type === "conversation.item.input_audio_transcription.delta") {
         const delta = String(msg.delta ?? "");
         if (!delta) return;
@@ -131,17 +183,22 @@ export function useRealtimeVoice(
         return;
       }
 
-      // ✅ final transcript event  [oai_citation:7‡OpenAI Platform](https://platform.openai.com/docs/guides/realtime-transcription)
-      if (
-        msg.type === "conversation.item.input_audio_transcription.completed"
-      ) {
+      // final transcript
+      if (msg.type === "conversation.item.input_audio_transcription.completed") {
         const finalText = String(msg.transcript ?? "").trim();
         liveRef.current = "";
 
         if (!finalText) return;
 
+        // If the user *said* the wake word, give a short confirmation beep.
+        if (startsWithWakeWord(finalText)) {
+          safeBeep(audioCtxRef.current, { freq: 1200, ms: 90, gain: 0.035 });
+        }
+
+        // IMPORTANT: your app currently requires wake word to forward commands
         const cmd = maybeHandleWakeWord(finalText);
         if (cmd) handleTranscript(cmd);
+
         return;
       }
 
@@ -180,7 +237,9 @@ export function useRealtimeVoice(
     mediaStreamRef.current = null;
 
     // close audio context
-    audioCtxRef.current?.close();
+    try {
+      void audioCtxRef.current?.close();
+    } catch {}
     audioCtxRef.current = null;
 
     liveRef.current = "";
