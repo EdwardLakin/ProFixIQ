@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
+import type {
   InspectionItem,
   InspectionSection,
   InspectionSession,
@@ -11,21 +11,64 @@ import {
 
 type AxleLayoutConfig = { axleCount: number; brakeType: BrakeType };
 
-function generateAxleSections({ axleCount, brakeType }: AxleLayoutConfig): InspectionSection[] {
+/**
+ * IMPORTANT:
+ * TireGridHydraulic only renders when item labels match either:
+ *  - "LF|RF|LR|RR <Metric>" (hydraulic corner format)
+ *  - "<AxleLabel> Left|Right <Metric>" (axle format)
+ *
+ * We only need 2 "axles" for hydraulic tires:
+ *  - Steer 1 (LF/RF)
+ *  - Rear 1 (LR/RR)
+ */
+function generateAxleSections({
+  axleCount,
+  brakeType,
+}: AxleLayoutConfig): InspectionSection[] {
+  // We only support 2 axle rows for hydraulic tire grid.
+  const count = Math.min(Math.max(1, Math.floor(axleCount || 0)), 2);
+
   const sections: InspectionSection[] = [];
 
-  for (let i = 1; i <= axleCount; i++) {
-    const title = `Axle ${i}`;
+  // Helpers to build items
+  const baseCornerItems = (corner: "LF" | "RF" | "LR" | "RR"): InspectionItem[] => [
+    {
+      item: `${corner} Tread Depth`,
+      name: `${corner} Tread Depth`,
+      value: null,
+      unit: "mm",
+      notes: "",
+      photoUrls: [],
+    },
+    {
+      item: `${corner} Tire Pressure`,
+      name: `${corner} Tire Pressure`,
+      value: null,
+      unit: "psi",
+      notes: "",
+      photoUrls: [],
+    },
+    {
+      item: `${corner} Tire Condition`,
+      name: `${corner} Tire Condition`,
+      value: null,
+      unit: "",
+      notes: "",
+      photoUrls: [],
+    },
+  ];
+
+  // Section 1: Steer 1 (LF/RF)
+  if (count >= 1) {
     const items: InspectionItem[] = [
-      { item: "Left Tread Depth", name: "Left Tread Depth", value: null, unit: "mm", notes: "", photoUrls: [] },
-      { item: "Right Tread Depth", name: "Right Tread Depth", value: null, unit: "mm", notes: "", photoUrls: [] },
-      { item: "Left Tire Pressure", name: "Left Tire Pressure", value: null, unit: "psi", notes: "", photoUrls: [] },
-      { item: "Right Tire Pressure", name: "Right Tire Pressure", value: null, unit: "psi", notes: "", photoUrls: [] },
-      { item: "Left Lining Thickness", name: "Left Lining Thickness", value: null, unit: "mm", notes: "", photoUrls: [] },
-      { item: "Right Lining Thickness", name: "Right Lining Thickness", value: null, unit: "mm", notes: "", photoUrls: [] },
-      { item: "Wheel Torque", name: "Wheel Torque", value: null, unit: "ft lbs", notes: "", photoUrls: [] },
+      ...baseCornerItems("LF"),
+      ...baseCornerItems("RF"),
+      // Optional row-level "Tire Status" (supported as a fallback by TireGridHydraulic)
+      { item: "Front Tire Status", name: "Front Tire Status", value: null, unit: "", notes: "", photoUrls: [] },
     ];
 
+    // Keep your air brake extras if you were relying on them elsewhere.
+    // (TireGridHydraulic will ignore these; other renderers can use them.)
     if (brakeType === "air") {
       items.push(
         { item: "Left Push Rod Travel", name: "Left Push Rod Travel", value: null, unit: "in", notes: "", photoUrls: [] },
@@ -33,7 +76,25 @@ function generateAxleSections({ axleCount, brakeType }: AxleLayoutConfig): Inspe
       );
     }
 
-    sections.push({ title, items });
+    sections.push({ title: "Steer 1", items });
+  }
+
+  // Section 2: Rear 1 (LR/RR)
+  if (count >= 2) {
+    const items: InspectionItem[] = [
+      ...baseCornerItems("LR"),
+      ...baseCornerItems("RR"),
+      { item: "Rear Tire Status", name: "Rear Tire Status", value: null, unit: "", notes: "", photoUrls: [] },
+    ];
+
+    // Keep these too, if needed (ignored by TireGridHydraulic)
+    items.push(
+      { item: "Left Lining Thickness", name: "Left Lining Thickness", value: null, unit: "mm", notes: "", photoUrls: [] },
+      { item: "Right Lining Thickness", name: "Right Lining Thickness", value: null, unit: "mm", notes: "", photoUrls: [] },
+      { item: "Wheel Torque", name: "Wheel Torque", value: null, unit: "ft lbs", notes: "", photoUrls: [] },
+    );
+
+    sections.push({ title: "Rear 1", items });
   }
 
   return sections;
@@ -45,7 +106,9 @@ function clampIndex(n: number, maxExclusive: number): number {
   return Math.min(Math.max(0, n), maxExclusive - 1);
 }
 
-export default function useInspectionSession(initialSession?: Partial<InspectionSession>) {
+export default function useInspectionSession(
+  initialSession?: Partial<InspectionSession>,
+) {
   const [session, setSession] = useState<InspectionSession>(() => ({
     id: "",
     vehicleId: "",
@@ -107,7 +170,10 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
       };
     });
 
-  const updateSection = (sectionIndex: number, updates: Partial<InspectionSection>) =>
+  const updateSection = (
+    sectionIndex: number,
+    updates: Partial<InspectionSection>,
+  ) =>
     setSession((prev) => {
       if (!prev.sections?.length) return { ...prev, ...stamp() };
 
@@ -119,7 +185,11 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
       return { ...prev, sections, ...stamp() };
     });
 
-  const updateItem = (sectionIndex: number, itemIndex: number, updates: Partial<InspectionItem>) =>
+  const updateItem = (
+    sectionIndex: number,
+    itemIndex: number,
+    updates: Partial<InspectionItem>,
+  ) =>
     setSession((prev) => {
       if (!prev.sections?.length) return { ...prev, ...stamp() };
 
@@ -141,7 +211,11 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
 
   // ✅ strictly QuoteLineItem (the normalized/store+PDF shape)
   const addQuoteLine = (line: QuoteLineItem) =>
-    setSession((prev) => ({ ...prev, quote: [...(prev.quote ?? []), line], ...stamp() }));
+    setSession((prev) => ({
+      ...prev,
+      quote: [...(prev.quote ?? []), line],
+      ...stamp(),
+    }));
 
   const updateQuoteLines = (lines: QuoteLineItem[]) =>
     setSession((prev) => ({ ...prev, quote: lines, ...stamp() }));
@@ -150,11 +224,15 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
   const updateQuoteLine = (id: string, patch: Partial<QuoteLineItem>) =>
     setSession((prev) => ({
       ...prev,
-      quote: (prev.quote ?? []).map((l) => (l.id === id ? { ...l, ...patch } : l)),
+      quote: (prev.quote ?? []).map((l) =>
+        l.id === id ? { ...l, ...patch } : l,
+      ),
       ...stamp(),
     }));
 
-  const startSession = (sessionData: Partial<InspectionSession> & { axleConfig?: AxleLayoutConfig }) => {
+  const startSession = (
+    sessionData: Partial<InspectionSession> & { axleConfig?: AxleLayoutConfig },
+  ) => {
     const { axleConfig, ...rest } = sessionData;
 
     const newSections =
@@ -187,7 +265,7 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
     updateInspection,
     updateSection,
     updateItem,
-    setFocus, // ✅ NEW
+    setFocus, // ✅ safe focus setter
     addQuoteLine,
     updateQuoteLines,
     updateQuoteLine,

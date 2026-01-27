@@ -1,4 +1,3 @@
-// features/inspections/screens/GenericInspectionScreen.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -41,8 +40,6 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
-
-import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -186,7 +183,9 @@ function normalizeSections(input: unknown): InspectionSection[] {
       bucket.items = merged;
     }
 
-    return Array.from(byTitle.values()).filter((s) => (s.items?.length ?? 0) > 0);
+    return Array.from(byTitle.values()).filter(
+      (s) => (s.items?.length ?? 0) > 0,
+    );
   } catch {
     return [];
   }
@@ -196,7 +195,8 @@ function normalizeSections(input: unknown): InspectionSection[] {
 
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
-const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const HYD_FULL_RE =
+  /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
 const BATTERY_SIGNAL_RE =
   /(battery|voltage|v\b|cca|cranking|load\s*test|alternator|charging|charge\s*rate|state\s*of\s*charge|soc)/i;
@@ -265,7 +265,8 @@ function isHydraulicCornerSection(
   // IMPORTANT: if this is a Tire Grid section, it is NOT the hydraulic corner grid
   if (isTireGridSection(title, items)) return false;
 
-  if (t.includes("corner grid") || t.includes("tires & brakes — truck")) return true;
+  if (t.includes("corner grid") || t.includes("tires & brakes — truck"))
+    return true;
   if (t.includes("axle grid")) return true;
 
   if (!items || items.length < 4) return false;
@@ -287,7 +288,8 @@ function inspectionDraftKey(args: {
   templateName?: string | null;
 }) {
   const t = (args.templateName || "Inspection").toLowerCase().trim();
-  if (args.workOrderLineId) return `inspection-draft:line:${args.workOrderLineId}`;
+  if (args.workOrderLineId)
+    return `inspection-draft:line:${args.workOrderLineId}`;
   if (args.workOrderId) return `inspection-draft:wo:${args.workOrderId}:${t}`;
   return `inspection-draft:template:${t}:${args.inspectionId}`;
 }
@@ -362,12 +364,12 @@ export default function GenericInspectionScreen(
     if (staged && Object.keys(staged).length > 0) {
       const merged = new URLSearchParams();
 
-      // URL first
-      routeSp.forEach((value, key) => merged.set(key, value));
-
-      // staged second (wins)
       Object.entries(staged).forEach(([key, value]) => {
         if (value != null) merged.set(key, String(value));
+      });
+
+      routeSp.forEach((value, key) => {
+        merged.set(key, value);
       });
 
       return merged;
@@ -423,7 +425,8 @@ export default function GenericInspectionScreen(
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
+    if (Array.isArray(staged) && staged.length)
+      return normalizeSections(staged);
 
     try {
       const legacy =
@@ -439,7 +442,10 @@ export default function GenericInspectionScreen(
     return [
       {
         title: "General",
-        items: [{ item: "Visual walkaround" }, { item: "Record warning lights" }],
+        items: [
+          { item: "Visual walkaround" },
+          { item: "Record warning lights" },
+        ],
       },
     ];
   }, []);
@@ -493,21 +499,25 @@ export default function GenericInspectionScreen(
   const [isPaused, setIsPaused] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
-  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>({});
-  const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
-
-  const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>(
+  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>(
     {},
   );
+  const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
+
+  const [collapsedSections, setCollapsedSections] = useState<
+    Record<number, boolean>
+  >({});
 
   const [wakeActive, setWakeActive] = useState(false);
   const wakeTimeoutRef = useRef<number | null>(null);
 
+  const wsRef = useRef<WebSocket | null>(null);
+  const mediaRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
-      // ✅ unify around templateName (keep templateitem for backward compatibility)
-      templateName,
       templateitem: templateName,
       status: "not_started" as InspectionStatus,
       isPaused: false,
@@ -537,19 +547,6 @@ export default function GenericInspectionScreen(
     addQuoteLine,
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
-
-  // ✅ voice correctness: always target the freshest session snapshot
-  const sessionRef = useRef<InspectionSession | null>(null);
-  useEffect(() => {
-    sessionRef.current = session ?? null;
-  }, [session]);
-
-  // ✅ keep local UI toggles in sync with session changes (voice pause, etc.)
-  useEffect(() => {
-    if (!session) return;
-    setIsListening(Boolean(session.isListening));
-    setIsPaused(Boolean(session.isPaused));
-  }, [session?.isListening, session?.isPaused]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -647,34 +644,22 @@ export default function GenericInspectionScreen(
 
     window.addEventListener("inspection:completed", handler as EventListener);
     return () =>
-      window.removeEventListener("inspection:completed", handler as EventListener);
+      window.removeEventListener(
+        "inspection:completed",
+        handler as EventListener,
+      );
   }, [session, draftKey, lockKey]);
 
   const handleTranscript = async (text: string): Promise<void> => {
-    const sess = sessionRef.current;
-    if (!sess || guardLocked()) return;
+    if (!session || guardLocked()) return;
+    const commands: ParsedCommand[] = await interpretCommand(text);
+    const sess = session;
+    if (!sess) return;
 
-    const secIdx =
-      typeof sess.currentSectionIndex === "number" ? sess.currentSectionIndex : 0;
-
-    const sectionTitle = String(sess.sections?.[secIdx]?.title ?? "");
-    const items = (sess.sections?.[secIdx]?.items ?? [])
-      .map((it) => String(it.item ?? it.name ?? "").trim())
-      .filter(Boolean);
-
-    const commands: ParsedCommand[] = await interpretCommand(text, {
-      sectionTitle,
-      items,
-    });
-
-    // Re-read latest session before applying (handles multi-command responses)
     for (const command of commands) {
-      const latest = sessionRef.current;
-      if (!latest) return;
-
       await handleTranscriptFn({
         command,
-        session: latest,
+        session: sess,
         updateInspection,
         updateItem,
         finishSession,
@@ -729,16 +714,82 @@ export default function GenericInspectionScreen(
     return cleaned;
   }
 
-  const voice = useRealtimeVoice(handleTranscript, maybeHandleWakeWord);
-
   const startListening = async (): Promise<void> => {
     if (isListening) return;
     if (guardLocked()) return;
 
     try {
-      await voice.start();
-      setIsListening(true);
-      updateInspection({ isListening: true });
+      const res = await fetch("/api/openai/realtime-token");
+      const { apiKey } = (await res.json()) as { apiKey: string };
+      if (!apiKey) throw new Error("Missing OpenAI key");
+
+      const ws = new WebSocket(
+        "wss://api.openai.com/v1/realtime?intent=transcription",
+      );
+      wsRef.current = ws;
+
+      ws.onopen = async () => {
+        ws.send(
+          JSON.stringify({
+            type: "authorization",
+            authorization: `Bearer ${apiKey}`,
+          }),
+        );
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        mediaRef.current = stream;
+
+        const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        mediaRecorderRef.current = mr;
+
+        mr.ondataavailable = (evt) => {
+          if (evt.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+            ws.send(evt.data);
+          }
+        };
+
+        mr.start(250);
+        setIsListening(true);
+      };
+
+      ws.onmessage = async (evt) => {
+        if (typeof evt.data !== "string") return;
+        try {
+          const msg = JSON.parse(evt.data) as Record<string, unknown>;
+          const text = String(
+            (msg.text as string) ||
+              (msg.transcript as string) ||
+              (msg.output as string) ||
+              (msg.content as string) ||
+              "",
+          );
+          if (!text) return;
+
+          const maybeText = maybeHandleWakeWord(text);
+          if (!maybeText) return;
+
+          const lower2 = maybeText.toLowerCase();
+          if (lower2 === "stop listening" || lower2 === "go to sleep") {
+            setWakeActive(false);
+            return;
+          }
+
+          await handleTranscript(maybeText);
+        } catch {}
+      };
+
+      ws.onerror = (err) => {
+        // eslint-disable-next-line no-console
+        console.error("realtime ws error", err);
+        toast.error("Voice connection error");
+        stopListening();
+      };
+
+      ws.onclose = () => {
+        stopListening();
+      };
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
       console.error(e);
@@ -749,16 +800,18 @@ export default function GenericInspectionScreen(
   };
 
   const stopListening = (): void => {
-    try {
-      voice.stop();
-    } catch {
-      // ignore
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+
+    mediaRef.current?.getTracks().forEach((t) => t.stop());
+    mediaRef.current = null;
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.close();
     }
-
+    wsRef.current = null;
     setIsListening(false);
-    updateInspection({ isListening: false });
     setWakeActive(false);
-
     if (wakeTimeoutRef.current) {
       window.clearTimeout(wakeTimeoutRef.current);
       wakeTimeoutRef.current = null;
@@ -776,7 +829,10 @@ export default function GenericInspectionScreen(
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
+  const submitAIForItem = async (
+    secIdx: number,
+    itemIdx: number,
+  ): Promise<void> => {
     if (!session) return;
 
     if (isLocked) {
@@ -806,7 +862,9 @@ export default function GenericInspectionScreen(
       name?: string | null;
     };
 
-    const manualParts: { description: string; qty: number }[] = Array.isArray(itExt.parts)
+    const manualParts: { description: string; qty: number }[] = Array.isArray(
+      itExt.parts,
+    )
       ? itExt.parts
       : [];
 
@@ -915,7 +973,8 @@ export default function GenericInspectionScreen(
         });
 
         const createdId = (created as unknown as { id?: unknown })?.id;
-        createdJobId = (createdId ? String(createdId) : null) || workOrderLineId || null;
+        createdJobId =
+          (createdId ? String(createdId) : null) || workOrderLineId || null;
 
         const cleanParts = manualParts
           .map((p) => ({
@@ -941,21 +1000,34 @@ export default function GenericInspectionScreen(
               const body = (await res.json().catch(() => null)) as unknown;
               // eslint-disable-next-line no-console
               console.error("Parts request error", body);
-              toast.error("Line added, but parts request failed", { id: toastId });
+              toast.error("Line added, but parts request failed", {
+                id: toastId,
+              });
               return;
             }
 
-            toast.success("Line + parts request created from inspection", { id: toastId });
+            toast.success("Line + parts request created from inspection", {
+              id: toastId,
+            });
           } catch (err: unknown) {
             // eslint-disable-next-line no-console
             console.error("Parts request failed", err);
-            toast.error("Line added, but couldn't reach parts request service", { id: toastId });
+            toast.error(
+              "Line added, but couldn't reach parts request service",
+              {
+                id: toastId,
+              },
+            );
           }
         } else {
-          toast.success("Added to work order (no parts requested)", { id: toastId });
+          toast.success("Added to work order (no parts requested)", {
+            id: toastId,
+          });
         }
       } else {
-        toast.error("Missing work order id — saved locally only", { id: toastId });
+        toast.error("Missing work order id — saved locally only", {
+          id: toastId,
+        });
       }
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
@@ -1030,10 +1102,14 @@ export default function GenericInspectionScreen(
   }, [isEmbed]);
 
   const currentSectionIndex =
-    typeof session?.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
+    typeof session?.currentSectionIndex === "number"
+      ? session.currentSectionIndex
+      : 0;
 
   const safeSectionIndex =
-    session && currentSectionIndex >= 0 && currentSectionIndex < session.sections.length
+    session &&
+    currentSectionIndex >= 0 &&
+    currentSectionIndex < session.sections.length
       ? currentSectionIndex
       : 0;
 
@@ -1069,7 +1145,10 @@ export default function GenericInspectionScreen(
     });
   }
 
-  function applyStatusToSection(sectionIndex: number, status: InspectionItemStatus): void {
+  function applyStatusToSection(
+    sectionIndex: number,
+    status: InspectionItemStatus,
+  ): void {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1124,7 +1203,10 @@ export default function GenericInspectionScreen(
   };
 
   /** Add axle rows to an AIR corner grid section */
-  const handleAddAxleForSection = (sectionIndex: number, axleLabel: string): void => {
+  const handleAddAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1169,7 +1251,10 @@ export default function GenericInspectionScreen(
   };
 
   /** Add axle rows to a TIRE grid section (tires only) */
-  const handleAddTireAxleForSection = (sectionIndex: number, axleLabel: string): void => {
+  const handleAddTireAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1233,20 +1318,30 @@ export default function GenericInspectionScreen(
   const sectionTitle =
     "text-base md:text-xl font-semibold text-orange-300 text-center tracking-[0.16em] uppercase";
 
-  const hint = "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
+  const hint =
+    "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
 
   // Bottom bar: ONLY Save progress + Finish inspection
   const actions = (
-    <>
-      <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
-      {workOrderLineId && (
-        <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
-      )}
-    </>
-  );
+  <>
+    <SaveInspectionButton
+      session={session}
+      workOrderLineId={workOrderLineId}
+    />
+
+    {workOrderLineId && (
+      <FinishInspectionButton
+        session={session}
+        workOrderLineId={workOrderLineId}
+      />
+    )}
+  </>
+);
 
   if (!session || (session.sections?.length ?? 0) === 0) {
-    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
+    return (
+      <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
+    );
   }
 
   const body = (
@@ -1272,7 +1367,7 @@ export default function GenericInspectionScreen(
               Inspection
             </div>
             <div className="mt-1 text-lg md:text-xl font-blackops text-neutral-50">
-              {session?.templateName || session?.templateitem || templateName || "Inspection"}
+              {session?.templateitem || templateName || "Inspection"}
             </div>
           </div>
 
@@ -1287,10 +1382,7 @@ export default function GenericInspectionScreen(
           {!isLocked && (
             <StartListeningButton
               isListening={isListening}
-              setIsListening={(v) => {
-                setIsListening(v);
-                updateInspection({ isListening: v });
-              }}
+              setIsListening={setIsListening}
               onStart={startListening}
             />
           )}
@@ -1299,19 +1391,14 @@ export default function GenericInspectionScreen(
             <PauseResumeButton
               isPaused={isPaused}
               isListening={isListening}
-              setIsListening={(v) => {
-                setIsListening(v);
-                updateInspection({ isListening: v });
-              }}
+              setIsListening={setIsListening}
               onPause={(): void => {
                 setIsPaused(true);
-                updateInspection({ isPaused: true, status: "paused" });
                 pauseSession();
                 stopListening();
               }}
               onResume={(): void => {
                 setIsPaused(false);
-                updateInspection({ isPaused: false, status: "in_progress" });
                 resumeSession();
                 void startListening();
               }}
@@ -1327,9 +1414,12 @@ export default function GenericInspectionScreen(
             type="button"
             variant="outline"
             className="w-full justify-center border-orange-500/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
-            onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
+            onClick={(): void =>
+              setUnit(unit === "metric" ? "imperial" : "metric")
+            }
           >
-            Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+            Unit:{" "}
+            {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
           </Button>
         </div>
 
@@ -1338,40 +1428,55 @@ export default function GenericInspectionScreen(
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
-            totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
+            totalItems={
+              session.sections[session.currentSectionIndex]?.items.length || 0
+            }
           />
         </div>
 
         <InspectionFormCtx.Provider value={{ updateItem }}>
           {session.sections.map((section, sectionIndex) => {
             const itemsWithHints = (section.items ?? []).map((it) => {
-              const stRaw = String(it.status ?? "").toLowerCase();
-              const safeStatus: InspectionItemStatus =
-                stRaw === "ok" || stRaw === "fail" || stRaw === "na" || stRaw === "recommend"
-                  ? (stRaw as InspectionItemStatus)
-                  : "na";
+  const stRaw = String(it.status ?? "").toLowerCase();
+  const safeStatus: InspectionItemStatus =
+    stRaw === "ok" || stRaw === "fail" || stRaw === "na" || stRaw === "recommend"
+      ? (stRaw as InspectionItemStatus)
+      : "na";
 
-              const label = String(it.item ?? "");
-              const explicitUnit = it.unit ?? null;
+  const label = String(it.item ?? "");
+  const explicitUnit = it.unit ?? null;
 
-              const toggleControlled = /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
+  const toggleControlled =
+    /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
 
-              return {
-                ...it, // ✅ KEEP ORIGINAL SHAPE
-                // ✅ voice-safe: keep data model null; inputs can render "" locally
-                value: (it.value ?? null) as string | number | null,
-                status: safeStatus,
-                notes: String(it.notes ?? it.note ?? ""),
-                unit: toggleControlled ? unitHintGeneric(label, unit) : explicitUnit || unitHintGeneric(label, unit),
-              };
-            });
+  return {
+    ...it,                 // ✅ KEEP ORIGINAL SHAPE
+    value: it.value ?? "", // ✅ CRITICAL: preserve controlled input value
+    status: safeStatus,
+    notes: String(it.notes ?? it.note ?? ""),
+    unit: toggleControlled
+      ? unitHintGeneric(label, unit)
+      : explicitUnit || unitHintGeneric(label, unit),
+  };
+});
 
-            const batterySection = isBatterySection(section.title, itemsWithHints);
-            const tireSection = isTireGridSection(section.title, itemsWithHints);
-            const airSection = !tireSection && isAirCornerSection(section.title, itemsWithHints);
-            const hydCornerSection = isHydraulicCornerSection(section.title, itemsWithHints);
+            const batterySection = isBatterySection(
+              section.title,
+              itemsWithHints,
+            );
+            const tireSection = isTireGridSection(
+              section.title,
+              itemsWithHints,
+            );
+            const airSection =
+              !tireSection && isAirCornerSection(section.title, itemsWithHints);
+            const hydCornerSection = isHydraulicCornerSection(
+              section.title,
+              itemsWithHints,
+            );
 
-            const useGrid = batterySection || airSection || tireSection || hydCornerSection;
+            const useGrid =
+              batterySection || airSection || tireSection || hydCornerSection;
 
             const collapsed = collapsedSections[sectionIndex] ?? false;
 
@@ -1401,7 +1506,9 @@ export default function GenericInspectionScreen(
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "fail")}
+                        onClick={() =>
+                          applyStatusToSection(sectionIndex, "fail")
+                        }
                       >
                         All Fail
                       </button>
@@ -1417,7 +1524,9 @@ export default function GenericInspectionScreen(
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
+                        onClick={() =>
+                          applyStatusToSection(sectionIndex, "recommend")
+                        }
                       >
                         All REC
                       </button>
@@ -1444,13 +1553,16 @@ export default function GenericInspectionScreen(
 
                 {collapsed ? (
                   <p className="mt-2 text-center text-[11px] text-neutral-400">
-                    Section collapsed. Tap <span className="font-semibold">Expand</span> to reopen.
+                    Section collapsed. Tap{" "}
+                    <span className="font-semibold">Expand</span> to reopen.
                   </p>
                 ) : (
                   <>
                     {useGrid && (
                       <span className={hint}>
-                        {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
+                        {unit === "metric"
+                          ? "Enter mm / kPa / N·m"
+                          : "Enter in / psi / ft·lb"}
                       </span>
                     )}
 
@@ -1460,14 +1572,20 @@ export default function GenericInspectionScreen(
                           <BatteryGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            unitHint={(label: string) =>
+                              unitHintGeneric(label, unit)
+                            }
                           />
                         ) : airSection ? (
                           <AirCornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) => unitHintGeneric(label, unit)}
-                            onAddAxle={(axleLabel: string) => handleAddAxleForSection(sectionIndex, axleLabel)}
+                            unitHint={(label: string) =>
+                              unitHintGeneric(label, unit)
+                            }
+                            onAddAxle={(axleLabel: string) =>
+                              handleAddAxleForSection(sectionIndex, axleLabel)
+                            }
                             onSpecHint={(metricLabel: string) =>
                               _props.onSpecHint?.({
                                 source: "air_corner",
@@ -1481,14 +1599,17 @@ export default function GenericInspectionScreen(
                             <TireGridHydraulic
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
-                              unitHint={(label: string) => unitHintGeneric(label, unit)}
+                              unitHint={(label: string) =>
+                                unitHintGeneric(label, unit)
+                              }
                               requireNoteForAI
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitAIForItem(secIdx, itemIdx);
                               }}
-                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                                isSubmittingAI(secIdx, itemIdx)
-                              }
+                              isSubmittingAI={(
+                                secIdx: number,
+                                itemIdx: number,
+                              ) => isSubmittingAI(secIdx, itemIdx)}
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts });
@@ -1502,9 +1623,14 @@ export default function GenericInspectionScreen(
                             <TireGrid
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
-                              unitHint={(label: string) => unitHintGeneric(label, unit)}
+                              unitHint={(label: string) =>
+                                unitHintGeneric(label, unit)
+                              }
                               onAddAxle={(axleLabel: string) =>
-                                handleAddTireAxleForSection(sectionIndex, axleLabel)
+                                handleAddTireAxleForSection(
+                                  sectionIndex,
+                                  axleLabel,
+                                )
                               }
                               onSpecHint={(metricLabel: string) =>
                                 _props.onSpecHint?.({
@@ -1517,9 +1643,10 @@ export default function GenericInspectionScreen(
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitAIForItem(secIdx, itemIdx);
                               }}
-                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                                isSubmittingAI(secIdx, itemIdx)
-                              }
+                              isSubmittingAI={(
+                                secIdx: number,
+                                itemIdx: number,
+                              ) => isSubmittingAI(secIdx, itemIdx)}
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts });
@@ -1534,7 +1661,9 @@ export default function GenericInspectionScreen(
                           <CornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            unitHint={(label: string) =>
+                              unitHintGeneric(label, unit)
+                            }
                             onSpecHint={(label: string) =>
                               _props.onSpecHint?.({
                                 source: "corner",
@@ -1558,7 +1687,9 @@ export default function GenericInspectionScreen(
                               statusValue: InspectionItemStatus,
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { status: statusValue });
+                              updateItem(secIdx, itemIdx, {
+                                status: statusValue,
+                              });
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
                             onUpdateNote={(
@@ -1569,11 +1700,18 @@ export default function GenericInspectionScreen(
                               if (guardLocked()) return;
                               updateItem(secIdx, itemIdx, { notes: noteText });
                             }}
-                            onUpload={(photoUrl: string, secIdx: number, itemIdx: number) => {
+                            onUpload={(
+                              photoUrl: string,
+                              secIdx: number,
+                              itemIdx: number,
+                            ) => {
                               if (guardLocked()) return;
                               const prev =
-                                session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                              updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
+                                session.sections[secIdx].items[itemIdx]
+                                  .photoUrls ?? [];
+                              updateItem(secIdx, itemIdx, {
+                                photoUrls: [...prev, photoUrl],
+                              });
                             }}
                             onUpdateParts={(
                               secIdx: number,
@@ -1589,7 +1727,9 @@ export default function GenericInspectionScreen(
                               hours: number | null,
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { laborHours: hours });
+                              updateItem(secIdx, itemIdx, {
+                                laborHours: hours,
+                              });
                             }}
                             requireNoteForAI
                             onSubmitAI={(secIdx: number, itemIdx: number) => {
@@ -1637,7 +1777,9 @@ export default function GenericInspectionScreen(
                                 <Button
                                   type="button"
                                   className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                                  onClick={() => handleAddCustomItem(sectionIndex)}
+                                  onClick={() =>
+                                    handleAddCustomItem(sectionIndex)
+                                  }
                                   disabled={isLocked}
                                 >
                                   + Add Item
@@ -1659,7 +1801,11 @@ export default function GenericInspectionScreen(
           <InspectionSignaturePanel
             inspectionId={inspectionId}
             role="customer"
-            defaultName={[customer.first_name, customer.last_name].filter(Boolean).join(" ") || undefined}
+            defaultName={
+              [customer.first_name, customer.last_name]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
             onSigned={handleSigned}
           />
         </div>
@@ -1667,7 +1813,8 @@ export default function GenericInspectionScreen(
         {!isEmbed && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
             <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+              <span className="font-semibold text-neutral-200">Legend:</span> P
+              = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}
@@ -1676,7 +1823,9 @@ export default function GenericInspectionScreen(
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 py-2 backdrop-blur">
         <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">{actions}</div>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Draft auto-saves locally</div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+            Draft auto-saves locally
+          </div>
         </div>
       </div>
 
@@ -1696,7 +1845,7 @@ export default function GenericInspectionScreen(
 
   return (
     <PageShell
-      title={session?.templateName || session?.templateitem || templateName || "Inspection"}
+      title={session?.templateitem || templateName || "Inspection"}
       description="Run guided inspections, capture notes, and push items into work orders."
     >
       {body}
