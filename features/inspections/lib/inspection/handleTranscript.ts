@@ -1,3 +1,5 @@
+// features/inspections/lib/inspection/handleTranscript.ts
+
 import {
   ParsedCommand,
   ParsedCommandNameBased,
@@ -7,14 +9,11 @@ import {
 } from "@inspections/lib/inspection/types";
 
 type UpdateInspectionFn = (updates: Partial<InspectionSession>) => void;
+
 type UpdateItemFn = (
   sectionIndex: number,
   itemIndex: number,
   updates: Partial<InspectionSession["sections"][number]["items"][number]>,
-) => void;
-type UpdateSectionFn = (
-  sectionIndex: number,
-  updates: Partial<InspectionSession["sections"][number]>,
 ) => void;
 
 interface HandleTranscriptArgs {
@@ -22,7 +21,6 @@ interface HandleTranscriptArgs {
   session: InspectionSession;
   updateInspection: UpdateInspectionFn;
   updateItem: UpdateItemFn;
-  updateSection: UpdateSectionFn;
   finishSession: () => void;
 }
 
@@ -49,35 +47,14 @@ function normalizeStatus(
 function hasIndices(
   cmd: ParsedCommandIndexed,
 ): cmd is ParsedCommandIndexed & { sectionIndex: number; itemIndex: number } {
-  return (
-    typeof cmd.sectionIndex === "number" && typeof cmd.itemIndex === "number"
-  );
+  return typeof cmd.sectionIndex === "number" && typeof cmd.itemIndex === "number";
 }
 
-function findByName(
-  session: InspectionSession,
-  section?: string,
-  item?: string,
-): { secIdx: number; itemIdx: number } | null {
-  if (!section || !item) return null;
-
-  const secLower = section.toLowerCase();
-  const itemLower = item.toLowerCase();
-
-  const secIdx = session.sections.findIndex((sec) =>
-    String(sec.title ?? "").toLowerCase().includes(secLower),
-  );
-  if (secIdx < 0) return null;
-
-  const items = session.sections[secIdx]?.items ?? [];
-  const itemIdx = items.findIndex((it) => {
-    const label = String(it.name ?? it.item ?? "").toLowerCase();
-    return label.includes(itemLower);
-  });
-
-  if (itemIdx < 0) return null;
-
-  return { secIdx, itemIdx };
+function norm(s: unknown): string {
+  return String(s ?? "").trim();
+}
+function normLower(s: unknown): string {
+  return norm(s).toLowerCase();
 }
 
 function currentFocus(
@@ -88,6 +65,96 @@ function currentFocus(
   if (itemsLen <= 0) return null;
   const itemIdx = clampIndex(session.currentItemIndex, itemsLen);
   return { secIdx, itemIdx };
+}
+
+/**
+ * Name-based resolution:
+ * - If BOTH section+item: search within matching section
+ * - If item only: search across all sections
+ * Preference order:
+ *   1) exact case-insensitive match
+ *   2) contains match
+ * Tie-break:
+ *   - prefer matches in current focused section
+ */
+function findByName(
+  session: InspectionSession,
+  section?: string,
+  item?: string,
+): { secIdx: number; itemIdx: number } | null {
+  const itemRaw = norm(item);
+  const sectionRaw = norm(section);
+
+  if (!itemRaw && !sectionRaw) return null;
+
+  const itemLower = normLower(itemRaw);
+  const sectionLower = normLower(sectionRaw);
+
+  const focus = currentFocus(session);
+  const focusSec = focus?.secIdx ?? -1;
+
+  const scoreLabel = (label: string): number => {
+    const l = label.toLowerCase();
+    if (!itemLower) return 0;
+    if (l === itemLower) return 100; // exact
+    if (l.includes(itemLower)) return 60; // contains
+    return 0;
+  };
+
+  // If section provided, narrow to a matching section title
+  if (sectionLower && itemLower) {
+    const secIdx = session.sections.findIndex((sec) =>
+      normLower(sec.title).includes(sectionLower),
+    );
+    if (secIdx < 0) return null;
+
+    const items = session.sections[secIdx]?.items ?? [];
+    let bestIdx = -1;
+    let bestScore = 0;
+
+    items.forEach((it, idx) => {
+      const label = norm((it as { name?: unknown; item?: unknown }).name ?? (it as { item?: unknown }).item ?? "");
+      const s = scoreLabel(label);
+      if (s > bestScore) {
+        bestScore = s;
+        bestIdx = idx;
+      }
+    });
+
+    if (bestIdx >= 0) return { secIdx, itemIdx: bestIdx };
+    return null;
+  }
+
+  // Item-only: search across all sections
+  if (itemLower) {
+    type BestMatch = { secIdx: number; itemIdx: number; score: number; tie: number };
+    let best: BestMatch | null = null;
+
+    session.sections.forEach((sec, secIdx) => {
+      const items = sec.items ?? [];
+      items.forEach((it, itemIdx) => {
+        const label = norm((it as { name?: unknown; item?: unknown }).name ?? (it as { item?: unknown }).item ?? "");
+        const baseScore = scoreLabel(label);
+        if (baseScore <= 0) return;
+
+        const tie = secIdx === focusSec ? 10 : 0; // prefer current section
+        const score = baseScore + tie;
+
+        if (best === null || score > best.score) {
+          best = { secIdx, itemIdx, score, tie };
+        }
+      });
+    });
+
+    // ✅ Explicit narrowing avoids the TS "never" issue seen in your screenshot
+    if (best) {
+      const { secIdx, itemIdx } = best;
+      return { secIdx, itemIdx };
+    }
+    return null;
+  }
+
+  return null;
 }
 
 function resolveTarget(
@@ -103,7 +170,7 @@ function resolveTarget(
     return { secIdx, itemIdx };
   }
 
-  // 2) optional name targeting (if provided)
+  // 2) name targeting (section optional)
   const byName = findByName(session, cmd.section, cmd.item);
   if (byName) return byName;
 
@@ -118,7 +185,6 @@ export async function handleTranscriptFn({
   updateItem,
   finishSession,
 }: HandleTranscriptArgs): Promise<void> {
-  // Normalize to the "indexed-like" interpretation so we can handle both shapes consistently
   let mode: string;
 
   // Common fields
@@ -136,7 +202,6 @@ export async function handleTranscriptFn({
   let sectionName: string | undefined;
   let itemName: string | undefined;
 
-  // Build an Indexed command object view for targeting
   let indexedView: ParsedCommandIndexed | null = null;
 
   if ("command" in command) {
@@ -144,39 +209,39 @@ export async function handleTranscriptFn({
     mode = c.command;
 
     status = normalizeStatus(c.status);
-    noteText = (c.note ?? c.notes)?.trim() || undefined;
-    value = c.value;
-    unit = c.unit;
+    noteText = norm((c as { note?: unknown; notes?: unknown }).note ?? (c as { notes?: unknown }).notes) || undefined;
+    value = (c as { value?: unknown }).value as unknown as string | number | undefined;
+    unit = norm((c as { unit?: unknown }).unit) || undefined;
 
-    partName = c.partName?.trim() || undefined;
+    partName = norm((c as { partName?: unknown }).partName) || undefined;
     quantity =
-      typeof c.quantity === "number" && Number.isFinite(c.quantity)
-        ? c.quantity
+      typeof (c as { quantity?: unknown }).quantity === "number" && Number.isFinite((c as { quantity: number }).quantity)
+        ? (c as { quantity: number }).quantity
         : undefined;
     hours =
-      typeof c.hours === "number" && Number.isFinite(c.hours) ? c.hours : undefined;
+      typeof (c as { hours?: unknown }).hours === "number" && Number.isFinite((c as { hours: number }).hours)
+        ? (c as { hours: number }).hours
+        : undefined;
 
-    sectionName = c.section?.trim() || undefined;
-    itemName = c.item?.trim() || undefined;
+    sectionName = norm((c as { section?: unknown }).section) || undefined;
+    itemName = norm((c as { item?: unknown }).item) || undefined;
 
     indexedView = c;
   } else {
     const c = command as ParsedCommandNameBased;
     mode = c.type;
 
-    // name-based always targets by name
-    sectionName = c.section;
-    itemName = c.item;
+    sectionName = norm((c as { section?: unknown }).section) || undefined;
+    itemName = norm((c as { item?: unknown }).item) || undefined;
 
-    if (c.type === "status") status = normalizeStatus(c.status);
-    if (c.type === "add") noteText = c.note?.trim() || undefined;
-    if (c.type === "recommend") noteText = c.note?.trim() || undefined;
+    if (c.type === "status") status = normalizeStatus((c as { status?: unknown }).status as string | undefined);
+    if (c.type === "add") noteText = norm((c as { note?: unknown }).note) || undefined;
+    if (c.type === "recommend") noteText = norm((c as { note?: unknown }).note) || undefined;
     if (c.type === "measurement") {
-      value = c.value;
-      unit = c.unit;
+      value = (c as { value?: unknown }).value as unknown as string | number | undefined;
+      unit = norm((c as { unit?: unknown }).unit) || undefined;
     }
 
-    // Convert to indexed-view for unified targeting resolution
     indexedView = {
       command:
         c.type === "status"
@@ -195,14 +260,13 @@ export async function handleTranscriptFn({
     };
   }
 
-  const m = String(mode).toLowerCase().trim();
+  const m = normLower(mode);
 
-  // Global commands (don’t need item target)
+  // Global commands
   if (m === "pause_inspection") {
     updateInspection({ isPaused: true, isListening: false, status: "paused" });
     return;
   }
-
   if (m === "finish_inspection") {
     finishSession();
     return;
@@ -215,14 +279,11 @@ export async function handleTranscriptFn({
     section: sectionName ?? indexedView.section,
     item: itemName ?? indexedView.item,
   });
-
   if (!target) return;
 
   const { secIdx, itemIdx } = target;
 
-  const itemUpdates: Partial<
-    InspectionSession["sections"][number]["items"][number]
-  > = {};
+  const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
 
   switch (m) {
     case "update_status":
@@ -230,17 +291,15 @@ export async function handleTranscriptFn({
       if (status) itemUpdates.status = status;
       if (noteText) itemUpdates.notes = noteText;
 
-      // ✅ Focus the item when it becomes FAIL/RECOMMEND (enables follow-up voice like “yes add parts/labor”)
+      // Focus on fail/recommend for follow-ups (parts/labor)
       if (status === "fail" || status === "recommend") {
         updateInspection({ currentSectionIndex: secIdx, currentItemIndex: itemIdx });
       }
-
       break;
     }
 
     case "update_value":
     case "measurement": {
-      // Allow 0 / empty string values; just require value !== undefined
       if (value !== undefined) itemUpdates.value = value;
       if (unit) itemUpdates.unit = unit;
       if (noteText) itemUpdates.notes = noteText;
@@ -255,29 +314,22 @@ export async function handleTranscriptFn({
     }
 
     case "recommend": {
-      // Keep your model: recommend is string[]
       if (noteText) itemUpdates.recommend = [noteText];
-
-      // ✅ Focus the item on recommend command too (same follow-up behavior)
       updateInspection({ currentSectionIndex: secIdx, currentItemIndex: itemIdx });
-
       break;
     }
 
     case "add_part": {
-      const pn = partName?.trim();
+      const pn = norm(partName);
       if (!pn) break;
 
       const existing = session.sections[secIdx]?.items?.[itemIdx]?.parts ?? [];
-      const qty =
-        typeof quantity === "number" && Number.isFinite(quantity) ? quantity : 1;
+      const qty = typeof quantity === "number" && Number.isFinite(quantity) ? quantity : 1;
 
-      const next = [
+      itemUpdates.parts = [
         ...existing,
         { description: pn, qty: Math.max(1, Math.floor(qty)) },
       ];
-
-      itemUpdates.parts = next;
       if (noteText) itemUpdates.notes = noteText;
       break;
     }
@@ -291,7 +343,6 @@ export async function handleTranscriptFn({
 
     case "complete_item":
     case "skip_item": {
-      // No-op here; your UI handles auto-advance / completion behavior
       return;
     }
 
