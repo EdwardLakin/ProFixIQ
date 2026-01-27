@@ -667,32 +667,58 @@ export default function GenericInspectionScreen(
     }
   };
 
-  function maybeHandleWakeWord(raw: string): string | null {
-    const cleaned = raw.trim();
-    const lower = cleaned.toLowerCase();
+    function maybeHandleWakeWord(raw: string): string | null {
+  // Normalize: lowercase, remove punctuation, collapse spaces
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")  // removes commas/periods/etc
+    .replace(/\s+/g, " ")
+    .trim();
 
-    const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
+  // allow optional "hey"
+  const withoutHey = normalized.startsWith("hey ")
+    ? normalized.slice(4).trim()
+    : normalized;
 
-    const matchPrefix = (): { prefix: string; remainder: string } | null => {
-      for (const prefix of WAKE_PREFIXES) {
-        if (lower.startsWith(prefix + " ")) {
-          return {
-            prefix,
-            remainder: cleaned.slice(prefix.length).trimStart(),
-          };
-        }
-        if (lower === prefix) {
-          return { prefix, remainder: "" };
-        }
+  const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
+
+  const matchPrefix = (): { prefix: string; remainder: string } | null => {
+    for (const prefix of WAKE_PREFIXES) {
+      if (withoutHey === prefix) return { prefix, remainder: "" };
+      if (withoutHey.startsWith(prefix + " ")) {
+        return { prefix, remainder: withoutHey.slice(prefix.length).trimStart() };
       }
-      return null;
-    };
+    }
+    return null;
+  };
+
+  // ...keep the rest of your function the same, BUT:
+  // use `withoutHey` instead of `lower/cleaned` when deciding what to return.
 
     if (!wakeActive) {
       const match = matchPrefix();
       if (!match) return null;
 
       setWakeActive(true);
+
+      toast.success("READY", { duration: 1200 });
+
+try {
+  const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+  const ctx = new AudioCtx();
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = "sine";
+  o.frequency.value = 880;     // beep pitch
+  g.gain.value = 0.05;         // volume
+  o.connect(g);
+  g.connect(ctx.destination);
+  o.start();
+  setTimeout(() => {
+    o.stop();
+    ctx.close();
+  }, 120);
+} catch {}
 
       if (wakeTimeoutRef.current) {
         window.clearTimeout(wakeTimeoutRef.current);
@@ -711,15 +737,16 @@ export default function GenericInspectionScreen(
       setWakeActive(false);
     }, 8000);
 
-    return cleaned;
+    return withoutHey;
   }
 
-  const voice = useRealtimeVoice(
-    async (text: string) => {
-      await handleTranscript(text);
-    },
-    (raw: string) => maybeHandleWakeWord(raw),
-  );
+    const voice = useRealtimeVoice(
+  async (text: string) => {
+    toast(`heard: ${text}`, { duration: 1200 }); // TEMP debug
+    await handleTranscript(text);
+  },
+  (raw: string) => maybeHandleWakeWord(raw),
+);
 
   const startListening = async (): Promise<void> => {
     if (isListening) return;
