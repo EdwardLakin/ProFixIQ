@@ -1,5 +1,3 @@
-// features/inspections/lib/inspection/types.ts
-
 /** ---------- Item / Section ---------- */
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 export type BrakeType = "air" | "hydraulic";
@@ -57,24 +55,54 @@ export type ParsedCommandNameBased =
       unit?: string;
     };
 
-/** Newer, index-based command shape used by convertParsedCommands.ts */
+/**
+ * Newer, index-based command shape used by convertParsedCommands.ts
+ *
+ * ✅ Updated to support:
+ * - add_part (parts on the inspection item)
+ * - add_labor (laborHours on the inspection item)
+ * - optional section/item strings (so AI can target by name if it has them)
+ */
 export type ParsedCommandIndexed = {
   command:
     | "update_status"
     | "update_value"
     | "add_note"
     | "recommend"
+    | "add_part"
+    | "add_labor"
     | "complete_item"
     | "skip_item"
     | "pause_inspection"
     | "finish_inspection";
+
+  /** Preferred targeting */
   sectionIndex?: number;
   itemIndex?: number;
+
+  /** Optional name-based targeting (fallback) */
+  section?: string;
+  item?: string;
+
+  /** Common payload fields */
   status?: InspectionItemStatus;
   value?: string | number;
   unit?: string;
+
+  /** Notes (some code uses notes, some uses note — support both) */
   notes?: string;
+  note?: string;
+
+  /** Recommend payload (some code uses recommend, some uses note/notes) */
   recommend?: string;
+
+  /** Parts payload */
+  partName?: string;
+  quantity?: number;
+
+  /** Labor payload */
+  hours?: number;
+  label?: string;
 };
 
 /** Unified ParsedCommand covering both shapes */

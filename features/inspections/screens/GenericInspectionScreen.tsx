@@ -41,6 +41,8 @@ import InspectionSignaturePanel from "@inspections/components/inspection/Inspect
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 
+import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
+
 /* -------------------------- helpers -------------------------- */
 
 type GenericInspectionScreenProps = {
@@ -166,9 +168,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
       const existing = Array.isArray(bucket.items) ? bucket.items : [];
 
       const seen = new Set<string>(
-        existing.map((x) =>
-          String((x as { item?: unknown }).item ?? "").toLowerCase(),
-        ),
+        existing.map((x) => String((x as { item?: unknown }).item ?? "").toLowerCase()),
       );
 
       const merged: Array<InspectionSection["items"][number]> = [...existing];
@@ -183,9 +183,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
       bucket.items = merged;
     }
 
-    return Array.from(byTitle.values()).filter(
-      (s) => (s.items?.length ?? 0) > 0,
-    );
+    return Array.from(byTitle.values()).filter((s) => (s.items?.length ?? 0) > 0);
   } catch {
     return [];
   }
@@ -195,8 +193,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
 
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
-const HYD_FULL_RE =
-  /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
 const BATTERY_SIGNAL_RE =
   /(battery|voltage|v\b|cca|cranking|load\s*test|alternator|charging|charge\s*rate|state\s*of\s*charge|soc)/i;
@@ -220,53 +217,37 @@ function isBatterySection(
   return false;
 }
 
-function isAirCornerSection(
-  title: string | undefined,
-  items: { item?: string | null }[] = [],
-): boolean {
+function isAirCornerSection(title: string | undefined, items: { item?: string | null }[] = []): boolean {
   const t = (title || "").toLowerCase();
   if (t.includes("air corner") || t.includes("air corner grid")) return true;
   if (t.includes("tires & brakes — air")) return true;
   return items.some((it) => AIR_RE.test(it.item ?? ""));
 }
 
-function isTireGridSection(
-  title: string | undefined,
-  items: { item?: string | null }[] = [],
-): boolean {
+function isTireGridSection(title: string | undefined, items: { item?: string | null }[] = []): boolean {
   const t = (title || "").toLowerCase();
   if (t.includes("tire grid") || t.includes("tires grid")) return true;
   if (t.includes("tires") && t.includes("corner")) return true;
 
   const tireSignals = items.filter((it) => {
     const l = (it.item ?? "").toLowerCase();
-    return (
-      l.includes("tire pressure") ||
-      l.includes("tire tread") ||
-      l.includes("tread depth")
-    );
+    return l.includes("tire pressure") || l.includes("tire tread") || l.includes("tread depth");
   });
 
   if (tireSignals.length >= 2) {
-    return tireSignals.some(
-      (it) => AIR_RE.test(it.item ?? "") || HYD_ABBR_RE.test(it.item ?? ""),
-    );
+    return tireSignals.some((it) => AIR_RE.test(it.item ?? "") || HYD_ABBR_RE.test(it.item ?? ""));
   }
 
   return false;
 }
 
-function isHydraulicCornerSection(
-  title: string | undefined,
-  items: { item?: string | null }[] = [],
-): boolean {
+function isHydraulicCornerSection(title: string | undefined, items: { item?: string | null }[] = []): boolean {
   const t = (title || "").toLowerCase();
 
   // IMPORTANT: if this is a Tire Grid section, it is NOT the hydraulic corner grid
   if (isTireGridSection(title, items)) return false;
 
-  if (t.includes("corner grid") || t.includes("tires & brakes — truck"))
-    return true;
+  if (t.includes("corner grid") || t.includes("tires & brakes — truck")) return true;
   if (t.includes("axle grid")) return true;
 
   if (!items || items.length < 4) return false;
@@ -288,20 +269,14 @@ function inspectionDraftKey(args: {
   templateName?: string | null;
 }) {
   const t = (args.templateName || "Inspection").toLowerCase().trim();
-  if (args.workOrderLineId)
-    return `inspection-draft:line:${args.workOrderLineId}`;
+  if (args.workOrderLineId) return `inspection-draft:line:${args.workOrderLineId}`;
   if (args.workOrderId) return `inspection-draft:wo:${args.workOrderId}:${t}`;
   return `inspection-draft:template:${t}:${args.inspectionId}`;
 }
 
-function buildCauseCorrectionFromSession(s: unknown): {
-  cause: string;
-  correction: string;
-} {
+function buildCauseCorrectionFromSession(s: unknown): { cause: string; correction: string } {
   const sess = s as { sections?: unknown };
-  const sections: unknown[] = Array.isArray(sess?.sections)
-    ? (sess.sections as unknown[])
-    : [];
+  const sections: unknown[] = Array.isArray(sess?.sections) ? (sess.sections as unknown[]) : [];
 
   const failed: string[] = [];
   const rec: string[] = [];
@@ -309,18 +284,14 @@ function buildCauseCorrectionFromSession(s: unknown): {
   for (const secRaw of sections) {
     const sec = secRaw as { title?: unknown; items?: unknown };
     const title = String(sec?.title ?? "").trim();
-    const items: unknown[] = Array.isArray(sec?.items)
-      ? (sec.items as unknown[])
-      : [];
+    const items: unknown[] = Array.isArray(sec?.items) ? (sec.items as unknown[]) : [];
 
     for (const itRaw of items) {
       const it = itRaw as Record<string, unknown>;
       const st = String(it?.status ?? "").toLowerCase();
       if (st !== "fail" && st !== "recommend") continue;
 
-      const label = String(
-        it?.item ?? it?.name ?? it?.description ?? "Item",
-      ).trim();
+      const label = String(it?.item ?? it?.name ?? it?.description ?? "Item").trim();
       const note = String(it?.notes ?? "").trim();
       const chunk = note ? `${label} — ${note}` : label;
       const line = title ? `${title}: ${chunk}` : chunk;
@@ -333,8 +304,7 @@ function buildCauseCorrectionFromSession(s: unknown): {
   if (failed.length === 0 && rec.length === 0) {
     return {
       cause: "Inspection completed.",
-      correction:
-        "Inspection completed. No failed or recommended items were recorded.",
+      correction: "Inspection completed. No failed or recommended items were recorded.",
     };
   }
 
@@ -352,9 +322,7 @@ function buildCauseCorrectionFromSession(s: unknown): {
 /* Component                                                            */
 /* -------------------------------------------------------------------- */
 
-export default function GenericInspectionScreen(
-  _props: GenericInspectionScreenProps,
-): JSX.Element {
+export default function GenericInspectionScreen(_props: GenericInspectionScreenProps): JSX.Element {
   const routeSp = useSearchParams();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -364,13 +332,13 @@ export default function GenericInspectionScreen(
     if (staged && Object.keys(staged).length > 0) {
       const merged = new URLSearchParams();
 
-// URL first
-routeSp.forEach((value, key) => merged.set(key, value));
+      // URL first
+      routeSp.forEach((value, key) => merged.set(key, value));
 
-// staged second (wins)
-Object.entries(staged).forEach(([key, value]) => {
-  if (value != null) merged.set(key, String(value));
-});
+      // staged second (wins)
+      Object.entries(staged).forEach(([key, value]) => {
+        if (value != null) merged.set(key, String(value));
+      });
 
       return merged;
     }
@@ -381,10 +349,7 @@ Object.entries(staged).forEach(([key, value]) => {
   const gridParam = (sp.get("grid") || "").toLowerCase(); // used for tire-grid selection (hyd vs air)
 
   const isEmbed = useMemo(
-    () =>
-      ["1", "true", "yes"].includes(
-        (sp.get("embed") || sp.get("compact") || "").toLowerCase(),
-      ),
+    () => ["1", "true", "yes"].includes((sp.get("embed") || sp.get("compact") || "").toLowerCase()),
     [sp],
   );
 
@@ -394,9 +359,7 @@ Object.entries(staged).forEach(([key, value]) => {
   const showMissingLineWarning = isEmbed && !workOrderLineId;
 
   const templateName =
-    (typeof window !== "undefined"
-      ? sessionStorage.getItem("inspection:title")
-      : null) ||
+    (typeof window !== "undefined" ? sessionStorage.getItem("inspection:title") : null) ||
     sp.get("template") ||
     "Inspection";
 
@@ -425,14 +388,10 @@ Object.entries(staged).forEach(([key, value]) => {
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length)
-      return normalizeSections(staged);
+    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
 
     try {
-      const legacy =
-        typeof window !== "undefined"
-          ? sessionStorage.getItem("customInspection:sections")
-          : null;
+      const legacy = typeof window !== "undefined" ? sessionStorage.getItem("customInspection:sections") : null;
       if (legacy) {
         const parsed = JSON.parse(legacy) as InspectionSection[];
         return normalizeSections(parsed);
@@ -442,10 +401,7 @@ Object.entries(staged).forEach(([key, value]) => {
     return [
       {
         title: "General",
-        items: [
-          { item: "Visual walkaround" },
-          { item: "Record warning lights" },
-        ],
+        items: [{ item: "Visual walkaround" }, { item: "Record warning lights" }],
       },
     ];
   }, []);
@@ -499,21 +455,13 @@ Object.entries(staged).forEach(([key, value]) => {
   const [isPaused, setIsPaused] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
-  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>(
-    {},
-  );
+  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>({});
   const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
 
-  const [collapsedSections, setCollapsedSections] = useState<
-    Record<number, boolean>
-  >({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
 
   const [wakeActive, setWakeActive] = useState(false);
   const wakeTimeoutRef = useRef<number | null>(null);
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const mediaRef = useRef<MediaStream | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
@@ -643,11 +591,7 @@ Object.entries(staged).forEach(([key, value]) => {
     };
 
     window.addEventListener("inspection:completed", handler as EventListener);
-    return () =>
-      window.removeEventListener(
-        "inspection:completed",
-        handler as EventListener,
-      );
+    return () => window.removeEventListener("inspection:completed", handler as EventListener);
   }, [session, draftKey, lockKey]);
 
   const handleTranscript = async (text: string): Promise<void> => {
@@ -715,82 +659,15 @@ Object.entries(staged).forEach(([key, value]) => {
     return cleaned;
   }
 
+  const voice = useRealtimeVoice(handleTranscript, maybeHandleWakeWord);
+
   const startListening = async (): Promise<void> => {
     if (isListening) return;
     if (guardLocked()) return;
 
     try {
-      const res = await fetch("/api/openai/realtime-token");
-      const { apiKey } = (await res.json()) as { apiKey: string };
-      if (!apiKey) throw new Error("Missing OpenAI key");
-
-      const ws = new WebSocket(
-        "wss://api.openai.com/v1/realtime?intent=transcription",
-      );
-      wsRef.current = ws;
-
-      ws.onopen = async () => {
-        ws.send(
-          JSON.stringify({
-            type: "authorization",
-            authorization: `Bearer ${apiKey}`,
-          }),
-        );
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        mediaRef.current = stream;
-
-        const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
-        mediaRecorderRef.current = mr;
-
-        mr.ondataavailable = (evt) => {
-          if (evt.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-            ws.send(evt.data);
-          }
-        };
-
-        mr.start(250);
-        setIsListening(true);
-      };
-
-      ws.onmessage = async (evt) => {
-        if (typeof evt.data !== "string") return;
-        try {
-          const msg = JSON.parse(evt.data) as Record<string, unknown>;
-          const text = String(
-            (msg.text as string) ||
-              (msg.transcript as string) ||
-              (msg.output as string) ||
-              (msg.content as string) ||
-              "",
-          );
-          if (!text) return;
-
-          const maybeText = maybeHandleWakeWord(text);
-          if (!maybeText) return;
-
-          const lower2 = maybeText.toLowerCase();
-          if (lower2 === "stop listening" || lower2 === "go to sleep") {
-            setWakeActive(false);
-            return;
-          }
-
-          await handleTranscript(maybeText);
-        } catch {}
-      };
-
-      ws.onerror = (err) => {
-        // eslint-disable-next-line no-console
-        console.error("realtime ws error", err);
-        toast.error("Voice connection error");
-        stopListening();
-      };
-
-      ws.onclose = () => {
-        stopListening();
-      };
+      await voice.start();
+      setIsListening(true);
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
       console.error(e);
@@ -801,18 +678,15 @@ Object.entries(staged).forEach(([key, value]) => {
   };
 
   const stopListening = (): void => {
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
-
-    mediaRef.current?.getTracks().forEach((t) => t.stop());
-    mediaRef.current = null;
-
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.close();
+    try {
+      voice.stop();
+    } catch {
+      // ignore
     }
-    wsRef.current = null;
+
     setIsListening(false);
     setWakeActive(false);
+
     if (wakeTimeoutRef.current) {
       window.clearTimeout(wakeTimeoutRef.current);
       wakeTimeoutRef.current = null;
@@ -827,13 +701,9 @@ Object.entries(staged).forEach(([key, value]) => {
   }, []);
 
   const inFlightRef = useRef<Set<string>>(new Set());
-  const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
-    inFlightRef.current.has(`${secIdx}:${itemIdx}`);
+  const isSubmittingAI = (secIdx: number, itemIdx: number): boolean => inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (
-    secIdx: number,
-    itemIdx: number,
-  ): Promise<void> => {
+  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
     if (!session) return;
 
     if (isLocked) {
@@ -863,14 +733,9 @@ Object.entries(staged).forEach(([key, value]) => {
       name?: string | null;
     };
 
-    const manualParts: { description: string; qty: number }[] = Array.isArray(
-      itExt.parts,
-    )
-      ? itExt.parts
-      : [];
+    const manualParts: { description: string; qty: number }[] = Array.isArray(itExt.parts) ? itExt.parts : [];
 
-    const manualLaborHours =
-      typeof itExt.laborHours === "number" ? itExt.laborHours : null;
+    const manualLaborHours = typeof itExt.laborHours === "number" ? itExt.laborHours : null;
 
     inFlightRef.current.add(key);
 
@@ -892,14 +757,8 @@ Object.entries(staged).forEach(([key, value]) => {
         laborRate: 0,
         editable: true,
         source: "inspection",
-        value: (it as unknown as { value?: unknown }).value as
-          | string
-          | number
-          | null
-          | undefined,
-        photoUrls: (it as unknown as { photoUrls?: unknown }).photoUrls as
-          | string[]
-          | undefined,
+        value: (it as unknown as { value?: unknown }).value as string | number | null | undefined,
+        photoUrls: (it as unknown as { photoUrls?: unknown }).photoUrls as string[] | undefined,
         aiState: "loading",
       };
       addQuoteLine(placeholder);
@@ -921,26 +780,17 @@ Object.entries(staged).forEach(([key, value]) => {
       }
 
       const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
-        ...((suggestion.parts ?? []) as Array<{
-          name: string;
-          qty: number;
-          cost?: number;
-        }>),
+        ...((suggestion.parts ?? []) as Array<{ name: string; qty: number; cost?: number }>),
         ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
       ];
 
       const laborTime =
-        manualLaborHours != null && !Number.isNaN(manualLaborHours)
-          ? manualLaborHours
-          : (suggestion.laborHours ?? 0.5);
+        manualLaborHours != null && !Number.isNaN(manualLaborHours) ? manualLaborHours : (suggestion.laborHours ?? 0.5);
 
       const laborRate = suggestion.laborRate ?? 0;
 
       const partsTotal =
-        mergedParts.reduce(
-          (sum, p) => sum + (typeof p.cost === "number" ? p.cost : 0),
-          0,
-        ) ?? 0;
+        mergedParts.reduce((sum, p) => sum + (typeof p.cost === "number" ? p.cost : 0), 0) ?? 0;
 
       const price = Math.max(0, partsTotal + laborRate * laborTime);
 
@@ -974,8 +824,7 @@ Object.entries(staged).forEach(([key, value]) => {
         });
 
         const createdId = (created as unknown as { id?: unknown })?.id;
-        createdJobId =
-          (createdId ? String(createdId) : null) || workOrderLineId || null;
+        createdJobId = (createdId ? String(createdId) : null) || workOrderLineId || null;
 
         const cleanParts = manualParts
           .map((p) => ({
@@ -1001,34 +850,21 @@ Object.entries(staged).forEach(([key, value]) => {
               const body = (await res.json().catch(() => null)) as unknown;
               // eslint-disable-next-line no-console
               console.error("Parts request error", body);
-              toast.error("Line added, but parts request failed", {
-                id: toastId,
-              });
+              toast.error("Line added, but parts request failed", { id: toastId });
               return;
             }
 
-            toast.success("Line + parts request created from inspection", {
-              id: toastId,
-            });
+            toast.success("Line + parts request created from inspection", { id: toastId });
           } catch (err: unknown) {
             // eslint-disable-next-line no-console
             console.error("Parts request failed", err);
-            toast.error(
-              "Line added, but couldn't reach parts request service",
-              {
-                id: toastId,
-              },
-            );
+            toast.error("Line added, but couldn't reach parts request service", { id: toastId });
           }
         } else {
-          toast.success("Added to work order (no parts requested)", {
-            id: toastId,
-          });
+          toast.success("Added to work order (no parts requested)", { id: toastId });
         }
       } else {
-        toast.error("Missing work order id — saved locally only", {
-          id: toastId,
-        });
+        toast.error("Missing work order id — saved locally only", { id: toastId });
       }
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
@@ -1045,17 +881,7 @@ Object.entries(staged).forEach(([key, value]) => {
     const root = rootRef.current;
     if (!root) return;
 
-    const BAD = [
-      "h-screen",
-      "min-h-screen",
-      "max-h-screen",
-      "overflow-hidden",
-      "fixed",
-      "inset-0",
-      "w-screen",
-      "overscroll-contain",
-      "touch-pan-y",
-    ];
+    const BAD = ["h-screen", "min-h-screen", "max-h-screen", "overflow-hidden", "fixed", "inset-0", "w-screen", "overscroll-contain", "touch-pan-y"];
 
     const scrub = (el: HTMLElement) => {
       if (!el.className) return;
@@ -1103,16 +929,10 @@ Object.entries(staged).forEach(([key, value]) => {
   }, [isEmbed]);
 
   const currentSectionIndex =
-    typeof session?.currentSectionIndex === "number"
-      ? session.currentSectionIndex
-      : 0;
+    typeof session?.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
 
   const safeSectionIndex =
-    session &&
-    currentSectionIndex >= 0 &&
-    currentSectionIndex < session.sections.length
-      ? currentSectionIndex
-      : 0;
+    session && currentSectionIndex >= 0 && currentSectionIndex < session.sections.length ? currentSectionIndex : 0;
 
   function autoAdvanceFrom(secIdx: number, itemIdx: number): void {
     if (!session) return;
@@ -1146,10 +966,7 @@ Object.entries(staged).forEach(([key, value]) => {
     });
   }
 
-  function applyStatusToSection(
-    sectionIndex: number,
-    status: InspectionItemStatus,
-  ): void {
+  function applyStatusToSection(sectionIndex: number, status: InspectionItemStatus): void {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1204,10 +1021,7 @@ Object.entries(staged).forEach(([key, value]) => {
   };
 
   /** Add axle rows to an AIR corner grid section */
-  const handleAddAxleForSection = (
-    sectionIndex: number,
-    axleLabel: string,
-  ): void => {
+  const handleAddAxleForSection = (sectionIndex: number, axleLabel: string): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1227,9 +1041,7 @@ Object.entries(staged).forEach(([key, value]) => {
 
     const sides: Array<"Left" | "Right"> = ["Left", "Right"];
 
-    const existingLabels = new Set(
-      existingItems.map((it) => String(it.item ?? "").toLowerCase()),
-    );
+    const existingLabels = new Set(existingItems.map((it) => String(it.item ?? "").toLowerCase()));
 
     const nextItems = [...existingItems];
 
@@ -1252,10 +1064,7 @@ Object.entries(staged).forEach(([key, value]) => {
   };
 
   /** Add axle rows to a TIRE grid section (tires only) */
-  const handleAddTireAxleForSection = (
-    sectionIndex: number,
-    axleLabel: string,
-  ): void => {
+  const handleAddTireAxleForSection = (sectionIndex: number, axleLabel: string): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1273,9 +1082,7 @@ Object.entries(staged).forEach(([key, value]) => {
 
     const sides: Array<"Left" | "Right"> = ["Left", "Right"];
 
-    const existingLabels = new Set(
-      existingItems.map((it) => String(it.item ?? "").toLowerCase()),
-    );
+    const existingLabels = new Set(existingItems.map((it) => String(it.item ?? "").toLowerCase()));
 
     const nextItems = [...existingItems];
 
@@ -1305,9 +1112,7 @@ Object.entries(staged).forEach(([key, value]) => {
     toast.success("Inspection snapshot locked by signature.");
   };
 
-  const shell = isEmbed
-    ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
-    : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
+  const shell = isEmbed ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36" : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
 
   const cardBase =
     "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
@@ -1324,25 +1129,15 @@ Object.entries(staged).forEach(([key, value]) => {
 
   // Bottom bar: ONLY Save progress + Finish inspection
   const actions = (
-  <>
-    <SaveInspectionButton
-      session={session}
-      workOrderLineId={workOrderLineId}
-    />
+    <>
+      <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
 
-    {workOrderLineId && (
-      <FinishInspectionButton
-        session={session}
-        workOrderLineId={workOrderLineId}
-      />
-    )}
-  </>
-);
+      {workOrderLineId && <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />}
+    </>
+  );
 
   if (!session || (session.sections?.length ?? 0) === 0) {
-    return (
-      <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
-    );
+    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
   const body = (
@@ -1381,11 +1176,7 @@ Object.entries(staged).forEach(([key, value]) => {
 
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {!isLocked && (
-            <StartListeningButton
-              isListening={isListening}
-              setIsListening={setIsListening}
-              onStart={startListening}
-            />
+            <StartListeningButton isListening={isListening} setIsListening={setIsListening} onStart={startListening} />
           )}
 
           {!isLocked && (
@@ -1415,12 +1206,9 @@ Object.entries(staged).forEach(([key, value]) => {
             type="button"
             variant="outline"
             className="w-full justify-center border-orange-500/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
-            onClick={(): void =>
-              setUnit(unit === "metric" ? "imperial" : "metric")
-            }
+            onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
           >
-            Unit:{" "}
-            {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+            Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
           </Button>
         </div>
 
@@ -1429,55 +1217,39 @@ Object.entries(staged).forEach(([key, value]) => {
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
-            totalItems={
-              session.sections[session.currentSectionIndex]?.items.length || 0
-            }
+            totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
           />
         </div>
 
         <InspectionFormCtx.Provider value={{ updateItem }}>
           {session.sections.map((section, sectionIndex) => {
             const itemsWithHints = (section.items ?? []).map((it) => {
-  const stRaw = String(it.status ?? "").toLowerCase();
-  const safeStatus: InspectionItemStatus =
-    stRaw === "ok" || stRaw === "fail" || stRaw === "na" || stRaw === "recommend"
-      ? (stRaw as InspectionItemStatus)
-      : "na";
+              const stRaw = String(it.status ?? "").toLowerCase();
+              const safeStatus: InspectionItemStatus =
+                stRaw === "ok" || stRaw === "fail" || stRaw === "na" || stRaw === "recommend"
+                  ? (stRaw as InspectionItemStatus)
+                  : "na";
 
-  const label = String(it.item ?? "");
-  const explicitUnit = it.unit ?? null;
+              const label = String(it.item ?? "");
+              const explicitUnit = it.unit ?? null;
 
-  const toggleControlled =
-    /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
+              const toggleControlled = /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
 
-  return {
-    ...it,                 // ✅ KEEP ORIGINAL SHAPE
-    value: it.value ?? "", // ✅ CRITICAL: preserve controlled input value
-    status: safeStatus,
-    notes: String(it.notes ?? it.note ?? ""),
-    unit: toggleControlled
-      ? unitHintGeneric(label, unit)
-      : explicitUnit || unitHintGeneric(label, unit),
-  };
-});
+              return {
+                ...it, // ✅ KEEP ORIGINAL SHAPE
+                value: it.value ?? "", // ✅ CRITICAL: preserve controlled input value
+                status: safeStatus,
+                notes: String(it.notes ?? it.note ?? ""),
+                unit: toggleControlled ? unitHintGeneric(label, unit) : explicitUnit || unitHintGeneric(label, unit),
+              };
+            });
 
-            const batterySection = isBatterySection(
-              section.title,
-              itemsWithHints,
-            );
-            const tireSection = isTireGridSection(
-              section.title,
-              itemsWithHints,
-            );
-            const airSection =
-              !tireSection && isAirCornerSection(section.title, itemsWithHints);
-            const hydCornerSection = isHydraulicCornerSection(
-              section.title,
-              itemsWithHints,
-            );
+            const batterySection = isBatterySection(section.title, itemsWithHints);
+            const tireSection = isTireGridSection(section.title, itemsWithHints);
+            const airSection = !tireSection && isAirCornerSection(section.title, itemsWithHints);
+            const hydCornerSection = isHydraulicCornerSection(section.title, itemsWithHints);
 
-            const useGrid =
-              batterySection || airSection || tireSection || hydCornerSection;
+            const useGrid = batterySection || airSection || tireSection || hydCornerSection;
 
             const collapsed = collapsedSections[sectionIndex] ?? false;
 
@@ -1507,9 +1279,7 @@ Object.entries(staged).forEach(([key, value]) => {
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() =>
-                          applyStatusToSection(sectionIndex, "fail")
-                        }
+                        onClick={() => applyStatusToSection(sectionIndex, "fail")}
                       >
                         All Fail
                       </button>
@@ -1525,9 +1295,7 @@ Object.entries(staged).forEach(([key, value]) => {
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() =>
-                          applyStatusToSection(sectionIndex, "recommend")
-                        }
+                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
                       >
                         All REC
                       </button>
@@ -1554,16 +1322,13 @@ Object.entries(staged).forEach(([key, value]) => {
 
                 {collapsed ? (
                   <p className="mt-2 text-center text-[11px] text-neutral-400">
-                    Section collapsed. Tap{" "}
-                    <span className="font-semibold">Expand</span> to reopen.
+                    Section collapsed. Tap <span className="font-semibold">Expand</span> to reopen.
                   </p>
                 ) : (
                   <>
                     {useGrid && (
                       <span className={hint}>
-                        {unit === "metric"
-                          ? "Enter mm / kPa / N·m"
-                          : "Enter in / psi / ft·lb"}
+                        {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
                       </span>
                     )}
 
@@ -1573,20 +1338,14 @@ Object.entries(staged).forEach(([key, value]) => {
                           <BatteryGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) =>
-                              unitHintGeneric(label, unit)
-                            }
+                            unitHint={(label: string) => unitHintGeneric(label, unit)}
                           />
                         ) : airSection ? (
                           <AirCornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) =>
-                              unitHintGeneric(label, unit)
-                            }
-                            onAddAxle={(axleLabel: string) =>
-                              handleAddAxleForSection(sectionIndex, axleLabel)
-                            }
+                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            onAddAxle={(axleLabel: string) => handleAddAxleForSection(sectionIndex, axleLabel)}
                             onSpecHint={(metricLabel: string) =>
                               _props.onSpecHint?.({
                                 source: "air_corner",
@@ -1600,17 +1359,12 @@ Object.entries(staged).forEach(([key, value]) => {
                             <TireGridHydraulic
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
-                              unitHint={(label: string) =>
-                                unitHintGeneric(label, unit)
-                              }
+                              unitHint={(label: string) => unitHintGeneric(label, unit)}
                               requireNoteForAI
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitAIForItem(secIdx, itemIdx);
                               }}
-                              isSubmittingAI={(
-                                secIdx: number,
-                                itemIdx: number,
-                              ) => isSubmittingAI(secIdx, itemIdx)}
+                              isSubmittingAI={(secIdx: number, itemIdx: number) => isSubmittingAI(secIdx, itemIdx)}
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts });
@@ -1624,14 +1378,9 @@ Object.entries(staged).forEach(([key, value]) => {
                             <TireGrid
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
-                              unitHint={(label: string) =>
-                                unitHintGeneric(label, unit)
-                              }
+                              unitHint={(label: string) => unitHintGeneric(label, unit)}
                               onAddAxle={(axleLabel: string) =>
-                                handleAddTireAxleForSection(
-                                  sectionIndex,
-                                  axleLabel,
-                                )
+                                handleAddTireAxleForSection(sectionIndex, axleLabel)
                               }
                               onSpecHint={(metricLabel: string) =>
                                 _props.onSpecHint?.({
@@ -1644,10 +1393,7 @@ Object.entries(staged).forEach(([key, value]) => {
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitAIForItem(secIdx, itemIdx);
                               }}
-                              isSubmittingAI={(
-                                secIdx: number,
-                                itemIdx: number,
-                              ) => isSubmittingAI(secIdx, itemIdx)}
+                              isSubmittingAI={(secIdx: number, itemIdx: number) => isSubmittingAI(secIdx, itemIdx)}
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts });
@@ -1662,9 +1408,7 @@ Object.entries(staged).forEach(([key, value]) => {
                           <CornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) =>
-                              unitHintGeneric(label, unit)
-                            }
+                            unitHint={(label: string) => unitHintGeneric(label, unit)}
                             onSpecHint={(label: string) =>
                               _props.onSpecHint?.({
                                 source: "corner",
@@ -1682,55 +1426,27 @@ Object.entries(staged).forEach(([key, value]) => {
                             sectionIndex={sectionIndex}
                             showNotes
                             showPhotos
-                            onUpdateStatus={(
-                              secIdx: number,
-                              itemIdx: number,
-                              statusValue: InspectionItemStatus,
-                            ) => {
+                            onUpdateStatus={(secIdx: number, itemIdx: number, statusValue: InspectionItemStatus) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, {
-                                status: statusValue,
-                              });
+                              updateItem(secIdx, itemIdx, { status: statusValue });
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
-                            onUpdateNote={(
-                              secIdx: number,
-                              itemIdx: number,
-                              noteText: string,
-                            ) => {
+                            onUpdateNote={(secIdx: number, itemIdx: number, noteText: string) => {
                               if (guardLocked()) return;
                               updateItem(secIdx, itemIdx, { notes: noteText });
                             }}
-                            onUpload={(
-                              photoUrl: string,
-                              secIdx: number,
-                              itemIdx: number,
-                            ) => {
+                            onUpload={(photoUrl: string, secIdx: number, itemIdx: number) => {
                               if (guardLocked()) return;
-                              const prev =
-                                session.sections[secIdx].items[itemIdx]
-                                  .photoUrls ?? [];
-                              updateItem(secIdx, itemIdx, {
-                                photoUrls: [...prev, photoUrl],
-                              });
+                              const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                              updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
                             }}
-                            onUpdateParts={(
-                              secIdx: number,
-                              itemIdx: number,
-                              parts: { description: string; qty: number }[],
-                            ) => {
+                            onUpdateParts={(secIdx: number, itemIdx: number, parts: { description: string; qty: number }[]) => {
                               if (guardLocked()) return;
                               updateItem(secIdx, itemIdx, { parts });
                             }}
-                            onUpdateLaborHours={(
-                              secIdx: number,
-                              itemIdx: number,
-                              hours: number | null,
-                            ) => {
+                            onUpdateLaborHours={(secIdx: number, itemIdx: number, hours: number | null) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, {
-                                laborHours: hours,
-                              });
+                              updateItem(secIdx, itemIdx, { laborHours: hours });
                             }}
                             requireNoteForAI
                             onSubmitAI={(secIdx: number, itemIdx: number) => {
@@ -1778,9 +1494,7 @@ Object.entries(staged).forEach(([key, value]) => {
                                 <Button
                                   type="button"
                                   className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                                  onClick={() =>
-                                    handleAddCustomItem(sectionIndex)
-                                  }
+                                  onClick={() => handleAddCustomItem(sectionIndex)}
                                   disabled={isLocked}
                                 >
                                   + Add Item
@@ -1802,11 +1516,7 @@ Object.entries(staged).forEach(([key, value]) => {
           <InspectionSignaturePanel
             inspectionId={inspectionId}
             role="customer"
-            defaultName={
-              [customer.first_name, customer.last_name]
-                .filter(Boolean)
-                .join(" ") || undefined
-            }
+            defaultName={[customer.first_name, customer.last_name].filter(Boolean).join(" ") || undefined}
             onSigned={handleSigned}
           />
         </div>
@@ -1814,8 +1524,7 @@ Object.entries(staged).forEach(([key, value]) => {
         {!isEmbed && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
             <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P
-              = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+              <span className="font-semibold text-neutral-200">Legend:</span> P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}
@@ -1824,9 +1533,7 @@ Object.entries(staged).forEach(([key, value]) => {
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 py-2 backdrop-blur">
         <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">{actions}</div>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-            Draft auto-saves locally
-          </div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Draft auto-saves locally</div>
         </div>
       </div>
 
