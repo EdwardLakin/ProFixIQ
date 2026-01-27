@@ -1451,7 +1451,7 @@ export default function GenericInspectionScreen(
 
   return {
     ...it,                 // ✅ KEEP ORIGINAL SHAPE
-    value: it.value ?? "", // ✅ CRITICAL: preserve controlled input value
+    value: it.value ?? null, // ✅ CRITICAL: preserve controlled input value
     status: safeStatus,
     notes: String(it.notes ?? it.note ?? ""),
     unit: toggleControlled
