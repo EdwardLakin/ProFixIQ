@@ -249,10 +249,13 @@ function isTireGridSection(
   });
 
   if (tireSignals.length >= 2) {
-    return tireSignals.some(
-      (it) => AIR_RE.test(it.item ?? "") || HYD_ABBR_RE.test(it.item ?? ""),
-    );
-  }
+  return tireSignals.some(
+    (it) =>
+      AIR_RE.test(it.item ?? "") ||
+      HYD_ABBR_RE.test(it.item ?? "") ||
+      HYD_FULL_RE.test(it.item ?? ""),
+  );
+}
 
   return false;
 }
@@ -379,7 +382,6 @@ export default function GenericInspectionScreen(
     return routeSp;
   }, [routeSp]);
 
-  const gridParam = (sp.get("grid") || "").toLowerCase(); // used for tire-grid selection (hyd vs air)
 
   const isEmbed = useMemo(
     () =>
@@ -1405,6 +1407,10 @@ export default function GenericInspectionScreen(
               itemsWithHints,
             );
 
+            const looksHydTire =
+  itemsWithHints.some((it) => HYD_ABBR_RE.test(it.item ?? "")) ||
+  itemsWithHints.some((it) => HYD_FULL_RE.test(it.item ?? ""));
+
             const useGrid =
               batterySection || airSection || tireSection || hydCornerSection;
 
@@ -1525,7 +1531,7 @@ export default function GenericInspectionScreen(
                             }
                           />
                         ) : tireSection ? (
-                          gridParam === "hyd" ? (
+                          looksHydTire ? (
                             <TireGridHydraulic
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
