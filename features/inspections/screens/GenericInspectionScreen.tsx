@@ -14,6 +14,7 @@ import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript
 import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
+import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
 
 import type {
   ParsedCommand,
@@ -364,13 +365,13 @@ export default function GenericInspectionScreen(
     if (staged && Object.keys(staged).length > 0) {
       const merged = new URLSearchParams();
 
-// URL first
-routeSp.forEach((value, key) => merged.set(key, value));
+      // URL first
+      routeSp.forEach((value, key) => merged.set(key, value));
 
-// staged second (wins)
-Object.entries(staged).forEach(([key, value]) => {
-  if (value != null) merged.set(key, String(value));
-});
+      // staged second (wins)
+      Object.entries(staged).forEach(([key, value]) => {
+        if (value != null) merged.set(key, String(value));
+      });
 
       return merged;
     }
@@ -510,10 +511,6 @@ Object.entries(staged).forEach(([key, value]) => {
 
   const [wakeActive, setWakeActive] = useState(false);
   const wakeTimeoutRef = useRef<number | null>(null);
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const mediaRef = useRef<MediaStream | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
@@ -715,82 +712,20 @@ Object.entries(staged).forEach(([key, value]) => {
     return cleaned;
   }
 
+  const voice = useRealtimeVoice(
+    async (text: string) => {
+      await handleTranscript(text);
+    },
+    (raw: string) => maybeHandleWakeWord(raw),
+  );
+
   const startListening = async (): Promise<void> => {
     if (isListening) return;
     if (guardLocked()) return;
 
     try {
-      const res = await fetch("/api/openai/realtime-token");
-      const { apiKey } = (await res.json()) as { apiKey: string };
-      if (!apiKey) throw new Error("Missing OpenAI key");
-
-      const ws = new WebSocket(
-        "wss://api.openai.com/v1/realtime?intent=transcription",
-      );
-      wsRef.current = ws;
-
-      ws.onopen = async () => {
-        ws.send(
-          JSON.stringify({
-            type: "authorization",
-            authorization: `Bearer ${apiKey}`,
-          }),
-        );
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        mediaRef.current = stream;
-
-        const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
-        mediaRecorderRef.current = mr;
-
-        mr.ondataavailable = (evt) => {
-          if (evt.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-            ws.send(evt.data);
-          }
-        };
-
-        mr.start(250);
-        setIsListening(true);
-      };
-
-      ws.onmessage = async (evt) => {
-        if (typeof evt.data !== "string") return;
-        try {
-          const msg = JSON.parse(evt.data) as Record<string, unknown>;
-          const text = String(
-            (msg.text as string) ||
-              (msg.transcript as string) ||
-              (msg.output as string) ||
-              (msg.content as string) ||
-              "",
-          );
-          if (!text) return;
-
-          const maybeText = maybeHandleWakeWord(text);
-          if (!maybeText) return;
-
-          const lower2 = maybeText.toLowerCase();
-          if (lower2 === "stop listening" || lower2 === "go to sleep") {
-            setWakeActive(false);
-            return;
-          }
-
-          await handleTranscript(maybeText);
-        } catch {}
-      };
-
-      ws.onerror = (err) => {
-        // eslint-disable-next-line no-console
-        console.error("realtime ws error", err);
-        toast.error("Voice connection error");
-        stopListening();
-      };
-
-      ws.onclose = () => {
-        stopListening();
-      };
+      await voice.start();
+      setIsListening(true);
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
       console.error(e);
@@ -801,16 +736,10 @@ Object.entries(staged).forEach(([key, value]) => {
   };
 
   const stopListening = (): void => {
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
+    try {
+      voice.stop();
+    } catch {}
 
-    mediaRef.current?.getTracks().forEach((t) => t.stop());
-    mediaRef.current = null;
-
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.close();
-    }
-    wsRef.current = null;
     setIsListening(false);
     setWakeActive(false);
     if (wakeTimeoutRef.current) {
@@ -1324,20 +1253,17 @@ Object.entries(staged).forEach(([key, value]) => {
 
   // Bottom bar: ONLY Save progress + Finish inspection
   const actions = (
-  <>
-    <SaveInspectionButton
-      session={session}
-      workOrderLineId={workOrderLineId}
-    />
+    <>
+      <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
 
-    {workOrderLineId && (
-      <FinishInspectionButton
-        session={session}
-        workOrderLineId={workOrderLineId}
-      />
-    )}
-  </>
-);
+      {workOrderLineId && (
+        <FinishInspectionButton
+          session={session}
+          workOrderLineId={workOrderLineId}
+        />
+      )}
+    </>
+  );
 
   if (!session || (session.sections?.length ?? 0) === 0) {
     return (
@@ -1388,7 +1314,7 @@ Object.entries(staged).forEach(([key, value]) => {
             />
           )}
 
-          {!isLocked && (
+                    {!isLocked && (
             <PauseResumeButton
               isPaused={isPaused}
               isListening={isListening}
@@ -1438,28 +1364,31 @@ Object.entries(staged).forEach(([key, value]) => {
         <InspectionFormCtx.Provider value={{ updateItem }}>
           {session.sections.map((section, sectionIndex) => {
             const itemsWithHints = (section.items ?? []).map((it) => {
-  const stRaw = String(it.status ?? "").toLowerCase();
-  const safeStatus: InspectionItemStatus =
-    stRaw === "ok" || stRaw === "fail" || stRaw === "na" || stRaw === "recommend"
-      ? (stRaw as InspectionItemStatus)
-      : "na";
+              const stRaw = String(it.status ?? "").toLowerCase();
+              const safeStatus: InspectionItemStatus =
+                stRaw === "ok" ||
+                stRaw === "fail" ||
+                stRaw === "na" ||
+                stRaw === "recommend"
+                  ? (stRaw as InspectionItemStatus)
+                  : "na";
 
-  const label = String(it.item ?? "");
-  const explicitUnit = it.unit ?? null;
+              const label = String(it.item ?? "");
+              const explicitUnit = it.unit ?? null;
 
-  const toggleControlled =
-    /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
+              const toggleControlled =
+                /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
 
-  return {
-    ...it,                 // ✅ KEEP ORIGINAL SHAPE
-    value: it.value ?? "", // ✅ CRITICAL: preserve controlled input value
-    status: safeStatus,
-    notes: String(it.notes ?? it.note ?? ""),
-    unit: toggleControlled
-      ? unitHintGeneric(label, unit)
-      : explicitUnit || unitHintGeneric(label, unit),
-  };
-});
+              return {
+                ...it, // ✅ KEEP ORIGINAL SHAPE
+                value: it.value ?? "", // ✅ CRITICAL: preserve controlled input value
+                status: safeStatus,
+                notes: String(it.notes ?? it.note ?? ""),
+                unit: toggleControlled
+                  ? unitHintGeneric(label, unit)
+                  : explicitUnit || unitHintGeneric(label, unit),
+              };
+            });
 
             const batterySection = isBatterySection(
               section.title,
@@ -1617,7 +1546,9 @@ Object.entries(staged).forEach(([key, value]) => {
                               }}
                               onUpdateLaborHours={(secIdx, itemIdx, hours) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { laborHours: hours });
+                                updateItem(secIdx, itemIdx, {
+                                  laborHours: hours,
+                                });
                               }}
                             />
                           ) : (
@@ -1654,7 +1585,9 @@ Object.entries(staged).forEach(([key, value]) => {
                               }}
                               onUpdateLaborHours={(secIdx, itemIdx, hours) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { laborHours: hours });
+                                updateItem(secIdx, itemIdx, {
+                                  laborHours: hours,
+                                });
                               }}
                             />
                           )
@@ -1853,3 +1786,4 @@ Object.entries(staged).forEach(([key, value]) => {
     </PageShell>
   );
 }
+             
