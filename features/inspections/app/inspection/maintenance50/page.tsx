@@ -268,6 +268,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     session,
     updateInspection,
     updateItem,
+    updateSection,
     startSession,
     finishSession,
     resumeSession,
@@ -500,6 +501,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
         session: sess,
         updateInspection,
         updateItem,
+        updateSection,
         finishSession,
       });
     }
