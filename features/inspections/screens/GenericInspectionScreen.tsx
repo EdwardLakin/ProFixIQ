@@ -1453,7 +1453,7 @@ export default function GenericInspectionScreen(
     ...it,                 // ✅ KEEP ORIGINAL SHAPE
     value: it.value ?? null, // ✅ CRITICAL: preserve controlled input value
     status: safeStatus,
-    notes: String(it.notes ?? it.note ?? ""),
+    notes: String(it.notes ?? it.note ?? undefined),
     unit: toggleControlled
       ? unitHintGeneric(label, unit)
       : explicitUnit || unitHintGeneric(label, unit),
