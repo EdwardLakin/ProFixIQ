@@ -233,20 +233,41 @@ export async function POST(req: NextRequest) {
     ...structuredContext,
   };
 
+  // ---------------------------------------------------------------------------
   // Call agent service
+  // - For "refactor" we call /refactors (agent will auto-infer file paths)
+  // - Otherwise we call /feature-requests
+  // ---------------------------------------------------------------------------
   let agentResponse: AgentServiceResponse | null = null;
+
   try {
-    const res = await fetch(`${AGENT_SERVICE_URL}/feature-requests`, {
+    const endpoint = intent === "refactor" ? "/refactors" : "/feature-requests";
+
+    const payload =
+      intent === "refactor"
+        ? {
+            source: profile.role ?? "user",
+            reporterId: profile.id,
+            shopId: profile.shop_id,
+            title: `Refactor: ${description.slice(0, 80)}`,
+            description,
+            // IMPORTANT: Option B means NO paths required.
+            // Agent service will auto-select relevant files.
+            context: contextForAgent,
+          }
+        : {
+            source: profile.role ?? "user",
+            reporterId: profile.id,
+            shopId: profile.shop_id,
+            description,
+            intent,
+            context: contextForAgent,
+          };
+
+    const res = await fetch(`${AGENT_SERVICE_URL}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: profile.role ?? "user",
-        reporterId: profile.id,
-        shopId: profile.shop_id,
-        description,
-        intent,
-        context: contextForAgent,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (res.ok) {
