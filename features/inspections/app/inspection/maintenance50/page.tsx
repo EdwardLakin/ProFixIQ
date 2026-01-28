@@ -656,7 +656,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
       <div className={controlsGap}>
         <StartListeningButton
           isListening={isListening}
-          setIsListening={setIsListening}
+          
           onStart={startListening}
         />
         <PauseResumeButton

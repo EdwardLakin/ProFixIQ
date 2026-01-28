@@ -636,7 +636,7 @@ export default function Maintenance50AirScreen(
         {isMobileView && (
           <StartListeningButton
             isListening={isListening}
-            setIsListening={setIsListening}
+            
             onStart={startListening}
           />
         )}

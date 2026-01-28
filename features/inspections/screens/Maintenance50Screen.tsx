@@ -635,7 +635,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         {isMobileView && (
           <StartListeningButton
             isListening={isListening}
-            setIsListening={setIsListening}
+            
             onStart={startListening}
           />
         )}
