@@ -1361,7 +1361,6 @@ try {
           {!isLocked && (
             <StartListeningButton
               isListening={isListening}
-              setIsListening={setIsListening}
               onStart={startListening}
             />
           )}

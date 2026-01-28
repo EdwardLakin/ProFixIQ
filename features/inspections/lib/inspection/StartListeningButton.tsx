@@ -1,24 +1,20 @@
 // features/inspections/lib/inspection/StartListeningButton.tsx
-
 "use client";
 
 import { Button } from "@shared/components/ui/Button";
 
 interface StartListeningButtonProps {
   isListening: boolean;
-  setIsListening: (val: boolean) => void;
   onStart: () => void;
 }
 
 export default function StartListeningButton({
   isListening,
-  setIsListening,
   onStart,
 }: StartListeningButtonProps) {
   const handleStart = () => {
     if (isListening) return;
-    setIsListening(true);
-    onStart(); // Trigger the actual startListening logic from parent
+    onStart(); // parent will flip isListening only when WS + mic are actually started
   };
 
   return (
