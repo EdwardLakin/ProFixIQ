@@ -4,6 +4,13 @@ import { useRef } from "react";
 
 type HandleTranscriptFn = (text: string) => void;
 
+export type RealtimeVoiceState = "idle" | "connecting" | "listening" | "error";
+
+type VoiceHooks = {
+  onState?: (state: RealtimeVoiceState) => void;
+  onActivity?: () => void; // fires on transcript deltas (visual pulse)
+};
+
 function base64FromArrayBuffer(buf: ArrayBuffer): string {
   let binary = "";
   const bytes = new Uint8Array(buf);
@@ -15,26 +22,19 @@ function base64FromArrayBuffer(buf: ArrayBuffer): string {
 }
 
 function safeBeep(
-  ctx: AudioContext | null,
+  ctx: AudioContext,
   opts?: { freq?: number; ms?: number; gain?: number },
 ) {
   try {
-    const audioCtx = ctx ?? new AudioContext();
-    // Some browsers start suspended until user gesture; this is called from a user-initiated start.
-    if (audioCtx.state === "suspended") {
-      void audioCtx.resume().catch(() => undefined);
-    }
-
-    const osc = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
 
     osc.type = "sine";
     osc.frequency.value = opts?.freq ?? 880;
-
-    g.gain.value = opts?.gain ?? 0.04;
+    g.gain.value = opts?.gain ?? 0.12;
 
     osc.connect(g);
-    g.connect(audioCtx.destination);
+    g.connect(ctx.destination);
 
     osc.start();
 
@@ -45,16 +45,8 @@ function safeBeep(
         osc.disconnect();
         g.disconnect();
       } catch {}
-      // If we created a temporary AudioContext, close it.
-      if (!ctx) {
-        try {
-          void audioCtx.close();
-        } catch {}
-      }
     }, ms);
-  } catch {
-    // noop
-  }
+  } catch {}
 }
 
 function startsWithWakeWord(text: string): boolean {
@@ -67,6 +59,7 @@ function startsWithWakeWord(text: string): boolean {
 export function useRealtimeVoice(
   handleTranscript: HandleTranscriptFn,
   maybeHandleWakeWord: (text: string) => string | null,
+  hooks?: VoiceHooks,
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -75,14 +68,41 @@ export function useRealtimeVoice(
 
   const liveRef = useRef<string>("");
 
+  const setState = (s: RealtimeVoiceState) => {
+    try {
+      hooks?.onState?.(s);
+    } catch {}
+  };
+
   async function start() {
     if (wsRef.current) return;
 
-    // ✅ get EPHEMERAL token
+    setState("connecting");
+
+    // ✅ iOS/Safari: unlock audio output in user gesture call stack (before first await)
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContext({ sampleRate: 24000 });
+    }
+    if (audioCtxRef.current.state === "suspended") {
+      try {
+        void audioCtxRef.current.resume();
+      } catch {}
+    }
+
+    // 🔔 optional: immediate armed beep
+    safeBeep(audioCtxRef.current, { freq: 740, ms: 90, gain: 0.12 });
+
+    // Ephemeral token
     const r = await fetch("/api/openai/realtime-token", { method: "GET" });
-    if (!r.ok) throw new Error("Failed to get realtime token");
+    if (!r.ok) {
+      setState("error");
+      throw new Error("Failed to get realtime token");
+    }
     const { token } = (await r.json()) as { token?: string };
-    if (!token) throw new Error("Missing realtime token");
+    if (!token) {
+      setState("error");
+      throw new Error("Missing realtime token");
+    }
 
     // Mic
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -95,9 +115,7 @@ export function useRealtimeVoice(
     });
     mediaStreamRef.current = stream;
 
-    // ✅ Realtime transcription: audio/pcm @ 24kHz only
-    const audioCtx = new AudioContext({ sampleRate: 24000 });
-    audioCtxRef.current = audioCtx;
+    const audioCtx = audioCtxRef.current;
 
     await audioCtx.audioWorklet.addModule("/voice/pcm-processor.js");
 
@@ -114,7 +132,8 @@ export function useRealtimeVoice(
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // ✅ configure transcription + server VAD
+      setState("listening");
+
       ws.send(
         JSON.stringify({
           type: "session.update",
@@ -140,8 +159,8 @@ export function useRealtimeVoice(
         }),
       );
 
-      // ✅ ready beep (WS connected + session configured)
-      safeBeep(audioCtxRef.current, { freq: 880, ms: 120, gain: 0.04 });
+      // 🔔 optional ready beep
+      safeBeep(audioCtxRef.current!, { freq: 980, ms: 90, gain: 0.08 });
     };
 
     // Send audio chunks
@@ -175,42 +194,46 @@ export function useRealtimeVoice(
         return;
       }
 
-      // partial transcript
+      // ✅ partial transcript delta -> activity pulse
       if (msg.type === "conversation.item.input_audio_transcription.delta") {
         const delta = String(msg.delta ?? "");
         if (!delta) return;
         liveRef.current += delta;
+
+        try {
+          hooks?.onActivity?.();
+        } catch {}
+
         return;
       }
 
-      // final transcript
+      // ✅ final transcript
       if (msg.type === "conversation.item.input_audio_transcription.completed") {
         const finalText = String(msg.transcript ?? "").trim();
         liveRef.current = "";
 
         if (!finalText) return;
 
-        // If the user *said* the wake word, give a short confirmation beep.
-        if (startsWithWakeWord(finalText)) {
-          safeBeep(audioCtxRef.current, { freq: 1200, ms: 90, gain: 0.035 });
+        if (startsWithWakeWord(finalText) && audioCtxRef.current) {
+          safeBeep(audioCtxRef.current, { freq: 1200, ms: 70, gain: 0.06 });
         }
 
-        // IMPORTANT: your app currently requires wake word to forward commands
         const cmd = maybeHandleWakeWord(finalText);
         if (cmd) handleTranscript(cmd);
-
         return;
       }
 
       if (msg.type === "error") {
         // eslint-disable-next-line no-console
         console.error("[RealtimeVoice] error", msg);
+        setState("error");
       }
     };
 
     ws.onerror = (err) => {
       // eslint-disable-next-line no-console
       console.error("[RealtimeVoice] WS error", err);
+      setState("error");
       stop();
     };
 
@@ -243,6 +266,7 @@ export function useRealtimeVoice(
     audioCtxRef.current = null;
 
     liveRef.current = "";
+    setState("idle");
   }
 
   return { start, stop };

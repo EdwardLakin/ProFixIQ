@@ -513,6 +513,26 @@ export default function GenericInspectionScreen(
 
   const [wakeActive, setWakeActive] = useState(false);
   const wakeTimeoutRef = useRef<number | null>(null);
+  const [voiceState, setVoiceState] = useState<
+  "idle" | "connecting" | "listening" | "error"
+>("idle");
+
+const [voicePulse, setVoicePulse] = useState(false);
+const pulseTimerRef = useRef<number | null>(null);
+
+const triggerVoicePulse = (): void => {
+  setVoicePulse(true);
+  if (pulseTimerRef.current) window.clearTimeout(pulseTimerRef.current);
+  pulseTimerRef.current = window.setTimeout(() => setVoicePulse(false), 700);
+};
+
+useEffect(() => {
+  return () => {
+    if (pulseTimerRef.current) window.clearTimeout(pulseTimerRef.current);
+    pulseTimerRef.current = null;
+  };
+}, []);
+
 
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
@@ -742,10 +762,13 @@ try {
 
     const voice = useRealtimeVoice(
   async (text: string) => {
-    toast(`heard: ${text}`, { duration: 1200 }); // TEMP debug
     await handleTranscript(text);
   },
   (raw: string) => maybeHandleWakeWord(raw),
+  {
+    onState: (s) => setVoiceState(s),
+    onActivity: () => triggerVoicePulse(),
+  },
 );
 
   const startListening = async (): Promise<void> => {
@@ -1366,6 +1389,8 @@ try {
             />
           )}
 
+          
+
           <Button
             type="button"
             variant="outline"
@@ -1378,6 +1403,45 @@ try {
             {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
           </Button>
         </div>
+
+
+<div className="mt-1 flex items-center justify-center">
+  <div
+    className={[
+      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur",
+      voiceState === "listening"
+        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
+        : voiceState === "connecting"
+          ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
+          : voiceState === "error"
+            ? "border-red-500/50 bg-red-500/10 text-red-200"
+            : "border-neutral-600/50 bg-black/40 text-neutral-300",
+      voicePulse ? "shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : "",
+    ].join(" ")}
+  >
+    <span
+      className={[
+        "h-2 w-2 rounded-full",
+        voiceState === "listening"
+          ? "bg-emerald-400"
+          : voiceState === "connecting"
+            ? "bg-amber-400"
+            : voiceState === "error"
+              ? "bg-red-400"
+              : "bg-neutral-500",
+        voiceState === "listening" ? "animate-pulse" : "",
+      ].join(" ")}
+    />
+    {voiceState === "listening"
+      ? "Listening…"
+      : voiceState === "connecting"
+        ? "Connecting…"
+        : voiceState === "error"
+          ? "Voice error"
+          : "Voice idle"}
+    {voicePulse && <span className="text-emerald-200/80">• audio</span>}
+  </div>
+</div>
 
         <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2.5 md:px-4 md:py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
           <ProgressTracker
