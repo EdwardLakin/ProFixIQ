@@ -760,14 +760,18 @@ try {
     return withoutHey;
   }
 
-    const voice = useRealtimeVoice(
+   const voice = useRealtimeVoice(
   async (text: string) => {
     await handleTranscript(text);
   },
   (raw: string) => maybeHandleWakeWord(raw),
   {
-    onState: (s) => setVoiceState(s),
-    onActivity: () => triggerVoicePulse(),
+    onStateChange: setVoiceState,
+    onPulse: triggerVoicePulse,
+    onError: (m) => {
+      console.error("[Voice]", m);
+      setVoiceState("error");
+    },
   },
 );
 
