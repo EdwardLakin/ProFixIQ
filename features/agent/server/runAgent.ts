@@ -1,3 +1,5 @@
+//features/agent/server/runAgent.ts
+
 import { appendEvent } from "./log";
 import { getUserAndShopId } from "./supabase";
 import { runSimplePlan } from "../lib/plannerSimple";

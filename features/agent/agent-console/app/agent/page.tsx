@@ -1,3 +1,4 @@
+// features/agent/agent-console/app/agent/page.tsx
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
@@ -142,7 +143,6 @@ export default function AgentConsolePage() {
         setAttachmentsLoading(true);
         const supabase = createBrowserSupabase();
 
-        // @ts-ignore - TS may not know createSignedUrls exists
         const { data, error } = await supabase.storage
           .from("agent_uploads")
           .createSignedUrls(paths, 60 * 60); // 1 hour
@@ -210,6 +210,46 @@ export default function AgentConsolePage() {
         setSelected(json.request);
       } catch (err) {
         console.error("Error updating agent request", err);
+      }
+    });
+  }
+
+  async function notifyDiscord(request: AgentRequest) {
+    startTransition(async () => {
+      try {
+        const message = [
+          "🧠 ProFixIQ Agent Request",
+          `• ID: ${request.id}`,
+          `• Status: ${request.status}`,
+          `• Intent: ${request.intent ?? "unknown"}`,
+          `• Description: ${request.description}`,
+          request.github_issue_url ? `• Issue: ${request.github_issue_url}` : null,
+          request.github_pr_url ? `• PR: ${request.github_pr_url}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        const res = await fetch(
+          `/api/agent/requests/${request.id}/notify-discord`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message }),
+          }
+        );
+
+        if (!res.ok) {
+          console.error("Notify Discord failed", await res.text());
+          window.alert("Notify Discord failed (check logs).");
+          return;
+        }
+
+        // optional: refresh list so you can see any status/notes updates later
+        // (doesn't hurt even if nothing changes)
+        await loadRequests();
+      } catch (err) {
+        console.error("Notify Discord error", err);
+        window.alert("Notify Discord error (check logs).");
       }
     });
   }
@@ -489,33 +529,21 @@ export default function AgentConsolePage() {
                                     const url = attachmentUrls[path];
 
                                     return (
-                                      <li
-                                        key={path}
-                                        className="text-neutral-300"
-                                      >
+                                      <li key={path} className="text-neutral-300">
                                         <div className="flex items-center gap-2">
                                           <button
                                             type="button"
                                             disabled={!url}
-                                            onClick={() =>
-                                              url && setLightboxUrl(url)
-                                            }
+                                            onClick={() => url && setLightboxUrl(url)}
                                             className={cn(
                                               "text-left text-orange-400 underline underline-offset-2 hover:text-orange-300",
-                                              !url &&
-                                                "cursor-not-allowed opacity-60"
+                                              !url && "cursor-not-allowed opacity-60"
                                             )}
                                           >
                                             Screenshot {idx + 1}
                                           </button>
                                           <span className="text-neutral-500 truncate">
-                                            (
-                                            {
-                                              path.split("/")[
-                                                path.split("/").length - 1
-                                              ]
-                                            }
-                                            )
+                                            ({path.split("/")[path.split("/").length - 1]})
                                           </span>
                                         </div>
 
@@ -524,9 +552,7 @@ export default function AgentConsolePage() {
                                             <img
                                               src={url}
                                               alt={`Screenshot ${idx + 1}`}
-                                              onClick={() =>
-                                                setLightboxUrl(url)
-                                              }
+                                              onClick={() => setLightboxUrl(url)}
                                               className="max-h-40 w-auto cursor-zoom-in rounded-md border border-white/10 bg-black/40 object-contain"
                                             />
                                           </div>
@@ -581,13 +607,9 @@ export default function AgentConsolePage() {
                     ) : (
                       <div>PR: n/a</div>
                     )}
-                    {selected.github_branch && (
-                      <div>Branch: {selected.github_branch}</div>
-                    )}
+                    {selected.github_branch && <div>Branch: {selected.github_branch}</div>}
                     {selected.github_commit_sha && (
-                      <div className="truncate">
-                        Commit: {selected.github_commit_sha}
-                      </div>
+                      <div className="truncate">Commit: {selected.github_commit_sha}</div>
                     )}
                   </div>
                 </div>
@@ -620,12 +642,11 @@ export default function AgentConsolePage() {
                       "border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-black disabled:opacity-50",
                       isPending && "cursor-wait"
                     )}
-                    onClick={() =>
-                      selected && updateStatus("approve", selected)
-                    }
+                    onClick={() => selected && updateStatus("approve", selected)}
                   >
                     {isPending ? "Working…" : "Approve"}
                   </Button>
+
                   <Button
                     type="button"
                     size="sm"
@@ -635,12 +656,25 @@ export default function AgentConsolePage() {
                       "border-red-500/70 text-xs font-semibold text-red-300 hover:bg-red-600 hover:text-black disabled:opacity-50",
                       isPending && "cursor-wait"
                     )}
-                    onClick={() =>
-                      selected && updateStatus("reject", selected)
-                    }
+                    onClick={() => selected && updateStatus("reject", selected)}
                   >
                     {isPending ? "Working…" : "Reject"}
                   </Button>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selected || isPending}
+                    className={cn(
+                      "border-indigo-500/60 text-xs font-semibold text-indigo-200 hover:bg-indigo-600 hover:text-black disabled:opacity-50",
+                      isPending && "cursor-wait"
+                    )}
+                    onClick={() => selected && notifyDiscord(selected)}
+                  >
+                    {isPending ? "Working…" : "Notify Discord"}
+                  </Button>
+
                   <Button
                     type="button"
                     size="sm"

@@ -228,9 +228,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const requestId = inserted.id;
+
   // Context we send to the Agent service (includes signed attachment URLs)
   const contextForAgent = {
     ...structuredContext,
+    requestId,
   };
 
   // ---------------------------------------------------------------------------
@@ -246,6 +249,7 @@ export async function POST(req: NextRequest) {
     const payload =
       intent === "refactor"
         ? {
+            requestId,
             source: profile.role ?? "user",
             reporterId: profile.id,
             shopId: profile.shop_id,
@@ -256,6 +260,7 @@ export async function POST(req: NextRequest) {
             context: contextForAgent,
           }
         : {
+            requestId,
             source: profile.role ?? "user",
             reporterId: profile.id,
             shopId: profile.shop_id,
