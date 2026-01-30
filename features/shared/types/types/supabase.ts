@@ -56,6 +56,78 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_actions: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          attempts: number
+          created_at: string
+          id: string
+          kind: string
+          last_error: string | null
+          last_error_at: string | null
+          max_attempts: number
+          payload: Json
+          rejected_at: string | null
+          rejected_by: string | null
+          rejected_reason: string | null
+          request_id: string
+          requires_approval: boolean
+          result: Json | null
+          risk: Database["public"]["Enums"]["agent_action_risk"]
+          run_after: string
+          status: Database["public"]["Enums"]["agent_action_status"]
+          summary: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          attempts?: number
+          created_at?: string
+          id?: string
+          kind: string
+          last_error?: string | null
+          last_error_at?: string | null
+          max_attempts?: number
+          payload?: Json
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejected_reason?: string | null
+          request_id: string
+          requires_approval?: boolean
+          result?: Json | null
+          risk?: Database["public"]["Enums"]["agent_action_risk"]
+          run_after?: string
+          status?: Database["public"]["Enums"]["agent_action_status"]
+          summary: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          attempts?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          last_error?: string | null
+          last_error_at?: string | null
+          max_attempts?: number
+          payload?: Json
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejected_reason?: string | null
+          request_id?: string
+          requires_approval?: boolean
+          result?: Json | null
+          risk?: Database["public"]["Enums"]["agent_action_risk"]
+          run_after?: string
+          status?: Database["public"]["Enums"]["agent_action_status"]
+          summary?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       agent_attachments: {
         Row: {
           agent_request_id: string
@@ -139,6 +211,101 @@ export type Database = {
           },
         ]
       }
+      agent_job_events: {
+        Row: {
+          created_at: string
+          detail: Json
+          event: string
+          id: number
+          job_id: string
+        }
+        Insert: {
+          created_at?: string
+          detail?: Json
+          event: string
+          id?: number
+          job_id: string
+        }
+        Update: {
+          created_at?: string
+          detail?: Json
+          event?: string
+          id?: number
+          job_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_job_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "agent_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          heartbeat_at: string | null
+          id: string
+          kind: Database["public"]["Enums"]["agent_job_kind"]
+          last_error: string | null
+          last_error_at: string | null
+          locked_at: string | null
+          locked_by: string | null
+          logs_url: string | null
+          max_attempts: number
+          payload: Json
+          priority: number
+          request_id: string | null
+          result: Json | null
+          run_after: string
+          status: Database["public"]["Enums"]["agent_job_status"]
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          heartbeat_at?: string | null
+          id?: string
+          kind: Database["public"]["Enums"]["agent_job_kind"]
+          last_error?: string | null
+          last_error_at?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          logs_url?: string | null
+          max_attempts?: number
+          payload?: Json
+          priority?: number
+          request_id?: string | null
+          result?: Json | null
+          run_after?: string
+          status?: Database["public"]["Enums"]["agent_job_status"]
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          heartbeat_at?: string | null
+          id?: string
+          kind?: Database["public"]["Enums"]["agent_job_kind"]
+          last_error?: string | null
+          last_error_at?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          logs_url?: string | null
+          max_attempts?: number
+          payload?: Json
+          priority?: number
+          request_id?: string | null
+          result?: Json | null
+          run_after?: string
+          status?: Database["public"]["Enums"]["agent_job_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       agent_knowledge: {
         Row: {
           body: string
@@ -179,6 +346,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      agent_messages: {
+        Row: {
+          attempts: number
+          body: Json
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          direction: Database["public"]["Enums"]["agent_message_direction"]
+          id: string
+          kind: string
+          last_error: string | null
+          last_error_at: string | null
+          max_attempts: number
+          processed_at: string | null
+          processed_by: string | null
+          request_id: string
+          run_after: string
+        }
+        Insert: {
+          attempts?: number
+          body?: Json
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          direction: Database["public"]["Enums"]["agent_message_direction"]
+          id?: string
+          kind: string
+          last_error?: string | null
+          last_error_at?: string | null
+          max_attempts?: number
+          processed_at?: string | null
+          processed_by?: string | null
+          request_id: string
+          run_after?: string
+        }
+        Update: {
+          attempts?: number
+          body?: Json
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          direction?: Database["public"]["Enums"]["agent_message_direction"]
+          id?: string
+          kind?: string
+          last_error?: string | null
+          last_error_at?: string | null
+          max_attempts?: number
+          processed_at?: string | null
+          processed_by?: string | null
+          request_id?: string
+          run_after?: string
+        }
+        Relationships: []
       }
       agent_requests: {
         Row: {
@@ -10212,7 +10433,185 @@ export type Database = {
     }
     Functions: {
       _ensure_same_shop: { Args: { _wo: string }; Returns: boolean }
+      agent_approve_action: {
+        Args: { p_action_id: string; p_approved_by?: string }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          attempts: number
+          created_at: string
+          id: string
+          kind: string
+          last_error: string | null
+          last_error_at: string | null
+          max_attempts: number
+          payload: Json
+          rejected_at: string | null
+          rejected_by: string | null
+          rejected_reason: string | null
+          request_id: string
+          requires_approval: boolean
+          result: Json | null
+          risk: Database["public"]["Enums"]["agent_action_risk"]
+          run_after: string
+          status: Database["public"]["Enums"]["agent_action_status"]
+          summary: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_actions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       agent_can_start: { Args: never; Returns: boolean }
+      agent_claim_next_job: {
+        Args: {
+          kinds?: Database["public"]["Enums"]["agent_job_kind"][]
+          worker_id: string
+        }
+        Returns: {
+          attempts: number
+          created_at: string
+          heartbeat_at: string | null
+          id: string
+          kind: Database["public"]["Enums"]["agent_job_kind"]
+          last_error: string | null
+          last_error_at: string | null
+          locked_at: string | null
+          locked_by: string | null
+          logs_url: string | null
+          max_attempts: number
+          payload: Json
+          priority: number
+          request_id: string | null
+          result: Json | null
+          run_after: string
+          status: Database["public"]["Enums"]["agent_job_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      agent_claim_next_message: {
+        Args: { kinds?: string[]; worker_id: string }
+        Returns: {
+          attempts: number
+          body: Json
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          direction: Database["public"]["Enums"]["agent_message_direction"]
+          id: string
+          kind: string
+          last_error: string | null
+          last_error_at: string | null
+          max_attempts: number
+          processed_at: string | null
+          processed_by: string | null
+          request_id: string
+          run_after: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_messages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      agent_create_action: {
+        Args: {
+          p_kind: string
+          p_payload: Json
+          p_request_id: string
+          p_requires_approval: boolean
+          p_risk: Database["public"]["Enums"]["agent_action_risk"]
+          p_summary: string
+        }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          attempts: number
+          created_at: string
+          id: string
+          kind: string
+          last_error: string | null
+          last_error_at: string | null
+          max_attempts: number
+          payload: Json
+          rejected_at: string | null
+          rejected_by: string | null
+          rejected_reason: string | null
+          request_id: string
+          requires_approval: boolean
+          result: Json | null
+          risk: Database["public"]["Enums"]["agent_action_risk"]
+          run_after: string
+          status: Database["public"]["Enums"]["agent_action_status"]
+          summary: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_actions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      agent_mark_job_canceled: {
+        Args: { job_id: string; reason?: string }
+        Returns: undefined
+      }
+      agent_mark_job_failed: {
+        Args: { err: string; job_id: string; retry_in_seconds?: number }
+        Returns: undefined
+      }
+      agent_mark_job_succeeded: { Args: { job_id: string }; Returns: undefined }
+      agent_mark_message_failed: {
+        Args: { err: string; message_id: string; retry_in_seconds?: number }
+        Returns: undefined
+      }
+      agent_mark_message_succeeded: {
+        Args: { message_id: string; processed_by_in?: string }
+        Returns: undefined
+      }
+      agent_reject_action: {
+        Args: { p_action_id: string; p_reason?: string; p_rejected_by?: string }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          attempts: number
+          created_at: string
+          id: string
+          kind: string
+          last_error: string | null
+          last_error_at: string | null
+          max_attempts: number
+          payload: Json
+          rejected_at: string | null
+          rejected_by: string | null
+          rejected_reason: string | null
+          request_id: string
+          requires_approval: boolean
+          result: Json | null
+          risk: Database["public"]["Enums"]["agent_action_risk"]
+          run_after: string
+          status: Database["public"]["Enums"]["agent_action_status"]
+          summary: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_actions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       apply_stock_move: {
         Args: {
           p_loc: string
@@ -10393,6 +10792,7 @@ export type Database = {
         Args: { p_work_order_line_id: string }
         Returns: undefined
       }
+      plan_user_limit: { Args: { p_plan: string }; Returns: number }
       portal_approve_line: { Args: { p_line_id: string }; Returns: undefined }
       portal_approve_part_request_item: {
         Args: { p_item_id: string }
@@ -10464,6 +10864,7 @@ export type Database = {
         Returns: undefined
       }
       shop_id_for: { Args: { uid: string }; Returns: string }
+      shop_staff_user_count: { Args: { p_shop_id: string }; Returns: number }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       sign_inspection: {
@@ -10507,6 +10908,30 @@ export type Database = {
       }
     }
     Enums: {
+      agent_action_risk: "low" | "medium" | "high"
+      agent_action_status:
+        | "proposed"
+        | "awaiting_approval"
+        | "approved"
+        | "rejected"
+        | "executing"
+        | "succeeded"
+        | "failed"
+        | "canceled"
+      agent_job_kind:
+        | "notify_discord"
+        | "analyze_request"
+        | "create_issue_pr"
+        | "run_checks"
+        | "apply_fix"
+      agent_job_status:
+        | "queued"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "canceled"
+        | "dead"
+      agent_message_direction: "to_agent" | "to_user"
       agent_request_intent:
         | "feature_request"
         | "bug_report"
@@ -10719,6 +11144,33 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      agent_action_risk: ["low", "medium", "high"],
+      agent_action_status: [
+        "proposed",
+        "awaiting_approval",
+        "approved",
+        "rejected",
+        "executing",
+        "succeeded",
+        "failed",
+        "canceled",
+      ],
+      agent_job_kind: [
+        "notify_discord",
+        "analyze_request",
+        "create_issue_pr",
+        "run_checks",
+        "apply_fix",
+      ],
+      agent_job_status: [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "canceled",
+        "dead",
+      ],
+      agent_message_direction: ["to_agent", "to_user"],
       agent_request_intent: [
         "feature_request",
         "bug_report",

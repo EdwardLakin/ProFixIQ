@@ -1,43 +1,53 @@
+// app/api/agent/requests/[id]/notify-discord/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
-const APPROVER_ROLES = ["developer"] as const;
+type DB = Database;
 
-// Service-role client to enqueue jobs
-const supabaseAdmin = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+const APPROVER_ROLES = ["developer"] as const;
+type ApproverRole = (typeof APPROVER_ROLES)[number];
 
 type PostBody = {
   message?: string;
 };
 
-type EnqueueJobInsert = {
-  request_id: string | null;
-  kind: string;
-  status: "queued";
-  priority: number;
-  payload: Record<string, unknown>;
-  run_after: string;
-};
+// Helper to extract id from /api/agent/requests/:id/notify-discord
+function getIdFromUrl(req: NextRequest): string | null {
+  const url = new URL(req.url);
+  const pathname = url.pathname.replace(/\/$/, "");
+  const segments = pathname.split("/");
+  // .../requests/[id]/notify-discord
+  const notifyIndex = segments.lastIndexOf("notify-discord");
+  const id = notifyIndex > 0 ? segments[notifyIndex - 1] : null;
+  return id || null;
+}
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const id = params?.id;
+function isApproverRole(v: unknown): v is ApproverRole {
+  return typeof v === "string" && (APPROVER_ROLES as readonly string[]).includes(v);
+}
+
+// Service-role client to enqueue jobs
+const supabaseAdmin = createClient<DB>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false } }
+);
+
+export async function POST(req: NextRequest) {
+  const id = getIdFromUrl(req);
 
   if (!id) {
-    return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing agent request id" },
+      { status: 400 }
+    );
   }
 
   const cookieStore = cookies();
-  const supabase = createRouteHandlerClient<Database>({
+  const supabase = createRouteHandlerClient<DB>({
     cookies: () => cookieStore,
   });
 
@@ -61,7 +71,7 @@ export async function POST(
     return NextResponse.json({ error: "Profile not found" }, { status: 400 });
   }
 
-  if (!APPROVER_ROLES.includes((profile.agent_role ?? "") as any)) {
+  if (!isApproverRole(profile.agent_role)) {
     return NextResponse.json(
       { error: "Forbidden – insufficient role to notify Discord" },
       { status: 403 }
@@ -79,7 +89,10 @@ export async function POST(
 
   if (requestError || !requestRow) {
     console.error("notify-discord load error", requestError);
-    return NextResponse.json({ error: "Agent request not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Agent request not found" },
+      { status: 404 }
+    );
   }
 
   const body = (await req.json().catch(() => null)) as PostBody | null;
@@ -97,7 +110,7 @@ export async function POST(
       ? `• Created: ${new Date(requestRow.created_at).toLocaleString()}`
       : null,
   ]
-    .filter(Boolean)
+    .filter((v): v is string => Boolean(v))
     .join("\n");
 
   const message = String(body?.message ?? defaultMessage).trim();
@@ -106,7 +119,10 @@ export async function POST(
   }
 
   // enqueue job for worker
-  const job: EnqueueJobInsert = {
+  // NOTE: requires public.agent_jobs in your generated DB types
+  type AgentJobInsert = DB["public"]["Tables"]["agent_jobs"]["Insert"];
+
+  const job: AgentJobInsert = {
     request_id: requestRow.id,
     kind: "notify_discord",
     status: "queued",
@@ -115,10 +131,9 @@ export async function POST(
     run_after: new Date().toISOString(),
   };
 
-  // NOTE: if your table name differs, change "agent_jobs" here.
   const { data: insertedJob, error: jobError } = await supabaseAdmin
-    .from("agent_jobs" as any)
-    .insert(job as any)
+    .from("agent_jobs")
+    .insert(job)
     .select("id")
     .single();
 
@@ -130,5 +145,5 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({ ok: true, jobId: (insertedJob as any)?.id ?? null });
+  return NextResponse.json({ ok: true, jobId: insertedJob?.id ?? null });
 }
