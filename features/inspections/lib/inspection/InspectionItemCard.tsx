@@ -86,7 +86,7 @@ export default function InspectionItemCard(_props: any) {
     return (
       <div className={["grid gap-2", rowGlow].join(" ")}>
         {/* Row 1: Item | Checkboxes */}
-        <div className="grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_240px]">
           {/* Item */}
           <div className="min-w-0">
             <div className="truncate text-[15px] font-semibold text-white">
