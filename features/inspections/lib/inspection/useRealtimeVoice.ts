@@ -2,17 +2,25 @@
 
 import { useRef } from "react";
 
-type HandleTranscriptFn = (text: string) => void;
-
 export type VoiceState = "idle" | "connecting" | "listening" | "error";
 
-type RealtimeVoiceOpts = {
-  /** flips your UI pill: idle/connecting/listening/error */
-  onStateChange?: (s: VoiceState) => void;
-  /** quick “we heard audio / got delta” pulse */
+type HandleTranscriptFn = (text: string) => void;
+
+type RealtimeVoiceOptions = {
+  /** Called when WS connects / stops / errors */
+  onStateChange?: (state: VoiceState) => void;
+  /**
+   * Called when we detect audio activity OR transcript delta.
+   * Use this to flash your "• audio" indicator.
+   */
   onPulse?: () => void;
-  /** surface a readable error */
-  onError?: (msg: string) => void;
+  /** Optional: surface error message to UI */
+  onError?: (message: string) => void;
+
+  /** RMS threshold for "audio activity" pulse */
+  audioPulseThreshold?: number; // default 0.02-ish
+  /** minimum ms between pulses */
+  pulseDebounceMs?: number; // default 250
 };
 
 function base64FromArrayBuffer(buf: ArrayBuffer): string {
@@ -25,21 +33,31 @@ function base64FromArrayBuffer(buf: ArrayBuffer): string {
   return btoa(binary);
 }
 
-function errMsg(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  return typeof e === "string" ? e : "Unknown error";
+function rms(float32: Float32Array): number {
+  if (float32.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < float32.length; i++) {
+    const v = float32[i];
+    sum += v * v;
+  }
+  return Math.sqrt(sum / float32.length);
 }
 
 export function useRealtimeVoice(
   handleTranscript: HandleTranscriptFn,
   maybeHandleWakeWord: (text: string) => string | null,
-  opts?: RealtimeVoiceOpts,
+  opts?: RealtimeVoiceOptions,
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletRef = useRef<AudioWorkletNode | null>(null);
-  const silentGainRef = useRef<GainNode | null>(null);
+
+  // Keep the graph alive on iOS by connecting to destination (muted)
+  const zeroGainRef = useRef<GainNode | null>(null);
+
+  const lastPulseAtRef = useRef<number>(0);
+  const stoppedRef = useRef<boolean>(false);
 
   const liveRef = useRef<string>("");
 
@@ -48,211 +66,242 @@ export function useRealtimeVoice(
   };
 
   const pulse = () => {
+    const now = Date.now();
+    const debounce = typeof opts?.pulseDebounceMs === "number" ? opts.pulseDebounceMs : 250;
+    if (now - lastPulseAtRef.current < debounce) return;
+    lastPulseAtRef.current = now;
     opts?.onPulse?.();
   };
 
-  async function start() {
+  async function start(): Promise<void> {
     if (wsRef.current) return;
 
+    stoppedRef.current = false;
     setState("connecting");
 
-    try {
-      // ✅ EPHEMERAL token
-      const r = await fetch("/api/openai/realtime-token", { method: "GET" });
-      if (!r.ok) throw new Error("Failed to get realtime token");
-      const { token } = (await r.json()) as { token?: string };
-      if (!token) throw new Error("Missing realtime token");
+    // ✅ get EPHEMERAL token
+    const r = await fetch("/api/openai/realtime-token", { method: "GET" });
+    if (!r.ok) {
+      setState("error");
+      opts?.onError?.("Failed to get realtime token");
+      throw new Error("Failed to get realtime token");
+    }
 
-      // ✅ Mic permission (will prompt on iOS)
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      mediaStreamRef.current = stream;
+    const { token } = (await r.json()) as { token?: string };
+    if (!token) {
+      setState("error");
+      opts?.onError?.("Missing realtime token");
+      throw new Error("Missing realtime token");
+    }
 
-      // ✅ iOS Safari: AudioContext often starts suspended until resume() inside user gesture
-      const audioCtx = new AudioContext({ sampleRate: 24000 });
-      audioCtxRef.current = audioCtx;
+    // Mic
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    mediaStreamRef.current = stream;
 
-      if (audioCtx.state === "suspended") {
+    // WebAudio (24kHz)
+    const audioCtx = new AudioContext({ sampleRate: 24000 });
+    audioCtxRef.current = audioCtx;
+
+    // iOS can start suspended even after user gesture in some cases
+    if (audioCtx.state === "suspended") {
+      try {
         await audioCtx.resume();
+      } catch {
+        // keep going; we still try
       }
+    }
 
-      await audioCtx.audioWorklet.addModule("/voice/pcm-processor.js");
+    await audioCtx.audioWorklet.addModule("/voice/pcm-processor.js");
 
-      const source = audioCtx.createMediaStreamSource(stream);
-      const worklet = new AudioWorkletNode(audioCtx, "pcm-processor");
-      workletRef.current = worklet;
+    const source = audioCtx.createMediaStreamSource(stream);
+    const worklet = new AudioWorkletNode(audioCtx, "pcm-processor");
+    workletRef.current = worklet;
 
-      // ✅ IMPORTANT: connect to destination or worklet may not “run” on Safari/iOS
-      const silent = audioCtx.createGain();
-      silent.gain.value = 0;
-      silentGainRef.current = silent;
+    // ✅ CRITICAL: keep audio graph alive by connecting to destination (muted)
+    const zeroGain = audioCtx.createGain();
+    zeroGain.gain.value = 0;
+    zeroGainRef.current = zeroGain;
 
-      source.connect(worklet);
-      worklet.connect(silent);
-      silent.connect(audioCtx.destination);
+    source.connect(worklet);
+    worklet.connect(zeroGain);
+    zeroGain.connect(audioCtx.destination);
 
-      // WS connect
-      const ws = new WebSocket(
-        "wss://api.openai.com/v1/realtime?intent=transcription",
-        ["realtime", `openai-insecure-api-key.${token}`],
-      );
-      wsRef.current = ws;
+    // WS connect
+    const ws = new WebSocket(
+      "wss://api.openai.com/v1/realtime?intent=transcription",
+      ["realtime", `openai-insecure-api-key.${token}`],
+    );
+    wsRef.current = ws;
 
-      // fail fast if WS never opens
-      const openTimeout = window.setTimeout(() => {
-        if (ws.readyState !== WebSocket.OPEN) {
-          opts?.onError?.("Voice socket did not open (timeout).");
-          setState("error");
-          stop();
-        }
-      }, 8000);
+    ws.onopen = () => {
+      if (stoppedRef.current) return;
 
-      ws.onopen = () => {
-        window.clearTimeout(openTimeout);
+      // We are now connected; show Listening even before transcript arrives.
+      setState("listening");
 
-        // ✅ configure transcription + server VAD
-        ws.send(
-          JSON.stringify({
-            type: "session.update",
-            session: {
-              type: "transcription",
-              audio: {
-                input: {
-                  format: { type: "audio/pcm", rate: 24000 },
-                  noise_reduction: { type: "near_field" },
-                  transcription: {
-                    model: "gpt-4o-mini-transcribe",
-                    language: "en",
-                  },
-                  turn_detection: {
-                    type: "server_vad",
-                    threshold: 0.5,
-                    prefix_padding_ms: 300,
-                    silence_duration_ms: 500,
-                  },
+      ws.send(
+        JSON.stringify({
+          type: "session.update",
+          session: {
+            type: "transcription",
+            audio: {
+              input: {
+                format: { type: "audio/pcm", rate: 24000 },
+                noise_reduction: { type: "near_field" },
+                transcription: {
+                  model: "gpt-4o-mini-transcribe",
+                  language: "en",
+                },
+                turn_detection: {
+                  type: "server_vad",
+                  threshold: 0.5,
+                  prefix_padding_ms: 300,
+                  silence_duration_ms: 500,
                 },
               },
             },
-          }),
-        );
+          },
+        }),
+      );
+    };
 
-        setState("listening");
-        pulse();
-      };
+    // Send audio chunks
+    worklet.port.onmessage = (e: MessageEvent) => {
+      if (stoppedRef.current) return;
 
-      // Send audio chunks
-      worklet.port.onmessage = (e: MessageEvent) => {
-        const float32 = e.data as Float32Array;
-        if (!float32 || float32.length === 0) return;
+      const float32 = e.data as Float32Array;
+      const level = rms(float32);
 
-        // Float32 [-1,1] -> PCM16
-        const pcm16 = new Int16Array(float32.length);
-        for (let i = 0; i < float32.length; i++) {
-          const s = Math.max(-1, Math.min(1, float32[i]));
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-        }
+      const threshold =
+        typeof opts?.audioPulseThreshold === "number" ? opts.audioPulseThreshold : 0.02;
 
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: "input_audio_buffer.append",
-              audio: base64FromArrayBuffer(pcm16.buffer),
-            }),
-          );
-        }
-      };
+      if (level >= threshold) {
+        pulse(); // ✅ shows "audio" pulse even if transcription isn't returning yet
+      }
 
-      ws.onmessage = (evt) => {
-        if (typeof evt.data !== "string") return;
+      // Float32 [-1,1] -> PCM16
+      const pcm16 = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
 
-        let msg: any;
-        try {
-          msg = JSON.parse(evt.data);
-        } catch {
-          return;
-        }
+      const sock = wsRef.current;
+      if (!sock || sock.readyState !== WebSocket.OPEN) return;
 
-        if (msg.type === "conversation.item.input_audio_transcription.delta") {
-          const delta = String(msg.delta ?? "");
-          if (!delta) return;
-          liveRef.current += delta;
-          pulse(); // ✅ show “we’re receiving something”
-          return;
-        }
+      sock.send(
+        JSON.stringify({
+          type: "input_audio_buffer.append",
+          audio: base64FromArrayBuffer(pcm16.buffer),
+        }),
+      );
+    };
 
-        if (msg.type === "conversation.item.input_audio_transcription.completed") {
-          const finalText = String(msg.transcript ?? "").trim();
-          liveRef.current = "";
+    ws.onmessage = (evt) => {
+      if (stoppedRef.current) return;
+      if (typeof evt.data !== "string") return;
 
-          if (!finalText) return;
+      let msg: unknown;
+      try {
+        msg = JSON.parse(evt.data);
+      } catch {
+        return;
+      }
 
-          // wake word gate
-          const cmd = maybeHandleWakeWord(finalText);
-          if (cmd) handleTranscript(cmd);
-          pulse();
-          return;
-        }
+      const m = msg as Record<string, unknown>;
+      const type = String(m.type ?? "");
 
-        if (msg.type === "error") {
-          // eslint-disable-next-line no-console
-          console.error("[RealtimeVoice] error", msg);
-          const m = String(msg?.error?.message ?? "Realtime voice error");
-          opts?.onError?.(m);
-          setState("error");
-        }
-      };
+      if (type === "conversation.item.input_audio_transcription.delta") {
+        const delta = String(m.delta ?? "");
+        if (!delta) return;
+        liveRef.current += delta;
+        pulse(); // ✅ pulse when deltas arrive
+        return;
+      }
 
-      ws.onerror = (err) => {
+      if (type === "conversation.item.input_audio_transcription.completed") {
+        const finalText = String(m.transcript ?? "").trim();
+        liveRef.current = "";
+
+        if (!finalText) return;
+
+        const cmd = maybeHandleWakeWord(finalText);
+        if (cmd) handleTranscript(cmd);
+        return;
+      }
+
+      if (type === "error") {
+        // Surface more detail to UI
+        const errObj = m.error as Record<string, unknown> | undefined;
+        const msgText =
+          (errObj && typeof errObj.message === "string" && errObj.message) ||
+          "Realtime voice error";
+
         // eslint-disable-next-line no-console
-        console.error("[RealtimeVoice] WS error", err);
-        opts?.onError?.("WebSocket error");
-        setState("error");
-        stop();
-      };
+        console.error("[RealtimeVoice] error", m);
 
-      ws.onclose = () => {
+        setState("error");
+        opts?.onError?.(msgText);
+
+        // Stop everything
         stop();
-      };
-    } catch (e: unknown) {
-      const m = errMsg(e);
-      opts?.onError?.(m);
+      }
+    };
+
+    ws.onerror = () => {
+      if (stoppedRef.current) return;
       setState("error");
+      opts?.onError?.("WebSocket error");
       stop();
-      throw e;
-    }
+    };
+
+    ws.onclose = () => {
+      if (stoppedRef.current) return;
+      stop();
+    };
   }
 
-  function stop() {
-    // disconnect worklet graph
+  function stop(): void {
+    if (stoppedRef.current) return;
+    stoppedRef.current = true;
+
+    // disconnect worklet + graph
     try {
       workletRef.current?.disconnect();
     } catch {}
     workletRef.current = null;
 
     try {
-      silentGainRef.current?.disconnect();
+      zeroGainRef.current?.disconnect();
     } catch {}
-    silentGainRef.current = null;
+    zeroGainRef.current = null;
 
-    // close WS
-    try {
-      wsRef.current?.close();
-    } catch {}
+    // close WS (avoid recursion if already closing)
+    const sock = wsRef.current;
     wsRef.current = null;
+    try {
+      if (sock && sock.readyState === WebSocket.OPEN) sock.close();
+    } catch {}
 
     // stop mic
-    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    try {
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {}
     mediaStreamRef.current = null;
 
     // close audio context
-    audioCtxRef.current?.close().catch(() => {});
+    const ctx = audioCtxRef.current;
     audioCtxRef.current = null;
+    try {
+      ctx?.close();
+    } catch {}
 
     liveRef.current = "";
     setState("idle");

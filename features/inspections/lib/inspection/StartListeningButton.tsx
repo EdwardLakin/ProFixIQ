@@ -1,20 +1,35 @@
-// features/inspections/lib/inspection/StartListeningButton.tsx
 "use client";
 
 import { Button } from "@shared/components/ui/Button";
 
 interface StartListeningButtonProps {
+  /** True only when realtime WS + mic are actually active */
   isListening: boolean;
-  onStart: () => void;
+
+  /**
+   * Async start handler from parent.
+   * MUST resolve only after mic + WS are ready.
+   * MUST throw or reject on failure.
+   */
+  onStart: () => Promise<void>;
 }
 
 export default function StartListeningButton({
   isListening,
   onStart,
 }: StartListeningButtonProps) {
-  const handleStart = () => {
+  const handleStart = async () => {
     if (isListening) return;
-    onStart(); // parent will flip isListening only when WS + mic are actually started
+
+    try {
+      await onStart();
+      // ⛔ DO NOT set isListening here
+      // Parent owns listening state based on realtime engine
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[StartListeningButton] start failed", err);
+      // UI will remain idle; error state handled upstream
+    }
   };
 
   return (
@@ -24,6 +39,8 @@ export default function StartListeningButton({
       disabled={isListening}
       variant={isListening ? "outline" : "copper"}
       size="sm"
+      aria-pressed={isListening}
+      aria-label={isListening ? "Voice listening active" : "Start voice listening"}
       className={`inline-flex items-center gap-2 rounded-full text-[11px] font-semibold uppercase tracking-[0.18em] ${
         isListening
           ? "border-[color:var(--accent-copper-soft,#f97316)] bg-black/70 text-[color:var(--accent-copper,#f97316)]"
