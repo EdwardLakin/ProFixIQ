@@ -1,4 +1,4 @@
-// features/inspections/screens/Maintenance50AirScreen.tsx
+// features/inspections/screens/Maintenance50Screen.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -42,17 +42,6 @@ type ScreenProps = {
 };
 
 /* ---------- Sections ---------- */
-/**
- * Air version uses the same corner layout as Maintenance 50:
- *  - Tire Pressure
- *  - Tire Tread (overall)
- *  - Tire Tread (Inner)
- *  - Tire Tread (Outer)
- *  - Brake Pad Thickness
- *  - Rotor Condition / Thickness
- *  - Wheel Torque (after road test)
- * Each metric has LF / RF / LR / RR so CornerGrid is fully populated.
- */
 function buildHydraulicMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Hydraulic)",
@@ -183,7 +172,7 @@ function applyUnitsHydraulic(
 }
 
 /* ---------- Screen (component) ---------- */
-export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element {
+export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const searchParams = useSearchParams();
   const p = props.params ?? {};
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -218,7 +207,7 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const templateName: string =
-    props.template || get("template") || "Maintenance 50 (Air)";
+    props.template || get("template") || "Maintenance 50";
 
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
@@ -411,7 +400,7 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
     });
   }, [session, updateInspection, unit]);
 
-  // re-apply units
+  // re-apply units when toggle changes
   useEffect(() => {
     if (!session?.sections?.length) return;
     updateInspection({
@@ -612,7 +601,7 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
             Inspection
           </div>
           <div className="mt-1 text-xl font-blackops text-white">
-            {session?.templateitem || templateName || "Maintenance 50 (Air)"}
+            {session?.templateitem || templateName || "Maintenance 50"}
           </div>
         </div>
       </div>
@@ -624,32 +613,19 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
         )}
 
         {isMobileView && (
-          <PauseResumeButton
-            isPaused={isPaused}
-            isListening={isListening}
-            setIsListening={setIsListening}
-            onPause={(): void => {
-              setIsPaused(true);
-              pauseSession();
-              try {
-                recognitionRef.current?.stop();
-              } catch {}
-            }}
-            onResume={(): void => {
-              setIsPaused(false);
-              resumeSession();
-              recognitionRef.current = startVoiceRecognition(handleTranscript);
-            }}
-            recognitionInstance={
-              recognitionRef.current as unknown as SpeechRecognition | null
-            }
-            onTranscript={handleTranscript}
-            setRecognitionRef={(instance: SpeechRecognition | null): void => {
-              (
-                recognitionRef as React.MutableRefObject<SpeechRecognition | null>
-              ).current = instance ?? null;
-            }}
-          />
+         <PauseResumeButton
+  isPaused={isPaused}
+  onPause={() => {
+    setIsPaused(true);
+    pauseSession();
+   // voice.stop()
+  }}
+  onResume={() => {
+    setIsPaused(false);
+    resumeSession();
+    void startListening(); // voice.start()
+  }}
+/> 
         )}
 
         {/* Unit toggle on all views */}
@@ -757,8 +733,8 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
 
   return (
     <PageShell
-      title={session?.templateitem || templateName || "Maintenance 50 (Air)"}
-      description="Quick 50-point air brake inspection."
+      title={session?.templateitem || templateName || "Maintenance 50"}
+      description="Quick 50-point hydraulic brake maintenance inspection."
     >
       {Body}
     </PageShell>

@@ -405,7 +405,8 @@ export default function GenericInspectionScreen(
     sp.get("template") ||
     "Inspection";
 
-  const customer: SessionCustomer = {
+  const customer = useMemo<SessionCustomer>(
+  () => ({
     first_name: sp.get("first_name") || "",
     last_name: sp.get("last_name") || "",
     phone: sp.get("phone") || "",
@@ -414,9 +415,12 @@ export default function GenericInspectionScreen(
     city: sp.get("city") || "",
     province: sp.get("province") || "",
     postal_code: sp.get("postal_code") || "",
-  };
+  }),
+  [sp],
+);
 
-  const vehicle: SessionVehicle = {
+const vehicle = useMemo<SessionVehicle>(
+  () => ({
     year: sp.get("year") || "",
     make: sp.get("make") || "",
     model: sp.get("model") || "",
@@ -426,7 +430,9 @@ export default function GenericInspectionScreen(
     color: sp.get("color") || "",
     unit_number: sp.get("unit_number") || "",
     engine_hours: sp.get("engine_hours") || "",
-  };
+  }),
+  [sp],
+);
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
@@ -500,7 +506,7 @@ export default function GenericInspectionScreen(
   }, [draftKey]);
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
-  const [isListening, setIsListening] = useState(false);
+  
   const [isPaused, setIsPaused] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
@@ -520,6 +526,9 @@ export default function GenericInspectionScreen(
     "idle" | "connecting" | "listening" | "error"
   >("idle");
 
+  const isListening =
+  voiceState === "listening" || voiceState === "connecting";
+
   const [voicePulse, setVoicePulse] = useState(false);
   const pulseTimerRef = useRef<number | null>(null);
 
@@ -537,24 +546,23 @@ export default function GenericInspectionScreen(
   }, []);
 
     const initialSession = useMemo<Partial<InspectionSession>>(
-    () => ({
-      id: inspectionId,
-      templateitem: templateName,
-      status: "not_started" as InspectionStatus,
-      isPaused: false,
-      isListening: false,
-      transcript: "",
-      quote: [],
-      customer,
-      vehicle,
-      sections: [],
-      currentSectionIndex: 0,
-      currentItemIndex: 0,
-      started: false,
-      completed: false,
-    }),
-    [inspectionId, templateName, customer, vehicle],
-  );
+  () => ({
+    id: inspectionId,
+    templateitem: templateName,
+    status: "not_started" as InspectionStatus,
+    isPaused: false,
+    transcript: "",
+    quote: [],
+    customer,
+    vehicle,
+    sections: [],
+    currentSectionIndex: 0,
+    currentItemIndex: 0,
+    started: false,
+    completed: false,
+  }),
+  [inspectionId, templateName, customer, vehicle],
+);
 
   const {
     session,
@@ -824,23 +832,28 @@ export default function GenericInspectionScreen(
 
       toast.success("READY", { duration: 1200 });
 
-      try {
-        const AudioCtx =
-          window.AudioContext || (window as unknown as any).webkitAudioContext;
-        const ctx = new AudioCtx();
+      type WebkitAudioWindow = Window & {
+        webkitAudioContext?: typeof AudioContext;
+      };
+
+      const AudioCtxCtor =
+        window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
+
+      if (AudioCtxCtor) {
+        const ctx = new AudioCtxCtor();
         const o = ctx.createOscillator();
         const g = ctx.createGain();
         o.type = "sine";
-        o.frequency.value = 880; // beep pitch
-        g.gain.value = 0.05; // volume
+        o.frequency.value = 880;
+        g.gain.value = 0.05;
         o.connect(g);
         g.connect(ctx.destination);
         o.start();
-        setTimeout(() => {
+        window.setTimeout(() => {
           o.stop();
-          ctx.close();
+          void ctx.close();
         }, 120);
-      } catch {}
+      }
 
       if (wakeTimeoutRef.current) {
         window.clearTimeout(wakeTimeoutRef.current);
@@ -879,40 +892,34 @@ export default function GenericInspectionScreen(
   );
 
   const startListening = async (): Promise<void> => {
-    if (isListening) return;
-    if (guardLocked()) return;
+  if (isListening) return;
+  if (guardLocked()) return;
 
-    try {
-      await voice.start();
-      setIsListening(true);
-    } catch (e: unknown) {
-      // eslint-disable-next-line no-console
-      console.error(e);
-      const msg = e instanceof Error ? e.message : "Unable to start voice";
-      toast.error(msg);
-      stopListening();
-    }
-  };
-
-  const stopListening = (): void => {
+  try {
+    await voice.start();
+  } catch (e: unknown) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    const msg = e instanceof Error ? e.message : "Unable to start voice";
+    toast.error(msg);
     try {
       voice.stop();
     } catch {}
+  }
+};
 
-    setIsListening(false);
-    setWakeActive(false);
-    if (wakeTimeoutRef.current) {
-      window.clearTimeout(wakeTimeoutRef.current);
-      wakeTimeoutRef.current = null;
-    }
-  };
+  const stopListening = (): void => {
+  try {
+    voice.stop();
+  } catch {}
 
-  useEffect(() => {
-    return () => {
-      stopListening();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  setWakeActive(false);
+
+  if (wakeTimeoutRef.current) {
+    window.clearTimeout(wakeTimeoutRef.current);
+    wakeTimeoutRef.current = null;
+  }
+};
 
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
@@ -1477,25 +1484,18 @@ export default function GenericInspectionScreen(
             <StartListeningButton isListening={isListening} onStart={startListening} />
           )}
 
-          {!isLocked && (
+          {!isLocked && (isListening || isPaused) && (
             <PauseResumeButton
               isPaused={isPaused}
-              isListening={isListening}
-              setIsListening={setIsListening}
-              onPause={(): void => {
+              onPause={() => {
                 setIsPaused(true);
                 pauseSession();
                 stopListening();
               }}
-              onResume={(): void => {
+              onResume={() => {
                 setIsPaused(false);
                 resumeSession();
                 void startListening();
-              }}
-              recognitionInstance={null}
-              onTranscript={handleTranscript}
-              setRecognitionRef={(): void => {
-                /* noop – using OpenAI now */
               }}
             />
           )}

@@ -1,66 +1,40 @@
-//features/inspections/lib/inspection/PauseResume.tsx
-
+// features/inspections/lib/inspection/PauseResume.tsx
 "use client";
-
-import {
-  stopVoiceRecognition,
-  startVoiceRecognition,
-} from "@inspections/lib/inspection/voiceControl";
 
 interface PauseResumeButtonProps {
   isPaused: boolean;
   onPause: () => void;
   onResume: () => void;
-  isListening: boolean;
-  setIsListening: (val: boolean) => void;
-  recognitionInstance: SpeechRecognition | null;
-  onTranscript?: (text: string) => void;
-  setRecognitionRef: (instance: SpeechRecognition | null) => void;
+  disabled?: boolean;
 }
 
-const PauseResumeButton = ({
+export default function PauseResumeButton({
   isPaused,
   onPause,
   onResume,
-  setIsListening,
-  recognitionInstance,
-  onTranscript,
-  setRecognitionRef,
-}: PauseResumeButtonProps) => {
-  const handlePause = () => {
-    stopVoiceRecognition(recognitionInstance);
-    onPause();
-    setIsListening(false);
-  };
-
-  const handleResume = () => {
-    const newInstance = startVoiceRecognition((text: string) => {
-      onTranscript?.(text);
-    });
-    setRecognitionRef(newInstance);
-    onResume();
-    setIsListening(true);
-  };
-
+  disabled,
+}: PauseResumeButtonProps) {
   return (
-    <div className="text-center mt-2">
+    <div className="mt-2 text-center">
       {isPaused ? (
         <button
-          onClick={handleResume}
-          className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+          type="button"
+          onClick={onResume}
+          disabled={disabled}
+          className="rounded bg-green-600 px-4 py-2 font-bold text-white hover:bg-green-700 disabled:opacity-50"
         >
           Resume
         </button>
       ) : (
         <button
-          onClick={handlePause}
-          className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded"
+          type="button"
+          onClick={onPause}
+          disabled={disabled}
+          className="rounded bg-yellow-600 px-4 py-2 font-bold text-white hover:bg-yellow-700 disabled:opacity-50"
         >
           Pause
         </button>
       )}
     </div>
   );
-};
-
-export default PauseResumeButton;
+}
