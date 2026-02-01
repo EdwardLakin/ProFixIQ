@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -25,6 +25,9 @@ import type {
   SessionCustomer,
   SessionVehicle,
   QuoteLineItem,
+  VoiceMeta,
+  VoiceTraceEvent,
+  VoiceCommandApplyResult,
 } from "@inspections/lib/inspection/types";
 
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
@@ -190,7 +193,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
   } catch {
     return [];
   }
-}
+}  
 
 /* -------- smarter grid detectors -------- */
 
@@ -249,13 +252,13 @@ function isTireGridSection(
   });
 
   if (tireSignals.length >= 2) {
-  return tireSignals.some(
-    (it) =>
-      AIR_RE.test(it.item ?? "") ||
-      HYD_ABBR_RE.test(it.item ?? "") ||
-      HYD_FULL_RE.test(it.item ?? ""),
-  );
-}
+    return tireSignals.some(
+      (it) =>
+        AIR_RE.test(it.item ?? "") ||
+        HYD_ABBR_RE.test(it.item ?? "") ||
+        HYD_FULL_RE.test(it.item ?? ""),
+    );
+  }
 
   return false;
 }
@@ -381,7 +384,6 @@ export default function GenericInspectionScreen(
 
     return routeSp;
   }, [routeSp]);
-
 
   const isEmbed = useMemo(
     () =>
@@ -513,28 +515,28 @@ export default function GenericInspectionScreen(
 
   const [wakeActive, setWakeActive] = useState(false);
   const wakeTimeoutRef = useRef<number | null>(null);
+
   const [voiceState, setVoiceState] = useState<
-  "idle" | "connecting" | "listening" | "error"
->("idle");
+    "idle" | "connecting" | "listening" | "error"
+  >("idle");
 
-const [voicePulse, setVoicePulse] = useState(false);
-const pulseTimerRef = useRef<number | null>(null);
+  const [voicePulse, setVoicePulse] = useState(false);
+  const pulseTimerRef = useRef<number | null>(null);
 
-const triggerVoicePulse = (): void => {
-  setVoicePulse(true);
-  if (pulseTimerRef.current) window.clearTimeout(pulseTimerRef.current);
-  pulseTimerRef.current = window.setTimeout(() => setVoicePulse(false), 700);
-};
-
-useEffect(() => {
-  return () => {
+  const triggerVoicePulse = (): void => {
+    setVoicePulse(true);
     if (pulseTimerRef.current) window.clearTimeout(pulseTimerRef.current);
-    pulseTimerRef.current = null;
+    pulseTimerRef.current = window.setTimeout(() => setVoicePulse(false), 700);
   };
-}, []);
 
+  useEffect(() => {
+    return () => {
+      if (pulseTimerRef.current) window.clearTimeout(pulseTimerRef.current);
+      pulseTimerRef.current = null;
+    };
+  }, []);
 
-  const initialSession = useMemo<Partial<InspectionSession>>(
+    const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
       templateitem: templateName,
@@ -566,6 +568,17 @@ useEffect(() => {
     addQuoteLine,
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
+
+  // ✅ ensure voiceMeta exists for your UI + counters
+  useEffect(() => {
+    if (!session) return;
+    if (!session.voiceMeta) {
+      updateInspection({
+        voiceMeta: { linesAddedToWorkOrder: 0 } satisfies VoiceMeta,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -669,51 +682,139 @@ useEffect(() => {
       );
   }, [session, draftKey, lockKey]);
 
+  // ✅ TS-safe label for ParsedCommand (no ".command" assumption)
+  const commandLabel = (c: ParsedCommand): string => {
+    const anyC = c as unknown as Record<string, unknown>;
+    const cmd =
+      typeof anyC.command === "string"
+        ? anyC.command
+        : typeof anyC.type === "string"
+          ? anyC.type
+          : "command";
+    return cmd;
+  };
+
+  const appendVoiceTrace = (evt: {
+    rawFinal: string;
+    wakeCommand: string | null;
+    parsed: ParsedCommand[];
+    applied: VoiceCommandApplyResult[];
+  }): void => {
+    if (!session) return;
+
+    const existing = Array.isArray(session.voiceTrace) ? session.voiceTrace : [];
+
+    const next: VoiceTraceEvent = {
+      id: uuidv4(),
+      ts: Date.now(),
+      rawFinal: evt.rawFinal,
+      wakeCommand: evt.wakeCommand,
+      parsed: evt.parsed,
+      applied: evt.applied,
+    };
+
+    const trimmed = [...existing, next].slice(-200);
+    updateInspection({ voiceTrace: trimmed });
+  };
+
   const handleTranscript = async (text: string): Promise<void> => {
     if (!session || guardLocked()) return;
-    const commands: ParsedCommand[] = await interpretCommand(text);
-    const sess = session;
-    if (!sess) return;
 
-    for (const command of commands) {
-      await handleTranscriptFn({
-        command,
-        session: sess,
-        updateInspection,
-        updateItem,
-        updateSection,
-        finishSession,
+    let commands: ParsedCommand[] = [];
+    const applied: VoiceCommandApplyResult[] = [];
+
+    try {
+      commands = await interpretCommand(text);
+
+      if (!commands.length) {
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [
+            { command: "interpret", ok: false, reason: "No commands returned" },
+          ],
+        });
+        return;
+      }
+
+      const sess = session;
+
+      for (const command of commands) {
+        try {
+          await handleTranscriptFn({
+            command,
+            session: sess,
+            updateInspection,
+            updateItem,
+            updateSection,
+            finishSession,
+          });
+
+          applied.push({ command: commandLabel(command), ok: true });
+        } catch (err: unknown) {
+          // eslint-disable-next-line no-console
+          console.error("[voice] apply failed", err);
+          applied.push({
+            command: commandLabel(command),
+            ok: false,
+            reason: err instanceof Error ? err.message : "apply failed",
+          });
+        }
+      }
+
+      appendVoiceTrace({
+        rawFinal: text,
+        wakeCommand: text,
+        parsed: commands,
+        applied,
+      });
+    } catch (err: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("[voice] handleTranscript failed", err);
+
+      appendVoiceTrace({
+        rawFinal: text,
+        wakeCommand: text,
+        parsed: commands,
+        applied: [
+          {
+            command: "interpret",
+            ok: false,
+            reason: err instanceof Error ? err.message : "exception",
+          },
+        ],
       });
     }
   };
 
-    function maybeHandleWakeWord(raw: string): string | null {
-  // Normalize: lowercase, remove punctuation, collapse spaces
-  const normalized = raw
-    .toLowerCase()
-    .replace(/[^\w\s]/g, " ")  // removes commas/periods/etc
-    .replace(/\s+/g, " ")
-    .trim();
+  function maybeHandleWakeWord(raw: string): string | null {
+    // Normalize: lowercase, remove punctuation, collapse spaces
+    const normalized = raw
+      .toLowerCase()
+      .replace(/[^\w\s]/g, " ") // removes commas/periods/etc
+      .replace(/\s+/g, " ")
+      .trim();
 
-  // allow optional "hey"
-  const withoutHey = normalized.startsWith("hey ")
-    ? normalized.slice(4).trim()
-    : normalized;
+    // allow optional "hey"
+    const withoutHey = normalized.startsWith("hey ")
+      ? normalized.slice(4).trim()
+      : normalized;
 
-  const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
+    const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
 
-  const matchPrefix = (): { prefix: string; remainder: string } | null => {
-    for (const prefix of WAKE_PREFIXES) {
-      if (withoutHey === prefix) return { prefix, remainder: "" };
-      if (withoutHey.startsWith(prefix + " ")) {
-        return { prefix, remainder: withoutHey.slice(prefix.length).trimStart() };
+    const matchPrefix = (): { prefix: string; remainder: string } | null => {
+      for (const prefix of WAKE_PREFIXES) {
+        if (withoutHey === prefix) return { prefix, remainder: "" };
+        if (withoutHey.startsWith(prefix + " ")) {
+          return {
+            prefix,
+            remainder: withoutHey.slice(prefix.length).trimStart(),
+          };
+        }
       }
-    }
-    return null;
-  };
-
-  // ...keep the rest of your function the same, BUT:
-  // use `withoutHey` instead of `lower/cleaned` when deciding what to return.
+      return null;
+    };
 
     if (!wakeActive) {
       const match = matchPrefix();
@@ -723,22 +824,23 @@ useEffect(() => {
 
       toast.success("READY", { duration: 1200 });
 
-try {
-  const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-  const ctx = new AudioCtx();
-  const o = ctx.createOscillator();
-  const g = ctx.createGain();
-  o.type = "sine";
-  o.frequency.value = 880;     // beep pitch
-  g.gain.value = 0.05;         // volume
-  o.connect(g);
-  g.connect(ctx.destination);
-  o.start();
-  setTimeout(() => {
-    o.stop();
-    ctx.close();
-  }, 120);
-} catch {}
+      try {
+        const AudioCtx =
+          window.AudioContext || (window as unknown as any).webkitAudioContext;
+        const ctx = new AudioCtx();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.value = 880; // beep pitch
+        g.gain.value = 0.05; // volume
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start();
+        setTimeout(() => {
+          o.stop();
+          ctx.close();
+        }, 120);
+      } catch {}
 
       if (wakeTimeoutRef.current) {
         window.clearTimeout(wakeTimeoutRef.current);
@@ -760,20 +862,21 @@ try {
     return withoutHey;
   }
 
-   const voice = useRealtimeVoice(
-  async (text: string) => {
-    await handleTranscript(text);
-  },
-  (raw: string) => maybeHandleWakeWord(raw),
-  {
-    onStateChange: setVoiceState,
-    onPulse: triggerVoicePulse,
-    onError: (m) => {
-      console.error("[Voice]", m);
-      setVoiceState("error");
+  const voice = useRealtimeVoice(
+    async (text: string) => {
+      await handleTranscript(text);
     },
-  },
-);
+    (raw: string) => maybeHandleWakeWord(raw),
+    {
+      onStateChange: setVoiceState,
+      onPulse: triggerVoicePulse,
+      onError: (m) => {
+        // eslint-disable-next-line no-console
+        console.error("[Voice]", m);
+        setVoiceState("error");
+      },
+    },
+  );
 
   const startListening = async (): Promise<void> => {
     if (isListening) return;
@@ -815,7 +918,7 @@ try {
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (
+    const submitAIForItem = async (
     secIdx: number,
     itemIdx: number,
   ): Promise<void> => {
@@ -961,6 +1064,14 @@ try {
         const createdId = (created as unknown as { id?: unknown })?.id;
         createdJobId =
           (createdId ? String(createdId) : null) || workOrderLineId || null;
+
+        // ✅ keep your counter for “lines added and sent for quote”
+        updateInspection({
+          voiceMeta: {
+            linesAddedToWorkOrder:
+              (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
+          } satisfies VoiceMeta,
+        });
 
         const cleanParts = manualParts
           .map((p) => ({
@@ -1363,13 +1474,10 @@ try {
 
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {!isLocked && (
-            <StartListeningButton
-              isListening={isListening}
-              onStart={startListening}
-            />
+            <StartListeningButton isListening={isListening} onStart={startListening} />
           )}
 
-                    {!isLocked && (
+          {!isLocked && (
             <PauseResumeButton
               isPaused={isPaused}
               isListening={isListening}
@@ -1392,8 +1500,6 @@ try {
             />
           )}
 
-          
-
           <Button
             type="button"
             variant="outline"
@@ -1407,44 +1513,198 @@ try {
           </Button>
         </div>
 
+        <div className="mt-1 flex items-center justify-center">
+          <div
+            className={[
+              "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur",
+              voiceState === "listening"
+                ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
+                : voiceState === "connecting"
+                  ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
+                  : voiceState === "error"
+                    ? "border-red-500/50 bg-red-500/10 text-red-200"
+                    : "border-neutral-600/50 bg-black/40 text-neutral-300",
+              voicePulse ? "shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : "",
+            ].join(" ")}
+          >
+            <span
+              className={[
+                "h-2 w-2 rounded-full",
+                voiceState === "listening"
+                  ? "bg-emerald-400"
+                  : voiceState === "connecting"
+                    ? "bg-amber-400"
+                    : voiceState === "error"
+                      ? "bg-red-400"
+                      : "bg-neutral-500",
+                voiceState === "listening" ? "animate-pulse" : "",
+              ].join(" ")}
+            />
+            {voiceState === "listening"
+              ? "Listening…"
+              : voiceState === "connecting"
+                ? "Connecting…"
+                : voiceState === "error"
+                  ? "Voice error"
+                  : "Voice idle"}
+            {voicePulse && <span className="text-emerald-200/80">• audio</span>}
+          </div>
+        </div>
 
-<div className="mt-1 flex items-center justify-center">
-  <div
-    className={[
-      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur",
-      voiceState === "listening"
-        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
-        : voiceState === "connecting"
-          ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
-          : voiceState === "error"
-            ? "border-red-500/50 bg-red-500/10 text-red-200"
-            : "border-neutral-600/50 bg-black/40 text-neutral-300",
-      voicePulse ? "shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : "",
-    ].join(" ")}
-  >
-    <span
-      className={[
-        "h-2 w-2 rounded-full",
-        voiceState === "listening"
-          ? "bg-emerald-400"
-          : voiceState === "connecting"
-            ? "bg-amber-400"
-            : voiceState === "error"
-              ? "bg-red-400"
-              : "bg-neutral-500",
-        voiceState === "listening" ? "animate-pulse" : "",
-      ].join(" ")}
-    />
-    {voiceState === "listening"
-      ? "Listening…"
-      : voiceState === "connecting"
-        ? "Connecting…"
-        : voiceState === "error"
-          ? "Voice error"
-          : "Voice idle"}
-    {voicePulse && <span className="text-emerald-200/80">• audio</span>}
-  </div>
-</div>
+        {/* ✅ UI ADDITION: Summary + Voice Log */}
+        {(() => {
+          const sections = session.sections ?? [];
+          const allItems = sections.flatMap((s) => s.items ?? []);
+
+          const failed = allItems.filter(
+            (it) => String(it.status ?? "").toLowerCase() === "fail",
+          );
+          const rec = allItems.filter(
+            (it) => String(it.status ?? "").toLowerCase() === "recommend",
+          );
+
+          const otherOkNa = allItems.filter((it) => {
+            const st = String(it.status ?? "").toLowerCase();
+            return st === "ok" || st === "na" || st === "" || st === "pass";
+          });
+
+          const linesAdded = session.voiceMeta?.linesAddedToWorkOrder ?? 0;
+
+          return (
+            <div className="mt-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2.5 md:px-4 md:py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
+                Inspection Summary
+              </div>
+
+              <ul className="mt-2 space-y-1 text-xs text-neutral-300">
+                <li className="text-neutral-200">
+                  • Completed{" "}
+                  <span className="font-semibold">
+                    {session.templateitem || templateName || "inspection"}
+                  </span>
+                  .
+                </li>
+
+                <li>
+                  • Failed items:{" "}
+                  <span
+                    className={
+                      failed.length
+                        ? "text-red-200 font-semibold"
+                        : "text-neutral-200"
+                    }
+                  >
+                    {failed.length}
+                  </span>
+                </li>
+                {failed.slice(0, 6).map((it, idx) => (
+                  <li key={`fail-${idx}`} className="ml-3 text-red-200/90">
+                    - {String(it.item ?? "Item")}
+                    {String(it.notes ?? "").trim()
+                      ? ` — ${String(it.notes).trim()}`
+                      : ""}
+                  </li>
+                ))}
+
+                <li className="mt-1">
+                  • Recommended items:{" "}
+                  <span
+                    className={
+                      rec.length
+                        ? "text-amber-200 font-semibold"
+                        : "text-neutral-200"
+                    }
+                  >
+                    {rec.length}
+                  </span>
+                </li>
+                {rec.slice(0, 6).map((it, idx) => (
+                  <li key={`rec-${idx}`} className="ml-3 text-amber-200/90">
+                    - {String(it.item ?? "Item")}
+                    {String(it.notes ?? "").trim()
+                      ? ` — ${String(it.notes).trim()}`
+                      : ""}
+                  </li>
+                ))}
+
+                <li className="mt-1 text-neutral-200">
+                  • All other inspection items OK/NA:{" "}
+                  <span className="font-semibold">{otherOkNa.length}</span>
+                </li>
+
+                <li className="text-neutral-200">
+                  • Lines added and sent for quote:{" "}
+                  <span
+                    className={
+                      linesAdded
+                        ? "font-semibold text-emerald-200"
+                        : "font-semibold text-neutral-200"
+                    }
+                  >
+                    {linesAdded}
+                  </span>
+                </li>
+              </ul>
+            </div>
+          );
+        })()}
+
+        {Array.isArray(session.voiceTrace) && session.voiceTrace.length > 0 ? (
+          <div className="mt-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 px-3 py-2.5 md:px-4 md:py-3 backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
+                Voice Log
+              </div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                {session.voiceTrace.length} events
+              </div>
+            </div>
+
+            <div className="mt-2 space-y-2">
+              {session.voiceTrace
+                .slice(-8)
+                .reverse()
+                .map((e) => {
+                  const okCount = (e.applied ?? []).filter((a) => a.ok).length;
+                  const failCount = (e.applied ?? []).filter((a) => !a.ok).length;
+
+                  return (
+                    <div
+                      key={e.id}
+                      className="rounded-xl border border-white/10 bg-black/50 px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs text-neutral-200">
+                          <span className="font-semibold">Heard:</span>{" "}
+                          <span className="text-neutral-300">{e.rawFinal}</span>
+                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                          {new Date(e.ts).toLocaleTimeString()}
+                        </div>
+                      </div>
+
+                      <div className="mt-1 text-xs text-neutral-300">
+                        <span className="font-semibold">Command:</span>{" "}
+                        {e.wakeCommand ?? "(wake only)"}
+                      </div>
+
+                      <div className="mt-1 flex items-center gap-2 text-[11px]">
+                        <span className="text-emerald-200">✓ {okCount}</span>
+                        <span className="text-red-200">✕ {failCount}</span>
+                        <span className="text-neutral-500">
+                          parsed: {(e.parsed ?? []).length}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-2 text-center text-[11px] text-neutral-500">
+            No voice commands captured yet.
+          </div>
+        )}
 
         <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2.5 md:px-4 md:py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
           <ProgressTracker
@@ -1486,24 +1746,15 @@ try {
               };
             });
 
-            const batterySection = isBatterySection(
-              section.title,
-              itemsWithHints,
-            );
-            const tireSection = isTireGridSection(
-              section.title,
-              itemsWithHints,
-            );
+            const batterySection = isBatterySection(section.title, itemsWithHints);
+            const tireSection = isTireGridSection(section.title, itemsWithHints);
             const airSection =
               !tireSection && isAirCornerSection(section.title, itemsWithHints);
-            const hydCornerSection = isHydraulicCornerSection(
-              section.title,
-              itemsWithHints,
-            );
+            const hydCornerSection = isHydraulicCornerSection(section.title, itemsWithHints);
 
             const looksHydTire =
-  itemsWithHints.some((it) => HYD_ABBR_RE.test(it.item ?? "")) ||
-  itemsWithHints.some((it) => HYD_FULL_RE.test(it.item ?? ""));
+              itemsWithHints.some((it) => HYD_ABBR_RE.test(it.item ?? "")) ||
+              itemsWithHints.some((it) => HYD_FULL_RE.test(it.item ?? ""));
 
             const useGrid =
               batterySection || airSection || tireSection || hydCornerSection;
@@ -1536,9 +1787,7 @@ try {
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() =>
-                          applyStatusToSection(sectionIndex, "fail")
-                        }
+                        onClick={() => applyStatusToSection(sectionIndex, "fail")}
                       >
                         All Fail
                       </button>
@@ -1554,9 +1803,7 @@ try {
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() =>
-                          applyStatusToSection(sectionIndex, "recommend")
-                        }
+                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
                       >
                         All REC
                       </button>
@@ -1583,8 +1830,7 @@ try {
 
                 {collapsed ? (
                   <p className="mt-2 text-center text-[11px] text-neutral-400">
-                    Section collapsed. Tap{" "}
-                    <span className="font-semibold">Expand</span> to reopen.
+                    Section collapsed. Tap <span className="font-semibold">Expand</span> to reopen.
                   </p>
                 ) : (
                   <>
@@ -1602,17 +1848,13 @@ try {
                           <BatteryGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) =>
-                              unitHintGeneric(label, unit)
-                            }
+                            unitHint={(label: string) => unitHintGeneric(label, unit)}
                           />
                         ) : airSection ? (
                           <AirCornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) =>
-                              unitHintGeneric(label, unit)
-                            }
+                            unitHint={(label: string) => unitHintGeneric(label, unit)}
                             onAddAxle={(axleLabel: string) =>
                               handleAddAxleForSection(sectionIndex, axleLabel)
                             }
@@ -1629,40 +1871,30 @@ try {
                             <TireGridHydraulic
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
-                              unitHint={(label: string) =>
-                                unitHintGeneric(label, unit)
-                              }
+                              unitHint={(label: string) => unitHintGeneric(label, unit)}
                               requireNoteForAI
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitAIForItem(secIdx, itemIdx);
                               }}
-                              isSubmittingAI={(
-                                secIdx: number,
-                                itemIdx: number,
-                              ) => isSubmittingAI(secIdx, itemIdx)}
+                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
+                                isSubmittingAI(secIdx, itemIdx)
+                              }
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts });
                               }}
                               onUpdateLaborHours={(secIdx, itemIdx, hours) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, {
-                                  laborHours: hours,
-                                });
+                                updateItem(secIdx, itemIdx, { laborHours: hours });
                               }}
                             />
                           ) : (
                             <TireGrid
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
-                              unitHint={(label: string) =>
-                                unitHintGeneric(label, unit)
-                              }
+                              unitHint={(label: string) => unitHintGeneric(label, unit)}
                               onAddAxle={(axleLabel: string) =>
-                                handleAddTireAxleForSection(
-                                  sectionIndex,
-                                  axleLabel,
-                                )
+                                handleAddTireAxleForSection(sectionIndex, axleLabel)
                               }
                               onSpecHint={(metricLabel: string) =>
                                 _props.onSpecHint?.({
@@ -1675,19 +1907,16 @@ try {
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitAIForItem(secIdx, itemIdx);
                               }}
-                              isSubmittingAI={(
-                                secIdx: number,
-                                itemIdx: number,
-                              ) => isSubmittingAI(secIdx, itemIdx)}
+                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
+                                isSubmittingAI(secIdx, itemIdx)
+                              }
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts });
                               }}
                               onUpdateLaborHours={(secIdx, itemIdx, hours) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, {
-                                  laborHours: hours,
-                                });
+                                updateItem(secIdx, itemIdx, { laborHours: hours });
                               }}
                             />
                           )
@@ -1695,9 +1924,7 @@ try {
                           <CornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) =>
-                              unitHintGeneric(label, unit)
-                            }
+                            unitHint={(label: string) => unitHintGeneric(label, unit)}
                             onSpecHint={(label: string) =>
                               _props.onSpecHint?.({
                                 source: "corner",
@@ -1721,9 +1948,7 @@ try {
                               statusValue: InspectionItemStatus,
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, {
-                                status: statusValue,
-                              });
+                              updateItem(secIdx, itemIdx, { status: statusValue });
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
                             onUpdateNote={(
@@ -1734,18 +1959,11 @@ try {
                               if (guardLocked()) return;
                               updateItem(secIdx, itemIdx, { notes: noteText });
                             }}
-                            onUpload={(
-                              photoUrl: string,
-                              secIdx: number,
-                              itemIdx: number,
-                            ) => {
+                            onUpload={(photoUrl: string, secIdx: number, itemIdx: number) => {
                               if (guardLocked()) return;
                               const prev =
-                                session.sections[secIdx].items[itemIdx]
-                                  .photoUrls ?? [];
-                              updateItem(secIdx, itemIdx, {
-                                photoUrls: [...prev, photoUrl],
-                              });
+                                session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                              updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
                             }}
                             onUpdateParts={(
                               secIdx: number,
@@ -1761,9 +1979,7 @@ try {
                               hours: number | null,
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, {
-                                laborHours: hours,
-                              });
+                              updateItem(secIdx, itemIdx, { laborHours: hours });
                             }}
                             requireNoteForAI
                             onSubmitAI={(secIdx: number, itemIdx: number) => {
@@ -1811,9 +2027,7 @@ try {
                                 <Button
                                   type="button"
                                   className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                                  onClick={() =>
-                                    handleAddCustomItem(sectionIndex)
-                                  }
+                                  onClick={() => handleAddCustomItem(sectionIndex)}
                                   disabled={isLocked}
                                 >
                                   + Add Item
@@ -1836,9 +2050,8 @@ try {
             inspectionId={inspectionId}
             role="customer"
             defaultName={
-              [customer.first_name, customer.last_name]
-                .filter(Boolean)
-                .join(" ") || undefined
+              [customer.first_name, customer.last_name].filter(Boolean).join(" ") ||
+              undefined
             }
             onSigned={handleSigned}
           />
@@ -1847,8 +2060,8 @@ try {
         {!isEmbed && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
             <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P
-              = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+              <span className="font-semibold text-neutral-200">Legend:</span> P = Pass
+              &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}
@@ -1886,4 +2099,3 @@ try {
     </PageShell>
   );
 }
-             

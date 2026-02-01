@@ -67,7 +67,8 @@ export function useRealtimeVoice(
 
   const pulse = () => {
     const now = Date.now();
-    const debounce = typeof opts?.pulseDebounceMs === "number" ? opts.pulseDebounceMs : 250;
+    const debounce =
+      typeof opts?.pulseDebounceMs === "number" ? opts.pulseDebounceMs : 250;
     if (now - lastPulseAtRef.current < debounce) return;
     lastPulseAtRef.current = now;
     opts?.onPulse?.();
@@ -180,7 +181,9 @@ export function useRealtimeVoice(
       const level = rms(float32);
 
       const threshold =
-        typeof opts?.audioPulseThreshold === "number" ? opts.audioPulseThreshold : 0.02;
+        typeof opts?.audioPulseThreshold === "number"
+          ? opts.audioPulseThreshold
+          : 0.02;
 
       if (level >= threshold) {
         pulse(); // ✅ shows "audio" pulse even if transcription isn't returning yet
@@ -238,7 +241,6 @@ export function useRealtimeVoice(
       }
 
       if (type === "error") {
-        // Surface more detail to UI
         const errObj = m.error as Record<string, unknown> | undefined;
         const msgText =
           (errObj && typeof errObj.message === "string" && errObj.message) ||
@@ -250,7 +252,6 @@ export function useRealtimeVoice(
         setState("error");
         opts?.onError?.(msgText);
 
-        // Stop everything
         stop();
       }
     };
@@ -283,11 +284,17 @@ export function useRealtimeVoice(
     } catch {}
     zeroGainRef.current = null;
 
-    // close WS (avoid recursion if already closing)
+    // close WS (handle CONNECTING too)
     const sock = wsRef.current;
     wsRef.current = null;
     try {
-      if (sock && sock.readyState === WebSocket.OPEN) sock.close();
+      if (
+        sock &&
+        (sock.readyState === WebSocket.OPEN ||
+          sock.readyState === WebSocket.CONNECTING)
+      ) {
+        sock.close();
+      }
     } catch {}
 
     // stop mic

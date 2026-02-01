@@ -4,6 +4,25 @@
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 export type BrakeType = "air" | "hydraulic";
 
+export type VoiceCommandApplyResult = {
+  command: string;
+  ok: boolean;
+  reason?: string;
+};
+
+export type VoiceTraceEvent = {
+  id: string;
+  ts: number;
+  rawFinal: string;
+  wakeCommand: string | null;
+  parsed: ParsedCommand[];
+  applied: VoiceCommandApplyResult[];
+};
+
+export type VoiceMeta = {
+  linesAddedToWorkOrder: number;
+};
+
 export interface InspectionItem {
   /** Primary label. Some code uses item, some uses name — support both. */
   item?: string;
@@ -301,6 +320,8 @@ export interface InspectionSession {
   /** Voice */
   transcript?: string;
   isListening: boolean;
+  voiceTrace?: VoiceTraceEvent[];
+  voiceMeta?: VoiceMeta;
 
   /** Lifecycle */
   status: InspectionStatus;
