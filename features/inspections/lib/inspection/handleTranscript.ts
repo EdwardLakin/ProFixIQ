@@ -1,5 +1,3 @@
-// features/inspections/lib/inspection/handleTranscript.ts
-
 import {
   ParsedCommand,
   ParsedCommandNameBased,
@@ -19,6 +17,12 @@ type UpdateSectionFn = (
   updates: Partial<InspectionSession["sections"][number]>,
 ) => void;
 
+export type AppliedTarget = { sectionIndex: number; itemIndex: number };
+
+export type HandleTranscriptResult = {
+  appliedTarget: AppliedTarget | null;
+};
+
 interface HandleTranscriptArgs {
   command: ParsedCommand;
   session: InspectionSession;
@@ -26,7 +30,6 @@ interface HandleTranscriptArgs {
   updateItem: UpdateItemFn;
   updateSection: UpdateSectionFn;
   finishSession: () => void;
-  
 
   /**
    * ✅ IMPORTANT:
@@ -158,7 +161,11 @@ function scoreLabel(label: string, hintTokens: string[]): number {
     }
 
     // metric tokens
-    if (tok === "tire pressure" || tok === "tread depth" || tok === "wheel torque") {
+    if (
+      tok === "tire pressure" ||
+      tok === "tread depth" ||
+      tok === "wheel torque"
+    ) {
       if (l.includes(tok)) score += 25;
       continue;
     }
@@ -171,8 +178,15 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
-    if (tok === "pad" || tok === "pads" || tok === "shoe" || tok === "shoes" || tok === "lining") {
-      if (l.includes("pad") || l.includes("shoe") || l.includes("lining")) score += 20;
+    if (
+      tok === "pad" ||
+      tok === "pads" ||
+      tok === "shoe" ||
+      tok === "shoes" ||
+      tok === "lining"
+    ) {
+      if (l.includes("pad") || l.includes("shoe") || l.includes("lining"))
+        score += 20;
       continue;
     }
 
@@ -195,12 +209,22 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
     if (tok === "charging" || tok === "alternator" || tok === "charge rate") {
-      if (l.includes("charging") || l.includes("alternator") || l.includes("charge")) score += 18;
+      if (
+        l.includes("charging") ||
+        l.includes("alternator") ||
+        l.includes("charge")
+      )
+        score += 18;
       continue;
     }
 
     // axle hints
-    if (tok === "axle" || tok === "steer" || tok === "drive" || tok === "trailer") {
+    if (
+      tok === "axle" ||
+      tok === "steer" ||
+      tok === "drive" ||
+      tok === "trailer"
+    ) {
       if (l.includes(tok)) score += 10;
       continue;
     }
@@ -223,8 +247,13 @@ function scoreSectionTitle(title: string, hintTokens: string[]): number {
   }
 
   if (t.includes("battery") && hintTokens.includes("voltage")) score += 10;
-  if (t.includes("tire") && (hintTokens.includes("tread") || hintTokens.includes("pressure"))) score += 10;
-  if (t.includes("brake") && (hintTokens.includes("pad") || hintTokens.includes("rotor"))) score += 10;
+  if (
+    t.includes("tire") &&
+    (hintTokens.includes("tread") || hintTokens.includes("pressure"))
+  )
+    score += 10;
+  if (t.includes("brake") && (hintTokens.includes("pad") || hintTokens.includes("rotor")))
+    score += 10;
 
   return score;
 }
@@ -232,25 +261,15 @@ function scoreSectionTitle(title: string, hintTokens: string[]): number {
 function resolveTargetFromSpeech(args: {
   speech: string;
   sections: InspectionSession["sections"];
-  preferredSectionIndex?: number;
   explicitSectionName?: string;
 }): Target | null {
-  const { speech, sections, preferredSectionIndex, explicitSectionName } = args;
+  const { speech, sections, explicitSectionName } = args;
   if (!Array.isArray(sections) || sections.length === 0) return null;
 
   const hints = extractHintTokens(speech);
 
   const sectionOrder: number[] = [];
-  if (
-    typeof preferredSectionIndex === "number" &&
-    preferredSectionIndex >= 0 &&
-    preferredSectionIndex < sections.length
-  ) {
-    sectionOrder.push(preferredSectionIndex);
-  }
-  for (let i = 0; i < sections.length; i++) {
-    if (i !== preferredSectionIndex) sectionOrder.push(i);
-  }
+  for (let i = 0; i < sections.length; i++) sectionOrder.push(i);
 
   const explicitSection = explicitSectionName ? norm(explicitSectionName) : "";
   let best: { score: number; target: Target } | null = null;
@@ -279,15 +298,6 @@ function resolveTargetFromSpeech(args: {
       if (!best || total > best.score) {
         best = { score: total, target: { sectionIndex: sIdx, itemIndex: iIdx } };
       }
-    }
-
-    if (
-      best &&
-      typeof preferredSectionIndex === "number" &&
-      sIdx === preferredSectionIndex &&
-      best.score >= 85
-    ) {
-      break;
     }
   }
 
@@ -332,28 +342,23 @@ function clampTargetToSession(session: InspectionSession, t: Target): Target {
   return { sectionIndex: sIdx, itemIndex: iIdx };
 }
 
-function currentFocusTarget(session: InspectionSession): Target {
-  const preferredSectionIndex =
-    typeof session.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
-  const preferredItemIndex =
-    typeof session.currentItemIndex === "number" ? session.currentItemIndex : 0;
-
-  return clampTargetToSession(session, {
-    sectionIndex: preferredSectionIndex,
-    itemIndex: preferredItemIndex,
-  });
-}
-
 /* -------------------------------------------------------------------------------------------------
- * Main apply
+ * Main apply (NO MANUAL FOCUS)
  * ------------------------------------------------------------------------------------------------- */
 
 export async function handleTranscriptFn({
   command,
   session,
+  updateInspection, // kept for signature compatibility (not used here yet)
   updateItem,
+  updateSection, // kept for signature compatibility (not used here yet)
+  finishSession, // kept for signature compatibility (not used here yet)
   rawSpeech,
-}: HandleTranscriptArgs): Promise<void> {
+}: HandleTranscriptArgs): Promise<HandleTranscriptResult> {
+  void updateInspection;
+  void updateSection;
+  void finishSession;
+
   // Normalized fields
   let section: string | undefined;
   let item: string | undefined;
@@ -363,7 +368,9 @@ export async function handleTranscriptFn({
   let unit: string | undefined;
   let mode: string;
 
-  const focus = currentFocusTarget(session);
+  // Explicit index targets (ONLY if provided by the command itself)
+  let explicitSectionIndex: number | undefined;
+  let explicitItemIndex: number | undefined;
 
   if ("command" in command) {
     const c = command as ParsedCommandIndexed;
@@ -372,6 +379,9 @@ export async function handleTranscriptFn({
     note = c.notes;
     value = c.value;
     unit = c.unit;
+
+    if (typeof c.sectionIndex === "number") explicitSectionIndex = c.sectionIndex;
+    if (typeof c.itemIndex === "number") explicitItemIndex = c.itemIndex;
   } else {
     const c = command as ParsedCommandNameBased;
     mode = c.type;
@@ -383,7 +393,55 @@ export async function handleTranscriptFn({
     if ("unit" in c) unit = c.unit;
   }
 
-  // 1) First try explicit name matching (fast path)
+  // 1) If the command explicitly carries indices, use them (this is NOT “manual focus”)
+  if (
+    typeof explicitSectionIndex === "number" &&
+    typeof explicitItemIndex === "number"
+  ) {
+    const safe = clampTargetToSession(session, {
+      sectionIndex: explicitSectionIndex,
+      itemIndex: explicitItemIndex,
+    });
+
+    const itemUpdates: Partial<
+      InspectionSession["sections"][number]["items"][number]
+    > = {};
+
+    switch (mode) {
+      case "update_status": {
+        if (status) itemUpdates.status = status;
+        break;
+      }
+      case "update_value": {
+        if (value !== undefined) itemUpdates.value = value;
+        if (unit) itemUpdates.unit = unit;
+        break;
+      }
+      case "add_note": {
+        if (note) itemUpdates.notes = note;
+        break;
+      }
+      case "recommend": {
+        if (note) {
+          itemUpdates.status = "recommend";
+          itemUpdates.notes = note;
+          itemUpdates.recommend = [note];
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    if (Object.keys(itemUpdates).length > 0) {
+      updateItem(safe.sectionIndex, safe.itemIndex, itemUpdates);
+      return { appliedTarget: safe };
+    }
+
+    return { appliedTarget: safe };
+  }
+
+  // 2) Try explicit name matching (fast path)
   const sectionIndexByName =
     section && section.trim().length > 0
       ? session.sections.findIndex((sec) =>
@@ -400,41 +458,24 @@ export async function handleTranscriptFn({
         )
       : -1;
 
-  // 2) Resolve target using RAW SPEECH first, then parsed fields
   let target: Target | null = null;
 
   if (sectionIndexByName >= 0 && itemIndexByName >= 0) {
     target = { sectionIndex: sectionIndexByName, itemIndex: itemIndexByName };
   } else {
+    // 3) Resolve using RAW SPEECH first, then parsed fields (NO focus bias)
     const rawHint = String(rawSpeech ?? "").trim();
     const parsedHint = buildSpeechHintFromCommand({ section, item, note, unit });
 
     const hint =
-      rawHint.length > 0
-        ? rawHint
-        : parsedHint.length > 0
-          ? parsedHint
-          : "";
+      rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
 
     if (hint) {
       target = resolveTargetFromSpeech({
         speech: hint,
         sections: session.sections,
-        preferredSectionIndex: focus.sectionIndex,
         explicitSectionName: section,
       });
-    }
-
-    // If still no target, for some commands it’s safe to apply to current item.
-    const safeFallback =
-      mode === "update_status" ||
-      mode === "status" ||
-      mode === "add_note" ||
-      mode === "add" ||
-      mode === "recommend";
-
-    if (!target && safeFallback) {
-      target = focus;
     }
   }
 
@@ -449,7 +490,7 @@ export async function handleTranscriptFn({
       value,
       unit,
     });
-    return;
+    return { appliedTarget: null };
   }
 
   const safeTarget = clampTargetToSession(session, target);
@@ -478,7 +519,6 @@ export async function handleTranscriptFn({
     }
 
     case "recommend": {
-      // ✅ ensure UI reflects it
       if (note) {
         itemUpdates.status = "recommend";
         itemUpdates.notes = note;
@@ -487,10 +527,6 @@ export async function handleTranscriptFn({
       break;
     }
 
-    case "complete_item":
-    case "skip_item":
-      break;
-
     default:
       break;
   }
@@ -498,4 +534,6 @@ export async function handleTranscriptFn({
   if (Object.keys(itemUpdates).length > 0) {
     updateItem(safeTarget.sectionIndex, safeTarget.itemIndex, itemUpdates);
   }
+
+  return { appliedTarget: safeTarget };
 }

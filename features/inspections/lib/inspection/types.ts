@@ -1,5 +1,3 @@
-// features/inspections/lib/inspection/types.ts
-
 /** ---------- Item / Section ---------- */
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 export type BrakeType = "air" | "hydraulic";
@@ -21,6 +19,32 @@ export type VoiceTraceEvent = {
 
 export type VoiceMeta = {
   linesAddedToWorkOrder: number;
+
+  /**
+   * Voice follow-up state (2-turn flow after fail/recommend).
+   * Used by GenericInspectionScreen to:
+   *  - arm follow-up after a FAIL/REC + note
+   *  - parse labor/parts on the next utterance
+   *  - require "confirm" to submit
+   */
+  followUp?:
+    | {
+        kind: "parts_labor";
+        sectionIndex: number;
+        itemIndex: number;
+        stage: "await_followup" | "await_confirm";
+        draft?: {
+          laborHours?: number | null;
+          parts?: Array<{ description: string; qty: number }>;
+        };
+      }
+    | null;
+};
+
+export type AppliedTarget = { sectionIndex: number; itemIndex: number };
+
+export type HandleTranscriptResult = {
+  appliedTarget: AppliedTarget | null;
 };
 
 export interface InspectionItem {
@@ -181,7 +205,12 @@ export interface QuoteLine {
   laborRate?: number;
 
   /** Parts */
-  parts?: Array<{ name?: string; number?: string; price?: number; type?: string }>;
+  parts?: Array<{
+    name?: string;
+    number?: string;
+    price?: number;
+    type?: string;
+  }>;
   partNumber?: string | null;
   partName?: string;
   unitPrice?: number | null;
@@ -291,7 +320,11 @@ export interface SessionVehicle {
 }
 
 /** ---------- Session status ---------- */
-export type InspectionStatus = "not_started" | "in_progress" | "paused" | "completed";
+export type InspectionStatus =
+  | "not_started"
+  | "in_progress"
+  | "paused"
+  | "completed";
 
 /** ---------- Full session ---------- */
 export interface InspectionSession {

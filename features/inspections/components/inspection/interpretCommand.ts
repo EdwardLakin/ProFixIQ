@@ -1,4 +1,3 @@
-// features/inspections/components/inspection/interpretCommand.ts
 "use client";
 
 import type { ParsedCommand } from "@inspections/lib/inspection/types";

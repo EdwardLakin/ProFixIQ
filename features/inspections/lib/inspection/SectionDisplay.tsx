@@ -1,4 +1,3 @@
-// /features/inspections/lib/inspection/SectionDisplay.tsx
 "use client";
 
 import { useState, useMemo } from "react";
@@ -72,7 +71,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     onToggleCollapse,
   } = props;
 
-  const gridSection = isGridSection(title);
+  // ✅ PATCH: never rely on callers passing title correctly (you had title="" before)
+  const resolvedTitle = (title || section.title || "").trim();
+
+  const gridSection = isGridSection(resolvedTitle);
 
   // For grid sections, grids manage their own collapse internally.
   const [internalOpen, setInternalOpen] = useState(true);
@@ -87,12 +89,23 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
   const stats = useMemo(() => {
     const total = section.items.length || 0;
+
+    // ✅ PATCH: normalize status values (support pass/blank)
     const counts = { ok: 0, fail: 0, na: 0, recommend: 0, unset: 0 };
+
     for (const it of section.items) {
-      const s = (it.status ?? "unset") as keyof typeof counts;
-      if (counts[s] !== undefined) counts[s] += 1;
-      else counts.unset += 1;
+      const raw = String(it.status ?? "").toLowerCase();
+
+      const normalized: keyof typeof counts =
+        raw === "ok" || raw === "fail" || raw === "na" || raw === "recommend"
+          ? (raw as keyof typeof counts)
+          : raw === "pass"
+            ? "ok"
+            : "unset";
+
+      counts[normalized] += 1;
     }
+
     return { total, ...counts };
   }, [section.items]);
 
@@ -104,6 +117,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
   const showBulkButtons = !gridSection;
 
+  const canEditPartsLabor = typeof onUpdateParts === "function" || typeof onUpdateLaborHours === "function";
+
   return (
     <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
       {/* Header */}
@@ -113,7 +128,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
             className="text-left text-lg font-semibold tracking-wide text-accent"
             style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
           >
-            {title}
+            {resolvedTitle}
           </div>
         ) : (
           <button
@@ -123,7 +138,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
             aria-expanded={open}
             type="button"
           >
-            {title}
+            {resolvedTitle}
           </button>
         )}
 
@@ -223,7 +238,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   const isRec = status === "recommend";
                   const isFailOrRec = isFail || isRec;
 
-                  const note = (item.notes ?? "").trim();
+                  // ✅ PATCH: support note vs notes
+                  const note = String(item.notes ?? item.note ?? "").trim();
+
                   const canShowSubmit =
                     !!requireNoteForAI &&
                     isFailOrRec &&
@@ -250,9 +267,13 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         "hover:bg-white/[0.03] transition-colors",
                       ].join(" ")}
                     >
-                      {/* Notes only on FAIL/REC (no other behavior change) */}
+                      {/* Notes only on FAIL/REC */}
                       <InspectionItemCard
-                        item={item}
+                        item={{
+                          ...item,
+                          // keep notes unified so textarea always reflects current value
+                          notes: (item.notes ?? item.note ?? "") as string,
+                        }}
                         sectionIndex={sectionIndex}
                         itemIndex={itemIndex}
                         showNotes={showNotes && isFailOrRec}
@@ -263,9 +284,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         variant="row"
                       />
 
-                      {/* Parts + Labor, only for FAIL / REC items */}
+                      {/* Parts + Labor UI (manual entry) - only show if handlers exist */}
                       {(() => {
                         if (!isFailOrRec) return null;
+                        if (!canEditPartsLabor) return null;
 
                         const currentParts = (item.parts ?? []) as {
                           description: string;

@@ -1,4 +1,8 @@
- "use client";
+// =========================
+// GenericInspectionScreen.tsx
+// PART 1 / 4
+// =========================
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -193,7 +197,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
   } catch {
     return [];
   }
-}  
+}
 
 /* -------- smarter grid detectors -------- */
 
@@ -355,6 +359,105 @@ function buildCauseCorrectionFromSession(s: unknown): {
   };
 }
 
+/* ---------------------- voice follow-up helpers ---------------------- */
+
+function normalizeSpeech(s: string): string {
+  return String(s ?? "")
+    .toLowerCase()
+    .replace(/[^\w\s.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function speakLocal(text: string): void {
+  try {
+    if (typeof window === "undefined") return;
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1;
+    u.pitch = 1;
+    synth.cancel();
+    synth.speak(u);
+  } catch {
+    // ignore
+  }
+}
+
+function splitOnFollowUp(raw: string): { head: string; tail: string | null } {
+  const n = normalizeSpeech(raw);
+  const idx = n.indexOf("follow up");
+  if (idx < 0) {
+    const idx2 = n.indexOf("followup");
+    if (idx2 < 0) return { head: raw, tail: null };
+    const head = raw.slice(0, idx2).trim();
+    const tail = raw.slice(idx2 + "followup".length).trim();
+    return { head, tail: tail || null };
+  }
+  const head = raw.slice(0, idx).trim();
+  const tail = raw.slice(idx + "follow up".length).trim();
+  return { head, tail: tail || null };
+}
+
+function parseFollowUpPayload(raw: string): {
+  laborHours: number | null;
+  parts: Array<{ description: string; qty: number }>;
+  wantsConfirm: boolean;
+  wantsCancel: boolean;
+} {
+  const n = normalizeSpeech(raw);
+  const wantsConfirm = /\b(confirm|submit|yes)\b/.test(n);
+  const wantsCancel = /\b(cancel|nevermind|never mind|clear)\b/.test(n);
+
+  // hours: 1, 1.0, 1.25 with optional "hr/hours"
+  const hrMatch =
+    n.match(/\b(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours)\b/) ??
+    n.match(/\b(\d+(?:\.\d+)?)\s*h\b/);
+
+  const laborHours = hrMatch && hrMatch[1] ? Number(hrMatch[1]) : null;
+
+  // remove the hours token so remainder becomes parts text
+  let remainder = raw;
+  if (hrMatch && hrMatch[0]) {
+    const idx = remainder.toLowerCase().indexOf(hrMatch[0]);
+    if (idx >= 0) {
+      remainder = (
+        remainder.slice(0, idx) +
+        " " +
+        remainder.slice(idx + hrMatch[0].length)
+      ).trim();
+    }
+  }
+
+  // remove "confirm/submit/cancel" words from remainder
+  remainder = remainder
+    .replace(/\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // parts: comma/and separated
+  const partsText = remainder
+    .replace(/\b(parts?|labor)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const rawParts = partsText
+    ? partsText
+        .split(/,| and /i)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  const parts = rawParts.map((description) => ({ description, qty: 1 }));
+
+  return { laborHours, parts, wantsConfirm, wantsCancel };
+}
+
+// =========================
+// GenericInspectionScreen.tsx
+// PART 2 / 4
+// =========================
+
 /* -------------------------------------------------------------------- */
 /* Component                                                            */
 /* -------------------------------------------------------------------- */
@@ -406,33 +509,33 @@ export default function GenericInspectionScreen(
     "Inspection";
 
   const customer = useMemo<SessionCustomer>(
-  () => ({
-    first_name: sp.get("first_name") || "",
-    last_name: sp.get("last_name") || "",
-    phone: sp.get("phone") || "",
-    email: sp.get("email") || "",
-    address: sp.get("address") || "",
-    city: sp.get("city") || "",
-    province: sp.get("province") || "",
-    postal_code: sp.get("postal_code") || "",
-  }),
-  [sp],
-);
+    () => ({
+      first_name: sp.get("first_name") || "",
+      last_name: sp.get("last_name") || "",
+      phone: sp.get("phone") || "",
+      email: sp.get("email") || "",
+      address: sp.get("address") || "",
+      city: sp.get("city") || "",
+      province: sp.get("province") || "",
+      postal_code: sp.get("postal_code") || "",
+    }),
+    [sp],
+  );
 
-const vehicle = useMemo<SessionVehicle>(
-  () => ({
-    year: sp.get("year") || "",
-    make: sp.get("make") || "",
-    model: sp.get("model") || "",
-    vin: sp.get("vin") || "",
-    license_plate: sp.get("license_plate") || "",
-    mileage: sp.get("mileage") || "",
-    color: sp.get("color") || "",
-    unit_number: sp.get("unit_number") || "",
-    engine_hours: sp.get("engine_hours") || "",
-  }),
-  [sp],
-);
+  const vehicle = useMemo<SessionVehicle>(
+    () => ({
+      year: sp.get("year") || "",
+      make: sp.get("make") || "",
+      model: sp.get("model") || "",
+      vin: sp.get("vin") || "",
+      license_plate: sp.get("license_plate") || "",
+      mileage: sp.get("mileage") || "",
+      color: sp.get("color") || "",
+      unit_number: sp.get("unit_number") || "",
+      engine_hours: sp.get("engine_hours") || "",
+    }),
+    [sp],
+  );
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
@@ -506,7 +609,7 @@ const vehicle = useMemo<SessionVehicle>(
   }, [draftKey]);
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
-  
+
   const [isPaused, setIsPaused] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
@@ -527,7 +630,7 @@ const vehicle = useMemo<SessionVehicle>(
   >("idle");
 
   const isListening =
-  voiceState === "listening" || voiceState === "connecting";
+    voiceState === "listening" || voiceState === "connecting";
 
   const [voicePulse, setVoicePulse] = useState(false);
   const pulseTimerRef = useRef<number | null>(null);
@@ -545,24 +648,24 @@ const vehicle = useMemo<SessionVehicle>(
     };
   }, []);
 
-    const initialSession = useMemo<Partial<InspectionSession>>(
-  () => ({
-    id: inspectionId,
-    templateitem: templateName,
-    status: "not_started" as InspectionStatus,
-    isPaused: false,
-    transcript: "",
-    quote: [],
-    customer,
-    vehicle,
-    sections: [],
-    currentSectionIndex: 0,
-    currentItemIndex: 0,
-    started: false,
-    completed: false,
-  }),
-  [inspectionId, templateName, customer, vehicle],
-);
+  const initialSession = useMemo<Partial<InspectionSession>>(
+    () => ({
+      id: inspectionId,
+      templateitem: templateName,
+      status: "not_started" as InspectionStatus,
+      isPaused: false,
+      transcript: "",
+      quote: [],
+      customer,
+      vehicle,
+      sections: [],
+      currentSectionIndex: 0,
+      currentItemIndex: 0,
+      started: false,
+      completed: false,
+    }),
+    [inspectionId, templateName, customer, vehicle],
+  );
 
   const {
     session,
@@ -725,14 +828,161 @@ const vehicle = useMemo<SessionVehicle>(
     updateInspection({ voiceTrace: trimmed });
   };
 
+  // =========================
+// GenericInspectionScreen.tsx
+// PART 3 / 4
+// =========================
+
   const handleTranscript = async (text: string): Promise<void> => {
     if (!session || guardLocked()) return;
+
+    const sess = session;
+
+    const ensureFollowUpBase = (): VoiceMeta => {
+      return (
+        sess.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } satisfies VoiceMeta)
+      );
+    };
+
+    const setFollowUp = (
+      next: NonNullable<VoiceMeta["followUp"]> | null,
+    ): void => {
+      updateInspection({
+        voiceMeta: {
+          ...ensureFollowUpBase(),
+          followUp: next,
+        } satisfies VoiceMeta,
+      });
+    };
+
+    const clearFollowUp = (): void => setFollowUp(null);
+
+    const followUp = sess.voiceMeta?.followUp ?? null;
+
+    // 1) If we are mid-follow-up, interpret this utterance as follow-up payload first
+    if (followUp && followUp.kind === "parts_labor") {
+      const parsed = parseFollowUpPayload(text);
+
+      if (parsed.wantsCancel) {
+        clearFollowUp();
+        toast.success("Follow-up cleared.");
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [{ command: "follow_up_cancel", ok: true }],
+        });
+        return;
+      }
+
+      // apply draft (labor/parts) to the targeted item
+      const targetSec = followUp.sectionIndex;
+      const targetItem = followUp.itemIndex;
+
+      const it = sess.sections[targetSec]?.items?.[targetItem];
+      if (!it) {
+        clearFollowUp();
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [
+            { command: "follow_up", ok: false, reason: "Missing target item" },
+          ],
+        });
+        return;
+      }
+
+      const status = String(it.status ?? "").toLowerCase();
+      const isFailOrRec = status === "fail" || status === "recommend";
+
+      if (!isFailOrRec) {
+        // if tech changed it away, stop follow-up
+        clearFollowUp();
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [
+            {
+              command: "follow_up",
+              ok: false,
+              reason: "Target no longer FAIL/REC",
+            },
+          ],
+        });
+        return;
+      }
+
+      const nextParts =
+        parsed.parts.length > 0 ? parsed.parts : (followUp.draft?.parts ?? []);
+      const nextLabor =
+        parsed.laborHours !== null
+          ? parsed.laborHours
+          : (followUp.draft?.laborHours ?? null);
+
+      updateItem(targetSec, targetItem, {
+        parts: nextParts,
+        laborHours: nextLabor,
+      });
+
+      const label = String(it.item ?? it.name ?? "Item");
+      const partsSummary =
+        nextParts.length > 0
+          ? nextParts.map((p) => `${p.qty}× ${p.description}`).join(", ")
+          : "no parts";
+      const laborSummary = nextLabor != null ? `${nextLabor} hr` : "no labor";
+
+      if (parsed.wantsConfirm || normalizeSpeech(text).includes("confirm")) {
+        // submit immediately
+        clearFollowUp();
+        toast.success(`Submitting: ${label} • ${laborSummary} • ${partsSummary}`);
+        speakLocal("Confirmed. Submitting.");
+        void submitAIForItem(targetSec, targetItem);
+
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [{ command: "follow_up_confirm_submit", ok: true }],
+        });
+        return;
+      }
+
+      // otherwise move to await_confirm
+      setFollowUp({
+        kind: "parts_labor",
+        sectionIndex: targetSec,
+        itemIndex: targetItem,
+        stage: "await_confirm",
+        draft: { laborHours: nextLabor, parts: nextParts },
+      });
+
+      toast.success(
+        `Follow-up captured. ${label}: ${laborSummary}, ${partsSummary}. Say "confirm" to submit.`,
+      );
+      speakLocal("Got it. Say confirm to submit.");
+
+      appendVoiceTrace({
+        rawFinal: text,
+        wakeCommand: text,
+        parsed: [],
+        applied: [{ command: "follow_up_capture", ok: true }],
+      });
+      return;
+    }
+
+    // 2) Multi-command support in one message:
+    //    If the tech says "... fail ... follow up 1.0hr ... confirm", we apply main commands, then parse follow-up tail.
+    const split = splitOnFollowUp(text);
+    const mainText = split.tail ? split.head : text;
+    const followTail = split.tail;
 
     let commands: ParsedCommand[] = [];
     const applied: VoiceCommandApplyResult[] = [];
 
     try {
-      commands = await interpretCommand(text);
+      commands = await interpretCommand(mainText);
 
       if (!commands.length) {
         appendVoiceTrace({
@@ -746,19 +996,71 @@ const vehicle = useMemo<SessionVehicle>(
         return;
       }
 
-      const sess = session;
+      // Track if this utterance likely created a FAIL/REC + note combo
+      let sawFailOrRec = false;
+      let sawNote = false;
+
+      // ✅ Track the item the resolver actually applied to (NO manual focus assumptions)
+      let lastAppliedTarget:
+        | { sectionIndex: number; itemIndex: number }
+        | null = null;
 
       for (const command of commands) {
+        // lightweight detection from parsed shape
+        const anyC = command as unknown as Record<string, unknown>;
+        const cmdType =
+          typeof anyC.command === "string"
+            ? String(anyC.command)
+            : typeof anyC.type === "string"
+              ? String(anyC.type)
+              : "";
+
+        if (cmdType === "status" || cmdType === "update_status") {
+          const st = String(
+            (anyC as { status?: unknown }).status ?? "",
+          ).toLowerCase();
+          if (st === "fail" || st === "recommend") sawFailOrRec = true;
+        }
+        if (cmdType === "add" || cmdType === "add_note") {
+          const nt = String(
+            (anyC as { note?: unknown; notes?: unknown }).note ??
+              (anyC as { notes?: unknown }).notes ??
+              "",
+          ).trim();
+          if (nt.length > 0) sawNote = true;
+        }
+        if (cmdType === "recommend") {
+          const nt = String(
+            (anyC as { note?: unknown; notes?: unknown; recommend?: unknown })
+              .note ??
+              (anyC as { notes?: unknown }).notes ??
+              (anyC as { recommend?: unknown }).recommend ??
+              "",
+          ).trim();
+          if (nt.length > 0) {
+            sawFailOrRec = true;
+            sawNote = true;
+          }
+        }
+
         try {
-          await handleTranscriptFn({
+          const result = await handleTranscriptFn({
             command,
             session: sess,
             updateInspection,
             updateItem,
             updateSection,
             finishSession,
-            rawSpeech: text,
+            rawSpeech: mainText,
           });
+
+          // ✅ capture resolver-selected target (preferred)
+          const r = result as unknown as {
+            appliedTarget?: { sectionIndex: number; itemIndex: number };
+          };
+          if (r?.appliedTarget) {
+            lastAppliedTarget = r.appliedTarget;
+          }
 
           applied.push({ command: commandLabel(command), ok: true });
         } catch (err: unknown) {
@@ -769,6 +1071,74 @@ const vehicle = useMemo<SessionVehicle>(
             ok: false,
             reason: err instanceof Error ? err.message : "apply failed",
           });
+        }
+      }
+
+      // ✅ If follow-up tail exists in same utterance, apply to the resolver target
+      if (followTail && lastAppliedTarget) {
+        const parsedFU = parseFollowUpPayload(followTail);
+
+        if (parsedFU.wantsCancel) {
+          clearFollowUp();
+          applied.push({ command: "follow_up_cancel", ok: true });
+        } else {
+          const nextParts = parsedFU.parts;
+          const nextLabor = parsedFU.laborHours;
+
+          updateItem(lastAppliedTarget.sectionIndex, lastAppliedTarget.itemIndex, {
+            parts: nextParts,
+            laborHours: nextLabor,
+          });
+
+          const it =
+            sess.sections[lastAppliedTarget.sectionIndex]?.items?.[
+              lastAppliedTarget.itemIndex
+            ];
+          const label = String(it?.item ?? it?.name ?? "Item");
+          const partsSummary =
+            nextParts.length > 0
+              ? nextParts.map((p) => `${p.qty}× ${p.description}`).join(", ")
+              : "no parts";
+          const laborSummary =
+            nextLabor != null ? `${nextLabor} hr` : "no labor";
+
+          if (parsedFU.wantsConfirm) {
+            clearFollowUp();
+            speakLocal("Confirmed. Submitting.");
+            void submitAIForItem(
+              lastAppliedTarget.sectionIndex,
+              lastAppliedTarget.itemIndex,
+            );
+            applied.push({ command: "follow_up_confirm_submit", ok: true });
+            toast.success(
+              `Submitting: ${label} • ${laborSummary} • ${partsSummary}`,
+            );
+          } else {
+            setFollowUp({
+              kind: "parts_labor",
+              sectionIndex: lastAppliedTarget.sectionIndex,
+              itemIndex: lastAppliedTarget.itemIndex,
+              stage: "await_confirm",
+              draft: { laborHours: nextLabor, parts: nextParts },
+            });
+            applied.push({ command: "follow_up_capture", ok: true });
+            toast.success(
+              `Follow-up captured. ${label}: ${laborSummary}, ${partsSummary}. Say "confirm" to submit.`,
+            );
+            speakLocal("Got it. Say confirm to submit.");
+          }
+        }
+      } else {
+        // ✅ Arm follow-up prompt when FAIL/REC + note occurs
+        //    Target the resolver-selected item if available; otherwise leave followup off (no manual focus)
+        if (sawFailOrRec && sawNote && lastAppliedTarget) {
+          setFollowUp({
+            kind: "parts_labor",
+            sectionIndex: lastAppliedTarget.sectionIndex,
+            itemIndex: lastAppliedTarget.itemIndex,
+            stage: "await_followup",
+          });
+          speakLocal("Would you like to add parts and labor? Say follow up.");
         }
       }
 
@@ -893,40 +1263,45 @@ const vehicle = useMemo<SessionVehicle>(
   );
 
   const startListening = async (): Promise<void> => {
-  if (isListening) return;
-  if (guardLocked()) return;
+    if (isListening) return;
+    if (guardLocked()) return;
 
-  try {
-    await voice.start();
-  } catch (e: unknown) {
-    // eslint-disable-next-line no-console
-    console.error(e);
-    const msg = e instanceof Error ? e.message : "Unable to start voice";
-    toast.error(msg);
+    try {
+      await voice.start();
+    } catch (e: unknown) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+      const msg = e instanceof Error ? e.message : "Unable to start voice";
+      toast.error(msg);
+      try {
+        voice.stop();
+      } catch {}
+    }
+  };
+
+  const stopListening = (): void => {
     try {
       voice.stop();
     } catch {}
-  }
-};
 
-  const stopListening = (): void => {
-  try {
-    voice.stop();
-  } catch {}
+    setWakeActive(false);
 
-  setWakeActive(false);
+    if (wakeTimeoutRef.current) {
+      window.clearTimeout(wakeTimeoutRef.current);
+      wakeTimeoutRef.current = null;
+    }
+  };
 
-  if (wakeTimeoutRef.current) {
-    window.clearTimeout(wakeTimeoutRef.current);
-    wakeTimeoutRef.current = null;
-  }
-};
+  // =========================
+// GenericInspectionScreen.tsx
+// PART 4 / 4
+// =========================
 
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-    const submitAIForItem = async (
+  const submitAIForItem = async (
     secIdx: number,
     itemIdx: number,
   ): Promise<void> => {
@@ -1117,12 +1492,9 @@ const vehicle = useMemo<SessionVehicle>(
           } catch (err: unknown) {
             // eslint-disable-next-line no-console
             console.error("Parts request failed", err);
-            toast.error(
-              "Line added, but couldn't reach parts request service",
-              {
-                id: toastId,
-              },
-            );
+            toast.error("Line added, but couldn't reach parts request service", {
+              id: toastId,
+            });
           }
         } else {
           toast.success("Added to work order (no parts requested)", {
@@ -1429,7 +1801,10 @@ const vehicle = useMemo<SessionVehicle>(
   // Bottom bar: ONLY Save progress + Finish inspection
   const actions = (
     <>
-      <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
+      <SaveInspectionButton
+        session={session}
+        workOrderLineId={workOrderLineId}
+      />
 
       {workOrderLineId && (
         <FinishInspectionButton
@@ -1482,7 +1857,10 @@ const vehicle = useMemo<SessionVehicle>(
 
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {!isLocked && (
-            <StartListeningButton isListening={isListening} onStart={startListening} />
+            <StartListeningButton
+              isListening={isListening}
+              onStart={startListening}
+            />
           )}
 
           {!isLocked && (isListening || isPaused) && (
@@ -1712,9 +2090,7 @@ const vehicle = useMemo<SessionVehicle>(
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
-            totalItems={
-              session.sections[safeSectionIndex]?.items?.length ?? 0
-            }
+            totalItems={session.sections[safeSectionIndex]?.items?.length ?? 0}
           />
         </div>
 
@@ -1730,7 +2106,12 @@ const vehicle = useMemo<SessionVehicle>(
                   ? (stRaw as InspectionItemStatus)
                   : "na";
 
-              const label = String((it as { item?: unknown; name?: unknown }).item ?? (it as { name?: unknown }).name ?? "").trim();
+              const label = String(
+                (it as { item?: unknown; name?: unknown }).item ??
+                  (it as { name?: unknown }).name ??
+                  "",
+              ).trim();
+
               const explicitUnit = it.unit ?? null;
 
               const toggleControlled =
@@ -1752,7 +2133,10 @@ const vehicle = useMemo<SessionVehicle>(
             const tireSection = isTireGridSection(section.title, itemsWithHints);
             const airSection =
               !tireSection && isAirCornerSection(section.title, itemsWithHints);
-            const hydCornerSection = isHydraulicCornerSection(section.title, itemsWithHints);
+            const hydCornerSection = isHydraulicCornerSection(
+              section.title,
+              itemsWithHints,
+            );
 
             const looksHydTire =
               itemsWithHints.some((it) => HYD_ABBR_RE.test(it.item ?? "")) ||
@@ -1805,7 +2189,9 @@ const vehicle = useMemo<SessionVehicle>(
                         type="button"
                         disabled={isLocked}
                         className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
+                        onClick={() =>
+                          applyStatusToSection(sectionIndex, "recommend")
+                        }
                       >
                         All REC
                       </button>
@@ -1832,7 +2218,8 @@ const vehicle = useMemo<SessionVehicle>(
 
                 {collapsed ? (
                   <p className="mt-2 text-center text-[11px] text-neutral-400">
-                    Section collapsed. Tap <span className="font-semibold">Expand</span> to reopen.
+                    Section collapsed. Tap{" "}
+                    <span className="font-semibold">Expand</span> to reopen.
                   </p>
                 ) : (
                   <>
@@ -1850,13 +2237,17 @@ const vehicle = useMemo<SessionVehicle>(
                           <BatteryGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            unitHint={(label: string) =>
+                              unitHintGeneric(label, unit)
+                            }
                           />
                         ) : airSection ? (
                           <AirCornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            unitHint={(label: string) =>
+                              unitHintGeneric(label, unit)
+                            }
                             onAddAxle={(axleLabel: string) =>
                               handleAddAxleForSection(sectionIndex, axleLabel)
                             }
@@ -1873,7 +2264,9 @@ const vehicle = useMemo<SessionVehicle>(
                             <TireGridHydraulic
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
-                              unitHint={(label: string) => unitHintGeneric(label, unit)}
+                              unitHint={(label: string) =>
+                                unitHintGeneric(label, unit)
+                              }
                               requireNoteForAI
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitAIForItem(secIdx, itemIdx);
@@ -1894,7 +2287,9 @@ const vehicle = useMemo<SessionVehicle>(
                             <TireGrid
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
-                              unitHint={(label: string) => unitHintGeneric(label, unit)}
+                              unitHint={(label: string) =>
+                                unitHintGeneric(label, unit)
+                              }
                               onAddAxle={(axleLabel: string) =>
                                 handleAddTireAxleForSection(sectionIndex, axleLabel)
                               }
@@ -1926,7 +2321,9 @@ const vehicle = useMemo<SessionVehicle>(
                           <CornerGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
-                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            unitHint={(label: string) =>
+                              unitHintGeneric(label, unit)
+                            }
                             onSpecHint={(label: string) =>
                               _props.onSpecHint?.({
                                 source: "corner",
@@ -1961,11 +2358,18 @@ const vehicle = useMemo<SessionVehicle>(
                               if (guardLocked()) return;
                               updateItem(secIdx, itemIdx, { notes: noteText });
                             }}
-                            onUpload={(photoUrl: string, secIdx: number, itemIdx: number) => {
+                            onUpload={(
+                              photoUrl: string,
+                              secIdx: number,
+                              itemIdx: number,
+                            ) => {
                               if (guardLocked()) return;
                               const prev =
-                                session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                              updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
+                                session.sections[secIdx].items[itemIdx].photoUrls ??
+                                [];
+                              updateItem(secIdx, itemIdx, {
+                                photoUrls: [...prev, photoUrl],
+                              });
                             }}
                             onUpdateParts={(
                               secIdx: number,
@@ -2052,8 +2456,9 @@ const vehicle = useMemo<SessionVehicle>(
             inspectionId={inspectionId}
             role="customer"
             defaultName={
-              [customer.first_name, customer.last_name].filter(Boolean).join(" ") ||
-              undefined
+              [customer.first_name, customer.last_name]
+                .filter(Boolean)
+                .join(" ") || undefined
             }
             onSigned={handleSigned}
           />
@@ -2062,8 +2467,8 @@ const vehicle = useMemo<SessionVehicle>(
         {!isEmbed && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
             <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P = Pass
-              &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+              <span className="font-semibold text-neutral-200">Legend:</span> P =
+              Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}
