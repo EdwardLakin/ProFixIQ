@@ -4,9 +4,10 @@ class PCMProcessor extends AudioWorkletProcessor {
     const input = inputs[0];
     if (!input || !input[0]) return true;
 
-    // Float32Array mono @ audioCtx sampleRate (we set 24kHz)
+    // Copy the frame so the main thread always receives stable samples
     const channelData = input[0];
-    this.port.postMessage(channelData);
+    const frame = new Float32Array(channelData); // copies
+    this.port.postMessage(frame);
 
     return true;
   }
