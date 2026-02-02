@@ -49,6 +49,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+// ✅ Realtime can emit different but valid event type names.
+// We accept the common variants so wake word always fires on final transcript.
+const TRANSCRIPTION_DELTA_TYPES = new Set<string>([
+  "conversation.item.input_audio_transcription.delta",
+  "input_audio_transcription.delta",
+  "input_audio_buffer.transcription.delta",
+]);
+
+const TRANSCRIPTION_COMPLETE_TYPES = new Set<string>([
+  "conversation.item.input_audio_transcription.completed",
+  "conversation.item.input_audio_transcription.done",
+  "input_audio_transcription.completed",
+  "input_audio_transcription.done",
+  "input_audio_buffer.transcription.completed",
+  "input_audio_buffer.transcription.done",
+]);
+
+function getStringField(obj: Record<string, unknown>, keys: string[]): string {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim()) return v;
+  }
+  return "";
+}
+
 export function useRealtimeVoice(
   handleTranscript: HandleTranscriptFn,
   maybeHandleWakeWord: (text: string) => string | null,
@@ -246,18 +271,24 @@ export function useRealtimeVoice(
       if (!isRecord(msgUnknown)) return;
       const type = String(msgUnknown.type ?? "");
 
-      if (type === "conversation.item.input_audio_transcription.delta") {
-        const delta = String(msgUnknown.delta ?? "");
+      // ✅ DELTAS (multiple possible event names)
+      if (TRANSCRIPTION_DELTA_TYPES.has(type)) {
+        const delta = getStringField(msgUnknown, ["delta", "transcript", "text"]);
         if (!delta) return;
         liveRef.current += delta;
-        pulse(); // ✅ pulse when deltas arrive
+        pulse();
         return;
       }
 
-      if (type === "conversation.item.input_audio_transcription.completed") {
-        const finalText = String(msgUnknown.transcript ?? "").trim();
-        liveRef.current = "";
+      // ✅ COMPLETED (multiple possible event names)
+      if (TRANSCRIPTION_COMPLETE_TYPES.has(type)) {
+        const finalText = getStringField(msgUnknown, [
+          "transcript",
+          "text",
+          "final",
+        ]).trim();
 
+        liveRef.current = "";
         if (!finalText) return;
 
         const cmdRaw = maybeHandleWakeWordRef.current(finalText);
