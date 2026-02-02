@@ -17,7 +17,6 @@ import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
-import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
@@ -1660,7 +1659,6 @@ const openInspectionForLine = useCallback(
         />
       )}
 
-      <VoiceButton />
     </div>
   );
 }
