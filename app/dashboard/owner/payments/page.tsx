@@ -182,7 +182,7 @@ export default function OwnerPaymentsPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search WO / payment_intent / session…"
-              className="h-9 w-full sm:w-72 rounded-xl border border-[var(--metal-border-soft)] bg-black/40 px-3 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-[var(--accent-copper-soft)]"
+              className="h-9 w-full sm:w-72 rounded-xl border border-[var(--metal-border-soft)] bg-black/40 px-3 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none:border-[var(--accent-copper-soft)]"
             />
 
             <select

@@ -1168,83 +1168,78 @@ export default function GenericInspectionScreen(
   };
 
   function maybeHandleWakeWord(raw: string): string | null {
-    // Normalize: lowercase, remove punctuation, collapse spaces
-    const normalized = raw
-      .toLowerCase()
-      .replace(/[^\w\s]/g, " ") // removes commas/periods/etc
-      .replace(/\s+/g, " ")
-      .trim();
+  // Normalize: lowercase, remove punctuation, collapse spaces
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-    // allow optional "hey"
-    const withoutHey = normalized.startsWith("hey ")
-      ? normalized.slice(4).trim()
-      : normalized;
+  // allow optional "hey"
+  const withoutHey = normalized.startsWith("hey ")
+    ? normalized.slice(4).trim()
+    : normalized;
 
-    const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
+  const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
 
-    const matchPrefix = (): { prefix: string; remainder: string } | null => {
-      for (const prefix of WAKE_PREFIXES) {
-        if (withoutHey === prefix) return { prefix, remainder: "" };
-        if (withoutHey.startsWith(prefix + " ")) {
-          return {
-            prefix,
-            remainder: withoutHey.slice(prefix.length).trimStart(),
-          };
-        }
+  const matchPrefixFrom = (
+    input: string,
+  ): { prefix: string; remainder: string } | null => {
+    for (const prefix of WAKE_PREFIXES) {
+      if (input === prefix) return { prefix, remainder: "" };
+      if (input.startsWith(prefix + " ")) {
+        return { prefix, remainder: input.slice(prefix.length).trimStart() };
       }
-      return null;
+    }
+    return null;
+  };
+
+  // If not awake: require wake prefix
+  if (!wakeActive) {
+    const match = matchPrefixFrom(withoutHey);
+    if (!match) return null;
+
+    setWakeActive(true);
+
+    toast.success("READY", { duration: 1200 });
+
+    type WebkitAudioWindow = Window & {
+      webkitAudioContext?: typeof AudioContext;
     };
 
-    if (!wakeActive) {
-      const match = matchPrefix();
-      if (!match) return null;
+    const AudioCtxCtor =
+      window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
 
-      setWakeActive(true);
-
-      toast.success("READY", { duration: 1200 });
-
-      type WebkitAudioWindow = Window & {
-        webkitAudioContext?: typeof AudioContext;
-      };
-
-      const AudioCtxCtor =
-        window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
-
-      if (AudioCtxCtor) {
-        const ctx = new AudioCtxCtor();
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = "sine";
-        o.frequency.value = 880;
-        g.gain.value = 0.05;
-        o.connect(g);
-        g.connect(ctx.destination);
-        o.start();
-        window.setTimeout(() => {
-          o.stop();
-          void ctx.close();
-        }, 120);
-      }
-
-      if (wakeTimeoutRef.current) {
-        window.clearTimeout(wakeTimeoutRef.current);
-      }
-      wakeTimeoutRef.current = window.setTimeout(() => {
-        setWakeActive(false);
-      }, 8000);
-
-      return match.remainder;
+    if (AudioCtxCtor) {
+      const ctx = new AudioCtxCtor();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = 880;
+      g.gain.value = 0.05;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      window.setTimeout(() => {
+        o.stop();
+        void ctx.close();
+      }, 120);
     }
 
-    if (wakeTimeoutRef.current) {
-      window.clearTimeout(wakeTimeoutRef.current);
-    }
-    wakeTimeoutRef.current = window.setTimeout(() => {
-      setWakeActive(false);
-    }, 8000);
+    if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
+    wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
 
-    return withoutHey;
+    // IMPORTANT: return ONLY command remainder (wake stripped)
+    return match.remainder;
   }
+
+  // If already awake: extend timeout, and ALSO strip prefix if user repeats it
+  if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
+  wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
+
+  const repeated = matchPrefixFrom(withoutHey);
+  return repeated ? repeated.remainder : withoutHey;
+}
 
   const voice = useRealtimeVoice(
     async (text: string) => {
