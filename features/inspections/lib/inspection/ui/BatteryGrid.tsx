@@ -1,3 +1,4 @@
+// features/inspections/lib/inspection/ui/BatteryGrid.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -16,7 +17,6 @@ type BatteryCell = {
   idx: number;
   batteryNum: number; // 1..5
   kind: BatteryKind;
-  initial: string;
 };
 
 const BATTERY_RE =
@@ -29,9 +29,7 @@ function getLabel(it: InspectionItem): string {
 
 function kindFromMetric(metricRaw: string): BatteryKind | null {
   const m = metricRaw.toLowerCase();
-  // rating
   if (m.includes("rating") || m.includes("rated")) return "rating";
-  // tested
   if (m.includes("tested") || m.includes("test") || m.includes("load")) return "tested";
   return null;
 }
@@ -45,14 +43,17 @@ function parseBatteryNum(batteryRaw: string): number | null {
   return n;
 }
 
+function readValue(it: InspectionItem): string {
+  const anyIt = it as unknown as { value?: unknown };
+  const v = anyIt.value;
+  return typeof v === "string" || typeof v === "number" ? String(v) : "";
+}
+
 export default function BatteryGrid({ sectionIndex, items }: Props) {
   // context may or may not include updateSection (depends how your Provider is wired)
   const ctx = useInspectionForm() as unknown as {
     updateItem: (sectionIndex: number, itemIndex: number, patch: Partial<InspectionItem>) => void;
-    updateSection?: (
-      sectionIndex: number,
-      patch: { title?: string; items?: InspectionItem[] },
-    ) => void;
+    updateSection?: (sectionIndex: number, patch: { title?: string; items?: InspectionItem[] }) => void;
   };
 
   const { updateItem } = ctx;
@@ -72,18 +73,14 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
 
       const batteryRaw = String(m.groups.battery ?? "").trim();
       const metricRaw = String(m.groups.metric ?? "").trim();
+
       const n = parseBatteryNum(batteryRaw);
       if (!n) return;
 
       const kind = kindFromMetric(metricRaw);
       if (!kind) return;
 
-      cells.push({
-        idx,
-        batteryNum: n,
-        kind,
-        initial: String((it as any)?.value ?? ""),
-      });
+      cells.push({ idx, batteryNum: n, kind });
     });
 
     const maxExisting = cells.reduce((mx, c) => Math.max(mx, c.batteryNum), 0);
@@ -106,7 +103,6 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
   const handleAddBattery = () => {
     if (!updateSection) return;
 
-    // Determine next battery number based on detected count
     const nextNum = Math.min(5, grid.batteryCount + 1);
     if (nextNum <= grid.batteryCount) return;
 
@@ -200,16 +196,20 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
                           );
                         }
 
+                        const it = items[cell.idx];
+                        const value = it ? readValue(it) : "";
+
                         return (
                           <td key={n} className="px-3 py-1.5">
                             <div className="relative mx-auto w-full max-w-[7.75rem]">
                               <input
-                                defaultValue={cell.initial}
+                                value={value}
                                 className="h-[34px] w-full rounded-lg border border-white/10 bg-black/55 px-3 py-1.5 pr-12 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                                 placeholder={kind === "rating" ? "Rating" : "Tested"}
                                 autoComplete="off"
                                 inputMode="decimal"
-                                onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
+                                type="number"
+                                onChange={(e) => commit(cell.idx, e.currentTarget.value)}
                               />
                               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
                                 CCA
@@ -225,7 +225,8 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
 
               {!canAdd ? (
                 <div className="border-t border-white/10 px-3 py-2 text-[11px] text-neutral-400">
-                  Note: “Add Battery” requires <code>updateSection</code> to be provided by your InspectionForm context provider.
+                  Note: “Add Battery” requires <code>updateSection</code> to be provided by your InspectionForm context
+                  provider.
                 </div>
               ) : null}
             </div>

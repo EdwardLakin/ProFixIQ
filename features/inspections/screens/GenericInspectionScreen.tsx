@@ -757,6 +757,7 @@ const vehicle = useMemo<SessionVehicle>(
             updateItem,
             updateSection,
             finishSession,
+            rawSpeech: text,
           });
 
           applied.push({ command: commandLabel(command), ok: true });

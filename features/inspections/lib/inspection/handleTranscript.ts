@@ -26,13 +26,19 @@ interface HandleTranscriptArgs {
   updateItem: UpdateItemFn;
   updateSection: UpdateSectionFn;
   finishSession: () => void;
+  
+
+  /**
+   * ✅ IMPORTANT:
+   * The raw transcript text (after wake-word stripping),
+   * so we can resolve targets even when interpretCommand
+   * does not provide a usable section/item label.
+   */
+  rawSpeech?: string;
 }
 
 /* -------------------------------------------------------------------------------------------------
  * Resolver: turn messy tech speech into a concrete sectionIndex/itemIndex
- * - Works for grid labels (LF/RF/LR/RR, "Left Front", axle/sides, etc.)
- * - Works for regular section items
- * - Prefers current section first, but can search all sections
  * ------------------------------------------------------------------------------------------------- */
 
 type Target = { sectionIndex: number; itemIndex: number };
@@ -51,7 +57,6 @@ function tokenize(input: string): string[] {
   return n.split(" ").filter((w) => w.length >= 2);
 }
 
-// Keep tokens techs actually say, and map them to canonical tokens found in labels
 const SYNONYMS: Array<{ re: RegExp; tokens: string[] }> = [
   // corners / positions
   { re: /\b(left\s*front|lf)\b/i, tokens: ["lf", "left front"] },
@@ -59,40 +64,56 @@ const SYNONYMS: Array<{ re: RegExp; tokens: string[] }> = [
   { re: /\b(left\s*rear|lr)\b/i, tokens: ["lr", "left rear"] },
   { re: /\b(right\s*rear|rr)\b/i, tokens: ["rr", "right rear"] },
 
-  // driver/passenger synonyms (optional)
+  // driver/passenger synonyms
   { re: /\b(driver\s*front)\b/i, tokens: ["lf", "left front"] },
   { re: /\b(passenger\s*front)\b/i, tokens: ["rf", "right front"] },
   { re: /\b(driver\s*rear)\b/i, tokens: ["lr", "left rear"] },
   { re: /\b(passenger\s*rear)\b/i, tokens: ["rr", "right rear"] },
 
   // common metrics (brakes)
-  { re: /\b(pad|pads|shoe|shoes|lining)\b/i, tokens: ["pad", "pads", "shoe", "shoes", "lining"] },
+  {
+    re: /\b(pad|pads|shoe|shoes|lining)\b/i,
+    tokens: ["pad", "pads", "shoe", "shoes", "lining"],
+  },
   { re: /\b(rotor|drum)\b/i, tokens: ["rotor", "drum"] },
   { re: /\b(push\s*rod|pushrod)\b/i, tokens: ["push rod", "pushrod"] },
 
   // tires
-  { re: /\b(tire\s*pressure|tyre\s*pressure|pressure)\b/i, tokens: ["tire pressure", "pressure"] },
+  {
+    re: /\b(tire\s*pressure|tyre\s*pressure|pressure)\b/i,
+    tokens: ["tire pressure", "pressure"],
+  },
   { re: /\b(tread\s*depth|tread)\b/i, tokens: ["tread depth", "tread"] },
-  { re: /\b(wheel\s*torque|lug\s*torque|torque)\b/i, tokens: ["wheel torque", "torque"] },
+  {
+    re: /\b(wheel\s*torque|lug\s*torque|torque)\b/i,
+    tokens: ["wheel torque", "torque"],
+  },
 
   // air system / leak checks
   { re: /\b(leak\s*rate)\b/i, tokens: ["leak rate"] },
-  { re: /\b(governor|gov\s*cut|cut\s*out|cut\s*in)\b/i, tokens: ["gov", "governor", "cut out", "cut in"] },
+  {
+    re: /\b(governor|gov\s*cut|cut\s*out|cut\s*in)\b/i,
+    tokens: ["gov", "governor", "cut out", "cut in"],
+  },
 
   // battery / electrical
   { re: /\b(voltage|volts|v\b)\b/i, tokens: ["voltage"] },
   { re: /\b(cca|cranking)\b/i, tokens: ["cca", "cranking"] },
-  { re: /\b(alternator|charging|charge\s*rate)\b/i, tokens: ["alternator", "charging", "charge rate"] },
+  {
+    re: /\b(alternator|charging|charge\s*rate)\b/i,
+    tokens: ["alternator", "charging", "charge rate"],
+  },
   { re: /\b(soc|state\s*of\s*charge)\b/i, tokens: ["soc", "state of charge"] },
 ];
 
-// If we hear “steer axle” or “drive axle”, keep those tokens too.
-// These help match “Axle 1 Left …” style labels.
 const AXLE_HINTS: Array<{ re: RegExp; tokens: string[] }> = [
-  { re: /\b(steer\s*axle|front\s*axle)\b/i, tokens: ["steer", "front axle", "axle 1"] },
+  {
+    re: /\b(steer\s*axle|front\s*axle)\b/i,
+    tokens: ["steer", "front axle", "axle 1"],
+  },
   { re: /\b(drive\s*axle)\b/i, tokens: ["drive", "axle"] },
   { re: /\b(trailer\s*axle)\b/i, tokens: ["trailer", "axle"] },
-  { re: /\b(axle\s*(\d+))\b/i, tokens: ["axle"] }, // we still add "axle"; numeric matching handled separately
+  { re: /\b(axle\s*(\d+))\b/i, tokens: ["axle"] },
 ];
 
 function extractHintTokens(text: string): string[] {
@@ -102,15 +123,12 @@ function extractHintTokens(text: string): string[] {
   for (const m of SYNONYMS) {
     if (m.re.test(raw)) out.push(...m.tokens);
   }
-
   for (const m of AXLE_HINTS) {
     if (m.re.test(raw)) out.push(...m.tokens);
   }
 
-  // include raw tokens too (but de-emphasized by scoring)
   out.push(...tokenize(raw));
 
-  // de-dupe
   return Array.from(new Set(out.map((t) => norm(t))));
 }
 
@@ -119,9 +137,6 @@ function scoreLabel(label: string, hintTokens: string[]): number {
   if (!l) return 0;
 
   let score = 0;
-
-  // Strong signals: corners
-  if (l.includes("lf")) score += 0; // neutral baseline; we rely on matches below
 
   for (const tok of hintTokens) {
     if (!tok) continue;
@@ -132,22 +147,25 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
-    if (tok === "left front" || tok === "right front" || tok === "left rear" || tok === "right rear") {
+    if (
+      tok === "left front" ||
+      tok === "right front" ||
+      tok === "left rear" ||
+      tok === "right rear"
+    ) {
       if (l.includes(tok)) score += 70;
       continue;
     }
 
-    // metric tokens are medium value
+    // metric tokens
     if (tok === "tire pressure" || tok === "tread depth" || tok === "wheel torque") {
       if (l.includes(tok)) score += 25;
       continue;
     }
-
     if (tok === "pressure") {
       if (l.includes("pressure")) score += 18;
       continue;
     }
-
     if (tok === "tread") {
       if (l.includes("tread")) score += 18;
       continue;
@@ -172,12 +190,10 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       if (l.includes("voltage")) score += 20;
       continue;
     }
-
     if (tok === "cca" || tok === "cranking") {
       if (l.includes("cca") || l.includes("cranking")) score += 18;
       continue;
     }
-
     if (tok === "charging" || tok === "alternator" || tok === "charge rate") {
       if (l.includes("charging") || l.includes("alternator") || l.includes("charge")) score += 18;
       continue;
@@ -203,12 +219,9 @@ function scoreSectionTitle(title: string, hintTokens: string[]): number {
   let score = 0;
   for (const tok of hintTokens) {
     if (!tok) continue;
-
-    // if hint includes "battery"/"tires"/"brakes"/etc, allow section title to influence
     if (tok.length >= 4 && t.includes(tok)) score += 8;
   }
 
-  // explicit “section” hints should help a bit
   if (t.includes("battery") && hintTokens.includes("voltage")) score += 10;
   if (t.includes("tire") && (hintTokens.includes("tread") || hintTokens.includes("pressure"))) score += 10;
   if (t.includes("brake") && (hintTokens.includes("pad") || hintTokens.includes("rotor"))) score += 10;
@@ -228,16 +241,18 @@ function resolveTargetFromSpeech(args: {
   const hints = extractHintTokens(speech);
 
   const sectionOrder: number[] = [];
-  if (typeof preferredSectionIndex === "number" && preferredSectionIndex >= 0 && preferredSectionIndex < sections.length) {
+  if (
+    typeof preferredSectionIndex === "number" &&
+    preferredSectionIndex >= 0 &&
+    preferredSectionIndex < sections.length
+  ) {
     sectionOrder.push(preferredSectionIndex);
   }
   for (let i = 0; i < sections.length; i++) {
     if (i !== preferredSectionIndex) sectionOrder.push(i);
   }
 
-  // If caller gave an explicit section phrase, try to bias toward matching sections first
   const explicitSection = explicitSectionName ? norm(explicitSectionName) : "";
-
   let best: { score: number; target: Target } | null = null;
 
   for (const sIdx of sectionOrder) {
@@ -245,7 +260,6 @@ function resolveTargetFromSpeech(args: {
     const secTitle = String(sec?.title ?? "");
     const items = Array.isArray(sec?.items) ? sec.items : [];
 
-    // Section gate: if explicit section is present, skip sections that don't match at all
     if (explicitSection) {
       const st = norm(secTitle);
       if (!st.includes(explicitSection)) continue;
@@ -267,8 +281,12 @@ function resolveTargetFromSpeech(args: {
       }
     }
 
-    // Early exit if we found a very strong match in preferred section
-    if (best && typeof preferredSectionIndex === "number" && sIdx === preferredSectionIndex && best.score >= 85) {
+    if (
+      best &&
+      typeof preferredSectionIndex === "number" &&
+      sIdx === preferredSectionIndex &&
+      best.score >= 85
+    ) {
       break;
     }
   }
@@ -279,8 +297,7 @@ function resolveTargetFromSpeech(args: {
 }
 
 /* -------------------------------------------------------------------------------------------------
- * Helper: best-effort "tech phrase" builder from ParsedCommand
- * We don’t always get raw speech here; we use fields we do have.
+ * Helpers
  * ------------------------------------------------------------------------------------------------- */
 
 function buildSpeechHintFromCommand(params: {
@@ -297,6 +314,36 @@ function buildSpeechHintFromCommand(params: {
   return parts.join(" ").trim();
 }
 
+function clampTargetToSession(session: InspectionSession, t: Target): Target {
+  const sIdx =
+    typeof t.sectionIndex === "number" &&
+    t.sectionIndex >= 0 &&
+    t.sectionIndex < session.sections.length
+      ? t.sectionIndex
+      : 0;
+
+  const itemsLen = session.sections[sIdx]?.items?.length ?? 0;
+
+  const iIdx =
+    typeof t.itemIndex === "number" && t.itemIndex >= 0 && t.itemIndex < itemsLen
+      ? t.itemIndex
+      : 0;
+
+  return { sectionIndex: sIdx, itemIndex: iIdx };
+}
+
+function currentFocusTarget(session: InspectionSession): Target {
+  const preferredSectionIndex =
+    typeof session.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
+  const preferredItemIndex =
+    typeof session.currentItemIndex === "number" ? session.currentItemIndex : 0;
+
+  return clampTargetToSession(session, {
+    sectionIndex: preferredSectionIndex,
+    itemIndex: preferredItemIndex,
+  });
+}
+
 /* -------------------------------------------------------------------------------------------------
  * Main apply
  * ------------------------------------------------------------------------------------------------- */
@@ -305,6 +352,7 @@ export async function handleTranscriptFn({
   command,
   session,
   updateItem,
+  rawSpeech,
 }: HandleTranscriptArgs): Promise<void> {
   // Normalized fields
   let section: string | undefined;
@@ -315,11 +363,7 @@ export async function handleTranscriptFn({
   let unit: string | undefined;
   let mode: string;
 
-  // For indexed commands, default to current item unless the resolver finds a better match
-  const preferredSectionIndex =
-    typeof session.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
-  const preferredItemIndex =
-    typeof session.currentItemIndex === "number" ? session.currentItemIndex : 0;
+  const focus = currentFocusTarget(session);
 
   if ("command" in command) {
     const c = command as ParsedCommandIndexed;
@@ -356,50 +400,62 @@ export async function handleTranscriptFn({
         )
       : -1;
 
-  // 2) If name matching fails OR item wasn’t provided, use resolver
+  // 2) Resolve target using RAW SPEECH first, then parsed fields
   let target: Target | null = null;
 
   if (sectionIndexByName >= 0 && itemIndexByName >= 0) {
     target = { sectionIndex: sectionIndexByName, itemIndex: itemIndexByName };
   } else {
-    // Build a “speech hint” from what we have (works with phrases like:
-    // "left front tread depth", "tire pressure", "pads shoes", etc.)
-    const speechHint = buildSpeechHintFromCommand({ section, item, note, unit });
+    const rawHint = String(rawSpeech ?? "").trim();
+    const parsedHint = buildSpeechHintFromCommand({ section, item, note, unit });
 
-    // If we still have no hint, use the most safe fallback (current focus)
-    if (!speechHint) {
-      target = {
-        sectionIndex:
-          preferredSectionIndex >= 0 && preferredSectionIndex < session.sections.length
-            ? preferredSectionIndex
-            : 0,
-        itemIndex:
-          preferredItemIndex >= 0 &&
-          preferredSectionIndex >= 0 &&
-          preferredSectionIndex < session.sections.length &&
-          preferredItemIndex < (session.sections[preferredSectionIndex]?.items?.length ?? 0)
-            ? preferredItemIndex
-            : 0,
-      };
-    } else {
+    const hint =
+      rawHint.length > 0
+        ? rawHint
+        : parsedHint.length > 0
+          ? parsedHint
+          : "";
+
+    if (hint) {
       target = resolveTargetFromSpeech({
-        speech: speechHint,
+        speech: hint,
         sections: session.sections,
-        preferredSectionIndex,
+        preferredSectionIndex: focus.sectionIndex,
         explicitSectionName: section,
       });
+    }
+
+    // If still no target, for some commands it’s safe to apply to current item.
+    const safeFallback =
+      mode === "update_status" ||
+      mode === "status" ||
+      mode === "add_note" ||
+      mode === "add" ||
+      mode === "recommend";
+
+    if (!target && safeFallback) {
+      target = focus;
     }
   }
 
   if (!target) {
-    // Don’t apply anything if we can’t confidently locate a target
-    // (avoid “ghost updates” to the wrong measurement)
     // eslint-disable-next-line no-console
-    console.warn("[handleTranscript] Could not resolve target:", { section, item, mode, note, value, unit });
+    console.warn("[handleTranscript] Could not resolve target:", {
+      rawSpeech,
+      section,
+      item,
+      mode,
+      note,
+      value,
+      unit,
+    });
     return;
   }
 
-  const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
+  const safeTarget = clampTargetToSession(session, target);
+
+  const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> =
+    {};
 
   switch (mode) {
     case "update_status":
@@ -408,11 +464,8 @@ export async function handleTranscriptFn({
       break;
     }
 
-    // measurement/value updates — this is the key for grids
     case "update_value":
     case "measurement": {
-      // Tech phrases should not require “add measurement”.
-      // As long as interpretCommand produces { value }, we will apply it.
       if (value !== undefined) itemUpdates.value = value;
       if (unit) itemUpdates.unit = unit;
       break;
@@ -420,27 +473,29 @@ export async function handleTranscriptFn({
 
     case "add_note":
     case "add": {
-      // Common tech speech: “note …”, “add note …”, “comment …”
       if (note) itemUpdates.notes = note;
       break;
     }
 
     case "recommend": {
-      if (note) itemUpdates.recommend = [note];
+      // ✅ ensure UI reflects it
+      if (note) {
+        itemUpdates.status = "recommend";
+        itemUpdates.notes = note;
+        itemUpdates.recommend = [note];
+      }
       break;
     }
 
     case "complete_item":
     case "skip_item":
-      // intentionally no-op for now (your UI auto-advance can handle)
       break;
 
     default:
-      // If interpretCommand emits custom types later, don’t crash.
       break;
   }
 
   if (Object.keys(itemUpdates).length > 0) {
-    updateItem(target.sectionIndex, target.itemIndex, itemUpdates);
+    updateItem(safeTarget.sectionIndex, safeTarget.itemIndex, itemUpdates);
   }
 }
