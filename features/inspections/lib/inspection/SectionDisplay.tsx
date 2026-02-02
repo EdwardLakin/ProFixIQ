@@ -1,3 +1,4 @@
+// /features/inspections/lib/inspection/SectionDisplay.tsx
 "use client";
 
 import { useState, useMemo } from "react";
@@ -192,13 +193,13 @@ export default function SectionDisplay(props: SectionDisplayProps) {
       {/* Body */}
       {open && (
         <div className="pt-3">
-          {/* Grid sections render their own UI elsewhere (you already handle that) */}
+          {/* Grid sections render their own UI elsewhere */}
           {gridSection ? (
             <div />
           ) : (
             <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)]">
-              {/* Desktop header row (like your screenshot “table” vibe) */}
-              <div className="hidden border-b border-white/10 bg-black/25 px-4 py-2 md:block">
+              {/* Desktop header row (table vibe) — desktop only */}
+              <div className="hidden border-b border-white/10 bg-black/25 px-4 py-2 lg:block">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
                     Item · Status · Notes
@@ -209,8 +210,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                 </div>
               </div>
 
-              {/* ✅ Desktop: 2-up grid. Mobile: 1 column. */}
-              <div className="grid gap-2 p-2 md:grid-cols-2 md:gap-[2px] md:bg-white/10 md:p-[2px]">
+              {/* Mobile/Tablet: 1 col. Desktop: 2-up on lg+ */}
+              <div className="grid gap-2 p-2 lg:grid-cols-2 lg:gap-[2px] lg:bg-white/10 lg:p-[2px]">
                 {section.items.map((item, itemIndex) => {
                   const key =
                     (item.item ??
@@ -232,7 +233,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   const submitting =
                     isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
 
-                  // Thin left rail for quick scanning
                   const rail =
                     isFail
                       ? "before:bg-red-500/70"
@@ -250,12 +250,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         "hover:bg-white/[0.03] transition-colors",
                       ].join(" ")}
                     >
-                      {/* ✅ Cell layout: Item + Status, Notes under (handled inside card) */}
+                      {/* Notes only on FAIL/REC (no other behavior change) */}
                       <InspectionItemCard
                         item={item}
                         sectionIndex={sectionIndex}
                         itemIndex={itemIndex}
-                        showNotes={showNotes}
+                        showNotes={showNotes && isFailOrRec}
                         showPhotos={showPhotos}
                         onUpdateStatus={onUpdateStatus}
                         onUpdateNote={onUpdateNote}
@@ -263,7 +263,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         variant="row"
                       />
 
-                      {/* Parts + Labor (FAIL / REC only) */}
+                      {/* Parts + Labor, only for FAIL / REC items */}
                       {(() => {
                         if (!isFailOrRec) return null;
 
@@ -275,13 +275,16 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                         const handlePartsChange = (
                           parts: { description: string; qty: number }[],
-                        ) => onUpdateParts?.(sectionIndex, itemIndex, parts);
+                        ) => {
+                          onUpdateParts?.(sectionIndex, itemIndex, parts);
+                        };
 
-                        const handleLaborChange = (hours: number | null) =>
+                        const handleLaborChange = (hours: number | null) => {
                           onUpdateLaborHours?.(sectionIndex, itemIndex, hours);
+                        };
 
                         const addEmptyPart = () => {
-                          handlePartsChange?.([
+                          handlePartsChange([
                             ...currentParts,
                             { description: "", qty: 1 },
                           ]);
@@ -294,12 +297,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                           const next = currentParts.map((p, i) =>
                             i === idx ? { ...p, ...patch } : p,
                           );
-                          handlePartsChange?.(next);
+                          handlePartsChange(next);
                         };
 
                         const removePart = (idx: number) => {
                           const next = currentParts.filter((_, i) => i !== idx);
-                          handlePartsChange?.(next);
+                          handlePartsChange(next);
                         };
 
                         return (
@@ -313,6 +316,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                               </span>
                             </div>
 
+                            {/* Parts list */}
                             <div className="space-y-2">
                               {currentParts.map((p, pIdx) => (
                                 <div
@@ -360,6 +364,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                               </button>
                             </div>
 
+                            {/* Labor */}
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                               <span className="text-[11px] text-neutral-400">
                                 Labor hours

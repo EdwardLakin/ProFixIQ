@@ -1,3 +1,4 @@
+// /features/inspections/lib/inspection/InspectionItemCard.tsx
 "use client";
 
 import type React from "react";
@@ -22,7 +23,11 @@ interface InspectionItemCardProps {
     itemIndex: number,
     status: InspectionItemStatus,
   ) => void;
-  onUpdateValue?: (sectionIndex: number, itemIndex: number, value: string) => void;
+  onUpdateValue?: (
+    sectionIndex: number,
+    itemIndex: number,
+    value: string,
+  ) => void;
   onUpdateUnit?: (sectionIndex: number, itemIndex: number, unit: string) => void;
 
   /** UI only: render as compact row */
@@ -43,12 +48,7 @@ function getItemLabel(raw: InspectionItem): string {
   ).trim();
 }
 
-/**
- * NOTE: Accept `any` at the export boundary to avoid Next.js
- * “props must be serializable” warnings for Client Components that receive
- * function props. We cast to `InspectionItemCardProps` immediately for safety.
- */
-export default function InspectionItemCard(_props: any) {
+export default function InspectionItemCard(props: InspectionItemCardProps) {
   const {
     item,
     sectionIndex,
@@ -61,7 +61,7 @@ export default function InspectionItemCard(_props: any) {
     onUpdateValue,
     onUpdateUnit,
     variant = "card",
-  } = _props as InspectionItemCardProps;
+  } = props;
 
   const label = getItemLabel(item);
   const nameLower = label.toLowerCase();
@@ -85,12 +85,15 @@ export default function InspectionItemCard(_props: any) {
   if (variant === "row") {
     return (
       <div className={["grid gap-2", rowGlow].join(" ")}>
-        {/* Row 1: Item | Checkboxes */}
-        <div className="grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_240px]">
+        {/* ✅ Small screens: stacked. Desktop: 2-col row. */}
+        <div className="grid items-start gap-2 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-3">
           {/* Item */}
           <div className="min-w-0">
-            <div className="truncate text-[15px] font-semibold text-white">
-              {label || "—"}
+            <div className="text-[15px] font-semibold text-white">
+              {/* ✅ readable on small screens */}
+              <span className="block line-clamp-2 lg:truncate">
+                {label || "—"}
+              </span>
             </div>
           </div>
 
@@ -128,17 +131,20 @@ export default function InspectionItemCard(_props: any) {
                   itmIdx: number,
                   updates: Partial<InspectionItem>,
                 ) => {
-                  if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
+                  if (updates.status)
+                    onUpdateStatus(secIdx, itmIdx, updates.status);
                 }}
                 onStatusChange={(s: InspectionItemStatus) =>
                   onUpdateStatus(sectionIndex, itemIndex, s)
                 }
+                compact
+                wrap
               />
             )}
           </div>
         </div>
 
-        {/* Row 2: Notes (full width under) */}
+        {/* Notes (full width under) */}
         {showNotes ? (
           <div className="min-w-0">
             <textarea
@@ -188,7 +194,7 @@ export default function InspectionItemCard(_props: any) {
     );
   }
 
-  // Card variant (unchanged from your version)
+  // Card variant (unchanged)
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">
