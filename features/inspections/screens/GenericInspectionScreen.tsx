@@ -1579,7 +1579,7 @@ const vehicle = useMemo<SessionVehicle>(
 
               <ul className="mt-2 space-y-1 text-xs text-neutral-300">
                 <li className="text-neutral-200">
-                  • Completed{" "}
+                  • current{" "}
                   <span className="font-semibold">
                     {session.templateitem || templateName || "inspection"}
                   </span>
@@ -1713,7 +1713,7 @@ const vehicle = useMemo<SessionVehicle>(
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
             totalItems={
-              session.sections[session.currentSectionIndex]?.items.length || 0
+              session.sections[safeSectionIndex]?.items?.length ?? 0
             }
           />
         </div>
@@ -1730,7 +1730,7 @@ const vehicle = useMemo<SessionVehicle>(
                   ? (stRaw as InspectionItemStatus)
                   : "na";
 
-              const label = String(it.item ?? "");
+              const label = String((it as { item?: unknown; name?: unknown }).item ?? (it as { name?: unknown }).name ?? "").trim();
               const explicitUnit = it.unit ?? null;
 
               const toggleControlled =
@@ -1738,7 +1738,8 @@ const vehicle = useMemo<SessionVehicle>(
 
               return {
                 ...it, // ✅ KEEP ORIGINAL SHAPE
-                value: it.value ?? "", // ✅ CRITICAL: preserve controlled input value
+                value: it.value ?? "",
+                item: label, // ✅ CRITICAL: preserve controlled input value
                 status: safeStatus,
                 notes: String(it.notes ?? it.note ?? ""),
                 unit: toggleControlled
