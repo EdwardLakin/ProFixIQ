@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 export type VoiceState = "idle" | "connecting" | "listening" | "error";
 
@@ -23,6 +23,8 @@ type RealtimeVoiceOptions = {
   pulseDebounceMs?: number; // default 250
 };
 
+type RealtimeTokenResponse = { token?: string };
+
 function base64FromArrayBuffer(buf: ArrayBuffer): string {
   let binary = "";
   const bytes = new Uint8Array(buf);
@@ -43,6 +45,10 @@ function rms(float32: Float32Array): number {
   return Math.sqrt(sum / float32.length);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 export function useRealtimeVoice(
   handleTranscript: HandleTranscriptFn,
   maybeHandleWakeWord: (text: string) => string | null,
@@ -60,6 +66,20 @@ export function useRealtimeVoice(
   const stoppedRef = useRef<boolean>(false);
 
   const liveRef = useRef<string>("");
+
+  // ✅ Avoid stale closures: keep latest callbacks in refs
+  const handleTranscriptRef = useRef<HandleTranscriptFn>(handleTranscript);
+  const maybeHandleWakeWordRef = useRef<(text: string) => string | null>(
+    maybeHandleWakeWord,
+  );
+
+  useEffect(() => {
+    handleTranscriptRef.current = handleTranscript;
+  }, [handleTranscript]);
+
+  useEffect(() => {
+    maybeHandleWakeWordRef.current = maybeHandleWakeWord;
+  }, [maybeHandleWakeWord]);
 
   const setState = (s: VoiceState) => {
     opts?.onStateChange?.(s);
@@ -88,7 +108,8 @@ export function useRealtimeVoice(
       throw new Error("Failed to get realtime token");
     }
 
-    const { token } = (await r.json()) as { token?: string };
+    const tokenResp = (await r.json()) as RealtimeTokenResponse;
+    const token = typeof tokenResp.token === "string" ? tokenResp.token : "";
     if (!token) {
       setState("error");
       opts?.onError?.("Missing realtime token");
@@ -177,7 +198,11 @@ export function useRealtimeVoice(
     worklet.port.onmessage = (e: MessageEvent) => {
       if (stoppedRef.current) return;
 
-      const float32 = e.data as Float32Array;
+      // We expect the worklet to post Float32Array frames.
+      const data = e.data as unknown;
+      if (!(data instanceof Float32Array)) return;
+
+      const float32 = data;
       const level = rms(float32);
 
       const threshold =
@@ -211,18 +236,18 @@ export function useRealtimeVoice(
       if (stoppedRef.current) return;
       if (typeof evt.data !== "string") return;
 
-      let msg: unknown;
+      let msgUnknown: unknown;
       try {
-        msg = JSON.parse(evt.data);
+        msgUnknown = JSON.parse(evt.data);
       } catch {
         return;
       }
 
-      const m = msg as Record<string, unknown>;
-      const type = String(m.type ?? "");
+      if (!isRecord(msgUnknown)) return;
+      const type = String(msgUnknown.type ?? "");
 
       if (type === "conversation.item.input_audio_transcription.delta") {
-        const delta = String(m.delta ?? "");
+        const delta = String(msgUnknown.delta ?? "");
         if (!delta) return;
         liveRef.current += delta;
         pulse(); // ✅ pulse when deltas arrive
@@ -230,24 +255,30 @@ export function useRealtimeVoice(
       }
 
       if (type === "conversation.item.input_audio_transcription.completed") {
-        const finalText = String(m.transcript ?? "").trim();
+        const finalText = String(msgUnknown.transcript ?? "").trim();
         liveRef.current = "";
 
         if (!finalText) return;
 
-        const cmd = maybeHandleWakeWord(finalText);
-        if (cmd) handleTranscript(cmd);
+        const cmdRaw = maybeHandleWakeWordRef.current(finalText);
+
+        // ✅ wake-only (null or empty) => do not call handleTranscript
+        const cmd = typeof cmdRaw === "string" ? cmdRaw.trim() : "";
+        if (!cmd) return;
+
+        handleTranscriptRef.current(cmd);
         return;
       }
 
       if (type === "error") {
-        const errObj = m.error as Record<string, unknown> | undefined;
+        const errObjUnknown = msgUnknown.error;
+        const errObj = isRecord(errObjUnknown) ? errObjUnknown : null;
         const msgText =
           (errObj && typeof errObj.message === "string" && errObj.message) ||
           "Realtime voice error";
 
         // eslint-disable-next-line no-console
-        console.error("[RealtimeVoice] error", m);
+        console.error("[RealtimeVoice] error", msgUnknown);
 
         setState("error");
         opts?.onError?.(msgText);
