@@ -1,11 +1,12 @@
 // app/mobile/inspections/[id]/page.tsx
+// app/mobile/inspections/[id]/page.tsx
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 import GenericInspectionScreen from "@/features/inspections/screens/GenericInspectionScreen";
 
@@ -40,7 +41,7 @@ function looksLikeCornerTitle(title: string | undefined | null): boolean {
 }
 
 function stripExistingCornerGrids(sections: Section[]): Section[] {
-  return sections.filter((s) => {
+  return (sections ?? []).filter((s) => {
     if (looksLikeCornerTitle(s.title)) return false;
 
     const items = s.items ?? [];
@@ -117,6 +118,7 @@ function prepareSectionsWithCornerGrid(
 ): Section[] {
   const s = Array.isArray(sections) ? sections : [];
 
+  // If template already has a corner grid title, don’t inject anything.
   const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
   if (hasCornerByTitle) return s;
 
@@ -152,19 +154,31 @@ function prepareSectionsWithCornerGrid(
 /* ------------------------------------------------------------------ */
 
 export default function MobileInspectionRunnerPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
+  const searchKey = search.toString(); // ✅ stable snapshot for deps
+
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const lineId = params?.id ? String(params.id) : null;
-  const workOrderId = search.get("workOrderId");
-  const templateId = search.get("templateId");
-  const gridOverride = search.get("grid"); // 'air' | 'hyd' | 'none' | null
+
+  // pull values from the stable snapshot
+  const { workOrderId, templateId, gridOverride } = useMemo(() => {
+    const sp = new URLSearchParams(searchKey);
+    return {
+      workOrderId: sp.get("workOrderId"),
+      templateId: sp.get("templateId"),
+      gridOverride: sp.get("grid"), // air | hyd | none | null
+    };
+  }, [searchKey]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!lineId || !templateId) {
       setError("Missing inspection line or template.");
       setLoading(false);
@@ -173,14 +187,16 @@ export default function MobileInspectionRunnerPage() {
 
     (async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error: qErr } = await supabase
           .from("inspection_templates")
           .select("template_name, sections, vehicle_type")
           .eq("id", templateId)
           .maybeSingle();
 
-        if (error || !data) {
-          console.error(error);
+        if (cancelled) return;
+
+        if (qErr || !data) {
+          console.error(qErr);
           setError("Template not found.");
           toast.error("Template not found.");
           return;
@@ -196,23 +212,26 @@ export default function MobileInspectionRunnerPage() {
           gridOverride,
         );
 
+        // rebuild params from searchKey (stable)
+        const sp = new URLSearchParams(searchKey);
         const paramsObj: Record<string, string> = {};
-        search.forEach((v, k) => {
+        sp.forEach((v, k) => {
           paramsObj[k] = v;
         });
 
-        // ✅ Force runtime identity
+        // ✅ Force runtime identity (desktop-aligned)
         paramsObj.mode = "run";
         paramsObj.view = "mobile";
 
         // ✅ Canonical identifiers used by runtime/persistence
         paramsObj.workOrderLineId = lineId;
+        paramsObj.lineId = lineId; // compat for older readers
         if (workOrderId) paramsObj.workOrderId = workOrderId;
         paramsObj.templateId = templateId;
-        paramsObj.template = "generic"; // what your runtime expects
+        paramsObj.template = "generic";
 
         if (typeof window !== "undefined") {
-          // ✅ Runtime keys ONLY
+          // ✅ Runtime keys ONLY (desktop-aligned)
           sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
           sessionStorage.setItem("inspection:title", title);
           sessionStorage.setItem("inspection:vehicleType", vehicleType);
@@ -228,13 +247,18 @@ export default function MobileInspectionRunnerPage() {
         }
       } catch (e) {
         console.error(e);
+        if (cancelled) return;
         setError("Failed to prepare inspection.");
         toast.error("Failed to prepare inspection.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, [lineId, templateId, workOrderId, gridOverride, search, supabase]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lineId, templateId, workOrderId, gridOverride, searchKey, supabase]);
 
   if (!lineId) {
     return (
@@ -261,8 +285,33 @@ export default function MobileInspectionRunnerPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
-      <GenericInspectionScreen />
-    </main>
+    <div className="app-shell flex min-h-screen flex-col text-foreground">
+      {/* Mobile header (keeps theme, page not modal) */}
+      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between gap-2 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[11px] text-neutral-100 hover:bg-black/70"
+        >
+          <span>←</span>
+          <span className="uppercase tracking-[0.16em]">Back</span>
+        </button>
+
+        <div className="flex-1 truncate px-2 text-center text-[11px] font-medium text-neutral-200">
+          Inspection •{" "}
+          <span className="font-mono text-neutral-100">
+            {lineId.slice(0, 8)}
+          </span>
+        </div>
+
+        <div className="w-14" />
+      </header>
+
+      <main className="mobile-body-gradient flex-1 overflow-y-auto px-3 py-3">
+        <div className="mx-auto max-w-4xl text-white">
+          <GenericInspectionScreen />
+        </div>
+      </main>
+    </div>
   );
 }

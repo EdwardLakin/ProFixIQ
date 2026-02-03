@@ -1,13 +1,7 @@
 // features/work-orders/mobile/MobileFocusedJob.tsx
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-  useCallback,
-  type JSX,
-} from "react";
+import { useEffect, useMemo, useState, useCallback, type JSX } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
@@ -87,6 +81,24 @@ type WorkflowStatus =
   | "assigned"
   | "unassigned";
 
+function safeISO(d: Date): string {
+  return d.toISOString();
+}
+
+function canPunch(line: WorkOrderLine | null): boolean {
+  if (!line) return false;
+
+  // Respect approval gating (matches app behavior: do not allow punching while awaiting/declined/not-approved)
+  if (line.status === "awaiting_approval") return false;
+  if (line.status === "declined") return false;
+
+  const approval = (line as unknown as { approval_state?: string | null })
+    ?.approval_state;
+  if (approval && approval !== "approved") return false;
+
+  return true;
+}
+
 export default function MobileFocusedJob(props: {
   workOrderLineId: string;
   onBack: () => void;
@@ -105,6 +117,7 @@ export default function MobileFocusedJob(props: {
 
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [notesDirty, setNotesDirty] = useState(false);
 
   // sub-modals
   const [openComplete, setOpenComplete] = useState(false);
@@ -138,88 +151,84 @@ export default function MobileFocusedJob(props: {
     setOpenAi(false);
   };
 
-  // initial load
-  useEffect(() => {
-    if (!workOrderLineId) return;
-    (async () => {
-      setBusy(true);
-      try {
-        const { data: l, error: le } = await supabase
-          .from("work_order_lines")
-          .select("*")
-          .eq("id", workOrderLineId)
-          .maybeSingle<WorkOrderLine>();
-        if (le) throw le;
-        setLine(l ?? null);
-        setTechNotes(l?.notes ?? "");
-
-        if (l?.work_order_id) {
-          const { data: wo, error: we } = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("id", l.work_order_id)
-            .maybeSingle<WorkOrder>();
-          if (we) throw we;
-          setWorkOrder(wo ?? null);
-
-          if (wo?.vehicle_id) {
-            const { data: v, error: ve } = await supabase
-              .from("vehicles")
-              .select("*")
-              .eq("id", wo.vehicle_id)
-              .maybeSingle<Vehicle>();
-            if (ve) throw ve;
-            setVehicle(v ?? null);
-          } else {
-            setVehicle(null);
-          }
-
-          if (wo?.customer_id) {
-            const { data: c, error: ce } = await supabase
-              .from("customers")
-              .select("*")
-              .eq("id", wo.customer_id)
-              .maybeSingle<Customer>();
-            if (ce) throw ce;
-            setCustomer(c ?? null);
-          } else {
-            setCustomer(null);
-          }
-        }
-      } catch (e) {
-        const err = e as { message?: string };
-        toast.error(err?.message ?? "Failed to load job");
-      } finally {
-        setBusy(false);
+  const loadVehicle = useCallback(
+    async (vehicleId: string | null) => {
+      if (!vehicleId) {
+        setVehicle(null);
+        return;
       }
-    })();
-  }, [workOrderLineId, supabase]);
+      const { data, error } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("id", vehicleId)
+        .maybeSingle<Vehicle>();
+      if (error) throw error;
+      setVehicle(data ?? null);
+    },
+    [supabase],
+  );
 
-  // realtime line
-  useEffect(() => {
-    if (!workOrderLineId) return;
-    const ch = supabase
-      .channel(`wol-${workOrderLineId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "work_order_lines",
-          filter: `id=eq.${workOrderLineId}`,
-        },
-        (payload: RealtimePostgresChangesPayload<WorkOrderLine>) => {
-          const next = payload.new;
-          if (next && typeof (next as Partial<WorkOrderLine>).id === "string") {
-            setLine(next as WorkOrderLine);
-          }
-        },
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(ch);
-    };
-  }, [workOrderLineId, supabase]);
+  const loadCustomer = useCallback(
+    async (customerId: string | null) => {
+      if (!customerId) {
+        setCustomer(null);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", customerId)
+        .maybeSingle<Customer>();
+      if (error) throw error;
+      setCustomer(data ?? null);
+    },
+    [supabase],
+  );
+
+  const loadWorkOrder = useCallback(
+    async (workOrderId: string | null) => {
+      if (!workOrderId) {
+        setWorkOrder(null);
+        setVehicle(null);
+        setCustomer(null);
+        return;
+      }
+
+      const { data: wo, error: we } = await supabase
+        .from("work_orders")
+        .select("*")
+        .eq("id", workOrderId)
+        .maybeSingle<WorkOrder>();
+      if (we) throw we;
+
+      setWorkOrder(wo ?? null);
+
+      await loadVehicle(wo?.vehicle_id ?? null);
+      await loadCustomer(wo?.customer_id ?? null);
+    },
+    [supabase, loadVehicle, loadCustomer],
+  );
+
+  const loadLine = useCallback(
+    async (id: string) => {
+      const { data: l, error: le } = await supabase
+        .from("work_order_lines")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle<WorkOrderLine>();
+      if (le) throw le;
+
+      setLine(l ?? null);
+
+      // ✅ align with app logic: keep notes in sync unless user is actively editing
+      if (!notesDirty) {
+        setTechNotes(l?.notes ?? "");
+      }
+
+      await loadWorkOrder(l?.work_order_id ?? null);
+    },
+    [supabase, loadWorkOrder, notesDirty],
+  );
 
   const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
@@ -239,6 +248,110 @@ export default function MobileFocusedJob(props: {
     }
   }, [supabase, workOrderLineId]);
 
+  const refresh = useCallback(async () => {
+    if (!workOrderLineId) return;
+    try {
+      await loadLine(workOrderLineId);
+      await onChanged?.();
+      await loadAllocations();
+    } catch (e) {
+      const err = e as { message?: string };
+      toast.error(err?.message ?? "Failed to refresh job");
+    }
+  }, [workOrderLineId, loadLine, onChanged, loadAllocations]);
+
+  // initial load (page behavior)
+  useEffect(() => {
+    if (!workOrderLineId) return;
+    (async () => {
+      setBusy(true);
+      try {
+        await loadLine(workOrderLineId);
+        await loadAllocations();
+      } catch (e) {
+        const err = e as { message?: string };
+        toast.error(err?.message ?? "Failed to load job");
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [workOrderLineId, loadLine, loadAllocations]);
+
+  // realtime: line
+  useEffect(() => {
+    if (!workOrderLineId) return;
+
+    const ch = supabase
+      .channel(`wol-${workOrderLineId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_lines",
+          filter: `id=eq.${workOrderLineId}`,
+        },
+        (payload: RealtimePostgresChangesPayload<WorkOrderLine>) => {
+          const next = payload.new;
+          if (next && typeof (next as Partial<WorkOrderLine>).id === "string") {
+            const nextLine = next as WorkOrderLine;
+            setLine(nextLine);
+
+            // ✅ keep notes synced unless user is editing
+            if (!notesDirty) setTechNotes(nextLine.notes ?? "");
+
+            // ✅ if WO pointer changes, reload related entities
+            const nextWoId = nextLine.work_order_id ?? null;
+            const currentWoId = line?.work_order_id ?? null;
+            if (nextWoId !== currentWoId) {
+              void loadWorkOrder(nextWoId);
+            }
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(ch);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workOrderLineId, supabase, notesDirty, loadWorkOrder]);
+
+  // realtime: work order (keeps vehicle/customer/status aligned like app)
+  useEffect(() => {
+    const woId = line?.work_order_id ?? null;
+    if (!woId) return;
+
+    const ch = supabase
+      .channel(`wo-${woId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_orders",
+          filter: `id=eq.${woId}`,
+        },
+        (payload: RealtimePostgresChangesPayload<WorkOrder>) => {
+          const next = payload.new;
+          if (next && typeof (next as Partial<WorkOrder>).id === "string") {
+            const wo = next as WorkOrder;
+            setWorkOrder(wo);
+
+            // If vehicle/customer pointers change, reload them
+            void loadVehicle(wo.vehicle_id ?? null);
+            void loadCustomer(wo.customer_id ?? null);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(ch);
+    };
+  }, [supabase, line?.work_order_id, loadVehicle, loadCustomer]);
+
+  // allocations
   useEffect(() => {
     void loadAllocations();
   }, [loadAllocations]);
@@ -262,28 +375,14 @@ export default function MobileFocusedJob(props: {
 
     return () => {
       try {
-        supabase.removeChannel(ch);
+        void supabase.removeChannel(ch);
       } catch {
         //
       }
     };
   }, [workOrderLineId, supabase, loadAllocations]);
 
-  const refresh = useCallback(
-    async () => {
-      const { data: l } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("id", workOrderLineId)
-        .maybeSingle<WorkOrderLine>();
-      setLine(l ?? null);
-      setTechNotes(l?.notes ?? "");
-      await onChanged?.();
-      await loadAllocations();
-    },
-    [supabase, workOrderLineId, onChanged, loadAllocations],
-  );
-
+  // cross-component refresh event (matches app pattern)
   useEffect(() => {
     const handler = () => void refresh();
     window.addEventListener("wol:refresh", handler);
@@ -306,7 +405,7 @@ export default function MobileFocusedJob(props: {
     };
   }, [refresh]);
 
-  // inspection done → open complete
+  // inspection done → open complete (mobile page still listens like app modal)
   useEffect(() => {
     const onInspectionDone = (evt: Event) => {
       const e = evt as CustomEvent<{
@@ -329,7 +428,7 @@ export default function MobileFocusedJob(props: {
       window.removeEventListener("inspection:completed", onInspectionDone);
   }, [workOrderLineId]);
 
-    const applyHold = async (reason: string, notes?: string) => {
+  const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
     if (!line) return;
 
@@ -342,9 +441,9 @@ export default function MobileFocusedJob(props: {
         notes: notes ?? line.notes ?? null,
       };
 
-      // 🔹 If the job is actively running, "punch off" when putting it on hold
+      // If job is actively running, punch off when holding (matches app behavior)
       if (line.punched_in_at && !line.punched_out_at) {
-        update.punched_out_at = new Date().toISOString();
+        update.punched_out_at = safeISO(new Date());
       }
 
       const { error } = await supabase
@@ -369,10 +468,13 @@ export default function MobileFocusedJob(props: {
         .from("work_order_lines")
         .update({
           hold_reason: null,
+          // app behavior: return to awaiting (unless you later add a status_before_hold column)
           status: "awaiting",
         } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId);
+
       if (error) return showErr("Remove hold failed", error);
+
       toast.success("Hold removed");
       await refresh();
     } finally {
@@ -382,29 +484,45 @@ export default function MobileFocusedJob(props: {
 
   const uploadPhoto = async (file: File) => {
     if (!workOrderLineId || !workOrder?.id) return;
+
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
-    const { error } = await supabase.storage
-      .from("job-photos")
-      .upload(path, file, {
-        contentType: file.type || "image/jpeg",
-        upsert: true,
-      });
+    const { error } = await supabase.storage.from("job-photos").upload(path, file, {
+      contentType: file.type || "image/jpeg",
+      upsert: true,
+    });
+
     if (error) return showErr("Photo upload failed", error);
     toast.success("Photo attached");
+
+    // optional: trigger a refresh event for other listeners
+    window.dispatchEvent(new CustomEvent("wol:refresh"));
   };
 
   const saveNotes = async () => {
+    if (!workOrderLineId) return;
+    if (savingNotes) return;
+
+    // avoid spam writes if unchanged
+    const serverNotes = line?.notes ?? "";
+    if (!notesDirty && techNotes === serverNotes) return;
+
     setSavingNotes(true);
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        notes: techNotes,
-      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-      .eq("id", workOrderLineId);
-    setSavingNotes(false);
-    if (error) return showErr("Update notes failed", error);
-    toast.success("Notes saved");
-    await refresh();
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          notes: techNotes,
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", workOrderLineId);
+
+      if (error) return showErr("Update notes failed", error);
+
+      toast.success("Notes saved");
+      setNotesDirty(false);
+      await refresh();
+    } finally {
+      setSavingNotes(false);
+    }
   };
 
   const startAt = line?.punched_in_at ?? null;
@@ -417,6 +535,12 @@ export default function MobileFocusedJob(props: {
 
   const createdStart = startAt ? format(new Date(startAt), "PPpp") : "—";
   const createdFinish = finishAt ? format(new Date(finishAt), "PPpp") : "—";
+
+  const punchDisabled =
+    busy ||
+    !canPunch(line) ||
+    // keep your existing additional guard
+    (!!line?.approval_state && line.approval_state !== "approved");
 
   return (
     <>
@@ -434,6 +558,7 @@ export default function MobileFocusedJob(props: {
             <span>←</span>
             <span className="uppercase tracking-[0.16em]">Back</span>
           </button>
+
           <div className="flex-1 truncate px-2 text-center text-[11px] font-medium">
             {line ? (
               <span className={chip(line.status ?? null)}>{titleText}</span>
@@ -441,6 +566,7 @@ export default function MobileFocusedJob(props: {
               "Job"
             )}
           </div>
+
           {workOrder?.id ? (
             <button
               type="button"
@@ -486,6 +612,7 @@ export default function MobileFocusedJob(props: {
                       {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
+
                   <div className="glass-card p-3">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                       Start
@@ -494,6 +621,7 @@ export default function MobileFocusedJob(props: {
                       {createdStart}
                     </div>
                   </div>
+
                   <div className="glass-card p-3">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                       Finish
@@ -502,6 +630,7 @@ export default function MobileFocusedJob(props: {
                       {createdFinish}
                     </div>
                   </div>
+
                   <div className="glass-card p-3">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                       Hold Reason
@@ -533,6 +662,7 @@ export default function MobileFocusedJob(props: {
                         {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
+
                     <div>
                       <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                         Customer
@@ -567,14 +697,9 @@ export default function MobileFocusedJob(props: {
                         setOpenComplete(true);
                       }}
                       onUpdated={refresh}
-                      disabled={
-                        busy ||
-                        line.status === "awaiting_approval" ||
-                        line.status === "declined" ||
-                        (!!line.approval_state &&
-                          line.approval_state !== "approved")
-                      }
+                      disabled={punchDisabled}
                     />
+
                     {(line.status === "awaiting_approval" ||
                       (line.approval_state &&
                         line.approval_state !== "approved") ||
@@ -583,8 +708,8 @@ export default function MobileFocusedJob(props: {
                         {line.status === "awaiting_approval"
                           ? "Awaiting approval — punching disabled"
                           : line.status === "declined"
-                          ? "Declined — punching disabled"
-                          : "Not approved — punching disabled"}
+                            ? "Declined — punching disabled"
+                            : "Not approved — punching disabled"}
                       </div>
                     )}
                   </div>
@@ -743,12 +868,20 @@ export default function MobileFocusedJob(props: {
                   <textarea
                     rows={4}
                     value={techNotes}
-                    onChange={(e) => setTechNotes(e.target.value)}
+                    onChange={(e) => {
+                      setTechNotes(e.target.value);
+                      setNotesDirty(true);
+                    }}
                     onBlur={saveNotes}
                     disabled={savingNotes}
                     className="w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]"
                     placeholder="Add notes for this job…"
                   />
+                  {notesDirty && (
+                    <div className="mt-2 text-[11px] text-neutral-400">
+                      Unsaved changes (tap away to save)
+                    </div>
+                  )}
                 </div>
 
                 {/* AI suggestions */}
@@ -803,14 +936,23 @@ export default function MobileFocusedJob(props: {
               .update({
                 cause,
                 correction,
-                punched_out_at: new Date().toISOString(),
+                punched_out_at: safeISO(new Date()),
                 status: "completed",
               } as DB["public"]["Tables"]["work_order_lines"]["Update"])
               .eq("id", line.id);
+
             if (error) return showErr("Complete job failed", error);
+
             toast.success("Job completed");
             setOpenComplete(false);
             await refresh();
+
+            // Let other listeners update (app parity)
+            window.dispatchEvent(
+              new CustomEvent("work-order-line:completed", {
+                detail: { workOrderLineId: line.id },
+              }),
+            );
           }}
         />
       )}
@@ -877,7 +1019,10 @@ export default function MobileFocusedJob(props: {
           onClose={() => setOpenAddJob(false)}
           workOrderId={workOrder.id}
           vehicleId={vehicle?.id ?? null}
-          techId={(line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ?? "system"}
+          techId={
+            (line as unknown as { assigned_tech_id?: string | null })
+              ?.assigned_tech_id ?? "system"
+          }
           shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {
             await refresh();
