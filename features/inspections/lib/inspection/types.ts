@@ -71,6 +71,9 @@ export interface InspectionItem {
 
   /** 🔹 Labor hours for THIS item (rate & pricing handled later) */
   laborHours?: number | null;
+
+  estimateSubmitted?: boolean;
+  estimateSubmittedAt?: string | null;
 }
 
 export interface InspectionCategory {

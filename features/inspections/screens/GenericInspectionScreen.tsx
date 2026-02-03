@@ -136,6 +136,13 @@ type NormalizedItem = {
   recommend?: string[];
   parts?: Array<{ description: string; qty: number }>;
   laborHours?: number | null;
+
+  // ✅ estimate state (optional)
+  estimateSubmitted?: boolean;
+  estimateSubmittedAt?: string | null;
+  estimateLastUpdatedAt?: string | null;
+  estimateWorkOrderLineId?: string | null;
+  estimateQuoteLineId?: string | null;
 };
 
 function normalizeSections(input: unknown): InspectionSection[] {
@@ -431,7 +438,10 @@ function parseFollowUpPayload(raw: string): {
 
   // remove "confirm/submit/cancel" words from remainder
   remainder = remainder
-    .replace(/\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi, " ")
+    .replace(
+      /\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi,
+      " ",
+    )
     .replace(/\s+/g, " ")
     .trim();
 
@@ -467,6 +477,8 @@ export default function GenericInspectionScreen(
 ): JSX.Element {
   const routeSp = useSearchParams();
   const rootRef = useRef<HTMLDivElement | null>(null);
+
+  type ItemPatch = Partial<InspectionSection["items"][number]>;
 
   const sp = useMemo(() => {
     const staged = readStaged<Record<string, string>>("inspection:params");
@@ -924,7 +936,7 @@ export default function GenericInspectionScreen(
       updateItem(targetSec, targetItem, {
         parts: nextParts,
         laborHours: nextLabor,
-      });
+      } as ItemPatch);
 
       const label = String(it.item ?? it.name ?? "Item");
       const partsSummary =
@@ -979,32 +991,30 @@ export default function GenericInspectionScreen(
     const followTail = split.tail;
 
     const ctx = {
-  sectionTitle: "",
-  items: (sess.sections ?? [])
-    .flatMap((s) => s.items ?? [])
-    .map((it) => String(it.item ?? it.name ?? "").trim())
-    .filter(Boolean),
-};
+      sectionTitle: "",
+      items: (sess.sections ?? [])
+        .flatMap((s) => s.items ?? [])
+        .map((it) => String(it.item ?? it.name ?? "").trim())
+        .filter(Boolean),
+    };
 
-let commands: ParsedCommand[] = [];
-const applied: VoiceCommandApplyResult[] = [];
+    let commands: ParsedCommand[] = [];
+    const applied: VoiceCommandApplyResult[] = [];
 
-try {
-  commands = await interpretCommand(mainText, ctx);
+    try {
+      commands = await interpretCommand(mainText, ctx);
 
-  if (!commands.length) {
-    appendVoiceTrace({
-      rawFinal: text,
-      wakeCommand: text,
-      parsed: [],
-      applied: [
-        { command: "interpret", ok: false, reason: "No commands returned" },
-      ],
-    });
-    return;
-  }
-
-  // continue with apply loop...
+      if (!commands.length) {
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [
+            { command: "interpret", ok: false, reason: "No commands returned" },
+          ],
+        });
+        return;
+      }
 
       // Track if this utterance likely created a FAIL/REC + note combo
       let sawFailOrRec = false;
@@ -1026,9 +1036,7 @@ try {
               : "";
 
         if (cmdType === "status" || cmdType === "update_status") {
-          const st = String(
-            (anyC as { status?: unknown }).status ?? "",
-          ).toLowerCase();
+          const st = String((anyC as { status?: unknown }).status ?? "").toLowerCase();
           if (st === "fail" || st === "recommend") sawFailOrRec = true;
         }
         if (cmdType === "add" || cmdType === "add_note") {
@@ -1098,7 +1106,7 @@ try {
           updateItem(lastAppliedTarget.sectionIndex, lastAppliedTarget.itemIndex, {
             parts: nextParts,
             laborHours: nextLabor,
-          });
+          } as ItemPatch);
 
           const it =
             sess.sections[lastAppliedTarget.sectionIndex]?.items?.[
@@ -1178,78 +1186,79 @@ try {
   };
 
   function maybeHandleWakeWord(raw: string): string | null {
-  // Normalize: lowercase, remove punctuation, collapse spaces
-  const normalized = raw
-    .toLowerCase()
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+    // Normalize: lowercase, remove punctuation, collapse spaces
+    const normalized = raw
+      .toLowerCase()
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
-  // allow optional "hey"
-  const withoutHey = normalized.startsWith("hey ")
-    ? normalized.slice(4).trim()
-    : normalized;
+    // allow optional "hey"
+    const withoutHey = normalized.startsWith("hey ")
+      ? normalized.slice(4).trim()
+      : normalized;
 
-  const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
+    const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
 
-  const matchPrefixFrom = (
-    input: string,
-  ): { prefix: string; remainder: string } | null => {
-    for (const prefix of WAKE_PREFIXES) {
-      if (input === prefix) return { prefix, remainder: "" };
-      if (input.startsWith(prefix + " ")) {
-        return { prefix, remainder: input.slice(prefix.length).trimStart() };
+    const matchPrefixFrom = (
+      input: string,
+    ): { prefix: string; remainder: string } | null => {
+      for (const prefix of WAKE_PREFIXES) {
+        if (input === prefix) return { prefix, remainder: "" };
+        if (input.startsWith(prefix + " ")) {
+          return { prefix, remainder: input.slice(prefix.length).trimStart() };
+        }
       }
-    }
-    return null;
-  };
-
-  // If not awake: require wake prefix
-  if (!wakeActive) {
-    const match = matchPrefixFrom(withoutHey);
-    if (!match) return null;
-
-    setWakeActive(true);
-
-    toast.success("READY", { duration: 1200 });
-
-    type WebkitAudioWindow = Window & {
-      webkitAudioContext?: typeof AudioContext;
+      return null;
     };
 
-    const AudioCtxCtor =
-      window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
+    // If not awake: require wake prefix
+    if (!wakeActive) {
+      const match = matchPrefixFrom(withoutHey);
+      if (!match) return null;
 
-    if (AudioCtxCtor) {
-      const ctx = new AudioCtxCtor();
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.value = 880;
-      g.gain.value = 0.05;
-      o.connect(g);
-      g.connect(ctx.destination);
-      o.start();
-      window.setTimeout(() => {
-        o.stop();
-        void ctx.close();
-      }, 120);
+      setWakeActive(true);
+
+      toast.success("READY", { duration: 1200 });
+
+      type WebkitAudioWindow = Window & {
+        webkitAudioContext?: typeof AudioContext;
+      };
+
+      const AudioCtxCtor =
+        window.AudioContext ||
+        (window as WebkitAudioWindow).webkitAudioContext;
+
+      if (AudioCtxCtor) {
+        const ctx = new AudioCtxCtor();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.value = 880;
+        g.gain.value = 0.05;
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start();
+        window.setTimeout(() => {
+          o.stop();
+          void ctx.close();
+        }, 120);
+      }
+
+      if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
+      wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
+
+      // IMPORTANT: return ONLY command remainder (wake stripped)
+      return match.remainder;
     }
 
+    // If already awake: extend timeout, and ALSO strip prefix if user repeats it
     if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
     wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
 
-    // IMPORTANT: return ONLY command remainder (wake stripped)
-    return match.remainder;
+    const repeated = matchPrefixFrom(withoutHey);
+    return repeated ? repeated.remainder : withoutHey;
   }
-
-  // If already awake: extend timeout, and ALSO strip prefix if user repeats it
-  if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
-  wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
-
-  const repeated = matchPrefixFrom(withoutHey);
-  return repeated ? repeated.remainder : withoutHey;
-}
 
   const voice = useRealtimeVoice(
     async (text: string) => {
@@ -1337,6 +1346,15 @@ try {
       parts?: { description: string; qty: number }[];
       laborHours?: number | null;
       name?: string | null;
+
+      // ✅ estimate state (persisted on the item)
+      estimateSubmitted?: boolean;
+      estimateSubmittedAt?: string | null;
+      estimateLastUpdatedAt?: string | null;
+
+      // ✅ links so we UPDATE instead of creating new
+      estimateWorkOrderLineId?: string | null;
+      estimateQuoteLineId?: string | null;
     };
 
     const manualParts: { description: string; qty: number }[] = Array.isArray(
@@ -1355,30 +1373,48 @@ try {
     try {
       const desc = String(it.item ?? itExt.name ?? "Item");
 
-      const id = uuidv4();
-      const placeholder: QuoteLineItem = {
-        id,
-        description: desc,
-        item: desc,
-        name: desc,
-        status: status as "fail" | "recommend",
-        notes: String(it.notes ?? ""),
-        price: 0,
-        laborTime: 0.5,
-        laborRate: 0,
-        editable: true,
-        source: "inspection",
-        value: (it as unknown as { value?: unknown }).value as
-          | string
-          | number
-          | null
-          | undefined,
-        photoUrls: (it as unknown as { photoUrls?: unknown }).photoUrls as
-          | string[]
-          | undefined,
-        aiState: "loading",
-      };
-      addQuoteLine(placeholder);
+      const existingLineId =
+        typeof itExt.estimateWorkOrderLineId === "string" && itExt.estimateWorkOrderLineId
+          ? itExt.estimateWorkOrderLineId
+          : null;
+
+      const nowIso = new Date().toISOString();
+
+      // ✅ reuse quote line if already submitted (avoid duplicates)
+      const existingQuoteId =
+        typeof itExt.estimateQuoteLineId === "string" && itExt.estimateQuoteLineId
+          ? itExt.estimateQuoteLineId
+          : null;
+
+      const quoteId = existingQuoteId ?? uuidv4();
+
+      if (!existingQuoteId) {
+        const placeholder: QuoteLineItem = {
+          id: quoteId,
+          description: desc,
+          item: desc,
+          name: desc,
+          status: status as "fail" | "recommend",
+          notes: String(it.notes ?? ""),
+          price: 0,
+          laborTime: 0.5,
+          laborRate: 0,
+          editable: true,
+          source: "inspection",
+          value: (it as unknown as { value?: unknown }).value as
+            | string
+            | number
+            | null
+            | undefined,
+          photoUrls: (it as unknown as { photoUrls?: unknown }).photoUrls as
+            | string[]
+            | undefined,
+          aiState: "loading",
+        };
+        addQuoteLine(placeholder);
+      } else {
+        updateQuoteLine(quoteId, { aiState: "loading" });
+      }
 
       toastId = toast.loading("Building estimate from inspection item…");
 
@@ -1391,7 +1427,7 @@ try {
       });
 
       if (!suggestion) {
-        updateQuoteLine(id, { aiState: "error" });
+        updateQuoteLine(quoteId, { aiState: "error" });
         toast.error("No AI suggestion available", { id: toastId });
         return;
       }
@@ -1420,7 +1456,7 @@ try {
 
       const price = Math.max(0, partsTotal + laborRate * laborTime);
 
-      updateQuoteLine(id, {
+      updateQuoteLine(quoteId, {
         price,
         laborTime,
         laborRate,
@@ -1432,9 +1468,73 @@ try {
         aiState: "done",
       });
 
-      let createdJobId: string | null = null;
-
       if (workOrderId) {
+        const cleanParts = manualParts
+          .map((p) => ({
+            description: String(p.description ?? "").trim(),
+            qty: Number(p.qty ?? 0),
+          }))
+          .filter((p) => p.description.length > 0 && p.qty > 0);
+
+        // ✅ UPDATE existing estimate/job (no new WO line)
+        if (existingLineId) {
+          const updateRes = await fetch(
+            "/api/work-orders/lines/update-from-inspection",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workOrderId,
+                workOrderLineId: existingLineId,
+                laborHours: laborTime,
+                notes: String(it.notes ?? "") || null,
+                aiSummary: suggestion.summary ?? null,
+              }),
+            },
+          );
+
+          if (!updateRes.ok) {
+            const body = (await updateRes.json().catch(() => null)) as unknown;
+            // eslint-disable-next-line no-console
+            console.error("Update WO line error", body);
+            toast.error("Could not update existing estimate line", { id: toastId });
+            return;
+          }
+
+          if (cleanParts.length > 0) {
+            const res = await fetch("/api/parts/requests/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workOrderId,
+                jobId: existingLineId, // ✅ attach to same job
+                notes: String(it.notes ?? "") || null,
+                items: cleanParts,
+              }),
+            });
+
+            if (!res.ok) {
+              const body = (await res.json().catch(() => null)) as unknown;
+              // eslint-disable-next-line no-console
+              console.error("Parts request error", body);
+              toast.error("Estimate updated, but parts request failed", { id: toastId });
+              return;
+            }
+          }
+
+          updateItem(secIdx, itemIdx, {
+            estimateSubmitted: true,
+            estimateSubmittedAt: itExt.estimateSubmittedAt ?? nowIso,
+            estimateLastUpdatedAt: nowIso,
+            estimateWorkOrderLineId: existingLineId,
+            estimateQuoteLineId: quoteId,
+          } as ItemPatch);
+
+          toast.success("Estimate updated", { id: toastId });
+          return;
+        }
+
+        // ✅ CREATE new estimate/job (first submit)
         const created = await addWorkOrderLineFromSuggestion({
           workOrderId,
           description: desc,
@@ -1450,7 +1550,7 @@ try {
         });
 
         const createdId = (created as unknown as { id?: unknown })?.id;
-        createdJobId =
+        const createdJobId =
           (createdId ? String(createdId) : null) || workOrderLineId || null;
 
         // ✅ keep your counter for “lines added and sent for quote”
@@ -1460,13 +1560,6 @@ try {
               (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
           } satisfies VoiceMeta,
         });
-
-        const cleanParts = manualParts
-          .map((p) => ({
-            description: String(p.description ?? "").trim(),
-            qty: Number(p.qty ?? 0),
-          }))
-          .filter((p) => p.description.length > 0 && p.qty > 0);
 
         if (cleanParts.length > 0) {
           try {
@@ -1485,9 +1578,7 @@ try {
               const body = (await res.json().catch(() => null)) as unknown;
               // eslint-disable-next-line no-console
               console.error("Parts request error", body);
-              toast.error("Line added, but parts request failed", {
-                id: toastId,
-              });
+              toast.error("Line added, but parts request failed", { id: toastId });
               return;
             }
 
@@ -1500,16 +1591,25 @@ try {
             toast.error("Line added, but couldn't reach parts request service", {
               id: toastId,
             });
+            return;
           }
         } else {
           toast.success("Added to work order (no parts requested)", {
             id: toastId,
           });
         }
+
+        if (createdJobId) {
+          updateItem(secIdx, itemIdx, {
+            estimateSubmitted: true,
+            estimateSubmittedAt: nowIso,
+            estimateLastUpdatedAt: nowIso,
+            estimateWorkOrderLineId: createdJobId,
+            estimateQuoteLineId: quoteId,
+          } as ItemPatch);
+        }
       } else {
-        toast.error("Missing work order id — saved locally only", {
-          id: toastId,
-        });
+        toast.error("Missing work order id — saved locally only", { id: toastId });
       }
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
@@ -1717,15 +1817,15 @@ try {
     for (const side of sides) {
       for (const m of metrics) {
         const label = `${axleLabel} ${side} ${m.label}`;
-        const key = label.toLowerCase();
-        if (existingLabels.has(key)) continue;
+        const k = label.toLowerCase();
+        if (existingLabels.has(k)) continue;
 
         nextItems.push({
           item: label,
           unit: m.unit,
           status: "na" as InspectionItemStatus,
         });
-        existingLabels.add(key);
+        existingLabels.add(k);
       }
     }
 
@@ -1763,15 +1863,15 @@ try {
     for (const side of sides) {
       for (const m of metrics) {
         const label = `${axleLabel} ${side} ${m.label}`;
-        const key = label.toLowerCase();
-        if (existingLabels.has(key)) continue;
+        const k = label.toLowerCase();
+        if (existingLabels.has(k)) continue;
 
         nextItems.push({
           item: label,
           unit: m.unit,
           status: "na" as InspectionItemStatus,
         });
-        existingLabels.add(key);
+        existingLabels.add(k);
       }
     }
 
@@ -2281,11 +2381,11 @@ try {
                               }
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { parts });
+                                updateItem(secIdx, itemIdx, { parts } as ItemPatch);
                               }}
                               onUpdateLaborHours={(secIdx, itemIdx, hours) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { laborHours: hours });
+                                updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
                               }}
                             />
                           ) : (
@@ -2314,11 +2414,11 @@ try {
                               }
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { parts });
+                                updateItem(secIdx, itemIdx, { parts } as ItemPatch);
                               }}
                               onUpdateLaborHours={(secIdx, itemIdx, hours) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { laborHours: hours });
+                                updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
                               }}
                             />
                           )
@@ -2352,7 +2452,7 @@ try {
                               statusValue: InspectionItemStatus,
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { status: statusValue });
+                              updateItem(secIdx, itemIdx, { status: statusValue } as ItemPatch);
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
                             onUpdateNote={(
@@ -2361,7 +2461,7 @@ try {
                               noteText: string,
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { notes: noteText });
+                              updateItem(secIdx, itemIdx, { notes: noteText } as ItemPatch);
                             }}
                             onUpload={(
                               photoUrl: string,
@@ -2374,7 +2474,7 @@ try {
                                 [];
                               updateItem(secIdx, itemIdx, {
                                 photoUrls: [...prev, photoUrl],
-                              });
+                              } as ItemPatch);
                             }}
                             onUpdateParts={(
                               secIdx: number,
@@ -2382,7 +2482,7 @@ try {
                               parts: { description: string; qty: number }[],
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { parts });
+                              updateItem(secIdx, itemIdx, { parts } as ItemPatch);
                             }}
                             onUpdateLaborHours={(
                               secIdx: number,
@@ -2390,7 +2490,7 @@ try {
                               hours: number | null,
                             ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { laborHours: hours });
+                              updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
                             }}
                             requireNoteForAI
                             onSubmitAI={(secIdx: number, itemIdx: number) => {
@@ -2461,9 +2561,8 @@ try {
             inspectionId={inspectionId}
             role="customer"
             defaultName={
-              [customer.first_name, customer.last_name]
-                .filter(Boolean)
-                .join(" ") || undefined
+              [customer.first_name, customer.last_name].filter(Boolean).join(" ") ||
+              undefined
             }
             onSigned={handleSigned}
           />
