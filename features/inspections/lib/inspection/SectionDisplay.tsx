@@ -1,6 +1,7 @@
+// /features/inspections/lib/inspection/SectionDisplay.tsx
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import type {
   InspectionSection,
   InspectionItemStatus,
@@ -71,9 +72,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     onToggleCollapse,
   } = props;
 
-  // ✅ PATCH: never rely on callers passing title correctly (you had title="" before)
+  // ✅ never rely on callers passing title correctly (you had title="" before)
   const resolvedTitle = (title || section.title || "").trim();
-
   const gridSection = isGridSection(resolvedTitle);
 
   // For grid sections, grids manage their own collapse internally.
@@ -87,27 +87,26 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     if (!isControlled) setInternalOpen((v) => !v);
   };
 
-  const stats = useMemo(() => {
-    const total = section.items.length || 0;
+  /**
+   * ✅ FIX: derive stats every render (NO memo).
+   * Your updates can mutate items in-place (same array ref),
+   * which makes useMemo([section.items]) stale.
+   */
+  const total = section.items.length || 0;
+  const counts = { ok: 0, fail: 0, na: 0, recommend: 0, unset: 0 };
 
-    // ✅ PATCH: normalize status values (support pass/blank)
-    const counts = { ok: 0, fail: 0, na: 0, recommend: 0, unset: 0 };
+  for (const it of section.items) {
+    const raw = String(it.status ?? "").toLowerCase();
+    const normalized: keyof typeof counts =
+      raw === "ok" || raw === "fail" || raw === "na" || raw === "recommend"
+        ? (raw as keyof typeof counts)
+        : raw === "pass"
+          ? "ok"
+          : "unset";
+    counts[normalized] += 1;
+  }
 
-    for (const it of section.items) {
-      const raw = String(it.status ?? "").toLowerCase();
-
-      const normalized: keyof typeof counts =
-        raw === "ok" || raw === "fail" || raw === "na" || raw === "recommend"
-          ? (raw as keyof typeof counts)
-          : raw === "pass"
-            ? "ok"
-            : "unset";
-
-      counts[normalized] += 1;
-    }
-
-    return { total, ...counts };
-  }, [section.items]);
+  const stats = { total, ...counts };
 
   const markAll = (status: InspectionItemStatus) => {
     section.items.forEach((_item, idx) =>
@@ -117,7 +116,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
   const showBulkButtons = !gridSection;
 
-  const canEditPartsLabor = typeof onUpdateParts === "function" || typeof onUpdateLaborHours === "function";
+  const canEditPartsLabor =
+    typeof onUpdateParts === "function" || typeof onUpdateLaborHours === "function";
 
   return (
     <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
@@ -238,7 +238,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   const isRec = status === "recommend";
                   const isFailOrRec = isFail || isRec;
 
-                  // ✅ PATCH: support note vs notes
+                  // ✅ support note vs notes
                   const note = String(item.notes ?? item.note ?? "").trim();
 
                   const canShowSubmit =

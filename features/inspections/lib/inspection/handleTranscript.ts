@@ -1,3 +1,4 @@
+// /features/inspections/lib/inspection/handleTranscript.ts
 import {
   ParsedCommand,
   ParsedCommandNameBased,
@@ -24,7 +25,11 @@ export type HandleTranscriptResult = {
 };
 
 interface HandleTranscriptArgs {
-  command: ParsedCommand;
+  /**
+   * ✅ PATCH: allow multi-commands in one transcript.
+   * Backwards compatible: you can still pass a single ParsedCommand.
+   */
+  command: ParsedCommand | ParsedCommand[];
   session: InspectionSession;
   updateInspection: UpdateInspectionFn;
   updateItem: UpdateItemFn;
@@ -252,7 +257,10 @@ function scoreSectionTitle(title: string, hintTokens: string[]): number {
     (hintTokens.includes("tread") || hintTokens.includes("pressure"))
   )
     score += 10;
-  if (t.includes("brake") && (hintTokens.includes("pad") || hintTokens.includes("rotor")))
+  if (
+    t.includes("brake") &&
+    (hintTokens.includes("pad") || hintTokens.includes("rotor"))
+  )
     score += 10;
 
   return score;
@@ -310,6 +318,10 @@ function resolveTargetFromSpeech(args: {
  * Helpers
  * ------------------------------------------------------------------------------------------------- */
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function buildSpeechHintFromCommand(params: {
   section?: string;
   item?: string;
@@ -342,22 +354,74 @@ function clampTargetToSession(session: InspectionSession, t: Target): Target {
   return { sectionIndex: sIdx, itemIndex: iIdx };
 }
 
+function resolveSectionIndexByName(
+  session: InspectionSession,
+  sectionName: string,
+): number {
+  const needle = norm(sectionName);
+  if (!needle) return -1;
+
+  return session.sections.findIndex((sec) =>
+    norm(String(sec.title ?? "")).includes(needle),
+  );
+}
+
+function normalizeStatusMaybe(raw: unknown): InspectionItemStatus | undefined {
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (s === "ok" || s === "fail" || s === "na" || s === "recommend") {
+    return s as InspectionItemStatus;
+  }
+  if (s === "n/a" || s === "n a") return "na";
+  if (s === "okay" || s === "pass") return "ok";
+  if (s === "rec") return "recommend";
+  return undefined;
+}
+
+type PartLine = { description: string; qty: number };
+
+function coercePartsFromUnknown(v: unknown): PartLine[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+
+  const out: PartLine[] = [];
+  for (const row of v) {
+    if (!isRecord(row)) continue;
+    const description = String(row.description ?? "").trim();
+    const qtyRaw = row.qty;
+    const qty =
+      typeof qtyRaw === "number"
+        ? qtyRaw
+        : Number.isFinite(Number(qtyRaw))
+          ? Number(qtyRaw)
+          : 1;
+
+    if (!description) continue;
+    out.push({ description, qty: qty > 0 ? qty : 1 });
+  }
+
+  return out.length > 0 ? out : undefined;
+}
+
+function coerceLaborHoursFromUnknown(v: unknown): number | null | undefined {
+  if (v === null) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+
+  const n = Number(v);
+  if (Number.isFinite(n)) return n;
+
+  return undefined;
+}
+
 /* -------------------------------------------------------------------------------------------------
  * Main apply (NO MANUAL FOCUS)
  * ------------------------------------------------------------------------------------------------- */
 
-export async function handleTranscriptFn({
-  command,
-  session,
-  updateInspection, // kept for signature compatibility (not used here yet)
-  updateItem,
-  updateSection, // kept for signature compatibility (not used here yet)
-  finishSession, // kept for signature compatibility (not used here yet)
-  rawSpeech,
-}: HandleTranscriptArgs): Promise<HandleTranscriptResult> {
-  void updateInspection;
-  void updateSection;
-  void finishSession;
+async function applySingleCommand(args: {
+  command: ParsedCommand;
+  session: InspectionSession;
+  updateItem: UpdateItemFn;
+  rawSpeech?: string;
+}): Promise<AppliedTarget | null> {
+  const { command, session, updateItem, rawSpeech } = args;
 
   // Normalized fields
   let section: string | undefined;
@@ -368,6 +432,10 @@ export async function handleTranscriptFn({
   let unit: string | undefined;
   let mode: string;
 
+  // Optional extensions for “oneshot” (server can start sending these later)
+  let parts: PartLine[] | undefined;
+  let laborHours: number | null | undefined;
+
   // Explicit index targets (ONLY if provided by the command itself)
   let explicitSectionIndex: number | undefined;
   let explicitItemIndex: number | undefined;
@@ -375,22 +443,65 @@ export async function handleTranscriptFn({
   if ("command" in command) {
     const c = command as ParsedCommandIndexed;
     mode = c.command;
-    status = c.status;
+
+    status = normalizeStatusMaybe(c.status);
     note = c.notes;
     value = c.value;
     unit = c.unit;
 
     if (typeof c.sectionIndex === "number") explicitSectionIndex = c.sectionIndex;
     if (typeof c.itemIndex === "number") explicitItemIndex = c.itemIndex;
+
+    // allow future server fields without breaking types
+    const rec = c as unknown;
+    if (isRecord(rec)) {
+      parts = coercePartsFromUnknown(rec.parts);
+      laborHours = coerceLaborHoursFromUnknown(rec.laborHours ?? rec.laborHours);
+    }
   } else {
     const c = command as ParsedCommandNameBased;
     mode = c.type;
+
     section = c.section;
     item = c.item;
-    if ("status" in c) status = c.status;
+
+    if ("status" in c) status = normalizeStatusMaybe(c.status);
     if ("note" in c) note = c.note;
     if ("value" in c) value = c.value;
     if ("unit" in c) unit = c.unit;
+
+    const rec = c as unknown;
+    if (isRecord(rec)) {
+      parts = coercePartsFromUnknown(rec.parts);
+      laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
+    }
+  }
+
+  /**
+   * ✅ SECTION-WIDE STATUS (supports “mark brake section ok”)
+   * Works whether the model returns:
+   * - type: "section_status", section: "brakes", status: "ok"
+   * - command: "section_status", sectionIndex: X, status: "ok"
+   */
+  if (mode === "section_status" || mode === "mark_section" || mode === "set_section_status") {
+    const sIdx =
+      typeof explicitSectionIndex === "number"
+        ? clampTargetToSession(session, { sectionIndex: explicitSectionIndex, itemIndex: 0 }).sectionIndex
+        : section
+          ? resolveSectionIndexByName(session, section)
+          : -1;
+
+    if (sIdx < 0) return null;
+
+    const st = status ?? normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
+    if (!st) return null;
+
+    const itemsLen = session.sections[sIdx]?.items?.length ?? 0;
+    for (let i = 0; i < itemsLen; i++) {
+      updateItem(sIdx, i, { status: st });
+    }
+    // Return a representative target
+    return itemsLen > 0 ? { sectionIndex: sIdx, itemIndex: 0 } : null;
   }
 
   // 1) If the command explicitly carries indices, use them (this is NOT “manual focus”)
@@ -408,16 +519,19 @@ export async function handleTranscriptFn({
     > = {};
 
     switch (mode) {
-      case "update_status": {
+      case "update_status":
+      case "status": {
         if (status) itemUpdates.status = status;
         break;
       }
-      case "update_value": {
+      case "update_value":
+      case "measurement": {
         if (value !== undefined) itemUpdates.value = value;
         if (unit) itemUpdates.unit = unit;
         break;
       }
-      case "add_note": {
+      case "add_note":
+      case "add": {
         if (note) itemUpdates.notes = note;
         break;
       }
@@ -433,12 +547,15 @@ export async function handleTranscriptFn({
         break;
     }
 
+    // Optional oneshot fields (parts/labor) if server sends them
+    if (parts) itemUpdates.parts = parts;
+    if (laborHours !== undefined) itemUpdates.laborHours = laborHours;
+
     if (Object.keys(itemUpdates).length > 0) {
       updateItem(safe.sectionIndex, safe.itemIndex, itemUpdates);
-      return { appliedTarget: safe };
     }
 
-    return { appliedTarget: safe };
+    return safe;
   }
 
   // 2) Try explicit name matching (fast path)
@@ -490,7 +607,7 @@ export async function handleTranscriptFn({
       value,
       unit,
     });
-    return { appliedTarget: null };
+    return null;
   }
 
   const safeTarget = clampTargetToSession(session, target);
@@ -531,9 +648,45 @@ export async function handleTranscriptFn({
       break;
   }
 
+  // Optional oneshot fields (parts/labor) if server sends them
+  if (parts) itemUpdates.parts = parts;
+  if (laborHours !== undefined) itemUpdates.laborHours = laborHours;
+
   if (Object.keys(itemUpdates).length > 0) {
     updateItem(safeTarget.sectionIndex, safeTarget.itemIndex, itemUpdates);
   }
 
-  return { appliedTarget: safeTarget };
+  return safeTarget;
+}
+
+export async function handleTranscriptFn({
+  command,
+  session,
+  updateInspection,
+  updateItem,
+  updateSection,
+  finishSession,
+  rawSpeech,
+}: HandleTranscriptArgs): Promise<HandleTranscriptResult> {
+  void updateInspection;
+  void updateSection;
+  void finishSession;
+
+  const commands = Array.isArray(command) ? command : [command];
+
+  let lastApplied: AppliedTarget | null = null;
+
+  for (const cmd of commands) {
+    // eslint-disable-next-line no-await-in-loop
+    const applied = await applySingleCommand({
+      command: cmd,
+      session,
+      updateItem,
+      rawSpeech,
+    });
+
+    if (applied) lastApplied = applied;
+  }
+
+  return { appliedTarget: lastApplied };
 }

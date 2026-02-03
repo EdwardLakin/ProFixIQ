@@ -978,23 +978,33 @@ export default function GenericInspectionScreen(
     const mainText = split.tail ? split.head : text;
     const followTail = split.tail;
 
-    let commands: ParsedCommand[] = [];
-    const applied: VoiceCommandApplyResult[] = [];
+    const ctx = {
+  sectionTitle: "",
+  items: (sess.sections ?? [])
+    .flatMap((s) => s.items ?? [])
+    .map((it) => String(it.item ?? it.name ?? "").trim())
+    .filter(Boolean),
+};
 
-    try {
-      commands = await interpretCommand(mainText);
+let commands: ParsedCommand[] = [];
+const applied: VoiceCommandApplyResult[] = [];
 
-      if (!commands.length) {
-        appendVoiceTrace({
-          rawFinal: text,
-          wakeCommand: text,
-          parsed: [],
-          applied: [
-            { command: "interpret", ok: false, reason: "No commands returned" },
-          ],
-        });
-        return;
-      }
+try {
+  commands = await interpretCommand(mainText, ctx);
+
+  if (!commands.length) {
+    appendVoiceTrace({
+      rawFinal: text,
+      wakeCommand: text,
+      parsed: [],
+      applied: [
+        { command: "interpret", ok: false, reason: "No commands returned" },
+      ],
+    });
+    return;
+  }
+
+  // continue with apply loop...
 
       // Track if this utterance likely created a FAIL/REC + note combo
       let sawFailOrRec = false;

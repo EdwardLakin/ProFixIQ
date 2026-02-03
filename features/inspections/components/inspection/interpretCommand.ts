@@ -1,3 +1,4 @@
+// /features/inspections/lib/inspection/interpretCommand.ts
 "use client";
 
 import type { ParsedCommand } from "@inspections/lib/inspection/types";
@@ -25,9 +26,44 @@ function normalizeString(s: unknown): string {
   return String(s ?? "").trim();
 }
 
+function splitMultiCommands(input: string): string[] {
+  const t = normalizeString(input);
+  if (!t) return [];
+
+  const normalized = t
+    .replace(/\bthen\b/gi, " and ")
+    .replace(/\balso\b/gi, " and ")
+    .replace(/[;]+/g, " and ")
+    // ✅ only treat periods as separators when they are not decimals
+    // period that is NOT between digits:
+    .replace(/(?<!\d)\.(?!\d)/g, " and ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const parts = normalized
+    .split(/\s+\band\b\s+/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  return parts.length > 0 ? parts : [t];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function mergeParsedCommands(chunks: ParsedCommand[][]): ParsedCommand[] {
+  const out: ParsedCommand[] = [];
+  for (const arr of chunks) {
+    for (const cmd of arr) out.push(cmd);
+  }
+  return out;
+}
+
 /**
  * Interpret a voice command into ParsedCommand[].
- * Supports optional context so the model can reliably match section/items.
+ * ✅ Now supports multi-command utterances by splitting the transcript and
+ * calling the interpret endpoint per fragment (no server changes required).
  */
 export async function interpretCommand(
   transcript: string,
@@ -46,32 +82,61 @@ export async function interpretCommand(
         }
       : null;
 
-  try {
-    // IMPORTANT: this must match your actual route file
-    const res = await fetch("/api/ai/interpret", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        transcript: text,
-        context,
-        mode: context ? "strict_context" : "open",
-      }),
-    });
+  const parts = splitMultiCommands(text);
 
-    if (!res.ok) {
+  const interpretOne = async (part: string): Promise<ParsedCommand[]> => {
+    const p = normalizeString(part);
+    if (!p) return [];
+
+    try {
+      // IMPORTANT: this must match your actual route file
+      const res = await fetch("/api/ai/interpret", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript: p,
+          context,
+          mode: context ? "strict_context" : "open",
+        }),
+      });
+
+      if (!res.ok) {
+        // eslint-disable-next-line no-console
+        console.error("[interpretCommand] non-OK response", res.status, { p });
+        return [];
+      }
+
+      const data = (await res.json()) as InterpretResponse;
+
+      // Support both:
+      // - array response: ParsedCommand[]
+      // - object with { commands: ParsedCommand[] }
+      if (Array.isArray(data)) return data as ParsedCommand[];
+
+      if (isRecord(data) && Array.isArray(data.commands)) {
+        return data.commands as ParsedCommand[];
+      }
+
+      return [];
+    } catch (err) {
       // eslint-disable-next-line no-console
-      console.error("[interpretCommand] non-OK response", res.status);
+      console.error("[interpretCommand] failed", err);
       return [];
     }
+  };
 
-    const data = (await res.json()) as InterpretResponse;
-
-    if (!Array.isArray(data)) return [];
-
-    return data as ParsedCommand[];
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[interpretCommand] failed", err);
-    return [];
+  // If it’s a single command, do one request.
+  if (parts.length <= 1) {
+    return interpretOne(text);
   }
+
+  // Multi-command: interpret each fragment and merge.
+  const results: ParsedCommand[][] = [];
+  for (const p of parts) {
+    // eslint-disable-next-line no-await-in-loop
+    const cmds = await interpretOne(p);
+    results.push(cmds);
+  }
+
+  return mergeParsedCommands(results);
 }
