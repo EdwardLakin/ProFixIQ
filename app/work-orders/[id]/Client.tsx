@@ -717,10 +717,17 @@ export default function WorkOrderIdClient(): JSX.Element {
     return m;
   }, [quoteLines]);
 
-  const approvalPending = useMemo(
-    () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
-    [lines],
+  const isPendingApprovalLine = (l: WorkOrderLine) => {
+  const a = (l.approval_state ?? "").toLowerCase();
+  const s = (l.status ?? "").toLowerCase();
+  return (
+    a === "pending" ||
+    s === "waiting_for_approval" ||
+    s === "awaiting_approval"
   );
+};
+
+const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [lines]);
 
   const linesNeedingQuote = useMemo(
     () =>

@@ -208,7 +208,8 @@ function computeReviewFlags(args: {
   // Local checks (works even without AI review)
   const localMissingCause = !norm(args.line.cause);
   const localMissingCorrection = !norm(args.line.correction);
-  const localMissingComplaint = !norm(args.line.complaint) && !norm(args.line.description);
+  const localMissingComplaint =
+    !norm(args.line.complaint) && !norm(args.line.description);
   const localNoParts = args.partsCount === 0;
 
   const issues = Array.isArray(args.reviewIssues) ? args.reviewIssues : [];
@@ -227,7 +228,10 @@ function computeReviewFlags(args: {
 
     const hasCause = k.includes("cause") || m.includes("cause");
     const hasCorrection = k.includes("correction") || m.includes("corr");
-    const hasComplaint = k.includes("complaint") || m.includes("complaint") || m.includes("description");
+    const hasComplaint =
+      k.includes("complaint") ||
+      m.includes("complaint") ||
+      m.includes("description");
     const hasParts = k.includes("part") || m.includes("part");
 
     if (hasCause) aiMissingCause = true;
@@ -292,7 +296,7 @@ export function JobCard({
   const surfaceCfg = CARD_SURFACE[statusKey] ?? CARD_SURFACE.awaiting;
   const [partsOpen, setPartsOpen] = useState(false);
 
-  const isCompletedLike = () => {
+  const isCompletedLike = (): boolean => {
     const s = (line.status ?? "").toLowerCase();
     return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
   };
@@ -335,11 +339,11 @@ export function JobCard({
       ? "No parts yet"
       : `${partsCount} part${partsCount === 1 ? "" : "s"}`;
 
-  const handleCardClick = () => {
+  const handleCardClick = (): void => {
     onOpen();
   };
 
-  const toggleCollapsed = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const toggleCollapsed = (e: React.MouseEvent<HTMLButtonElement>): void => {
     e.stopPropagation();
     setCollapsed((c) => !c);
   };
@@ -486,11 +490,7 @@ export function JobCard({
               )}
 
               {reviewFlags.missingCause && (
-                <ReviewIcon
-                  tone="warn"
-                  title="Cause is missing"
-                  label="⚠ Cause"
-                />
+                <ReviewIcon tone="warn" title="Cause is missing" label="⚠ Cause" />
               )}
               {reviewFlags.missingCorrection && (
                 <ReviewIcon

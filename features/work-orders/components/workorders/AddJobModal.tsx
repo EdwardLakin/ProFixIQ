@@ -1,9 +1,16 @@
+// features/work-orders/components/AddJobModal.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
+type WorkOrderLineInsert = DB["public"]["Tables"]["work_order_lines"]["Insert"];
 
 type Props = {
   isOpen: boolean;
@@ -14,6 +21,15 @@ type Props = {
   onJobAdded?: () => void;
   shopId?: string | null;
 };
+
+type Urgency = "low" | "medium" | "high";
+
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  const pe = e as Partial<PostgrestError> | null;
+  if (pe && typeof pe.message === "string") return pe.message;
+  return "Unknown error";
+}
 
 export default function AddJobModal(props: Props) {
   const { isOpen, onClose, workOrderId, vehicleId, techId, onJobAdded, shopId } =
@@ -26,7 +42,7 @@ export default function AddJobModal(props: Props) {
   const [notes, setNotes] = useState("");
   const [labor, setLabor] = useState("");
   const [parts, setParts] = useState("");
-  const [urgency, setUrgency] = useState<"low" | "medium" | "high">("medium");
+  const [urgency, setUrgency] = useState<Urgency>("medium");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -54,6 +70,7 @@ export default function AddJobModal(props: Props) {
     try {
       // resolve shop_id
       let useShopId = shopId ?? null;
+
       if (!useShopId) {
         const { data: wo, error: woErr } = await supabase
           .from("work_orders")
@@ -62,9 +79,14 @@ export default function AddJobModal(props: Props) {
           .maybeSingle();
 
         if (woErr) throw woErr;
-        useShopId = (wo?.shop_id as string | null) ?? null;
+
+        // typed access (WorkOrderRow)
+        useShopId = (wo as Pick<WorkOrderRow, "shop_id"> | null)?.shop_id ?? null;
       }
-      if (!useShopId) throw new Error("Couldn’t resolve shop for this work order");
+
+      if (!useShopId) {
+        throw new Error("Couldn’t resolve shop for this work order");
+      }
 
       await ensureShopContext(useShopId);
 
@@ -72,20 +94,25 @@ export default function AddJobModal(props: Props) {
         data: { user },
       } = await supabase.auth.getUser();
 
-      const payload = {
+      const laborNum =
+        labor.trim().length > 0 && !Number.isNaN(Number(labor))
+          ? Number(labor)
+          : null;
+
+      const payload: WorkOrderLineInsert = {
         id: uuidv4(),
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
         complaint: jobName.trim(),
         cause: null,
         correction: notes.trim() || null,
-        labor_time: labor ? Number(labor) : null,
+        labor_time: laborNum,
         parts: parts.trim() || null,
 
         // ✅ IMPORTANT: new job should land in "awaiting approval"
-        status: "awaiting_approval" as const,
+        status: "awaiting_approval",
 
-        job_type: "repair" as const,
+        job_type: "repair",
         shop_id: useShopId,
 
         ...(user?.id ? { user_id: user.id } : {}),
@@ -96,15 +123,18 @@ export default function AddJobModal(props: Props) {
       const { error } = await supabase.from("work_order_lines").insert(payload);
 
       if (error) {
-        if (/row-level security/i.test(error.message)) {
-          setErr("Access denied (RLS). Check that your session is scoped to this shop.");
+        const msg = error.message || "Failed to add job.";
+        if (/row-level security/i.test(msg)) {
+          setErr(
+            "Access denied (RLS). Check that your session is scoped to this shop.",
+          );
           lastSetShopId.current = null;
-        } else if (/status.*check/i.test(error.message)) {
+        } else if (/status.*check/i.test(msg)) {
           setErr("This status isn’t allowed by the database.");
-        } else if (/job_type.*check/i.test(error.message)) {
+        } else if (/job_type.*check/i.test(msg)) {
           setErr("This job type isn’t allowed by the database.");
         } else {
-          setErr(error.message);
+          setErr(msg);
         }
         return;
       }
@@ -118,8 +148,8 @@ export default function AddJobModal(props: Props) {
       setParts("");
       setUrgency("medium");
       setErr(null);
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to add job.");
+    } catch (e: unknown) {
+      setErr(errorMessage(e) || "Failed to add job.");
       lastSetShopId.current = null;
     } finally {
       setSubmitting(false);
@@ -184,7 +214,7 @@ export default function AddJobModal(props: Props) {
             <select
               className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
               value={urgency}
-              onChange={(e) => setUrgency(e.target.value as "low" | "medium" | "high")}
+              onChange={(e) => setUrgency(e.target.value as Urgency)}
             >
               <option value="low">Low urgency</option>
               <option value="medium">Medium urgency</option>

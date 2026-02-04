@@ -1,3 +1,4 @@
+// QuoteReviewPage.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,10 +11,15 @@ import SignaturePad, {
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 
 type DB = Database;
+
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type WorkOrderUpdate = DB["public"]["Tables"]["work_orders"]["Update"];
+
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Shop = DB["public"]["Tables"]["shops"]["Row"];
+
 type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
+type QuoteLineUpdate = DB["public"]["Tables"]["work_order_quote_lines"]["Update"];
 
 const SIGNATURE_BUCKET = "signatures";
 
@@ -36,50 +42,78 @@ const fmt = (n: number) => {
   }
 };
 
+type Recordish = Record<string, unknown>;
+
+function getStringField(obj: unknown, key: string): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  const v = (obj as Recordish)[key];
+  return typeof v === "string" ? v : null;
+}
+
 /* ----------------------- approvals list (cards) ----------------------- */
 
-function ApprovalsList() {
+type WorkOrderWithMeta = WorkOrder & {
+  shops?: Pick<Shop, "name"> | null;
+  labor_hours?: number | null;
+  work_order_lines?: Array<Pick<Line, "id" | "status" | "approval_state" | "labor_time">>;
+};
+
+function ApprovalsList(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [rows, setRows] = useState<WorkOrderWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
-
-  type WorkOrderWithMeta = WorkOrder & {
-    shops?: Pick<Shop, "name"> | null;
-    labor_hours?: number | null;
-  };
 
   const load = async () => {
     setLoading(true);
 
     // Only show awaiting_approval here
-    const { data: wo } = await supabase
+    const PENDING_LINE_STATUSES = ["waiting_for_approval", "awaiting_approval"] as const;
+
+    const { data: wo, error } = await supabase
       .from("work_orders")
-      .select(`*, shops!inner(name)`)
-      .eq("status", "awaiting_approval")
+      .select(
+        `
+        *,
+        shops(name),
+        work_order_lines!inner(id,status,approval_state,labor_time)
+      `,
+      )
+      .or(
+        [
+          `work_order_lines.status.in.(${PENDING_LINE_STATUSES.join(",")})`,
+          `work_order_lines.approval_state.eq.pending`,
+        ].join(","),
+      )
       .order("created_at", { ascending: false });
 
-    let withMeta: WorkOrderWithMeta[] = (wo ?? []) as any;
+    if (error) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const withMeta = (wo ?? []) as unknown as WorkOrderWithMeta[];
 
     if (withMeta.length) {
-      const woIds = withMeta.map((w) => w.id);
-      const { data: lines } = await supabase
-        .from("work_order_lines")
-        .select("work_order_id, labor_time")
-        .in("work_order_id", woIds);
-
       const hoursByWO = new Map<string, number>();
-      (lines ?? []).forEach((l) => {
-        const cur = hoursByWO.get(l.work_order_id) ?? 0;
-        hoursByWO.set(
-          l.work_order_id,
-          cur + (typeof l.labor_time === "number" ? l.labor_time : 0),
-        );
-      });
 
-      withMeta = withMeta.map((w) => ({
+      for (const w of withMeta) {
+        const lines = Array.isArray(w.work_order_lines) ? w.work_order_lines : [];
+        const hours = lines.reduce((sum, l) => {
+          const t = l?.labor_time;
+          return sum + (typeof t === "number" ? t : 0);
+        }, 0);
+        hoursByWO.set(w.id, hours);
+      }
+
+      const next = withMeta.map((w) => ({
         ...w,
         labor_hours: hoursByWO.get(w.id) ?? 0,
       }));
+
+      setRows(next);
+      setLoading(false);
+      return;
     }
 
     setRows(withMeta);
@@ -108,8 +142,7 @@ function ApprovalsList() {
     };
   }, [supabase]);
 
-  if (loading)
-    return <div className="mt-6 text-muted-foreground">Loading…</div>;
+  if (loading) return <div className="mt-6 text-muted-foreground">Loading…</div>;
   if (rows.length === 0)
     return (
       <div className="mt-6 text-muted-foreground">
@@ -166,7 +199,7 @@ function ApprovalsList() {
 
 /* ---------------------- single WO review + sign ---------------------- */
 
-function SingleQuoteReview({ woId }: { woId: string }) {
+function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -184,7 +217,8 @@ function SingleQuoteReview({ woId }: { woId: string }) {
   // Load WO + lines
   useEffect(() => {
     if (!woId) return;
-    (async () => {
+
+    void (async () => {
       setLoading(true);
 
       const { data: woRow } = await supabase
@@ -196,10 +230,9 @@ function SingleQuoteReview({ woId }: { woId: string }) {
 
       // PORTAL INVITE: resolve customer email for invite send
       setCustomerEmail("");
-      const custId =
-        (woRow as unknown as { customer_id?: string | null })?.customer_id ??
-        null;
-      if (custId) {
+      const custId = woRow?.customer_id ?? null;
+
+      if (typeof custId === "string" && custId) {
         const { data: cust } = await supabase
           .from("customers")
           .select("email")
@@ -235,6 +268,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
   async function reloadQuotes() {
     if (!woId) return;
     setQuoteLoading(true);
+
     const { data: qRows, error: qErr } = await supabase
       .from("work_order_quote_lines")
       .select("*")
@@ -263,16 +297,19 @@ function SingleQuoteReview({ woId }: { woId: string }) {
   const partsTotal = 0;
   const grandTotal = laborTotal + partsTotal;
 
+  const getStage = (q: QuoteLine): string => getStringField(q, "stage") ?? "";
+  const getDesc = (q: QuoteLine): string =>
+    getStringField(q, "description") ?? "Untitled quote line";
+  const getNotes = (q: QuoteLine): string | null => getStringField(q, "notes");
+
   const advisorPendingQuotes = quoteLines.filter(
-    (q) => ((q as any).stage as string | null) === "advisor_pending",
+    (q) => getStage(q) === "advisor_pending",
   );
   const customerPendingQuotes = quoteLines.filter(
-    (q) => ((q as any).stage as string | null) === "customer_pending",
+    (q) => getStage(q) === "customer_pending",
   );
   const decidedQuotes = quoteLines.filter((q) =>
-    ["customer_approved", "customer_declined"].includes(
-      (((q as any).stage as string | null) ?? "") as string,
-    ),
+    ["customer_approved", "customer_declined"].includes(getStage(q)),
   );
 
   /* ----------------------- quote actions ----------------------- */
@@ -285,15 +322,15 @@ function SingleQuoteReview({ woId }: { woId: string }) {
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+    const patch: QuoteLineUpdate = {
+      stage: "customer_pending",
+      group_id: groupId,
+      sent_to_customer_at: new Date().toISOString(),
+    };
+
     const { error } = await supabase
       .from("work_order_quote_lines")
-      .update({
-        stage: "customer_pending",
-
-        group_id: groupId,
-
-        sent_to_customer_at: new Date().toISOString() as any,
-      })
+      .update(patch)
       .in(
         "id",
         linesToSend.map((q) => q.id),
@@ -344,13 +381,14 @@ function SingleQuoteReview({ woId }: { woId: string }) {
   }
 
   async function approveQuoteLine(q: QuoteLine) {
+    const patch: QuoteLineUpdate = {
+      stage: "customer_approved",
+      approved_at: new Date().toISOString(),
+    };
+
     const { error } = await supabase
       .from("work_order_quote_lines")
-      .update({
-        stage: "customer_approved",
-
-        approved_at: new Date().toISOString() as any,
-      })
+      .update(patch)
       .eq("id", q.id);
 
     if (error) {
@@ -358,18 +396,18 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       return;
     }
 
-    // Later you can also convert this line into a real work_order_line here.
     await reloadQuotes();
   }
 
   async function declineQuoteLine(q: QuoteLine) {
+    const patch: QuoteLineUpdate = {
+      stage: "customer_declined",
+      declined_at: new Date().toISOString(),
+    };
+
     const { error } = await supabase
       .from("work_order_quote_lines")
-      .update({
-        stage: "customer_declined",
-
-        declined_at: new Date().toISOString() as any,
-      })
+      .update(patch)
       .eq("id", q.id);
 
     if (error) {
@@ -384,6 +422,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
 
   async function handleSignatureSave(base64: string) {
     if (!woId) return;
+
     try {
       const blob = dataUrlToBlob(base64);
       const filename = `wo/${wo?.shop_id ?? "unknown"}/${woId}/${Date.now()}.png`;
@@ -393,41 +432,45 @@ function SingleQuoteReview({ woId }: { woId: string }) {
         .upload(filename, blob, { contentType: "image/png", upsert: false });
       if (upErr) throw upErr;
 
+      const patch: WorkOrderUpdate = {
+        // These fields may exist in DB but not in generated types yet.
+        
+        customer_approval_signature_path: filename,
+        
+        customer_approval_at: new Date().toISOString(),
+        status: "queued" as WorkOrderUpdate["status"],
+      };
+
       const { error: updErr } = await supabase
         .from("work_orders")
-        .update({
-          // @ts-ignore pending schema fields in types
-          customer_approval_signature_path: filename,
-          // @ts-ignore pending schema fields in types
-          customer_approval_at: new Date().toISOString() as any,
-          status: "queued" as any, // moves it out of Quote Review
-        })
+        .update(patch)
         .eq("id", woId);
+
       if (updErr) throw updErr;
 
       alert("Work order approved and signed!");
       router.push("/work-orders/create?from=review&new=1");
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to save signature";
+      const msg = err instanceof Error ? err.message : "Failed to save signature";
       alert(msg);
     }
   }
 
   async function markAwaitingApproval() {
     if (!woId) return;
+
     try {
-      const { error } = await supabase
-        .from("work_orders")
-        .update({
-          status: "awaiting_approval" as any,
-          // @ts-ignore pending schema fields in types
-          customer_approval_signature_path: null,
-          // @ts-ignore pending schema fields in types
-          customer_approval_at: null,
-        })
-        .eq("id", woId);
+      const patch: WorkOrderUpdate = {
+        status: "awaiting_approval" as WorkOrderUpdate["status"],
+        
+        customer_approval_signature_path: null,
+        
+        customer_approval_at: null,
+      };
+
+      const { error } = await supabase.from("work_orders").update(patch).eq("id", woId);
       if (error) throw error;
+
       alert("Saved. This work order is now awaiting customer approval.");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to update status.";
@@ -448,12 +491,8 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       .catch(() => alert(url));
   }
 
-  if (loading)
-    return <div className="mt-6 text-muted-foreground">Loading…</div>;
-  if (!wo)
-    return (
-      <div className="mt-6 text-destructive">Work order not found.</div>
-    );
+  if (loading) return <div className="mt-6 text-muted-foreground">Loading…</div>;
+  if (!wo) return <div className="mt-6 text-destructive">Work order not found.</div>;
 
   return (
     <>
@@ -497,12 +536,10 @@ function SingleQuoteReview({ woId }: { woId: string }) {
                   <div key={q.id} className="px-4 py-3 text-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate font-medium">
-                          {(q as any).description || "Untitled quote line"}
-                        </div>
-                        {(q as any).notes && (
+                        <div className="truncate font-medium">{getDesc(q)}</div>
+                        {getNotes(q) && (
                           <div className="mt-0.5 text-xs text-muted-foreground">
-                            {(q as any).notes}
+                            {getNotes(q)}
                           </div>
                         )}
                       </div>
@@ -536,9 +573,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
                   <div key={q.id} className="px-4 py-3 text-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate font-medium">
-                          {(q as any).description || "Untitled quote line"}
-                        </div>
+                        <div className="truncate font-medium">{getDesc(q)}</div>
                         <div className="mt-0.5 text-xs text-muted-foreground">
                           Waiting on customer response
                         </div>
@@ -559,13 +594,9 @@ function SingleQuoteReview({ woId }: { woId: string }) {
                   <div key={q.id} className="px-4 py-3 text-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate font-medium">
-                          {(q as any).description || "Untitled quote line"}
-                        </div>
+                        <div className="truncate font-medium">{getDesc(q)}</div>
                         <div className="mt-0.5 text-xs text-muted-foreground">
-                          {((q as any).stage as string) === "customer_approved"
-                            ? "Approved"
-                            : "Declined"}
+                          {getStage(q) === "customer_approved" ? "Approved" : "Declined"}
                         </div>
                       </div>
                     </div>
@@ -584,9 +615,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
         </div>
         <div className="divide-y divide-border">
           {lines.length === 0 ? (
-            <div className="px-4 py-3 text-muted-foreground">
-              No items yet.
-            </div>
+            <div className="px-4 py-3 text-muted-foreground">No items yet.</div>
           ) : (
             lines.map((l) => (
               <div key={l.id} className="px-4 py-3">
@@ -597,16 +626,12 @@ function SingleQuoteReview({ woId }: { woId: string }) {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {String(l.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                      {typeof l.labor_time === "number"
-                        ? `${l.labor_time}h`
-                        : "—"}{" "}
-                      • {(l.status ?? "awaiting").replaceAll("_", " ")}
+                      {typeof l.labor_time === "number" ? `${l.labor_time}h` : "—"} •{" "}
+                      {(l.status ?? "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
                   <div className="text-right text-sm">
-                    {typeof l.labor_time === "number"
-                      ? fmt(l.labor_time * laborRate)
-                      : "—"}
+                    {typeof l.labor_time === "number" ? fmt(l.labor_time * laborRate) : "—"}
                   </div>
                 </div>
               </div>
@@ -627,9 +652,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
           </div>
           <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
             <span className="font-semibold">Total</span>
-            <span className="font-bold text-orange-500">
-              {fmt(grandTotal)}
-            </span>
+            <span className="font-bold text-orange-500">{fmt(grandTotal)}</span>
           </div>
         </div>
       </div>
@@ -637,9 +660,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       <div className="mt-6 flex flex-wrap gap-2">
         <button
           onClick={async () => {
-            const base64 = await openSignaturePad({
-              shopName: shop?.name || "",
-            });
+            const base64 = await openSignaturePad({ shopName: shop?.name || "" });
             if (!base64) return;
             await handleSignatureSave(base64);
           }}
@@ -677,7 +698,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
 
 /* ------------------------------ page ------------------------------ */
 
-export default function QuoteReviewPage() {
+export default function QuoteReviewPage(): JSX.Element {
   const woId = useSearchParams().get("woId");
   const router = useRouter();
 
