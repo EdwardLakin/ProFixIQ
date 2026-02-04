@@ -118,11 +118,23 @@ function buildAirTireGrid(): Section {
         items.push({ item: `${axle} ${side} Tread Depth`, unit: "mm" });
       } else {
         // DUAL (Drive/Rear/Tag/Trailer): TP + TD inner/outer
-        items.push({ item: `${axle} ${side} Tire Pressure (Outer)`, unit: "psi" });
-        items.push({ item: `${axle} ${side} Tire Pressure (Inner)`, unit: "psi" });
+        items.push({
+          item: `${axle} ${side} Tire Pressure (Outer)`,
+          unit: "psi",
+        });
+        items.push({
+          item: `${axle} ${side} Tire Pressure (Inner)`,
+          unit: "psi",
+        });
 
-        items.push({ item: `${axle} ${side} Tread Depth (Outer)`, unit: "mm" });
-        items.push({ item: `${axle} ${side} Tread Depth (Inner)`, unit: "mm" });
+        items.push({
+          item: `${axle} ${side} Tread Depth (Outer)`,
+          unit: "mm",
+        });
+        items.push({
+          item: `${axle} ${side} Tread Depth (Inner)`,
+          unit: "mm",
+        });
       }
     }
   }
@@ -147,7 +159,6 @@ function buildHydraulicTireGrid(): Section {
   items.push({ item: "RF Tire Status", unit: null });
   items.push({ item: "LR Tire Status", unit: null });
   items.push({ item: "RR Tire Status", unit: null });
-
 
   for (const c of front) {
     items.push({ item: `${c} Tire Pressure`, unit: "psi" });
@@ -263,8 +274,12 @@ function prepareSections(
     if (looksLikeCornerTitle(title)) return false;
 
     const items = s.items ?? [];
-    const looksHyd = items.some((it) => HYD_ITEM_RE.test((it.item || it.name || "").trim()));
-    const looksAir = items.some((it) => AIR_ITEM_RE.test((it.item || it.name || "").trim()));
+    const looksHyd = items.some((it) =>
+      HYD_ITEM_RE.test((it.item || it.name || "").trim()),
+    );
+    const looksAir = items.some((it) =>
+      AIR_ITEM_RE.test((it.item || it.name || "").trim()),
+    );
     return !(looksHyd || looksAir);
   });
 
@@ -294,6 +309,26 @@ function prepareSections(
 
 /* ------------------------------------------------------------------ */
 
+type AiPresetKey = "cvip_air" | "cvip_hyd" | "cvip_bus_air";
+
+const CVIP_PRESETS: Record<AiPresetKey, { label: string; prompt: string }> = {
+  cvip_air: {
+    label: "CVIP Air (Truck/Tractor)",
+    prompt:
+      "Generate an Alberta CVIP (Commercial Vehicle Inspection Program) inspection template for a truck/tractor with AIR BRAKES. Use the official CVIP truck/tractor form sections and checklist items. Output must be in ProFixIQ format: an array of sections with { title, items:[{item, unit?}] }. Include ProFixIQ air corner grid + air tire/brake measurement grid items where appropriate. Do not omit any required CVIP items. Keep section titles clear and CVIP-like.",
+  },
+  cvip_hyd: {
+    label: "CVIP Hydraulic (Truck/Tractor)",
+    prompt:
+      "Generate an Alberta CVIP (Commercial Vehicle Inspection Program) inspection template for a truck/tractor with HYDRAULIC BRAKES. Use the official CVIP truck/tractor form sections and checklist items. Output must be in ProFixIQ format: an array of sections with { title, items:[{item, unit?}] }. Include ProFixIQ hydraulic corner grid + hydraulic tire/brake measurement grid items where appropriate. Do not omit any required CVIP items. Keep section titles clear and CVIP-like.",
+  },
+  cvip_bus_air: {
+    label: "CVIP Bus (Air)",
+    prompt:
+      "Generate an Alberta CVIP (Commercial Vehicle Inspection Program) inspection template for a BUS/MOTORCOACH with AIR BRAKES. Use the official CVIP bus/motorcoach form sections and checklist items. Output must be in ProFixIQ format: an array of sections with { title, items:[{item, unit?}] }. Include ProFixIQ air corner grid + air tire/brake measurement grid items where appropriate. Do not omit any required CVIP items. Keep section titles clear and CVIP-like.",
+  },
+};
+
 export default function CustomBuilderPage() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -304,7 +339,9 @@ export default function CustomBuilderPage() {
   // labor hours (string so user can delete)
   const [laborHours, setLaborHours] = useState<string>("");
 
-  const [gridMode, setGridMode] = useState<GridMode>(dutyClass === "heavy" ? "air" : "hyd");
+  const [gridMode, setGridMode] = useState<GridMode>(
+    dutyClass === "heavy" ? "air" : "hyd",
+  );
   const [gridTouched, setGridTouched] = useState(false);
 
   const [selections, setSelections] = useState<Record<string, string[]>>({});
@@ -318,9 +355,12 @@ export default function CustomBuilderPage() {
   const [includeTireGrid, setIncludeTireGrid] = useState(false);
   const [includeGreaseChassis, setIncludeGreaseChassis] = useState(false);
 
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(
+    {},
+  );
 
   const [aiPrompt, setAiPrompt] = useState("");
+  const [aiPreset, setAiPreset] = useState<AiPresetKey | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
@@ -337,7 +377,11 @@ export default function CustomBuilderPage() {
         : "No corner grid";
 
   const dutyLabel =
-    dutyClass === "light" ? "Light duty" : dutyClass === "medium" ? "Medium duty" : "Heavy duty";
+    dutyClass === "light"
+      ? "Light duty"
+      : dutyClass === "medium"
+        ? "Medium duty"
+        : "Heavy duty";
 
   const totalSelected = useMemo(
     () => Object.values(selections).reduce((sum, arr) => sum + (arr?.length ?? 0), 0),
@@ -347,7 +391,10 @@ export default function CustomBuilderPage() {
   const toggle = (section: string, item: string) =>
     setSelections((prev) => {
       const cur = new Set(prev[section] ?? []);
-      cur.has(item) ? cur.delete(item) : cur.add(item);
+      // ✅ Fix eslint(@typescript-eslint/no-unused-expressions):
+      // previously used a ternary expression for side-effects.
+      if (cur.has(item)) cur.delete(item);
+      else cur.add(item);
       return { ...prev, [section]: [...cur] };
     });
 
@@ -505,7 +552,9 @@ export default function CustomBuilderPage() {
       }) as unknown as Section[];
 
       const aiHasOil = aiSections.some((s) => normalizeTitle(s.title).startsWith("oil change"));
-      const manualHasOil = manualBuilt.some((s) => normalizeTitle(s.title).startsWith("oil change"));
+      const manualHasOil = manualBuilt.some((s) =>
+        normalizeTitle(s.title).startsWith("oil change"),
+      );
 
       const base =
         includeOil && !aiHasOil && !manualHasOil
@@ -525,6 +574,11 @@ export default function CustomBuilderPage() {
     }
   }
 
+  function applyAiPreset(key: AiPresetKey) {
+    setAiPreset(key);
+    setAiPrompt(CVIP_PRESETS[key].prompt);
+  }
+
   return (
     <div className="p-4 text-white">
       <div className="mx-auto w-full max-w-6xl rounded-2xl border border-white/10 bg-black/70 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-6">
@@ -538,49 +592,63 @@ export default function CustomBuilderPage() {
         <div className="mb-5 rounded-2xl border border-white/10 bg-black/70 px-3 py-3 text-xs text-neutral-200 md:flex md:items-center md:justify-between md:px-4">
           <div className="space-y-1 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-1 md:space-y-0">
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Duty</span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Duty
+              </span>
               <span className="rounded-full bg-orange-500/10 px-2 py-1 text-[11px] font-semibold text-orange-300">
                 {dutyLabel}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Corner Grid</span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Corner Grid
+              </span>
               <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">
                 {gridModeLabel}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Tire Grid</span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Tire Grid
+              </span>
               <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-200">
                 {includeTireGrid ? "Enabled" : "Off"}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Oil</span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Oil
+              </span>
               <span className="rounded-full bg-zinc-700/60 px-2 py-1 text-[11px] font-semibold text-zinc-100">
                 {includeOil ? `Included (${oilEngineType.toUpperCase()})` : "No oil section"}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Grease</span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Grease
+              </span>
               <span className="rounded-full bg-lime-500/10 px-2 py-1 text-[11px] font-semibold text-lime-200">
                 {includeGreaseChassis ? "Chassis enabled" : "Off"}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Batteries</span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Batteries
+              </span>
               <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-300">
                 {includeBatteryGrid ? `Battery grid enabled (${batteryCount})` : "No battery grid"}
               </span>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">Hours</span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                Hours
+              </span>
               <span className="rounded-full bg-neutral-800/80 px-2 py-1 text-[11px] font-semibold text-neutral-100">
                 {laborHours.trim() ? laborHours.trim() : "—"}
               </span>
@@ -654,7 +722,9 @@ export default function CustomBuilderPage() {
 
           {includeOil && (
             <div className="flex items-center gap-2 rounded-full border border-neutral-700 bg-black/70 px-3 py-2">
-              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">Engine</span>
+              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                Engine
+              </span>
               <select
                 className="rounded-full border border-neutral-700 bg-neutral-900/80 px-3 py-1 text-[12px] text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                 value={oilEngineType}
@@ -735,11 +805,13 @@ export default function CustomBuilderPage() {
           <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
             Corner grid mode
           </span>
-          {([
-            { value: "hyd", label: "Hydraulic" },
-            { value: "air", label: "Air" },
-            { value: "none", label: "None" },
-          ] as const).map((opt) => {
+          {(
+            [
+              { value: "hyd", label: "Hydraulic" },
+              { value: "air", label: "Air" },
+              { value: "none", label: "None" },
+            ] as const
+          ).map((opt) => {
             const active = gridMode === opt.value;
             return (
               <button
@@ -771,11 +843,38 @@ export default function CustomBuilderPage() {
           <p className="mb-2 text-center text-sm text-neutral-300">
             Describe what you want to inspect. We’ll generate sections &amp; items.
           </p>
+
+          {/* ✅ Hardcoded CVIP preset buttons */}
+          <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+            {(Object.keys(CVIP_PRESETS) as AiPresetKey[]).map((key) => {
+              const active = aiPreset === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => applyAiPreset(key)}
+                  className={
+                    "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]" +
+                    " " +
+                    (active
+                      ? "bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)]"
+                      : "border border-orange-500/50 bg-orange-500/10 text-orange-200 hover:bg-orange-500/20")
+                  }
+                >
+                  {CVIP_PRESETS[key].label}
+                </button>
+              );
+            })}
+          </div>
+
           <textarea
             className="mb-3 min-h-[90px] w-full rounded-xl border border-neutral-700 bg-neutral-900/80 p-3 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
             placeholder="e.g. 60-point commercial truck inspection with air brakes, suspension, steering, lighting, and undercarriage."
             value={aiPrompt}
-            onChange={(e) => setAiPrompt(e.target.value)}
+            onChange={(e) => {
+              setAiPrompt(e.target.value);
+              setAiPreset(null);
+            }}
           />
 
           <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
@@ -787,7 +886,10 @@ export default function CustomBuilderPage() {
               <button
                 key={sample}
                 type="button"
-                onClick={() => setAiPrompt(sample)}
+                onClick={() => {
+                  setAiPreset(null);
+                  setAiPrompt(sample);
+                }}
                 className="rounded-full border border-orange-500/50 bg-orange-500/10 px-3 py-1 text-[11px] text-orange-200 hover:bg-orange-500/20"
               >
                 Use sample
