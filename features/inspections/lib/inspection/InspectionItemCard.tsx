@@ -48,6 +48,13 @@ function getItemLabel(raw: InspectionItem): string {
   ).trim();
 }
 
+/** ✅ unify legacy note vs notes */
+function getNotesValue(raw: InspectionItem): string {
+  const it = raw as unknown as { notes?: unknown; note?: unknown };
+  const v = it.notes ?? it.note ?? "";
+  return typeof v === "string" ? v : String(v ?? "");
+}
+
 export default function InspectionItemCard(props: InspectionItemCardProps) {
   const {
     item,
@@ -155,7 +162,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 "focus:border-accent focus:ring-2 focus:ring-accent/60",
               ].join(" ")}
               placeholder="Notes…"
-              value={item.notes || ""}
+              value={getNotesValue(item)}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                 onUpdateNote(sectionIndex, itemIndex, e.target.value)
               }
@@ -194,7 +201,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     );
   }
 
-  // Card variant (unchanged)
+  // Card variant (unchanged except notes unification)
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">
@@ -255,7 +262,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
               "h-[44px]",
             ].join(" ")}
             placeholder="Enter notes..."
-            value={item.notes || ""}
+            value={getNotesValue(item)}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
               onUpdateNote(sectionIndex, itemIndex, e.target.value)
             }

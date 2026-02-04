@@ -4,16 +4,34 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
-import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
+
+// ✅ Updated: import buildFromMaster + types from the same module you already use
+import {
+  buildFromMaster,
+  masterInspectionList,
+  type BrakeSystem,
+  type CvipGroup,
+  type VehicleType,
+} from "@inspections/lib/inspection/masterInspectionList";
 
 type DutyClass = "light" | "medium" | "heavy";
 type GridMode = "hyd" | "air" | "none";
 type EngineType = "gas" | "diesel";
 
+/** ✅ Upgraded item shape so we don't lose CVIP/spec metadata */
+type SectionItem = {
+  item?: string;
+  name?: string;
+  unit?: string | null;
+  specCode?: string | null;
+  cvipCode?: string | null;
+  cvipGroups?: CvipGroup[]; // optional if present in master
+};
+
 // Minimal shape we care about when merging/staging
 type Section = {
   title: string;
-  items: Array<{ item?: string; name?: string; unit?: string | null }>;
+  items: SectionItem[];
 };
 
 /* ------------------------------------------------------------------ */
@@ -144,12 +162,10 @@ function buildAirTireGrid(): Section {
     items,
   };
 }
+
 /* ---- HYDRAULIC TIRE GRID (automotive) ---- */
 function buildHydraulicTireGrid(): Section {
-  // front is single
   const front = ["LF", "RF"] as const;
-
-  // rear defaults to dual-capable (inner/outer labels always present)
   const rear = ["LR", "RR"] as const;
 
   const items: Section["items"] = [];
@@ -162,15 +178,12 @@ function buildHydraulicTireGrid(): Section {
 
   for (const c of front) {
     items.push({ item: `${c} Tire Pressure`, unit: "psi" });
-    items.push({ item: `${c} Tread Depth (Outer)`, unit: "mm" }); // keep label consistent with grid parser
+    items.push({ item: `${c} Tread Depth (Outer)`, unit: "mm" });
   }
 
   for (const c of rear) {
-    // pressure
     items.push({ item: `${c} Tire Pressure (Outer)`, unit: "psi" });
     items.push({ item: `${c} Tire Pressure (Inner)`, unit: "psi" });
-
-    // tread depth
     items.push({ item: `${c} Tread Depth (Outer)`, unit: "mm" });
     items.push({ item: `${c} Tread Depth (Inner)`, unit: "mm" });
   }
@@ -180,6 +193,7 @@ function buildHydraulicTireGrid(): Section {
     items,
   };
 }
+
 /* ------------------------------------------------------------------ */
 /* BATTERY GRID (CCA ONLY, 1–5 BATTERIES)                             */
 /* ------------------------------------------------------------------ */
@@ -229,7 +243,16 @@ function toLabel(raw: { item?: string; name?: string }) {
 function mergeSections(a: Section[], b: Section[]): Section[] {
   const out: Record<
     string,
-    { title: string; items: { item: string; unit?: string | null }[] }
+    {
+      title: string;
+      items: {
+        item: string;
+        unit?: string | null;
+        specCode?: string | null;
+        cvipCode?: string | null;
+        cvipGroups?: CvipGroup[];
+      }[];
+    }
   > = {};
 
   const addList = (list: Section[]) => {
@@ -245,7 +268,15 @@ function mergeSections(a: Section[], b: Section[]): Section[] {
         if (!label) continue;
         const lk = normalizeItem(label);
         if (seen.has(lk)) continue;
-        out[key].items.push({ item: label, unit: raw.unit ?? null });
+
+        out[key].items.push({
+          item: label,
+          unit: raw.unit ?? null,
+          specCode: raw.specCode ?? null,
+          cvipCode: raw.cvipCode ?? null,
+          cvipGroups: raw.cvipGroups,
+        });
+
         seen.add(lk);
       }
     }
@@ -329,6 +360,13 @@ const CVIP_PRESETS: Record<AiPresetKey, { label: string; prompt: string }> = {
   },
 };
 
+function inferCvipGroup(v: VehicleType, b: BrakeSystem): CvipGroup | undefined {
+  if (v === "truck") return b === "air_brake" ? "cvip_truck_air" : "cvip_truck_hyd";
+  if (v === "trailer") return b === "air_brake" ? "cvip_trailer_air" : "cvip_trailer_hyd";
+  if (v === "bus") return b === "air_brake" ? "cvip_bus_air" : "cvip_bus_hyd";
+  return undefined; // car => no CVIP group
+}
+
 export default function CustomBuilderPage() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -364,10 +402,33 @@ export default function CustomBuilderPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
+  // ✅ Quick Build (deterministic) controls
+  const [vehicleType, setVehicleType] = useState<VehicleType>(
+    dutyClass === "light" ? "car" : "truck",
+  );
+  const [brakeSystem, setBrakeSystem] = useState<BrakeSystem>(
+    dutyClass === "heavy" ? "air_brake" : "hyd_brake",
+  );
+  const [targetCount, setTargetCount] = useState<number>(80);
+
+  // avoid stomping user choices when duty class changes
+  const [quickTouched, setQuickTouched] = useState(false);
+
   useEffect(() => {
     if (gridTouched) return;
     setGridMode(dutyClass === "heavy" ? "air" : "hyd");
   }, [dutyClass, gridTouched]);
+
+  useEffect(() => {
+    if (quickTouched) return;
+    setVehicleType(dutyClass === "light" ? "car" : "truck");
+    setBrakeSystem(dutyClass === "heavy" ? "air_brake" : "hyd_brake");
+  }, [dutyClass, quickTouched]);
+
+  const cvipGroup = useMemo(
+    () => inferCvipGroup(vehicleType, brakeSystem),
+    [vehicleType, brakeSystem],
+  );
 
   const gridModeLabel =
     gridMode === "air"
@@ -391,8 +452,6 @@ export default function CustomBuilderPage() {
   const toggle = (section: string, item: string) =>
     setSelections((prev) => {
       const cur = new Set(prev[section] ?? []);
-      // ✅ Fix eslint(@typescript-eslint/no-unused-expressions):
-      // previously used a ternary expression for side-effects.
       if (cur.has(item)) cur.delete(item);
       else cur.add(item);
       return { ...prev, [section]: [...cur] };
@@ -506,10 +565,33 @@ export default function CustomBuilderPage() {
         greaseChassis: includeGreaseChassis,
         oil: includeOil ? oilEngineType : null,
         laborHours: laborHours.trim() || null,
+
+        // ✅ Helpful runtime context (non-breaking)
+        vehicleType,
+        brakeSystem,
+        cvipGroup: cvipGroup ?? null,
+        targetCount,
       }),
     );
 
     router.push(`/inspections/custom-draft?${qs.toString()}`);
+  }
+
+  function startQuickFromMaster() {
+    const built = buildFromMaster({
+      vehicleType,
+      brakeSystem,
+      dutyClass,
+      targetCount,
+      cvipGroup,
+    }) as unknown as Section[];
+
+    const withOil =
+      includeOil && !built.some((s) => normalizeTitle(s.title).startsWith("oil change"))
+        ? [...built, buildOilSection(oilEngineType)]
+        : built;
+
+    goToRunWithSections(withOil, title || "Custom Inspection");
   }
 
   function startManual() {
@@ -835,6 +917,86 @@ export default function CustomBuilderPage() {
           })}
         </div>
 
+        {/* ✅ Quick build from Master (deterministic) */}
+        <div className="mb-8 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-4">
+          <div className="mb-2 text-center font-semibold text-orange-400">
+            Quick Build (Deterministic)
+          </div>
+          <p className="mb-3 text-center text-sm text-neutral-300">
+            Builds a clean set of sections from your Master list (keeps CVIP/spec codes).
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                Vehicle
+              </span>
+              <select
+                className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                value={vehicleType}
+                onChange={(e) => {
+                  setQuickTouched(true);
+                  setVehicleType(e.target.value as VehicleType);
+                }}
+              >
+                <option value="car">Car</option>
+                <option value="truck">Truck</option>
+                <option value="bus">Bus</option>
+                <option value="trailer">Trailer</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                Brake System
+              </span>
+              <select
+                className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                value={brakeSystem}
+                onChange={(e) => {
+                  setQuickTouched(true);
+                  setBrakeSystem(e.target.value as BrakeSystem);
+                }}
+              >
+                <option value="hyd_brake">Hydraulic</option>
+                <option value="air_brake">Air</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                Target count
+              </span>
+              <input
+                type="number"
+                min={20}
+                max={250}
+                className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                value={String(targetCount)}
+                onChange={(e) => {
+                  setQuickTouched(true);
+                  setTargetCount(Number(e.target.value) || 80);
+                }}
+              />
+            </label>
+
+            <div className="flex flex-col justify-end gap-2">
+              <div className="text-[11px] text-neutral-400">
+                CVIP group:{" "}
+                <span className="font-semibold text-neutral-100">{cvipGroup ?? "—"}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={startQuickFromMaster}
+                className="rounded-full bg-orange-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-orange-500"
+              >
+                Start Inspection (Quick Build)
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* AI builder */}
         <div className="mb-8 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-4">
           <div className="mb-2 text-center font-semibold text-orange-400">
@@ -1013,6 +1175,14 @@ export default function CustomBuilderPage() {
           >
             Start Inspection (Manual)
           </button>
+
+          <button
+            onClick={startQuickFromMaster}
+            className="rounded-full border border-orange-500/60 bg-orange-500/10 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-200 hover:bg-orange-500/20"
+          >
+            Start (Quick Build)
+          </button>
+
           <button
             onClick={buildFromPrompt}
             disabled={aiLoading || !aiPrompt.trim()}

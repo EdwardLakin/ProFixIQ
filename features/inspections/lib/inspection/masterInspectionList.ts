@@ -8,15 +8,29 @@ export type BrakeSystem = "hyd_brake" | "air_brake";
 // new: let us tag things as light/medium/heavy duty
 export type DutyClass = "light" | "medium" | "heavy";
 
+export type CvipGroup =
+  | "cvip_truck_air"
+  | "cvip_truck_hyd"
+  | "cvip_trailer_air"
+  | "cvip_trailer_hyd"
+  | "cvip_bus_air"
+  | "cvip_bus_hyd"
+  | "cvip_coach_air"
+  | "cvip_coach_hyd";
+
 export interface InspectionItem {
   item: string;
   unit?: string | null; // e.g. "mm" | "psi" | "kPa" | "in" | "ft·lb"
   vehicleTypes?: VehicleType[]; // which vehicle types this applies to
-  systems?: string[]; // tags like "air_brake", "hyd_brake"
-  dutyClasses?: DutyClass[]; // new: "light" | "medium" | "heavy"
+
+  // brake-system filter (typed)
+  systems?: BrakeSystem[]; // "air_brake" | "hyd_brake"
+
+  dutyClasses?: DutyClass[]; // "light" | "medium" | "heavy"
   required?: boolean; // always include when matching
   priority?: number; // 1..100 (higher picked first)
 
+  cvipGroups?: CvipGroup[];
   /**
    * Optional CVIP spec code – links an item to public.cvip_specs.code so
    * we can:
@@ -55,7 +69,10 @@ function inferredDutyFromVehicles(v?: VehicleType[]): DutyClass[] | undefined {
     return ["light", "medium", "heavy"];
   }
 
-  // truck/bus/trailer only → heavy
+  // truck-only (common pickup / light-med commercial) → medium + heavy
+  if (hasTruck && !hasBus && !hasTrailer) return ["medium", "heavy"];
+
+  // bus/trailer involved → heavy
   return ["heavy"];
 }
 
@@ -79,6 +96,7 @@ export const masterInspectionList: InspectionCategory[] = [
         required: true,
         priority: 90,
         specCode: "brake_lining_front_disc",
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       },
       {
         item: "Rear brake pads",
@@ -88,6 +106,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
         specCode: "brake_lining_other",
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       },
       {
         item: "Brake rotors (condition/thickness)",
@@ -97,6 +116,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
         specCode: "brake_rotor",
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       },
       {
         item: "Brake drums (if equipped)",
@@ -106,6 +126,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
         specCode: "brake_drum",
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       },
       {
         item: "Brake fluid level/condition",
@@ -114,6 +135,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         required: true,
         priority: 95,
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       },
       {
         item: "Brake lines/hoses (leaks/chafe)",
@@ -121,6 +143,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       },
       {
         item: "ABS wiring/sensors (hydraulic)",
@@ -128,18 +151,21 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       },
       {
         item: "Park brake operation",
         vehicleTypes: ["car", "truck", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
+        cvipGroups: [ "cvip_bus_hyd", "cvip_truck_hyd" ],
       },
       {
         item: "Brake pedal travel",
         vehicleTypes: ["car", "truck", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 55,
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       },
       {
         item: "Brake warning lights",
@@ -147,6 +173,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         required: true,
         priority: 90,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd" ],
       },
 
       // CVIP hydraulic brake block — applies to car/light truck, plus trailers with hyd / surge
@@ -157,6 +184,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         priority: 88,
         cvipCode: "3H.1",
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       }, // 3H.1
       {
         item: "Vacuum-assisted (boost) system",
@@ -165,6 +193,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         priority: 75,
         cvipCode: "3H.3",
+        cvipGroups: ["cvip_bus_hyd", "cvip_truck_hyd" ],
       }, // 3H.3
       {
         item: "Hydraulic assist (boost) system",
@@ -173,6 +202,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         priority: 75,
         cvipCode: "3H.4",
+        cvipGroups: [ "cvip_bus_hyd", "cvip_truck_hyd" ],
       }, // 3H.4
       {
         item: "Air assist (boost) system",
@@ -181,6 +211,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 72,
         cvipCode: "3H.5",
+        cvipGroups: [ "cvip_bus_hyd", "cvip_truck_hyd" ],
       }, // 3H.5
       {
         item: "Air-over-hydraulic brake system",
@@ -189,6 +220,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 72,
         cvipCode: "3H.6",
+        cvipGroups: [ "cvip_bus_hyd", "cvip_truck_hyd" ],
       }, // 3H.6 / trailer 3H.6
       {
         item: "Surge brake controller",
@@ -197,6 +229,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 70,
         cvipCode: "3H.7",
+        cvipGroups: ["cvip_trailer_hyd" ],
       }, // trailer 3H.7
       {
         item: "Vacuum system (trailer)",
@@ -221,6 +254,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 75,
         cvipCode: "3H.10",
+        cvipGroups: ["cvip_trailer_air", "cvip_trailer_hyd" ],
       }, // 3H.10
       {
         item: "Brake system indicator lamps",
@@ -258,6 +292,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 70,
         cvipCode: "3H.15",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 3H.15
       {
         item: "Spring-applied hydraulic-released parking brake",
@@ -265,6 +300,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 70,
         cvipCode: "3H.16",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 3H.16
       {
         item: "Anti-lock brake system (ABS) — hydraulic",
@@ -275,20 +311,22 @@ export const masterInspectionList: InspectionCategory[] = [
         cvipCode: "3H.17",
       }, // 3H.17
       {
-        item: "Stability control system — hydraulic",
+        item: "Stability control system",
         systems: ["hyd_brake"],
-        vehicleTypes: ["truck", "bus", "trailer"],
+        vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 68,
         cvipCode: "3H.18",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 3H.18
       {
-        item: "Brake performance (hydraulic)",
+        item: "Brake performance",
         systems: ["hyd_brake"],
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 90,
         cvipCode: "3H.19",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       }, // 3H.19
       {
         item: "Trailer breakaway battery condition",
@@ -297,6 +335,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         required: false,
         priority: 70,
+        cvipGroups: ["cvip_trailer_air", "cvip_trailer_hyd" ],
       },
     ],
   },
@@ -313,6 +352,7 @@ export const masterInspectionList: InspectionCategory[] = [
         required: true,
         priority: 95,
         specCode: "brake_lining_other",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air" ],
       },
       {
         item: "Brake drums",
@@ -322,6 +362,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 85,
         specCode: "brake_drum",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air" ],
       },
       {
         item: "Push rod travel",
@@ -331,6 +372,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         required: true,
         priority: 95,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
         // specCode for push-rod limits can be wired later per chamber size
       },
       {
@@ -339,6 +381,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       },
       {
         item: "S-cams",
@@ -346,6 +389,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
         // specCode for S-cam bushings/play can be added when thresholds are finalized
       },
       {
@@ -354,6 +398,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       },
       {
         item: "Brake chambers (condition/mounts)",
@@ -361,6 +406,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       },
       {
         item: "Brake lines/hoses (leaks/chafe)",
@@ -368,6 +414,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       },
       {
         item: "ABS wiring/sensors (air)",
@@ -375,6 +422,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       },
       {
         item: "Park brake (spring brake) function",
@@ -382,6 +430,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       },
       {
         item: "Brake warning lights",
@@ -389,6 +438,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         required: true,
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
 
       // CVIP air system list — 3A.x from truck / bus / trailer
@@ -399,6 +449,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 90,
         cvipCode: "3A.1",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 3A.1
       {
         item: "Air supply system",
@@ -407,6 +458,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 88,
         cvipCode: "3A.2",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 3A.2
       {
         item: "Air system leakage",
@@ -415,6 +467,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 85,
         cvipCode: "3A.3",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       }, // trailer 3A.3
       {
         item: "Air tank",
@@ -423,6 +476,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 85,
         cvipCode: "3A.4",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       }, // 3A.4
       {
         item: "Air tank check valves",
@@ -431,6 +485,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 80,
         cvipCode: "3A.5",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 3A.5
       {
         item: "Brake pedal / actuator (air)",
@@ -439,6 +494,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 78,
         cvipCode: "3A.6",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       }, // 3A.6
       {
         item: "Treadle valve and trailer hand valve",
@@ -447,6 +503,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 78,
         cvipCode: "3A.7",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 3A.7
       {
         item: "Brake valves & controls (air)",
@@ -455,6 +512,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 80,
         cvipCode: "3A.8",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       }, // 3A.8
       {
         item: "Proportioning / inversion / modulation valve",
@@ -463,6 +521,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 78,
         cvipCode: "3A.9",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 3A.9
       {
         item: "Towing vehicle (tractor) protection system",
@@ -471,6 +530,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 75,
         cvipCode: "3A.10",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 3A.10
       {
         item: "Parking brake & emergency application (bus/trailer)",
@@ -479,6 +539,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 78,
         cvipCode: "3A.11",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       }, // 3A.11 / trailer 3A.12
       {
         item: "Air system components",
@@ -487,6 +548,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 80,
         cvipCode: "3A.13",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air" ],
       }, // 3A.13
       {
         item: "Brake chamber (air)",
@@ -495,6 +557,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 80,
         cvipCode: "3A.14",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air"],
       }, // 3A.14
       {
         item: "Drum brake system components (air)",
@@ -503,6 +566,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 78,
         cvipCode: "3A.15",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air" ],
       }, // 3A.15
       {
         item: "S-cam drum brake system (air)",
@@ -511,6 +575,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 78,
         cvipCode: "3A.16",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air" ],
       }, // 3A.16
       {
         item: "Brake shoe travel (wedge brakes)",
@@ -519,6 +584,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 70,
         cvipCode: "3A.17",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air" ],
       }, // 3A.17
       {
         item: "Disc brake system components (air)",
@@ -527,6 +593,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 78,
         cvipCode: "3A.18",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air" ],
       }, // 3A.18
       {
         item: "Anti-lock brake system (ABS) — air",
@@ -535,6 +602,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 80,
         cvipCode: "3A.19",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_trailer_air" ],
       }, // 3A.19
       {
         item: "Anti-lock brake system (ABS) — trailer",
@@ -543,6 +611,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 80,
         cvipCode: "3A.20",
+        cvipGroups: ["cvip_trailer_air", "cvip_trailer_hyd" ],
       }, // trailer 3A.20
       {
         item: "Stability control system (ESC/RSS) — air",
@@ -551,6 +620,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 70,
         cvipCode: "3A.21",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       }, // 3A.21
       {
         item: "Stability control system (ESC/RSS) — trailer",
@@ -559,6 +629,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 70,
         cvipCode: "3A.22",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       }, // trailer 3A.22
       {
         item: "Brake performance (air)",
@@ -567,6 +638,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 90,
         cvipCode: "3A.23",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       }, // 3A.23
     ],
   },
@@ -580,48 +652,56 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipGroups: [ "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Rear coil/leaf springs",
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipGroups: [ "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Shocks/struts (leaks/bushings)",
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        cvipGroups: [ "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Control arms (upper/lower)",
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipGroups: [ "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Ball joints",
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipGroups: [ "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Sway bar bushings",
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
+        cvipGroups: [ "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Sway bar links",
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
+        cvipGroups: [ "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Torsion bars (if equipped)",
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 50,
+        cvipGroups: [ "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
     ],
   },
@@ -634,6 +714,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 92,
         cvipCode: "2.1",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air" ],
       }, // 2.1
       {
         item: "Axle attaching & tracking components",
@@ -641,6 +722,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 90,
         cvipCode: "2.2",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air" ],
       }, // 2.2
       {
         item: "Axle & axle assembly",
@@ -648,6 +730,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 85,
         cvipCode: "2.3",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air" ],
       }, // 2.3
       {
         item: "Spring & spring attachment",
@@ -655,44 +738,50 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 85,
         cvipCode: "2.4",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air" ],
       }, // 2.4
       {
         item: "Leaf springs (cracks/shackles/u-bolts)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 90,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air" ],
       },
       {
-        item: "Air suspension bags/lines (leaks/rub)",
-        systems: ["air_brake"],
+        item: "Air suspension bags/lines",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 85,
-      },
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air"],
+},
       {
         item: "Self-steer & controlled-steer axle (suspension)",
-        vehicleTypes: ["truck", "bus", "trailer"],
+        vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 80,
         cvipCode: "2.6",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 2.6
       {
         item: "Torque rods / radius rods (bushings)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air" ],
       },
       {
         item: "Equalizer bushings",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air" ],
       },
       {
         item: "Axle beams/mounts",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 65,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd", "cvip_trailer_air" ],
       },
       {
         item: "Shock absorbers (leaks/bushings)",
@@ -700,6 +789,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 75,
         cvipCode: "2.7",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_bus_hyd", "cvip_truck_hyd" ],
       }, // 2.7
     ],
   },
@@ -761,6 +851,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 88,
         cvipCode: "4.1",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 4.1
       {
         item: "Power steering system (hydraulic & electric)",
@@ -768,6 +859,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 85,
         cvipCode: "4.2",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 4.2
       {
         item: "Steering operation (active steer axle)",
@@ -775,58 +867,49 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 80,
         cvipCode: "4.3",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // 4.3
       {
         item: "Steering gear box (leaks/mounts)",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Kingpins (play/wear)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 90,
-      },
-      {
-        item: "Kingpin radial play",
-        unit: "mm",
-        vehicleTypes: ["truck", "bus", "trailer"],
-        dutyClasses: ["heavy"],
-        priority: 89,
-        specCode: "kingpin_radial",
-      },
-      {
-        item: "Kingpin axial play",
-        unit: "mm",
-        vehicleTypes: ["truck", "bus", "trailer"],
-        dutyClasses: ["heavy"],
-        priority: 88,
-        specCode: "kingpin_axial",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Drag link",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Tie rod ends",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Steering shaft & u-joints",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Steering dampener (if equipped)",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Panhard/track rod (if equipped)",
@@ -840,6 +923,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 78,
         cvipCode: "4.5",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       }, // trailer 4.5
       {
         item: "Kingpin (converter dolly/trailer)",
@@ -855,6 +939,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 87,
         specCode: "steering_freeplay_max",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
     ],
   },
@@ -869,6 +954,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Air dryer/service status",
@@ -876,6 +962,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Governor cut-in / cut-out pressure",
@@ -884,6 +971,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 90,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Tank drain valves",
@@ -891,6 +979,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Lines/fittings — leaks/rub points",
@@ -898,6 +987,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Pressure build time",
@@ -905,6 +995,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
     ],
   },
@@ -918,12 +1009,14 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Valve stems/caps",
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Wheel lug torque",
@@ -931,12 +1024,14 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Rust trails/hub cracks",
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 65,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Wheel bearings/play",
@@ -945,6 +1040,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
         specCode: "wheel_bearing_play_max",
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
 
       // CVIP tires/wheels extras (9.1–9.11)
@@ -953,48 +1049,56 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Tire sidewall & manufacturer markings",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Wheel hub (condition/leaks)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Wheel/rim (all types)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Multi-piece wheel/rim",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Spoke wheel / demountable rim system",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 65,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Disc wheel system",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 65,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
       {
         item: "Wheel fasteners (nuts, bolts, studs)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_hyd"],
       },
     ],
   },
@@ -1387,6 +1491,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         required: true,
         priority: 95,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Coolant level/condition",
@@ -1394,42 +1499,49 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["light", "medium", "heavy"],
         required: true,
         priority: 90,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Transmission fluid (level/condition)",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Power steering fluid",
         vehicleTypes: ["car", "truck"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Belts (condition/tension)",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Hoses/clamps",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Radiator/fan shroud",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Oil leaks (engine/trans/axle)",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
         // leak classification specCode can be attached once finalized
       },
       {
@@ -1437,6 +1549,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
         // leak classification specCode can be attached once finalized
       },
       {
@@ -1458,60 +1571,70 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 78,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Exhaust system (routing/leaks)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Emission control systems and devices",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Drive shaft (guards / condition)",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Clutch & clutch pedal",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Engine / transmission mount",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Engine shut down",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 65,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Engine start safety feature",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 65,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Gear position indicator",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Engine or accessory drive belt",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Hybrid / EV powertrain system",
@@ -1524,18 +1647,21 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Pressurized or liquefied fuel system (LPG / CNG / LNG)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Reefer or APU fuel system",
         vehicleTypes: ["truck", "trailer", "bus"],
         dutyClasses: ["heavy"],
         priority: 50,
+        cvipGroups: ["cvip_truck_air", "cvip_truck_hyd",  "cvip_trailer_air", "cvip_trailer_hyd" ],
       }, // bus 8.11
     ],
   },
@@ -1549,37 +1675,37 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Center support bearings",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Slip yokes/seals",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Axle seals/leaks",
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Differential leaks/play",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
-      {
-        item: "Transmission mounts",
-        vehicleTypes: ["car", "truck", "bus"],
-        dutyClasses: ["light", "medium", "heavy"],
-        priority: 55,
-      },
+      
     ],
   },
 
@@ -1592,36 +1718,35 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Crossmembers/rust",
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
-      },
-      {
-        item: "Underbody coating",
-        vehicleTypes: ["car", "truck", "bus", "trailer"],
-        dutyClasses: ["light", "medium", "heavy"],
-        priority: 40,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Body/cab mounts",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "PTO mounting/condition (if equipped)",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 50,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Mounted equipment/racks",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 50,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
 
       // CVIP section 8 items (bus/motorcoach)
@@ -1630,152 +1755,169 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
+        
       },
       {
         item: "Cab & passenger-vehicle body",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Unitized body elements",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 50,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Body, device or equipment attached/mounted to vehicle",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air"],
       },
       {
         item: "Bumper",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Windshield",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
-      },
-      {
-        item: "Windshield crack length (primary field of view)",
-        unit: "mm",
-        vehicleTypes: ["car", "truck", "bus"],
-        dutyClasses: ["light", "medium", "heavy"],
-        priority: 72,
-        specCode: "windshield_crack_length_max",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Side windows",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Rear window",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Interior sun visor",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 45,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Exterior windshield sun visor",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 45,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Rear-view mirror",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_trailer_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Seat",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Seat belt / occupant restraint",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Fender / mud flap",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
+
       },
       {
         item: "Aerodynamic device & attachment",
         vehicleTypes: ["truck", "trailer", "bus"],
         dutyClasses: ["heavy"],
         priority: 45,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Floor pan / baggage floor / step well on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
-        priority: 50,
+        priority: 50,cvipGroups: ["cvip_bus_hyd", "cvip_bus_air" ],
       },
       {
         item: "Interior body & fixtures on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 45,
+        cvipGroups: ["cvip_bus_hyd", "cvip_bus_air" ],
       },
       {
         item: "Service & exit door on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipGroups: ["cvip_bus_hyd", "cvip_bus_air" ],
       },
       {
         item: "Emergency exit (door, window, roof hatch)",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipGroups: ["cvip_bus_hyd", "cvip_bus_air" ],
       },
       {
         item: "Passenger compartment window on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_bus_hyd", "cvip_bus_air" ],
       },
       {
         item: "School bus exterior mirror (additional)",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_bus_hyd", "cvip_bus_air" ],
       },
       {
         item: "Passenger seat on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_bus_hyd", "cvip_bus_air" ],
       },
       {
         item: "School bus body exterior",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_bus_hyd", "cvip_bus_air" ],
       },
       {
         item: "Auxiliary compartment on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 45,
+        cvipGroups: ["cvip_bus_hyd", "cvip_bus_air" ],
       },
     ],
   },
@@ -1789,6 +1931,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 85,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
         // leak classification specCode can be attached when finalized
       },
       {
@@ -1796,24 +1939,28 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Mounting brackets",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Heat shields",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Tailpipe condition",
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 50,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
     ],
   },
@@ -1827,24 +1974,28 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_truck_hyd" ],
       },
       {
         item: "Fifth wheel tilt & latch",
         vehicleTypes: ["truck", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_truck_hyd" ],
       },
       {
         item: "Slider locking mechanism",
         vehicleTypes: ["truck", "trailer"],
         dutyClasses: ["heavy"],
         priority: 65,
+        cvipGroups: ["cvip_truck_air", "cvip_truck_hyd" ],
       },
       {
         item: "Kingpin wear",
         vehicleTypes: ["truck", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_trailer_air", "cvip_trailer_hyd"]
       },
       {
         item: "Fifth wheel vertical play at wheel",
@@ -1853,18 +2004,21 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 78,
         specCode: "fifth_wheel_vertical_play_max",
+        cvipGroups: ["cvip_truck_air", "cvip_truck_hyd" ],
       },
       {
         item: "Safety chains/hooks (if equipped)",
         vehicleTypes: ["truck", "trailer"],
         dutyClasses: ["heavy"],
         priority: 50,
+        cvipGroups: ["cvip_trailer_air", "cvip_trailer_hyd"]
       },
       {
         item: "Trailer plug",
         vehicleTypes: ["truck", "trailer"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
 
       // CVIP Section 10 — couplers & hitches (bus + trailer forms)
@@ -1873,36 +2027,42 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Secondary attachment (safety chain or cable)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Pintle hook, pin hitch, or coupler hitch",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Ball type hitch",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 65,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Roll-coupling hitch",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Automated coupling device",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
     ],
   },
@@ -1916,50 +2076,59 @@ export const masterInspectionList: InspectionCategory[] = [
         required: true,
         priority: 95,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Turn signals/flashers",
         required: true,
         priority: 95,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Brake lights",
         required: true,
         priority: 95,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Tail/marker/clearance lights",
         priority: 85,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Reverse lights",
         priority: 70,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "License plate light",
         priority: 60,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Reflective tape/reflectors",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Work/auxiliary/emergency lights",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 50,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Hazard switch function",
         priority: 80,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
 
       // CVIP lighting section 6.x
@@ -1967,23 +2136,27 @@ export const masterInspectionList: InspectionCategory[] = [
         item: "Instrument panel lamp",
         dutyClasses: ["light", "medium", "heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Headlamp aiming",
         dutyClasses: ["light", "medium", "heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Interior lamps on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 50,
+        cvipGroups: [ "cvip_bus_air", "cvip_bus_hyd" ],
       },
       {
         item: "School bus additional lamps",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 50,
+        cvipGroups: [ "cvip_bus_air", "cvip_bus_hyd" ],
       },
     ],
   },
@@ -1994,31 +2167,37 @@ export const masterInspectionList: InspectionCategory[] = [
         item: "Battery terminals/hold-downs",
         priority: 85,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Battery voltage & load test",
         priority: 80,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd", "cvip_trailer_air", "cvip_trailer_hyd" ],
       },
       {
         item: "Fuses/fuse block",
         priority: 60,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ], 
       },
       {
         item: "Wiring harness condition",
         priority: 70,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Alternator operation",
         priority: 80,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Starter operation",
         priority: 75,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
 
       // CVIP electrical add-ons
@@ -2028,6 +2207,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 65,
         cvipCode: "7.3",
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       }, // 7.3
       {
         item: "Alternator output on a school bus",
@@ -2035,6 +2215,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 65,
         cvipCode: "7.4",
+        cvipGroups: [ "cvip_bus_air", "cvip_bus_hyd" ],
       }, // 7.4
     ],
   },
@@ -2045,43 +2226,51 @@ export const masterInspectionList: InspectionCategory[] = [
         item: "HVAC — heat/AC/defrost",
         priority: 85,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Windshield wipers & washers",
         priority: 90,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Horn operation",
         priority: 80,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Dash lights & gauges",
         priority: 70,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Seat belts & seats",
         required: true,
         priority: 90,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Mirrors (condition/adjustment)",
         priority: 80,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Door latches & hinges",
         priority: 60,
         dutyClasses: ["light", "medium", "heavy"],
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Cab mounts",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
 
       // CVIP 5.x bus / HD extras
@@ -2090,6 +2279,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Hazard warning kit",
@@ -2102,52 +2292,60 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Speedometer",
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Odometer",
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Heater & windshield defroster (bus)",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Fuel-burning auxiliary heater",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Auxiliary controls & devices",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "On-board auxiliary equipment on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
-        priority: 55,
+        priority: 55,cvipGroups: [ "cvip_bus_air",  "cvip_bus_hyd" ],
       },
       {
         item: "First aid kit on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: [ "cvip_bus_air", "cvip_bus_hyd" ],
       },
       {
         item: "Accessibility features & equipment on a bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 55,
+        cvipGroups: [ "cvip_bus_air", "cvip_bus_hyd" ],
       },
     ],
   },
@@ -2161,29 +2359,21 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "First aid kit (complete)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 60,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Emergency triangles/hazard kit",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
-      },
-      {
-        item: "Reflective vests",
-        vehicleTypes: ["truck", "bus", "trailer"],
-        dutyClasses: ["heavy"],
-        priority: 50,
-      },
-      {
-        item: "Spare fuses & bulbs",
-        dutyClasses: ["light", "medium", "heavy"],
-        priority: 40,
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
     ],
   },
@@ -2197,7 +2387,8 @@ type BuildArgs = {
   vehicleType: VehicleType;
   brakeSystem: BrakeSystem;
   targetCount: number; // e.g., 60
-  dutyClass?: DutyClass; // new, optional
+  dutyClass?: DutyClass;
+  cvipGroup?: CvipGroup; // optional: restrict to a specific CVIP profile
 };
 
 /**
@@ -2212,6 +2403,7 @@ export function buildFromMaster({
   brakeSystem,
   targetCount,
   dutyClass,
+  cvipGroup,
 }: BuildArgs) {
   // Flatten → filter → score
   type Flat = InspectionItem & { title: string; score: number };
@@ -2220,11 +2412,28 @@ export function buildFromMaster({
   for (const cat of masterInspectionList) {
     for (const it of cat.items) {
       // vehicle filter
-      if (it.vehicleTypes && it.vehicleTypes.length && !it.vehicleTypes.includes(vehicleType))
+      if (
+        it.vehicleTypes &&
+        it.vehicleTypes.length > 0 &&
+        !it.vehicleTypes.includes(vehicleType)
+      ) {
         continue;
+      }
 
       // brake/other system filter (items with systems[] must match at least one)
-      if (it.systems && it.systems.length && !it.systems.includes(brakeSystem)) continue;
+      if (it.systems && it.systems.length > 0 && !it.systems.includes(brakeSystem)) {
+        continue;
+      }
+
+      // CVIP filter (if caller requested a specific CVIP group)
+      if (
+        cvipGroup &&
+        it.cvipGroups &&
+        it.cvipGroups.length > 0 &&
+        !it.cvipGroups.includes(cvipGroup)
+      ) {
+        continue;
+      }
 
       // figure out duty for this item — prefer explicit, else infer from vehicles
       const itemDuty =
@@ -2232,19 +2441,23 @@ export function buildFromMaster({
           ? it.dutyClasses
           : inferredDutyFromVehicles(it.vehicleTypes);
 
-      // duty filter (new): if caller asked for "heavy" and the item has a duty set (explicit or inferred), respect it
+      // duty filter
       if (dutyClass && itemDuty && !itemDuty.includes(dutyClass)) continue;
 
       const matchVehicle = it.vehicleTypes?.includes(vehicleType) ? 1 : 0;
       const matchSystem = it.systems?.includes(brakeSystem) ? 1 : 0;
       const matchDuty = dutyClass && itemDuty && itemDuty.includes(dutyClass) ? 1 : 0;
+      const matchCvip =
+        cvipGroup && it.cvipGroups && it.cvipGroups.includes(cvipGroup) ? 1 : 0;
 
       const base = it.priority ?? 50;
+
       const score =
         base +
         matchVehicle * 20 +
         matchSystem * 20 +
         matchDuty * 15 +
+        matchCvip * 15 +
         (it.required ? 50 : 0);
 
       flat.push({ ...it, title: cat.title, score });
@@ -2252,10 +2465,14 @@ export function buildFromMaster({
   }
 
   // required first
-  const required = flat.filter((f) => f.required).sort((a, b) => b.score - a.score);
+  const required = flat
+    .filter((f) => f.required)
+    .sort((a, b) => b.score - a.score);
 
   // then the rest by score
-  const rest = flat.filter((f) => !f.required).sort((a, b) => b.score - a.score);
+  const rest = flat
+    .filter((f) => !f.required)
+    .sort((a, b) => b.score - a.score);
 
   const picked: Flat[] = [];
   for (const f of required) {
@@ -2276,6 +2493,7 @@ export function buildFromMaster({
         item: string;
         unit?: string | null;
         specCode?: string | null;
+        cvipCode?: string | null;
       }[];
     }
   >();
@@ -2284,10 +2502,12 @@ export function buildFromMaster({
     if (!byTitle.has(it.title)) {
       byTitle.set(it.title, { title: it.title, items: [] });
     }
+
     byTitle.get(it.title)!.items.push({
       item: it.item,
       unit: it.unit ?? null,
       specCode: it.specCode ?? null,
+      cvipCode: it.cvipCode ?? null,
     });
   }
 
