@@ -25,6 +25,7 @@ export interface InspectionItem {
    * - auto-reason about FAIL/RECOMMEND with measurements
    */
   specCode?: string | null;
+  cvipCode?: string | null;
 }
 
 export interface InspectionCategory {
@@ -38,9 +39,7 @@ export interface InspectionCategory {
  * - if it applies to car + truck → light, medium, heavy
  * - if it applies only to truck/bus/trailer → heavy
  */
-function inferredDutyFromVehicles(
-  v?: VehicleType[],
-): DutyClass[] | undefined {
+function inferredDutyFromVehicles(v?: VehicleType[]): DutyClass[] | undefined {
   if (!v || v.length === 0) return undefined;
 
   const hasCar = v.includes("car");
@@ -157,6 +156,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 88,
+        cvipCode: "3H.1",
       }, // 3H.1
       {
         item: "Vacuum-assisted (boost) system",
@@ -164,6 +164,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 75,
+        cvipCode: "3H.3",
       }, // 3H.3
       {
         item: "Hydraulic assist (boost) system",
@@ -171,6 +172,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 75,
+        cvipCode: "3H.4",
       }, // 3H.4
       {
         item: "Air assist (boost) system",
@@ -178,6 +180,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 72,
+        cvipCode: "3H.5",
       }, // 3H.5
       {
         item: "Air-over-hydraulic brake system",
@@ -185,6 +188,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 72,
+        cvipCode: "3H.6",
       }, // 3H.6 / trailer 3H.6
       {
         item: "Surge brake controller",
@@ -192,6 +196,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipCode: "3H.7",
       }, // trailer 3H.7
       {
         item: "Vacuum system (trailer)",
@@ -199,6 +204,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["trailer"],
         dutyClasses: ["heavy"],
         priority: 68,
+        cvipCode: "3H.8",
       }, // 3H.8
       {
         item: "Air-boosted trailer brake system",
@@ -206,6 +212,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["trailer"],
         dutyClasses: ["heavy"],
         priority: 68,
+        cvipCode: "3H.9",
       }, // 3H.9
       {
         item: "Electric brake system",
@@ -213,12 +220,14 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["trailer"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipCode: "3H.10",
       }, // 3H.10
       {
         item: "Brake system indicator lamps",
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipCode: "3H.11",
       }, // 3H.11
       {
         item: "Drum brake system components (hydraulic)",
@@ -226,6 +235,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 78,
+        cvipCode: "3H.12",
       }, // 3H.12
       {
         item: "Disc brake system components (hydraulic)",
@@ -233,24 +243,28 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 78,
+        cvipCode: "3H.13",
       }, // 3H.13
       {
         item: "Mechanical parking brake",
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 70,
+        cvipCode: "3H.14",
       }, // 3H.14
       {
         item: "Spring-applied air-released parking brake",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipCode: "3H.15",
       }, // 3H.15
       {
         item: "Spring-applied hydraulic-released parking brake",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipCode: "3H.16",
       }, // 3H.16
       {
         item: "Anti-lock brake system (ABS) — hydraulic",
@@ -258,6 +272,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 80,
+        cvipCode: "3H.17",
       }, // 3H.17
       {
         item: "Stability control system — hydraulic",
@@ -265,6 +280,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 68,
+        cvipCode: "3H.18",
       }, // 3H.18
       {
         item: "Brake performance (hydraulic)",
@@ -272,6 +288,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 90,
+        cvipCode: "3H.19",
       }, // 3H.19
       {
         item: "Trailer breakaway battery condition",
@@ -381,6 +398,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 90,
+        cvipCode: "3A.1",
       }, // 3A.1
       {
         item: "Air supply system",
@@ -388,6 +406,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 88,
+        cvipCode: "3A.2",
       }, // 3A.2
       {
         item: "Air system leakage",
@@ -395,6 +414,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["trailer", "truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 85,
+        cvipCode: "3A.3",
       }, // trailer 3A.3
       {
         item: "Air tank",
@@ -402,6 +422,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 85,
+        cvipCode: "3A.4",
       }, // 3A.4
       {
         item: "Air tank check valves",
@@ -409,6 +430,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipCode: "3A.5",
       }, // 3A.5
       {
         item: "Brake pedal / actuator (air)",
@@ -416,6 +438,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 78,
+        cvipCode: "3A.6",
       }, // 3A.6
       {
         item: "Treadle valve and trailer hand valve",
@@ -423,6 +446,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 78,
+        cvipCode: "3A.7",
       }, // 3A.7
       {
         item: "Brake valves & controls (air)",
@@ -430,6 +454,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipCode: "3A.8",
       }, // 3A.8
       {
         item: "Proportioning / inversion / modulation valve",
@@ -437,6 +462,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 78,
+        cvipCode: "3A.9",
       }, // 3A.9
       {
         item: "Towing vehicle (tractor) protection system",
@@ -444,6 +470,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipCode: "3A.10",
       }, // 3A.10
       {
         item: "Parking brake & emergency application (bus/trailer)",
@@ -451,6 +478,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 78,
+        cvipCode: "3A.11",
       }, // 3A.11 / trailer 3A.12
       {
         item: "Air system components",
@@ -458,6 +486,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipCode: "3A.13",
       }, // 3A.13
       {
         item: "Brake chamber (air)",
@@ -465,6 +494,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipCode: "3A.14",
       }, // 3A.14
       {
         item: "Drum brake system components (air)",
@@ -472,6 +502,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 78,
+        cvipCode: "3A.15",
       }, // 3A.15
       {
         item: "S-cam drum brake system (air)",
@@ -479,6 +510,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 78,
+        cvipCode: "3A.16",
       }, // 3A.16
       {
         item: "Brake shoe travel (wedge brakes)",
@@ -486,6 +518,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipCode: "3A.17",
       }, // 3A.17
       {
         item: "Disc brake system components (air)",
@@ -493,6 +526,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 78,
+        cvipCode: "3A.18",
       }, // 3A.18
       {
         item: "Anti-lock brake system (ABS) — air",
@@ -500,6 +534,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipCode: "3A.19",
       }, // 3A.19
       {
         item: "Anti-lock brake system (ABS) — trailer",
@@ -507,6 +542,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipCode: "3A.20",
       }, // trailer 3A.20
       {
         item: "Stability control system (ESC/RSS) — air",
@@ -514,6 +550,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipCode: "3A.21",
       }, // 3A.21
       {
         item: "Stability control system (ESC/RSS) — trailer",
@@ -521,6 +558,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipCode: "3A.22",
       }, // trailer 3A.22
       {
         item: "Brake performance (air)",
@@ -528,6 +566,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 90,
+        cvipCode: "3A.23",
       }, // 3A.23
     ],
   },
@@ -594,24 +633,28 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 92,
+        cvipCode: "2.1",
       }, // 2.1
       {
         item: "Axle attaching & tracking components",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 90,
+        cvipCode: "2.2",
       }, // 2.2
       {
         item: "Axle & axle assembly",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 85,
+        cvipCode: "2.3",
       }, // 2.3
       {
         item: "Spring & spring attachment",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 85,
+        cvipCode: "2.4",
       }, // 2.4
       {
         item: "Leaf springs (cracks/shackles/u-bolts)",
@@ -631,6 +674,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipCode: "2.6",
       }, // 2.6
       {
         item: "Torque rods / radius rods (bushings)",
@@ -655,6 +699,7 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 75,
+        cvipCode: "2.7",
       }, // 2.7
     ],
   },
@@ -715,18 +760,21 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 88,
+        cvipCode: "4.1",
       }, // 4.1
       {
         item: "Power steering system (hydraulic & electric)",
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 85,
+        cvipCode: "4.2",
       }, // 4.2
       {
         item: "Steering operation (active steer axle)",
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 80,
+        cvipCode: "4.3",
       }, // 4.3
       {
         item: "Steering gear box (leaks/mounts)",
@@ -791,12 +839,14 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus", "trailer"],
         dutyClasses: ["heavy"],
         priority: 78,
+        cvipCode: "4.5",
       }, // trailer 4.5
       {
         item: "Kingpin (converter dolly/trailer)",
         vehicleTypes: ["trailer"],
         dutyClasses: ["heavy"],
         priority: 70,
+        cvipCode: "4.4",
       }, // trailer 4.4
       {
         item: "Steering wheel free play at rim",
@@ -949,80 +999,380 @@ export const masterInspectionList: InspectionCategory[] = [
     ],
   },
 
-    /* --------------------------- TIRE GRID (HYD) --------------------------- */
-      {
+  /* --------------------------- TIRE GRID (HYD) --------------------------- */
+  {
     title: "Tire Grid — Hydraulic",
     items: [
       // ---------------- FRONT (single) ----------------
-      { item: "LF Tire Pressure", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
-      { item: "RF Tire Pressure", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+      {
+        item: "LF Tire Pressure",
+        unit: "psi",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "RF Tire Pressure",
+        unit: "psi",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 95,
+      },
 
-      { item: "LF Tread Depth (Outer)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
-      { item: "RF Tread Depth (Outer)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
+      {
+        item: "LF Tread Depth (Outer)",
+        unit: "mm",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "RF Tread Depth (Outer)",
+        unit: "mm",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 95,
+      },
 
       // optional front inners (keep if you want)
-      { item: "LF Tread Depth (Inner)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 80 },
-      { item: "RF Tread Depth (Inner)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 80 },
+      {
+        item: "LF Tread Depth (Inner)",
+        unit: "mm",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 80,
+      },
+      {
+        item: "RF Tread Depth (Inner)",
+        unit: "mm",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 80,
+      },
 
       // ---------------- REAR (dual default) ----------------
       // TP outer/inner
-      { item: "LR Tire Pressure (Outer)", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
-      { item: "LR Tire Pressure (Inner)", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 85 },
-      { item: "RR Tire Pressure (Outer)", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
-      { item: "RR Tire Pressure (Inner)", unit: "psi", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 85 },
+      {
+        item: "LR Tire Pressure (Outer)",
+        unit: "psi",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "LR Tire Pressure (Inner)",
+        unit: "psi",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 85,
+      },
+      {
+        item: "RR Tire Pressure (Outer)",
+        unit: "psi",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "RR Tire Pressure (Inner)",
+        unit: "psi",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 85,
+      },
 
       // TD outer/inner
-      { item: "LR Tread Depth (Outer)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
-      { item: "LR Tread Depth (Inner)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 85 },
-      { item: "RR Tread Depth (Outer)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 95 },
-      { item: "RR Tread Depth (Inner)", unit: "mm", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], priority: 85 },
+      {
+        item: "LR Tread Depth (Outer)",
+        unit: "mm",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "LR Tread Depth (Inner)",
+        unit: "mm",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 85,
+      },
+      {
+        item: "RR Tread Depth (Outer)",
+        unit: "mm",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "RR Tread Depth (Inner)",
+        unit: "mm",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        priority: 85,
+      },
 
       // ---------------- Per-tire status toggles (fail from grid) ----------------
-      { item: "LF Tire Condition", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 98 },
-      { item: "RF Tire Condition", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 98 },
-      { item: "LR Tire Condition", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 98 },
-      { item: "RR Tire Condition", systems: ["hyd_brake"], vehicleTypes: ["car", "truck"], dutyClasses: ["light", "medium", "heavy"], required: true, priority: 98 },
+      {
+        item: "LF Tire Condition",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 98,
+      },
+      {
+        item: "RF Tire Condition",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 98,
+      },
+      {
+        item: "LR Tire Condition",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 98,
+      },
+      {
+        item: "RR Tire Condition",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["car", "truck"],
+        dutyClasses: ["light", "medium", "heavy"],
+        required: true,
+        priority: 98,
+      },
     ],
   },
 
-    /* ---------------------------- TIRE GRID (AIR) ---------------------------- */
+  /* ---------------------------- TIRE GRID (AIR) ---------------------------- */
   {
     title: "Tire Grid — Air Brake (HD)",
     items: [
       // Start minimal (your AddAxle UI can add more axles later)
       // Steer 1 (single)
-      { item: "Steer 1 Left Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 95 },
-      { item: "Steer 1 Right Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      {
+        item: "Steer 1 Left Tire Pressure",
+        unit: "psi",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "Steer 1 Right Tire Pressure",
+        unit: "psi",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
 
-      { item: "Steer 1 Left Tread Depth", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 95 },
-      { item: "Steer 1 Right Tread Depth", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      {
+        item: "Steer 1 Left Tread Depth",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "Steer 1 Right Tread Depth",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
 
-      { item: "Steer 1 Left Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 98 },
-      { item: "Steer 1 Right Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus"], dutyClasses: ["heavy"], required: true, priority: 98 },
+      {
+        item: "Steer 1 Left Tire Condition",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 98,
+      },
+      {
+        item: "Steer 1 Right Tire Condition",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 98,
+      },
 
       // Drive 1 (dual)
-      { item: "Drive 1 Left Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
-      { item: "Drive 1 Right Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      {
+        item: "Drive 1 Left Tire Pressure",
+        unit: "psi",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "Drive 1 Right Tire Pressure",
+        unit: "psi",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
 
-      { item: "Drive 1 Left Tread Depth (Outer)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
-      { item: "Drive 1 Left Tread Depth (Inner)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 85 },
-      { item: "Drive 1 Right Tread Depth (Outer)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
-      { item: "Drive 1 Right Tread Depth (Inner)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 85 },
+      {
+        item: "Drive 1 Left Tread Depth (Outer)",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "Drive 1 Left Tread Depth (Inner)",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        priority: 85,
+      },
+      {
+        item: "Drive 1 Right Tread Depth (Outer)",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "Drive 1 Right Tread Depth (Inner)",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        priority: 85,
+      },
 
-      { item: "Drive 1 Left Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 98 },
-      { item: "Drive 1 Right Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 98 },
+      {
+        item: "Drive 1 Left Tire Condition",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 98,
+      },
+      {
+        item: "Drive 1 Right Tire Condition",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 98,
+      },
 
       // Rear 1 (dual) — matches your corner mapping in UI
-      { item: "Rear 1 Left Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
-      { item: "Rear 1 Right Tire Pressure", unit: "psi", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
+      {
+        item: "Rear 1 Left Tire Pressure",
+        unit: "psi",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "Rear 1 Right Tire Pressure",
+        unit: "psi",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
 
-      { item: "Rear 1 Left Tread Depth (Outer)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
-      { item: "Rear 1 Left Tread Depth (Inner)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 85 },
-      { item: "Rear 1 Right Tread Depth (Outer)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 95 },
-      { item: "Rear 1 Right Tread Depth (Inner)", unit: "mm", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], priority: 85 },
+      {
+        item: "Rear 1 Left Tread Depth (Outer)",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "Rear 1 Left Tread Depth (Inner)",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        priority: 85,
+      },
+      {
+        item: "Rear 1 Right Tread Depth (Outer)",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 95,
+      },
+      {
+        item: "Rear 1 Right Tread Depth (Inner)",
+        unit: "mm",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        priority: 85,
+      },
 
-      { item: "Rear 1 Left Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 98 },
-      { item: "Rear 1 Right Tire Condition", systems: ["air_brake"], vehicleTypes: ["truck", "bus", "trailer"], dutyClasses: ["heavy"], required: true, priority: 98 },
+      {
+        item: "Rear 1 Left Tire Condition",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 98,
+      },
+      {
+        item: "Rear 1 Right Tire Condition",
+        systems: ["air_brake"],
+        vehicleTypes: ["truck", "bus", "trailer"],
+        dutyClasses: ["heavy"],
+        required: true,
+        priority: 98,
+      },
     ],
   },
 
@@ -1677,12 +2027,14 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["truck", "bus"],
         dutyClasses: ["heavy"],
         priority: 65,
+        cvipCode: "7.3",
       }, // 7.3
       {
         item: "Alternator output on a school bus",
         vehicleTypes: ["bus"],
         dutyClasses: ["heavy"],
         priority: 65,
+        cvipCode: "7.4",
       }, // 7.4
     ],
   },
@@ -1868,16 +2220,11 @@ export function buildFromMaster({
   for (const cat of masterInspectionList) {
     for (const it of cat.items) {
       // vehicle filter
-      if (
-        it.vehicleTypes &&
-        it.vehicleTypes.length &&
-        !it.vehicleTypes.includes(vehicleType)
-      )
+      if (it.vehicleTypes && it.vehicleTypes.length && !it.vehicleTypes.includes(vehicleType))
         continue;
 
       // brake/other system filter (items with systems[] must match at least one)
-      if (it.systems && it.systems.length && !it.systems.includes(brakeSystem))
-        continue;
+      if (it.systems && it.systems.length && !it.systems.includes(brakeSystem)) continue;
 
       // figure out duty for this item — prefer explicit, else infer from vehicles
       const itemDuty =
@@ -1890,8 +2237,7 @@ export function buildFromMaster({
 
       const matchVehicle = it.vehicleTypes?.includes(vehicleType) ? 1 : 0;
       const matchSystem = it.systems?.includes(brakeSystem) ? 1 : 0;
-      const matchDuty =
-        dutyClass && itemDuty && itemDuty.includes(dutyClass) ? 1 : 0;
+      const matchDuty = dutyClass && itemDuty && itemDuty.includes(dutyClass) ? 1 : 0;
 
       const base = it.priority ?? 50;
       const score =
@@ -1906,14 +2252,10 @@ export function buildFromMaster({
   }
 
   // required first
-  const required = flat
-    .filter((f) => f.required)
-    .sort((a, b) => b.score - a.score);
+  const required = flat.filter((f) => f.required).sort((a, b) => b.score - a.score);
 
   // then the rest by score
-  const rest = flat
-    .filter((f) => !f.required)
-    .sort((a, b) => b.score - a.score);
+  const rest = flat.filter((f) => !f.required).sort((a, b) => b.score - a.score);
 
   const picked: Flat[] = [];
   for (const f of required) {
