@@ -212,6 +212,7 @@ const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 const HYD_FULL_RE =
   /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const BRAKE_SIGNAL_RE = /(lining|shoe|pad|drum|rotor|push\s*rod|torque)/i;
 
 const BATTERY_SIGNAL_RE =
   /(battery|voltage|v\b|cca|cranking|load\s*test|alternator|charging|charge\s*rate|state\s*of\s*charge|soc)/i;
@@ -240,9 +241,18 @@ function isAirCornerSection(
   items: { item?: string | null }[] = [],
 ): boolean {
   const t = (title || "").toLowerCase();
+
+  // Explicit titles always win
   if (t.includes("air corner") || t.includes("air corner grid")) return true;
-  if (t.includes("tires & brakes — air")) return true;
-  return items.some((it) => AIR_RE.test(it.item ?? ""));
+  if (t.includes("tires & brakes") && t.includes("air")) return true;
+
+  // Otherwise: must look like an air layout AND contain brake-only metrics
+  const hasAirLayout = items.some((it) => AIR_RE.test(it.item ?? ""));
+  const hasBrakeMetric = items.some((it) =>
+    BRAKE_SIGNAL_RE.test(it.item ?? ""),
+  );
+
+  return hasAirLayout && hasBrakeMetric;
 }
 
 function isTireGridSection(
@@ -1798,13 +1808,12 @@ export default function GenericInspectionScreen(
     const existingItems = section.items ?? [];
 
     const metrics: Array<{ label: string; unit: string | null }> = [
-      { label: "Tire Pressure", unit: "psi" },
-      { label: "Tread Depth (Outer)", unit: "mm" },
-      { label: "Tread Depth (Inner)", unit: "mm" },
-      { label: "Lining/Shoe", unit: "mm" },
-      { label: "Drum/Rotor", unit: "mm" },
-      { label: "Push Rod Travel", unit: "in" },
-    ];
+  { label: "Lining/Shoe", unit: "mm" },
+  { label: "Drum/Rotor", unit: "mm" },
+  { label: "Push Rod Travel", unit: "in" },
+  { label: "Wheel Torque Outer", unit: "ft·lb" },
+  { label: "Wheel Torque Inner", unit: "ft·lb" },
+];
 
     const sides: Array<"Left" | "Right"> = ["Left", "Right"];
 

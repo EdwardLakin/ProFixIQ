@@ -23,6 +23,25 @@ function isBrakeCornerMetric(label: string): boolean {
   );
 }
 
+// Tire-only signals (NOT brakes)
+function isTireMetric(label: string): boolean {
+  const l = (label || "").toLowerCase();
+  return (
+    l.includes("tire pressure") ||
+    l.includes("tyre pressure") ||
+    l.includes("pressure") ||
+    l.includes("tread depth") ||
+    /\btd\b/.test(l) ||
+    l.includes("tread") ||
+    l.includes("tire condition") ||
+    l.includes("tyre condition") ||
+    (l.includes("condition") && l.includes("tire")) ||
+    l.includes("tire status") ||
+    l.includes("tyre status") ||
+    (l.includes("status") && l.includes("tire"))
+  );
+}
+
 /**
  * IMPORTANT:
  * We must NOT treat "Tire Grid – Air Brake" as a "corner grid".
@@ -143,17 +162,47 @@ function buildAirCornerSection(): CornerGridSection {
   return { title: "Corner Grid (Air)", items: [...steer, ...drive] };
 }
 
+// If someone mislabeled a tire section as “corner grid”, correct it.
+function normalizeMisTitledCornerSections<T extends CornerGridSection>(sections: T[]): T[] {
+  return sections.map((sec) => {
+    const titleLooksCorner = looksLikeCornerTitle(sec.title);
+    if (!titleLooksCorner) return sec;
+
+    const items = sec.items ?? [];
+    const hasBrake = items.some((it) => isBrakeCornerMetric(it.item || ""));
+    if (hasBrake) return sec;
+
+    const hasTire = items.some((it) => isTireMetric(it.item || ""));
+    if (!hasTire) return sec;
+
+    const hasAirAxleLabels = items.some((it) => AIR_ITEM_RE.test(it.item || ""));
+    const hasHydCornerLabels = items.some((it) => HYD_ITEM_RE.test(it.item || ""));
+
+    const nextTitle =
+      hasAirAxleLabels ? "Tire Grid – Air Brake" : hasHydCornerLabels ? "Tire Grid – Hydraulic" : "Tire Grid";
+
+    return { ...sec, title: nextTitle };
+  });
+}
+
 export function prepareSectionsWithCornerGrid<T extends CornerGridSection>(
   sections: T[],
   vehicleType: string | null | undefined,
   gridParam: string | null,
 ): T[] {
-  const s = Array.isArray(sections) ? sections : [];
+  const s0 = Array.isArray(sections) ? sections : [];
 
-  // If a REAL corner grid already exists by title, do nothing.
-  // NOTE: tire grids are NOT treated as “corner grids”.
-  const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
-  if (hasCornerByTitle) return s;
+  // ✅ Fix bad upstream titles BEFORE we do the early “has corner grid” check.
+  const s = normalizeMisTitledCornerSections(s0);
+
+  // ✅ Only skip normalization if a REAL corner grid exists:
+  // title looks corner AND it actually contains brake metrics.
+  const hasRealCornerByTitle = s.some((sec) => {
+    if (!looksLikeCornerTitle(sec.title)) return false;
+    const items = sec.items ?? [];
+    return items.some((it) => isBrakeCornerMetric(it.item || ""));
+  });
+  if (hasRealCornerByTitle) return s;
 
   // Remove any previously injected/legacy brake corner grids, but preserve tire/battery grids
   const withoutGrids = stripExistingCornerGrids(s);
