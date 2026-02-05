@@ -1,4 +1,4 @@
-// services/masterServicesList.ts
+// /services/masterServicesList.ts
 export type ServiceCategory = {
   title: string;
   items: { item: string }[];
@@ -21,9 +21,10 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Coolant flush and fill" },
       { item: "Brake fluid flush" },
       { item: "DEF tank fill and system check" },
-      { item: "winter tire swap" }
-],
+      { item: "Winter tire swap" },
+    ],
   },
+
   {
     title: "Fuel System",
     items: [
@@ -35,6 +36,7 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Fuel injector cleaning (as needed)" },
     ],
   },
+
   {
     title: "Chassis & Driveline",
     items: [
@@ -46,6 +48,7 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Inspect CV axles and boots" },
     ],
   },
+
   {
     title: "Brake System Service",
     items: [
@@ -59,9 +62,10 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Brake drum replacement" },
       { item: "Parking brake adjustment" },
       { item: "Push rod travel check (air brakes)" },
-      { item: "Clutch hydraulic system bleed" }
-],
+      { item: "Clutch hydraulic system bleed" },
+    ],
   },
+
   {
     title: "Tire, Wheel & Alignment",
     items: [
@@ -74,6 +78,7 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "TPMS inspection/reset" },
     ],
   },
+
   {
     title: "Diagnostic & Electrical",
     items: [
@@ -86,6 +91,7 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Software/TSB check (as applicable)" },
     ],
   },
+
   {
     title: "Cooling & Belts",
     items: [
@@ -96,16 +102,42 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Water pump inspection (leaks/noise)" },
     ],
   },
+
+  // ✅ NEW: Deeper compliance / CVIP options
+  {
+    title: "CVIP & Compliance",
+    items: [
+      { item: "CVIP inspection (commercial vehicle)" },
+      { item: "CVIP inspection (trailer)" },
+      { item: "CVIP inspection (bus)" },
+      { item: "CVIP re-inspection" },
+      { item: "CVIP pre-check (prepare for inspection)" },
+      { item: "CVIP corrections (brakes / lights / tires / air leaks)" },
+      { item: "Commercial vehicle annual inspection" },
+      { item: "Semi-annual inspection (fleet)" },
+      { item: "Trip inspection / pre-trip inspection sheet" },
+      { item: "Air brake system inspection (leak-down / cut-in/cut-out)" },
+      { item: "Brake adjustment & pushrod travel documentation" },
+      { item: "DOT / safety compliance walkaround inspection" },
+      { item: "Lighting & reflector compliance check" },
+      { item: "Wheel end inspection (bearings / seals / hub oil level)" },
+      { item: "Suspension & steering compliance check" },
+      { item: "Fleet compliance package (CVIP + inspection report)" },
+    ],
+  },
+
   {
     title: "General Inspection Services",
     items: [
       { item: "Pre-purchase inspection" },
-      { item: "CVIP inspection (commercial)" },
       { item: "Annual safety inspection" },
       { item: "Multi-point inspection (50-point)" },
       { item: "Road test and report" },
+      // keep this as a “generic” option too (people search it)
+      { item: "CVIP inspection (commercial)" },
     ],
   },
+
   {
     title: "HVAC & Interior",
     items: [
@@ -114,9 +146,10 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Blower motor operation check" },
       { item: "Wiper blade replacement" },
       { item: "Washer fluid top-up" },
-      { item: "Cabin air filter replacement" }, // duplicated on purpose – commonly suggested
+      { item: "Cabin air filter replacement" },
     ],
   },
+
   {
     title: "Emissions & DEF (Diesel)",
     items: [
@@ -129,6 +162,7 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "NOx sensor diagnosis (diesel)" },
     ],
   },
+
   {
     title: "Customer-Reported Issues",
     items: [

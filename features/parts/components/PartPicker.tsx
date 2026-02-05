@@ -1,7 +1,13 @@
 // features/parts/components/PartPicker.tsx (FULL FILE REPLACEMENT)
+// Fixes:
+// 1) Unit cost auto-fills when selecting a part (uses parts.unit_cost OR parts.price).
+// 2) Quantity input is editable/clearable (string state), converts to number on confirm.
+// 3) Keeps strict typing (no `any`).
+// 4) Lint: stabilize selectedStocks via useMemo.
+
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -23,7 +29,11 @@ type VStock = {
   qty_reserved: number;
 };
 
-export type AvailabilityFlag = "in_stock" | "low_stock" | "out_of_stock" | "unknown";
+export type AvailabilityFlag =
+  | "in_stock"
+  | "low_stock"
+  | "out_of_stock"
+  | "unknown";
 
 export type PickedPart = {
   part_id: UUID;
@@ -63,6 +73,25 @@ function safeQty(n: number): number {
   return n <= 0 ? 1 : n;
 }
 
+function parseQty(raw: string): number {
+  if (raw.trim() === "") return 0;
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getPartDefaultUnitCost(p: PartRow | null): number | null {
+  if (!p) return null;
+
+  // common columns used across your app
+  const unitCost = (p as unknown as { unit_cost?: unknown }).unit_cost;
+  if (typeof unitCost === "number" && Number.isFinite(unitCost)) return unitCost;
+
+  const price = (p as unknown as { price?: unknown }).price;
+  if (typeof price === "number" && Number.isFinite(price)) return price;
+
+  return null;
+}
+
 export function PartPicker({
   open,
   channel = "partpicker",
@@ -76,17 +105,24 @@ export function PartPicker({
   onPick,
 }: Props) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [shopId, setShopId] = useState<UUID>("");
   const [search, setSearch] = useState(initialSearch);
+
   const [parts, setParts] = useState<PartRow[]>([]);
   const [stock, setStock] = useState<Record<UUID, VStock[]>>({});
   const [locs, setLocs] = useState<StockLoc[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const [selectedPartId, setSelectedPartId] = useState<UUID | null>(null);
   const [selectedLocId, setSelectedLocId] = useState<UUID | null>(null);
-  const [qty, setQty] = useState<number>(1);
+
+  // ✅ allow clearing/editing freely
+  const [qtyStr, setQtyStr] = useState<string>("1");
+  const qtyNum = useMemo(() => parseQty(qtyStr), [qtyStr]);
+
   const [unitCostStr, setUnitCostStr] = useState<string>("");
 
   const {
@@ -101,6 +137,21 @@ export function PartPicker({
     return (m?.id as UUID | undefined) ?? null;
   }, [locs]);
 
+  const selectedPart = useMemo(() => {
+    if (!selectedPartId) return null;
+    return parts.find((p) => (p.id as UUID) === selectedPartId) ?? null;
+  }, [parts, selectedPartId]);
+
+  const ensureUnitCostFilled = useCallback(
+    (p: PartRow | null) => {
+      // only fill if user hasn't typed anything
+      if (unitCostStr.trim().length > 0) return;
+      const def = getPartDefaultUnitCost(p);
+      if (typeof def === "number") setUnitCostStr(def.toFixed(2));
+    },
+    [unitCostStr],
+  );
+
   useEffect(() => {
     if (!open) return;
 
@@ -111,7 +162,7 @@ export function PartPicker({
       const userId = auth.user?.id;
       if (!userId) return;
 
-      // ✅ FIX: profiles are keyed by id = auth.uid() in the rest of your app
+      // profiles keyed by id = auth.uid()
       const { data: prof, error: pe } = await supabase
         .from("profiles")
         .select("shop_id")
@@ -237,12 +288,23 @@ export function PartPicker({
     if (!open) return;
     setSelectedPartId(null);
     setSelectedLocId(null);
-    setQty(1);
+    setQtyStr("1");
     setUnitCostStr("");
     setSearch(initialSearch);
   }, [open, initialSearch]);
 
-  const selectedStocks = selectedPartId ? stock[selectedPartId] ?? [] : [];
+  // ✅ when selecting a part, auto-fill unit cost (if empty)
+  useEffect(() => {
+    if (!open) return;
+    if (!selectedPartId) return;
+    ensureUnitCostFilled(selectedPart);
+  }, [open, selectedPartId, selectedPart, ensureUnitCostFilled]);
+
+  // ✅ LINT FIX: stabilize selectedStocks
+  const selectedStocks = useMemo(() => {
+    return selectedPartId ? stock[selectedPartId] ?? [] : [];
+  }, [selectedPartId, stock]);
+
   const locMap = useMemo(
     () => new Map<UUID, StockLoc>(locs.map((l) => [l.id as UUID, l])),
     [locs],
@@ -262,7 +324,7 @@ export function PartPicker({
   };
 
   const parsedUnitCost = useMemo(() => {
-    const n = parseFloat(unitCostStr);
+    const n = Number.parseFloat(unitCostStr);
     return Number.isFinite(n) ? n : 0;
   }, [unitCostStr]);
 
@@ -274,9 +336,9 @@ export function PartPicker({
       0,
     );
     if (totalAvail <= 0) return "Out of stock";
-    if (totalAvail < qty) return "Low / partial stock";
+    if (totalAvail < qtyNum) return "Low / partial stock";
     return "In stock";
-  }, [selectedPartId, selectedStocks, qty]);
+  }, [selectedPartId, selectedStocks, qtyNum]);
 
   const computeAvailabilityFlag = (): AvailabilityFlag | null => {
     if (!selectedPartId || !selectedStocks.length) return "unknown";
@@ -285,12 +347,15 @@ export function PartPicker({
       0,
     );
     if (totalAvail <= 0) return "out_of_stock";
-    if (totalAvail < qty) return "low_stock";
+    if (totalAvail < qtyNum) return "low_stock";
     return "in_stock";
   };
 
   const confirmPick = () => {
-    if (!selectedPartId || qty <= 0) return;
+    if (!selectedPartId) return;
+
+    const qty = qtyNum;
+    if (qty <= 0) return;
 
     const payload: PickedPart = {
       part_id: selectedPartId,
@@ -406,7 +471,8 @@ export function PartPicker({
                         const pid = await resolveSuggestionToPartId(s);
                         if (pid) {
                           setSelectedPartId(pid as UUID);
-                          setQty(safeQty(Number(s.qty ?? 1)));
+                          setQtyStr(String(safeQty(Number(s.qty ?? 1))));
+                          // unit cost will auto-fill from selectedPart once parts list includes it
                         } else {
                           setSearch(s.sku || s.name || "");
                         }
@@ -451,11 +517,20 @@ export function PartPicker({
                     <div className="p-3 text-sm text-neutral-400">No parts found.</div>
                   ) : (
                     parts.map((p) => {
-                      const active = selectedPartId === (p.id as UUID);
+                      const pid = p.id as UUID;
+                      const active = selectedPartId === pid;
                       return (
                         <button
-                          key={p.id as UUID}
-                          onClick={() => setSelectedPartId(p.id as UUID)}
+                          key={pid}
+                          onClick={() => {
+                            setSelectedPartId(pid);
+
+                            // ✅ auto-fill unit cost immediately from the clicked row (if empty)
+                            const def = getPartDefaultUnitCost(p);
+                            if (unitCostStr.trim().length === 0 && typeof def === "number") {
+                              setUnitCostStr(def.toFixed(2));
+                            }
+                          }}
                           className={[
                             "block w-full rounded-xl border px-3 py-2 text-left transition",
                             "border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 hover:bg-black/70",
@@ -496,10 +571,7 @@ export function PartPicker({
                   <div className="grid gap-2">
                     {selectedStocks
                       .slice()
-                      .sort(
-                        (a, b) =>
-                          Number(b.qty_available) - Number(a.qty_available),
-                      )
+                      .sort((a, b) => Number(b.qty_available) - Number(a.qty_available))
                       .map((s) => {
                         const l = locMap.get(s.location_id as UUID);
                         const checked =
@@ -521,8 +593,7 @@ export function PartPicker({
                                 {l?.code ?? "LOC"}
                               </div>
                               <div className="truncate text-xs text-neutral-500">
-                                {l?.name ??
-                                  String(s.location_id).slice(0, 6) + "…"}
+                                {l?.name ?? String(s.location_id).slice(0, 6) + "…"}
                               </div>
                             </div>
 
@@ -535,9 +606,7 @@ export function PartPicker({
                               name="loc"
                               className="ml-1"
                               checked={!!checked}
-                              onChange={() =>
-                                setSelectedLocId(s.location_id as UUID)
-                              }
+                              onChange={() => setSelectedLocId(s.location_id as UUID)}
                             />
                           </label>
                         );
@@ -549,14 +618,12 @@ export function PartPicker({
                   <div className="grid gap-1.5">
                     <div className="text-xs text-neutral-500">Quantity</div>
                     <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={qty}
-                      onChange={(e) =>
-                        setQty(Math.max(0, Number(e.target.value || 0)))
-                      }
+                      type="text"
+                      inputMode="decimal"
+                      value={qtyStr}
+                      onChange={(e) => setQtyStr(cleanNumericString(e.target.value))}
                       className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+                      placeholder="e.g. 1"
                     />
                   </div>
 
@@ -565,9 +632,7 @@ export function PartPicker({
                     <select
                       value={defaultLocId ?? ""}
                       onChange={(e) =>
-                        setSelectedLocId(
-                          (e.target.value || null) as UUID | null,
-                        )
+                        setSelectedLocId((e.target.value || null) as UUID | null)
                       }
                       className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100"
                     >
@@ -588,9 +653,7 @@ export function PartPicker({
                       type="text"
                       inputMode="decimal"
                       value={unitCostStr}
-                      onChange={(e) =>
-                        setUnitCostStr(cleanNumericString(e.target.value))
-                      }
+                      onChange={(e) => setUnitCostStr(cleanNumericString(e.target.value))}
                       className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
                       placeholder="e.g. 45.00"
                     />
@@ -606,7 +669,7 @@ export function PartPicker({
 
                 <div className="mt-4 flex justify-end">
                   <button
-                    disabled={!selectedPartId || qty <= 0}
+                    disabled={!selectedPartId || qtyNum <= 0}
                     onClick={confirmPick}
                     className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-5 py-2 text-sm font-semibold text-neutral-50 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-md transition hover:border-[color:var(--accent-copper-light,#fed7aa)] hover:bg-[color:var(--accent-copper,#f97316)]/20 disabled:cursor-not-allowed disabled:opacity-60"
                     type="button"
