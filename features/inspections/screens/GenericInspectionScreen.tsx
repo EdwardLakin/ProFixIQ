@@ -1,19 +1,10 @@
-// /features/inspections/screens/GenericInspectionScreen.tsx (FULL FILE REPLACEMENT)
-//
-// ✅ NO “manual focus” for VOICE:
-// - Voice context is NOT based on currentSectionIndex/currentItemIndex.
-// - We always build context by scoring speech against section titles/items,
-//   and we can fall back to ALL items across the whole inspection.
-//
-// Note: UI can still track progress, but voice targeting is always “any item, any time”.
-// No `any`.
-
+// GenericInspectionScreen.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
@@ -110,8 +101,10 @@ function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
     return mode === "metric" ? "mm" : "in";
   if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
 
+  // torque can still follow toggle (your call)
   if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
 
+  // leak rate / gov cut can be whatever you want — leaving as-is
   if (l.includes("leak rate")) return mode === "metric" ? "kPa/min" : "psi/min";
   if (l.includes("gov cut") || l.includes("warning"))
     return mode === "metric" ? "kPa" : "psi";
@@ -141,6 +134,7 @@ type NormalizedItem = {
   parts?: Array<{ description: string; qty: number }>;
   laborHours?: number | null;
 
+  // ✅ estimate state (optional)
   estimateSubmitted?: boolean;
   estimateSubmittedAt?: string | null;
   estimateLastUpdatedAt?: string | null;
@@ -245,11 +239,15 @@ function isAirCornerSection(
 ): boolean {
   const t = (title || "").toLowerCase();
 
+  // Explicit titles always win
   if (t.includes("air corner") || t.includes("air corner grid")) return true;
   if (t.includes("tires & brakes") && t.includes("air")) return true;
 
+  // Otherwise: must look like an air layout AND contain brake-only metrics
   const hasAirLayout = items.some((it) => AIR_RE.test(it.item ?? ""));
-  const hasBrakeMetric = items.some((it) => BRAKE_SIGNAL_RE.test(it.item ?? ""));
+  const hasBrakeMetric = items.some((it) =>
+    BRAKE_SIGNAL_RE.test(it.item ?? ""),
+  );
 
   return hasAirLayout && hasBrakeMetric;
 }
@@ -289,6 +287,7 @@ function isHydraulicCornerSection(
 ): boolean {
   const t = (title || "").toLowerCase();
 
+  // IMPORTANT: if this is a Tire Grid section, it is NOT the hydraulic corner grid
   if (isTireGridSection(title, items)) return false;
 
   if (t.includes("corner grid") || t.includes("tires & brakes — truck"))
@@ -424,12 +423,14 @@ function parseFollowUpPayload(raw: string): {
   const wantsConfirm = /\b(confirm|submit|yes)\b/.test(n);
   const wantsCancel = /\b(cancel|nevermind|never mind|clear)\b/.test(n);
 
+  // hours: 1, 1.0, 1.25 with optional "hr/hours"
   const hrMatch =
     n.match(/\b(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours)\b/) ??
     n.match(/\b(\d+(?:\.\d+)?)\s*h\b/);
 
   const laborHours = hrMatch && hrMatch[1] ? Number(hrMatch[1]) : null;
 
+  // remove the hours token so remainder becomes parts text
   let remainder = raw;
   if (hrMatch && hrMatch[0]) {
     const idx = remainder.toLowerCase().indexOf(hrMatch[0]);
@@ -442,6 +443,7 @@ function parseFollowUpPayload(raw: string): {
     }
   }
 
+  // remove "confirm/submit/cancel" words from remainder
   remainder = remainder
     .replace(
       /\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi,
@@ -450,6 +452,7 @@ function parseFollowUpPayload(raw: string): {
     .replace(/\s+/g, " ")
     .trim();
 
+  // parts: comma/and separated
   const partsText = remainder
     .replace(/\b(parts?|labor)\b/gi, " ")
     .replace(/\s+/g, " ")
@@ -467,7 +470,7 @@ function parseFollowUpPayload(raw: string): {
   return { laborHours, parts, wantsConfirm, wantsCancel };
 }
 
-/* ---------------------- NO-FOCUS voice context builder ---------------------- */
+/* ---------------------- section picker for strict_context (NO FOCUS) ---------------------- */
 
 function normalizeForMatch(s: string): string {
   return String(s ?? "")
@@ -480,11 +483,15 @@ function normalizeForMatch(s: string): string {
 function pickBestSectionIndexFromSpeech(
   speech: string,
   sections: InspectionSection[],
+  fallbackIndex: number,
 ): number {
   const n = normalizeForMatch(speech);
-  if (!n) return 0;
+  if (!n) return fallbackIndex;
 
-  let bestIdx = 0;
+  const wantsSection =
+    /\b(section|all\s+(ok|na|fail|rec)|mark\s+.*\b(ok|na|fail|rec)\b)\b/i.test(n);
+
+  let bestIdx = -1;
   let bestScore = 0;
 
   for (let i = 0; i < sections.length; i++) {
@@ -499,7 +506,6 @@ function pickBestSectionIndexFromSpeech(
       if (titleTokens.has(tok)) score += 2;
     }
 
-    // boosts
     if (title.includes("tire") && n.includes("tire")) score += 4;
     if (title.includes("brake") && n.includes("brake")) score += 4;
     if (title.includes("air") && n.includes("air")) score += 3;
@@ -511,34 +517,41 @@ function pickBestSectionIndexFromSpeech(
     }
   }
 
-  // ✅ For hands-free, always pick best scoring section if it has any signal.
-  // If no signal, default to 0 (but we still supply global items below if needed).
-  return bestScore >= 2 ? bestIdx : 0;
+  if (wantsSection && bestIdx >= 0 && bestScore >= 2) return bestIdx;
+  return fallbackIndex;
 }
 
 function buildInterpretCtxForSpeech(args: {
   speech: string;
   session: InspectionSession;
+  fallbackSectionIndex: number;
 }): { sectionTitle: string; items: string[] } | null {
-  const { speech, session } = args;
+  const { speech, session, fallbackSectionIndex } = args;
   const sections = session.sections ?? [];
   if (!sections.length) return null;
 
-  const chosenIdx = pickBestSectionIndexFromSpeech(speech, sections);
+  const chosenIdx = pickBestSectionIndexFromSpeech(
+    speech,
+    sections,
+    fallbackSectionIndex,
+  );
+
   const section = sections[chosenIdx];
-
-  const sectionItems = (section?.items ?? [])
+  const items = (section?.items ?? [])
     .map((it) => String(it.item ?? it.name ?? "").trim())
     .filter(Boolean);
 
-  // ✅ If chosen section has no items (or score was weak), fall back to ALL items
-  const allItems = sections
-    .flatMap((s) => s.items ?? [])
-    .map((it) => String(it.item ?? it.name ?? "").trim())
-    .filter(Boolean);
+  if (items.length === 0) {
+    const all = sections
+      .flatMap((s) => s.items ?? [])
+      .map((it) => String(it.item ?? it.name ?? "").trim())
+      .filter(Boolean);
 
-  const items = sectionItems.length > 0 ? sectionItems : allItems;
-  if (items.length === 0) return null;
+    return {
+      sectionTitle: String(section?.title ?? ""),
+      items: all,
+    };
+  }
 
   return {
     sectionTitle: String(section?.title ?? ""),
@@ -564,8 +577,10 @@ export default function GenericInspectionScreen(
     if (staged && Object.keys(staged).length > 0) {
       const merged = new URLSearchParams();
 
+      // URL first
       routeSp.forEach((value, key) => merged.set(key, value));
 
+      // staged second (wins)
       Object.entries(staged).forEach(([key, value]) => {
         if (value != null) merged.set(key, String(value));
       });
@@ -627,7 +642,8 @@ export default function GenericInspectionScreen(
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
+    if (Array.isArray(staged) && staged.length)
+      return normalizeSections(staged);
 
     try {
       const legacy =
@@ -700,7 +716,9 @@ export default function GenericInspectionScreen(
   const [isPaused, setIsPaused] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
-  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>({});
+  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>(
+    {},
+  );
   const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
 
   const [collapsedSections, setCollapsedSections] = useState<
@@ -714,7 +732,8 @@ export default function GenericInspectionScreen(
     "idle" | "connecting" | "listening" | "error"
   >("idle");
 
-  const isListening = voiceState === "listening" || voiceState === "connecting";
+  const isListening =
+    voiceState === "listening" || voiceState === "connecting";
 
   const [voicePulse, setVoicePulse] = useState(false);
   const pulseTimerRef = useRef<number | null>(null);
@@ -764,6 +783,7 @@ export default function GenericInspectionScreen(
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
 
+  // ✅ ensure voiceMeta exists for your UI + counters
   useEffect(() => {
     if (!session) return;
     if (!session.voiceMeta) {
@@ -876,6 +896,7 @@ export default function GenericInspectionScreen(
       );
   }, [session, draftKey, lockKey]);
 
+  // ✅ TS-safe label for ParsedCommand (no ".command" assumption)
   const commandLabel = (c: ParsedCommand): string => {
     const anyC = c as unknown as Record<string, unknown>;
     const cmd =
@@ -916,7 +937,9 @@ export default function GenericInspectionScreen(
     const sess = session;
 
     const ensureFollowUpBase = (): VoiceMeta => {
-      return sess.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } satisfies VoiceMeta);
+      return (
+        sess.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } satisfies VoiceMeta)
+      );
     };
 
     const setFollowUp = (
@@ -934,6 +957,7 @@ export default function GenericInspectionScreen(
 
     const followUp = sess.voiceMeta?.followUp ?? null;
 
+    // 1) If we are mid-follow-up, interpret this utterance as follow-up payload first
     if (followUp && followUp.kind === "parts_labor") {
       const parsed = parseFollowUpPayload(text);
 
@@ -949,6 +973,7 @@ export default function GenericInspectionScreen(
         return;
       }
 
+      // apply draft (labor/parts) to the targeted item
       const targetSec = followUp.sectionIndex;
       const targetItem = followUp.itemIndex;
 
@@ -970,6 +995,7 @@ export default function GenericInspectionScreen(
       const isFailOrRec = status === "fail" || status === "recommend";
 
       if (!isFailOrRec) {
+        // if tech changed it away, stop follow-up
         clearFollowUp();
         appendVoiceTrace({
           rawFinal: text,
@@ -1006,6 +1032,7 @@ export default function GenericInspectionScreen(
       const laborSummary = nextLabor != null ? `${nextLabor} hr` : "no labor";
 
       if (parsed.wantsConfirm || normalizeSpeech(text).includes("confirm")) {
+        // submit immediately
         clearFollowUp();
         toast.success(`Submitting: ${label} • ${laborSummary} • ${partsSummary}`);
         speakLocal("Confirmed. Submitting.");
@@ -1020,6 +1047,7 @@ export default function GenericInspectionScreen(
         return;
       }
 
+      // otherwise move to await_confirm
       setFollowUp({
         kind: "parts_labor",
         sectionIndex: targetSec,
@@ -1042,16 +1070,22 @@ export default function GenericInspectionScreen(
       return;
     }
 
+    // 2) Multi-command support in one message:
     const split = splitOnFollowUp(text);
     const mainText = split.tail ? split.head : text;
     const followTail = split.tail;
 
-    // ✅ NO FOCUS: build context from speech (best matching section) with safe global fallback.
+    const fallbackIdx =
+      typeof sess.currentSectionIndex === "number" ? sess.currentSectionIndex : 0;
+
     const ctx =
-      buildInterpretCtxForSpeech({ speech: mainText, session: sess }) ?? {
-        sectionTitle: "",
-        items: (sess.sections ?? [])
-          .flatMap((s) => s.items ?? [])
+      buildInterpretCtxForSpeech({
+        speech: mainText,
+        session: sess,
+        fallbackSectionIndex: fallbackIdx,
+      }) ?? {
+        sectionTitle: String(sess.sections?.[fallbackIdx]?.title ?? ""),
+        items: (sess.sections?.[fallbackIdx]?.items ?? [])
           .map((it) => String(it.item ?? it.name ?? "").trim())
           .filter(Boolean),
       };
@@ -1074,13 +1108,17 @@ export default function GenericInspectionScreen(
         return;
       }
 
+      // Track if this utterance likely created a FAIL/REC + note combo
       let sawFailOrRec = false;
       let sawNote = false;
 
-      let lastAppliedTarget: { sectionIndex: number; itemIndex: number } | null =
-        null;
+      // ✅ Track the item the resolver actually applied to (NO manual focus assumptions)
+      let lastAppliedTarget:
+        | { sectionIndex: number; itemIndex: number }
+        | null = null;
 
       for (const command of commands) {
+        // lightweight detection from parsed shape
         const anyC = command as unknown as Record<string, unknown>;
         const cmdType =
           typeof anyC.command === "string"
@@ -1090,7 +1128,9 @@ export default function GenericInspectionScreen(
               : "";
 
         if (cmdType === "status" || cmdType === "update_status") {
-          const st = String((anyC as { status?: unknown }).status ?? "").toLowerCase();
+          const st = String(
+            (anyC as { status?: unknown }).status ?? "",
+          ).toLowerCase();
           if (st === "fail" || st === "recommend") sawFailOrRec = true;
         }
         if (cmdType === "add" || cmdType === "add_note") {
@@ -1126,10 +1166,13 @@ export default function GenericInspectionScreen(
             rawSpeech: mainText,
           });
 
+          // ✅ capture resolver-selected target (preferred)
           const r = result as unknown as {
             appliedTarget?: { sectionIndex: number; itemIndex: number };
           };
-          if (r?.appliedTarget) lastAppliedTarget = r.appliedTarget;
+          if (r?.appliedTarget) {
+            lastAppliedTarget = r.appliedTarget;
+          }
 
           applied.push({ command: commandLabel(command), ok: true });
         } catch (err: unknown) {
@@ -1143,6 +1186,7 @@ export default function GenericInspectionScreen(
         }
       }
 
+      // ✅ If follow-up tail exists in same utterance, apply to the resolver target
       if (followTail && lastAppliedTarget) {
         const parsedFU = parseFollowUpPayload(followTail);
 
@@ -1167,7 +1211,8 @@ export default function GenericInspectionScreen(
             nextParts.length > 0
               ? nextParts.map((p) => `${p.qty}× ${p.description}`).join(", ")
               : "no parts";
-          const laborSummary = nextLabor != null ? `${nextLabor} hr` : "no labor";
+          const laborSummary =
+            nextLabor != null ? `${nextLabor} hr` : "no labor";
 
           if (parsedFU.wantsConfirm) {
             clearFollowUp();
@@ -1177,7 +1222,9 @@ export default function GenericInspectionScreen(
               lastAppliedTarget.itemIndex,
             );
             applied.push({ command: "follow_up_confirm_submit", ok: true });
-            toast.success(`Submitting: ${label} • ${laborSummary} • ${partsSummary}`);
+            toast.success(
+              `Submitting: ${label} • ${laborSummary} • ${partsSummary}`,
+            );
           } else {
             setFollowUp({
               kind: "parts_labor",
@@ -1194,6 +1241,8 @@ export default function GenericInspectionScreen(
           }
         }
       } else {
+        // ✅ Arm follow-up prompt when FAIL/REC + note occurs
+        //    Target the resolver-selected item if available; otherwise leave followup off (no manual focus)
         if (sawFailOrRec && sawNote && lastAppliedTarget) {
           setFollowUp({
             kind: "parts_labor",
@@ -1231,12 +1280,14 @@ export default function GenericInspectionScreen(
   };
 
   function maybeHandleWakeWord(raw: string): string | null {
+    // Normalize: lowercase, remove punctuation, collapse spaces
     const normalized = raw
       .toLowerCase()
       .replace(/[^\w\s]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
 
+    // allow optional "hey"
     const withoutHey = normalized.startsWith("hey ")
       ? normalized.slice(4).trim()
       : normalized;
@@ -1255,6 +1306,7 @@ export default function GenericInspectionScreen(
       return null;
     };
 
+    // If not awake: require wake prefix
     if (!wakeActive) {
       const match = matchPrefixFrom(withoutHey);
       if (!match) return null;
@@ -1268,7 +1320,8 @@ export default function GenericInspectionScreen(
       };
 
       const AudioCtxCtor =
-        window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
+        window.AudioContext ||
+        (window as WebkitAudioWindow).webkitAudioContext;
 
       if (AudioCtxCtor) {
         const ctx = new AudioCtxCtor();
@@ -1287,11 +1340,16 @@ export default function GenericInspectionScreen(
       }
 
       if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
-      wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
+      wakeTimeoutRef.current = window.setTimeout(
+        () => setWakeActive(false),
+        8000,
+      );
 
+      // IMPORTANT: return ONLY command remainder (wake stripped)
       return match.remainder;
     }
 
+    // If already awake: extend timeout, and ALSO strip prefix if user repeats it
     if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
     wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
 
@@ -1349,7 +1407,10 @@ export default function GenericInspectionScreen(
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
+  const submitAIForItem = async (
+    secIdx: number,
+    itemIdx: number,
+  ): Promise<void> => {
     if (!session) return;
 
     if (isLocked) {
@@ -1378,15 +1439,19 @@ export default function GenericInspectionScreen(
       laborHours?: number | null;
       name?: string | null;
 
+      // ✅ estimate state (persisted on the item)
       estimateSubmitted?: boolean;
       estimateSubmittedAt?: string | null;
       estimateLastUpdatedAt?: string | null;
 
+      // ✅ links so we UPDATE instead of creating new
       estimateWorkOrderLineId?: string | null;
       estimateQuoteLineId?: string | null;
     };
 
-    const manualParts: { description: string; qty: number }[] = Array.isArray(itExt.parts)
+    const manualParts: { description: string; qty: number }[] = Array.isArray(
+      itExt.parts,
+    )
       ? itExt.parts
       : [];
 
@@ -1395,18 +1460,20 @@ export default function GenericInspectionScreen(
 
     inFlightRef.current.add(key);
 
-    let toastId: string | undefined;
+    let toastId: string | number | undefined;
 
     try {
       const desc = String(it.item ?? itExt.name ?? "Item");
 
       const existingLineId =
-        typeof itExt.estimateWorkOrderLineId === "string" && itExt.estimateWorkOrderLineId
+        typeof itExt.estimateWorkOrderLineId === "string" &&
+        itExt.estimateWorkOrderLineId
           ? itExt.estimateWorkOrderLineId
           : null;
 
       const nowIso = new Date().toISOString();
 
+      // ✅ reuse quote line if already submitted (avoid duplicates)
       const existingQuoteId =
         typeof itExt.estimateQuoteLineId === "string" && itExt.estimateQuoteLineId
           ? itExt.estimateQuoteLineId
@@ -1459,7 +1526,11 @@ export default function GenericInspectionScreen(
       }
 
       const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
-        ...((suggestion.parts ?? []) as Array<{ name: string; qty: number; cost?: number }>),
+        ...((suggestion.parts ?? []) as Array<{
+          name: string;
+          qty: number;
+          cost?: number;
+        }>),
         ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
       ];
 
@@ -1498,6 +1569,7 @@ export default function GenericInspectionScreen(
           }))
           .filter((p) => p.description.length > 0 && p.qty > 0);
 
+        // ✅ UPDATE existing estimate/job (no new WO line)
         if (existingLineId) {
           const updateRes = await fetch(
             "/api/work-orders/lines/update-from-inspection",
@@ -1528,7 +1600,7 @@ export default function GenericInspectionScreen(
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 workOrderId,
-                jobId: existingLineId,
+                jobId: existingLineId, // ✅ attach to same job
                 notes: String(it.notes ?? "") || null,
                 items: cleanParts,
               }),
@@ -1555,6 +1627,7 @@ export default function GenericInspectionScreen(
           return;
         }
 
+        // ✅ CREATE new estimate/job (first submit)
         const created = await addWorkOrderLineFromSuggestion({
           workOrderId,
           description: desc,
@@ -1573,9 +1646,11 @@ export default function GenericInspectionScreen(
         const createdJobId =
           (createdId ? String(createdId) : null) || workOrderLineId || null;
 
+        // ✅ keep your counter for “lines added and sent for quote”
         updateInspection({
           voiceMeta: {
-            linesAddedToWorkOrder: (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
+            linesAddedToWorkOrder:
+              (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
           } satisfies VoiceMeta,
         });
 
@@ -1600,15 +1675,21 @@ export default function GenericInspectionScreen(
               return;
             }
 
-            toast.success("Line + parts request created from inspection", { id: toastId });
+            toast.success("Line + parts request created from inspection", {
+              id: toastId,
+            });
           } catch (err: unknown) {
             // eslint-disable-next-line no-console
             console.error("Parts request failed", err);
-            toast.error("Line added, but couldn't reach parts request service", { id: toastId });
+            toast.error("Line added, but couldn't reach parts request service", {
+              id: toastId,
+            });
             return;
           }
         } else {
-          toast.success("Added to work order (no parts requested)", { id: toastId });
+          toast.success("Added to work order (no parts requested)", {
+            id: toastId,
+          });
         }
 
         if (createdJobId) {
@@ -1695,6 +1776,18 @@ export default function GenericInspectionScreen(
     return () => obs.disconnect();
   }, [isEmbed]);
 
+  const currentSectionIndex =
+    typeof session?.currentSectionIndex === "number"
+      ? session.currentSectionIndex
+      : 0;
+
+  const safeSectionIndex =
+    session &&
+    currentSectionIndex >= 0 &&
+    currentSectionIndex < session.sections.length
+      ? currentSectionIndex
+      : 0;
+
   function autoAdvanceFrom(secIdx: number, itemIdx: number): void {
     if (!session) return;
     const sections = session.sections;
@@ -1710,16 +1803,27 @@ export default function GenericInspectionScreen(
       iIdx = 0;
     }
 
-    if (sIdx >= sections.length) return;
+    if (sIdx >= sections.length) {
+      const lastSectionIndex = sections.length - 1;
+      const lastItems = sections[lastSectionIndex].items ?? [];
+      const lastItemIndex = Math.max(0, lastItems.length - 1);
+      updateInspection({
+        currentSectionIndex: lastSectionIndex,
+        currentItemIndex: lastItemIndex,
+      });
+      return;
+    }
 
-    // (UI progress only; voice does not depend on these)
     updateInspection({
       currentSectionIndex: sIdx,
       currentItemIndex: iIdx,
     });
   }
 
-  function applyStatusToSection(sectionIndex: number, status: InspectionItemStatus): void {
+  function applyStatusToSection(
+    sectionIndex: number,
+    status: InspectionItemStatus,
+  ): void {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1732,8 +1836,10 @@ export default function GenericInspectionScreen(
     }));
 
     updateSection(sectionIndex, { ...section, items: nextItems });
-
-    // ✅ NO “manual focus” changes here (do NOT jump currentSectionIndex/currentItemIndex)
+    updateInspection({
+      currentSectionIndex: sectionIndex,
+      currentItemIndex: 0,
+    });
   }
 
   function toggleSectionCollapsed(sectionIndex: number): void {
@@ -1766,11 +1872,16 @@ export default function GenericInspectionScreen(
 
     updateSection(sectionIndex, { ...section, items: nextItems });
 
+    // reset inputs for just this section
     setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
     setNewItemUnits((prev) => ({ ...prev, [sectionIndex]: "" }));
   };
 
-  const handleAddAxleForSection = (sectionIndex: number, axleLabel: string): void => {
+  /** Add axle rows to an AIR corner grid section */
+  const handleAddAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1813,7 +1924,11 @@ export default function GenericInspectionScreen(
     updateSection(sectionIndex, { ...section, items: nextItems });
   };
 
-  const handleAddTireAxleForSection = (sectionIndex: number, axleLabel: string): void => {
+  /** Add axle rows to a TIRE grid section (tires only) */
+  const handleAddTireAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1880,9 +1995,11 @@ export default function GenericInspectionScreen(
   const hint =
     "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
 
+  // Bottom bar: ONLY Save progress + Finish inspection
   const actions = (
     <>
       <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
+
       {workOrderLineId && (
         <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
       )}
@@ -1890,7 +2007,9 @@ export default function GenericInspectionScreen(
   );
 
   if (!session || (session.sections?.length ?? 0) === 0) {
-    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
+    return (
+      <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
+    );
   }
 
   const body = (
@@ -1958,7 +2077,7 @@ export default function GenericInspectionScreen(
           </Button>
         </div>
 
-        <div className="mt-1 flex items-center justify-center">
+        <div className="mt-1 flex items-center justify-center gap-2">
           <div
             className={[
               "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur",
@@ -1994,9 +2113,16 @@ export default function GenericInspectionScreen(
                   : "Voice idle"}
             {voicePulse && <span className="text-emerald-200/80">• audio</span>}
           </div>
+
+          {/* ✅ visible wake indicator so you’re not relying on toast/beep */}
+          {wakeActive && (
+            <div className="rounded-full border border-orange-400/60 bg-orange-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-200">
+              Ready
+            </div>
+          )}
         </div>
 
-        {/* Summary + Voice Log (unchanged) */}
+        {/* ✅ UI ADDITION: Summary + Voice Log */}
         {(() => {
           const sections = session.sections ?? [];
           const allItems = sections.flatMap((s) => s.items ?? []);
@@ -2156,7 +2282,7 @@ export default function GenericInspectionScreen(
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
-            totalItems={session.sections[session.currentSectionIndex]?.items?.length ?? 0}
+            totalItems={session.sections[safeSectionIndex]?.items?.length ?? 0}
           />
         </div>
 
@@ -2184,9 +2310,9 @@ export default function GenericInspectionScreen(
                 /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
 
               return {
-                ...it,
+                ...it, // ✅ KEEP ORIGINAL SHAPE
                 value: it.value ?? "",
-                item: label,
+                item: label, // ✅ CRITICAL: preserve controlled input value
                 status: safeStatus,
                 notes: String(it.notes ?? it.note ?? ""),
                 unit: toggleControlled
@@ -2222,51 +2348,65 @@ export default function GenericInspectionScreen(
                 className={sectionCard}
                 data-section-index={sectionIndex}
               >
+                {/* ✅ Only show the OUTER header for GRID sections.
+                    Non-grid sections will use SectionDisplay’s header (prevents double title). */}
                 {useGrid && (
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className={sectionTitle}>{section.title}</h2>
 
-                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {safeSectionIndex === sectionIndex ? (
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => applyStatusToSection(sectionIndex, "ok")}
+                        >
+                          All OK
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => applyStatusToSection(sectionIndex, "fail")}
+                        >
+                          All Fail
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => applyStatusToSection(sectionIndex, "na")}
+                        >
+                          All NA
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() =>
+                            applyStatusToSection(sectionIndex, "recommend")
+                          }
+                        >
+                          All REC
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
+                          onClick={() => toggleSectionCollapsed(sectionIndex)}
+                        >
+                          {collapsed ? "Expand" : "Collapse"}
+                        </button>
+                      </div>
+                    ) : (
                       <button
                         type="button"
-                        disabled={isLocked}
-                        className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "ok")}
-                      >
-                        All OK
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "fail")}
-                      >
-                        All Fail
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "na")}
-                      >
-                        All NA
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
-                      >
-                        All REC
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
+                        className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
                         onClick={() => toggleSectionCollapsed(sectionIndex)}
                       >
                         {collapsed ? "Expand" : "Collapse"}
                       </button>
-                    </div>
+                    )}
                   </div>
                 )}
 
@@ -2328,7 +2468,9 @@ export default function GenericInspectionScreen(
                               }}
                               onUpdateLaborHours={(secIdx, itemIdx, hours) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
+                                updateItem(secIdx, itemIdx, {
+                                  laborHours: hours,
+                                } as ItemPatch);
                               }}
                             />
                           ) : (
@@ -2359,7 +2501,9 @@ export default function GenericInspectionScreen(
                               }}
                               onUpdateLaborHours={(secIdx, itemIdx, hours) => {
                                 if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
+                                updateItem(secIdx, itemIdx, {
+                                  laborHours: hours,
+                                } as ItemPatch);
                               }}
                             />
                           )
@@ -2380,37 +2524,67 @@ export default function GenericInspectionScreen(
                       ) : (
                         <>
                           <SectionDisplay
-                            title={section.title}
+                            title={section.title} // ✅ let SectionDisplay show the title (no duplicate header)
                             section={{ ...section, items: itemsWithHints }}
                             sectionIndex={sectionIndex}
                             showNotes
                             showPhotos
-                            onUpdateStatus={(secIdx, itemIdx, statusValue) => {
+                            onUpdateStatus={(
+                              secIdx: number,
+                              itemIdx: number,
+                              statusValue: InspectionItemStatus,
+                            ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { status: statusValue } as ItemPatch);
+                              updateItem(secIdx, itemIdx, {
+                                status: statusValue,
+                              } as ItemPatch);
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
-                            onUpdateNote={(secIdx, itemIdx, noteText) => {
+                            onUpdateNote={(
+                              secIdx: number,
+                              itemIdx: number,
+                              noteText: string,
+                            ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { notes: noteText } as ItemPatch);
+                              updateItem(secIdx, itemIdx, {
+                                notes: noteText,
+                              } as ItemPatch);
                             }}
-                            onUpload={(photoUrl, secIdx, itemIdx) => {
+                            onUpload={(
+                              photoUrl: string,
+                              secIdx: number,
+                              itemIdx: number,
+                            ) => {
                               if (guardLocked()) return;
-                              const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                              const prev =
+                                session.sections[secIdx].items[itemIdx].photoUrls ??
+                                [];
                               updateItem(secIdx, itemIdx, {
                                 photoUrls: [...prev, photoUrl],
                               } as ItemPatch);
                             }}
-                            onUpdateParts={(secIdx, itemIdx, parts) => {
+                            onUpdateParts={(
+                              secIdx: number,
+                              itemIdx: number,
+                              parts: { description: string; qty: number }[],
+                            ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { parts } as ItemPatch);
+                              updateItem(secIdx, itemIdx, {
+                                parts,
+                              } as ItemPatch);
                             }}
-                            onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                            onUpdateLaborHours={(
+                              secIdx: number,
+                              itemIdx: number,
+                              hours: number | null,
+                            ) => {
                               if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
+                              updateItem(secIdx, itemIdx, {
+                                laborHours: hours,
+                              } as ItemPatch);
                             }}
                             requireNoteForAI
-                            onSubmitAI={(secIdx, itemIdx) => {
+                            onSubmitAI={(secIdx: number, itemIdx: number) => {
                               void submitAIForItem(secIdx, itemIdx);
                             }}
                             isSubmittingAI={isSubmittingAI}
@@ -2488,8 +2662,8 @@ export default function GenericInspectionScreen(
         {!isEmbed && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
             <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P = Pass
-              &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+              <span className="font-semibold text-neutral-200">Legend:</span> P =
+              Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}
@@ -2514,7 +2688,9 @@ export default function GenericInspectionScreen(
     </div>
   );
 
-  if (isEmbed) return body;
+  if (isEmbed) {
+    return body;
+  }
 
   return (
     <PageShell
