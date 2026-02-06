@@ -57,6 +57,8 @@ type ItemExtended = InspectionSection["items"][number] & {
   laborHours?: number | null;
 };
 
+const COPPER = "var(--pfq-copper,#C57A4A)";
+
 function isGridSection(title: string): boolean {
   const t = (title || "").toLowerCase();
   return (
@@ -180,16 +182,22 @@ export default function SectionDisplay(props: SectionDisplayProps) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
         {gridSection ? (
           <div
-            className="text-left text-lg font-semibold tracking-wide text-accent"
-            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+            className="text-left text-lg font-semibold tracking-wide transition-opacity hover:opacity-80"
+            style={{
+              fontFamily: "Black Ops One, system-ui, sans-serif",
+              color: COPPER,
+            }}
           >
             {resolvedTitle}
           </div>
         ) : (
           <button
             onClick={toggleOpen}
-            className="text-left text-lg font-semibold tracking-wide text-accent transition-colors hover:text-accent/80"
-            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+            className="text-left text-lg font-semibold tracking-wide transition-opacity hover:opacity-80"
+            style={{
+              fontFamily: "Black Ops One, system-ui, sans-serif",
+              color: COPPER,
+            }}
             aria-expanded={open}
             type="button"
           >
@@ -281,7 +289,24 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               </div>
 
               {/* Mobile/Tablet: 1 col. Desktop: 2-up on lg+ */}
-              <div className="grid gap-2 p-2 lg:grid-cols-2 lg:gap-[2px] lg:bg-white/10 lg:p-[2px]">
+              <div
+                className={[
+                  "grid gap-2 p-2",
+                  "lg:grid-cols-2 lg:gap-[2px] lg:bg-white/10 lg:p-[2px]",
+
+                  // ✅ base (1-col): zebra per item, subtle (28/24)
+                  "[&>*:nth-child(odd)]:bg-black/28",
+                  "[&>*:nth-child(even)]:bg-black/24",
+                  "[&>*:nth-child(odd)]:hover:bg-white/[0.035]",
+                  "[&>*:nth-child(even)]:hover:bg-white/[0.045]",
+
+                  // ✅ lg (2-col): zebra per ROW (pairs), not checkerboard
+                  "lg:[&>*:nth-child(4n+1)]:bg-black/28 lg:[&>*:nth-child(4n+2)]:bg-black/28",
+                  "lg:[&>*:nth-child(4n+3)]:bg-black/24 lg:[&>*:nth-child(4n+4)]:bg-black/24",
+                  "lg:[&>*:nth-child(4n+1)]:hover:bg-white/[0.035] lg:[&>*:nth-child(4n+2)]:hover:bg-white/[0.035]",
+                  "lg:[&>*:nth-child(4n+3)]:hover:bg-white/[0.045] lg:[&>*:nth-child(4n+4)]:hover:bg-white/[0.045]",
+                ].join(" ")}
+              >
                 {items.map((item, itemIndex) => {
                   const keyBase =
                     (item.item ??
@@ -324,31 +349,16 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                   return (
                     <div
-  key={keyBase}
-  className={[
-    "relative rounded-lg px-3 py-3 transition-colors",
-
-    // ✅ base (mobile/tablet 1-col): alternate per item
-    itemIndex % 2 === 0 ? "bg-black/28" : "bg-black/24",
-    itemIndex % 2 === 0 ? "hover:bg-white/[0.035]" : "hover:bg-white/[0.045]",
-
-    // ✅ lg (2-col): alternate per ROW (two cards share the same tone)
-    "lg:[&:nth-child(4n+1)]:bg-black/28 lg:[&:nth-child(4n+2)]:bg-black/28",
-    "lg:[&:nth-child(4n+3)]:bg-black/24 lg:[&:nth-child(4n+4)]:bg-black/24",
-
-    // ✅ keep hover consistent on lg too
-    "lg:[&:nth-child(4n+1)]:hover:bg-white/[0.035] lg:[&:nth-child(4n+2)]:hover:bg-white/[0.035]",
-    "lg:[&:nth-child(4n+3)]:hover:bg-white/[0.045] lg:[&:nth-child(4n+4)]:hover:bg-white/[0.045]",
-
-    "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
-    rail,
-
-    submitted
-      ? "border border-emerald-500/40 shadow-[0_0_0_2px_rgba(16,185,129,0.12)]"
-      : "border border-white/0",
-  ].join(" ")}
->
-
+                      key={keyBase}
+                      className={[
+                        "relative rounded-lg px-3 py-3 transition-colors",
+                        "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
+                        rail,
+                        submitted
+                          ? "border border-emerald-500/40 shadow-[0_0_0_2px_rgba(16,185,129,0.12)]"
+                          : "border border-white/0",
+                      ].join(" ")}
+                    >
                       <InspectionItemCard
                         item={{
                           ...item,
@@ -388,7 +398,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                           ]);
                         };
 
-                        const updatePart = (idx: number, patch: Partial<PartRow>) => {
+                        const updatePart = (
+                          idx: number,
+                          patch: Partial<PartRow>,
+                        ) => {
                           const next = currentParts.map((p, i) =>
                             i === idx ? { ...p, ...patch } : p,
                           );
@@ -429,7 +442,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     <button
                                       type="button"
                                       className="text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:text-neutral-100"
-                                      onClick={() => setPartsOpen(k, !partsOpen)}
+                                      onClick={() =>
+                                        setPartsOpen(k, !partsOpen)
+                                      }
                                     >
                                       {partsOpen ? "Collapse" : "Expand"}
                                     </button>
@@ -464,6 +479,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                             {partsOpen && (
                               <>
+                                {/* Parts list */}
                                 <div className="space-y-2">
                                   {currentParts.map((p, pIdx) => (
                                     <div
@@ -482,7 +498,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                         placeholder="Part description"
                                         value={p.description}
                                         onChange={(e) =>
-                                          updatePart(pIdx, { description: e.target.value })
+                                          updatePart(pIdx, {
+                                            description: e.target.value,
+                                          })
                                         }
                                       />
                                       <input
@@ -497,16 +515,22 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                         placeholder="Qty"
                                         type="number"
                                         min={1}
-                                        value={Number.isFinite(p.qty) ? p.qty : ""}
+                                        value={
+                                          Number.isFinite(p.qty) ? p.qty : ""
+                                        }
                                         onChange={(e) =>
-                                          updatePart(pIdx, { qty: Number(e.target.value) || 1 })
+                                          updatePart(pIdx, {
+                                            qty: Number(e.target.value) || 1,
+                                          })
                                         }
                                       />
                                       <button
                                         type="button"
                                         className={[
                                           "text-[11px] text-red-300 hover:text-red-200",
-                                          lockInputs ? "opacity-40 pointer-events-none" : "",
+                                          lockInputs
+                                            ? "opacity-40 pointer-events-none"
+                                            : "",
                                         ].join(" ")}
                                         onClick={() => removePart(pIdx)}
                                       >
@@ -531,6 +555,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   </button>
                                 </div>
 
+                                {/* Labor */}
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
                                   <span className="text-[11px] text-neutral-400">
                                     Labor hours
@@ -551,7 +576,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     value={currentLabor ?? ""}
                                     onChange={(e) =>
                                       handleLaborChange(
-                                        e.target.value === "" ? null : Number(e.target.value) || 0,
+                                        e.target.value === ""
+                                          ? null
+                                          : Number(e.target.value) || 0,
                                       )
                                     }
                                   />
@@ -576,9 +603,13 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   size="sm"
                                   className="px-3"
                                   disabled={submitting}
-                                  onClick={() => onSubmitAI(sectionIndex, itemIndex)}
+                                  onClick={() =>
+                                    onSubmitAI(sectionIndex, itemIndex)
+                                  }
                                 >
-                                  {submitting ? "Submitting…" : "Submit for estimate"}
+                                  {submitting
+                                    ? "Submitting…"
+                                    : "Submit for estimate"}
                                 </Button>
                               );
                             }
@@ -591,7 +622,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   size="sm"
                                   className="px-3"
                                   disabled={submitting}
-                                  onClick={() => onSubmitAI(sectionIndex, itemIndex)}
+                                  onClick={() =>
+                                    onSubmitAI(sectionIndex, itemIndex)
+                                  }
                                 >
                                   {submitting ? "Updating…" : "Update estimate"}
                                 </Button>

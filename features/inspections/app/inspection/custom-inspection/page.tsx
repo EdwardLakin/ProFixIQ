@@ -387,7 +387,7 @@ export default function CustomBuilderPage() {
   const [oilEngineType, setOilEngineType] = useState<EngineType>("diesel");
 
   const [includeBatteryGrid, setIncludeBatteryGrid] = useState(false);
-  const [batteryCount, setBatteryCount] = useState<number>(2);
+  const [batteryCount,] = useState<number>(2);
 
   // toggles
   const [includeTireGrid, setIncludeTireGrid] = useState(false);
@@ -860,27 +860,7 @@ export default function CustomBuilderPage() {
             {includeBatteryGrid ? "Battery Grid: ON" : "Battery Grid: OFF"}
           </button>
 
-          {includeBatteryGrid && (
-            <div className="flex items-center gap-2 rounded-full border border-neutral-700 bg-black/70 px-3 py-2">
-              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                Count
-              </span>
-              <select
-                className="rounded-full border border-neutral-700 bg-neutral-900/80 px-3 py-1 text-[12px] text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                value={String(batteryCount)}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  setBatteryCount(Number.isFinite(next) ? next : 2);
-                }}
-              >
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={String(n)}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          
         </div>
 
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">

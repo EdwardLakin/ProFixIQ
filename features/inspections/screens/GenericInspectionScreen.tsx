@@ -1953,7 +1953,7 @@ export default function GenericInspectionScreen(
 
       <div className="relative space-y-4">
         <div className={headerCard}>
-          <div className="mb-3 border-b border-orange-500/40 pb-3 text-center">
+          <div className="mb-3 border-b border-orange-300/40 pb-3 text-center">
             <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
               Inspection
             </div>
@@ -1996,7 +1996,7 @@ export default function GenericInspectionScreen(
           <Button
             type="button"
             variant="outline"
-            className="w-full justify-center border-orange-500/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+            className="w-full justify-center border-orange-300/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
             onClick={(): void =>
               setUnit(unit === "metric" ? "imperial" : "metric")
             }
@@ -2208,7 +2208,7 @@ export default function GenericInspectionScreen(
           />
         </div>
 
-        <InspectionFormCtx.Provider value={{ updateItem }}>
+        <InspectionFormCtx.Provider value={{ updateItem, updateSection }}>
           {session.sections.map((section, sectionIndex) => {
             const itemsWithHints = (section.items ?? []).map((it) => {
               const stRaw = String(it.status ?? "").toLowerCase();
@@ -2491,7 +2491,7 @@ export default function GenericInspectionScreen(
                 </div>
                 <div className="flex flex-col gap-2 md:flex-row md:items-center">
                   <input
-                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                     placeholder="Item label (e.g. Rear frame inspection)"
                     value={newLabel}
                     onChange={(e) =>
@@ -2504,7 +2504,7 @@ export default function GenericInspectionScreen(
                   />
                   <div className="flex items-center gap-2 md:w-auto">
                     <select
-                      className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                      className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-400/70"
                       value={newUnit}
                       onChange={(e) =>
                         setNewItemUnits((prev) => ({
