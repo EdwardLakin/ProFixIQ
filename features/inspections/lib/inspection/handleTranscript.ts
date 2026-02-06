@@ -1,21 +1,25 @@
 // /features/inspections/lib/inspection/handleTranscript.ts (FULL FILE REPLACEMENT)
-// ✅ Patched to fix “tire grid doesn’t” + “sections don’t” + “battery rating not working”
 //
-// Key fixes:
-// 1) Stronger target resolver for tire grid + air axle phrases (steer 1 / drive 1 / left/right / inner/outer)
-// 2) Battery rating synonyms: “rated”, “rating”, “rated cca”, “battery one rating …”
-// 3) Section-wide status commands work even when server returns odd shapes
-// 4) Measurement parsing safety: numbers like “8 mil” → 8, unit “mm” when mil/millimeter spoken
-// 5) Lower risk of writing into wrong field: improved confidence + tie-breakers
+// ✅ NO MANUAL FOCUS
+// - This file NEVER uses currentSectionIndex/currentItemIndex.
+// - Targets are resolved from either explicit indices (if the model returns them)
+//   OR from raw speech + template labels.
+//
+// ✅ Fix goals covered
+// 1) Stronger resolver for tire + air axle phrases (steer/drive, left/right, inner/outer)
+// 2) Battery rating synonyms (“rated/rating/tested/test/cca”)
+// 3) Section-wide status commands work even if server returns odd shapes
+// 4) Unit inference from speech ("mil/mils" => "mm") + numeric coercion safety
+// 5) Higher confidence threshold to reduce wrong-field writes
 //
 // No `any`.
 
 import {
   ParsedCommand,
-  ParsedCommandNameBased,
   ParsedCommandIndexed,
-  InspectionSession,
+  ParsedCommandNameBased,
   InspectionItemStatus,
+  InspectionSession,
 } from "@inspections/lib/inspection/types";
 
 type UpdateInspectionFn = (updates: Partial<InspectionSession>) => void;
@@ -36,12 +40,20 @@ export type HandleTranscriptResult = {
 };
 
 interface HandleTranscriptArgs {
+  /**
+   * ✅ allow multi-commands in one transcript
+   */
   command: ParsedCommand | ParsedCommand[];
   session: InspectionSession;
   updateInspection: UpdateInspectionFn;
   updateItem: UpdateItemFn;
   updateSection: UpdateSectionFn;
   finishSession: () => void;
+
+  /**
+   * Raw transcript text (after wake-word stripping).
+   * Used for best-effort target resolution.
+   */
   rawSpeech?: string;
 }
 
@@ -97,7 +109,7 @@ const SYNONYMS: Array<{ re: RegExp; tokens: string[] }> = [
   { re: /\b(left)\b/i, tokens: ["left"] },
   { re: /\b(right)\b/i, tokens: ["right"] },
 
-  // axle phrases (important for Air Tire Grid)
+  // axle phrases (important for air/tire grids)
   { re: /\b(steer)\b/i, tokens: ["steer", "steer 1", "axle 1"] },
   { re: /\b(drive)\b/i, tokens: ["drive", "drive 1"] },
   { re: /\b(tag)\b/i, tokens: ["tag"] },
@@ -171,7 +183,7 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
-    // axle/side are crucial for air tire grid
+    // axle/side are crucial for air/tire grids
     if (tok === "steer" || tok === "steer 1") {
       if (l.includes("steer")) score += 40;
       continue;
@@ -207,8 +219,9 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       tok === "shoes" ||
       tok === "lining"
     ) {
-      if (l.includes("pad") || l.includes("shoe") || l.includes("lining"))
+      if (l.includes("pad") || l.includes("shoe") || l.includes("lining")) {
         score += 22;
+      }
       continue;
     }
     if (tok === "rotor" || tok === "drum") {
@@ -226,11 +239,11 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
     if (tok === "rated" || tok === "rating") {
-      if (l.includes("rated")) score += 30;
+      if (l.includes("rated") || l.includes("rating")) score += 30;
       continue;
     }
     if (tok === "tested" || tok === "test") {
-      if (l.includes("tested")) score += 30;
+      if (l.includes("tested") || l.includes("test")) score += 30;
       continue;
     }
 
@@ -244,13 +257,19 @@ function scoreLabel(label: string, hintTokens: string[]): number {
   }
 
   // bonus if label contains both axle+side when those hints exist
-  const wantsSteer = hintTokens.includes("steer") || hintTokens.includes("steer 1");
-  const wantsDrive = hintTokens.includes("drive") || hintTokens.includes("drive 1");
+  const wantsSteer =
+    hintTokens.includes("steer") || hintTokens.includes("steer 1");
+  const wantsDrive =
+    hintTokens.includes("drive") || hintTokens.includes("drive 1");
   const wantsLeft = hintTokens.includes("left");
   const wantsRight = hintTokens.includes("right");
 
-  if ((wantsSteer && l.includes("steer")) || (wantsDrive && l.includes("drive"))) score += 10;
-  if ((wantsLeft && l.includes("left")) || (wantsRight && l.includes("right"))) score += 10;
+  if ((wantsSteer && l.includes("steer")) || (wantsDrive && l.includes("drive"))) {
+    score += 10;
+  }
+  if ((wantsLeft && l.includes("left")) || (wantsRight && l.includes("right"))) {
+    score += 10;
+  }
 
   return score;
 }
@@ -261,16 +280,31 @@ function scoreSectionTitle(title: string, hintTokens: string[]): number {
 
   let score = 0;
 
-  // direct contains match
   for (const tok of hintTokens) {
     if (!tok) continue;
     if (tok.length >= 4 && t.includes(tok)) score += 8;
   }
 
-  // category boosts
-  const wantsBattery = hintTokens.includes("cca") || hintTokens.includes("cranking") || hintTokens.includes("voltage");
-  const wantsTire = hintTokens.includes("tread") || hintTokens.includes("pressure") || hintTokens.includes("tire pressure") || hintTokens.includes("tread depth");
-  const wantsBrake = hintTokens.includes("pad") || hintTokens.includes("rotor") || hintTokens.includes("drum") || hintTokens.includes("pushrod");
+  const wantsBattery =
+    hintTokens.includes("cca") ||
+    hintTokens.includes("cranking") ||
+    hintTokens.includes("voltage") ||
+    hintTokens.includes("soc");
+
+  const wantsTire =
+    hintTokens.includes("tread") ||
+    hintTokens.includes("pressure") ||
+    hintTokens.includes("tire pressure") ||
+    hintTokens.includes("tread depth") ||
+    hintTokens.includes("inner") ||
+    hintTokens.includes("outer");
+
+  const wantsBrake =
+    hintTokens.includes("pad") ||
+    hintTokens.includes("rotor") ||
+    hintTokens.includes("drum") ||
+    hintTokens.includes("pushrod") ||
+    hintTokens.includes("push rod");
 
   if (t.includes("battery") && wantsBattery) score += 20;
   if (t.includes("tire") && wantsTire) score += 20;
@@ -314,7 +348,10 @@ function resolveTargetFromSpeech(args: {
       if (total <= 0) continue;
 
       if (!best || total > best.score) {
-        best = { score: total, target: { sectionIndex: sIdx, itemIndex: iIdx } };
+        best = {
+          score: total,
+          target: { sectionIndex: sIdx, itemIndex: iIdx },
+        };
       }
     }
   }
@@ -357,14 +394,19 @@ function clampTargetToSession(session: InspectionSession, t: Target): Target {
   const itemsLen = session.sections[sIdx]?.items?.length ?? 0;
 
   const iIdx =
-    typeof t.itemIndex === "number" && t.itemIndex >= 0 && t.itemIndex < itemsLen
+    typeof t.itemIndex === "number" &&
+    t.itemIndex >= 0 &&
+    t.itemIndex < itemsLen
       ? t.itemIndex
       : 0;
 
   return { sectionIndex: sIdx, itemIndex: iIdx };
 }
 
-function resolveSectionIndexByName(session: InspectionSession, sectionName: string): number {
+function resolveSectionIndexByName(
+  session: InspectionSession,
+  sectionName: string,
+): number {
   const needle = norm(sectionName);
   if (!needle) return -1;
 
@@ -388,7 +430,12 @@ function coerceNumericValue(raw: unknown): number | undefined {
   if (typeof raw === "number") return Number.isFinite(raw) ? raw : undefined;
   const s = String(raw ?? "").trim();
   if (!s) return undefined;
-  const n = Number(s);
+
+  // pull first number even if unit words exist (e.g., "8 mil")
+  const m = s.match(/-?\d+(?:\.\d+)?/);
+  if (!m) return undefined;
+
+  const n = Number(m[0]);
   return Number.isFinite(n) ? n : undefined;
 }
 
@@ -400,10 +447,11 @@ function inferUnitFromSpeech(speech: string): string | undefined {
   if (/\b(inch|inches|\bin\b)\b/.test(t)) return "in";
   if (/\b(mm|millimeter|millimetre)\b/.test(t)) return "mm";
 
-  // tech says “mil” a lot for tread/pads — map to mm for your grids
+  // tech says “mil/mils” for tread/pads — map to mm for your grids
   if (/\b(mil|mils)\b/.test(t)) return "mm";
 
   if (/\bcca\b/.test(t)) return "CCA";
+
   return undefined;
 }
 
@@ -485,7 +533,7 @@ async function applySingleCommand(args: {
     const rec = c as unknown;
     if (isRecord(rec)) {
       parts = coercePartsFromUnknown(rec.parts);
-      laborHours = coerceLaborHoursFromUnknown(rec.laborHours ?? rec.laborHours);
+      laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
     }
   } else {
     const c = command as ParsedCommandNameBased;
@@ -506,16 +554,19 @@ async function applySingleCommand(args: {
     }
   }
 
-  // ✅ If a numeric value exists but unit is missing, infer from raw speech
+  // If a numeric value exists but unit is missing, infer from raw speech
   const inferredUnit = rawSpeech ? inferUnitFromSpeech(rawSpeech) : undefined;
   if (!unit && inferredUnit) unit = inferredUnit;
 
-  // ✅ If value is a numeric string, normalize it
+  // If value is numeric-ish, normalize it (supports "8 mil")
   const n = coerceNumericValue(value);
   if (n !== undefined) value = n;
 
   /**
-   * ✅ SECTION-WIDE STATUS
+   * ✅ SECTION-WIDE STATUS (supports “mark brake section ok”)
+   * Works whether the model returns:
+   * - type: "section_status", section: "brakes", status: "ok"
+   * - command: "section_status", sectionIndex: X, status: "ok"
    */
   if (
     mode === "section_status" ||
@@ -534,7 +585,7 @@ async function applySingleCommand(args: {
 
     if (sIdx < 0) return null;
 
-    // sometimes server sticks status in weird places; try a safe fallback
+    // sometimes status is in odd shapes; try safe fallback
     const st =
       status ??
       normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
@@ -549,7 +600,7 @@ async function applySingleCommand(args: {
     return itemsLen > 0 ? { sectionIndex: sIdx, itemIndex: 0 } : null;
   }
 
-  // 1) Explicit indices
+  // 1) Explicit indices (NOT “manual focus”)
   if (
     typeof explicitSectionIndex === "number" &&
     typeof explicitItemIndex === "number"
@@ -602,7 +653,7 @@ async function applySingleCommand(args: {
     return safe;
   }
 
-  // 2) Name matching
+  // 2) Name matching (fast path)
   const sectionIndexByName =
     section && section.trim().length > 0
       ? session.sections.findIndex((sec) =>
@@ -624,7 +675,7 @@ async function applySingleCommand(args: {
   if (sectionIndexByName >= 0 && itemIndexByName >= 0) {
     target = { sectionIndex: sectionIndexByName, itemIndex: itemIndexByName };
   } else {
-    // 3) Resolve using RAW SPEECH first
+    // 3) Resolve using RAW SPEECH first, then parsed fields
     const rawHint = String(rawSpeech ?? "").trim();
     const parsedHint = buildSpeechHintFromCommand({ section, item, note, unit });
 
@@ -666,17 +717,20 @@ async function applySingleCommand(args: {
       if (status) itemUpdates.status = status;
       break;
     }
+
     case "update_value":
     case "measurement": {
       if (value !== undefined) itemUpdates.value = value;
       if (unit) itemUpdates.unit = unit;
       break;
     }
+
     case "add_note":
     case "add": {
       if (note) itemUpdates.notes = note;
       break;
     }
+
     case "recommend": {
       if (note) {
         itemUpdates.status = "recommend";
@@ -685,6 +739,7 @@ async function applySingleCommand(args: {
       }
       break;
     }
+
     default:
       break;
   }
@@ -708,6 +763,7 @@ export async function handleTranscriptFn({
   finishSession,
   rawSpeech,
 }: HandleTranscriptArgs): Promise<HandleTranscriptResult> {
+  // not used in this file — kept for signature compatibility
   void updateInspection;
   void updateSection;
   void finishSession;

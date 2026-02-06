@@ -1,7 +1,13 @@
-// =========================
-// GenericInspectionScreen.tsx
-// PART 1 / 4
-// =========================
+// /features/inspections/screens/GenericInspectionScreen.tsx (FULL FILE REPLACEMENT)
+//
+// ✅ NO “manual focus” for VOICE:
+// - Voice context is NOT based on currentSectionIndex/currentItemIndex.
+// - We always build context by scoring speech against section titles/items,
+//   and we can fall back to ALL items across the whole inspection.
+//
+// Note: UI can still track progress, but voice targeting is always “any item, any time”.
+// No `any`.
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -104,10 +110,8 @@ function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
     return mode === "metric" ? "mm" : "in";
   if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
 
-  // torque can still follow toggle (your call)
   if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
 
-  // leak rate / gov cut can be whatever you want — leaving as-is
   if (l.includes("leak rate")) return mode === "metric" ? "kPa/min" : "psi/min";
   if (l.includes("gov cut") || l.includes("warning"))
     return mode === "metric" ? "kPa" : "psi";
@@ -137,7 +141,6 @@ type NormalizedItem = {
   parts?: Array<{ description: string; qty: number }>;
   laborHours?: number | null;
 
-  // ✅ estimate state (optional)
   estimateSubmitted?: boolean;
   estimateSubmittedAt?: string | null;
   estimateLastUpdatedAt?: string | null;
@@ -242,15 +245,11 @@ function isAirCornerSection(
 ): boolean {
   const t = (title || "").toLowerCase();
 
-  // Explicit titles always win
   if (t.includes("air corner") || t.includes("air corner grid")) return true;
   if (t.includes("tires & brakes") && t.includes("air")) return true;
 
-  // Otherwise: must look like an air layout AND contain brake-only metrics
   const hasAirLayout = items.some((it) => AIR_RE.test(it.item ?? ""));
-  const hasBrakeMetric = items.some((it) =>
-    BRAKE_SIGNAL_RE.test(it.item ?? ""),
-  );
+  const hasBrakeMetric = items.some((it) => BRAKE_SIGNAL_RE.test(it.item ?? ""));
 
   return hasAirLayout && hasBrakeMetric;
 }
@@ -290,7 +289,6 @@ function isHydraulicCornerSection(
 ): boolean {
   const t = (title || "").toLowerCase();
 
-  // IMPORTANT: if this is a Tire Grid section, it is NOT the hydraulic corner grid
   if (isTireGridSection(title, items)) return false;
 
   if (t.includes("corner grid") || t.includes("tires & brakes — truck"))
@@ -426,14 +424,12 @@ function parseFollowUpPayload(raw: string): {
   const wantsConfirm = /\b(confirm|submit|yes)\b/.test(n);
   const wantsCancel = /\b(cancel|nevermind|never mind|clear)\b/.test(n);
 
-  // hours: 1, 1.0, 1.25 with optional "hr/hours"
   const hrMatch =
     n.match(/\b(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours)\b/) ??
     n.match(/\b(\d+(?:\.\d+)?)\s*h\b/);
 
   const laborHours = hrMatch && hrMatch[1] ? Number(hrMatch[1]) : null;
 
-  // remove the hours token so remainder becomes parts text
   let remainder = raw;
   if (hrMatch && hrMatch[0]) {
     const idx = remainder.toLowerCase().indexOf(hrMatch[0]);
@@ -446,7 +442,6 @@ function parseFollowUpPayload(raw: string): {
     }
   }
 
-  // remove "confirm/submit/cancel" words from remainder
   remainder = remainder
     .replace(
       /\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi,
@@ -455,7 +450,6 @@ function parseFollowUpPayload(raw: string): {
     .replace(/\s+/g, " ")
     .trim();
 
-  // parts: comma/and separated
   const partsText = remainder
     .replace(/\b(parts?|labor)\b/gi, " ")
     .replace(/\s+/g, " ")
@@ -473,10 +467,84 @@ function parseFollowUpPayload(raw: string): {
   return { laborHours, parts, wantsConfirm, wantsCancel };
 }
 
-// =========================
-// GenericInspectionScreen.tsx
-// PART 2 / 4
-// =========================
+/* ---------------------- NO-FOCUS voice context builder ---------------------- */
+
+function normalizeForMatch(s: string): string {
+  return String(s ?? "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pickBestSectionIndexFromSpeech(
+  speech: string,
+  sections: InspectionSection[],
+): number {
+  const n = normalizeForMatch(speech);
+  if (!n) return 0;
+
+  let bestIdx = 0;
+  let bestScore = 0;
+
+  for (let i = 0; i < sections.length; i++) {
+    const title = normalizeForMatch(String(sections[i]?.title ?? ""));
+    if (!title) continue;
+
+    const titleTokens = new Set(title.split(" ").filter((t) => t.length >= 3));
+    const speechTokens = n.split(" ").filter((t) => t.length >= 3);
+
+    let score = 0;
+    for (const tok of speechTokens) {
+      if (titleTokens.has(tok)) score += 2;
+    }
+
+    // boosts
+    if (title.includes("tire") && n.includes("tire")) score += 4;
+    if (title.includes("brake") && n.includes("brake")) score += 4;
+    if (title.includes("air") && n.includes("air")) score += 3;
+    if (title.includes("battery") && n.includes("battery")) score += 4;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+
+  // ✅ For hands-free, always pick best scoring section if it has any signal.
+  // If no signal, default to 0 (but we still supply global items below if needed).
+  return bestScore >= 2 ? bestIdx : 0;
+}
+
+function buildInterpretCtxForSpeech(args: {
+  speech: string;
+  session: InspectionSession;
+}): { sectionTitle: string; items: string[] } | null {
+  const { speech, session } = args;
+  const sections = session.sections ?? [];
+  if (!sections.length) return null;
+
+  const chosenIdx = pickBestSectionIndexFromSpeech(speech, sections);
+  const section = sections[chosenIdx];
+
+  const sectionItems = (section?.items ?? [])
+    .map((it) => String(it.item ?? it.name ?? "").trim())
+    .filter(Boolean);
+
+  // ✅ If chosen section has no items (or score was weak), fall back to ALL items
+  const allItems = sections
+    .flatMap((s) => s.items ?? [])
+    .map((it) => String(it.item ?? it.name ?? "").trim())
+    .filter(Boolean);
+
+  const items = sectionItems.length > 0 ? sectionItems : allItems;
+  if (items.length === 0) return null;
+
+  return {
+    sectionTitle: String(section?.title ?? ""),
+    items,
+  };
+}
 
 /* -------------------------------------------------------------------- */
 /* Component                                                            */
@@ -496,10 +564,8 @@ export default function GenericInspectionScreen(
     if (staged && Object.keys(staged).length > 0) {
       const merged = new URLSearchParams();
 
-      // URL first
       routeSp.forEach((value, key) => merged.set(key, value));
 
-      // staged second (wins)
       Object.entries(staged).forEach(([key, value]) => {
         if (value != null) merged.set(key, String(value));
       });
@@ -561,8 +627,7 @@ export default function GenericInspectionScreen(
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length)
-      return normalizeSections(staged);
+    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
 
     try {
       const legacy =
@@ -635,9 +700,7 @@ export default function GenericInspectionScreen(
   const [isPaused, setIsPaused] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
-  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>(
-    {},
-  );
+  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>({});
   const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
 
   const [collapsedSections, setCollapsedSections] = useState<
@@ -651,8 +714,7 @@ export default function GenericInspectionScreen(
     "idle" | "connecting" | "listening" | "error"
   >("idle");
 
-  const isListening =
-    voiceState === "listening" || voiceState === "connecting";
+  const isListening = voiceState === "listening" || voiceState === "connecting";
 
   const [voicePulse, setVoicePulse] = useState(false);
   const pulseTimerRef = useRef<number | null>(null);
@@ -702,7 +764,6 @@ export default function GenericInspectionScreen(
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
 
-  // ✅ ensure voiceMeta exists for your UI + counters
   useEffect(() => {
     if (!session) return;
     if (!session.voiceMeta) {
@@ -815,7 +876,6 @@ export default function GenericInspectionScreen(
       );
   }, [session, draftKey, lockKey]);
 
-  // ✅ TS-safe label for ParsedCommand (no ".command" assumption)
   const commandLabel = (c: ParsedCommand): string => {
     const anyC = c as unknown as Record<string, unknown>;
     const cmd =
@@ -850,20 +910,13 @@ export default function GenericInspectionScreen(
     updateInspection({ voiceTrace: trimmed });
   };
 
-  // =========================
-// GenericInspectionScreen.tsx
-// PART 3 / 4
-// =========================
-
   const handleTranscript = async (text: string): Promise<void> => {
     if (!session || guardLocked()) return;
 
     const sess = session;
 
     const ensureFollowUpBase = (): VoiceMeta => {
-      return (
-        sess.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } satisfies VoiceMeta)
-      );
+      return sess.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } satisfies VoiceMeta);
     };
 
     const setFollowUp = (
@@ -881,7 +934,6 @@ export default function GenericInspectionScreen(
 
     const followUp = sess.voiceMeta?.followUp ?? null;
 
-    // 1) If we are mid-follow-up, interpret this utterance as follow-up payload first
     if (followUp && followUp.kind === "parts_labor") {
       const parsed = parseFollowUpPayload(text);
 
@@ -897,7 +949,6 @@ export default function GenericInspectionScreen(
         return;
       }
 
-      // apply draft (labor/parts) to the targeted item
       const targetSec = followUp.sectionIndex;
       const targetItem = followUp.itemIndex;
 
@@ -919,7 +970,6 @@ export default function GenericInspectionScreen(
       const isFailOrRec = status === "fail" || status === "recommend";
 
       if (!isFailOrRec) {
-        // if tech changed it away, stop follow-up
         clearFollowUp();
         appendVoiceTrace({
           rawFinal: text,
@@ -956,7 +1006,6 @@ export default function GenericInspectionScreen(
       const laborSummary = nextLabor != null ? `${nextLabor} hr` : "no labor";
 
       if (parsed.wantsConfirm || normalizeSpeech(text).includes("confirm")) {
-        // submit immediately
         clearFollowUp();
         toast.success(`Submitting: ${label} • ${laborSummary} • ${partsSummary}`);
         speakLocal("Confirmed. Submitting.");
@@ -971,7 +1020,6 @@ export default function GenericInspectionScreen(
         return;
       }
 
-      // otherwise move to await_confirm
       setFollowUp({
         kind: "parts_labor",
         sectionIndex: targetSec,
@@ -994,24 +1042,19 @@ export default function GenericInspectionScreen(
       return;
     }
 
-    // 2) Multi-command support in one message:
-    //    If the tech says "... fail ... follow up 1.0hr ... confirm", we apply main commands, then parse follow-up tail.
     const split = splitOnFollowUp(text);
     const mainText = split.tail ? split.head : text;
     const followTail = split.tail;
 
-    const activeSectionTitle =
-      String(sess.sections?.[sess.currentSectionIndex ?? 0]?.title ?? "").trim();
-
-    const activeItems =
-      sess.sections?.[sess.currentSectionIndex ?? 0]?.items ?? [];
-
-    const ctx = {
-      sectionTitle: activeSectionTitle,
-      items: activeItems
-        .map((it) => String(it.item ?? (it as { name?: unknown }).name ?? "").trim())
-        .filter(Boolean),
-    };
+    // ✅ NO FOCUS: build context from speech (best matching section) with safe global fallback.
+    const ctx =
+      buildInterpretCtxForSpeech({ speech: mainText, session: sess }) ?? {
+        sectionTitle: "",
+        items: (sess.sections ?? [])
+          .flatMap((s) => s.items ?? [])
+          .map((it) => String(it.item ?? it.name ?? "").trim())
+          .filter(Boolean),
+      };
 
     let commands: ParsedCommand[] = [];
     const applied: VoiceCommandApplyResult[] = [];
@@ -1031,17 +1074,13 @@ export default function GenericInspectionScreen(
         return;
       }
 
-      // Track if this utterance likely created a FAIL/REC + note combo
       let sawFailOrRec = false;
       let sawNote = false;
 
-      // ✅ Track the item the resolver actually applied to (NO manual focus assumptions)
-      let lastAppliedTarget:
-        | { sectionIndex: number; itemIndex: number }
-        | null = null;
+      let lastAppliedTarget: { sectionIndex: number; itemIndex: number } | null =
+        null;
 
       for (const command of commands) {
-        // lightweight detection from parsed shape
         const anyC = command as unknown as Record<string, unknown>;
         const cmdType =
           typeof anyC.command === "string"
@@ -1087,13 +1126,10 @@ export default function GenericInspectionScreen(
             rawSpeech: mainText,
           });
 
-          // ✅ capture resolver-selected target (preferred)
           const r = result as unknown as {
             appliedTarget?: { sectionIndex: number; itemIndex: number };
           };
-          if (r?.appliedTarget) {
-            lastAppliedTarget = r.appliedTarget;
-          }
+          if (r?.appliedTarget) lastAppliedTarget = r.appliedTarget;
 
           applied.push({ command: commandLabel(command), ok: true });
         } catch (err: unknown) {
@@ -1107,7 +1143,6 @@ export default function GenericInspectionScreen(
         }
       }
 
-      // ✅ If follow-up tail exists in same utterance, apply to the resolver target
       if (followTail && lastAppliedTarget) {
         const parsedFU = parseFollowUpPayload(followTail);
 
@@ -1132,8 +1167,7 @@ export default function GenericInspectionScreen(
             nextParts.length > 0
               ? nextParts.map((p) => `${p.qty}× ${p.description}`).join(", ")
               : "no parts";
-          const laborSummary =
-            nextLabor != null ? `${nextLabor} hr` : "no labor";
+          const laborSummary = nextLabor != null ? `${nextLabor} hr` : "no labor";
 
           if (parsedFU.wantsConfirm) {
             clearFollowUp();
@@ -1143,9 +1177,7 @@ export default function GenericInspectionScreen(
               lastAppliedTarget.itemIndex,
             );
             applied.push({ command: "follow_up_confirm_submit", ok: true });
-            toast.success(
-              `Submitting: ${label} • ${laborSummary} • ${partsSummary}`,
-            );
+            toast.success(`Submitting: ${label} • ${laborSummary} • ${partsSummary}`);
           } else {
             setFollowUp({
               kind: "parts_labor",
@@ -1162,8 +1194,6 @@ export default function GenericInspectionScreen(
           }
         }
       } else {
-        // ✅ Arm follow-up prompt when FAIL/REC + note occurs
-        //    Target the resolver-selected item if available; otherwise leave followup off (no manual focus)
         if (sawFailOrRec && sawNote && lastAppliedTarget) {
           setFollowUp({
             kind: "parts_labor",
@@ -1201,14 +1231,12 @@ export default function GenericInspectionScreen(
   };
 
   function maybeHandleWakeWord(raw: string): string | null {
-    // Normalize: lowercase, remove punctuation, collapse spaces
     const normalized = raw
       .toLowerCase()
       .replace(/[^\w\s]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
 
-    // allow optional "hey"
     const withoutHey = normalized.startsWith("hey ")
       ? normalized.slice(4).trim()
       : normalized;
@@ -1227,7 +1255,6 @@ export default function GenericInspectionScreen(
       return null;
     };
 
-    // If not awake: require wake prefix
     if (!wakeActive) {
       const match = matchPrefixFrom(withoutHey);
       if (!match) return null;
@@ -1241,8 +1268,7 @@ export default function GenericInspectionScreen(
       };
 
       const AudioCtxCtor =
-        window.AudioContext ||
-        (window as WebkitAudioWindow).webkitAudioContext;
+        window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
 
       if (AudioCtxCtor) {
         const ctx = new AudioCtxCtor();
@@ -1263,11 +1289,9 @@ export default function GenericInspectionScreen(
       if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
       wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
 
-      // IMPORTANT: return ONLY command remainder (wake stripped)
       return match.remainder;
     }
 
-    // If already awake: extend timeout, and ALSO strip prefix if user repeats it
     if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
     wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
 
@@ -1321,19 +1345,11 @@ export default function GenericInspectionScreen(
     }
   };
 
-  // =========================
-// GenericInspectionScreen.tsx
-// PART 4 / 4
-// =========================
-
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (
-    secIdx: number,
-    itemIdx: number,
-  ): Promise<void> => {
+  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
     if (!session) return;
 
     if (isLocked) {
@@ -1362,19 +1378,15 @@ export default function GenericInspectionScreen(
       laborHours?: number | null;
       name?: string | null;
 
-      // ✅ estimate state (persisted on the item)
       estimateSubmitted?: boolean;
       estimateSubmittedAt?: string | null;
       estimateLastUpdatedAt?: string | null;
 
-      // ✅ links so we UPDATE instead of creating new
       estimateWorkOrderLineId?: string | null;
       estimateQuoteLineId?: string | null;
     };
 
-    const manualParts: { description: string; qty: number }[] = Array.isArray(
-      itExt.parts,
-    )
+    const manualParts: { description: string; qty: number }[] = Array.isArray(itExt.parts)
       ? itExt.parts
       : [];
 
@@ -1395,7 +1407,6 @@ export default function GenericInspectionScreen(
 
       const nowIso = new Date().toISOString();
 
-      // ✅ reuse quote line if already submitted (avoid duplicates)
       const existingQuoteId =
         typeof itExt.estimateQuoteLineId === "string" && itExt.estimateQuoteLineId
           ? itExt.estimateQuoteLineId
@@ -1448,11 +1459,7 @@ export default function GenericInspectionScreen(
       }
 
       const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
-        ...((suggestion.parts ?? []) as Array<{
-          name: string;
-          qty: number;
-          cost?: number;
-        }>),
+        ...((suggestion.parts ?? []) as Array<{ name: string; qty: number; cost?: number }>),
         ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
       ];
 
@@ -1491,7 +1498,6 @@ export default function GenericInspectionScreen(
           }))
           .filter((p) => p.description.length > 0 && p.qty > 0);
 
-        // ✅ UPDATE existing estimate/job (no new WO line)
         if (existingLineId) {
           const updateRes = await fetch(
             "/api/work-orders/lines/update-from-inspection",
@@ -1522,7 +1528,7 @@ export default function GenericInspectionScreen(
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 workOrderId,
-                jobId: existingLineId, // ✅ attach to same job
+                jobId: existingLineId,
                 notes: String(it.notes ?? "") || null,
                 items: cleanParts,
               }),
@@ -1549,7 +1555,6 @@ export default function GenericInspectionScreen(
           return;
         }
 
-        // ✅ CREATE new estimate/job (first submit)
         const created = await addWorkOrderLineFromSuggestion({
           workOrderId,
           description: desc,
@@ -1568,11 +1573,9 @@ export default function GenericInspectionScreen(
         const createdJobId =
           (createdId ? String(createdId) : null) || workOrderLineId || null;
 
-        // ✅ keep your counter for “lines added and sent for quote”
         updateInspection({
           voiceMeta: {
-            linesAddedToWorkOrder:
-              (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
+            linesAddedToWorkOrder: (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
           } satisfies VoiceMeta,
         });
 
@@ -1597,21 +1600,15 @@ export default function GenericInspectionScreen(
               return;
             }
 
-            toast.success("Line + parts request created from inspection", {
-              id: toastId,
-            });
+            toast.success("Line + parts request created from inspection", { id: toastId });
           } catch (err: unknown) {
             // eslint-disable-next-line no-console
             console.error("Parts request failed", err);
-            toast.error("Line added, but couldn't reach parts request service", {
-              id: toastId,
-            });
+            toast.error("Line added, but couldn't reach parts request service", { id: toastId });
             return;
           }
         } else {
-          toast.success("Added to work order (no parts requested)", {
-            id: toastId,
-          });
+          toast.success("Added to work order (no parts requested)", { id: toastId });
         }
 
         if (createdJobId) {
@@ -1698,18 +1695,6 @@ export default function GenericInspectionScreen(
     return () => obs.disconnect();
   }, [isEmbed]);
 
-  const currentSectionIndex =
-    typeof session?.currentSectionIndex === "number"
-      ? session.currentSectionIndex
-      : 0;
-
-  const safeSectionIndex =
-    session &&
-    currentSectionIndex >= 0 &&
-    currentSectionIndex < session.sections.length
-      ? currentSectionIndex
-      : 0;
-
   function autoAdvanceFrom(secIdx: number, itemIdx: number): void {
     if (!session) return;
     const sections = session.sections;
@@ -1725,27 +1710,16 @@ export default function GenericInspectionScreen(
       iIdx = 0;
     }
 
-    if (sIdx >= sections.length) {
-      const lastSectionIndex = sections.length - 1;
-      const lastItems = sections[lastSectionIndex].items ?? [];
-      const lastItemIndex = Math.max(0, lastItems.length - 1);
-      updateInspection({
-        currentSectionIndex: lastSectionIndex,
-        currentItemIndex: lastItemIndex,
-      });
-      return;
-    }
+    if (sIdx >= sections.length) return;
 
+    // (UI progress only; voice does not depend on these)
     updateInspection({
       currentSectionIndex: sIdx,
       currentItemIndex: iIdx,
     });
   }
 
-  function applyStatusToSection(
-    sectionIndex: number,
-    status: InspectionItemStatus,
-  ): void {
+  function applyStatusToSection(sectionIndex: number, status: InspectionItemStatus): void {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1758,10 +1732,8 @@ export default function GenericInspectionScreen(
     }));
 
     updateSection(sectionIndex, { ...section, items: nextItems });
-    updateInspection({
-      currentSectionIndex: sectionIndex,
-      currentItemIndex: 0,
-    });
+
+    // ✅ NO “manual focus” changes here (do NOT jump currentSectionIndex/currentItemIndex)
   }
 
   function toggleSectionCollapsed(sectionIndex: number): void {
@@ -1794,16 +1766,11 @@ export default function GenericInspectionScreen(
 
     updateSection(sectionIndex, { ...section, items: nextItems });
 
-    // reset inputs for just this section
     setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
     setNewItemUnits((prev) => ({ ...prev, [sectionIndex]: "" }));
   };
 
-  /** Add axle rows to an AIR corner grid section */
-  const handleAddAxleForSection = (
-    sectionIndex: number,
-    axleLabel: string,
-  ): void => {
+  const handleAddAxleForSection = (sectionIndex: number, axleLabel: string): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1813,12 +1780,12 @@ export default function GenericInspectionScreen(
     const existingItems = section.items ?? [];
 
     const metrics: Array<{ label: string; unit: string | null }> = [
-  { label: "Lining/Shoe", unit: "mm" },
-  { label: "Drum/Rotor", unit: "mm" },
-  { label: "Push Rod Travel", unit: "in" },
-  { label: "Wheel Torque Outer", unit: "ft·lb" },
-  { label: "Wheel Torque Inner", unit: "ft·lb" },
-];
+      { label: "Lining/Shoe", unit: "mm" },
+      { label: "Drum/Rotor", unit: "mm" },
+      { label: "Push Rod Travel", unit: "in" },
+      { label: "Wheel Torque Outer", unit: "ft·lb" },
+      { label: "Wheel Torque Inner", unit: "ft·lb" },
+    ];
 
     const sides: Array<"Left" | "Right"> = ["Left", "Right"];
 
@@ -1846,11 +1813,7 @@ export default function GenericInspectionScreen(
     updateSection(sectionIndex, { ...section, items: nextItems });
   };
 
-  /** Add axle rows to a TIRE grid section (tires only) */
-  const handleAddTireAxleForSection = (
-    sectionIndex: number,
-    axleLabel: string,
-  ): void => {
+  const handleAddTireAxleForSection = (sectionIndex: number, axleLabel: string): void => {
     if (!session) return;
     if (guardLocked()) return;
 
@@ -1917,27 +1880,17 @@ export default function GenericInspectionScreen(
   const hint =
     "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
 
-  // Bottom bar: ONLY Save progress + Finish inspection
   const actions = (
     <>
-      <SaveInspectionButton
-        session={session}
-        workOrderLineId={workOrderLineId}
-      />
-
+      <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
       {workOrderLineId && (
-        <FinishInspectionButton
-          session={session}
-          workOrderLineId={workOrderLineId}
-        />
+        <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
       )}
     </>
   );
 
   if (!session || (session.sections?.length ?? 0) === 0) {
-    return (
-      <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
-    );
+    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
   const body = (
@@ -1976,10 +1929,7 @@ export default function GenericInspectionScreen(
 
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {!isLocked && (
-            <StartListeningButton
-              isListening={isListening}
-              onStart={startListening}
-            />
+            <StartListeningButton isListening={isListening} onStart={startListening} />
           )}
 
           {!isLocked && (isListening || isPaused) && (
@@ -2002,12 +1952,9 @@ export default function GenericInspectionScreen(
             type="button"
             variant="outline"
             className="w-full justify-center border-orange-300/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
-            onClick={(): void =>
-              setUnit(unit === "metric" ? "imperial" : "metric")
-            }
+            onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
           >
-            Unit:{" "}
-            {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+            Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
           </Button>
         </div>
 
@@ -2049,7 +1996,7 @@ export default function GenericInspectionScreen(
           </div>
         </div>
 
-        {/* ✅ UI ADDITION: Summary + Voice Log */}
+        {/* Summary + Voice Log (unchanged) */}
         {(() => {
           const sections = session.sections ?? [];
           const allItems = sections.flatMap((s) => s.items ?? []);
@@ -2209,7 +2156,7 @@ export default function GenericInspectionScreen(
             currentItem={session.currentItemIndex}
             currentSection={session.currentSectionIndex}
             totalSections={session.sections.length}
-            totalItems={session.sections[safeSectionIndex]?.items?.length ?? 0}
+            totalItems={session.sections[session.currentSectionIndex]?.items?.length ?? 0}
           />
         </div>
 
@@ -2237,9 +2184,9 @@ export default function GenericInspectionScreen(
                 /tread|pad|lining|shoe|rotor|drum|push rod/i.test(label);
 
               return {
-                ...it, // ✅ KEEP ORIGINAL SHAPE
+                ...it,
                 value: it.value ?? "",
-                item: label, // ✅ CRITICAL: preserve controlled input value
+                item: label,
                 status: safeStatus,
                 notes: String(it.notes ?? it.note ?? ""),
                 unit: toggleControlled
@@ -2269,281 +2216,260 @@ export default function GenericInspectionScreen(
             const newLabel = newItemLabels[sectionIndex] ?? "";
             const newUnit = newItemUnits[sectionIndex] ?? "";
 
-           return (
-  <div
-    key={`${section.title}-${sectionIndex}`}
-    className={sectionCard}
-    data-section-index={sectionIndex}
-  >
-    {/* ✅ Only show the OUTER header for GRID sections.
-        Non-grid sections will use SectionDisplay’s header (prevents double title). */}
-    {useGrid && (
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className={sectionTitle}>{section.title}</h2>
+            return (
+              <div
+                key={`${section.title}-${sectionIndex}`}
+                className={sectionCard}
+                data-section-index={sectionIndex}
+              >
+                {useGrid && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className={sectionTitle}>{section.title}</h2>
 
-        {safeSectionIndex === sectionIndex ? (
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <button
-              type="button"
-              disabled={isLocked}
-              className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => applyStatusToSection(sectionIndex, "ok")}
-            >
-              All OK
-            </button>
-            <button
-              type="button"
-              disabled={isLocked}
-              className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => applyStatusToSection(sectionIndex, "fail")}
-            >
-              All Fail
-            </button>
-            <button
-              type="button"
-              disabled={isLocked}
-              className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => applyStatusToSection(sectionIndex, "na")}
-            >
-              All NA
-            </button>
-            <button
-              type="button"
-              disabled={isLocked}
-              className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => applyStatusToSection(sectionIndex, "recommend")}
-            >
-              All REC
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
-              onClick={() => toggleSectionCollapsed(sectionIndex)}
-            >
-              {collapsed ? "Expand" : "Collapse"}
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
-            onClick={() => toggleSectionCollapsed(sectionIndex)}
-          >
-            {collapsed ? "Expand" : "Collapse"}
-          </button>
-        )}
-      </div>
-    )}
-
-    {collapsed ? (
-      <p className="mt-2 text-center text-[11px] text-neutral-400">
-        Section collapsed. Tap <span className="font-semibold">Expand</span> to
-        reopen.
-      </p>
-    ) : (
-      <>
-        {useGrid && (
-          <span className={hint}>
-            {unit === "metric"
-              ? "Enter mm / kPa / N·m"
-              : "Enter in / psi / ft·lb"}
-          </span>
-        )}
-
-        <div className="mt-3 md:mt-4">
-          {useGrid ? (
-            batterySection ? (
-              <BatteryGrid
-                sectionIndex={sectionIndex}
-                items={itemsWithHints}
-                unitHint={(label: string) => unitHintGeneric(label, unit)}
-              />
-            ) : airSection ? (
-              <AirCornerGrid
-                sectionIndex={sectionIndex}
-                items={itemsWithHints}
-                unitHint={(label: string) => unitHintGeneric(label, unit)}
-                onAddAxle={(axleLabel: string) =>
-                  handleAddAxleForSection(sectionIndex, axleLabel)
-                }
-                onSpecHint={(metricLabel: string) =>
-                  _props.onSpecHint?.({
-                    source: "air_corner",
-                    label: metricLabel,
-                    meta: { sectionTitle: section.title },
-                  })
-                }
-              />
-            ) : tireSection ? (
-              looksHydTire ? (
-                <TireGridHydraulic
-                  sectionIndex={sectionIndex}
-                  items={itemsWithHints}
-                  unitHint={(label: string) => unitHintGeneric(label, unit)}
-                  requireNoteForAI
-                  onSubmitAI={(secIdx: number, itemIdx: number) => {
-                    void submitAIForItem(secIdx, itemIdx);
-                  }}
-                  isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                    isSubmittingAI(secIdx, itemIdx)
-                  }
-                  onUpdateParts={(secIdx, itemIdx, parts) => {
-                    if (guardLocked()) return;
-                    updateItem(secIdx, itemIdx, { parts } as ItemPatch);
-                  }}
-                  onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-                    if (guardLocked()) return;
-                    updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
-                  }}
-                />
-              ) : (
-                <TireGrid
-                  sectionIndex={sectionIndex}
-                  items={itemsWithHints}
-                  unitHint={(label: string) => unitHintGeneric(label, unit)}
-                  onAddAxle={(axleLabel: string) =>
-                    handleAddTireAxleForSection(sectionIndex, axleLabel)
-                  }
-                  onSpecHint={(metricLabel: string) =>
-                    _props.onSpecHint?.({
-                      source: "tire",
-                      label: metricLabel,
-                      meta: { sectionTitle: section.title },
-                    })
-                  }
-                  requireNoteForAI
-                  onSubmitAI={(secIdx: number, itemIdx: number) => {
-                    void submitAIForItem(secIdx, itemIdx);
-                  }}
-                  isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                    isSubmittingAI(secIdx, itemIdx)
-                  }
-                  onUpdateParts={(secIdx, itemIdx, parts) => {
-                    if (guardLocked()) return;
-                    updateItem(secIdx, itemIdx, { parts } as ItemPatch);
-                  }}
-                  onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-                    if (guardLocked()) return;
-                    updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
-                  }}
-                />
-              )
-            ) : (
-              <CornerGrid
-                sectionIndex={sectionIndex}
-                items={itemsWithHints}
-                unitHint={(label: string) => unitHintGeneric(label, unit)}
-                onSpecHint={(label: string) =>
-                  _props.onSpecHint?.({
-                    source: "corner",
-                    label,
-                    meta: { sectionTitle: section.title },
-                  })
-                }
-              />
-            )
-          ) : (
-            <>
-              <SectionDisplay
-                title={section.title} // ✅ let SectionDisplay show the title (no duplicate header)
-                section={{ ...section, items: itemsWithHints }}
-                sectionIndex={sectionIndex}
-                showNotes
-                showPhotos
-                onUpdateStatus={(
-                  secIdx: number,
-                  itemIdx: number,
-                  statusValue: InspectionItemStatus,
-                ) => {
-                  if (guardLocked()) return;
-                  updateItem(secIdx, itemIdx, { status: statusValue } as ItemPatch);
-                  autoAdvanceFrom(secIdx, itemIdx);
-                }}
-                onUpdateNote={(secIdx: number, itemIdx: number, noteText: string) => {
-                  if (guardLocked()) return;
-                  updateItem(secIdx, itemIdx, { notes: noteText } as ItemPatch);
-                }}
-                onUpload={(photoUrl: string, secIdx: number, itemIdx: number) => {
-                  if (guardLocked()) return;
-                  const prev =
-                    session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                  updateItem(secIdx, itemIdx, {
-                    photoUrls: [...prev, photoUrl],
-                  } as ItemPatch);
-                }}
-                onUpdateParts={(
-                  secIdx: number,
-                  itemIdx: number,
-                  parts: { description: string; qty: number }[],
-                ) => {
-                  if (guardLocked()) return;
-                  updateItem(secIdx, itemIdx, { parts } as ItemPatch);
-                }}
-                onUpdateLaborHours={(secIdx: number, itemIdx: number, hours: number | null) => {
-                  if (guardLocked()) return;
-                  updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
-                }}
-                requireNoteForAI
-                onSubmitAI={(secIdx: number, itemIdx: number) => {
-                  void submitAIForItem(secIdx, itemIdx);
-                }}
-                isSubmittingAI={isSubmittingAI}
-              />
-
-              <div className="mt-4 border-t border-white/10 pt-3">
-                <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  Add custom item
-                </div>
-                <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                  <input
-                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                    placeholder="Item label (e.g. Rear frame inspection)"
-                    value={newLabel}
-                    onChange={(e) =>
-                      setNewItemLabels((prev) => ({
-                        ...prev,
-                        [sectionIndex]: e.target.value,
-                      }))
-                    }
-                    disabled={isLocked}
-                  />
-                  <div className="flex items-center gap-2 md:w-auto">
-                    <select
-                      className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-400/70"
-                      value={newUnit}
-                      onChange={(e) =>
-                        setNewItemUnits((prev) => ({
-                          ...prev,
-                          [sectionIndex]: e.target.value,
-                        }))
-                      }
-                      title="Measurement unit"
-                      disabled={isLocked}
-                    >
-                      {UNIT_OPTIONS.map((u) => (
-                        <option key={u || "blank"} value={u}>
-                          {u || "— unit —"}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      type="button"
-                      className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                      onClick={() => handleAddCustomItem(sectionIndex)}
-                      disabled={isLocked}
-                    >
-                      + Add Item
-                    </Button>
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "ok")}
+                      >
+                        All OK
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "fail")}
+                      >
+                        All Fail
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "na")}
+                      >
+                        All NA
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => applyStatusToSection(sectionIndex, "recommend")}
+                      >
+                        All REC
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
+                        onClick={() => toggleSectionCollapsed(sectionIndex)}
+                      >
+                        {collapsed ? "Expand" : "Collapse"}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {collapsed ? (
+                  <p className="mt-2 text-center text-[11px] text-neutral-400">
+                    Section collapsed. Tap <span className="font-semibold">Expand</span>{" "}
+                    to reopen.
+                  </p>
+                ) : (
+                  <>
+                    {useGrid && (
+                      <span className={hint}>
+                        {unit === "metric"
+                          ? "Enter mm / kPa / N·m"
+                          : "Enter in / psi / ft·lb"}
+                      </span>
+                    )}
+
+                    <div className="mt-3 md:mt-4">
+                      {useGrid ? (
+                        batterySection ? (
+                          <BatteryGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                          />
+                        ) : airSection ? (
+                          <AirCornerGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            onAddAxle={(axleLabel: string) =>
+                              handleAddAxleForSection(sectionIndex, axleLabel)
+                            }
+                            onSpecHint={(metricLabel: string) =>
+                              _props.onSpecHint?.({
+                                source: "air_corner",
+                                label: metricLabel,
+                                meta: { sectionTitle: section.title },
+                              })
+                            }
+                          />
+                        ) : tireSection ? (
+                          looksHydTire ? (
+                            <TireGridHydraulic
+                              sectionIndex={sectionIndex}
+                              items={itemsWithHints}
+                              unitHint={(label: string) => unitHintGeneric(label, unit)}
+                              requireNoteForAI
+                              onSubmitAI={(secIdx: number, itemIdx: number) => {
+                                void submitAIForItem(secIdx, itemIdx);
+                              }}
+                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
+                                isSubmittingAI(secIdx, itemIdx)
+                              }
+                              onUpdateParts={(secIdx, itemIdx, parts) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { parts } as ItemPatch);
+                              }}
+                              onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
+                              }}
+                            />
+                          ) : (
+                            <TireGrid
+                              sectionIndex={sectionIndex}
+                              items={itemsWithHints}
+                              unitHint={(label: string) => unitHintGeneric(label, unit)}
+                              onAddAxle={(axleLabel: string) =>
+                                handleAddTireAxleForSection(sectionIndex, axleLabel)
+                              }
+                              onSpecHint={(metricLabel: string) =>
+                                _props.onSpecHint?.({
+                                  source: "tire",
+                                  label: metricLabel,
+                                  meta: { sectionTitle: section.title },
+                                })
+                              }
+                              requireNoteForAI
+                              onSubmitAI={(secIdx: number, itemIdx: number) => {
+                                void submitAIForItem(secIdx, itemIdx);
+                              }}
+                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
+                                isSubmittingAI(secIdx, itemIdx)
+                              }
+                              onUpdateParts={(secIdx, itemIdx, parts) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { parts } as ItemPatch);
+                              }}
+                              onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                                if (guardLocked()) return;
+                                updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
+                              }}
+                            />
+                          )
+                        ) : (
+                          <CornerGrid
+                            sectionIndex={sectionIndex}
+                            items={itemsWithHints}
+                            unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            onSpecHint={(label: string) =>
+                              _props.onSpecHint?.({
+                                source: "corner",
+                                label,
+                                meta: { sectionTitle: section.title },
+                              })
+                            }
+                          />
+                        )
+                      ) : (
+                        <>
+                          <SectionDisplay
+                            title={section.title}
+                            section={{ ...section, items: itemsWithHints }}
+                            sectionIndex={sectionIndex}
+                            showNotes
+                            showPhotos
+                            onUpdateStatus={(secIdx, itemIdx, statusValue) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { status: statusValue } as ItemPatch);
+                              autoAdvanceFrom(secIdx, itemIdx);
+                            }}
+                            onUpdateNote={(secIdx, itemIdx, noteText) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { notes: noteText } as ItemPatch);
+                            }}
+                            onUpload={(photoUrl, secIdx, itemIdx) => {
+                              if (guardLocked()) return;
+                              const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                              updateItem(secIdx, itemIdx, {
+                                photoUrls: [...prev, photoUrl],
+                              } as ItemPatch);
+                            }}
+                            onUpdateParts={(secIdx, itemIdx, parts) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { parts } as ItemPatch);
+                            }}
+                            onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
+                            }}
+                            requireNoteForAI
+                            onSubmitAI={(secIdx, itemIdx) => {
+                              void submitAIForItem(secIdx, itemIdx);
+                            }}
+                            isSubmittingAI={isSubmittingAI}
+                          />
+
+                          <div className="mt-4 border-t border-white/10 pt-3">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                              Add custom item
+                            </div>
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                              <input
+                                className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                placeholder="Item label (e.g. Rear frame inspection)"
+                                value={newLabel}
+                                onChange={(e) =>
+                                  setNewItemLabels((prev) => ({
+                                    ...prev,
+                                    [sectionIndex]: e.target.value,
+                                  }))
+                                }
+                                disabled={isLocked}
+                              />
+                              <div className="flex items-center gap-2 md:w-auto">
+                                <select
+                                  className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-400/70"
+                                  value={newUnit}
+                                  onChange={(e) =>
+                                    setNewItemUnits((prev) => ({
+                                      ...prev,
+                                      [sectionIndex]: e.target.value,
+                                    }))
+                                  }
+                                  title="Measurement unit"
+                                  disabled={isLocked}
+                                >
+                                  {UNIT_OPTIONS.map((u) => (
+                                    <option key={u || "blank"} value={u}>
+                                      {u || "— unit —"}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Button
+                                  type="button"
+                                  className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
+                                  onClick={() => handleAddCustomItem(sectionIndex)}
+                                  disabled={isLocked}
+                                >
+                                  + Add Item
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
-            </>
-          )}
-        </div>
-      </>
-    )}
-  </div>
-); 
+            );
           })}
         </InspectionFormCtx.Provider>
 
@@ -2562,8 +2488,8 @@ export default function GenericInspectionScreen(
         {!isEmbed && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
             <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P =
-              Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+              <span className="font-semibold text-neutral-200">Legend:</span> P = Pass
+              &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}
@@ -2588,9 +2514,7 @@ export default function GenericInspectionScreen(
     </div>
   );
 
-  if (isEmbed) {
-    return body;
-  }
+  if (isEmbed) return body;
 
   return (
     <PageShell

@@ -1,3 +1,15 @@
+// /features/inspections/lib/inspection/useRealtimeVoice.ts (FULL FILE REPLACEMENT)
+//
+// ✅ NO MANUAL FOCUS in here (this file never chooses items/sections)
+// ✅ Fix: “only recognizing left” / missing rest of the command
+// - Realtime events sometimes send delta/completed text in nested shapes
+//   (e.g. { delta: { text } } or { transcript: { text } }).
+// - Also, some deltas arrive without whitespace; we insert spacing safely.
+// - We keep a “lastLiveSnapshot” so if completed is short (or only last token),
+//   we still submit the full phrase.
+//
+// No `any`.
+
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -63,6 +75,63 @@ function getStringField(obj: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
+function getNestedString(obj: unknown, path: string[]): string {
+  let cur: unknown = obj;
+  for (const p of path) {
+    if (!isRecord(cur)) return "";
+    cur = cur[p];
+  }
+  return typeof cur === "string" ? cur : "";
+}
+
+function pickDeltaText(msg: Record<string, unknown>): string {
+  // Common shapes:
+  // - { delta: "text" }
+  // - { text: "text" }
+  // - { transcript: "text" }
+  // - { delta: { text: "text" } }
+  // - { delta: { transcript: "text" } }
+  // - { transcript: { text: "text" } }
+  const direct = getStringField(msg, ["delta", "transcript", "text"]);
+  if (direct) return direct;
+
+  const nested =
+    getNestedString(msg, ["delta", "text"]) ||
+    getNestedString(msg, ["delta", "transcript"]) ||
+    getNestedString(msg, ["transcript", "text"]) ||
+    getNestedString(msg, ["transcript", "final"]);
+  return nested || "";
+}
+
+function pickCompletedText(msg: Record<string, unknown>): string {
+  // Common shapes:
+  // - { transcript: "..." }
+  // - { text: "..." }
+  // - { final: "..." }
+  // - { transcript: { text: "..." } }
+  // - { transcript: { final: "..." } }
+  const direct = getStringField(msg, ["transcript", "text", "final"]);
+  if (direct) return direct;
+
+  const nested =
+    getNestedString(msg, ["transcript", "text"]) ||
+    getNestedString(msg, ["transcript", "final"]) ||
+    getNestedString(msg, ["final", "text"]);
+  return nested || "";
+}
+
+function safeAppendLive(prev: string, delta: string): string {
+  const p = prev || "";
+  const d = delta || "";
+  if (!d) return p;
+
+  // If last char and first char are both non-space, insert a space.
+  const needsSpace =
+    p.length > 0 && !/\s$/.test(p) && d.length > 0 && !/^\s/.test(d);
+
+  return needsSpace ? `${p} ${d}` : `${p}${d}`;
+}
+
 function pickBestFinal(args: { completed: string; live: string }): string {
   const completed = args.completed.trim();
   const live = args.live.trim();
@@ -71,7 +140,7 @@ function pickBestFinal(args: { completed: string; live: string }): string {
   if (!completed) return live;
   if (!live) return completed;
 
-  // ✅ Some event variants send only the last token in "completed"
+  // Some variants send only the last token in "completed"
   // while live contains the full transcript. Prefer the longer one.
   if (live.length >= completed.length) return live;
   return completed;
@@ -94,6 +163,9 @@ export function useRealtimeVoice(
 
   // ✅ live delta accumulation
   const liveRef = useRef<string>("");
+
+  // ✅ snapshot of the longest live we’ve seen for this utterance
+  const lastLiveSnapshotRef = useRef<string>("");
 
   const handleTranscriptRef = useRef<HandleTranscriptFn>(handleTranscript);
   const maybeHandleWakeWordRef = useRef<(text: string) => string | null>(
@@ -262,32 +334,42 @@ export function useRealtimeVoice(
       const type = String(msgUnknown.type ?? "");
 
       if (TRANSCRIPTION_DELTA_TYPES.has(type)) {
-        const delta = getStringField(msgUnknown, ["delta", "transcript", "text"]);
+        const delta = pickDeltaText(msgUnknown);
         if (!delta) return;
 
-        // ✅ accumulate full phrase from deltas
-        liveRef.current += delta;
+        // ✅ accumulate full phrase from deltas (with safe spacing)
+        liveRef.current = safeAppendLive(liveRef.current, delta);
+
+        // ✅ keep longest snapshot (helps when "completed" is only last word)
+        const liveNow = liveRef.current.trim();
+        if (liveNow.length > lastLiveSnapshotRef.current.trim().length) {
+          lastLiveSnapshotRef.current = liveNow;
+        }
+
         pulse();
         return;
       }
 
       if (TRANSCRIPTION_COMPLETE_TYPES.has(type)) {
-        // ✅ completed text might be partial; compare with live buffer
-        const completedText = getStringField(msgUnknown, [
-          "transcript",
-          "text",
-          "final",
-        ]);
-
+        const completedText = pickCompletedText(msgUnknown);
         const liveText = liveRef.current;
 
-        const finalText = pickBestFinal({
+        // Prefer best among: completed vs live vs last snapshot
+        const bestFromLive = pickBestFinal({
           completed: completedText,
           live: liveText,
-        }).trim();
+        });
+
+        const snapshot = lastLiveSnapshotRef.current;
+        const finalText =
+          (snapshot.trim().length > bestFromLive.trim().length
+            ? snapshot
+            : bestFromLive
+          ).trim();
 
         // clear AFTER pick
         liveRef.current = "";
+        lastLiveSnapshotRef.current = "";
 
         if (!finalText) return;
 
@@ -367,6 +449,7 @@ export function useRealtimeVoice(
     } catch {}
 
     liveRef.current = "";
+    lastLiveSnapshotRef.current = "";
     setState("idle");
   }
 
