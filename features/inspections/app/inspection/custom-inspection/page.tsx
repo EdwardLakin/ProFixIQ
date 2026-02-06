@@ -387,7 +387,7 @@ export default function CustomBuilderPage() {
   const [oilEngineType, setOilEngineType] = useState<EngineType>("diesel");
 
   const [includeBatteryGrid, setIncludeBatteryGrid] = useState(false);
-  const [batteryCount,] = useState<number>(2);
+  const [batteryCount,] = useState<number>(1);
 
   // toggles
   const [includeTireGrid, setIncludeTireGrid] = useState(false);
@@ -723,7 +723,7 @@ export default function CustomBuilderPage() {
                 Batteries
               </span>
               <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-300">
-                {includeBatteryGrid ? `Battery grid enabled (${batteryCount})` : "No battery grid"}
+                {includeBatteryGrid ? "Battery grid enabled" : "No battery grid"}
               </span>
             </span>
 
