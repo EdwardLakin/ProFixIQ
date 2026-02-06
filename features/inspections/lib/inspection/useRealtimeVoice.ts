@@ -1,3 +1,10 @@
+// useRealtimeVoice.ts (FULL FILE REPLACEMENT)
+// ✅ Patched:
+// 1) Wake-word arming during DELTAS (fixes “hit or miss” wake detection)
+// 2) Prefer armed command on COMPLETED (more reliable than final-only)
+// 3) Slightly more forgiving VAD settings for shop/bay noise
+// 4) Keeps your existing types + no `any`
+
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -21,6 +28,9 @@ type RealtimeVoiceOptions = {
   audioPulseThreshold?: number; // default 0.02-ish
   /** minimum ms between pulses */
   pulseDebounceMs?: number; // default 250
+
+  /** ✅ Debounce for wake-word arming during DELTAS */
+  wakeDebounceMs?: number; // default 350
 };
 
 type RealtimeTokenResponse = { token?: string };
@@ -50,7 +60,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // ✅ Realtime can emit different but valid event type names.
-// We accept the common variants so wake word always fires on final transcript.
 const TRANSCRIPTION_DELTA_TYPES = new Set<string>([
   "conversation.item.input_audio_transcription.delta",
   "input_audio_transcription.delta",
@@ -98,6 +107,10 @@ export function useRealtimeVoice(
     maybeHandleWakeWord,
   );
 
+  // ✅ Wake-word arming (during deltas)
+  const pendingCmdRef = useRef<string | null>(null);
+  const lastWakeAtRef = useRef<number>(0);
+
   useEffect(() => {
     handleTranscriptRef.current = handleTranscript;
   }, [handleTranscript]);
@@ -119,10 +132,27 @@ export function useRealtimeVoice(
     opts?.onPulse?.();
   };
 
+  const armWakeIfPresent = (textSoFar: string) => {
+    const now = Date.now();
+    const debounce =
+      typeof opts?.wakeDebounceMs === "number" ? opts.wakeDebounceMs : 350;
+
+    if (now - lastWakeAtRef.current < debounce) return;
+
+    const cmdRaw = maybeHandleWakeWordRef.current(textSoFar);
+    const cmd = typeof cmdRaw === "string" ? cmdRaw.trim() : "";
+    if (!cmd) return;
+
+    pendingCmdRef.current = cmd;
+    lastWakeAtRef.current = now;
+  };
+
   async function start(): Promise<void> {
     if (wsRef.current) return;
 
     stoppedRef.current = false;
+    pendingCmdRef.current = null;
+    liveRef.current = "";
     setState("connecting");
 
     // ✅ get EPHEMERAL token
@@ -190,7 +220,6 @@ export function useRealtimeVoice(
     ws.onopen = () => {
       if (stoppedRef.current) return;
 
-      // We are now connected; show Listening even before transcript arrives.
       setState("listening");
 
       ws.send(
@@ -206,11 +235,12 @@ export function useRealtimeVoice(
                   model: "gpt-4o-mini-transcribe",
                   language: "en",
                 },
+                // ✅ slightly more forgiving for bay noise + short commands
                 turn_detection: {
                   type: "server_vad",
-                  threshold: 0.5,
-                  prefix_padding_ms: 300,
-                  silence_duration_ms: 500,
+                  threshold: 0.45,
+                  prefix_padding_ms: 650,
+                  silence_duration_ms: 850,
                 },
               },
             },
@@ -223,7 +253,6 @@ export function useRealtimeVoice(
     worklet.port.onmessage = (e: MessageEvent) => {
       if (stoppedRef.current) return;
 
-      // We expect the worklet to post Float32Array frames.
       const data = e.data as unknown;
       if (!(data instanceof Float32Array)) return;
 
@@ -236,7 +265,7 @@ export function useRealtimeVoice(
           : 0.02;
 
       if (level >= threshold) {
-        pulse(); // ✅ shows "audio" pulse even if transcription isn't returning yet
+        pulse();
       }
 
       // Float32 [-1,1] -> PCM16
@@ -271,16 +300,21 @@ export function useRealtimeVoice(
       if (!isRecord(msgUnknown)) return;
       const type = String(msgUnknown.type ?? "");
 
-      // ✅ DELTAS (multiple possible event names)
+      // ✅ DELTAS
       if (TRANSCRIPTION_DELTA_TYPES.has(type)) {
         const delta = getStringField(msgUnknown, ["delta", "transcript", "text"]);
         if (!delta) return;
+
         liveRef.current += delta;
         pulse();
+
+        // ✅ NEW: arm wake word as transcript grows
+        armWakeIfPresent(liveRef.current);
+
         return;
       }
 
-      // ✅ COMPLETED (multiple possible event names)
+      // ✅ COMPLETED
       if (TRANSCRIPTION_COMPLETE_TYPES.has(type)) {
         const finalText = getStringField(msgUnknown, [
           "transcript",
@@ -288,13 +322,21 @@ export function useRealtimeVoice(
           "final",
         ]).trim();
 
+        // reset live buffer either way
         liveRef.current = "";
-        if (!finalText) return;
 
-        const cmdRaw = maybeHandleWakeWordRef.current(finalText);
+        if (!finalText) {
+          pendingCmdRef.current = null;
+          return;
+        }
 
-        // ✅ wake-only (null or empty) => do not call handleTranscript
-        const cmd = typeof cmdRaw === "string" ? cmdRaw.trim() : "";
+        // ✅ Prefer the armed command from DELTAS; fallback to finalText
+        const armed = pendingCmdRef.current;
+        pendingCmdRef.current = null;
+
+        const cmd =
+          (armed ?? maybeHandleWakeWordRef.current(finalText) ?? "").trim();
+
         if (!cmd) return;
 
         handleTranscriptRef.current(cmd);
@@ -335,7 +377,6 @@ export function useRealtimeVoice(
     if (stoppedRef.current) return;
     stoppedRef.current = true;
 
-    // disconnect worklet + graph
     try {
       workletRef.current?.disconnect();
     } catch {}
@@ -346,7 +387,6 @@ export function useRealtimeVoice(
     } catch {}
     zeroGainRef.current = null;
 
-    // close WS (handle CONNECTING too)
     const sock = wsRef.current;
     wsRef.current = null;
     try {
@@ -359,13 +399,11 @@ export function useRealtimeVoice(
       }
     } catch {}
 
-    // stop mic
     try {
       mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     } catch {}
     mediaStreamRef.current = null;
 
-    // close audio context
     const ctx = audioCtxRef.current;
     audioCtxRef.current = null;
     try {
@@ -373,8 +411,9 @@ export function useRealtimeVoice(
     } catch {}
 
     liveRef.current = "";
+    pendingCmdRef.current = null;
     setState("idle");
   }
 
   return { start, stop };
-} 
+}

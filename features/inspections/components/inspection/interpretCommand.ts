@@ -1,4 +1,4 @@
-// /features/inspections/lib/inspection/interpretCommand.ts
+// /features/inspections/lib/inspection/interpretCommand.ts (FULL FILE REPLACEMENT)
 "use client";
 
 import type { ParsedCommand } from "@inspections/lib/inspection/types";
@@ -9,14 +9,22 @@ export type InterpretContext = {
    * (you can also pass "" and just send items)
    */
   sectionTitle?: string;
+
   /**
-   * Candidate item labels (ideally FROM THE CURRENT INSPECTION TEMPLATE)
-   * The server will require the model to pick an item from this list.
+   * Candidate item labels (ideally FROM THE CURRENT INSPECTION TEMPLATE).
+   * When provided, we force STRICT_CONTEXT mode and the server should pick
+   * ONLY from these items (or return indices).
    */
   items: string[];
 };
 
-type InterpretResponse = unknown;
+type InterpretResponse =
+  | ParsedCommand[]
+  | {
+      commands?: ParsedCommand[];
+      // allow unknown fields without breaking
+      [k: string]: unknown;
+    };
 
 function safeArray<T>(x: unknown): T[] {
   return Array.isArray(x) ? (x as T[]) : [];
@@ -26,6 +34,17 @@ function normalizeString(s: unknown): string {
   return String(s ?? "").trim();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * Better multi-command splitting:
+ * - preserves decimals (2.5)
+ * - handles "then", "also", semicolons
+ * - treats a period as a separator only if NOT between digits
+ * - supports quick sequences like "ok. next" => 2 commands
+ */
 function splitMultiCommands(input: string): string[] {
   const t = normalizeString(input);
   if (!t) return [];
@@ -34,9 +53,7 @@ function splitMultiCommands(input: string): string[] {
     .replace(/\bthen\b/gi, " and ")
     .replace(/\balso\b/gi, " and ")
     .replace(/[;]+/g, " and ")
-    // ✅ only treat periods as separators when they are not decimals
-    // period that is NOT between digits:
-    .replace(/(?<!\d)\.(?!\d)/g, " and ")
+    .replace(/(?<!\d)\.(?!\d)/g, " and ") // period not between digits
     .replace(/\s+/g, " ")
     .trim();
 
@@ -48,10 +65,6 @@ function splitMultiCommands(input: string): string[] {
   return parts.length > 0 ? parts : [t];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function mergeParsedCommands(chunks: ParsedCommand[][]): ParsedCommand[] {
   const out: ParsedCommand[] = [];
   for (const arr of chunks) {
@@ -60,27 +73,65 @@ function mergeParsedCommands(chunks: ParsedCommand[][]): ParsedCommand[] {
   return out;
 }
 
+function pickCommandsFromResponse(data: InterpretResponse): ParsedCommand[] {
+  if (Array.isArray(data)) return data as ParsedCommand[];
+
+  if (isRecord(data)) {
+    const cmds = (data as { commands?: unknown }).commands;
+    if (Array.isArray(cmds)) return cmds as ParsedCommand[];
+  }
+
+  return [];
+}
+
+function buildContext(ctx?: InterpretContext): {
+  sectionTitle: string;
+  items: string[];
+} | null {
+  if (!ctx) return null;
+
+  const items = safeArray<string>(ctx.items)
+    .map((s) => normalizeString(s))
+    .filter(Boolean);
+
+  // Deduplicate while preserving order
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const it of items) {
+    const k = it.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    deduped.push(it);
+  }
+
+  if (deduped.length === 0) return null;
+
+  return {
+    sectionTitle: normalizeString(ctx.sectionTitle ?? ""),
+    items: deduped,
+  };
+}
+
 /**
  * Interpret a voice command into ParsedCommand[].
- * ✅ Now supports multi-command utterances by splitting the transcript and
- * calling the interpret endpoint per fragment (no server changes required).
+ * ✅ Supports multi-command utterances by splitting the transcript.
+ * ✅ Forces strict_context when ctx.items is provided (this is key for tire/battery grids).
+ * ✅ Adds light client-side normalization to improve hit rate for "rated" vs "rating" etc.
  */
 export async function interpretCommand(
   transcript: string,
   ctx?: InterpretContext,
 ): Promise<ParsedCommand[]> {
-  const text = normalizeString(transcript);
-  if (!text) return [];
+  const raw = normalizeString(transcript);
+  if (!raw) return [];
 
-  const context =
-    ctx && safeArray<string>(ctx.items).length > 0
-      ? {
-          sectionTitle: normalizeString(ctx.sectionTitle ?? ""),
-          items: safeArray<string>(ctx.items)
-            .map((s) => normalizeString(s))
-            .filter(Boolean),
-        }
-      : null;
+  const context = buildContext(ctx);
+
+  // Small normalization to reduce common transcript variance
+  // (don’t overdo it; keep meaning intact)
+  const text = raw
+    .replace(/\brating\b/gi, "rated") // "battery rating" => "battery rated"
+    .replace(/\btest\b/gi, "tested"); // "battery test" => "battery tested"
 
   const parts = splitMultiCommands(text);
 
@@ -107,17 +158,7 @@ export async function interpretCommand(
       }
 
       const data = (await res.json()) as InterpretResponse;
-
-      // Support both:
-      // - array response: ParsedCommand[]
-      // - object with { commands: ParsedCommand[] }
-      if (Array.isArray(data)) return data as ParsedCommand[];
-
-      if (isRecord(data) && Array.isArray(data.commands)) {
-        return data.commands as ParsedCommand[];
-      }
-
-      return [];
+      return pickCommandsFromResponse(data);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[interpretCommand] failed", err);

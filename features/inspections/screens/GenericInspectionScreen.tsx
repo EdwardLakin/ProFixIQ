@@ -1000,11 +1000,16 @@ export default function GenericInspectionScreen(
     const mainText = split.tail ? split.head : text;
     const followTail = split.tail;
 
+    const activeSectionTitle =
+      String(sess.sections?.[sess.currentSectionIndex ?? 0]?.title ?? "").trim();
+
+    const activeItems =
+      sess.sections?.[sess.currentSectionIndex ?? 0]?.items ?? [];
+
     const ctx = {
-      sectionTitle: "",
-      items: (sess.sections ?? [])
-        .flatMap((s) => s.items ?? [])
-        .map((it) => String(it.item ?? it.name ?? "").trim())
+      sectionTitle: activeSectionTitle,
+      items: activeItems
+        .map((it) => String(it.item ?? (it as { name?: unknown }).name ?? "").trim())
         .filter(Boolean),
     };
 
