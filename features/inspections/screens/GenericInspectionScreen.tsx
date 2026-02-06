@@ -245,9 +245,7 @@ function isAirCornerSection(
 
   // Otherwise: must look like an air layout AND contain brake-only metrics
   const hasAirLayout = items.some((it) => AIR_RE.test(it.item ?? ""));
-  const hasBrakeMetric = items.some((it) =>
-    BRAKE_SIGNAL_RE.test(it.item ?? ""),
-  );
+  const hasBrakeMetric = items.some((it) => BRAKE_SIGNAL_RE.test(it.item ?? ""));
 
   return hasAirLayout && hasBrakeMetric;
 }
@@ -642,8 +640,7 @@ export default function GenericInspectionScreen(
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length)
-      return normalizeSections(staged);
+    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
 
     try {
       const legacy =
@@ -1076,7 +1073,9 @@ export default function GenericInspectionScreen(
     const followTail = split.tail;
 
     const fallbackIdx =
-      typeof sess.currentSectionIndex === "number" ? sess.currentSectionIndex : 0;
+      typeof sess.currentSectionIndex === "number"
+        ? sess.currentSectionIndex
+        : 0;
 
     const ctx =
       buildInterpretCtxForSpeech({
@@ -1128,9 +1127,7 @@ export default function GenericInspectionScreen(
               : "";
 
         if (cmdType === "status" || cmdType === "update_status") {
-          const st = String(
-            (anyC as { status?: unknown }).status ?? "",
-          ).toLowerCase();
+          const st = String((anyC as { status?: unknown }).status ?? "").toLowerCase();
           if (st === "fail" || st === "recommend") sawFailOrRec = true;
         }
         if (cmdType === "add" || cmdType === "add_note") {
@@ -1211,8 +1208,7 @@ export default function GenericInspectionScreen(
             nextParts.length > 0
               ? nextParts.map((p) => `${p.qty}× ${p.description}`).join(", ")
               : "no parts";
-          const laborSummary =
-            nextLabor != null ? `${nextLabor} hr` : "no labor";
+          const laborSummary = nextLabor != null ? `${nextLabor} hr` : "no labor";
 
           if (parsedFU.wantsConfirm) {
             clearFollowUp();
@@ -1340,10 +1336,7 @@ export default function GenericInspectionScreen(
       }
 
       if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
-      wakeTimeoutRef.current = window.setTimeout(
-        () => setWakeActive(false),
-        8000,
-      );
+      wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
 
       // IMPORTANT: return ONLY command remainder (wake stripped)
       return match.remainder;
@@ -1610,7 +1603,9 @@ export default function GenericInspectionScreen(
               const body = (await res.json().catch(() => null)) as unknown;
               // eslint-disable-next-line no-console
               console.error("Parts request error", body);
-              toast.error("Estimate updated, but parts request failed", { id: toastId });
+              toast.error("Estimate updated, but parts request failed", {
+                id: toastId,
+              });
               return;
             }
           }
@@ -1687,9 +1682,7 @@ export default function GenericInspectionScreen(
             return;
           }
         } else {
-          toast.success("Added to work order (no parts requested)", {
-            id: toastId,
-          });
+          toast.success("Added to work order (no parts requested)", { id: toastId });
         }
 
         if (createdJobId) {
@@ -2001,15 +1994,16 @@ export default function GenericInspectionScreen(
       <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
 
       {workOrderLineId && (
-        <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
+        <FinishInspectionButton
+          session={session}
+          workOrderLineId={workOrderLineId}
+        />
       )}
     </>
   );
 
   if (!session || (session.sections?.length ?? 0) === 0) {
-    return (
-      <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
-    );
+    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
   const body = (
