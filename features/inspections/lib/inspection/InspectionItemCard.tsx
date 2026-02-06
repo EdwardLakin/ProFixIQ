@@ -2,6 +2,7 @@
 "use client";
 
 import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   InspectionItem,
   InspectionItemStatus,
@@ -55,6 +56,10 @@ function getNotesValue(raw: InspectionItem): string {
   return typeof v === "string" ? v : String(v ?? "");
 }
 
+function isTruncated(el: HTMLElement): boolean {
+  return el.scrollWidth > el.clientWidth + 1;
+}
+
 export default function InspectionItemCard(props: InspectionItemCardProps) {
   const {
     item,
@@ -89,18 +94,104 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
       ? "shadow-[0_0_0_1px_rgba(245,158,11,0.15)]"
       : "";
 
+  // ✅ tooltip only when truncated
+  const labelRef = useRef<HTMLSpanElement | null>(null);
+  const [showTip, setShowTip] = useState(false);
+  const [tipEnabled, setTipEnabled] = useState(false);
+  const holdTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const el = labelRef.current;
+    if (!el) {
+      setTipEnabled(false);
+      return;
+    }
+
+    const compute = () => {
+      const truncated = isTruncated(el);
+      setTipEnabled(truncated && label.trim().length > 0);
+    };
+
+    compute();
+
+    // keep it correct on orientation changes / resizes (iPad)
+    const onResize = () => compute();
+    window.addEventListener("resize", onResize);
+
+    return () => window.removeEventListener("resize", onResize);
+  }, [label]);
+
+  const clearHold = () => {
+    if (holdTimerRef.current) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
+
+  const openTip = () => {
+    if (!tipEnabled) return;
+    setShowTip(true);
+  };
+
+  const closeTip = () => {
+    setShowTip(false);
+    clearHold();
+  };
+
+  const onMouseEnter = () => {
+    // desktop hover
+    openTip();
+  };
+
+  const onMouseLeave = () => {
+    closeTip();
+  };
+
+  const onTouchStart = () => {
+    // iPad “long press” (~450ms)
+    if (!tipEnabled) return;
+    clearHold();
+    holdTimerRef.current = window.setTimeout(() => {
+      setShowTip(true);
+    }, 450);
+  };
+
+  const onTouchEnd = () => {
+    // release closes
+    closeTip();
+  };
+
   if (variant === "row") {
     return (
       <div className={["grid gap-2", rowGlow].join(" ")}>
-        {/* ✅ Small screens: stacked. Desktop: 2-col row. */}
         <div className="grid items-start gap-2 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-3">
           {/* Item */}
           <div className="min-w-0">
-            <div className="text-[15px] font-semibold text-white">
-              {/* ✅ readable on small screens */}
-              <span className="block line-clamp-2 lg:truncate">
+            <div className="relative text-[15px] font-semibold text-white">
+              <span
+                ref={labelRef}
+                className="block line-clamp-2 lg:truncate"
+                onMouseEnter={onMouseEnter}
+                onMouseLeave={onMouseLeave}
+                onTouchStart={onTouchStart}
+                onTouchEnd={onTouchEnd}
+                onTouchCancel={onTouchEnd}
+              >
                 {label || "—"}
               </span>
+
+              {showTip && tipEnabled && (
+                <div
+                  className={[
+                    "pointer-events-none absolute left-0 top-full z-30 mt-2",
+                    "max-w-[min(520px,90vw)] rounded-lg border border-white/10",
+                    "bg-black/85 px-3 py-2 text-[12px] font-normal text-neutral-100 shadow-[0_18px_45px_rgba(0,0,0,0.75)]",
+                    "backdrop-blur-md",
+                  ].join(" ")}
+                >
+                  {label}
+                </div>
+              )}
             </div>
           </div>
 
@@ -138,8 +229,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                   itmIdx: number,
                   updates: Partial<InspectionItem>,
                 ) => {
-                  if (updates.status)
-                    onUpdateStatus(secIdx, itmIdx, updates.status);
+                  if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
                 }}
                 onStatusChange={(s: InspectionItemStatus) =>
                   onUpdateStatus(sectionIndex, itemIndex, s)
@@ -151,7 +241,6 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
           </div>
         </div>
 
-        {/* Notes (full width under) */}
         {showNotes ? (
           <div className="min-w-0">
             <textarea
@@ -170,7 +259,6 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
           </div>
         ) : null}
 
-        {/* Photos (only for FAIL/REC) */}
         {showPhotos && (item.status === "fail" || item.status === "recommend") && (
           <div className="mt-1">
             <div className="rounded-lg border border-white/10 bg-black/25 p-2.5">
