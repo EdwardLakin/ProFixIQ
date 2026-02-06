@@ -2264,304 +2264,281 @@ export default function GenericInspectionScreen(
             const newLabel = newItemLabels[sectionIndex] ?? "";
             const newUnit = newItemUnits[sectionIndex] ?? "";
 
-            return (
-              <div
-                key={`${section.title}-${sectionIndex}`}
-                className={sectionCard}
-                data-section-index={sectionIndex}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className={sectionTitle}>{section.title}</h2>
+           return (
+  <div
+    key={`${section.title}-${sectionIndex}`}
+    className={sectionCard}
+    data-section-index={sectionIndex}
+  >
+    {/* ✅ Only show the OUTER header for GRID sections.
+        Non-grid sections will use SectionDisplay’s header (prevents double title). */}
+    {useGrid && (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className={sectionTitle}>{section.title}</h2>
 
-                  {safeSectionIndex === sectionIndex && (
-                    <div className="flex flex-wrap items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "ok")}
-                      >
-                        All OK
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "fail")}
-                      >
-                        All Fail
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => applyStatusToSection(sectionIndex, "na")}
-                      >
-                        All NA
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() =>
-                          applyStatusToSection(sectionIndex, "recommend")
-                        }
-                      >
-                        All REC
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
-                        onClick={() => toggleSectionCollapsed(sectionIndex)}
-                      >
-                        {collapsed ? "Expand" : "Collapse"}
-                      </button>
-                    </div>
-                  )}
+        {safeSectionIndex === sectionIndex ? (
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <button
+              type="button"
+              disabled={isLocked}
+              className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => applyStatusToSection(sectionIndex, "ok")}
+            >
+              All OK
+            </button>
+            <button
+              type="button"
+              disabled={isLocked}
+              className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => applyStatusToSection(sectionIndex, "fail")}
+            >
+              All Fail
+            </button>
+            <button
+              type="button"
+              disabled={isLocked}
+              className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => applyStatusToSection(sectionIndex, "na")}
+            >
+              All NA
+            </button>
+            <button
+              type="button"
+              disabled={isLocked}
+              className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => applyStatusToSection(sectionIndex, "recommend")}
+            >
+              All REC
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
+              onClick={() => toggleSectionCollapsed(sectionIndex)}
+            >
+              {collapsed ? "Expand" : "Collapse"}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+            onClick={() => toggleSectionCollapsed(sectionIndex)}
+          >
+            {collapsed ? "Expand" : "Collapse"}
+          </button>
+        )}
+      </div>
+    )}
 
-                  {safeSectionIndex !== sectionIndex && (
-                    <button
-                      type="button"
-                      className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
-                      onClick={() => toggleSectionCollapsed(sectionIndex)}
-                    >
-                      {collapsed ? "Expand" : "Collapse"}
-                    </button>
-                  )}
+    {collapsed ? (
+      <p className="mt-2 text-center text-[11px] text-neutral-400">
+        Section collapsed. Tap <span className="font-semibold">Expand</span> to
+        reopen.
+      </p>
+    ) : (
+      <>
+        {useGrid && (
+          <span className={hint}>
+            {unit === "metric"
+              ? "Enter mm / kPa / N·m"
+              : "Enter in / psi / ft·lb"}
+          </span>
+        )}
+
+        <div className="mt-3 md:mt-4">
+          {useGrid ? (
+            batterySection ? (
+              <BatteryGrid
+                sectionIndex={sectionIndex}
+                items={itemsWithHints}
+                unitHint={(label: string) => unitHintGeneric(label, unit)}
+              />
+            ) : airSection ? (
+              <AirCornerGrid
+                sectionIndex={sectionIndex}
+                items={itemsWithHints}
+                unitHint={(label: string) => unitHintGeneric(label, unit)}
+                onAddAxle={(axleLabel: string) =>
+                  handleAddAxleForSection(sectionIndex, axleLabel)
+                }
+                onSpecHint={(metricLabel: string) =>
+                  _props.onSpecHint?.({
+                    source: "air_corner",
+                    label: metricLabel,
+                    meta: { sectionTitle: section.title },
+                  })
+                }
+              />
+            ) : tireSection ? (
+              looksHydTire ? (
+                <TireGridHydraulic
+                  sectionIndex={sectionIndex}
+                  items={itemsWithHints}
+                  unitHint={(label: string) => unitHintGeneric(label, unit)}
+                  requireNoteForAI
+                  onSubmitAI={(secIdx: number, itemIdx: number) => {
+                    void submitAIForItem(secIdx, itemIdx);
+                  }}
+                  isSubmittingAI={(secIdx: number, itemIdx: number) =>
+                    isSubmittingAI(secIdx, itemIdx)
+                  }
+                  onUpdateParts={(secIdx, itemIdx, parts) => {
+                    if (guardLocked()) return;
+                    updateItem(secIdx, itemIdx, { parts } as ItemPatch);
+                  }}
+                  onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                    if (guardLocked()) return;
+                    updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
+                  }}
+                />
+              ) : (
+                <TireGrid
+                  sectionIndex={sectionIndex}
+                  items={itemsWithHints}
+                  unitHint={(label: string) => unitHintGeneric(label, unit)}
+                  onAddAxle={(axleLabel: string) =>
+                    handleAddTireAxleForSection(sectionIndex, axleLabel)
+                  }
+                  onSpecHint={(metricLabel: string) =>
+                    _props.onSpecHint?.({
+                      source: "tire",
+                      label: metricLabel,
+                      meta: { sectionTitle: section.title },
+                    })
+                  }
+                  requireNoteForAI
+                  onSubmitAI={(secIdx: number, itemIdx: number) => {
+                    void submitAIForItem(secIdx, itemIdx);
+                  }}
+                  isSubmittingAI={(secIdx: number, itemIdx: number) =>
+                    isSubmittingAI(secIdx, itemIdx)
+                  }
+                  onUpdateParts={(secIdx, itemIdx, parts) => {
+                    if (guardLocked()) return;
+                    updateItem(secIdx, itemIdx, { parts } as ItemPatch);
+                  }}
+                  onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                    if (guardLocked()) return;
+                    updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
+                  }}
+                />
+              )
+            ) : (
+              <CornerGrid
+                sectionIndex={sectionIndex}
+                items={itemsWithHints}
+                unitHint={(label: string) => unitHintGeneric(label, unit)}
+                onSpecHint={(label: string) =>
+                  _props.onSpecHint?.({
+                    source: "corner",
+                    label,
+                    meta: { sectionTitle: section.title },
+                  })
+                }
+              />
+            )
+          ) : (
+            <>
+              <SectionDisplay
+                title={section.title} // ✅ let SectionDisplay show the title (no duplicate header)
+                section={{ ...section, items: itemsWithHints }}
+                sectionIndex={sectionIndex}
+                showNotes
+                showPhotos
+                onUpdateStatus={(
+                  secIdx: number,
+                  itemIdx: number,
+                  statusValue: InspectionItemStatus,
+                ) => {
+                  if (guardLocked()) return;
+                  updateItem(secIdx, itemIdx, { status: statusValue } as ItemPatch);
+                  autoAdvanceFrom(secIdx, itemIdx);
+                }}
+                onUpdateNote={(secIdx: number, itemIdx: number, noteText: string) => {
+                  if (guardLocked()) return;
+                  updateItem(secIdx, itemIdx, { notes: noteText } as ItemPatch);
+                }}
+                onUpload={(photoUrl: string, secIdx: number, itemIdx: number) => {
+                  if (guardLocked()) return;
+                  const prev =
+                    session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                  updateItem(secIdx, itemIdx, {
+                    photoUrls: [...prev, photoUrl],
+                  } as ItemPatch);
+                }}
+                onUpdateParts={(
+                  secIdx: number,
+                  itemIdx: number,
+                  parts: { description: string; qty: number }[],
+                ) => {
+                  if (guardLocked()) return;
+                  updateItem(secIdx, itemIdx, { parts } as ItemPatch);
+                }}
+                onUpdateLaborHours={(secIdx: number, itemIdx: number, hours: number | null) => {
+                  if (guardLocked()) return;
+                  updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
+                }}
+                requireNoteForAI
+                onSubmitAI={(secIdx: number, itemIdx: number) => {
+                  void submitAIForItem(secIdx, itemIdx);
+                }}
+                isSubmittingAI={isSubmittingAI}
+              />
+
+              <div className="mt-4 border-t border-white/10 pt-3">
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                  Add custom item
                 </div>
-
-                {collapsed ? (
-                  <p className="mt-2 text-center text-[11px] text-neutral-400">
-                    Section collapsed. Tap{" "}
-                    <span className="font-semibold">Expand</span> to reopen.
-                  </p>
-                ) : (
-                  <>
-                    {useGrid && (
-                      <span className={hint}>
-                        {unit === "metric"
-                          ? "Enter mm / kPa / N·m"
-                          : "Enter in / psi / ft·lb"}
-                      </span>
-                    )}
-
-                    <div className="mt-3 md:mt-4">
-                      {useGrid ? (
-                        batterySection ? (
-                          <BatteryGrid
-                            sectionIndex={sectionIndex}
-                            items={itemsWithHints}
-                            unitHint={(label: string) =>
-                              unitHintGeneric(label, unit)
-                            }
-                          />
-                        ) : airSection ? (
-                          <AirCornerGrid
-                            sectionIndex={sectionIndex}
-                            items={itemsWithHints}
-                            unitHint={(label: string) =>
-                              unitHintGeneric(label, unit)
-                            }
-                            onAddAxle={(axleLabel: string) =>
-                              handleAddAxleForSection(sectionIndex, axleLabel)
-                            }
-                            onSpecHint={(metricLabel: string) =>
-                              _props.onSpecHint?.({
-                                source: "air_corner",
-                                label: metricLabel,
-                                meta: { sectionTitle: section.title },
-                              })
-                            }
-                          />
-                        ) : tireSection ? (
-                          looksHydTire ? (
-                            <TireGridHydraulic
-                              sectionIndex={sectionIndex}
-                              items={itemsWithHints}
-                              unitHint={(label: string) =>
-                                unitHintGeneric(label, unit)
-                              }
-                              requireNoteForAI
-                              onSubmitAI={(secIdx: number, itemIdx: number) => {
-                                void submitAIForItem(secIdx, itemIdx);
-                              }}
-                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                                isSubmittingAI(secIdx, itemIdx)
-                              }
-                              onUpdateParts={(secIdx, itemIdx, parts) => {
-                                if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { parts } as ItemPatch);
-                              }}
-                              onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-                                if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
-                              }}
-                            />
-                          ) : (
-                            <TireGrid
-                              sectionIndex={sectionIndex}
-                              items={itemsWithHints}
-                              unitHint={(label: string) =>
-                                unitHintGeneric(label, unit)
-                              }
-                              onAddAxle={(axleLabel: string) =>
-                                handleAddTireAxleForSection(sectionIndex, axleLabel)
-                              }
-                              onSpecHint={(metricLabel: string) =>
-                                _props.onSpecHint?.({
-                                  source: "tire",
-                                  label: metricLabel,
-                                  meta: { sectionTitle: section.title },
-                                })
-                              }
-                              requireNoteForAI
-                              onSubmitAI={(secIdx: number, itemIdx: number) => {
-                                void submitAIForItem(secIdx, itemIdx);
-                              }}
-                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                                isSubmittingAI(secIdx, itemIdx)
-                              }
-                              onUpdateParts={(secIdx, itemIdx, parts) => {
-                                if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { parts } as ItemPatch);
-                              }}
-                              onUpdateLaborHours={(secIdx, itemIdx, hours) => {
-                                if (guardLocked()) return;
-                                updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
-                              }}
-                            />
-                          )
-                        ) : (
-                          <CornerGrid
-                            sectionIndex={sectionIndex}
-                            items={itemsWithHints}
-                            unitHint={(label: string) =>
-                              unitHintGeneric(label, unit)
-                            }
-                            onSpecHint={(label: string) =>
-                              _props.onSpecHint?.({
-                                source: "corner",
-                                label,
-                                meta: { sectionTitle: section.title },
-                              })
-                            }
-                          />
-                        )
-                      ) : (
-                        <>
-                          <SectionDisplay
-                            title=""
-                            section={{ ...section, items: itemsWithHints }}
-                            sectionIndex={sectionIndex}
-                            showNotes
-                            showPhotos
-                            onUpdateStatus={(
-                              secIdx: number,
-                              itemIdx: number,
-                              statusValue: InspectionItemStatus,
-                            ) => {
-                              if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { status: statusValue } as ItemPatch);
-                              autoAdvanceFrom(secIdx, itemIdx);
-                            }}
-                            onUpdateNote={(
-                              secIdx: number,
-                              itemIdx: number,
-                              noteText: string,
-                            ) => {
-                              if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { notes: noteText } as ItemPatch);
-                            }}
-                            onUpload={(
-                              photoUrl: string,
-                              secIdx: number,
-                              itemIdx: number,
-                            ) => {
-                              if (guardLocked()) return;
-                              const prev =
-                                session.sections[secIdx].items[itemIdx].photoUrls ??
-                                [];
-                              updateItem(secIdx, itemIdx, {
-                                photoUrls: [...prev, photoUrl],
-                              } as ItemPatch);
-                            }}
-                            onUpdateParts={(
-                              secIdx: number,
-                              itemIdx: number,
-                              parts: { description: string; qty: number }[],
-                            ) => {
-                              if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { parts } as ItemPatch);
-                            }}
-                            onUpdateLaborHours={(
-                              secIdx: number,
-                              itemIdx: number,
-                              hours: number | null,
-                            ) => {
-                              if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, { laborHours: hours } as ItemPatch);
-                            }}
-                            requireNoteForAI
-                            onSubmitAI={(secIdx: number, itemIdx: number) => {
-                              void submitAIForItem(secIdx, itemIdx);
-                            }}
-                            isSubmittingAI={isSubmittingAI}
-                          />
-
-                          <div className="mt-4 border-t border-white/10 pt-3">
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                              Add custom item
-                            </div>
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                              <input
-                                className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                                placeholder="Item label (e.g. Rear frame inspection)"
-                                value={newLabel}
-                                onChange={(e) =>
-                                  setNewItemLabels((prev) => ({
-                                    ...prev,
-                                    [sectionIndex]: e.target.value,
-                                  }))
-                                }
-                                disabled={isLocked}
-                              />
-                              <div className="flex items-center gap-2 md:w-auto">
-                                <select
-                                  className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-                                  value={newUnit}
-                                  onChange={(e) =>
-                                    setNewItemUnits((prev) => ({
-                                      ...prev,
-                                      [sectionIndex]: e.target.value,
-                                    }))
-                                  }
-                                  title="Measurement unit"
-                                  disabled={isLocked}
-                                >
-                                  {UNIT_OPTIONS.map((u) => (
-                                    <option key={u || "blank"} value={u}>
-                                      {u || "— unit —"}
-                                    </option>
-                                  ))}
-                                </select>
-                                <Button
-                                  type="button"
-                                  className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
-                                  onClick={() => handleAddCustomItem(sectionIndex)}
-                                  disabled={isLocked}
-                                >
-                                  + Add Item
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
+                <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                  <input
+                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                    placeholder="Item label (e.g. Rear frame inspection)"
+                    value={newLabel}
+                    onChange={(e) =>
+                      setNewItemLabels((prev) => ({
+                        ...prev,
+                        [sectionIndex]: e.target.value,
+                      }))
+                    }
+                    disabled={isLocked}
+                  />
+                  <div className="flex items-center gap-2 md:w-auto">
+                    <select
+                      className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1.5 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                      value={newUnit}
+                      onChange={(e) =>
+                        setNewItemUnits((prev) => ({
+                          ...prev,
+                          [sectionIndex]: e.target.value,
+                        }))
+                      }
+                      title="Measurement unit"
+                      disabled={isLocked}
+                    >
+                      {UNIT_OPTIONS.map((u) => (
+                        <option key={u || "blank"} value={u}>
+                          {u || "— unit —"}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      className="whitespace-nowrap px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]"
+                      onClick={() => handleAddCustomItem(sectionIndex)}
+                      disabled={isLocked}
+                    >
+                      + Add Item
+                    </Button>
+                  </div>
+                </div>
               </div>
-            );
+            </>
+          )}
+        </div>
+      </>
+    )}
+  </div>
+); 
           })}
         </InspectionFormCtx.Provider>
 

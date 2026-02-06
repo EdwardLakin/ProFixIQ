@@ -322,28 +322,33 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                   const lockInputs = submitted && !isEditing;
 
-                  // ✅ subtle alternating greys (helps eye tracking on long lists)
-                  const altBg =
-                    itemIndex % 2 === 0 ? "bg-black/30" : "bg-black/22";
-                  const altHover =
-                    itemIndex % 2 === 0
-                      ? "hover:bg-white/[0.035]"
-                      : "hover:bg-white/[0.045]";
-
                   return (
                     <div
-                      key={keyBase}
-                      className={[
-                        "relative rounded-lg px-3 py-3 transition-colors",
-                        altBg,
-                        altHover,
-                        "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
-                        rail,
-                        submitted
-                          ? "border border-emerald-500/40 shadow-[0_0_0_2px_rgba(16,185,129,0.12)]"
-                          : "border border-white/0",
-                      ].join(" ")}
-                    >
+  key={keyBase}
+  className={[
+    "relative rounded-lg px-3 py-3 transition-colors",
+
+    // ✅ base (mobile/tablet 1-col): alternate per item
+    itemIndex % 2 === 0 ? "bg-black/28" : "bg-black/24",
+    itemIndex % 2 === 0 ? "hover:bg-white/[0.035]" : "hover:bg-white/[0.045]",
+
+    // ✅ lg (2-col): alternate per ROW (two cards share the same tone)
+    "lg:[&:nth-child(4n+1)]:bg-black/28 lg:[&:nth-child(4n+2)]:bg-black/28",
+    "lg:[&:nth-child(4n+3)]:bg-black/24 lg:[&:nth-child(4n+4)]:bg-black/24",
+
+    // ✅ keep hover consistent on lg too
+    "lg:[&:nth-child(4n+1)]:hover:bg-white/[0.035] lg:[&:nth-child(4n+2)]:hover:bg-white/[0.035]",
+    "lg:[&:nth-child(4n+3)]:hover:bg-white/[0.045] lg:[&:nth-child(4n+4)]:hover:bg-white/[0.045]",
+
+    "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
+    rail,
+
+    submitted
+      ? "border border-emerald-500/40 shadow-[0_0_0_2px_rgba(16,185,129,0.12)]"
+      : "border border-white/0",
+  ].join(" ")}
+>
+
                       <InspectionItemCard
                         item={{
                           ...item,
