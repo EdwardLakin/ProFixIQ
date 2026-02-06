@@ -1,15 +1,3 @@
-// /features/inspections/lib/inspection/useRealtimeVoice.ts (FULL FILE REPLACEMENT)
-//
-// ✅ NO MANUAL FOCUS in here (this file never chooses items/sections)
-// ✅ Fix: “only recognizing left” / missing rest of the command
-// - Realtime events sometimes send delta/completed text in nested shapes
-//   (e.g. { delta: { text } } or { transcript: { text } }).
-// - Also, some deltas arrive without whitespace; we insert spacing safely.
-// - We keep a “lastLiveSnapshot” so if completed is short (or only last token),
-//   we still submit the full phrase.
-//
-// No `any`.
-
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -19,11 +7,20 @@ export type VoiceState = "idle" | "connecting" | "listening" | "error";
 type HandleTranscriptFn = (text: string) => void;
 
 type RealtimeVoiceOptions = {
+  /** Called when WS connects / stops / errors */
   onStateChange?: (state: VoiceState) => void;
+  /**
+   * Called when we detect audio activity OR transcript delta.
+   * Use this to flash your "• audio" indicator.
+   */
   onPulse?: () => void;
+  /** Optional: surface error message to UI */
   onError?: (message: string) => void;
-  audioPulseThreshold?: number;
-  pulseDebounceMs?: number;
+
+  /** RMS threshold for "audio activity" pulse */
+  audioPulseThreshold?: number; // default 0.02-ish
+  /** minimum ms between pulses */
+  pulseDebounceMs?: number; // default 250
 };
 
 type RealtimeTokenResponse = { token?: string };
@@ -52,6 +49,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+// ✅ Realtime can emit different but valid event type names.
 const TRANSCRIPTION_DELTA_TYPES = new Set<string>([
   "conversation.item.input_audio_transcription.delta",
   "input_audio_transcription.delta",
@@ -75,75 +73,44 @@ function getStringField(obj: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
-function getNestedString(obj: unknown, path: string[]): string {
-  let cur: unknown = obj;
-  for (const p of path) {
-    if (!isRecord(cur)) return "";
-    cur = cur[p];
-  }
-  return typeof cur === "string" ? cur : "";
+/**
+ * Some delta streams send tokens without spaces. If we just concat, we can get:
+ *   "hey techy" + "left" => "hey techyleft"
+ * which breaks wake-word parsing.
+ */
+function appendDeltaWithSpacing(prev: string, delta: string): string {
+  const d = String(delta ?? "");
+  if (!d) return prev;
+  if (!prev) return d;
+
+  const last = prev.slice(-1);
+  const first = d.slice(0, 1);
+
+  const firstIsPunct = /[.,!?;:]/.test(first);
+  const needsSpace = last !== " " && first !== " " && !firstIsPunct;
+
+  return needsSpace ? `${prev} ${d}` : `${prev}${d}`;
 }
 
-function pickDeltaText(msg: Record<string, unknown>): string {
-  // Common shapes:
-  // - { delta: "text" }
-  // - { text: "text" }
-  // - { transcript: "text" }
-  // - { delta: { text: "text" } }
-  // - { delta: { transcript: "text" } }
-  // - { transcript: { text: "text" } }
-  const direct = getStringField(msg, ["delta", "transcript", "text"]);
-  if (direct) return direct;
+/**
+ * Completed events sometimes contain only the last token. Prefer whichever
+ * looks more complete between completed and accumulated live.
+ */
+function pickBestFinal(completed: string, live: string): string {
+  const c = String(completed ?? "").trim();
+  const l = String(live ?? "").trim();
 
-  const nested =
-    getNestedString(msg, ["delta", "text"]) ||
-    getNestedString(msg, ["delta", "transcript"]) ||
-    getNestedString(msg, ["transcript", "text"]) ||
-    getNestedString(msg, ["transcript", "final"]);
-  return nested || "";
-}
+  if (!c && !l) return "";
+  if (!c) return l;
+  if (!l) return c;
 
-function pickCompletedText(msg: Record<string, unknown>): string {
-  // Common shapes:
-  // - { transcript: "..." }
-  // - { text: "..." }
-  // - { final: "..." }
-  // - { transcript: { text: "..." } }
-  // - { transcript: { final: "..." } }
-  const direct = getStringField(msg, ["transcript", "text", "final"]);
-  if (direct) return direct;
+  // If completed is clearly shorter and live contains it (common last-token-only case)
+  if (l.length >= c.length && l.includes(c)) return l;
 
-  const nested =
-    getNestedString(msg, ["transcript", "text"]) ||
-    getNestedString(msg, ["transcript", "final"]) ||
-    getNestedString(msg, ["final", "text"]);
-  return nested || "";
-}
+  // If live is a suffix/prefix mismatch but live is much longer, trust live
+  if (l.length > c.length + 2) return l;
 
-function safeAppendLive(prev: string, delta: string): string {
-  const p = prev || "";
-  const d = delta || "";
-  if (!d) return p;
-
-  // If last char and first char are both non-space, insert a space.
-  const needsSpace =
-    p.length > 0 && !/\s$/.test(p) && d.length > 0 && !/^\s/.test(d);
-
-  return needsSpace ? `${p} ${d}` : `${p}${d}`;
-}
-
-function pickBestFinal(args: { completed: string; live: string }): string {
-  const completed = args.completed.trim();
-  const live = args.live.trim();
-
-  if (!completed && !live) return "";
-  if (!completed) return live;
-  if (!live) return completed;
-
-  // Some variants send only the last token in "completed"
-  // while live contains the full transcript. Prefer the longer one.
-  if (live.length >= completed.length) return live;
-  return completed;
+  return c.length >= l.length ? c : l;
 }
 
 export function useRealtimeVoice(
@@ -156,17 +123,15 @@ export function useRealtimeVoice(
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletRef = useRef<AudioWorkletNode | null>(null);
 
+  // Keep the graph alive on iOS by connecting to destination (muted)
   const zeroGainRef = useRef<GainNode | null>(null);
 
   const lastPulseAtRef = useRef<number>(0);
   const stoppedRef = useRef<boolean>(false);
 
-  // ✅ live delta accumulation
   const liveRef = useRef<string>("");
 
-  // ✅ snapshot of the longest live we’ve seen for this utterance
-  const lastLiveSnapshotRef = useRef<string>("");
-
+  // ✅ Avoid stale closures: keep latest callbacks in refs
   const handleTranscriptRef = useRef<HandleTranscriptFn>(handleTranscript);
   const maybeHandleWakeWordRef = useRef<(text: string) => string | null>(
     maybeHandleWakeWord,
@@ -199,6 +164,7 @@ export function useRealtimeVoice(
     stoppedRef.current = false;
     setState("connecting");
 
+    // ✅ get EPHEMERAL token
     const r = await fetch("/api/openai/realtime-token", { method: "GET" });
     if (!r.ok) {
       setState("error");
@@ -214,6 +180,7 @@ export function useRealtimeVoice(
       throw new Error("Missing realtime token");
     }
 
+    // Mic
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
@@ -224,14 +191,16 @@ export function useRealtimeVoice(
     });
     mediaStreamRef.current = stream;
 
+    // WebAudio (24kHz)
     const audioCtx = new AudioContext({ sampleRate: 24000 });
     audioCtxRef.current = audioCtx;
 
+    // iOS can start suspended even after user gesture in some cases
     if (audioCtx.state === "suspended") {
       try {
         await audioCtx.resume();
       } catch {
-        // ignore
+        // keep going; we still try
       }
     }
 
@@ -241,6 +210,7 @@ export function useRealtimeVoice(
     const worklet = new AudioWorkletNode(audioCtx, "pcm-processor");
     workletRef.current = worklet;
 
+    // ✅ CRITICAL: keep audio graph alive by connecting to destination (muted)
     const zeroGain = audioCtx.createGain();
     zeroGain.gain.value = 0;
     zeroGainRef.current = zeroGain;
@@ -249,6 +219,7 @@ export function useRealtimeVoice(
     worklet.connect(zeroGain);
     zeroGain.connect(audioCtx.destination);
 
+    // WS connect
     const ws = new WebSocket(
       "wss://api.openai.com/v1/realtime?intent=transcription",
       ["realtime", `openai-insecure-api-key.${token}`],
@@ -258,6 +229,7 @@ export function useRealtimeVoice(
     ws.onopen = () => {
       if (stoppedRef.current) return;
 
+      // We are now connected; show Listening even before transcript arrives.
       setState("listening");
 
       ws.send(
@@ -275,9 +247,9 @@ export function useRealtimeVoice(
                 },
                 turn_detection: {
                   type: "server_vad",
-                  threshold: 0.45,
-                  prefix_padding_ms: 500,
-                  silence_duration_ms: 700,
+                  threshold: 0.5,
+                  prefix_padding_ms: 300,
+                  silence_duration_ms: 500,
                 },
               },
             },
@@ -286,9 +258,11 @@ export function useRealtimeVoice(
       );
     };
 
+    // Send audio chunks
     worklet.port.onmessage = (e: MessageEvent) => {
       if (stoppedRef.current) return;
 
+      // We expect the worklet to post Float32Array frames.
       const data = e.data as unknown;
       if (!(data instanceof Float32Array)) return;
 
@@ -300,8 +274,11 @@ export function useRealtimeVoice(
           ? opts.audioPulseThreshold
           : 0.02;
 
-      if (level >= threshold) pulse();
+      if (level >= threshold) {
+        pulse(); // ✅ shows "audio" pulse even if transcription isn't returning yet
+      }
 
+      // Float32 [-1,1] -> PCM16
       const pcm16 = new Int16Array(float32.length);
       for (let i = 0; i < float32.length; i++) {
         const s = Math.max(-1, Math.min(1, float32[i]));
@@ -333,47 +310,37 @@ export function useRealtimeVoice(
       if (!isRecord(msgUnknown)) return;
       const type = String(msgUnknown.type ?? "");
 
+      // ✅ DELTAS (multiple possible event names)
       if (TRANSCRIPTION_DELTA_TYPES.has(type)) {
-        const delta = pickDeltaText(msgUnknown);
+        const delta = getStringField(msgUnknown, ["delta", "transcript", "text"]);
         if (!delta) return;
 
-        // ✅ accumulate full phrase from deltas (with safe spacing)
-        liveRef.current = safeAppendLive(liveRef.current, delta);
-
-        // ✅ keep longest snapshot (helps when "completed" is only last word)
-        const liveNow = liveRef.current.trim();
-        if (liveNow.length > lastLiveSnapshotRef.current.trim().length) {
-          lastLiveSnapshotRef.current = liveNow;
-        }
+        // ✅ keep a clean, space-safe accumulation
+        liveRef.current = appendDeltaWithSpacing(liveRef.current, delta);
 
         pulse();
         return;
       }
 
+      // ✅ COMPLETED (multiple possible event names)
       if (TRANSCRIPTION_COMPLETE_TYPES.has(type)) {
-        const completedText = pickCompletedText(msgUnknown);
+        const completedText = getStringField(msgUnknown, [
+          "transcript",
+          "text",
+          "final",
+        ]);
+
         const liveText = liveRef.current;
 
-        // Prefer best among: completed vs live vs last snapshot
-        const bestFromLive = pickBestFinal({
-          completed: completedText,
-          live: liveText,
-        });
+        // ✅ choose the best transcript (fixes "only last word" issue)
+        const finalText = pickBestFinal(completedText, liveText).trim();
 
-        const snapshot = lastLiveSnapshotRef.current;
-        const finalText =
-          (snapshot.trim().length > bestFromLive.trim().length
-            ? snapshot
-            : bestFromLive
-          ).trim();
-
-        // clear AFTER pick
         liveRef.current = "";
-        lastLiveSnapshotRef.current = "";
-
         if (!finalText) return;
 
         const cmdRaw = maybeHandleWakeWordRef.current(finalText);
+
+        // ✅ wake-only (null or empty) => do not call handleTranscript
         const cmd = typeof cmdRaw === "string" ? cmdRaw.trim() : "";
         if (!cmd) return;
 
@@ -415,6 +382,7 @@ export function useRealtimeVoice(
     if (stoppedRef.current) return;
     stoppedRef.current = true;
 
+    // disconnect worklet + graph
     try {
       workletRef.current?.disconnect();
     } catch {}
@@ -425,6 +393,7 @@ export function useRealtimeVoice(
     } catch {}
     zeroGainRef.current = null;
 
+    // close WS (handle CONNECTING too)
     const sock = wsRef.current;
     wsRef.current = null;
     try {
@@ -437,11 +406,13 @@ export function useRealtimeVoice(
       }
     } catch {}
 
+    // stop mic
     try {
       mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     } catch {}
     mediaStreamRef.current = null;
 
+    // close audio context
     const ctx = audioCtxRef.current;
     audioCtxRef.current = null;
     try {
@@ -449,7 +420,6 @@ export function useRealtimeVoice(
     } catch {}
 
     liveRef.current = "";
-    lastLiveSnapshotRef.current = "";
     setState("idle");
   }
 
