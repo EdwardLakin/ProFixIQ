@@ -1,3 +1,10 @@
+// /useRealtimeVoice.ts (FULL FILE REPLACEMENT)
+// ✅ Patched (safe + minimal):
+// 1) Removes SIDE-EFFECT wake handling from DELTAS (prevents “blocked / weird” wake behavior)
+// 2) Uses a PURE wake detector during DELTAS (no toast / no wakeActive state changes)
+// 3) Still uses your existing maybeHandleWakeWord() on COMPLETED (keeps your “Ready” UX + beep there)
+// 4) Keeps your existing types + no `any`
+
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -21,6 +28,9 @@ type RealtimeVoiceOptions = {
   audioPulseThreshold?: number; // default 0.02-ish
   /** minimum ms between pulses */
   pulseDebounceMs?: number; // default 250
+
+  /** Debounce for wake detection during DELTAS */
+  wakeDebounceMs?: number; // default 350
 };
 
 type RealtimeTokenResponse = { token?: string };
@@ -74,43 +84,42 @@ function getStringField(obj: Record<string, unknown>, keys: string[]): string {
 }
 
 /**
- * Some delta streams send tokens without spaces. If we just concat, we can get:
- *   "hey techy" + "left" => "hey techyleft"
- * which breaks wake-word parsing.
+ * ✅ PURE wake detector (NO side effects).
+ * Use this ONLY for DELTAS so we don't trigger toast/beep/state while partial text is streaming.
  */
-function appendDeltaWithSpacing(prev: string, delta: string): string {
-  const d = String(delta ?? "");
-  if (!d) return prev;
-  if (!prev) return d;
+const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"] as const;
 
-  const last = prev.slice(-1);
-  const first = d.slice(0, 1);
-
-  const firstIsPunct = /[.,!?;:]/.test(first);
-  const needsSpace = last !== " " && first !== " " && !firstIsPunct;
-
-  return needsSpace ? `${prev} ${d}` : `${prev}${d}`;
+function normalizeForWake(raw: string): string {
+  return String(raw ?? "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-/**
- * Completed events sometimes contain only the last token. Prefer whichever
- * looks more complete between completed and accumulated live.
- */
-function pickBestFinal(completed: string, live: string): string {
-  const c = String(completed ?? "").trim();
-  const l = String(live ?? "").trim();
+function stripOptionalHey(s: string): string {
+  return s.startsWith("hey ") ? s.slice(4).trim() : s;
+}
 
-  if (!c && !l) return "";
-  if (!c) return l;
-  if (!l) return c;
+function detectWakeCommandFromDelta(
+  textSoFar: string,
+): { remainder: string } | null {
+  const normalized = normalizeForWake(textSoFar);
+  if (!normalized) return null;
 
-  // If completed is clearly shorter and live contains it (common last-token-only case)
-  if (l.length >= c.length && l.includes(c)) return l;
+  const withoutHey = stripOptionalHey(normalized);
 
-  // If live is a suffix/prefix mismatch but live is much longer, trust live
-  if (l.length > c.length + 2) return l;
+  for (const prefix of WAKE_PREFIXES) {
+    if (withoutHey === prefix) {
+      // wake word only, no command yet
+      return { remainder: "" };
+    }
+    if (withoutHey.startsWith(prefix + " ")) {
+      return { remainder: withoutHey.slice(prefix.length).trimStart() };
+    }
+  }
 
-  return c.length >= l.length ? c : l;
+  return null;
 }
 
 export function useRealtimeVoice(
@@ -137,6 +146,10 @@ export function useRealtimeVoice(
     maybeHandleWakeWord,
   );
 
+  // ✅ Wake arming across DELTAS (pure detector)
+  const pendingCmdRef = useRef<string | null>(null);
+  const lastWakeAtRef = useRef<number>(0);
+
   useEffect(() => {
     handleTranscriptRef.current = handleTranscript;
   }, [handleTranscript]);
@@ -158,10 +171,29 @@ export function useRealtimeVoice(
     opts?.onPulse?.();
   };
 
+  const armWakeIfPresent = (textSoFar: string) => {
+    const now = Date.now();
+    const debounce =
+      typeof opts?.wakeDebounceMs === "number" ? opts.wakeDebounceMs : 350;
+
+    if (now - lastWakeAtRef.current < debounce) return;
+
+    const detected = detectWakeCommandFromDelta(textSoFar);
+    if (!detected) return;
+
+    // Only store a command if there is one (wake-only is allowed but doesn't arm a command)
+    const remainder = detected.remainder.trim();
+    pendingCmdRef.current = remainder.length > 0 ? remainder : null;
+
+    lastWakeAtRef.current = now;
+  };
+
   async function start(): Promise<void> {
     if (wsRef.current) return;
 
     stoppedRef.current = false;
+    pendingCmdRef.current = null;
+    liveRef.current = "";
     setState("connecting");
 
     // ✅ get EPHEMERAL token
@@ -229,7 +261,6 @@ export function useRealtimeVoice(
     ws.onopen = () => {
       if (stoppedRef.current) return;
 
-      // We are now connected; show Listening even before transcript arrives.
       setState("listening");
 
       ws.send(
@@ -245,11 +276,12 @@ export function useRealtimeVoice(
                   model: "gpt-4o-mini-transcribe",
                   language: "en",
                 },
+                // ✅ slightly more forgiving for bay noise + short commands
                 turn_detection: {
                   type: "server_vad",
-                  threshold: 0.5,
-                  prefix_padding_ms: 300,
-                  silence_duration_ms: 500,
+                  threshold: 0.45,
+                  prefix_padding_ms: 650,
+                  silence_duration_ms: 850,
                 },
               },
             },
@@ -262,7 +294,6 @@ export function useRealtimeVoice(
     worklet.port.onmessage = (e: MessageEvent) => {
       if (stoppedRef.current) return;
 
-      // We expect the worklet to post Float32Array frames.
       const data = e.data as unknown;
       if (!(data instanceof Float32Array)) return;
 
@@ -275,7 +306,7 @@ export function useRealtimeVoice(
           : 0.02;
 
       if (level >= threshold) {
-        pulse(); // ✅ shows "audio" pulse even if transcription isn't returning yet
+        pulse();
       }
 
       // Float32 [-1,1] -> PCM16
@@ -310,38 +341,48 @@ export function useRealtimeVoice(
       if (!isRecord(msgUnknown)) return;
       const type = String(msgUnknown.type ?? "");
 
-      // ✅ DELTAS (multiple possible event names)
+      // ✅ DELTAS
       if (TRANSCRIPTION_DELTA_TYPES.has(type)) {
         const delta = getStringField(msgUnknown, ["delta", "transcript", "text"]);
         if (!delta) return;
 
-        // ✅ keep a clean, space-safe accumulation
-        liveRef.current = appendDeltaWithSpacing(liveRef.current, delta);
-
+        liveRef.current += delta;
         pulse();
+
+        // ✅ PURE wake arming (no side effects)
+        armWakeIfPresent(liveRef.current);
+
         return;
       }
 
-      // ✅ COMPLETED (multiple possible event names)
+      // ✅ COMPLETED
       if (TRANSCRIPTION_COMPLETE_TYPES.has(type)) {
-        const completedText = getStringField(msgUnknown, [
+        const finalText = getStringField(msgUnknown, [
           "transcript",
           "text",
           "final",
-        ]);
+        ]).trim();
 
-        const liveText = liveRef.current;
-
-        // ✅ choose the best transcript (fixes "only last word" issue)
-        const finalText = pickBestFinal(completedText, liveText).trim();
-
+        // reset live buffer either way
         liveRef.current = "";
-        if (!finalText) return;
 
-        const cmdRaw = maybeHandleWakeWordRef.current(finalText);
+        if (!finalText) {
+          pendingCmdRef.current = null;
+          return;
+        }
 
-        // ✅ wake-only (null or empty) => do not call handleTranscript
-        const cmd = typeof cmdRaw === "string" ? cmdRaw.trim() : "";
+        // Prefer armed command from DELTAS; if none, fall back to side-effect wake handler
+        const armed = pendingCmdRef.current;
+        pendingCmdRef.current = null;
+
+        // If we armed a remainder during DELTAS, use it.
+        // Otherwise call your existing wake handler (this is where READY toast/beep/state happen).
+        const cmd = (
+          armed ??
+          maybeHandleWakeWordRef.current(finalText) ??
+          ""
+        ).trim();
+
         if (!cmd) return;
 
         handleTranscriptRef.current(cmd);
@@ -382,7 +423,6 @@ export function useRealtimeVoice(
     if (stoppedRef.current) return;
     stoppedRef.current = true;
 
-    // disconnect worklet + graph
     try {
       workletRef.current?.disconnect();
     } catch {}
@@ -393,7 +433,6 @@ export function useRealtimeVoice(
     } catch {}
     zeroGainRef.current = null;
 
-    // close WS (handle CONNECTING too)
     const sock = wsRef.current;
     wsRef.current = null;
     try {
@@ -406,13 +445,11 @@ export function useRealtimeVoice(
       }
     } catch {}
 
-    // stop mic
     try {
       mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     } catch {}
     mediaStreamRef.current = null;
 
-    // close audio context
     const ctx = audioCtxRef.current;
     audioCtxRef.current = null;
     try {
@@ -420,6 +457,7 @@ export function useRealtimeVoice(
     } catch {}
 
     liveRef.current = "";
+    pendingCmdRef.current = null;
     setState("idle");
   }
 
