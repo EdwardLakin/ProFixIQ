@@ -8,7 +8,7 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
 
-import { Toaster } from "react-hot-toast";
+import { Toaster } from "sonner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -54,13 +54,15 @@ export default async function RootLayout({
       >
         <Providers initialSession={session ?? null}>
           <VoiceProvider>
-            {/* ✅ AppShell now decides whether to wrap content in TabsBridge */}
+            {/* AppShell decides whether to wrap content in TabsBridge */}
             <AppShell>{children}</AppShell>
           </VoiceProvider>
 
-          {/* Legacy toast for older parts of the app – dark metal theme */}
+          {/* ✅ Global Sonner toaster (single source of truth) */}
           <Toaster
             position="bottom-center"
+            theme="dark"
+            richColors
             toastOptions={{
               style: {
                 background:
