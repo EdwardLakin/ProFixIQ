@@ -1262,15 +1262,22 @@ const wakeTimeoutRef = useRef<number | null>(null);
             rawSpeech: mainText,
           });
 
+
           // ✅ capture resolver-selected target (preferred)
           const r = result as unknown as {
             appliedTarget?: { sectionIndex: number; itemIndex: number };
           };
-          if (r?.appliedTarget) {
-            lastAppliedTarget = r.appliedTarget;
-          }
 
-          applied.push({ command: commandLabel(command), ok: true });
+            if (r?.appliedTarget) {
+              lastAppliedTarget = r.appliedTarget;
+              applied.push({ command: commandLabel(command), ok: true });
+            } else {
+              applied.push({
+               command: commandLabel(command),
+               ok: false,
+               reason: "No target resolved",
+              });
+            }
         } catch (err: unknown) {
           // eslint-disable-next-line no-console
           console.error("[voice] apply failed", err);
