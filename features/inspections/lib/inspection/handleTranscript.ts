@@ -4,7 +4,6 @@
 // - This file NEVER uses currentItemIndex.
 // - For SECTION-wide actions, we may use currentSectionIndex as a SAFE fallback
 //   when the model says "this/current section" or gives no usable section name.
-//   (This is not focusing an item — it's selecting the intended section context.)
 //
 // ✅ Fix goals covered
 // 1) Stronger resolver for tire + air axle phrases (steer/drive, left/right, inner/outer)
@@ -12,6 +11,10 @@
 // 3) Section-wide status commands work even if server returns odd shapes OR "this section"
 // 4) Unit inference from speech ("mil/mils" => "mm") + numeric coercion safety
 // 5) Higher confidence threshold to reduce wrong-field writes
+//
+// ✅ FIX (critical):
+// - When server returns {command:"update_status", item:"...", status:"ok"} WITHOUT indices,
+//   we now ALSO read section/item/note from the command record so target resolution works.
 //
 // No `any`.
 
@@ -41,20 +44,12 @@ export type HandleTranscriptResult = {
 };
 
 interface HandleTranscriptArgs {
-  /**
-   * ✅ allow multi-commands in one transcript
-   */
   command: ParsedCommand | ParsedCommand[];
   session: InspectionSession;
   updateInspection: UpdateInspectionFn;
   updateItem: UpdateItemFn;
   updateSection: UpdateSectionFn;
   finishSession: () => void;
-
-  /**
-   * Raw transcript text (after wake-word stripping).
-   * Used for best-effort target resolution.
-   */
   rawSpeech?: string;
 }
 
@@ -152,7 +147,6 @@ function extractHintTokens(text: string): string[] {
 
   out.push(...tokenize(raw));
 
-  // normalize a few multi-token patterns to help matching
   const n = norm(raw);
   if (n.includes("steer") && !n.includes("steer 1")) out.push("steer 1");
   if (n.includes("drive") && !n.includes("drive 1")) out.push("drive 1");
@@ -169,7 +163,6 @@ function scoreLabel(label: string, hintTokens: string[]): number {
   for (const tok of hintTokens) {
     if (!tok) continue;
 
-    // corners are very valuable
     if (tok === "lf" || tok === "rf" || tok === "lr" || tok === "rr") {
       if (l.includes(tok)) score += 80;
       continue;
@@ -184,7 +177,6 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
-    // axle/side are crucial for air/tire grids
     if (tok === "steer" || tok === "steer 1") {
       if (l.includes("steer")) score += 40;
       continue;
@@ -202,7 +194,6 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
-    // metric tokens
     if (tok === "tire pressure" || tok === "pressure") {
       if (l.includes("pressure")) score += tok === "tire pressure" ? 35 : 22;
       continue;
@@ -212,7 +203,6 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
-    // brakes
     if (
       tok === "pad" ||
       tok === "pads" ||
@@ -234,7 +224,6 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
-    // battery: rated vs tested
     if (tok === "cca" || tok === "cranking") {
       if (l.includes("cca") || l.includes("cranking")) score += 22;
       continue;
@@ -248,16 +237,13 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
-    // units
     if (tok === "psi" && l.includes("psi")) score += 14;
     if (tok === "mm" && l.includes("mm")) score += 14;
     if (tok === "in" && (l.includes(" in") || l.endsWith(" in"))) score += 14;
 
-    // generic token match (low value)
     if (tok.length >= 3 && l.includes(tok)) score += 3;
   }
 
-  // bonus if label contains both axle+side when those hints exist
   const wantsSteer =
     hintTokens.includes("steer") || hintTokens.includes("steer 1");
   const wantsDrive =
@@ -357,7 +343,6 @@ function resolveTargetFromSpeech(args: {
     }
   }
 
-  // ✅ minimum confidence to avoid random writes
   if (!best || best.score < 28) return null;
   return best.target;
 }
@@ -432,7 +417,6 @@ function coerceNumericValue(raw: unknown): number | undefined {
   const s = String(raw ?? "").trim();
   if (!s) return undefined;
 
-  // pull first number even if unit words exist (e.g., "8 mil")
   const m = s.match(/-?\d+(?:\.\d+)?/);
   if (!m) return undefined;
 
@@ -447,10 +431,7 @@ function inferUnitFromSpeech(speech: string): string | undefined {
   if (/\bpsi\b/.test(t)) return "psi";
   if (/\b(inch|inches|\bin\b)\b/.test(t)) return "in";
   if (/\b(mm|millimeter|millimetre)\b/.test(t)) return "mm";
-
-  // tech says “mil/mils” for tread/pads — map to mm for your grids
   if (/\b(mil|mils)\b/.test(t)) return "mm";
-
   if (/\bcca\b/.test(t)) return "CCA";
 
   return undefined;
@@ -490,11 +471,11 @@ function coerceLaborHoursFromUnknown(v: unknown): number | null | undefined {
   return undefined;
 }
 
-/* ------------------- NEW: section-name normalization + fallback ------------------- */
+/* ------------------- section-name normalization + fallback ------------------- */
 
 function isThisSectionName(sectionName: string | undefined): boolean {
   const s = norm(sectionName ?? "");
-  if (!s) return true; // missing means "this"
+  if (!s) return true;
   return (
     s === "this" ||
     s === "current" ||
@@ -507,14 +488,16 @@ function isThisSectionName(sectionName: string | undefined): boolean {
 
 function getSafeCurrentSectionIndex(session: InspectionSession): number {
   const idx =
-    typeof session.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
+    typeof session.currentSectionIndex === "number"
+      ? session.currentSectionIndex
+      : 0;
   if (idx < 0) return 0;
   if (idx >= session.sections.length) return Math.max(0, session.sections.length - 1);
   return idx;
 }
 
 /* -------------------------------------------------------------------------------------------------
- * Main apply (NO MANUAL FOCUS)
+ * Main apply
  * ------------------------------------------------------------------------------------------------- */
 
 async function applySingleCommand(args: {
@@ -525,7 +508,6 @@ async function applySingleCommand(args: {
 }): Promise<AppliedTarget | null> {
   const { command, session, updateItem, rawSpeech } = args;
 
-  // Normalized fields
   let section: string | undefined;
   let item: string | undefined;
   let status: InspectionItemStatus | undefined;
@@ -534,11 +516,9 @@ async function applySingleCommand(args: {
   let unit: string | undefined;
   let mode: string;
 
-  // Optional extensions for “oneshot”
   let parts: PartLine[] | undefined;
   let laborHours: number | null | undefined;
 
-  // Explicit index targets
   let explicitSectionIndex: number | undefined;
   let explicitItemIndex: number | undefined;
 
@@ -546,16 +526,32 @@ async function applySingleCommand(args: {
     const c = command as ParsedCommandIndexed;
     mode = c.command;
 
-    status = normalizeStatusMaybe(c.status);
-    note = c.notes;
-    value = c.value;
-    unit = c.unit;
+    status = normalizeStatusMaybe((c as unknown as { status?: unknown })?.status);
+    value = (c as unknown as { value?: unknown })?.value as unknown as
+      | string
+      | number
+      | undefined;
+    unit = (c as unknown as { unit?: unknown })?.unit as unknown as string | undefined;
 
-    if (typeof c.sectionIndex === "number") explicitSectionIndex = c.sectionIndex;
-    if (typeof c.itemIndex === "number") explicitItemIndex = c.itemIndex;
+    if (typeof (c as unknown as { sectionIndex?: unknown })?.sectionIndex === "number") {
+      explicitSectionIndex = (c as unknown as { sectionIndex: number }).sectionIndex;
+    }
+    if (typeof (c as unknown as { itemIndex?: unknown })?.itemIndex === "number") {
+      explicitItemIndex = (c as unknown as { itemIndex: number }).itemIndex;
+    }
 
+    // ✅ CRITICAL: also read section/item/note from record when indices are missing
     const rec = c as unknown;
     if (isRecord(rec)) {
+      if (!section && typeof rec.section === "string") section = rec.section;
+      if (!item && typeof rec.item === "string") item = rec.item;
+
+      const noteCandidate =
+        (typeof rec.note === "string" && rec.note) ||
+        (typeof rec.notes === "string" && rec.notes) ||
+        "";
+      if (!note && noteCandidate) note = noteCandidate;
+
       parts = coercePartsFromUnknown(rec.parts);
       laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
     }
@@ -578,20 +574,12 @@ async function applySingleCommand(args: {
     }
   }
 
-  // If a numeric value exists but unit is missing, infer from raw speech
   const inferredUnit = rawSpeech ? inferUnitFromSpeech(rawSpeech) : undefined;
   if (!unit && inferredUnit) unit = inferredUnit;
 
-  // If value is numeric-ish, normalize it (supports "8 mil")
   const n = coerceNumericValue(value);
   if (n !== undefined) value = n;
 
-  /**
-   * ✅ SECTION-WIDE STATUS
-   * Now supports:
-   * - section: "this" / "current" / "" (falls back to currentSectionIndex)
-   * - section name mismatch (falls back to currentSectionIndex)
-   */
   if (
     mode === "section_status" ||
     mode === "mark_section" ||
@@ -601,10 +589,8 @@ async function applySingleCommand(args: {
 
     const sIdx =
       typeof explicitSectionIndex === "number"
-        ? clampTargetToSession(session, {
-            sectionIndex: explicitSectionIndex,
-            itemIndex: 0,
-          }).sectionIndex
+        ? clampTargetToSession(session, { sectionIndex: explicitSectionIndex, itemIndex: 0 })
+            .sectionIndex
         : isThisSectionName(section)
           ? currentIdx
           : section
@@ -614,7 +600,6 @@ async function applySingleCommand(args: {
               })()
             : currentIdx;
 
-    // sometimes status is in odd shapes; try safe fallback
     const st =
       status ??
       normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
@@ -629,7 +614,6 @@ async function applySingleCommand(args: {
     return itemsLen > 0 ? { sectionIndex: sIdx, itemIndex: 0 } : null;
   }
 
-  // 1) Explicit indices (NOT “manual focus”)
   if (
     typeof explicitSectionIndex === "number" &&
     typeof explicitItemIndex === "number"
@@ -639,35 +623,34 @@ async function applySingleCommand(args: {
       itemIndex: explicitItemIndex,
     });
 
-    const itemUpdates: Partial<
-      InspectionSession["sections"][number]["items"][number]
-    > = {};
+    const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> =
+      {};
 
     switch (mode) {
       case "update_status":
-      case "status": {
+      case "status":
         if (status) itemUpdates.status = status;
         break;
-      }
+
       case "update_value":
-      case "measurement": {
+      case "measurement":
         if (value !== undefined) itemUpdates.value = value;
         if (unit) itemUpdates.unit = unit;
         break;
-      }
+
       case "add_note":
-      case "add": {
+      case "add":
         if (note) itemUpdates.notes = note;
         break;
-      }
-      case "recommend": {
+
+      case "recommend":
         if (note) {
           itemUpdates.status = "recommend";
           itemUpdates.notes = note;
           itemUpdates.recommend = [note];
         }
         break;
-      }
+
       default:
         break;
     }
@@ -684,7 +667,6 @@ async function applySingleCommand(args: {
 
   const currentSectionIndex = getSafeCurrentSectionIndex(session);
 
-  // 2) Name matching (fast path)
   const sectionIndexByName =
     section && section.trim().length > 0 && !isThisSectionName(section)
       ? session.sections.findIndex((sec) =>
@@ -701,7 +683,6 @@ async function applySingleCommand(args: {
         )
       : -1;
 
-  // ✅ fallback: item name match in CURRENT section (helps tire grid)
   const itemIndexInCurrent =
     item && item.trim().length > 0
       ? session.sections[currentSectionIndex]?.items?.findIndex((it) =>
@@ -718,20 +699,17 @@ async function applySingleCommand(args: {
   } else if (itemIndexInCurrent >= 0) {
     target = { sectionIndex: currentSectionIndex, itemIndex: itemIndexInCurrent };
   } else {
-    // 3) Resolve using RAW SPEECH first, then parsed fields
-
-    // ✅ Only use explicitSectionName filter if it actually matches a real section.
-    // Otherwise it blocks the resolver from seeing the Tire/Brake sections.
     const explicitSectionName =
-      section && !isThisSectionName(section) && resolveSectionIndexByName(session, section) >= 0
+      section &&
+      !isThisSectionName(section) &&
+      resolveSectionIndexByName(session, section) >= 0
         ? section
         : undefined;
 
     const rawHint = String(rawSpeech ?? "").trim();
     const parsedHint = buildSpeechHintFromCommand({ section, item, note, unit });
 
-    const hint =
-      rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
+    const hint = rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
 
     if (hint) {
       target = resolveTargetFromSpeech({
@@ -758,38 +736,33 @@ async function applySingleCommand(args: {
 
   const safeTarget = clampTargetToSession(session, target);
 
-  const itemUpdates: Partial<
-    InspectionSession["sections"][number]["items"][number]
-  > = {};
+  const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> =
+    {};
 
   switch (mode) {
     case "update_status":
-    case "status": {
+    case "status":
       if (status) itemUpdates.status = status;
       break;
-    }
 
     case "update_value":
-    case "measurement": {
+    case "measurement":
       if (value !== undefined) itemUpdates.value = value;
       if (unit) itemUpdates.unit = unit;
       break;
-    }
 
     case "add_note":
-    case "add": {
+    case "add":
       if (note) itemUpdates.notes = note;
       break;
-    }
 
-    case "recommend": {
+    case "recommend":
       if (note) {
         itemUpdates.status = "recommend";
         itemUpdates.notes = note;
         itemUpdates.recommend = [note];
       }
       break;
-    }
 
     default:
       break;
@@ -814,7 +787,6 @@ export async function handleTranscriptFn({
   finishSession,
   rawSpeech,
 }: HandleTranscriptArgs): Promise<HandleTranscriptResult> {
-  // not used in this file — kept for signature compatibility
   void updateInspection;
   void updateSection;
   void finishSession;
