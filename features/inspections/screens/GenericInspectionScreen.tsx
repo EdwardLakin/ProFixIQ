@@ -723,7 +723,10 @@ export default function GenericInspectionScreen(
   >({});
 
   const [wakeActive, setWakeActive] = useState(false);
-  const wakeTimeoutRef = useRef<number | null>(null);
+// ✅ Use ref for logic to avoid React state race between transcripts
+const wakeActiveRef = useRef<boolean>(false);
+
+const wakeTimeoutRef = useRef<number | null>(null);
 
   const [voiceState, setVoiceState] = useState<
     "idle" | "connecting" | "listening" | "error"
@@ -1276,79 +1279,83 @@ export default function GenericInspectionScreen(
   };
 
   function maybeHandleWakeWord(raw: string): string | null {
-    // Normalize: lowercase, remove punctuation, collapse spaces
-    const normalized = raw
-      .toLowerCase()
-      .replace(/[^\w\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-    // allow optional "hey"
-    const withoutHey = normalized.startsWith("hey ")
-      ? normalized.slice(4).trim()
-      : normalized;
+  const withoutHey = normalized.startsWith("hey ")
+    ? normalized.slice(4).trim()
+    : normalized;
 
-    const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
+  const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
 
-    const matchPrefixFrom = (
-      input: string,
-    ): { prefix: string; remainder: string } | null => {
-      for (const prefix of WAKE_PREFIXES) {
-        if (input === prefix) return { prefix, remainder: "" };
-        if (input.startsWith(prefix + " ")) {
-          return { prefix, remainder: input.slice(prefix.length).trimStart() };
-        }
+  const matchPrefixFrom = (
+    input: string,
+  ): { prefix: string; remainder: string } | null => {
+    for (const prefix of WAKE_PREFIXES) {
+      if (input === prefix) return { prefix, remainder: "" };
+      if (input.startsWith(prefix + " ")) {
+        return { prefix, remainder: input.slice(prefix.length).trimStart() };
       }
-      return null;
-    };
+    }
+    return null;
+  };
 
-    // If not awake: require wake prefix
-    if (!wakeActive) {
-      const match = matchPrefixFrom(withoutHey);
-      if (!match) return null;
+  const setWake = (on: boolean) => {
+    wakeActiveRef.current = on;     // ✅ logic gate
+    setWakeActive(on);             // ✅ UI badge
+  };
 
-      setWakeActive(true);
+  const bumpTimeout = () => {
+    if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
+    wakeTimeoutRef.current = window.setTimeout(() => setWake(false), 8000);
+  };
 
-      toast.success("READY", { duration: 1200 });
+  // ✅ Use ref for truth (NOT React state)
+  const awake = wakeActiveRef.current;
 
-      type WebkitAudioWindow = Window & {
-        webkitAudioContext?: typeof AudioContext;
-      };
+  if (!awake) {
+    const match = matchPrefixFrom(withoutHey);
+    if (!match) return null;
 
-      const AudioCtxCtor =
-        window.AudioContext ||
-        (window as WebkitAudioWindow).webkitAudioContext;
+    setWake(true);
+    bumpTimeout();
 
-      if (AudioCtxCtor) {
-        const ctx = new AudioCtxCtor();
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = "sine";
-        o.frequency.value = 880;
-        g.gain.value = 0.05;
-        o.connect(g);
-        g.connect(ctx.destination);
-        o.start();
-        window.setTimeout(() => {
-          o.stop();
-          void ctx.close();
-        }, 120);
-      }
+    toast.success("READY", { duration: 1200 });
 
-      if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
-      wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
+    // beep
+    type WebkitAudioWindow = Window & { webkitAudioContext?: typeof AudioContext };
+    const AudioCtxCtor =
+      window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
 
-      // IMPORTANT: return ONLY command remainder (wake stripped)
-      return match.remainder;
+    if (AudioCtxCtor) {
+      const ctx = new AudioCtxCtor();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = 880;
+      g.gain.value = 0.05;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      window.setTimeout(() => {
+        o.stop();
+        void ctx.close();
+      }, 120);
     }
 
-    // If already awake: extend timeout, and ALSO strip prefix if user repeats it
-    if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
-    wakeTimeoutRef.current = window.setTimeout(() => setWakeActive(false), 8000);
-
-    const repeated = matchPrefixFrom(withoutHey);
-    return repeated ? repeated.remainder : withoutHey;
+    // IMPORTANT: return ONLY command remainder
+    return match.remainder;
   }
+
+  // already awake: extend timeout and strip prefix if repeated
+  bumpTimeout();
+
+  const repeated = matchPrefixFrom(withoutHey);
+  return repeated ? repeated.remainder : withoutHey;
+}
 
   const voice = useRealtimeVoice(
     async (text: string) => {
@@ -1388,6 +1395,7 @@ export default function GenericInspectionScreen(
       voice.stop();
     } catch {}
 
+    wakeActiveRef.current = false;
     setWakeActive(false);
 
     if (wakeTimeoutRef.current) {
