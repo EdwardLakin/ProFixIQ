@@ -24,6 +24,11 @@
 // ✅ "__auto__" section support (from local fallback commands):
 // - If a command arrives with section === "__auto__", we treat it like "no explicit section".
 //
+// ✅ NEW: Gate items vs grids
+// - If speech has NO numeric AND NO corner/axle specificity,
+//   do NOT allow grid-like labels to be selected.
+//   (Prevents generic “seatbelts ok / brake shoes ok / pushrod travel ok” from hitting a grid row.)
+//
 // No `any`.
 
 import {
@@ -203,6 +208,22 @@ function hasNumericInSpeech(speech: string): boolean {
   return /-?\d+(?:\.\d+)?/.test(norm(speech));
 }
 
+function hasCornerSpecificityInSpeech(speech: string): boolean {
+  const t = norm(speech);
+  if (!t) return false;
+
+  if (/\b(lf|rf|lr|rr)\b/.test(t)) return true;
+  if (/\b(left|right)\s+(front|rear)\b/.test(t)) return true;
+
+  if (/\b(inner|outer)\b/.test(t)) return true;
+
+  if (/\b(steer|drive|trailer)\s*\d+\b/.test(t)) return true;
+  if (/\baxle\s*\d+\b/.test(t)) return true;
+  if (/\btag\b/.test(t)) return true;
+
+  return false;
+}
+
 function isGridLikeLabel(label: string): boolean {
   const l = norm(label);
   // grid rows almost always contain axle + side OR corner tokens
@@ -351,7 +372,8 @@ function scoreLabel(args: {
 
   // ✅ Pushrod travel split rule
   const speechN = norm(rawSpeech);
-  const mentionsPushrod = speechN.includes("pushrod") || (speechN.includes("push") && speechN.includes("rod"));
+  const mentionsPushrod =
+    speechN.includes("pushrod") || (speechN.includes("push") && speechN.includes("rod"));
   const numeric = hasNumericInSpeech(rawSpeech);
 
   if (mentionsPushrod && (mode === "status" || mode === "update_status")) {
@@ -434,6 +456,11 @@ function resolveTargetFromSpeech(args: {
   const hints = extractHintTokens(speech);
   const explicitSection = explicitSectionName ? norm(explicitSectionName) : "";
 
+  // ✅ Gate grids when speech is generic status (no numeric + no corner/axle specificity)
+  const numeric = hasNumericInSpeech(speech);
+  const specific = hasCornerSpecificityInSpeech(speech);
+  const gateOutGridLabels = !numeric && !specific;
+
   let best: { score: number; target: Target } | null = null;
 
   for (let sIdx = 0; sIdx < sections.length; sIdx++) {
@@ -451,6 +478,8 @@ function resolveTargetFromSpeech(args: {
     for (let iIdx = 0; iIdx < items.length; iIdx++) {
       const label = String(items[iIdx]?.item ?? items[iIdx]?.name ?? "");
       if (!label) continue;
+
+      if (gateOutGridLabels && isGridLikeLabel(label)) continue;
 
       const ls = scoreLabel({ label, hintTokens: hints, mode, rawSpeech: speech });
       const total = ls + secScore;
@@ -739,12 +768,20 @@ async function applySingleCommand(args: {
 
   // Direct index apply
   if (typeof explicitSectionIndex === "number" && typeof explicitItemIndex === "number") {
-    const safe = clampTargetToSession(session, { sectionIndex: explicitSectionIndex, itemIndex: explicitItemIndex });
+    const safe = clampTargetToSession(session, {
+      sectionIndex: explicitSectionIndex,
+      itemIndex: explicitItemIndex,
+    });
 
     const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
     const targetRow =
-      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex] ?? ({} as Record<string, unknown>);
-    const targetLabel = String((targetRow as { item?: unknown; name?: unknown }).item ?? (targetRow as { name?: unknown }).name ?? "");
+      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex] ??
+      ({} as Record<string, unknown>);
+    const targetLabel = String(
+      (targetRow as { item?: unknown; name?: unknown }).item ??
+        (targetRow as { name?: unknown }).name ??
+        "",
+    );
 
     switch (mode) {
       case "update_status":
@@ -861,8 +898,13 @@ async function applySingleCommand(args: {
 
   const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
   const targetRow =
-    session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex] ?? ({} as Record<string, unknown>);
-  const targetLabel = String((targetRow as { item?: unknown; name?: unknown }).item ?? (targetRow as { name?: unknown }).name ?? "");
+    session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex] ??
+    ({} as Record<string, unknown>);
+  const targetLabel = String(
+    (targetRow as { item?: unknown; name?: unknown }).item ??
+      (targetRow as { name?: unknown }).name ??
+      "",
+  );
 
   switch (mode) {
     case "update_status":
