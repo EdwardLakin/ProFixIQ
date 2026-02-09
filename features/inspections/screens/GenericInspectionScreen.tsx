@@ -381,6 +381,89 @@ function normalizeSpeech(s: string): string {
     .trim();
 }
 
+function localFallbackCommands(text: string): ParsedCommand[] {
+  const n = normalizeSpeech(text);
+
+  const ok = /\b(ok|okay|pass|good)\b/.test(n);
+  const fail = /\b(fail|bad)\b/.test(n);
+  const rec = /\b(recommend|rec)\b/.test(n);
+
+  const lf = /\b(left front|lf|driver front)\b/.test(n);
+  const rf = /\b(right front|rf|passenger front)\b/.test(n);
+  const lr = /\b(left rear|lr|driver rear)\b/.test(n);
+  const rr = /\b(right rear|rr|passenger rear)\b/.test(n);
+
+  const corner =
+    lf ? "Steer 1 Left"
+    : rf ? "Steer 1 Right"
+    : lr ? "Drive 1 Left"
+    : rr ? "Drive 1 Right"
+    : "";
+
+  const numMatch = n.match(/\b(\d+(?:\.\d+)?)\b/);
+  const num = numMatch ? Number(numMatch[1]) : null;
+
+  const out: ParsedCommand[] = [];
+
+  if (corner && /\b(tire pressure|pressure)\b/.test(n) && num != null) {
+    out.push({
+      type: "measurement",
+      section: "__auto__",
+      item: `${corner} Tire Pressure`,
+      value: num,
+      unit: "psi",
+    });
+    return out;
+  }
+
+  if (corner && /\b(tread depth|tread)\b/.test(n) && num != null) {
+    const inner = /\b(inner)\b/.test(n);
+    const outer = /\b(outer)\b/.test(n);
+
+    out.push({
+      type: "measurement",
+      section: "__auto__",
+      item: `${corner} ${
+        inner ? "Tread Depth (Inner)" :
+        outer ? "Tread Depth (Outer)" :
+        "Tread Depth"
+      }`,
+      value: num,
+      unit: /\b(inch|inches)\b/.test(n) ? "in" : "mm",
+    });
+    return out;
+  }
+
+  if (/\b(brake shoes|lining|pads?|pad)\b/.test(n) && (ok || fail || rec)) {
+    out.push({
+      type: "status",
+      section: "__auto__",
+      item: "Lining/Shoe",
+      status: ok ? "ok" : fail ? "fail" : "recommend",
+    });
+    return out;
+  }
+
+  if ((ok || fail || rec) && n.length >= 4) {
+    const label = n
+      .replace(/\b(ok|okay|pass|good|fail|bad|recommend|rec)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (label.length >= 3) {
+      out.push({
+        type: "status",
+        section: "__auto__",
+        item: label,
+        status: ok ? "ok" : fail ? "fail" : "recommend",
+      });
+      return out;
+    }
+  }
+
+  return [];
+}
+
 function speakLocal(text: string): void {
   try {
     if (typeof window === "undefined") return;
@@ -1096,21 +1179,35 @@ const wakeTimeoutRef = useRef<number | null>(null);
     const applied: VoiceCommandApplyResult[] = [];
 
     try {
-      commands = await interpretCommand(mainText, ctx);
+  commands = await interpretCommand(mainText, ctx);
 
-      if (!commands.length) {
-        appendVoiceTrace({
-          rawFinal: text,
-          wakeCommand: text,
-          parsed: [],
-          applied: [
-            { command: "interpret", ok: false, reason: "No commands returned" },
-          ],
-        });
-        return;
-      }
+  // ✅ FALLBACK: if AI returns nothing, try local parsing
+  if (!commands.length) {
+    const fallback = localFallbackCommands(mainText);
 
-      // Track if this utterance likely created a FAIL/REC + note combo
+    // IMPORTANT: clear "__auto__" so handleTranscript resolver can do its job
+    for (const c of fallback) {
+      const rec = c as unknown as Record<string, unknown>;
+      if (rec.section === "__auto__") delete rec.section;
+    }
+
+    commands = fallback;
+  }
+
+  // If STILL nothing, log + stop
+  if (!commands.length) {
+    appendVoiceTrace({
+      rawFinal: text,
+      wakeCommand: text,
+      parsed: [],
+      applied: [
+        { command: "interpret", ok: false, reason: "No commands returned" },
+      ],
+    });
+    return;
+  }
+
+        // Track if this utterance likely created a FAIL/REC + note combo
       let sawFailOrRec = false;
       let sawNote = false;
 

@@ -16,6 +16,9 @@
 // - When server returns {command:"update_status", item:"...", status:"ok"} WITHOUT indices,
 //   we now ALSO read section/item/note from the command record so target resolution works.
 //
+// ✅ "__auto__" section support (from local fallback commands):
+// - If a command arrives with section === "__auto__", we treat it like "no explicit section".
+//
 // No `any`.
 
 import {
@@ -531,7 +534,9 @@ async function applySingleCommand(args: {
       | string
       | number
       | undefined;
-    unit = (c as unknown as { unit?: unknown })?.unit as unknown as string | undefined;
+    unit = (c as unknown as { unit?: unknown })?.unit as unknown as
+      | string
+      | undefined;
 
     if (typeof (c as unknown as { sectionIndex?: unknown })?.sectionIndex === "number") {
       explicitSectionIndex = (c as unknown as { sectionIndex: number }).sectionIndex;
@@ -574,6 +579,11 @@ async function applySingleCommand(args: {
     }
   }
 
+  // ✅ Treat local fallback "__auto__" as "no explicit section"
+  if (section && norm(section) === "__auto__") {
+    section = undefined;
+  }
+
   const inferredUnit = rawSpeech ? inferUnitFromSpeech(rawSpeech) : undefined;
   if (!unit && inferredUnit) unit = inferredUnit;
 
@@ -589,8 +599,10 @@ async function applySingleCommand(args: {
 
     const sIdx =
       typeof explicitSectionIndex === "number"
-        ? clampTargetToSession(session, { sectionIndex: explicitSectionIndex, itemIndex: 0 })
-            .sectionIndex
+        ? clampTargetToSession(session, {
+            sectionIndex: explicitSectionIndex,
+            itemIndex: 0,
+          }).sectionIndex
         : isThisSectionName(section)
           ? currentIdx
           : section
@@ -602,7 +614,9 @@ async function applySingleCommand(args: {
 
     const st =
       status ??
-      normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
+      normalizeStatusMaybe(
+        (command as unknown as Record<string, unknown>)?.status,
+      );
 
     if (!st) return null;
 
@@ -623,8 +637,9 @@ async function applySingleCommand(args: {
       itemIndex: explicitItemIndex,
     });
 
-    const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> =
-      {};
+    const itemUpdates: Partial<
+      InspectionSession["sections"][number]["items"][number]
+    > = {};
 
     switch (mode) {
       case "update_status":
@@ -670,7 +685,9 @@ async function applySingleCommand(args: {
   const sectionIndexByName =
     section && section.trim().length > 0 && !isThisSectionName(section)
       ? session.sections.findIndex((sec) =>
-          String(sec.title ?? "").toLowerCase().includes(section.toLowerCase()),
+          String(sec.title ?? "")
+            .toLowerCase()
+            .includes(section.toLowerCase()),
         )
       : -1;
 
@@ -685,11 +702,11 @@ async function applySingleCommand(args: {
 
   const itemIndexInCurrent =
     item && item.trim().length > 0
-      ? session.sections[currentSectionIndex]?.items?.findIndex((it) =>
+      ? (session.sections[currentSectionIndex]?.items?.findIndex((it) =>
           String(it.name ?? it.item ?? "")
             .toLowerCase()
             .includes(item.toLowerCase()),
-        ) ?? -1
+        ) ?? -1)
       : -1;
 
   let target: Target | null = null;
@@ -709,7 +726,8 @@ async function applySingleCommand(args: {
     const rawHint = String(rawSpeech ?? "").trim();
     const parsedHint = buildSpeechHintFromCommand({ section, item, note, unit });
 
-    const hint = rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
+    const hint =
+      rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
 
     if (hint) {
       target = resolveTargetFromSpeech({
@@ -736,8 +754,9 @@ async function applySingleCommand(args: {
 
   const safeTarget = clampTargetToSession(session, target);
 
-  const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> =
-    {};
+  const itemUpdates: Partial<
+    InspectionSession["sections"][number]["items"][number]
+  > = {};
 
   switch (mode) {
     case "update_status":
