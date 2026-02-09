@@ -1207,7 +1207,6 @@ const wakeTimeoutRef = useRef<number | null>(null);
     return;
   }
 
-        // Track if this utterance likely created a FAIL/REC + note combo
       let sawFailOrRec = false;
       let sawNote = false;
 
