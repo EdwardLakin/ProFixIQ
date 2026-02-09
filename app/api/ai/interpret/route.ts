@@ -1,4 +1,4 @@
-// /app/api/ai/interpret/route.ts
+// /app/api/ai/interpret/route.ts (FULL FILE REPLACEMENT)
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
@@ -13,6 +13,7 @@ type InterpretMode = "open" | "strict_context";
 
 type InterpretContext = {
   sectionTitle?: string;
+  sectionTitles?: string[];
   items?: string[];
 };
 
@@ -177,12 +178,100 @@ function normalizeNoteFields(cmd: VoiceCommand): VoiceCommand {
   const notesStr = typeof notes === "string" ? notes : "";
 
   if (!noteStr && notesStr) {
-    // Put notes into note while preserving existing fields
     return { ...cmd, note: notesStr } as VoiceCommand;
   }
 
   return cmd;
 }
+
+/* -------------------------------------------------------------------------------------------------
+ * ✅ Fuzzy mapping for strict_context (safe, deterministic)
+ * ------------------------------------------------------------------------------------------------- */
+
+function nrm(s: string): string {
+  return (s || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenize(s: string): string[] {
+  const t = nrm(s);
+  if (!t) return [];
+  return t.split(" ").filter((w) => w.length >= 2);
+}
+
+function scoreCandidateToAllowed(candidate: string, allowedLabel: string): number {
+  const c = nrm(candidate);
+  const a = nrm(allowedLabel);
+  if (!c || !a) return 0;
+
+  // Exact-ish bonuses
+  if (a === c) return 999;
+  if (a.includes(c) || c.includes(a)) return 120;
+
+  // Token overlap
+  const ct = tokenize(c);
+  const at = tokenize(a);
+
+  const aSet = new Set(at);
+
+  let overlap = 0;
+  for (const tok of ct) {
+    if (aSet.has(tok)) overlap += 1;
+  }
+
+  // Weighted keywords that matter a lot for grids
+  const keyBoost = (tok: string, w: number) => {
+    if (c.includes(tok) && a.includes(tok)) overlap += w;
+  };
+
+  keyBoost("tread", 2);
+  keyBoost("depth", 2);
+  keyBoost("pressure", 2);
+  keyBoost("steer", 2);
+  keyBoost("drive", 2);
+  keyBoost("tag", 2);
+  keyBoost("left", 1);
+  keyBoost("right", 1);
+  keyBoost("inner", 1);
+  keyBoost("outer", 1);
+
+  // Convert overlap into a score
+  // - base overlap matters
+  // - bonus if candidate tokens mostly covered by allowed label
+  const coverage =
+    ct.length > 0 ? overlap / Math.max(1, ct.length) : 0;
+
+  const score = overlap * 10 + Math.round(coverage * 30);
+
+  return score;
+}
+
+function findBestAllowedItem(allowed: string[], candidate: string): string | null {
+  const exact = findExactAllowedItem(allowed, candidate);
+  if (exact) return exact;
+
+  const cand = candidate.trim();
+  if (!cand) return null;
+
+  let best: { label: string; score: number } | null = null;
+
+  for (const a of allowed) {
+    const s = scoreCandidateToAllowed(cand, a);
+    if (s <= 0) continue;
+    if (!best || s > best.score) best = { label: a, score: s };
+  }
+
+  // ✅ Confidence floor: prevents random writes
+  // If your labels are very long/structured, you can lower this slightly.
+  if (!best || best.score < 55) return null;
+
+  return best.label;
+}
+
+/* ------------------------------------------------------------------------------------------------- */
 
 export async function POST(req: Request) {
   try {
@@ -202,14 +291,19 @@ export async function POST(req: Request) {
 
     if (isRecord(ctxCandidate)) {
       const sectionTitleRaw = getString(ctxCandidate, "sectionTitle");
+      const sectionTitlesRaw = getStringArray(ctxCandidate, "sectionTitles");
       const itemsRaw = getStringArray(ctxCandidate, "items");
 
       const sectionTitle = norm(sectionTitleRaw ?? "");
+      const sectionTitles = Array.isArray(sectionTitlesRaw)
+        ? sectionTitlesRaw.map((x) => norm(x)).filter(Boolean)
+        : undefined;
+
       const items = Array.isArray(itemsRaw)
         ? itemsRaw.map((x) => norm(x)).filter(Boolean)
         : undefined;
 
-      ctx = { sectionTitle, items };
+      ctx = { sectionTitle, sectionTitles, items };
     }
 
     const allowedItems = (ctx?.items ?? []).filter(Boolean);
@@ -248,30 +342,24 @@ Allowed commands:
 - skip_item:     {"command":"skip_item","section?":"...","item?":"..."}
 
 Examples:
-"techy mark right tie rod end as failed" =>
-[{"command":"update_status","item":"Tie rod ends","status":"fail","note":"right side"}]
+"brake fluid level okay" =>
+[{"command":"update_status","item":"Brake fluid level/condition","status":"ok"}]
 
-"techy mark brake section okay" =>
+"left front tread depth 8mm" =>
+[{"command":"update_value","item":"Tread depth (Left front)","value":8,"unit":"mm"}]
+
+"mark brake section okay" =>
 [{"command":"section_status","section":"Brakes","status":"ok"}]
-
-"techy add measurement LF pads 7mm" =>
-[{"command":"update_value","item":"Front brake pads","value":7,"unit":"mm","note":"LF"}]
-
-"fail left tie rod worn out, 1 hour labor, left tie rod end" =>
-[{"command":"oneshot_item","item":"Tie rod ends","status":"fail","note":"left tie rod worn out","laborHours":1,"parts":[{"description":"Left tie rod end","qty":1}]}]
-
-"yes add 1 hour labor and a tie rod end" =>
-[{"command":"add_part","partName":"Tie Rod End","quantity":1},{"command":"add_labor","hours":1,"label":"Labor"}]
 `.trim();
 
     const strictContextRules = hasContext
       ? `
 CONTEXT:
 - The UI provides a list of allowed inspection item labels (exact strings).
-- If you reference an item, you MUST choose item EXACTLY from the allowed list.
+- If you reference an item, you MUST choose item from the allowed list.
 - If the transcript does not clearly match any allowed item, return [].
-- For "oneshot_item", the "item" field MUST be an exact allowed item.
-- For "section_status", choose a section name that closely matches the user's words (not required to be from the allowed item list).
+- For "oneshot_item", the "item" field MUST match an allowed item.
+- For "section_status", choose a section name that closely matches the user's words.
 
 Allowed items:
 ${allowedItems.map((x) => `- ${x}`).join("\n")}
@@ -296,7 +384,7 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
     const raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
     let commands = safeJsonParseArray(raw).map(normalizeNoteFields);
 
-    // strict_context: drop unknown items (but allow section_status even without item)
+    // strict_context: map unknown items -> best allowed match (or drop)
     if (mode === "strict_context" && hasContext) {
       const allowed = allowedItems;
 
@@ -309,10 +397,10 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
             continue;
           }
 
-          const exact = findExactAllowedItem(allowed, String(itemVal));
-          if (!exact) continue;
+          const best = findBestAllowedItem(allowed, String(itemVal));
+          if (!best) continue;
 
-          filtered.push(withExactItem(cmd, exact));
+          filtered.push(withExactItem(cmd, best));
           continue;
         }
 
