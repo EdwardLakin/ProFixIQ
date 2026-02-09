@@ -6,9 +6,10 @@
 //   when the model says "this/current section" or gives no usable section name.
 //
 // ✅ Fix goals covered
-// 1) Stronger resolver for tire + air axle phrases (steer/drive, left/right, inner/outer)
-// 2) Battery rating synonyms (“rated/rating/tested/test/cca”)
+// 1) Stronger resolver for tire + air axle phrases (steer/drive/tag/trailer + #, left/right, inner/outer, rear/front)
+// 2) Battery rating synonyms (“rated/rating/tested/test/cca/volts”) + battery-field mapping (cca/voltage)
 // 3) Section-wide status commands work even if server returns odd shapes OR "this section"
+//    - including update_status + section + no item
 // 4) Unit inference from speech ("mil/mils" => "mm") + numeric coercion safety
 // 5) Higher confidence threshold to reduce wrong-field writes
 //
@@ -76,12 +77,50 @@ function tokenize(input: string): string[] {
   return n.split(" ").filter((w) => w.length >= 2);
 }
 
+/**
+ * Normalize axle expressions so:
+ * - "drive 2", "drive axle 2", "second drive" => tokens include "drive 2"
+ * - "steer 2" => "steer 2"
+ * - "trailer 1/2/3" => "trailer 1/2/3"
+ * - "tag" optionally becomes "tag axle"
+ */
+function extractAxlePhrases(text: string): string[] {
+  const t = norm(text);
+  if (!t) return [];
+
+  const out: string[] = [];
+
+  // steer N / drive N / trailer N
+  const re = /\b(steer|drive|trailer)\s*(axle\s*)?(\d+)\b/g;
+  for (const m of t.matchAll(re)) {
+    const kind = m[1];
+    const nStr = m[3];
+    if (kind && nStr) out.push(`${kind} ${nStr}`);
+  }
+
+  // "axle 2" alone (weak signal, still helps)
+  const axleOnly = /\baxle\s*(\d+)\b/g;
+  for (const m of t.matchAll(axleOnly)) {
+    const nStr = m[1];
+    if (nStr) out.push(`axle ${nStr}`);
+  }
+
+  // tag axle
+  if (/\btag\b/.test(t)) out.push("tag axle");
+
+  return Array.from(new Set(out));
+}
+
 const SYNONYMS: Array<{ re: RegExp; tokens: string[] }> = [
   // corners / positions
   { re: /\b(left\s*front|lf)\b/i, tokens: ["lf", "left front"] },
   { re: /\b(right\s*front|rf)\b/i, tokens: ["rf", "right front"] },
   { re: /\b(left\s*rear|lr)\b/i, tokens: ["lr", "left rear"] },
   { re: /\b(right\s*rear|rr)\b/i, tokens: ["rr", "right rear"] },
+
+  // explicit words
+  { re: /\b(front)\b/i, tokens: ["front"] },
+  { re: /\b(rear)\b/i, tokens: ["rear"] },
 
   // driver/passenger synonyms
   { re: /\b(driver\s*front)\b/i, tokens: ["lf", "left front"] },
@@ -109,11 +148,11 @@ const SYNONYMS: Array<{ re: RegExp; tokens: string[] }> = [
   { re: /\b(right)\b/i, tokens: ["right"] },
 
   // axle phrases (important for air/tire grids)
-  { re: /\b(steer)\b/i, tokens: ["steer", "steer 1", "axle 1"] },
-  { re: /\b(drive)\b/i, tokens: ["drive", "drive 1"] },
-  { re: /\b(tag)\b/i, tokens: ["tag"] },
+  // NOTE: the numbered axle phrases are extracted separately by extractAxlePhrases()
+  { re: /\b(steer)\b/i, tokens: ["steer"] },
+  { re: /\b(drive)\b/i, tokens: ["drive"] },
+  { re: /\b(tag)\b/i, tokens: ["tag axle"] },
   { re: /\b(trailer)\b/i, tokens: ["trailer"] },
-  { re: /\b(axle\s*(\d+))\b/i, tokens: ["axle"] },
 
   // air system / leak checks
   { re: /\b(leak\s*rate)\b/i, tokens: ["leak rate"] },
@@ -126,7 +165,7 @@ const SYNONYMS: Array<{ re: RegExp; tokens: string[] }> = [
   { re: /\b(voltage|volts|v\b)\b/i, tokens: ["voltage"] },
   { re: /\b(cca|cranking)\b/i, tokens: ["cca", "cranking"] },
   { re: /\b(rated|rating)\b/i, tokens: ["rated", "rating"] },
-  { re: /\b(tested|test)\b/i, tokens: ["tested", "test"] },
+  { re: /\b(tested|test|load\s*test|loadtest)\b/i, tokens: ["tested", "test"] },
   {
     re: /\b(alternator|charging|charge\s*rate)\b/i,
     tokens: ["alternator", "charging", "charge rate"],
@@ -138,6 +177,7 @@ const SYNONYMS: Array<{ re: RegExp; tokens: string[] }> = [
   { re: /\b(mm|millimeter|millimetre)\b/i, tokens: ["mm"] },
   { re: /\b(psi)\b/i, tokens: ["psi"] },
   { re: /\b(inch|inches|in)\b/i, tokens: ["in"] },
+  { re: /\b(volts?)\b/i, tokens: ["v"] },
 ];
 
 function extractHintTokens(text: string): string[] {
@@ -148,11 +188,25 @@ function extractHintTokens(text: string): string[] {
     if (m.re.test(raw)) out.push(...m.tokens);
   }
 
+  // axle numbered phrases: drive 2, drive axle 2, steer 2, trailer 1/2/3, etc.
+  out.push(...extractAxlePhrases(raw));
+
+  // basic tokens
   out.push(...tokenize(raw));
 
   const n = norm(raw);
-  if (n.includes("steer") && !n.includes("steer 1")) out.push("steer 1");
-  if (n.includes("drive") && !n.includes("drive 1")) out.push("drive 1");
+
+  // Back-compat: if a user says "steer" with no number, prefer steer 1
+  if (n.includes("steer") && !/\bsteer\s*\d+\b/.test(n)) out.push("steer 1");
+
+  // If they say "drive" with no number, prefer drive 1
+  if (n.includes("drive") && !/\bdrive\s*\d+\b/.test(n)) out.push("drive 1");
+
+  // Trailer with no number -> trailer 1 (weak but helpful)
+  if (n.includes("trailer") && !/\btrailer\s*\d+\b/.test(n)) out.push("trailer 1");
+
+  // Rear without axle often refers to drive 1 in many 3-axle templates (still keep "rear")
+  // (We don't force drive 1; we just ensure rear gets enough weight in scoring.)
 
   return Array.from(new Set(out.map((t) => norm(t))));
 }
@@ -166,6 +220,7 @@ function scoreLabel(label: string, hintTokens: string[]): number {
   for (const tok of hintTokens) {
     if (!tok) continue;
 
+    // exact corner abbreviations
     if (tok === "lf" || tok === "rf" || tok === "lr" || tok === "rr") {
       if (l.includes(tok)) score += 80;
       continue;
@@ -180,14 +235,47 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
-    if (tok === "steer" || tok === "steer 1") {
+    // axle number phrases (drive 2, steer 2, trailer 3, axle 2)
+    if (/^(drive|steer|trailer)\s+\d+$/.test(tok)) {
+      if (l.includes(tok)) score += 90;
+      // also allow matching "drive 2" against labels like "Drive 2 Left ..."
+      continue;
+    }
+    if (/^axle\s+\d+$/.test(tok)) {
+      const nStr = tok.split(" ")[1] || "";
+      if (nStr && l.includes(`axle ${nStr}`)) score += 40;
+      continue;
+    }
+
+    // axle class
+    if (tok === "steer") {
       if (l.includes("steer")) score += 40;
       continue;
     }
-    if (tok === "drive" || tok === "drive 1") {
+    if (tok === "drive") {
       if (l.includes("drive")) score += 40;
       continue;
     }
+    if (tok === "trailer") {
+      if (l.includes("trailer")) score += 35;
+      continue;
+    }
+    if (tok === "tag axle") {
+      if (l.includes("tag")) score += 55;
+      continue;
+    }
+
+    // front/rear (helps rear tread depth)
+    if (tok === "front") {
+      if (l.includes("front")) score += 28;
+      continue;
+    }
+    if (tok === "rear") {
+      if (l.includes("rear")) score += 35;
+      continue;
+    }
+
+    // side/inner/outer
     if (tok === "left" || tok === "right") {
       if (l.includes(tok)) score += 22;
       continue;
@@ -197,6 +285,7 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
+    // tires
     if (tok === "tire pressure" || tok === "pressure") {
       if (l.includes("pressure")) score += tok === "tire pressure" ? 35 : 22;
       continue;
@@ -206,6 +295,7 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
+    // brakes
     if (
       tok === "pad" ||
       tok === "pads" ||
@@ -213,9 +303,7 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       tok === "shoes" ||
       tok === "lining"
     ) {
-      if (l.includes("pad") || l.includes("shoe") || l.includes("lining")) {
-        score += 22;
-      }
+      if (l.includes("pad") || l.includes("shoe") || l.includes("lining")) score += 22;
       continue;
     }
     if (tok === "rotor" || tok === "drum") {
@@ -227,6 +315,7 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       continue;
     }
 
+    // battery signals
     if (tok === "cca" || tok === "cranking") {
       if (l.includes("cca") || l.includes("cranking")) score += 22;
       continue;
@@ -239,7 +328,12 @@ function scoreLabel(label: string, hintTokens: string[]): number {
       if (l.includes("tested") || l.includes("test")) score += 30;
       continue;
     }
+    if (tok === "voltage") {
+      if (l.includes("voltage") || /\bv\b/.test(l)) score += 22;
+      continue;
+    }
 
+    // units
     if (tok === "psi" && l.includes("psi")) score += 14;
     if (tok === "mm" && l.includes("mm")) score += 14;
     if (tok === "in" && (l.includes(" in") || l.endsWith(" in"))) score += 14;
@@ -247,19 +341,14 @@ function scoreLabel(label: string, hintTokens: string[]): number {
     if (tok.length >= 3 && l.includes(tok)) score += 3;
   }
 
-  const wantsSteer =
-    hintTokens.includes("steer") || hintTokens.includes("steer 1");
-  const wantsDrive =
-    hintTokens.includes("drive") || hintTokens.includes("drive 1");
+  // small extra boosts for consistency
   const wantsLeft = hintTokens.includes("left");
   const wantsRight = hintTokens.includes("right");
+  const wantsInner = hintTokens.includes("inner");
+  const wantsOuter = hintTokens.includes("outer");
 
-  if ((wantsSteer && l.includes("steer")) || (wantsDrive && l.includes("drive"))) {
-    score += 10;
-  }
-  if ((wantsLeft && l.includes("left")) || (wantsRight && l.includes("right"))) {
-    score += 10;
-  }
+  if ((wantsLeft && l.includes("left")) || (wantsRight && l.includes("right"))) score += 10;
+  if ((wantsInner && l.includes("inner")) || (wantsOuter && l.includes("outer"))) score += 10;
 
   return score;
 }
@@ -300,6 +389,17 @@ function scoreSectionTitle(title: string, hintTokens: string[]): number {
   if (t.includes("tire") && wantsTire) score += 20;
   if (t.includes("brake") && wantsBrake) score += 20;
 
+  // Axle-related hints slightly boost likely wheel/brake/tire sections
+  const wantsAxle =
+    hintTokens.some((x) => /^(drive|steer|trailer)\s+\d+$/.test(x)) ||
+    hintTokens.includes("tag axle") ||
+    hintTokens.includes("drive") ||
+    hintTokens.includes("steer") ||
+    hintTokens.includes("trailer");
+
+  if (wantsAxle && (t.includes("tire") || t.includes("brake") || t.includes("corner")))
+    score += 8;
+
   return score;
 }
 
@@ -338,15 +438,13 @@ function resolveTargetFromSpeech(args: {
       if (total <= 0) continue;
 
       if (!best || total > best.score) {
-        best = {
-          score: total,
-          target: { sectionIndex: sIdx, itemIndex: iIdx },
-        };
+        best = { score: total, target: { sectionIndex: sIdx, itemIndex: iIdx } };
       }
     }
   }
 
-  if (!best || best.score < 28) return null;
+  // Increased threshold to reduce wrong writes, but still allow axle phrases to win strongly
+  if (!best || best.score < 30) return null;
   return best.target;
 }
 
@@ -392,10 +490,7 @@ function clampTargetToSession(session: InspectionSession, t: Target): Target {
   return { sectionIndex: sIdx, itemIndex: iIdx };
 }
 
-function resolveSectionIndexByName(
-  session: InspectionSession,
-  sectionName: string,
-): number {
+function resolveSectionIndexByName(session: InspectionSession, sectionName: string): number {
   const needle = norm(sectionName);
   if (!needle) return -1;
 
@@ -432,6 +527,8 @@ function inferUnitFromSpeech(speech: string): string | undefined {
   if (!t) return undefined;
 
   if (/\bpsi\b/.test(t)) return "psi";
+  // voltage: "12.6 volts" / "12.6 v"
+  if (/\b(volts?|v)\b/.test(t)) return "V";
   if (/\b(inch|inches|\bin\b)\b/.test(t)) return "in";
   if (/\b(mm|millimeter|millimetre)\b/.test(t)) return "mm";
   if (/\b(mil|mils)\b/.test(t)) return "mm";
@@ -491,12 +588,22 @@ function isThisSectionName(sectionName: string | undefined): boolean {
 
 function getSafeCurrentSectionIndex(session: InspectionSession): number {
   const idx =
-    typeof session.currentSectionIndex === "number"
-      ? session.currentSectionIndex
-      : 0;
+    typeof session.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
   if (idx < 0) return 0;
   if (idx >= session.sections.length) return Math.max(0, session.sections.length - 1);
   return idx;
+}
+
+function isBatteryLikeLabel(label: string): boolean {
+  const l = norm(label);
+  return (
+    l.includes("battery") ||
+    l.includes("cca") ||
+    l.includes("cranking") ||
+    l.includes("voltage") ||
+    l.includes("state of charge") ||
+    l === "soc"
+  );
 }
 
 /* -------------------------------------------------------------------------------------------------
@@ -534,9 +641,7 @@ async function applySingleCommand(args: {
       | string
       | number
       | undefined;
-    unit = (c as unknown as { unit?: unknown })?.unit as unknown as
-      | string
-      | undefined;
+    unit = (c as unknown as { unit?: unknown })?.unit as unknown as string | undefined;
 
     if (typeof (c as unknown as { sectionIndex?: unknown })?.sectionIndex === "number") {
       explicitSectionIndex = (c as unknown as { sectionIndex: number }).sectionIndex;
@@ -580,9 +685,7 @@ async function applySingleCommand(args: {
   }
 
   // ✅ Treat local fallback "__auto__" as "no explicit section"
-  if (section && norm(section) === "__auto__") {
-    section = undefined;
-  }
+  if (section && norm(section) === "__auto__") section = undefined;
 
   const inferredUnit = rawSpeech ? inferUnitFromSpeech(rawSpeech) : undefined;
   if (!unit && inferredUnit) unit = inferredUnit;
@@ -590,19 +693,22 @@ async function applySingleCommand(args: {
   const n = coerceNumericValue(value);
   if (n !== undefined) value = n;
 
-  if (
+  // ✅ SECTION-WIDE status commands:
+  // - section_status / mark_section / set_section_status
+  // - ALSO: update_status when it has a section and NO item
+  const isSectionWide =
     mode === "section_status" ||
     mode === "mark_section" ||
-    mode === "set_section_status"
-  ) {
+    mode === "set_section_status" ||
+    (mode === "update_status" && !!section && !item);
+
+  if (isSectionWide) {
     const currentIdx = getSafeCurrentSectionIndex(session);
 
     const sIdx =
       typeof explicitSectionIndex === "number"
-        ? clampTargetToSession(session, {
-            sectionIndex: explicitSectionIndex,
-            itemIndex: 0,
-          }).sectionIndex
+        ? clampTargetToSession(session, { sectionIndex: explicitSectionIndex, itemIndex: 0 })
+            .sectionIndex
         : isThisSectionName(section)
           ? currentIdx
           : section
@@ -614,9 +720,7 @@ async function applySingleCommand(args: {
 
     const st =
       status ??
-      normalizeStatusMaybe(
-        (command as unknown as Record<string, unknown>)?.status,
-      );
+      normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
 
     if (!st) return null;
 
@@ -628,18 +732,21 @@ async function applySingleCommand(args: {
     return itemsLen > 0 ? { sectionIndex: sIdx, itemIndex: 0 } : null;
   }
 
-  if (
-    typeof explicitSectionIndex === "number" &&
-    typeof explicitItemIndex === "number"
-  ) {
+  // If indices exist, apply directly (with battery-aware mapping)
+  if (typeof explicitSectionIndex === "number" && typeof explicitItemIndex === "number") {
     const safe = clampTargetToSession(session, {
       sectionIndex: explicitSectionIndex,
       itemIndex: explicitItemIndex,
     });
 
-    const itemUpdates: Partial<
-      InspectionSession["sections"][number]["items"][number]
-    > = {};
+    const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
+
+    // Look at the real target label to decide battery mapping
+    const targetLabel = String(
+      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex]?.item ??
+        session.sections[safe.sectionIndex]?.items?.[safe.itemIndex]?.name ??
+        "",
+    );
 
     switch (mode) {
       case "update_status":
@@ -648,10 +755,24 @@ async function applySingleCommand(args: {
         break;
 
       case "update_value":
-      case "measurement":
-        if (value !== undefined) itemUpdates.value = value;
+      case "measurement": {
+        if (value !== undefined) {
+          if (isBatteryLikeLabel(targetLabel)) {
+            // BatteryGrid often expects specific fields; keep value too for compatibility
+            if ((unit ?? "").toUpperCase() === "CCA") {
+              (itemUpdates as Record<string, unknown>).cca = value;
+            } else if ((unit ?? "").toUpperCase() === "V" || unit === "V") {
+              (itemUpdates as Record<string, unknown>).voltage = value;
+            } else {
+              itemUpdates.value = value;
+            }
+          } else {
+            itemUpdates.value = value;
+          }
+        }
         if (unit) itemUpdates.unit = unit;
         break;
+      }
 
       case "add_note":
       case "add":
@@ -685,27 +806,21 @@ async function applySingleCommand(args: {
   const sectionIndexByName =
     section && section.trim().length > 0 && !isThisSectionName(section)
       ? session.sections.findIndex((sec) =>
-          String(sec.title ?? "")
-            .toLowerCase()
-            .includes(section.toLowerCase()),
+          String(sec.title ?? "").toLowerCase().includes(section.toLowerCase()),
         )
       : -1;
 
   const itemIndexByName =
     sectionIndexByName >= 0 && item && item.trim().length > 0
       ? session.sections[sectionIndexByName].items.findIndex((it) =>
-          String(it.name ?? it.item ?? "")
-            .toLowerCase()
-            .includes(item.toLowerCase()),
+          String(it.name ?? it.item ?? "").toLowerCase().includes(item.toLowerCase()),
         )
       : -1;
 
   const itemIndexInCurrent =
     item && item.trim().length > 0
       ? (session.sections[currentSectionIndex]?.items?.findIndex((it) =>
-          String(it.name ?? it.item ?? "")
-            .toLowerCase()
-            .includes(item.toLowerCase()),
+          String(it.name ?? it.item ?? "").toLowerCase().includes(item.toLowerCase()),
         ) ?? -1)
       : -1;
 
@@ -717,17 +832,14 @@ async function applySingleCommand(args: {
     target = { sectionIndex: currentSectionIndex, itemIndex: itemIndexInCurrent };
   } else {
     const explicitSectionName =
-      section &&
-      !isThisSectionName(section) &&
-      resolveSectionIndexByName(session, section) >= 0
+      section && !isThisSectionName(section) && resolveSectionIndexByName(session, section) >= 0
         ? section
         : undefined;
 
     const rawHint = String(rawSpeech ?? "").trim();
     const parsedHint = buildSpeechHintFromCommand({ section, item, note, unit });
 
-    const hint =
-      rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
+    const hint = rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
 
     if (hint) {
       target = resolveTargetFromSpeech({
@@ -754,9 +866,13 @@ async function applySingleCommand(args: {
 
   const safeTarget = clampTargetToSession(session, target);
 
-  const itemUpdates: Partial<
-    InspectionSession["sections"][number]["items"][number]
-  > = {};
+  const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
+
+  const targetLabel = String(
+    session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex]?.item ??
+      session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex]?.name ??
+      "",
+  );
 
   switch (mode) {
     case "update_status":
@@ -765,10 +881,23 @@ async function applySingleCommand(args: {
       break;
 
     case "update_value":
-    case "measurement":
-      if (value !== undefined) itemUpdates.value = value;
+    case "measurement": {
+      if (value !== undefined) {
+        if (isBatteryLikeLabel(targetLabel)) {
+          if ((unit ?? "").toUpperCase() === "CCA") {
+            (itemUpdates as Record<string, unknown>).cca = value;
+          } else if ((unit ?? "").toUpperCase() === "V" || unit === "V") {
+            (itemUpdates as Record<string, unknown>).voltage = value;
+          } else {
+            itemUpdates.value = value;
+          }
+        } else {
+          itemUpdates.value = value;
+        }
+      }
       if (unit) itemUpdates.unit = unit;
       break;
+    }
 
     case "add_note":
     case "add":
