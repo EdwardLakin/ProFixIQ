@@ -33,6 +33,11 @@
 // - If status/update_status has no `status` field, infer from rawSpeech/item/note
 //   so “brake shoe linings okay” marks OK.
 //
+// ✅ NEW (fixes your screenshot issue):
+// - Strip status words from speech BEFORE scoring (so "engine oil level ok" matches "engine oil level")
+// - Add a strong phrase-match boost in scoreLabel (direct label ↔ speech match)
+// - Lower min score threshold slightly (30 -> 20) so general items resolve reliably
+//
 // No `any`.
 
 import {
@@ -206,7 +211,8 @@ function extractHintTokens(text: string): string[] {
 
   if (n.includes("steer") && !/\bsteer\s*\d+\b/.test(n)) out.push("steer 1");
   if (n.includes("drive") && !/\bdrive\s*\d+\b/.test(n)) out.push("drive 1");
-  if (n.includes("trailer") && !/\btrailer\s*\d+\b/.test(n)) out.push("trailer 1");
+  if (n.includes("trailer") && !/\btrailer\s*\d+\b/.test(n))
+    out.push("trailer 1");
 
   return Array.from(new Set(out.map((t) => norm(t))));
 }
@@ -233,7 +239,8 @@ function hasCornerSpecificityInSpeech(speech: string): boolean {
 function isGridLikeLabel(label: string): boolean {
   const l = norm(label);
   const hasSide = /\b(left|right|lf|rf|lr|rr)\b/.test(l);
-  const hasAxle = /\b(steer|drive|trailer)\s+\d+\b/.test(l) || /\btag\b/.test(l);
+  const hasAxle =
+    /\b(steer|drive|trailer)\s+\d+\b/.test(l) || /\btag\b/.test(l);
   const hasCornerPhrase = /\b(left|right)\s+(front|rear)\b/.test(l);
   return (hasSide && hasAxle) || hasCornerPhrase || hasAxle;
 }
@@ -243,9 +250,32 @@ function isPlainPushrodLabel(label: string): boolean {
   return (
     l === "pushrod travel" ||
     l === "push rod travel" ||
-    (l.includes("push") && l.includes("rod") && l.includes("travel") && !isGridLikeLabel(label))
+    (l.includes("push") &&
+      l.includes("rod") &&
+      l.includes("travel") &&
+      !isGridLikeLabel(label))
   );
 }
+
+/* ------------------------------ STATUS STRIP (NEW) ------------------------------ */
+
+function stripStatusWords(text: string): string {
+  const t = norm(text);
+  if (!t) return "";
+  return t
+    .replace(/\b(ok|okay|pass|passed|good)\b/g, " ")
+    .replace(/\b(fail|failed|bad)\b/g, " ")
+    .replace(/\b(n\/?a|not\s*applicable)\b/g, " ")
+    .replace(/\b(recommend|recommended|rec)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripStatusForMatch(text: string): string {
+  return stripStatusWords(text);
+}
+
+/* ------------------------------ SCORING ------------------------------ */
 
 function scoreLabel(args: {
   label: string;
@@ -258,6 +288,15 @@ function scoreLabel(args: {
   if (!l) return 0;
 
   let score = 0;
+
+  // ✅ NEW: phrase match boost (fixes "engine oil level ok" -> "engine oil level")
+  const cleanedSpeech = stripStatusForMatch(rawSpeech);
+  const speechKey = norm(cleanedSpeech);
+  if (speechKey) {
+    if (l === speechKey) score += 60;
+    else if (l.includes(speechKey)) score += 55;
+    else if (speechKey.includes(l)) score += 35;
+  }
 
   for (const tok of hintTokens) {
     if (!tok) continue;
@@ -338,7 +377,8 @@ function scoreLabel(args: {
       tok === "lining" ||
       tok === "linings"
     ) {
-      if (l.includes("pad") || l.includes("shoe") || l.includes("lining")) score += 22;
+      if (l.includes("pad") || l.includes("shoe") || l.includes("lining"))
+        score += 22;
       continue;
     }
     if (tok === "rotor" || tok === "drum") {
@@ -378,7 +418,8 @@ function scoreLabel(args: {
   // ✅ Pushrod travel split rule
   const speechN = norm(rawSpeech);
   const mentionsPushrod =
-    speechN.includes("pushrod") || (speechN.includes("push") && speechN.includes("rod"));
+    speechN.includes("pushrod") ||
+    (speechN.includes("push") && speechN.includes("rod"));
   const numeric = hasNumericInSpeech(rawSpeech);
 
   if (mentionsPushrod && (mode === "status" || mode === "update_status")) {
@@ -442,7 +483,11 @@ function scoreSectionTitle(title: string, hintTokens: string[]): number {
     hintTokens.includes("steer") ||
     hintTokens.includes("trailer");
 
-  if (wantsAxle && (t.includes("tire") || t.includes("brake") || t.includes("corner"))) score += 8;
+  if (
+    wantsAxle &&
+    (t.includes("tire") || t.includes("brake") || t.includes("corner"))
+  )
+    score += 8;
 
   return score;
 }
@@ -456,7 +501,11 @@ function resolveTargetFromSpeech(args: {
   const { speech, sections, explicitSectionName, mode } = args;
   if (!Array.isArray(sections) || sections.length === 0) return null;
 
-  const hints = extractHintTokens(speech);
+  // ✅ NEW: strip status words before extracting hints/scoring
+  const cleanedSpeech = stripStatusForMatch(speech);
+  const speechForHints = cleanedSpeech || speech;
+
+  const hints = extractHintTokens(speechForHints);
   const explicitSection = explicitSectionName ? norm(explicitSectionName) : "";
 
   // ✅ Gate grids when speech is generic (no numeric + no corner/axle specificity)
@@ -484,7 +533,12 @@ function resolveTargetFromSpeech(args: {
 
       if (gateOutGridLabels && isGridLikeLabel(label)) continue;
 
-      const ls = scoreLabel({ label, hintTokens: hints, mode, rawSpeech: speech });
+      const ls = scoreLabel({
+        label,
+        hintTokens: hints,
+        mode,
+        rawSpeech: speechForHints,
+      });
       const total = ls + secScore;
 
       if (total <= 0) continue;
@@ -495,7 +549,8 @@ function resolveTargetFromSpeech(args: {
     }
   }
 
-  if (!best || best.score < 30) return null;
+  // ✅ NEW: slightly lower threshold so general items resolve (was 30)
+  if (!best || best.score < 20) return null;
   return best.target;
 }
 
@@ -541,16 +596,22 @@ function clampTargetToSession(session: InspectionSession, t: Target): Target {
   return { sectionIndex: sIdx, itemIndex: iIdx };
 }
 
-function resolveSectionIndexByName(session: InspectionSession, sectionName: string): number {
+function resolveSectionIndexByName(
+  session: InspectionSession,
+  sectionName: string,
+): number {
   const needle = norm(sectionName);
   if (!needle) return -1;
 
-  return session.sections.findIndex((sec) => norm(String(sec.title ?? "")).includes(needle));
+  return session.sections.findIndex((sec) =>
+    norm(String(sec.title ?? "")).includes(needle),
+  );
 }
 
 function normalizeStatusMaybe(raw: unknown): InspectionItemStatus | undefined {
   const s = String(raw ?? "").toLowerCase().trim();
-  if (s === "ok" || s === "fail" || s === "na" || s === "recommend") return s as InspectionItemStatus;
+  if (s === "ok" || s === "fail" || s === "na" || s === "recommend")
+    return s as InspectionItemStatus;
   if (s === "n/a" || s === "n a") return "na";
   if (s === "okay" || s === "pass") return "ok";
   if (s === "rec") return "recommend";
@@ -571,18 +632,6 @@ function inferStatusFromText(text: string): InspectionItemStatus | undefined {
   if (/\b(recommend|recommended|rec)\b/.test(t)) return "recommend";
 
   return undefined;
-}
-
-function stripStatusWords(text: string): string {
-  const t = norm(text);
-  if (!t) return "";
-  return t
-    .replace(/\b(ok|okay|pass|passed|good)\b/g, " ")
-    .replace(/\b(fail|failed|bad)\b/g, " ")
-    .replace(/\b(n\/?a|not\s*applicable)\b/g, " ")
-    .replace(/\b(recommend|recommended|rec)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function coerceNumericValue(raw: unknown): number | undefined {
@@ -620,7 +669,11 @@ function coercePartsFromUnknown(v: unknown): PartLine[] | undefined {
     const description = String(row.description ?? "").trim();
     const qtyRaw = row.qty;
     const qty =
-      typeof qtyRaw === "number" ? qtyRaw : Number.isFinite(Number(qtyRaw)) ? Number(qtyRaw) : 1;
+      typeof qtyRaw === "number"
+        ? qtyRaw
+        : Number.isFinite(Number(qtyRaw))
+          ? Number(qtyRaw)
+          : 1;
 
     if (!description) continue;
     out.push({ description, qty: qty > 0 ? qty : 1 });
@@ -652,9 +705,13 @@ function isThisSectionName(sectionName: string | undefined): boolean {
 }
 
 function getSafeCurrentSectionIndex(session: InspectionSession): number {
-  const idx = typeof session.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
+  const idx =
+    typeof session.currentSectionIndex === "number"
+      ? session.currentSectionIndex
+      : 0;
   if (idx < 0) return 0;
-  if (idx >= session.sections.length) return Math.max(0, session.sections.length - 1);
+  if (idx >= session.sections.length)
+    return Math.max(0, session.sections.length - 1);
   return idx;
 }
 
@@ -696,7 +753,9 @@ function findItemIndexByNamePreferNonGrid(params: {
   }
 
   // pass 2: any match
-  return items.findIndex((it) => norm(String(it.name ?? it.item ?? "")).includes(n));
+  return items.findIndex((it) =>
+    norm(String(it.name ?? it.item ?? "")).includes(n),
+  );
 }
 
 /* -------------------------------------------------------------------------------------------------
@@ -730,13 +789,22 @@ async function applySingleCommand(args: {
     mode = c.command;
 
     status = normalizeStatusMaybe((c as unknown as { status?: unknown })?.status);
-    value = (c as unknown as { value?: unknown })?.value as unknown as string | number | undefined;
-    unit = (c as unknown as { unit?: unknown })?.unit as unknown as string | undefined;
+    value = (c as unknown as { value?: unknown })?.value as
+      | string
+      | number
+      | undefined;
+    unit = (c as unknown as { unit?: unknown })?.unit as string | undefined;
 
-    if (typeof (c as unknown as { sectionIndex?: unknown })?.sectionIndex === "number") {
-      explicitSectionIndex = (c as unknown as { sectionIndex: number }).sectionIndex;
+    if (
+      typeof (c as unknown as { sectionIndex?: unknown })?.sectionIndex ===
+      "number"
+    ) {
+      explicitSectionIndex = (c as unknown as { sectionIndex: number })
+        .sectionIndex;
     }
-    if (typeof (c as unknown as { itemIndex?: unknown })?.itemIndex === "number") {
+    if (
+      typeof (c as unknown as { itemIndex?: unknown })?.itemIndex === "number"
+    ) {
       explicitItemIndex = (c as unknown as { itemIndex: number }).itemIndex;
     }
 
@@ -811,7 +879,10 @@ async function applySingleCommand(args: {
 
     const sIdx =
       typeof explicitSectionIndex === "number"
-        ? clampTargetToSession(session, { sectionIndex: explicitSectionIndex, itemIndex: 0 }).sectionIndex
+        ? clampTargetToSession(session, {
+            sectionIndex: explicitSectionIndex,
+            itemIndex: 0,
+          }).sectionIndex
         : isThisSectionName(section)
           ? currentIdx
           : section
@@ -821,7 +892,9 @@ async function applySingleCommand(args: {
               })()
             : currentIdx;
 
-    const st = status ?? normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
+    const st =
+      status ??
+      normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
     if (!st) return null;
 
     const itemsLen = session.sections[sIdx]?.items?.length ?? 0;
@@ -831,15 +904,21 @@ async function applySingleCommand(args: {
   }
 
   // Direct index apply (trust indices)
-  if (typeof explicitSectionIndex === "number" && typeof explicitItemIndex === "number") {
+  if (
+    typeof explicitSectionIndex === "number" &&
+    typeof explicitItemIndex === "number"
+  ) {
     const safe = clampTargetToSession(session, {
       sectionIndex: explicitSectionIndex,
       itemIndex: explicitItemIndex,
     });
 
-    const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
+    const itemUpdates: Partial<
+      InspectionSession["sections"][number]["items"][number]
+    > = {};
     const targetRow =
-      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex] ?? ({} as Record<string, unknown>);
+      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex] ??
+      ({} as Record<string, unknown>);
     const targetLabel = String(
       (targetRow as { item?: unknown; name?: unknown }).item ??
         (targetRow as { name?: unknown }).name ??
@@ -857,8 +936,10 @@ async function applySingleCommand(args: {
         const existing = (targetRow as { value?: unknown }).value;
         if (value !== undefined && !hasExistingMeasurement(existing)) {
           if (isBatteryLikeLabel(targetLabel)) {
-            if ((unit ?? "").toUpperCase() === "CCA") (itemUpdates as Record<string, unknown>).cca = value;
-            else if ((unit ?? "").toUpperCase() === "V") (itemUpdates as Record<string, unknown>).voltage = value;
+            if ((unit ?? "").toUpperCase() === "CCA")
+              (itemUpdates as Record<string, unknown>).cca = value;
+            else if ((unit ?? "").toUpperCase() === "V")
+              (itemUpdates as Record<string, unknown>).voltage = value;
             itemUpdates.value = value;
           } else {
             itemUpdates.value = value;
@@ -888,7 +969,8 @@ async function applySingleCommand(args: {
     if (parts) itemUpdates.parts = parts;
     if (laborHours !== undefined) itemUpdates.laborHours = laborHours;
 
-    if (Object.keys(itemUpdates).length > 0) updateItem(safe.sectionIndex, safe.itemIndex, itemUpdates);
+    if (Object.keys(itemUpdates).length > 0)
+      updateItem(safe.sectionIndex, safe.itemIndex, itemUpdates);
 
     return Object.keys(itemUpdates).length > 0 ? safe : null;
   }
@@ -929,7 +1011,9 @@ async function applySingleCommand(args: {
     target = { sectionIndex: currentSectionIndex, itemIndex: itemIndexInCurrent };
   } else {
     const explicitSectionName =
-      section && !isThisSectionName(section) && resolveSectionIndexByName(session, section) >= 0
+      section &&
+      !isThisSectionName(section) &&
+      resolveSectionIndexByName(session, section) >= 0
         ? section
         : undefined;
 
@@ -942,7 +1026,8 @@ async function applySingleCommand(args: {
       unit,
     });
 
-    const hint = rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
+    const hint =
+      rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
 
     if (hint) {
       target = resolveTargetFromSpeech({
@@ -970,7 +1055,9 @@ async function applySingleCommand(args: {
 
   const safeTarget = clampTargetToSession(session, target);
 
-  const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
+  const itemUpdates: Partial<
+    InspectionSession["sections"][number]["items"][number]
+  > = {};
   const targetRow =
     session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex] ??
     ({} as Record<string, unknown>);
@@ -991,8 +1078,10 @@ async function applySingleCommand(args: {
       const existing = (targetRow as { value?: unknown }).value;
       if (value !== undefined && !hasExistingMeasurement(existing)) {
         if (isBatteryLikeLabel(targetLabel)) {
-          if ((unit ?? "").toUpperCase() === "CCA") (itemUpdates as Record<string, unknown>).cca = value;
-          else if ((unit ?? "").toUpperCase() === "V") (itemUpdates as Record<string, unknown>).voltage = value;
+          if ((unit ?? "").toUpperCase() === "CCA")
+            (itemUpdates as Record<string, unknown>).cca = value;
+          else if ((unit ?? "").toUpperCase() === "V")
+            (itemUpdates as Record<string, unknown>).voltage = value;
           itemUpdates.value = value;
         } else {
           itemUpdates.value = value;
