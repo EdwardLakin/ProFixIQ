@@ -147,7 +147,7 @@ export default function VoiceRunPage() {
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
       <h1 style={{ fontSize: 22, fontWeight: 800 }}>Voice Debug Runner</h1>
       <p style={{ opacity: 0.8, marginTop: 6 }}>
-        Record a command like: “Techy, mark right tie rod end as failed…”
+        Record a command like: “Hey profix, mark right tie rod end as failed…”
       </p>
 
       <div style={{ display: "flex", gap: 12, marginTop: 16 }}>

@@ -29,6 +29,10 @@
 //   do NOT allow grid-like labels to be selected.
 //   (Prevents generic “seatbelts ok / brake shoes ok / pushrod travel ok” from hitting a grid row.)
 //
+// ✅ NEW: Status inference
+// - If status/update_status has no `status` field, infer from rawSpeech/item/note
+//   so “brake shoe linings okay” marks OK.
+//
 // No `any`.
 
 import {
@@ -136,11 +140,14 @@ const SYNONYMS: Array<{ re: RegExp; tokens: string[] }> = [
 
   // common metrics (brakes)
   {
-    re: /\b(pad|pads|shoe|shoes|lining)\b/i,
-    tokens: ["pad", "pads", "shoe", "shoes", "lining"],
+    re: /\b(pad|pads|shoe|shoes|lining|linings)\b/i,
+    tokens: ["pad", "pads", "shoe", "shoes", "lining", "linings"],
   },
   { re: /\b(rotor|drum)\b/i, tokens: ["rotor", "drum"] },
-  { re: /\b(push\s*rod|pushrod)\b/i, tokens: ["push rod", "pushrod", "pushrod travel"] },
+  {
+    re: /\b(push\s*rod|pushrod)\b/i,
+    tokens: ["push rod", "pushrod", "pushrod travel"],
+  },
 
   // tires
   {
@@ -214,7 +221,6 @@ function hasCornerSpecificityInSpeech(speech: string): boolean {
 
   if (/\b(lf|rf|lr|rr)\b/.test(t)) return true;
   if (/\b(left|right)\s+(front|rear)\b/.test(t)) return true;
-
   if (/\b(inner|outer)\b/.test(t)) return true;
 
   if (/\b(steer|drive|trailer)\s*\d+\b/.test(t)) return true;
@@ -226,7 +232,6 @@ function hasCornerSpecificityInSpeech(speech: string): boolean {
 
 function isGridLikeLabel(label: string): boolean {
   const l = norm(label);
-  // grid rows almost always contain axle + side OR corner tokens
   const hasSide = /\b(left|right|lf|rf|lr|rr)\b/.test(l);
   const hasAxle = /\b(steer|drive|trailer)\s+\d+\b/.test(l) || /\btag\b/.test(l);
   const hasCornerPhrase = /\b(left|right)\s+(front|rear)\b/.test(l);
@@ -235,7 +240,6 @@ function isGridLikeLabel(label: string): boolean {
 
 function isPlainPushrodLabel(label: string): boolean {
   const l = norm(label);
-  // allow small variations
   return (
     l === "pushrod travel" ||
     l === "push rod travel" ||
@@ -331,7 +335,8 @@ function scoreLabel(args: {
       tok === "pads" ||
       tok === "shoe" ||
       tok === "shoes" ||
-      tok === "lining"
+      tok === "lining" ||
+      tok === "linings"
     ) {
       if (l.includes("pad") || l.includes("shoe") || l.includes("lining")) score += 22;
       continue;
@@ -377,15 +382,13 @@ function scoreLabel(args: {
   const numeric = hasNumericInSpeech(rawSpeech);
 
   if (mentionsPushrod && (mode === "status" || mode === "update_status")) {
-    // "pushrod travel ok" should prefer the plain SECTION item
     if (!numeric) {
-      if (isPlainPushrodLabel(label)) score += 140; // huge boost
-      if (isGridLikeLabel(label)) score -= 90; // strong penalty
+      if (isPlainPushrodLabel(label)) score += 140;
+      if (isGridLikeLabel(label)) score -= 90;
     }
   }
 
   if (mentionsPushrod && (mode === "measurement" || mode === "update_value")) {
-    // measurement should prefer grid targets (they include axle/side)
     if (numeric) {
       if (isGridLikeLabel(label)) score += 60;
       if (isPlainPushrodLabel(label)) score -= 25;
@@ -456,7 +459,7 @@ function resolveTargetFromSpeech(args: {
   const hints = extractHintTokens(speech);
   const explicitSection = explicitSectionName ? norm(explicitSectionName) : "";
 
-  // ✅ Gate grids when speech is generic status (no numeric + no corner/axle specificity)
+  // ✅ Gate grids when speech is generic (no numeric + no corner/axle specificity)
   const numeric = hasNumericInSpeech(speech);
   const specific = hasCornerSpecificityInSpeech(speech);
   const gateOutGridLabels = !numeric && !specific;
@@ -542,9 +545,7 @@ function resolveSectionIndexByName(session: InspectionSession, sectionName: stri
   const needle = norm(sectionName);
   if (!needle) return -1;
 
-  return session.sections.findIndex((sec) =>
-    norm(String(sec.title ?? "")).includes(needle),
-  );
+  return session.sections.findIndex((sec) => norm(String(sec.title ?? "")).includes(needle));
 }
 
 function normalizeStatusMaybe(raw: unknown): InspectionItemStatus | undefined {
@@ -554,6 +555,34 @@ function normalizeStatusMaybe(raw: unknown): InspectionItemStatus | undefined {
   if (s === "okay" || s === "pass") return "ok";
   if (s === "rec") return "recommend";
   return undefined;
+}
+
+function inferStatusFromText(text: string): InspectionItemStatus | undefined {
+  const t = norm(text);
+  if (!t) return undefined;
+
+  // explicit first
+  const direct = normalizeStatusMaybe(t);
+  if (direct) return direct;
+
+  if (/\b(ok|okay|pass|passed|good)\b/.test(t)) return "ok";
+  if (/\b(fail|failed|bad)\b/.test(t)) return "fail";
+  if (/\b(n\/?a|not\s*applicable)\b/.test(t)) return "na";
+  if (/\b(recommend|recommended|rec)\b/.test(t)) return "recommend";
+
+  return undefined;
+}
+
+function stripStatusWords(text: string): string {
+  const t = norm(text);
+  if (!t) return "";
+  return t
+    .replace(/\b(ok|okay|pass|passed|good)\b/g, " ")
+    .replace(/\b(fail|failed|bad)\b/g, " ")
+    .replace(/\b(n\/?a|not\s*applicable)\b/g, " ")
+    .replace(/\b(recommend|recommended|rec)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function coerceNumericValue(raw: unknown): number | undefined {
@@ -591,11 +620,7 @@ function coercePartsFromUnknown(v: unknown): PartLine[] | undefined {
     const description = String(row.description ?? "").trim();
     const qtyRaw = row.qty;
     const qty =
-      typeof qtyRaw === "number"
-        ? qtyRaw
-        : Number.isFinite(Number(qtyRaw))
-          ? Number(qtyRaw)
-          : 1;
+      typeof qtyRaw === "number" ? qtyRaw : Number.isFinite(Number(qtyRaw)) ? Number(qtyRaw) : 1;
 
     if (!description) continue;
     out.push({ description, qty: qty > 0 ? qty : 1 });
@@ -650,6 +675,28 @@ function hasExistingMeasurement(v: unknown): boolean {
   if (typeof v === "number") return Number.isFinite(v);
   const s = String(v).trim();
   return s.length > 0;
+}
+
+function findItemIndexByNamePreferNonGrid(params: {
+  items: InspectionSession["sections"][number]["items"];
+  needle: string;
+  gateOutGridLabels: boolean;
+}): number {
+  const { items, needle, gateOutGridLabels } = params;
+  const n = norm(needle);
+  if (!n) return -1;
+
+  // pass 1: prefer non-grid if gated
+  if (gateOutGridLabels) {
+    const idx = items.findIndex((it) => {
+      const label = String(it.name ?? it.item ?? "");
+      return norm(label).includes(n) && !isGridLikeLabel(label);
+    });
+    if (idx >= 0) return idx;
+  }
+
+  // pass 2: any match
+  return items.findIndex((it) => norm(String(it.name ?? it.item ?? "")).includes(n));
 }
 
 /* -------------------------------------------------------------------------------------------------
@@ -734,6 +781,25 @@ async function applySingleCommand(args: {
   const n = coerceNumericValue(value);
   if (n !== undefined) value = n;
 
+  const numericInSpeech = rawSpeech ? hasNumericInSpeech(rawSpeech) : false;
+  const cornerSpecific = rawSpeech ? hasCornerSpecificityInSpeech(rawSpeech) : false;
+  const gateOutGridLabels = !numericInSpeech && !cornerSpecific;
+
+  // ✅ If status wasn't provided, infer it from speech/item/note (fixes “brake shoe linings okay”)
+  const isStatusMode = mode === "status" || mode === "update_status";
+  if (isStatusMode && !status) {
+    const fromSpeech = rawSpeech ? inferStatusFromText(rawSpeech) : undefined;
+    const fromItem = item ? inferStatusFromText(item) : undefined;
+    const fromNote = note ? inferStatusFromText(note) : undefined;
+    status = fromSpeech ?? fromItem ?? fromNote;
+  }
+
+  // ✅ If item contains status words, strip them for matching/resolution
+  const cleanedItem = item ? stripStatusWords(item) : "";
+  if (cleanedItem && cleanedItem !== norm(item ?? "")) {
+    item = cleanedItem;
+  }
+
   const isSectionWide =
     mode === "section_status" ||
     mode === "mark_section" ||
@@ -755,9 +821,7 @@ async function applySingleCommand(args: {
               })()
             : currentIdx;
 
-    const st =
-      status ?? normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
-
+    const st = status ?? normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
     if (!st) return null;
 
     const itemsLen = session.sections[sIdx]?.items?.length ?? 0;
@@ -766,7 +830,7 @@ async function applySingleCommand(args: {
     return itemsLen > 0 ? { sectionIndex: sIdx, itemIndex: 0 } : null;
   }
 
-  // Direct index apply
+  // Direct index apply (trust indices)
   if (typeof explicitSectionIndex === "number" && typeof explicitItemIndex === "number") {
     const safe = clampTargetToSession(session, {
       sectionIndex: explicitSectionIndex,
@@ -775,8 +839,7 @@ async function applySingleCommand(args: {
 
     const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
     const targetRow =
-      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex] ??
-      ({} as Record<string, unknown>);
+      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex] ?? ({} as Record<string, unknown>);
     const targetLabel = String(
       (targetRow as { item?: unknown; name?: unknown }).item ??
         (targetRow as { name?: unknown }).name ??
@@ -791,13 +854,12 @@ async function applySingleCommand(args: {
 
       case "update_value":
       case "measurement": {
-        // ✅ Don't overwrite existing measurement unless empty
         const existing = (targetRow as { value?: unknown }).value;
         if (value !== undefined && !hasExistingMeasurement(existing)) {
           if (isBatteryLikeLabel(targetLabel)) {
             if ((unit ?? "").toUpperCase() === "CCA") (itemUpdates as Record<string, unknown>).cca = value;
             else if ((unit ?? "").toUpperCase() === "V") (itemUpdates as Record<string, unknown>).voltage = value;
-            itemUpdates.value = value; // keep generic too (safe)
+            itemUpdates.value = value;
           } else {
             itemUpdates.value = value;
           }
@@ -840,18 +902,23 @@ async function applySingleCommand(args: {
         )
       : -1;
 
+  // ✅ Name resolution with grid gate
   const itemIndexByName =
     sectionIndexByName >= 0 && item && item.trim().length > 0
-      ? session.sections[sectionIndexByName].items.findIndex((it) =>
-          String(it.name ?? it.item ?? "").toLowerCase().includes(item.toLowerCase()),
-        )
+      ? findItemIndexByNamePreferNonGrid({
+          items: session.sections[sectionIndexByName].items,
+          needle: item,
+          gateOutGridLabels: gateOutGridLabels && isStatusMode,
+        })
       : -1;
 
   const itemIndexInCurrent =
     item && item.trim().length > 0
-      ? (session.sections[currentSectionIndex]?.items?.findIndex((it) =>
-          String(it.name ?? it.item ?? "").toLowerCase().includes(item.toLowerCase()),
-        ) ?? -1)
+      ? findItemIndexByNamePreferNonGrid({
+          items: session.sections[currentSectionIndex]?.items ?? [],
+          needle: item,
+          gateOutGridLabels: gateOutGridLabels && isStatusMode,
+        })
       : -1;
 
   let target: Target | null = null;
@@ -867,7 +934,14 @@ async function applySingleCommand(args: {
         : undefined;
 
     const rawHint = String(rawSpeech ?? "").trim();
-    const parsedHint = buildSpeechHintFromCommand({ section, item, note, unit });
+
+    const parsedHint = buildSpeechHintFromCommand({
+      section,
+      item: item ? stripStatusWords(item) : undefined,
+      note,
+      unit,
+    });
+
     const hint = rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
 
     if (hint) {
@@ -914,7 +988,6 @@ async function applySingleCommand(args: {
 
     case "update_value":
     case "measurement": {
-      // ✅ Don't overwrite existing measurement unless empty
       const existing = (targetRow as { value?: unknown }).value;
       if (value !== undefined && !hasExistingMeasurement(existing)) {
         if (isBatteryLikeLabel(targetLabel)) {

@@ -1388,11 +1388,12 @@ const wakeTimeoutRef = useRef<number | null>(null);
     .replace(/\s+/g, " ")
     .trim();
 
-  const withoutHey = normalized.startsWith("hey ")
-    ? normalized.slice(4).trim()
-    : normalized;
-
-  const WAKE_PREFIXES = ["techy", "techie", "tekky", "teki"];
+  // Include common STT variations
+  const WAKE_PREFIXES = [
+    "hey profix",
+    "hey pro fix",
+    "hey buster",
+  ] as const;
 
   const matchPrefixFrom = (
     input: string,
@@ -1407,8 +1408,8 @@ const wakeTimeoutRef = useRef<number | null>(null);
   };
 
   const setWake = (on: boolean) => {
-    wakeActiveRef.current = on;     // ✅ logic gate
-    setWakeActive(on);             // ✅ UI badge
+    wakeActiveRef.current = on; // logic gate
+    setWakeActive(on); // UI badge
   };
 
   const bumpTimeout = () => {
@@ -1416,24 +1417,16 @@ const wakeTimeoutRef = useRef<number | null>(null);
     wakeTimeoutRef.current = window.setTimeout(() => setWake(false), 8000);
   };
 
-  // ✅ Use ref for truth (NOT React state)
-  const awake = wakeActiveRef.current;
+  const beep = () => {
+    try {
+      type WebkitAudioWindow = Window & {
+        webkitAudioContext?: typeof AudioContext;
+      };
+      const AudioCtxCtor =
+        window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
 
-  if (!awake) {
-    const match = matchPrefixFrom(withoutHey);
-    if (!match) return null;
+      if (!AudioCtxCtor) return;
 
-    setWake(true);
-    bumpTimeout();
-
-    toast.success("READY", { duration: 1200 });
-
-    // beep
-    type WebkitAudioWindow = Window & { webkitAudioContext?: typeof AudioContext };
-    const AudioCtxCtor =
-      window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
-
-    if (AudioCtxCtor) {
       const ctx = new AudioCtxCtor();
       const o = ctx.createOscillator();
       const g = ctx.createGain();
@@ -1447,18 +1440,43 @@ const wakeTimeoutRef = useRef<number | null>(null);
         o.stop();
         void ctx.close();
       }, 120);
+    } catch {
+      // ignore
     }
+  };
 
-    // IMPORTANT: return ONLY command remainder
+  const awake = wakeActiveRef.current;
+
+  if (!awake) {
+    const match = matchPrefixFrom(normalized);
+    if (!match) return null;
+
+    setWake(true);
+    bumpTimeout();
+
+    toast.success("READY", { duration: 1200 });
+    beep();
+
+    // Wake-only? arm but do NOT forward empty transcript
+    if (!match.remainder) return null;
+
     return match.remainder;
   }
 
   // already awake: extend timeout and strip prefix if repeated
   bumpTimeout();
 
-  const repeated = matchPrefixFrom(withoutHey);
-  return repeated ? repeated.remainder : withoutHey;
+  const repeated = matchPrefixFrom(normalized);
+  if (repeated) {
+    // Wake-only while already awake => keep armed, no command to process
+    if (!repeated.remainder) return null;
+    return repeated.remainder;
+  }
+
+  // No repeated wake word; treat full phrase as the command
+  return normalized;
 }
+
 
   const voice = useRealtimeVoice(
     async (text: string) => {

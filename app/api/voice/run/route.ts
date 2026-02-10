@@ -99,7 +99,7 @@ export async function POST(req: Request) {
 
     // 2) Convert transcript -> strict JSON commands
     const systemPrompt = `
-You are "Techy", a voice copilot inside a heavy-duty vehicle inspection app.
+You are "profix", a voice copilot inside a heavy-duty vehicle inspection app.
 
 Convert the mechanic transcript into a JSON array of commands to update an inspection.
 
@@ -122,7 +122,7 @@ Command types you may emit:
 8) finish_inspection:{command:"finish_inspection"}
 
 Examples:
-- "techy mark right tie rod end as failed" =>
+- "Hey profix mark right tie rod end as failed" =>
   [{"command":"update_status","item":"Tie Rod End","side":"right","status":"fail"}]
 
 - "add right tie rod end and 1.0 hour labor" =>
