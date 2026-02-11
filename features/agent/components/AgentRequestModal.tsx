@@ -1,4 +1,4 @@
-//features/agent/components/AgentRequestmodal.tsx
+// features/agent/components/AgentRequestModal.tsx (FULL FILE REPLACEMENT)
 
 "use client";
 
@@ -29,6 +29,14 @@ type AgentIntentUi =
   | "refactor"
   | "unclear";
 
+function newRequestId(): string {
+  // Works in modern browsers; safe fallback included.
+  const c = (globalThis as unknown as { crypto?: Crypto }).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  // fallback: not perfect, but better than missing ids
+  return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 export default function AgentRequestModal({ open, onOpenChange }: Props) {
   const [description, setDescription] = useState("");
   const [intent, setIntent] = useState<AgentIntentUi>("unclear");
@@ -57,8 +65,7 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
       setFiles([]);
       return;
     }
-    const arr = Array.from(list);
-    setFiles(arr);
+    setFiles(Array.from(list));
   }
 
   async function uploadScreenshots(): Promise<string[]> {
@@ -67,10 +74,10 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
     const supabase = createBrowserSupabase();
     const uploadedPaths: string[] = [];
 
-    // Grab user id so we can namespace uploads
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     const userId = user?.id ?? "anonymous";
 
     for (const file of files) {
@@ -80,10 +87,7 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
 
       const { error } = await supabase.storage
         .from("agent_uploads")
-        .upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
+        .upload(path, file, { cacheControl: "3600", upsert: false });
 
       if (error) {
         console.error("agent_uploads upload error:", error);
@@ -106,11 +110,23 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
     setLoading(true);
 
     try {
+      const supabase = createBrowserSupabase();
+
+      // Generate a stable requestId here so EVERYTHING can correlate.
+      const requestId = newRequestId();
+
+      // Get reporterId (user id) if available.
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const reporterId = user?.id ?? null;
+
       // 1) Upload screenshots first (if any)
       const attachmentIds = await uploadScreenshots();
 
-      // 2) Build context for v2 route
-      const context: Record<string, unknown> = {};
+      // 2) Build context
+      const context: Record<string, unknown> = { requestId };
       if (location.trim()) context.location = location.trim();
       if (steps.trim()) context.steps = steps.trim();
       if (expected.trim()) context.expected = expected.trim();
@@ -122,16 +138,24 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // ✅ critical correlation fields
+          requestId,
+          context,
+
+          // request info
           description: description.trim(),
           intent,
-          // these top-level fields match CreateAgentRequestBody
+
+          // useful metadata (optional but helpful)
+          reporterId: reporterId ?? undefined,
+
+          // these top-level fields match your CreateAgentRequestBody (if you support them)
           location: location.trim() || undefined,
           steps: steps.trim() || undefined,
           expected: expected.trim() || undefined,
           actual: actual.trim() || undefined,
           device: device.trim() || undefined,
           attachmentIds: attachmentIds.length ? attachmentIds : undefined,
-          context: Object.keys(context).length ? context : undefined,
         }),
       });
 
@@ -139,18 +163,21 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
         const text = await res.text().catch(() => "");
         console.error("Agent request POST failed", res.status, text);
         toast.error("Failed to submit request");
-      } else {
-        toast.success("Request submitted to ProFixIQ-Agent");
-        setDescription("");
-        setIntent("unclear");
-        setLocation("");
-        setSteps("");
-        setExpected("");
-        setActual("");
-        setDevice("");
-        setFiles([]);
-        onOpenChange(false);
+        return;
       }
+
+      toast.success("Request submitted to ProFixIQ-Agent");
+
+      // reset
+      setDescription("");
+      setIntent("unclear");
+      setLocation("");
+      setSteps("");
+      setExpected("");
+      setActual("");
+      setDevice("");
+      setFiles([]);
+      onOpenChange(false);
     } catch (err) {
       toast.error("Something went wrong.");
       console.error(err);
@@ -187,12 +214,8 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
             >
               <option value="feature_request">Feature Request</option>
               <option value="bug_report">Bug Report</option>
-              <option value="inspection_catalog_add">
-                Add to Inspection Catalog
-              </option>
-              <option value="service_catalog_add">
-                Add to Service Catalog
-              </option>
+              <option value="inspection_catalog_add">Add to Inspection Catalog</option>
+              <option value="service_catalog_add">Add to Service Catalog</option>
               <option value="refactor">Refactor / Cleanup</option>
               <option value="unclear">Not sure / General feedback</option>
             </select>
@@ -299,8 +322,7 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
             )}
             <p className="text-[0.7rem] text-neutral-500">
               Attach clear screenshots of the issue. These will be stored in the
-              secure <code>agent_uploads</code> bucket and linked to this
-              request.
+              secure <code>agent_uploads</code> bucket and linked to this request.
             </p>
           </div>
         </div>

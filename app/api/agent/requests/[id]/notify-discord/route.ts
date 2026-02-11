@@ -36,13 +36,9 @@ function parseJobKind(v: string | undefined): AgentJobKind | null {
   return (allowed as readonly string[]).includes(s) ? (s as AgentJobKind) : null;
 }
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
-    const { id: rawId } = await params;
-    const id = (rawId || "").trim();
+    const id = (params?.id || "").trim();
 
     if (!id) {
       return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
@@ -91,9 +87,7 @@ export async function POST(
     // load the request to build a default message
     const { data: requestRow, error: requestError } = await supabase
       .from("agent_requests")
-      .select(
-        "id, status, intent, description, github_issue_url, github_pr_url, created_at, reporter_role"
-      )
+      .select("id, status, intent, description, github_issue_url, github_pr_url, created_at, reporter_role")
       .eq("id", id)
       .single();
 
@@ -113,9 +107,7 @@ export async function POST(
       `• Description: ${requestRow.description}`,
       requestRow.github_issue_url ? `• Issue: ${requestRow.github_issue_url}` : null,
       requestRow.github_pr_url ? `• PR: ${requestRow.github_pr_url}` : null,
-      requestRow.created_at
-        ? `• Created: ${new Date(requestRow.created_at).toLocaleString()}`
-        : null,
+      requestRow.created_at ? `• Created: ${new Date(requestRow.created_at).toLocaleString()}` : null,
     ]
       .filter((v): v is string => Boolean(v))
       .join("\n");
@@ -133,6 +125,28 @@ export async function POST(
       auth: { persistSession: false },
     });
 
+    // 🔑 IMPORTANT:
+    // To render Approve/Reject/Details buttons, the worker needs BOTH requestId + actionId.
+    // In the app DB, we correlate agent_actions by request_id (matches agent_requests.id).
+    const { data: actionRow, error: actionError } = await supabaseAdmin
+      .from("agent_actions")
+      .select("id, request_id, status, kind")
+      .eq("request_id", requestRow.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (actionError) {
+      console.error("notify-discord action lookup error", actionError);
+      return NextResponse.json(
+        { error: "Failed to load agent action for request", details: actionError.message },
+        { status: 500 }
+      );
+    }
+
+    const actionId = actionRow?.id ?? null;
+    const requestIdForButtons = requestRow.id; // keep consistent with agent_actions.request_id
+
     // Allow env override to match worker expectation (type-safe against enum)
     const jobKind: AgentJobKind =
       parseJobKind(process.env.AGENT_NOTIFY_DISCORD_JOB_KIND) ?? "notify_discord";
@@ -145,7 +159,12 @@ export async function POST(
       kind: jobKind,
       status: "queued",
       priority: 80,
-      payload: { message },
+      // ✅ include IDs so src/worker/handlers/notifyDiscord.ts can build LINK buttons
+      payload: {
+        message,
+        requestId: requestIdForButtons,
+        actionId,
+      },
       run_after: new Date().toISOString(),
     };
 
@@ -168,6 +187,11 @@ export async function POST(
       jobId: insertedJob?.id ?? null,
       kind: insertedJob?.kind ?? null,
       status: insertedJob?.status ?? null,
+      // helpful debug (safe to return)
+      requestId: requestIdForButtons,
+      actionId,
+      actionStatus: actionRow?.status ?? null,
+      actionKind: actionRow?.kind ?? null,
     });
   } catch (err: unknown) {
     const details = err instanceof Error ? err.message : "Unexpected error";
