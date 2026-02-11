@@ -21,9 +21,7 @@ function isApproverRole(v: unknown): v is ApproverRole {
 }
 
 function requireEnv(name: string, value: string | undefined): string {
-  if (!value || !value.trim()) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
+  if (!value || !value.trim()) throw new Error(`Missing required env var: ${name}`);
   return value.trim();
 }
 
@@ -31,29 +29,31 @@ function parseJobKind(v: string | undefined): AgentJobKind | null {
   const s = (v ?? "").trim();
   if (!s) return null;
 
-  // Keep this list in sync with your Supabase enum: public.agent_job_kind
+  // Keep in sync with public.agent_job_kind enum
   const allowed: readonly AgentJobKind[] = ["notify_discord", "analyze_request"];
   return (allowed as readonly string[]).includes(s) ? (s as AgentJobKind) : null;
 }
 
-type RouteParams = { id: string };
-type RouteContext = { params: RouteParams | Promise<RouteParams> };
+function extractRequestIdFromUrl(url: string): string {
+  // Expected: /api/agent/requests/:id/notify-discord
+  const pathname = new URL(url).pathname;
+  const parts = pathname.split("/").filter(Boolean);
 
-export async function POST(req: Request, ctx: RouteContext) {
+  const requestsIdx = parts.findIndex((p) => p === "requests");
+  const id = requestsIdx >= 0 ? parts[requestsIdx + 1] : "";
+  return (id ?? "").trim();
+}
+
+export async function POST(req: Request) {
   try {
-    const { id: rawId } = await Promise.resolve(ctx.params);
-    const id = (rawId || "").trim();
+    const id = extractRequestIdFromUrl(req.url);
 
     if (!id) {
       return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
     }
 
-    const cookieStore = cookies();
-
-    const supabase = createRouteHandlerClient<DB>({
-      // auth-helpers expects a Promise-returning cookies getter in your version
-      cookies: async () => cookieStore,
-    });
+    // ✅ IMPORTANT: do NOT await cookies(); createRouteHandlerClient expects sync cookies access
+    const supabase = createRouteHandlerClient<DB>({ cookies });
 
     const {
       data: { user },
@@ -71,6 +71,7 @@ export async function POST(req: Request, ctx: RouteContext) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // role gate
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, agent_role")
@@ -89,6 +90,7 @@ export async function POST(req: Request, ctx: RouteContext) {
       );
     }
 
+    // load request (default message)
     const { data: requestRow, error: requestError } = await supabase
       .from("agent_requests")
       .select(
@@ -123,14 +125,18 @@ export async function POST(req: Request, ctx: RouteContext) {
       return NextResponse.json({ error: "message is required" }, { status: 400 });
     }
 
+    // service-role client (enqueue + cross-table lookup)
     const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL);
-    const serviceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const serviceKey = requireEnv(
+      "SUPABASE_SERVICE_ROLE_KEY",
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
 
     const supabaseAdmin = createClient<DB>(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
     });
 
-    // To render buttons, worker needs BOTH requestId + actionId
+    // latest action row for buttons
     const { data: actionRow, error: actionError } = await supabaseAdmin
       .from("agent_actions")
       .select("id, request_id, status, kind, created_at")
