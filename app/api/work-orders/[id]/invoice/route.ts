@@ -1,6 +1,6 @@
 // app/api/work-orders/[id]/invoice/route.ts  ✅ FULL FILE REPLACEMENT
 
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
@@ -13,12 +13,13 @@ function isError(x: unknown): x is Error {
 }
 
 export async function POST(
-  _req: Request,
-  ctx: { params: { id: string } },
+  _req: NextRequest,
+  ctx: { params: Promise<{ id: string }> },
 ) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const woId = typeof ctx?.params?.id === "string" ? ctx.params.id : "";
+  const params = await ctx.params;
+  const woId = typeof params?.id === "string" ? params.id : "";
 
   if (!woId) {
     return NextResponse.json(
