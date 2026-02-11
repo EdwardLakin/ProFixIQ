@@ -116,8 +116,8 @@ app/parts/requests/[id]/page.tsx
 app/parts/requests/page.tsx
 app/pay/cancel/page.tsx
 app/pay/success/page.tsx
-app/portal/appointments/page.tsx
-app/portal/appointments/WeeklyCalendar.tsx
+app/dashboard/appointments/page.tsx
+app/dashboard/appointments/WeeklyCalendar.tsx
 app/portal/approvals/page.tsx
 app/portal/auth/confirm/page.tsx
 app/portal/auth/sign-in/page.tsx

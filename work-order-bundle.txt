@@ -4822,7 +4822,7 @@ export default function DashboardPage() {
           value={
             counts.appointments === null ? "…" : String(counts.appointments)
           }
-          href="/portal/appointments"
+          href="/dashboard/appointments"
         />
         <OverviewCard
           title="Open work orders"
@@ -4846,7 +4846,7 @@ export default function DashboardPage() {
           <QuickButton href="/work-orders/create?autostart=1">
             New work order
           </QuickButton>
-          <QuickButton href="/portal/appointments">Appointments</QuickButton>
+          <QuickButton href="/dashboard/appointments">Appointments</QuickButton>
           <QuickButton href="/ai/assistant">AI assistant</QuickButton>
           {role === "owner" || role === "admin" ? (
             <QuickButton href="/dashboard/owner/reports">
@@ -17800,9 +17800,9 @@ export default async function PaySuccessPage({
 }
 
 ========================================
-FILE: app/portal/appointments/page.tsx
+FILE: app/dashboard/appointments/page.tsx
 ========================================
-// app/portal/appointments/page.tsx
+// app/dashboard/appointments/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -17912,7 +17912,7 @@ export default function PortalAppointmentsPage() {
       if (!shopSlug && rows.length > 0) {
         const first = rows[0].slug as string;
         setShopSlug(first);
-        router.replace(`/portal/appointments?shop=${encodeURIComponent(first)}`);
+        router.replace(`/dashboard/appointments?shop=${encodeURIComponent(first)}`);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -18119,7 +18119,7 @@ export default function PortalAppointmentsPage() {
               onChange={(e) => {
                 const slug = e.target.value;
                 setShopSlug(slug);
-                router.replace(`/portal/appointments?shop=${encodeURIComponent(slug)}`);
+                router.replace(`/dashboard/appointments?shop=${encodeURIComponent(slug)}`);
               }}
               className={fieldClass() + " min-w-[220px]"}
             >
@@ -18722,9 +18722,9 @@ function EditForm({
 }
 
 ========================================
-FILE: app/portal/appointments/WeeklyCalendar.tsx
+FILE: app/dashboard/appointments/WeeklyCalendar.tsx
 ========================================
-// app/portal/appointments/WeeklyCalendar.tsx
+// app/dashboard/appointments/WeeklyCalendar.tsx
 "use client";
 
 import { useMemo } from "react";

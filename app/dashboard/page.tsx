@@ -1,5 +1,4 @@
-//app/dashboard/page.tsx
-
+// app/dashboard/page.tsx
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -302,7 +301,7 @@ export default function DashboardPage() {
               value={
                 counts.appointments === null ? "…" : String(counts.appointments)
               }
-              href="/portal/appointments"
+              href="/dashboard/appointments"
             />
             <OverviewCard
               title="Open work orders"
@@ -328,7 +327,9 @@ export default function DashboardPage() {
           {tech ? (
             <>
               <QuickButton href="/tech/queue">My job queue</QuickButton>
-              <QuickButton href="/parts/requests?mine=1">My parts requests</QuickButton>
+              <QuickButton href="/parts/requests?mine=1">
+                My parts requests
+              </QuickButton>
               <QuickButton href="/ai/assistant">AI assistant</QuickButton>
             </>
           ) : (
@@ -336,7 +337,7 @@ export default function DashboardPage() {
               <QuickButton href="/work-orders/create?autostart=1">
                 New work order
               </QuickButton>
-              <QuickButton href="/portal/appointments">Appointments</QuickButton>
+              <QuickButton href="/dashboard/appointments">Appointments</QuickButton>
               <QuickButton href="/ai/assistant">AI assistant</QuickButton>
               {role === "owner" || role === "admin" ? (
                 <QuickButton href="/dashboard/owner/reports">Reports</QuickButton>

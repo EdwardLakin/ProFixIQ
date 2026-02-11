@@ -103,7 +103,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   // ----------------------------------------------------------------
   // Appointments (portal)
   // ----------------------------------------------------------------
-  "/portal/appointments": {
+  "/dashboard/appointments": {
     title: () => "Appointments",
     icon: "📅",
     showInTabs: false, // lives in portal shell, not dashboard tabs

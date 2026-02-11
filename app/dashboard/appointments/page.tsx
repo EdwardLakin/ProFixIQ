@@ -1,4 +1,4 @@
-// app/portal/appointments/page.tsx
+// app/dashboard/appointments/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -108,7 +108,7 @@ export default function PortalAppointmentsPage() {
       if (!shopSlug && rows.length > 0) {
         const first = rows[0].slug as string;
         setShopSlug(first);
-        router.replace(`/portal/appointments?shop=${encodeURIComponent(first)}`);
+        router.replace(`/dashboard/appointments?shop=${encodeURIComponent(first)}`);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -315,7 +315,7 @@ export default function PortalAppointmentsPage() {
               onChange={(e) => {
                 const slug = e.target.value;
                 setShopSlug(slug);
-                router.replace(`/portal/appointments?shop=${encodeURIComponent(slug)}`);
+                router.replace(`/dashboard/appointments?shop=${encodeURIComponent(slug)}`);
               }}
               className={fieldClass() + " min-w-[220px]"}
             >

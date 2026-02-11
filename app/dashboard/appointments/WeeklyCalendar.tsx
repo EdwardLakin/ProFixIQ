@@ -1,4 +1,4 @@
-// app/portal/appointments/WeeklyCalendar.tsx
+// app/dashboard/appointments/WeeklyCalendar.tsx
 "use client";
 
 import { useMemo } from "react";

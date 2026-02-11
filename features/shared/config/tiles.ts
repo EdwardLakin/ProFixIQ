@@ -142,7 +142,7 @@ export const TILES: Tile[] = [
   /* APPOINTMENTS                                                            */
   /* ---------------------------------------------------------------------- */
   {
-    href: "/portal/appointments",
+    href: "/dashboard/appointments",
     title: "Appointments",
     subtitle: "Schedule & manage",
     roles: ["owner", "admin", "manager", "advisor"],

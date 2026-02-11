@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 type Db = Database;
 
-// Shape we return to the client (matches Booking in /portal/appointments)
+// Shape we return to the client (matches Booking in /dashboard/appointments)
 type BookingPayload = {
   id: string;
   shop_slug: string | null;
