@@ -2,7 +2,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { Button } from "@shared/components/ui/Button";
 import Card from "@shared/components/ui/Card";
@@ -52,10 +52,10 @@ type AgentRequest = {
   updated_at: string;
 };
 
-type SignedUrlResult = {
-  path: string | null;
+type SignedUrlRow = {
   signedUrl: string | null;
-  error: string | null;
+  path: string | null;
+  error?: string | null;
 };
 
 function statusClasses(status: AgentRequestStatus) {
@@ -83,11 +83,6 @@ function prettyIntent(intent: string | null): string {
   return intent.replace(/_/g, " ");
 }
 
-function fileNameFromPath(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts[parts.length - 1] ?? path;
-}
-
 export default function AgentConsolePage() {
   const [requests, setRequests] = useState<AgentRequest[]>([]);
   const [selected, setSelected] = useState<AgentRequest | null>(null);
@@ -95,24 +90,13 @@ export default function AgentConsolePage() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // signed URLs for the currently selected request's attachments
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>(
     {}
   );
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
-
-  // lightbox: which screenshot is open (signed URL)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const selectedContext: AgentContext | null = selected?.normalized_json ?? null;
-
-  const selectedAttachmentPaths = useMemo(() => {
-    return (
-      (selectedContext?.attachmentIds ?? []).filter(
-        (p): p is string => typeof p === "string" && p.trim().length > 0
-      ) || []
-    );
-  }, [selectedContext]);
 
   async function loadRequests() {
     try {
@@ -148,9 +132,11 @@ export default function AgentConsolePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // When selected request changes, fetch signed URLs for its attachments
   useEffect(() => {
-    const paths = selectedAttachmentPaths;
+    const paths =
+      (selectedContext?.attachmentIds ?? []).filter(
+        (p): p is string => typeof p === "string" && p.trim().length > 0
+      ) || [];
 
     if (!paths.length) {
       setAttachmentUrls({});
@@ -163,44 +149,28 @@ export default function AgentConsolePage() {
     async function fetchSignedUrls() {
       try {
         setAttachmentsLoading(true);
-
         const supabase = createBrowserSupabase();
-        const { data, error: storageError } = await supabase.storage
-          .from("agent_uploads")
-          .createSignedUrls(paths, 60 * 60); // 1 hour
 
-        if (storageError) {
-          console.error("createSignedUrls error for agent_uploads:", storageError);
+        const { data, error } = await supabase.storage
+          .from("agent_uploads")
+          .createSignedUrls(paths, 60 * 60);
+
+        if (error) {
+          console.error("createSignedUrls error for agent_uploads:", error);
           if (!cancelled) setAttachmentUrls({});
           return;
         }
 
+        const rows = (data ?? []) as SignedUrlRow[];
+
         const map: Record<string, string> = {};
-        const items = (data ?? []) as SignedUrlResult[];
-
-        // Prefer path matching if present
-        for (const item of items) {
-          const p = item?.path ?? null;
-          const u = item?.signedUrl ?? null;
-          if (p && u) map[p] = u;
+        for (let i = 0; i < paths.length; i++) {
+          const row = rows[i];
+          const url = row?.signedUrl ?? null;
+          if (url) map[paths[i]] = url;
         }
 
-        // Fallback: sometimes SDK returns rows aligned to input order.
-        if (Object.keys(map).length === 0 && items.length === paths.length) {
-          for (let i = 0; i < paths.length; i++) {
-            const u = items[i]?.signedUrl ?? null;
-            if (u) map[paths[i]] = u;
-          }
-        }
-
-        // Ensure we only keep urls for current selection's paths
-        const filtered: Record<string, string> = {};
-        for (const p of paths) {
-          const u = map[p];
-          if (u) filtered[p] = u;
-        }
-
-        if (!cancelled) setAttachmentUrls(filtered);
+        if (!cancelled) setAttachmentUrls(map);
       } catch (err) {
         console.error("Error loading signed URLs for agent_uploads:", err);
         if (!cancelled) setAttachmentUrls({});
@@ -214,7 +184,8 @@ export default function AgentConsolePage() {
     return () => {
       cancelled = true;
     };
-  }, [selected?.id, selectedAttachmentPaths]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
 
   async function updateStatus(action: "approve" | "reject", request: AgentRequest) {
     startTransition(async () => {
@@ -237,10 +208,6 @@ export default function AgentConsolePage() {
           prev.map((r) => (r.id === json.request.id ? json.request : r))
         );
         setSelected(json.request);
-
-        // Optional: auto-notify discord after decision
-        // (server will include requestId/actionId if available)
-        await notifyDiscordImpl(json.request);
       } catch (err) {
         console.error("Error updating agent request", err);
         window.alert("Error updating request (check logs).");
@@ -248,58 +215,55 @@ export default function AgentConsolePage() {
     });
   }
 
-  async function notifyDiscordImpl(request: AgentRequest): Promise<void> {
-    /**
-     * IMPORTANT (buttons):
-     * Do NOT send a custom message from the client.
-     * Let the server route:
-     * - load the request
-     * - look up latest agent_actions by request_id
-     * - enqueue notify_discord with { requestId, actionId } so the worker can render LINK buttons
-     */
-    const res = await fetch(`/api/agent/requests/${request.id}/notify-discord`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}), // empty body is fine
-    });
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      console.error("Notify Discord failed", txt);
-      throw new Error("Notify Discord failed");
-    }
-
-    const json = (await res.json().catch(() => null)) as
-      | {
-          ok?: boolean;
-          requestId?: string | null;
-          actionId?: string | null;
-          actionStatus?: string | null;
-          actionKind?: string | null;
-        }
-      | null;
-
-    // If there's no action row, buttons cannot render (expected for some old/legacy requests)
-    if (json && json.ok && !json.actionId) {
-      console.warn(
-        "[agent-console] notify-discord: no actionId found; buttons will not render",
-        {
-          requestId: json.requestId,
-          actionStatus: json.actionStatus,
-          actionKind: json.actionKind,
-        }
-      );
-    }
-  }
-
   async function notifyDiscord(request: AgentRequest) {
     startTransition(async () => {
       try {
-        await notifyDiscordImpl(request);
+        /**
+         * IMPORTANT:
+         * Let the server build the message + include requestId/actionId
+         * so the worker can generate LINK buttons.
+         */
+        const res = await fetch(
+          `/api/agent/requests/${request.id}/notify-discord`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }
+        );
+
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          console.error("Notify Discord failed", txt);
+          window.alert("Notify Discord failed (check logs).");
+          return;
+        }
+
+        const json = (await res.json().catch(() => null)) as
+          | {
+              ok?: boolean;
+              requestId?: string | null;
+              actionId?: string | null;
+              actionStatus?: string | null;
+              actionKind?: string | null;
+            }
+          | null;
+
+        if (json && json.ok && !json.actionId) {
+          console.warn(
+            "[agent-console] notify-discord: no actionId found for request; buttons will not render",
+            {
+              requestId: json.requestId,
+              actionStatus: json.actionStatus,
+              actionKind: json.actionKind,
+            }
+          );
+        }
+
         await loadRequests();
       } catch (err) {
         console.error("Notify Discord error", err);
-        window.alert("Notify Discord failed (check logs).");
+        window.alert("Notify Discord error (check logs).");
       }
     });
   }
@@ -337,7 +301,6 @@ export default function AgentConsolePage() {
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-6 text-white">
-      {/* Header */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
@@ -368,9 +331,7 @@ export default function AgentConsolePage() {
         </div>
       </div>
 
-      {/* Main layout */}
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
-        {/* Left: list */}
         <Card className="flex h-[70vh] flex-col rounded-2xl border border-white/10 bg-black/30 p-3 shadow-card backdrop-blur-md">
           <div className="mb-2 flex items-center justify-between px-1">
             <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">
@@ -430,7 +391,6 @@ export default function AgentConsolePage() {
           </div>
         </Card>
 
-        {/* Right: detail */}
         <Card className="flex h-[70vh] flex-col rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-md">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">
@@ -449,7 +409,6 @@ export default function AgentConsolePage() {
 
             {selected && (
               <>
-                {/* Description */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold text-neutral-50">Description</h3>
@@ -469,7 +428,6 @@ export default function AgentConsolePage() {
 
                 <Separator className="bg-white/10" />
 
-                {/* Meta grid */}
                 <div className="grid grid-cols-2 gap-4 text-[0.75rem]">
                   <div className="space-y-1">
                     <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
@@ -501,7 +459,6 @@ export default function AgentConsolePage() {
 
                 <Separator className="bg-white/10" />
 
-                {/* Context */}
                 {selectedContext && Object.keys(selectedContext).length > 0 && (
                   <>
                     <div className="space-y-2 text-[0.75rem]">
@@ -558,7 +515,7 @@ export default function AgentConsolePage() {
                               )}
 
                               <ul className="mt-0.5 space-y-2 text-[0.7rem]">
-                                {selectedAttachmentPaths.map((path, idx) => {
+                                {selectedContext.attachmentIds.map((path, idx) => {
                                   const url = attachmentUrls[path];
 
                                   return (
@@ -576,7 +533,7 @@ export default function AgentConsolePage() {
                                           Screenshot {idx + 1}
                                         </button>
                                         <span className="truncate text-neutral-500">
-                                          ({fileNameFromPath(path)})
+                                          ({path.split("/")[path.split("/").length - 1]})
                                         </span>
                                       </div>
 
@@ -584,20 +541,18 @@ export default function AgentConsolePage() {
                                         <div className="mt-1">
                                           <button
                                             type="button"
+                                            className="block"
                                             onClick={() => setLightboxUrl(url)}
-                                            className="block rounded-md border border-white/10 bg-black/40 p-1"
                                             aria-label={`Open Screenshot ${idx + 1}`}
                                           >
-                                            <div className="relative h-40 w-[320px] max-w-full overflow-hidden rounded-md">
-                                              <Image
-                                                src={url}
-                                                alt={`Screenshot ${idx + 1}`}
-                                                fill
-                                                sizes="(max-width: 768px) 90vw, 320px"
-                                                className="object-contain"
-                                                unoptimized
-                                              />
-                                            </div>
+                                            <Image
+                                              src={url}
+                                              alt={`Screenshot ${idx + 1}`}
+                                              width={640}
+                                              height={360}
+                                              unoptimized
+                                              className="max-h-40 w-auto cursor-zoom-in rounded-md border border-white/10 bg-black/40 object-contain"
+                                            />
                                           </button>
                                         </div>
                                       )}
@@ -614,7 +569,6 @@ export default function AgentConsolePage() {
                   </>
                 )}
 
-                {/* GitHub */}
                 <div className="space-y-1 text-[0.75rem]">
                   <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
                     GitHub
@@ -657,7 +611,6 @@ export default function AgentConsolePage() {
                   </div>
                 </div>
 
-                {/* LLM notes */}
                 {selected.llm_notes && (
                   <>
                     <Separator className="bg-white/10" />
@@ -672,7 +625,6 @@ export default function AgentConsolePage() {
 
                 <Separator className="bg-white/10" />
 
-                {/* Actions */}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
@@ -712,7 +664,6 @@ export default function AgentConsolePage() {
                       isPending && "cursor-wait"
                     )}
                     onClick={() => selected && notifyDiscord(selected)}
-                    title="Sends via server-built payload so Discord buttons can be included when actionId exists."
                   >
                     {isPending ? "Working…" : "Notify Discord"}
                   </Button>
@@ -737,7 +688,6 @@ export default function AgentConsolePage() {
         </Card>
       </div>
 
-      {/* Lightbox overlay */}
       {lightboxUrl && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-3"
@@ -749,22 +699,20 @@ export default function AgentConsolePage() {
           >
             <button
               type="button"
-              className="absolute right-2 top-2 z-10 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-black"
+              className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-black"
               onClick={() => setLightboxUrl(null)}
             >
               Close
             </button>
 
-            <div className="relative h-[80vh] w-[90vw] max-w-[1200px] overflow-hidden rounded-lg border border-white/20 bg-black/40">
-              <Image
-                src={lightboxUrl}
-                alt="Screenshot"
-                fill
-                sizes="90vw"
-                className="object-contain"
-                unoptimized
-              />
-            </div>
+            <Image
+              src={lightboxUrl}
+              alt="Screenshot"
+              width={1600}
+              height={900}
+              unoptimized
+              className="max-h-[90vh] max-w-[90vw] rounded-lg border border-white/20 object-contain"
+            />
           </div>
         </div>
       )}

@@ -36,17 +36,23 @@ function parseJobKind(v: string | undefined): AgentJobKind | null {
   return (allowed as readonly string[]).includes(s) ? (s as AgentJobKind) : null;
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+type RouteParams = { id: string };
+type RouteContext = { params: RouteParams | Promise<RouteParams> };
+
+export async function POST(req: Request, ctx: RouteContext) {
   try {
-    const id = (params?.id || "").trim();
+    const { id: rawId } = await Promise.resolve(ctx.params);
+    const id = (rawId || "").trim();
 
     if (!id) {
       return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
     }
 
     const cookieStore = cookies();
+
     const supabase = createRouteHandlerClient<DB>({
-      cookies: () => cookieStore,
+      // auth-helpers expects a Promise-returning cookies getter in your version
+      cookies: async () => cookieStore,
     });
 
     const {
@@ -65,7 +71,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // role gate
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, agent_role")
@@ -84,10 +89,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       );
     }
 
-    // load the request to build a default message
     const { data: requestRow, error: requestError } = await supabase
       .from("agent_requests")
-      .select("id, status, intent, description, github_issue_url, github_pr_url, created_at, reporter_role")
+      .select(
+        "id, status, intent, description, github_issue_url, github_pr_url, created_at, reporter_role"
+      )
       .eq("id", id)
       .single();
 
@@ -117,7 +123,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return NextResponse.json({ error: "message is required" }, { status: 400 });
     }
 
-    // Create service-role client lazily (avoids crashing at module load)
     const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL);
     const serviceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -125,12 +130,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       auth: { persistSession: false },
     });
 
-    // 🔑 IMPORTANT:
-    // To render Approve/Reject/Details buttons, the worker needs BOTH requestId + actionId.
-    // In the app DB, we correlate agent_actions by request_id (matches agent_requests.id).
+    // To render buttons, worker needs BOTH requestId + actionId
     const { data: actionRow, error: actionError } = await supabaseAdmin
       .from("agent_actions")
-      .select("id, request_id, status, kind")
+      .select("id, request_id, status, kind, created_at")
       .eq("request_id", requestRow.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -145,13 +148,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     const actionId = actionRow?.id ?? null;
-    const requestIdForButtons = requestRow.id; // keep consistent with agent_actions.request_id
+    const requestIdForButtons = requestRow.id;
 
-    // Allow env override to match worker expectation (type-safe against enum)
     const jobKind: AgentJobKind =
       parseJobKind(process.env.AGENT_NOTIFY_DISCORD_JOB_KIND) ?? "notify_discord";
 
-    // enqueue job for worker
     type AgentJobInsert = DB["public"]["Tables"]["agent_jobs"]["Insert"];
 
     const job: AgentJobInsert = {
@@ -159,7 +160,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       kind: jobKind,
       status: "queued",
       priority: 80,
-      // ✅ include IDs so src/worker/handlers/notifyDiscord.ts can build LINK buttons
       payload: {
         message,
         requestId: requestIdForButtons,
@@ -187,7 +187,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       jobId: insertedJob?.id ?? null,
       kind: insertedJob?.kind ?? null,
       status: insertedJob?.status ?? null,
-      // helpful debug (safe to return)
       requestId: requestIdForButtons,
       actionId,
       actionStatus: actionRow?.status ?? null,
