@@ -36,9 +36,13 @@ function parseJobKind(v: string | undefined): AgentJobKind | null {
   return (allowed as readonly string[]).includes(s) ? (s as AgentJobKind) : null;
 }
 
-export async function POST(req: Request, context: { params: { id: string } }) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const id = (context?.params?.id || "").trim();
+    const { id: rawId } = await params;
+    const id = (rawId || "").trim();
 
     if (!id) {
       return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
