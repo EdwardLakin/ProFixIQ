@@ -93,7 +93,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
       `,
       )
       .eq("shop_id", shopId)
-      .eq("status", "completed")
+      .in("status", ["ready_to_invoice", "invoiced", "paid", "completed"])
       .order("updated_at", { ascending: false })
       .limit(300);
 
