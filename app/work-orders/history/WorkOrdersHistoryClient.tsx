@@ -1,5 +1,4 @@
-//app/work-orders/history/WorkOrderHistoryCient.tsx
-
+// app/work-orders/history/WorkOrderHistoryCient.tsx
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
@@ -9,20 +8,49 @@ import Link from "next/link";
 import { format } from "date-fns";
 
 type DB = Database;
+
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
+type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type Row = WorkOrder & {
-  customers: Pick<
-    Customer,
-    "first_name" | "last_name" | "email" | "phone"
-  > | null;
-  vehicles: Pick<
-    Vehicle,
-    "year" | "make" | "model" | "license_plate" | "vin"
-  > | null;
+  customers: Pick<Customer, "first_name" | "last_name" | "email" | "phone"> | null;
+  vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate" | "vin"> | null;
 };
+
+function fmtCustomerName(c: Row["customers"]): string {
+  if (!c) return "—";
+  const name = [c.first_name ?? "", c.last_name ?? ""].filter(Boolean).join(" ").trim();
+  return name.length ? name : "—";
+}
+
+function fmtVehicle(v: Row["vehicles"]): string {
+  if (!v) return "—";
+  const s = `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim();
+  return s.length ? s : "—";
+}
+
+function statusMeta(status: string | null | undefined): { label: string; className: string } {
+  const s = (status ?? "").toLowerCase();
+
+  switch (s) {
+    case "queued":
+      return { label: "Queued", className: "border-sky-400/55 bg-sky-500/10 text-sky-200" };
+    case "awaiting_approval":
+      return { label: "Awaiting approval", className: "border-amber-400/55 bg-amber-500/10 text-amber-200" };
+    case "ready_to_invoice":
+      return { label: "Ready to invoice", className: "border-orange-400/55 bg-orange-500/10 text-orange-200" };
+    case "invoiced":
+      return { label: "Invoiced", className: "border-indigo-400/55 bg-indigo-500/10 text-indigo-200" };
+    case "paid":
+      return { label: "Paid", className: "border-emerald-400/55 bg-emerald-500/10 text-emerald-200" };
+    case "completed":
+      return { label: "Completed", className: "border-emerald-400/55 bg-emerald-500/10 text-emerald-200" };
+    default:
+      return { label: status ? String(status) : "—", className: "border-white/15 bg-white/5 text-neutral-200" };
+  }
+}
 
 export default function WorkOrdersHistoryClient(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -38,6 +66,8 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
 
   // ---- Load current user's shop ----
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       setLoading(true);
       setErr(null);
@@ -46,6 +76,8 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
         data: { user },
         error: userErr,
       } = await supabase.auth.getUser();
+
+      if (cancelled) return;
 
       if (userErr || !user) {
         setErr("You must be signed in to view work order history.");
@@ -57,7 +89,9 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
         .from("profiles")
         .select("shop_id")
         .eq("id", user.id)
-        .maybeSingle();
+        .maybeSingle<Pick<Profile, "shop_id">>();
+
+      if (cancelled) return;
 
       if (profErr) {
         setErr(profErr.message);
@@ -74,15 +108,21 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
       setShopId(profile.shop_id);
       setLoading(false);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [supabase]);
 
-  // ---- Load completed work orders for this shop ----
+  // ---- Load work orders for this shop (any status) ----
   const load = useCallback(async () => {
     if (!shopId) return;
 
     setLoading(true);
     setErr(null);
 
+    // IMPORTANT:
+    // Do NOT call .returns<Row[]>() here — it changes the builder type and removes .gte/.lte typings.
     let query = supabase
       .from("work_orders")
       .select(
@@ -93,16 +133,13 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
       `,
       )
       .eq("shop_id", shopId)
-      .in("status", ["ready_to_invoice", "invoiced", "paid", "completed"])
       .order("updated_at", { ascending: false })
       .limit(300);
 
     if (from) {
-      query = query.gte(
-        "updated_at",
-        new Date(from + "T00:00:00Z").toISOString(),
-      );
+      query = query.gte("updated_at", new Date(from + "T00:00:00Z").toISOString());
     }
+
     if (to) {
       const toEnd = new Date(to);
       toEnd.setHours(23, 59, 59, 999);
@@ -118,32 +155,26 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
       return;
     }
 
-    const list = (data ?? []) as Row[];
+    const list = (data ?? []) as unknown as Row[];
 
     const qlc = q.trim().toLowerCase();
     const filtered = qlc
       ? list.filter((r) => {
-          const name = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
-          const vin = r.vehicles?.vin?.toLowerCase() ?? "";
-          const ymm = [
-            r.vehicles?.year ?? "",
-            r.vehicles?.make ?? "",
-            r.vehicles?.model ?? "",
-          ]
-            .join(" ")
-            .toLowerCase();
+          const name = fmtCustomerName(r.customers).toLowerCase();
+          const plate = (r.vehicles?.license_plate ?? "").toLowerCase();
+          const vin = (r.vehicles?.vin ?? "").toLowerCase();
+          const ymm = fmtVehicle(r.vehicles).toLowerCase();
           const cid = (r.custom_id ?? "").toLowerCase();
+          const status = (r.status ?? "").toLowerCase();
+
           return (
             r.id.toLowerCase().includes(qlc) ||
             cid.includes(qlc) ||
             name.includes(qlc) ||
             plate.includes(qlc) ||
             vin.includes(qlc) ||
-            ymm.includes(qlc)
+            ymm.includes(qlc) ||
+            status.includes(qlc)
           );
         })
       : list;
@@ -152,7 +183,6 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
     setLoading(false);
   }, [supabase, shopId, from, to, q]);
 
-  // Initial load + reload when filters change via Apply button
   useEffect(() => {
     if (!shopId) return;
     void load();
@@ -162,6 +192,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
     const header = [
       "WO ID",
       "Custom ID",
+      "Status",
       "Updated",
       "Customer",
       "Email",
@@ -169,23 +200,21 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
       "Vehicle",
       "Plate",
       "VIN",
-      "Invoice URL",
+      "Invoice URL (portal)",
+      "Quote URL",
+      "App Invoice Page",
     ];
+
     const lines = rows.map((r) => {
-      const customer = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
-        .filter(Boolean)
-        .join(" ");
-      const vehicle = r.vehicles
-        ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${
-            r.vehicles.model ?? ""
-          }`.trim()
-        : "";
-      const updated = r.updated_at
-        ? format(new Date(r.updated_at), "yyyy-MM-dd HH:mm")
-        : "";
+      const customer = fmtCustomerName(r.customers);
+      const vehicle = fmtVehicle(r.vehicles);
+      const updated = r.updated_at ? format(new Date(r.updated_at), "yyyy-MM-dd HH:mm") : "";
+      const appInvoice = `/work-orders/${r.id}/invoice`;
+
       return [
         r.id,
         r.custom_id ?? "",
+        r.status ?? "",
         updated,
         customer,
         r.customers?.email ?? "",
@@ -193,7 +222,9 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
         vehicle,
         r.vehicles?.license_plate ?? "",
         r.vehicles?.vin ?? "",
-        r.invoice_url ?? r.quote_url ?? "",
+        r.invoice_url ?? "",
+        r.quote_url ?? "",
+        appInvoice,
       ]
         .map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`)
         .join(",");
@@ -222,8 +253,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
               </span>
             </div>
             <p className="text-xs text-neutral-400">
-              Completed work orders for your shop. Search, filter by date, export
-              for reporting.
+              All work orders for your shop (any status). Search, filter by date, export for reporting.
             </p>
           </div>
 
@@ -232,18 +262,14 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
               <span className="font-mono text-sm font-semibold text-orange-400">
                 {rows.length.toString().padStart(2, "0")}
               </span>{" "}
-              <span className="uppercase tracking-[0.14em] text-neutral-500">
-                Completed
-              </span>
+              <span className="uppercase tracking-[0.14em] text-neutral-500">Loaded</span>
             </div>
             {from || to ? (
               <div className="mt-0.5 font-mono text-[11px] text-neutral-500">
                 Range: {from || "…"} → {to || "…"}
               </div>
             ) : (
-              <div className="mt-0.5 text-[11px] text-neutral-500">
-                Showing last {rows.length} records loaded
-              </div>
+              <div className="mt-0.5 text-[11px] text-neutral-500">Showing last {rows.length} records loaded</div>
             )}
           </div>
         </div>
@@ -259,15 +285,13 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && load()}
-                placeholder="ID, custom ID, name, VIN, plate, YMM…"
+                placeholder="ID, custom ID, status, name, VIN, plate, YMM…"
                 className="w-full rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 transition-colors focus:border-orange-400 focus:ring-1 focus:ring-orange-500/70"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                From
-              </label>
+              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-neutral-400">From</label>
               <input
                 type="date"
                 value={from}
@@ -276,10 +300,9 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                 aria-label="From date"
               />
             </div>
+
             <div>
-              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                To
-              </label>
+              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-neutral-400">To</label>
               <input
                 type="date"
                 value={to}
@@ -325,32 +348,22 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
         {/* Content */}
         {loading ? (
           <div className="rounded-2xl border border-dashed border-[var(--metal-border-soft)] bg-black/60 p-6 text-sm text-neutral-400">
-            Loading completed work orders…
+            Loading work orders…
           </div>
         ) : rows.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--metal-border-soft)] bg-black/60 p-6 text-sm text-neutral-400">
-            No completed work orders found for this shop and date range.
+            No work orders found for this shop and date range.
           </div>
         ) : (
           <div className="grid gap-2">
             {rows.map((r) => {
-              const updated = r.updated_at
-                ? format(new Date(r.updated_at), "PPpp")
-                : "—";
-              const customer = r.customers
-                ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
-                    .filter(Boolean)
-                    .join(" ")
-                : "—";
-              const vehicle = r.vehicles
-                ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${
-                    r.vehicles.model ?? ""
-                  }`.trim()
-                : "—";
-              const plate = r.vehicles?.license_plate
-                ? `(${r.vehicles.license_plate})`
-                : "";
+              const updated = r.updated_at ? format(new Date(r.updated_at), "PPpp") : "—";
+              const customer = fmtCustomerName(r.customers);
+              const vehicle = fmtVehicle(r.vehicles);
+              const plate = r.vehicles?.license_plate ? `(${r.vehicles.license_plate})` : "";
               const vin = r.vehicles?.vin ? `VIN: ${r.vehicles.vin}` : "";
+
+              const meta = statusMeta(r.status);
 
               return (
                 <div
@@ -365,45 +378,61 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                       >
                         {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                       </Link>
-                      {r.custom_id && (
+
+                      {r.custom_id ? (
                         <span className="rounded-full border border-white/10 bg-black/60 px-2 py-0.5 text-[10px] font-mono text-neutral-400">
                           #{r.id.slice(0, 6)}
                         </span>
-                      )}
-                      <span className="inline-flex items-center rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-300">
-                        Completed
+                      ) : null}
+
+                      <span
+                        className={
+                          "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] " +
+                          meta.className
+                        }
+                      >
+                        {meta.label}
                       </span>
-                      <span className="text-[11px] text-neutral-400">
-                        {updated}
-                      </span>
+
+                      <span className="text-[11px] text-neutral-400">{updated}</span>
                     </div>
+
                     <div className="mt-1 truncate text-sm text-neutral-300">
                       {customer} • {vehicle} {plate} {vin && `• ${vin}`}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Link
+                      href={`/work-orders/${r.id}/invoice`}
+                      className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+                      title="Open invoice inside ProFixIQ (staff view)"
+                    >
+                      View Invoice
+                    </Link>
+
                     {r.invoice_url ? (
                       <a
                         href={r.invoice_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+                        className="rounded-full border border-neutral-700 bg-black/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-300 hover:bg-black/80"
+                        title="Open customer portal invoice link"
                       >
-                        Open Invoice
+                        Portal Link
                       </a>
                     ) : r.quote_url ? (
                       <a
                         href={r.quote_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+                        className="rounded-full border border-neutral-700 bg-black/60 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-300 hover:bg-black/80"
+                        title="Open quote link"
                       >
                         Open Quote
                       </a>
                     ) : (
-                      <span className="text-[11px] text-neutral-500">
-                        No invoice
-                      </span>
+                      <span className="text-[11px] text-neutral-500">No invoice</span>
                     )}
                   </div>
                 </div>

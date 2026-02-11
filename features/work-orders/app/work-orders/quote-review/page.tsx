@@ -5,9 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import SignaturePad, {
-  openSignaturePad,
-} from "@/features/shared/signaturePad/controller";
+import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 
 type DB = Database;
@@ -20,6 +18,8 @@ type Shop = DB["public"]["Tables"]["shops"]["Row"];
 
 type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type QuoteLineUpdate = DB["public"]["Tables"]["work_order_quote_lines"]["Update"];
+
+type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 const SIGNATURE_BUCKET = "signatures";
 
@@ -50,85 +50,171 @@ function getStringField(obj: unknown, key: string): string | null {
   return typeof v === "string" ? v : null;
 }
 
+function safeTrim(x: unknown): string {
+  return typeof x === "string" ? x.trim() : "";
+}
+
+function statusLabel(s: string | null | undefined): string {
+  return (s ?? "").replaceAll("_", " ").trim() || "—";
+}
+
 /* ----------------------- approvals list (cards) ----------------------- */
 
 type WorkOrderWithMeta = WorkOrder & {
   shops?: Pick<Shop, "name"> | null;
-  labor_hours?: number | null;
   work_order_lines?: Array<Pick<Line, "id" | "status" | "approval_state" | "labor_time">>;
+  work_order_quote_lines?: Array<Pick<QuoteLine, "id" | "stage">>;
+  labor_hours?: number | null;
+  waiting_for_parts?: boolean;
 };
 
 function ApprovalsList(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [rows, setRows] = useState<WorkOrderWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [shopId, setShopId] = useState<string | null>(null);
+
+  // Resolve shop_id from profile (this is the big missing piece)
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      setErr(null);
+
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
+
+      if (cancelled) return;
+
+      if (userErr || !user) {
+        setErr("You must be signed in to view approvals.");
+        setLoading(false);
+        return;
+      }
+
+      const { data: profile, error: profErr } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user.id)
+        .maybeSingle<Pick<Profile, "shop_id">>();
+
+      if (cancelled) return;
+
+      if (profErr) {
+        setErr(profErr.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!profile?.shop_id) {
+        setErr("No shop is linked to your profile yet.");
+        setLoading(false);
+        return;
+      }
+
+      setShopId(profile.shop_id);
+      setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
   const load = async () => {
+    if (!shopId) return;
+
     setLoading(true);
+    setErr(null);
 
-    // Only show awaiting_approval here
-    const PENDING_LINE_STATUSES = ["waiting_for_approval", "awaiting_approval"] as const;
-
+    // We fetch recent WOs for this shop, then filter in JS.
+    // This avoids fragile `.or()` across joined columns and plays nicer with RLS.
     const { data: wo, error } = await supabase
       .from("work_orders")
       .select(
         `
         *,
         shops(name),
-        work_order_lines!inner(id,status,approval_state,labor_time)
+        work_order_lines(id,status,approval_state,labor_time),
+        work_order_quote_lines(id,stage)
       `,
       )
-      .or(
-        [
-          `work_order_lines.status.in.(${PENDING_LINE_STATUSES.join(",")})`,
-          `work_order_lines.approval_state.eq.pending`,
-        ].join(","),
-      )
-      .order("created_at", { ascending: false });
+      .eq("shop_id", shopId)
+      .order("created_at", { ascending: false })
+      .limit(300);
 
     if (error) {
       setRows([]);
+      setErr(error.message);
       setLoading(false);
       return;
     }
 
-    const withMeta = (wo ?? []) as unknown as WorkOrderWithMeta[];
+    const list = (wo ?? []) as unknown as WorkOrderWithMeta[];
 
-    if (withMeta.length) {
-      const hoursByWO = new Map<string, number>();
+    const PENDING_LINE_STATUSES = new Set<string>(["waiting_for_approval", "awaiting_approval"]);
+    const isPendingLine = (
+  l: NonNullable<WorkOrderWithMeta["work_order_lines"]>[number],
+): boolean => {
+      const st = safeTrim(l?.status).toLowerCase();
+      const ap = safeTrim(l?.approval_state).toLowerCase();
+      return PENDING_LINE_STATUSES.has(st) || ap === "pending";
+    };
 
-      for (const w of withMeta) {
-        const lines = Array.isArray(w.work_order_lines) ? w.work_order_lines : [];
-        const hours = lines.reduce((sum, l) => {
-          const t = l?.labor_time;
-          return sum + (typeof t === "number" ? t : 0);
-        }, 0);
-        hoursByWO.set(w.id, hours);
-      }
+    const filtered = list.filter((w) => {
+      const woStatus = safeTrim(w.status).toLowerCase();
+      if (woStatus === "awaiting_approval") return true;
 
-      const next = withMeta.map((w) => ({
+      const lines = Array.isArray(w.work_order_lines) ? w.work_order_lines : [];
+      return lines.some((l) => isPendingLine(l));
+    });
+
+    const next = filtered.map((w) => {
+      const lines = Array.isArray(w.work_order_lines) ? w.work_order_lines : [];
+      const hours = lines.reduce((sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0), 0);
+
+      const qlines = Array.isArray(w.work_order_quote_lines) ? w.work_order_quote_lines : [];
+      const hasQuotes = qlines.length > 0;
+
+      // Badge rule: if no quote lines exist, consider it "waiting for parts"
+      // (you can tighten this later if you have a dedicated parts-quoted flag/stage)
+      const waitingForParts = !hasQuotes;
+
+      return {
         ...w,
-        labor_hours: hoursByWO.get(w.id) ?? 0,
-      }));
+        labor_hours: hours,
+        waiting_for_parts: waitingForParts,
+      };
+    });
 
-      setRows(next);
-      setLoading(false);
-      return;
-    }
-
-    setRows(withMeta);
+    setRows(next);
     setLoading(false);
   };
 
   useEffect(() => {
+    if (!shopId) return;
     void load();
 
-    // Realtime: if any WO flips status, refresh the list
     const ch = supabase
-      .channel("qr:work_orders")
+      .channel("qr:approvals")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_orders" },
+        () => void load(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_lines" },
+        () => void load(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_quote_lines" },
         () => void load(),
       )
       .subscribe();
@@ -140,40 +226,47 @@ function ApprovalsList(): JSX.Element {
         /* ignore */
       }
     };
-  }, [supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, shopId]);
 
   if (loading) return <div className="mt-6 text-muted-foreground">Loading…</div>;
-  if (rows.length === 0)
-    return (
-      <div className="mt-6 text-muted-foreground">
-        No work orders waiting for approval.
-      </div>
-    );
+  if (err) return <div className="mt-6 text-destructive">{err}</div>;
+
+  if (rows.length === 0) {
+    return <div className="mt-6 text-muted-foreground">No work orders waiting for approval.</div>;
+  }
 
   return (
     <div className="mt-4 rounded-lg border border-border bg-card">
-      <div className="border-b border-border px-4 py-2 font-semibold">
-        Awaiting Approval
-      </div>
+      <div className="border-b border-border px-4 py-2 font-semibold">Awaiting Approval</div>
 
       <div className="divide-y divide-border">
         {rows.map((w) => (
-          <div
-            key={w.id}
-            className="flex items-center justify-between gap-3 px-4 py-3"
-          >
+          <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
-              <div className="truncate font-medium">
-                {w.custom_id ? `#${w.custom_id}` : `#${w.id.slice(0, 8)}`}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="truncate font-medium">
+                  {w.custom_id ? `#${w.custom_id}` : `#${w.id.slice(0, 8)}`}
+                </div>
+
+                {w.waiting_for_parts ? (
+                  <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
+                    Waiting for parts
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
+                    Quotes ready
+                  </span>
+                )}
               </div>
+
               <div className="text-xs text-muted-foreground">
                 {w.shops?.name ? `${w.shops.name} • ` : ""}
-                {(w.status ?? "").replaceAll("_", " ")}
-                {typeof w.labor_hours === "number"
-                  ? ` • ${w.labor_hours.toFixed(1)}h`
-                  : ""}
+                {statusLabel(w.status)}
+                {typeof w.labor_hours === "number" ? ` • ${w.labor_hours.toFixed(1)}h` : ""}
               </div>
             </div>
+
             <div className="flex shrink-0 gap-2">
               <a
                 href={`/work-orders/${w.id}/approve`}
@@ -211,45 +304,28 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
   const [quoteLines, setQuoteLines] = useState<QuoteLine[]>([]);
   const [quoteLoading, setQuoteLoading] = useState(true);
 
-  // PORTAL INVITE: cached customer email for invite trigger
   const [customerEmail, setCustomerEmail] = useState<string>("");
 
-  // Load WO + lines
   useEffect(() => {
     if (!woId) return;
 
     void (async () => {
       setLoading(true);
 
-      const { data: woRow } = await supabase
-        .from("work_orders")
-        .select("*")
-        .eq("id", woId)
-        .maybeSingle();
+      const { data: woRow } = await supabase.from("work_orders").select("*").eq("id", woId).maybeSingle();
       setWo(woRow ?? null);
 
-      // PORTAL INVITE: resolve customer email for invite send
       setCustomerEmail("");
       const custId = woRow?.customer_id ?? null;
 
       if (typeof custId === "string" && custId) {
-        const { data: cust } = await supabase
-          .from("customers")
-          .select("email")
-          .eq("id", custId)
-          .maybeSingle();
-
-        const email =
-          typeof cust?.email === "string" ? cust.email.trim().toLowerCase() : "";
+        const { data: cust } = await supabase.from("customers").select("email").eq("id", custId).maybeSingle();
+        const email = typeof cust?.email === "string" ? cust.email.trim().toLowerCase() : "";
         setCustomerEmail(email);
       }
 
       if (woRow?.shop_id) {
-        const { data: shopRow } = await supabase
-          .from("shops")
-          .select("*")
-          .eq("id", woRow.shop_id)
-          .maybeSingle();
+        const { data: shopRow } = await supabase.from("shops").select("*").eq("id", woRow.shop_id).maybeSingle();
         setShop(shopRow ?? null);
       }
 
@@ -258,13 +334,12 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
         .select("*")
         .eq("work_order_id", woId)
         .order("created_at", { ascending: true });
-      setLines(lineRows ?? []);
 
+      setLines(lineRows ?? []);
       setLoading(false);
     })();
   }, [woId, supabase]);
 
-  // Load quote lines
   async function reloadQuotes() {
     if (!woId) return;
     setQuoteLoading(true);
@@ -275,11 +350,9 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
       .eq("work_order_id", woId)
       .order("created_at", { ascending: true });
 
-    if (qErr) {
-      setQuoteLines([]);
-    } else {
-      setQuoteLines((qRows ?? []) as QuoteLine[]);
-    }
+    if (qErr) setQuoteLines([]);
+    else setQuoteLines((qRows ?? []) as QuoteLine[]);
+
     setQuoteLoading(false);
   }
 
@@ -289,30 +362,18 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
   }, [woId, supabase]);
 
   const laborRate = 120;
-  const totalLaborHours = lines.reduce(
-    (sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0),
-    0,
-  );
+  const totalLaborHours = lines.reduce((sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0), 0);
   const laborTotal = totalLaborHours * laborRate;
   const partsTotal = 0;
   const grandTotal = laborTotal + partsTotal;
 
   const getStage = (q: QuoteLine): string => getStringField(q, "stage") ?? "";
-  const getDesc = (q: QuoteLine): string =>
-    getStringField(q, "description") ?? "Untitled quote line";
+  const getDesc = (q: QuoteLine): string => getStringField(q, "description") ?? "Untitled quote line";
   const getNotes = (q: QuoteLine): string | null => getStringField(q, "notes");
 
-  const advisorPendingQuotes = quoteLines.filter(
-    (q) => getStage(q) === "advisor_pending",
-  );
-  const customerPendingQuotes = quoteLines.filter(
-    (q) => getStage(q) === "customer_pending",
-  );
-  const decidedQuotes = quoteLines.filter((q) =>
-    ["customer_approved", "customer_declined"].includes(getStage(q)),
-  );
-
-  /* ----------------------- quote actions ----------------------- */
+  const advisorPendingQuotes = quoteLines.filter((q) => getStage(q) === "advisor_pending");
+  const customerPendingQuotes = quoteLines.filter((q) => getStage(q) === "customer_pending");
+  const decidedQuotes = quoteLines.filter((q) => ["customer_approved", "customer_declined"].includes(getStage(q)));
 
   async function sendQuotesToCustomer(linesToSend: QuoteLine[]) {
     if (!linesToSend.length) return;
@@ -341,13 +402,10 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
       return;
     }
 
-    // PORTAL INVITE: trigger portal invite email (magic link) after sending quotes
     const email = customerEmail.trim().toLowerCase();
     if (!email) {
       alert("Quote sent to customer.");
-      alert(
-        "Portal invite was not sent because no customer email was found on this work order.",
-      );
+      alert("Portal invite was not sent because no customer email was found on this work order.");
       await reloadQuotes();
       return;
     }
@@ -361,9 +419,7 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
         body: JSON.stringify({ email, next }),
       });
 
-      const inviteJson = (await inviteRes
-        .json()
-        .catch(() => null)) as { ok?: boolean; error?: string } | null;
+      const inviteJson = (await inviteRes.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
 
       if (!inviteRes.ok || !inviteJson?.ok) {
         alert("Quote sent to customer.");
@@ -386,16 +442,11 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
       approved_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase
-      .from("work_order_quote_lines")
-      .update(patch)
-      .eq("id", q.id);
-
+    const { error } = await supabase.from("work_order_quote_lines").update(patch).eq("id", q.id);
     if (error) {
       alert(error.message);
       return;
     }
-
     await reloadQuotes();
   }
 
@@ -405,20 +456,13 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
       declined_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase
-      .from("work_order_quote_lines")
-      .update(patch)
-      .eq("id", q.id);
-
+    const { error } = await supabase.from("work_order_quote_lines").update(patch).eq("id", q.id);
     if (error) {
       alert(error.message);
       return;
     }
-
     await reloadQuotes();
   }
-
-  /* --------------------- signature + status --------------------- */
 
   async function handleSignatureSave(base64: string) {
     if (!woId) return;
@@ -433,19 +477,12 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
       if (upErr) throw upErr;
 
       const patch: WorkOrderUpdate = {
-        // These fields may exist in DB but not in generated types yet.
-        
         customer_approval_signature_path: filename,
-        
         customer_approval_at: new Date().toISOString(),
         status: "queued" as WorkOrderUpdate["status"],
       };
 
-      const { error: updErr } = await supabase
-        .from("work_orders")
-        .update(patch)
-        .eq("id", woId);
-
+      const { error: updErr } = await supabase.from("work_orders").update(patch).eq("id", woId);
       if (updErr) throw updErr;
 
       alert("Work order approved and signed!");
@@ -462,9 +499,7 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
     try {
       const patch: WorkOrderUpdate = {
         status: "awaiting_approval" as WorkOrderUpdate["status"],
-        
         customer_approval_signature_path: null,
-        
         customer_approval_at: null,
       };
 
@@ -498,11 +533,10 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
     <>
       <div className="mt-2 text-sm text-muted-foreground">
         <div>Work Order ID: {wo.id}</div>
-        <div>Status: {(wo.status ?? "").replaceAll("_", " ") || "—"}</div>
+        <div>Status: {statusLabel(wo.status)}</div>
         {shop?.name && <div>Shop: {shop.name}</div>}
       </div>
 
-      {/* Quote lines / advisor flow */}
       <div className="mt-6 rounded-lg border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border px-4 py-2">
           <div className="font-semibold">Quote lines</div>
@@ -517,16 +551,11 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
         </div>
 
         {quoteLoading ? (
-          <div className="px-4 py-3 text-sm text-muted-foreground">
-            Loading quotes…
-          </div>
+          <div className="px-4 py-3 text-sm text-muted-foreground">Loading quotes…</div>
         ) : quoteLines.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-muted-foreground">
-            No quote lines for this work order yet.
-          </div>
+          <div className="px-4 py-3 text-sm text-muted-foreground">No quote lines for this work order yet.</div>
         ) : (
           <div className="divide-y divide-border">
-            {/* Advisor pending */}
             {advisorPendingQuotes.length > 0 && (
               <div className="bg-slate-950/60">
                 <div className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-blue-300">
@@ -538,9 +567,7 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
                       <div className="min-w-0">
                         <div className="truncate font-medium">{getDesc(q)}</div>
                         {getNotes(q) && (
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            {getNotes(q)}
-                          </div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">{getNotes(q)}</div>
                         )}
                       </div>
                       <div className="flex shrink-0 gap-2">
@@ -563,7 +590,6 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
               </div>
             )}
 
-            {/* Customer pending */}
             {customerPendingQuotes.length > 0 && (
               <div>
                 <div className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-amber-300">
@@ -574,9 +600,7 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="truncate font-medium">{getDesc(q)}</div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          Waiting on customer response
-                        </div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">Waiting on customer response</div>
                       </div>
                     </div>
                   </div>
@@ -584,7 +608,6 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
               </div>
             )}
 
-            {/* History */}
             {decidedQuotes.length > 0 && (
               <div className="bg-neutral-950/60">
                 <div className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
@@ -608,11 +631,8 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
         )}
       </div>
 
-      {/* Existing line items + totals */}
       <div className="mt-6 rounded-lg border border-border bg-card">
-        <div className="border-b border-border px-4 py-2 font-semibold">
-          Line Items
-        </div>
+        <div className="border-b border-border px-4 py-2 font-semibold">Line Items</div>
         <div className="divide-y divide-border">
           {lines.length === 0 ? (
             <div className="px-4 py-3 text-muted-foreground">No items yet.</div>
@@ -621,13 +641,11 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
               <div key={l.id} className="px-4 py-3">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
-                    <div className="truncate font-medium">
-                      {l.description || l.complaint || "Untitled job"}
-                    </div>
+                    <div className="truncate font-medium">{l.description || l.complaint || "Untitled job"}</div>
                     <div className="text-xs text-muted-foreground">
                       {String(l.job_type ?? "job").replaceAll("_", " ")} •{" "}
                       {typeof l.labor_time === "number" ? `${l.labor_time}h` : "—"} •{" "}
-                      {(l.status ?? "awaiting").replaceAll("_", " ")}
+                      {statusLabel(l.status ?? "awaiting")}
                     </div>
                   </div>
                   <div className="text-right text-sm">
@@ -685,10 +703,7 @@ function SingleQuoteReview({ woId }: { woId: string }): JSX.Element {
           Copy Approval Link
         </button>
 
-        <a
-          href={`/work-orders/${woId}`}
-          className="rounded border border-border px-4 py-2 hover:bg-muted"
-        >
+        <a href={`/work-orders/${woId}`} className="rounded border border-border px-4 py-2 hover:bg-muted">
           Back to Work Order
         </a>
       </div>
@@ -706,10 +721,7 @@ export default function QuoteReviewPage(): JSX.Element {
     <div className="min-h-screen bg-background px-4 py-6 text-foreground">
       <div className="mx-auto max-w-5xl">
         <div className="mb-4">
-          <button
-            onClick={() => router.back()}
-            className="text-sm text-orange-500 hover:underline"
-          >
+          <button onClick={() => router.back()} className="text-sm text-orange-500 hover:underline">
             ← Back
           </button>
         </div>
@@ -718,9 +730,7 @@ export default function QuoteReviewPage(): JSX.Element {
 
         {!woId ? (
           <>
-            <p className="mt-1 text-muted-foreground">
-              Work orders waiting for customer approval
-            </p>
+            <p className="mt-1 text-muted-foreground">Work orders waiting for customer approval</p>
             <ApprovalsList />
             <SignaturePad />
           </>

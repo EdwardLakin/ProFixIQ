@@ -105,14 +105,19 @@ function getLineIdFromRepairLine(line: RepairLine): string | undefined {
   return undefined;
 }
 
-function joinName(first?: string | null, last?: string | null): string | undefined {
+function joinName(
+  first?: string | null,
+  last?: string | null,
+): string | undefined {
   const f = (first ?? "").trim();
   const l = (last ?? "").trim();
   const s = [f, l].filter(Boolean).join(" ").trim();
   return s.length ? s : undefined;
 }
 
-function pickCustomerPhone(c?: Pick<CustomerRow, "phone" | "phone_number"> | null): string | undefined {
+function pickCustomerPhone(
+  c?: Pick<CustomerRow, "phone" | "phone_number"> | null,
+): string | undefined {
   const p1 = (c?.phone_number ?? "").trim();
   const p2 = (c?.phone ?? "").trim();
   const out = p1 || p2;
@@ -138,6 +143,17 @@ function pickShopName(
   const c = (s?.name ?? "").trim();
   const out = a || b || c;
   return out.length ? out : undefined;
+}
+
+function trimOrUndef(v: unknown): string | undefined {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s.length ? s : undefined;
+}
+
+function numToStringOrUndef(v: unknown): string | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  if (typeof v === "string" && v.trim().length) return v.trim();
+  return undefined;
 }
 
 export default function InvoicePreviewPageClient({
@@ -178,9 +194,15 @@ export default function InvoicePreviewPageClient({
     > | null
   >(null);
 
-  const [fVehicleInfo, setFVehicleInfo] = useState<VehicleInfo | undefined>(undefined);
-  const [fCustomerInfo, setFCustomerInfo] = useState<CustomerInfo | undefined>(undefined);
-  const [fLines, setFLines] = useState<Array<RepairLine & { lineId?: string }>>([]);
+  const [fVehicleInfo, setFVehicleInfo] = useState<VehicleInfo | undefined>(
+    undefined,
+  );
+  const [fCustomerInfo, setFCustomerInfo] = useState<CustomerInfo | undefined>(
+    undefined,
+  );
+  const [fLines, setFLines] = useState<Array<RepairLine & { lineId?: string }>>(
+    [],
+  );
   const [fSummary, setFSummary] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
 
@@ -212,7 +234,9 @@ export default function InvoicePreviewPageClient({
 
       const { data: woRow, error: woErr } = await supabase
         .from("work_orders")
-        .select("id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name")
+        .select(
+          "id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name",
+        )
         .eq("id", workOrderId)
         .maybeSingle<
           Pick<
@@ -277,12 +301,12 @@ export default function InvoicePreviewPageClient({
         setCurrency(normalizeCurrencyFromCountry(shop?.country));
         setShopInfo({
           name: pickShopName(shop ?? null),
-          phone_number: (shop?.phone_number ?? "").trim() || undefined,
-          email: (shop?.email ?? "").trim() || undefined,
-          street: (shop?.street ?? "").trim() || undefined,
-          city: (shop?.city ?? "").trim() || undefined,
-          province: (shop?.province ?? "").trim() || undefined,
-          postal_code: (shop?.postal_code ?? "").trim() || undefined,
+          phone_number: trimOrUndef(shop?.phone_number),
+          email: trimOrUndef(shop?.email),
+          street: trimOrUndef(shop?.street),
+          city: trimOrUndef(shop?.city),
+          province: trimOrUndef(shop?.province),
+          postal_code: trimOrUndef(shop?.postal_code),
         });
       }
 
@@ -320,16 +344,16 @@ export default function InvoicePreviewPageClient({
         setFCustomerInfo({
           name: pickCustomerName(c ?? null, woRow.customer_name ?? null),
           phone: pickCustomerPhone(c ?? null),
-          email: (c?.email ?? "").trim() || undefined,
-          business_name: (c?.business_name ?? "").trim() || undefined,
-          street: (c?.street ?? "").trim() || undefined,
-          city: (c?.city ?? "").trim() || undefined,
-          province: (c?.province ?? "").trim() || undefined,
-          postal_code: (c?.postal_code ?? "").trim() || undefined,
+          email: trimOrUndef(c?.email),
+          business_name: trimOrUndef(c?.business_name),
+          street: trimOrUndef(c?.street),
+          city: trimOrUndef(c?.city),
+          province: trimOrUndef(c?.province),
+          postal_code: trimOrUndef(c?.postal_code),
         });
       } else if (needCustomer) {
         setFCustomerInfo({
-          name: (woRow.customer_name ?? "").trim() || undefined,
+          name: trimOrUndef(woRow.customer_name),
         });
       }
 
@@ -359,17 +383,14 @@ export default function InvoicePreviewPageClient({
 
         setFVehicleInfo({
           year: v?.year !== null && v?.year !== undefined ? String(v.year) : undefined,
-          make: (v?.make ?? "").trim() || undefined,
-          model: (v?.model ?? "").trim() || undefined,
-          vin: (v?.vin ?? "").trim() || undefined,
-          license_plate: (v?.license_plate ?? "").trim() || undefined,
-          unit_number: (v?.unit_number ?? "").trim() || undefined,
-          mileage: (v?.mileage ?? "").trim() || undefined,
-          color: (v?.color ?? "").trim() || undefined,
-          engine_hours:
-            v?.engine_hours !== null && v?.engine_hours !== undefined
-              ? String(v.engine_hours)
-              : undefined,
+          make: trimOrUndef(v?.make),
+          model: trimOrUndef(v?.model),
+          vin: trimOrUndef(v?.vin),
+          license_plate: trimOrUndef(v?.license_plate),
+          unit_number: trimOrUndef(v?.unit_number),
+          mileage: numToStringOrUndef(v?.mileage),
+          color: trimOrUndef(v?.color),
+          engine_hours: numToStringOrUndef(v?.engine_hours),
         });
       } else if (needVehicle) {
         setFVehicleInfo(undefined);
@@ -387,7 +408,13 @@ export default function InvoicePreviewPageClient({
             (
               l: Pick<
                 WorkOrderLineRow,
-                "id" | "line_no" | "description" | "complaint" | "cause" | "correction" | "labor_time"
+                | "id"
+                | "line_no"
+                | "description"
+                | "complaint"
+                | "cause"
+                | "correction"
+                | "labor_time"
               >,
             ) => {
               const complaint = (l.description ?? l.complaint ?? "") || "";
@@ -442,7 +469,9 @@ export default function InvoicePreviewPageClient({
 
         if (!res.ok || !json) {
           setReviewOk(false);
-          setReviewIssues([{ kind: "error", message: "Invoice review failed (bad response)" }]);
+          setReviewIssues([
+            { kind: "error", message: "Invoice review failed (bad response)" },
+          ]);
           return;
         }
 
@@ -489,7 +518,12 @@ export default function InvoicePreviewPageClient({
     const email = effectiveCustomerInfo?.email;
     if (!email) {
       setReviewOk(false);
-      setReviewIssues([{ kind: "missing_email", message: "No customer email on file for this work order." }]);
+      setReviewIssues([
+        {
+          kind: "missing_email",
+          message: "No customer email on file for this work order.",
+        },
+      ]);
       return;
     }
 
@@ -506,7 +540,8 @@ export default function InvoicePreviewPageClient({
       return {
         complaint: typeof r["complaint"] === "string" ? (r["complaint"] as string) : null,
         cause: typeof r["cause"] === "string" ? (r["cause"] as string) : null,
-        correction: typeof r["correction"] === "string" ? (r["correction"] as string) : null,
+        correction:
+          typeof r["correction"] === "string" ? (r["correction"] as string) : null,
         labor_time:
           typeof r["labor_time"] === "number"
             ? (r["labor_time"] as number)
@@ -527,9 +562,9 @@ export default function InvoicePreviewPageClient({
           workOrderId,
           customerEmail: email,
           customerName: effectiveCustomerInfo?.name,
-          shopName: effectiveShopName, // ✅ added (shops table)
+          shopName: effectiveShopName,
           invoiceTotal,
-          vehicleInfo: effectiveVehicleInfo, // ✅ now includes plate/unit/mileage/etc when available
+          vehicleInfo: effectiveVehicleInfo,
           lines: payloadLines,
           signatureImage: signatureImage ?? undefined,
         }),
@@ -622,7 +657,11 @@ export default function InvoicePreviewPageClient({
                   ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black hover:brightness-110"
                   : "border border-amber-500/40 bg-amber-500/10 text-amber-200 opacity-60")
               }
-              title={reviewOk ? "Email invoice (SendGrid)" : "Blocked until required info is complete"}
+              title={
+                reviewOk
+                  ? "Email invoice (SendGrid)"
+                  : "Blocked until required info is complete"
+              }
             >
               {sending ? "Sending…" : "Send invoice"}
             </button>
@@ -677,7 +716,8 @@ export default function InvoicePreviewPageClient({
                       const list = issuesByLineId.get(id as string) ?? [];
                       const r = l as unknown as Record<string, unknown>;
                       const label =
-                        typeof r["complaint"] === "string" && (r["complaint"] as string).trim().length > 0
+                        typeof r["complaint"] === "string" &&
+                        (r["complaint"] as string).trim().length > 0
                           ? (r["complaint"] as string)
                           : `Line ${String(id).slice(0, 6)}…`;
 
@@ -711,7 +751,9 @@ export default function InvoicePreviewPageClient({
               <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
                 Invoice PDF
               </div>
-              <div className="mt-1 text-sm text-neutral-200">Download a copy for your records.</div>
+              <div className="mt-1 text-sm text-neutral-200">
+                Download a copy for your records.
+              </div>
             </div>
 
             <div className={reviewOk ? "" : "opacity-60 pointer-events-none"}>
@@ -728,7 +770,8 @@ export default function InvoicePreviewPageClient({
 
           {!reviewOk ? (
             <div className="mt-3 text-[0.75rem] text-amber-200">
-              PDF download is shown, but invoice is still blocked until required info is complete.
+              PDF download is shown, but invoice is still blocked until required
+              info is complete.
             </div>
           ) : null}
         </div>

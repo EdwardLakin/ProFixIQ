@@ -6,22 +6,23 @@ import { reviewWorkOrder } from "../_lib/reviewWorkOrder";
 
 type DB = Database;
 
-function getIdFromUrl(url: string): string | null {
-  const parts = new URL(url).pathname.split("/"); // ["", "api", "work-orders", "<id>", "invoice"]
-  return parts.length >= 5 ? parts[3] : null;
-}
-
 function isError(x: unknown): x is Error {
   return typeof x === "object" && x !== null && "message" in x;
 }
 
-export async function POST(req: Request) {
+export async function POST(
+  ctx: { params: { id?: string } },
+) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
-  const woId = getIdFromUrl(req.url);
+
+  const woId = typeof ctx?.params?.id === "string" ? ctx.params.id : null;
 
   if (!woId) {
     return NextResponse.json(
-      { ok: false, issues: [{ kind: "bad_request", message: "Missing work order id" }] },
+      {
+        ok: false,
+        issues: [{ kind: "bad_request", message: "Missing work order id" }],
+      },
       { status: 400 },
     );
   }
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
       kind: "invoice_review",
     });
 
-    // (Optional) If you want invoice review to hard-404 on missing WO:
+    // Optional: hard 404 on missing WO
     if (!result.ok && result.issues.some((i) => i.kind === "missing_wo")) {
       return NextResponse.json(result, { status: 404 });
     }
