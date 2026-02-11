@@ -18,6 +18,9 @@ type LocationRow = DB["public"]["Tables"]["stock_locations"]["Row"];
 type PurchaseOrderRow = DB["public"]["Tables"]["purchase_orders"]["Row"];
 type SupplierRow = DB["public"]["Tables"]["suppliers"]["Row"];
 
+type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type LineLite = Pick<WorkOrderLineRow, "id" | "complaint" | "description">;
+
 type Status = RequestRow["status"];
 
 type UpsertResponse = {
@@ -142,12 +145,23 @@ function normalizeName(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
 
+function lineLabelFrom(line?: LineLite): string {
+  if (!line) return "";
+  const a = String(line.description ?? "").trim();
+  if (a) return a;
+  const b = String(line.complaint ?? "").trim();
+  return b;
+}
+
 export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const { id: routeId } = useParams<{ id: string }>();
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [wo, setWo] = useState<WorkOrderRow | null>(null);
+  const [lineById, setLineById] = useState<Map<string, LineLite>>(
+    () => new Map(),
+  );
   const [requests, setRequests] = useState<RequestUi[]>([]);
   const [parts, setParts] = useState<PartRow[]>([]);
   const [locations, setLocations] = useState<LocationRow[]>([]);
@@ -219,7 +233,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     return m;
   }, [pos, supplierNameById]);
 
-  async function resolveWorkOrder(idOrCustom: string): Promise<WorkOrderRow | null> {
+  async function resolveWorkOrder(
+    idOrCustom: string,
+  ): Promise<WorkOrderRow | null> {
     const raw = (idOrCustom ?? "").trim();
     if (!raw) return null;
 
@@ -278,6 +294,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const woRow = await resolveWorkOrder(routeId);
     if (!woRow) {
       setWo(null);
+      setLineById(new Map());
       setRequests([]);
       setParts([]);
       setLocations([]);
@@ -338,6 +355,36 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     setRequests(uiRequests);
 
+    // ✅ Load job complaint/description for each request's line (for UI + prefills)
+    {
+      const lineIds = new Set<string>();
+
+      for (const r of uiRequests) {
+        const id = resolveWorkOrderLineId(r.req, r.items);
+        if (id && isUuid(id)) lineIds.add(id);
+      }
+
+      if (lineIds.size > 0) {
+        const { data: lines, error: lErr } = await supabase
+          .from("work_order_lines")
+          .select("id, complaint, description")
+          .in("id", Array.from(lineIds));
+
+        if (lErr) {
+          toast.warning(lErr.message);
+          setLineById(new Map());
+        } else {
+          const m = new Map<string, LineLite>();
+          for (const l of (lines ?? []) as LineLite[]) {
+            m.set(String(l.id), l);
+          }
+          setLineById(m);
+        }
+      } else {
+        setLineById(new Map());
+      }
+    }
+
     const shopId = woRow.shop_id ?? null;
     if (shopId) {
       const [{ data: ps }, { data: locs }, { data: poRows }, { data: supRows }] =
@@ -385,7 +432,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setPOs((poRows ?? []) as PurchaseOrderRow[]);
       setSuppliers((supRows ?? []) as SupplierRow[]);
 
-      if (selectedPo && !(poRows ?? []).some((p) => String(p.id) === selectedPo))
+      if (
+        selectedPo &&
+        !(poRows ?? []).some((p) => String(p.id) === selectedPo)
+      )
         setSelectedPo("");
     } else {
       setParts([]);
@@ -433,12 +483,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     setSavingReqId(reqId);
     try {
       const lineId = resolveWorkOrderLineId(target.req, target.items);
+      const lineText =
+        lineId && isUuid(lineId) ? lineLabelFrom(lineById.get(lineId)) : "";
 
       const insertPayload: DB["public"]["Tables"]["part_request_items"]["Insert"] =
         {
           request_id: target.req.id,
           work_order_line_id: lineId,
-          description: "",
+          description: lineText ? `(${lineText})` : "",
           qty: 1,
           quoted_price: null,
           vendor: null,
@@ -467,7 +519,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         ...data,
         ui_part_id: data.part_id ?? null,
         ui_qty: toNum(data.qty, 1),
-        ui_price: data.quoted_price == null ? undefined : toNum(data.quoted_price, 0),
+        ui_price:
+          data.quoted_price == null ? undefined : toNum(data.quoted_price, 0),
         ui_added: false,
         ui_po_id: poId ? String(poId) : "",
       };
@@ -514,7 +567,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
   function openReceiveFor(reqId: string, it: UiItem): void {
     const partId = (it.part_id ?? it.ui_part_id ?? null) as string | null;
-    const part = partId ? parts.find((p) => String(p.id) === String(partId)) ?? null : null;
+    const part = partId
+      ? parts.find((p) => String(p.id) === String(partId)) ?? null
+      : null;
 
     const approved = n((it as unknown as { qty_approved?: unknown }).qty_approved);
     const received = n((it as unknown as { qty_received?: unknown }).qty_received);
@@ -861,7 +916,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         const j = (await res.json().catch(() => null)) as UpsertResponse | null;
 
         if (!res.ok || !j?.ok) {
-          toast.warning(j?.detail || j?.error || "Added, but couldn’t save to menu items.");
+          toast.warning(
+            j?.detail || j?.error || "Added, but couldn’t save to menu items.",
+          );
         }
       } catch {
         // ignore
@@ -945,7 +1002,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
               <div className="mt-3 text-xs text-neutral-400">
                 Add parts to attach them to the work order line. The request becomes{" "}
-                <span className={COPPER_TEXT_SOFT}>quoted</span> automatically once every row has a part + qty + price.
+                <span className={COPPER_TEXT_SOFT}>quoted</span> automatically once
+                every row has a part + qty + price.
               </div>
             </div>
           </div>
@@ -960,6 +1018,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                 const badge = computeRequestBadge(r.req, r.items);
                 const busy = savingReqId === r.req.id;
 
+                const lineId = resolveWorkOrderLineId(r.req, r.items);
+                const jobText =
+                  lineId && isUuid(lineId)
+                    ? lineLabelFrom(lineById.get(lineId))
+                    : "";
+
                 return (
                   <div key={r.req.id} className={`${glassCard} overflow-hidden`}>
                     <div className={`${glassHeader} px-5 py-4`}>
@@ -971,16 +1035,22 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                               #{r.req.id.slice(0, 8)}
                             </span>
                           </div>
+
                           <div className="mt-1 text-xs text-neutral-400">
                             Created{" "}
                             {r.req.created_at
                               ? new Date(r.req.created_at).toLocaleString()
                               : "—"}
                             <span className="mx-2 text-neutral-600">·</span>
-                            Line:{" "}
-                            {resolveWorkOrderLineId(r.req, r.items)?.slice(0, 8) ??
-                              "—"}
+                            Line: {lineId ? lineId.slice(0, 8) : "—"}
                           </div>
+
+                          {jobText ? (
+                            <div className="mt-1 text-xs text-neutral-500">
+                              Job:{" "}
+                              <span className="text-neutral-300">{jobText}</span>
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -1022,23 +1092,29 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                           <tbody>
                             {r.items.length === 0 ? (
                               <tr className="border-t border-white/10">
-                                <td className="p-4 text-sm text-neutral-500" colSpan={7}>
+                                <td
+                                  className="p-4 text-sm text-neutral-500"
+                                  colSpan={7}
+                                >
                                   No items yet. Click “Add part row”.
                                 </td>
                               </tr>
                             ) : (
                               r.items.map((it) => {
-                                const rowBusy = busy || savingItemId === String(it.id);
+                                const rowBusy =
+                                  busy || savingItemId === String(it.id);
 
                                 const qty = toNum(it.ui_qty, 0);
                                 const price = it.ui_price ?? 0;
                                 const lineTotal = qty > 0 ? price * qty : 0;
 
                                 const approved = n(
-                                  (it as unknown as { qty_approved?: unknown }).qty_approved,
+                                  (it as unknown as { qty_approved?: unknown })
+                                    .qty_approved,
                                 );
                                 const received = n(
-                                  (it as unknown as { qty_received?: unknown }).qty_received,
+                                  (it as unknown as { qty_received?: unknown })
+                                    .qty_received,
                                 );
                                 const remaining = Math.max(0, approved - received);
 
@@ -1057,7 +1133,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                   : "";
 
                                 return (
-                                  <tr key={String(it.id)} className="border-t border-white/10">
+                                  <tr
+                                    key={String(it.id)}
+                                    className="border-t border-white/10"
+                                  >
                                     <td className="p-3 align-top">
                                       <select
                                         className={`${selectBase} w-80`}
@@ -1065,20 +1144,30 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         onChange={(e) => {
                                           const nextPartId = e.target.value || null;
                                           const p = parts.find(
-                                            (x) => String(x.id) === String(nextPartId),
+                                            (x) =>
+                                              String(x.id) === String(nextPartId),
                                           );
                                           updateItem(r.req.id, String(it.id), {
                                             ui_part_id: nextPartId,
-                                            description: (p?.name ?? it.description ?? "").trim(),
+                                            description: (
+                                              p?.name ??
+                                              it.description ??
+                                              ""
+                                            ).trim(),
                                             ui_price:
-                                              p?.price == null ? undefined : toNum(p.price, 0),
+                                              p?.price == null
+                                                ? undefined
+                                                : toNum(p.price, 0),
                                           });
                                         }}
                                         disabled={rowBusy}
                                       >
                                         <option value="">— select —</option>
                                         {parts.map((p) => (
-                                          <option key={String(p.id)} value={String(p.id)}>
+                                          <option
+                                            key={String(p.id)}
+                                            value={String(p.id)}
+                                          >
                                             {p.sku ? `${p.sku} — ${p.name}` : p.name}
                                           </option>
                                         ))}
@@ -1087,13 +1176,19 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                       {approved > 0 ? (
                                         <div className="mt-2 text-[11px] text-neutral-500">
                                           Approved{" "}
-                                          <span className="text-neutral-200">{approved}</span>{" "}
+                                          <span className="text-neutral-200">
+                                            {approved}
+                                          </span>{" "}
                                           <span className="text-neutral-600">·</span>{" "}
                                           Received{" "}
-                                          <span className="text-neutral-200">{received}</span>{" "}
+                                          <span className="text-neutral-200">
+                                            {received}
+                                          </span>{" "}
                                           <span className="text-neutral-600">·</span>{" "}
                                           Remaining{" "}
-                                          <span className="text-neutral-200">{remaining}</span>
+                                          <span className="text-neutral-200">
+                                            {remaining}
+                                          </span>
                                         </div>
                                       ) : null}
                                     </td>
@@ -1118,14 +1213,23 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         min={1}
                                         step={1}
                                         className={`${inputBase} w-20 py-2 text-right text-xs`}
-                                        value={Number.isFinite(it.ui_qty) ? String(it.ui_qty) : "1"}
+                                        value={
+                                          Number.isFinite(it.ui_qty)
+                                            ? String(it.ui_qty)
+                                            : "1"
+                                        }
                                         onChange={(e) => {
                                           const raw = e.target.value;
                                           const nextQty =
                                             raw === ""
                                               ? 1
-                                              : Math.max(1, Math.floor(toNum(raw, 1)));
-                                          updateItem(r.req.id, String(it.id), { ui_qty: nextQty });
+                                              : Math.max(
+                                                  1,
+                                                  Math.floor(toNum(raw, 1)),
+                                                );
+                                          updateItem(r.req.id, String(it.id), {
+                                            ui_qty: nextQty,
+                                          });
                                         }}
                                         disabled={rowBusy}
                                       />
@@ -1136,11 +1240,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         type="number"
                                         step={0.01}
                                         className={`${inputBase} w-28 py-2 text-right text-xs`}
-                                        value={it.ui_price == null ? "" : String(it.ui_price)}
+                                        value={
+                                          it.ui_price == null ? "" : String(it.ui_price)
+                                        }
                                         onChange={(e) => {
                                           const raw = e.target.value;
                                           updateItem(r.req.id, String(it.id), {
-                                            ui_price: raw === "" ? undefined : toNum(raw, 0),
+                                            ui_price:
+                                              raw === "" ? undefined : toNum(raw, 0),
                                           });
                                         }}
                                         disabled={rowBusy}
@@ -1155,17 +1262,27 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           value={uiPoId}
                                           onChange={(e) => {
                                             const next = e.target.value || "";
-                                            updateItem(r.req.id, String(it.id), { ui_po_id: next });
-                                            void setItemPo(String(it.id), next ? next : null);
+                                            updateItem(r.req.id, String(it.id), {
+                                              ui_po_id: next,
+                                            });
+                                            void setItemPo(
+                                              String(it.id),
+                                              next ? next : null,
+                                            );
                                           }}
                                           disabled={rowBusy}
                                           title="Assign this request item to a PO"
                                         >
                                           <option value="">— no PO —</option>
                                           {pos.map((po) => (
-                                            <option key={String(po.id)} value={String(po.id)}>
+                                            <option
+                                              key={String(po.id)}
+                                              value={String(po.id)}
+                                            >
                                               {poLabelById.get(String(po.id)) ??
-                                                `${String(po.id).slice(0, 8)} • ${String(po.status ?? "open")}`}
+                                                `${String(po.id).slice(0, 8)} • ${String(
+                                                  po.status ?? "open",
+                                                )}`}
                                             </option>
                                           ))}
                                         </select>
@@ -1177,8 +1294,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
                                           <div className="mt-2 grid gap-2">
                                             <div className="text-[11px] text-neutral-500">
-                                              Rule: one PO per supplier. If one exists (not received),
-                                              we reuse it.
+                                              Rule: one PO per supplier. If one exists
+                                              (not received), we reuse it.
                                             </div>
 
                                             <select
@@ -1186,7 +1303,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                               value={it.ui_supplier_id ?? ""}
                                               onChange={(e) =>
                                                 updateItem(r.req.id, String(it.id), {
-                                                  ui_supplier_id: e.target.value || "",
+                                                  ui_supplier_id:
+                                                    e.target.value || "",
                                                 })
                                               }
                                               disabled={rowBusy}
@@ -1219,27 +1337,39 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                               onClick={async () => {
                                                 if (!wo?.shop_id) return;
 
-                                                const raw = String(it.ui_supplier_id ?? "").trim();
+                                                const raw = String(
+                                                  it.ui_supplier_id ?? "",
+                                                ).trim();
                                                 if (!raw) {
-                                                  toast.error("Choose a supplier or type a new one.");
+                                                  toast.error(
+                                                    "Choose a supplier or type a new one.",
+                                                  );
                                                   return;
                                                 }
 
                                                 let supplierId: string | null = null;
 
                                                 if (raw.startsWith("__new__:")) {
-                                                  const name = raw.replace("__new__:", "");
-                                                  supplierId = await ensureSupplierExists(
-                                                    String(wo.shop_id),
-                                                    name,
+                                                  const name = raw.replace(
+                                                    "__new__:",
+                                                    "",
                                                   );
+                                                  supplierId =
+                                                    await ensureSupplierExists(
+                                                      String(wo.shop_id),
+                                                      name,
+                                                    );
                                                 } else {
                                                   supplierId = raw;
                                                 }
 
                                                 if (!supplierId) return;
 
-                                                await createOrReusePoAndAssign(it, supplierId, null);
+                                                await createOrReusePoAndAssign(
+                                                  it,
+                                                  supplierId,
+                                                  null,
+                                                );
                                               }}
                                             >
                                               Create / Reuse PO & Assign
@@ -1248,7 +1378,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                             {poLabel ? (
                                               <div className="text-[11px] text-neutral-500">
                                                 Currently assigned:{" "}
-                                                <span className="text-neutral-200">{poLabel}</span>
+                                                <span className="text-neutral-200">
+                                                  {poLabel}
+                                                </span>
                                               </div>
                                             ) : null}
                                           </div>
@@ -1264,7 +1396,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                       <div className="flex flex-col items-stretch gap-2">
                                         <button
                                           className={`${btnCopper} py-2 text-xs`}
-                                          onClick={() => void addAndAttach(r.req.id, String(it.id))}
+                                          onClick={() =>
+                                            void addAndAttach(r.req.id, String(it.id))
+                                          }
                                           disabled={rowBusy}
                                           type="button"
                                         >
@@ -1289,7 +1423,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
                                         <button
                                           className={`${btnDanger} py-2 text-xs`}
-                                          onClick={() => void deleteLine(r.req.id, String(it.id))}
+                                          onClick={() =>
+                                            void deleteLine(r.req.id, String(it.id))
+                                          }
                                           disabled={rowBusy}
                                           type="button"
                                         >
@@ -1307,7 +1443,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
                       {locations.length === 0 && (
                         <div className="mt-3 text-xs text-neutral-500">
-                          No stock locations exist for this shop, so inventory allocation is skipped. Parts will still be saved to the request item.
+                          No stock locations exist for this shop, so inventory
+                          allocation is skipped. Parts will still be saved to the
+                          request item.
                         </div>
                       )}
                     </div>
