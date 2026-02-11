@@ -1,4 +1,4 @@
-// app/parts/requests/[id]/page.tsx
+// app/parts/requests/[id]/page.tsx  (PART 1/2)
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -339,7 +339,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         .map((row) => {
           const sell =
             row.quoted_price == null ? undefined : toNum(row.quoted_price, 0);
-          const poId = (row as unknown as { po_id?: string | null }).po_id ?? null;
+          const poId =
+            (row as unknown as { po_id?: string | null }).po_id ?? null;
           return {
             ...row,
             ui_part_id: row.part_id ?? null,
@@ -462,7 +463,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
 
-  function updateItem(reqId: string, itemId: string, patch: Partial<UiItem>): void {
+  function updateItem(
+    reqId: string,
+    itemId: string,
+    patch: Partial<UiItem>,
+  ): void {
     setRequests((prev) =>
       prev.map((r) => {
         if (r.req.id !== reqId) return r;
@@ -513,7 +518,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         return;
       }
 
-      const poId = (data as unknown as { po_id?: string | null }).po_id ?? null;
+      const poId =
+        (data as unknown as { po_id?: string | null }).po_id ?? null;
 
       const ui: UiItem = {
         ...data,
@@ -571,8 +577,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       ? parts.find((p) => String(p.id) === String(partId)) ?? null
       : null;
 
-    const approved = n((it as unknown as { qty_approved?: unknown }).qty_approved);
-    const received = n((it as unknown as { qty_received?: unknown }).qty_received);
+    const approved = n(
+      (it as unknown as { qty_approved?: unknown }).qty_approved,
+    );
+    const received = n(
+      (it as unknown as { qty_received?: unknown }).qty_received,
+    );
     const remaining = Math.max(0, approved - received);
 
     setRecvItem({
@@ -591,7 +601,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     setRecvOpen(true);
   }
 
-  async function setItemPo(itemId: string, poId: string | null): Promise<boolean> {
+  async function setItemPo(
+    itemId: string,
+    poId: string | null,
+  ): Promise<boolean> {
     // ✅ Validate uuid (prevents PostgREST 400 on uuid cast)
     if (poId && !isUuid(poId)) {
       toast.error("Invalid PO id.");
@@ -643,6 +656,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   }
 
   async function ensureSupplierExists(
+   // CONTINUE FROM HERE (starting at ensureSupplierExists)
+
     shopId: string,
     supplierName: string,
   ): Promise<string | null> {
@@ -663,7 +678,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const { data: created, error: cErr } = await supabase
       .from("suppliers")
       .insert(
-        { shop_id: shopId, name } as unknown as DB["public"]["Tables"]["suppliers"]["Insert"],
+        {
+          shop_id: shopId,
+          name,
+        } as unknown as DB["public"]["Tables"]["suppliers"]["Insert"],
       )
       .select("id")
       .single();
@@ -690,7 +708,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     const { data, error } = await supabase
       .from("purchase_orders")
-      .insert(insert as unknown as DB["public"]["Tables"]["purchase_orders"]["Insert"])
+      .insert(
+        insert as unknown as DB["public"]["Tables"]["purchase_orders"]["Insert"],
+      )
       .select("*")
       .single();
 
@@ -896,10 +916,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       );
 
       if (allNowQuoted) {
-        const { error: statusErr } = await supabase.rpc("set_part_request_status", {
-          p_request: reqId,
-          p_status: "quoted" satisfies Status,
-        });
+        const { error: statusErr } = await supabase.rpc(
+          "set_part_request_status",
+          {
+            p_request: reqId,
+            p_status: "quoted" satisfies Status,
+          },
+        );
         if (statusErr) toast.warning(statusErr.message);
       }
 
@@ -1079,8 +1102,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                         <table className="w-full text-sm">
                           <thead className="bg-white/5 text-neutral-400">
                             <tr>
-                              <th className="p-3 text-left">Stock part</th>
-                              <th className="p-3 text-left">Description</th>
+                              <th className="p-3 text-left">Requested part</th>
                               <th className="p-3 text-right">Qty</th>
                               <th className="p-3 text-right">Price (unit)</th>
                               <th className="p-3 text-left">PO</th>
@@ -1094,7 +1116,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                               <tr className="border-t border-white/10">
                                 <td
                                   className="p-4 text-sm text-neutral-500"
-                                  colSpan={7}
+                                  colSpan={6}
                                 >
                                   No items yet. Click “Add part row”.
                                 </td>
@@ -1137,74 +1159,83 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                     key={String(it.id)}
                                     className="border-t border-white/10"
                                   >
+                                    {/* ✅ Bigger request description ABOVE stock-part selector */}
                                     <td className="p-3 align-top">
-                                      <select
-                                        className={`${selectBase} w-80`}
-                                        value={it.ui_part_id ?? ""}
-                                        onChange={(e) => {
-                                          const nextPartId = e.target.value || null;
-                                          const p = parts.find(
-                                            (x) =>
-                                              String(x.id) === String(nextPartId),
-                                          );
-                                          updateItem(r.req.id, String(it.id), {
-                                            ui_part_id: nextPartId,
-                                            description: (
-                                              p?.name ??
-                                              it.description ??
-                                              ""
-                                            ).trim(),
-                                            ui_price:
-                                              p?.price == null
-                                                ? undefined
-                                                : toNum(p.price, 0),
-                                          });
-                                        }}
-                                        disabled={rowBusy}
-                                      >
-                                        <option value="">— select —</option>
-                                        {parts.map((p) => (
-                                          <option
-                                            key={String(p.id)}
-                                            value={String(p.id)}
-                                          >
-                                            {p.sku ? `${p.sku} — ${p.name}` : p.name}
-                                          </option>
-                                        ))}
-                                      </select>
+                                      <div className="grid gap-2">
+                                        <textarea
+                                          className={`${inputBase} w-full py-2 text-xs`}
+                                          value={it.description ?? ""}
+                                          placeholder="Requested part / notes (ex: Front spring & spring attachment)"
+                                          onChange={(e) =>
+                                            updateItem(r.req.id, String(it.id), {
+                                              description: e.target.value,
+                                            })
+                                          }
+                                          disabled={rowBusy}
+                                          rows={2}
+                                        />
 
-                                      {approved > 0 ? (
-                                        <div className="mt-2 text-[11px] text-neutral-500">
-                                          Approved{" "}
-                                          <span className="text-neutral-200">
-                                            {approved}
-                                          </span>{" "}
-                                          <span className="text-neutral-600">·</span>{" "}
-                                          Received{" "}
-                                          <span className="text-neutral-200">
-                                            {received}
-                                          </span>{" "}
-                                          <span className="text-neutral-600">·</span>{" "}
-                                          Remaining{" "}
-                                          <span className="text-neutral-200">
-                                            {remaining}
-                                          </span>
-                                        </div>
-                                      ) : null}
-                                    </td>
+                                        <select
+                                          className={`${selectBase} w-full`}
+                                          value={it.ui_part_id ?? ""}
+                                          onChange={(e) => {
+                                            const nextPartId =
+                                              e.target.value || null;
+                                            const p = parts.find(
+                                              (x) =>
+                                                String(x.id) === String(nextPartId),
+                                            );
 
-                                    <td className="p-3 align-top">
-                                      <input
-                                        className={`${inputBase} w-full py-2 text-xs`}
-                                        value={it.description ?? ""}
-                                        placeholder="Description"
-                                        onChange={(e) =>
-                                          updateItem(r.req.id, String(it.id), {
-                                            description: e.target.value,
-                                          })
-                                        }
-                                        disabled={rowBusy}
-                                      />
+                                            // ✅ do NOT clobber user's typed request; only fill if empty
+                                            const currentDesc = String(
+                                              it.description ?? "",
+                                            ).trim();
+
+                                            updateItem(r.req.id, String(it.id), {
+                                              ui_part_id: nextPartId,
+                                              description: currentDesc
+                                                ? it.description
+                                                : (p?.name ??
+                                                    it.description ??
+                                                    "").trim(),
+                                              ui_price:
+                                                p?.price == null
+                                                  ? undefined
+                                                  : toNum(p.price, 0),
+                                            });
+                                          }}
+                                          disabled={rowBusy}
+                                        >
+                                          <option value="">— select —</option>
+                                          {parts.map((p) => (
+                                            <option
+                                              key={String(p.id)}
+                                              value={String(p.id)}
+                                            >
+                                              {p.sku ? `${p.sku} — ${p.name}` : p.name}
+                                            </option>
+                                          ))}
+                                        </select>
+
+                                        {approved > 0 ? (
+                                          <div className="text-[11px] text-neutral-500">
+                                            Approved{" "}
+                                            <span className="text-neutral-200">
+                                              {approved}
+                                            </span>{" "}
+                                            <span className="text-neutral-600">·</span>{" "}
+                                            Received{" "}
+                                            <span className="text-neutral-200">
+                                              {received}
+                                            </span>{" "}
+                                            <span className="text-neutral-600">·</span>{" "}
+                                            Remaining{" "}
+                                            <span className="text-neutral-200">
+                                              {remaining}
+                                            </span>
+                                          </div>
+                                        ) : null}
+                                      </div>
                                     </td>
 
                                     <td className="p-3 text-right align-top">
