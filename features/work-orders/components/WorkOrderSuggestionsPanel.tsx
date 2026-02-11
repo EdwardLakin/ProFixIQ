@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 type JobType = "diagnosis" | "repair" | "maintenance" | "tech-suggested";
 
-type RawSuggestion = any;
+type RawSuggestion = Record<string, unknown>;
 
 type Suggestion = {
   serviceCode: string | null;
@@ -26,6 +26,17 @@ type Props = {
   onAdded?: () => void | Promise<void>;
 };
 
+type SuggestionsApiResponse = {
+  ok?: boolean;
+  error?: string;
+  suggestions?: unknown;
+};
+
+type AddSuggestedLinesResponse = {
+  ok?: boolean;
+  error?: string;
+};
+
 function normalizeSuggestions(input: unknown): Suggestion[] {
   if (!Array.isArray(input)) return [];
 
@@ -36,60 +47,70 @@ function normalizeSuggestions(input: unknown): Suggestion[] {
     "tech-suggested",
   ];
 
-  return input.map((raw: RawSuggestion): Suggestion => {
+  const asNum = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+
+  const asStr = (v: unknown): string | null =>
+    typeof v === "string" ? v : null;
+
+  return input.map((rawUnknown: unknown): Suggestion => {
+    const raw: RawSuggestion =
+      rawUnknown && typeof rawUnknown === "object"
+        ? (rawUnknown as RawSuggestion)
+        : {};
+
+    const serviceCodeVal = asStr(raw["serviceCode"]);
     const serviceCodeRaw =
-      typeof raw?.serviceCode === "string" && raw.serviceCode.trim()
-        ? raw.serviceCode.trim().toUpperCase()
+      serviceCodeVal && serviceCodeVal.trim()
+        ? serviceCodeVal.trim().toUpperCase()
         : null;
 
+    const labelVal = asStr(raw["label"]);
+    const nameVal = asStr(raw["name"]);
     const labelRaw =
-      typeof raw?.label === "string" && raw.label.trim()
-        ? raw.label.trim()
-        : typeof raw?.name === "string" && raw.name.trim()
-        ? raw.name.trim()
-        : "Maintenance item";
+      labelVal && labelVal.trim()
+        ? labelVal.trim()
+        : nameVal && nameVal.trim()
+          ? nameVal.trim()
+          : "Maintenance item";
 
-    const jobTypeRaw =
-      typeof raw?.jobType === "string" ? raw.jobType.trim().toLowerCase() : "";
+    const jobTypeVal = asStr(raw["jobType"]);
+    const jobTypeRaw = jobTypeVal ? jobTypeVal.trim().toLowerCase() : "";
     const jobType: JobType = validJobTypes.includes(jobTypeRaw as JobType)
       ? (jobTypeRaw as JobType)
       : "maintenance";
 
     const hoursRaw =
-      typeof raw?.default_labor_hours === "number"
-        ? raw.default_labor_hours
-        : typeof raw?.laborHours === "number"
-        ? raw.laborHours
-        : typeof raw?.typicalHours === "number"
-        ? raw.typicalHours
-        : null;
+      asNum(raw["default_labor_hours"]) ??
+      asNum(raw["laborHours"]) ??
+      asNum(raw["typicalHours"]) ??
+      null;
 
     const notesRaw =
-      typeof raw?.default_notes === "string"
-        ? raw.default_notes
-        : typeof raw?.notes === "string"
-        ? raw.notes
-        : "";
+      (asStr(raw["default_notes"]) ?? asStr(raw["notes"]) ?? "") as string;
 
     const isCritical =
-      typeof raw?.is_critical === "boolean"
-        ? raw.is_critical
-        : typeof raw?.isCritical === "boolean"
-        ? raw.isCritical
-        : false;
+      typeof raw["is_critical"] === "boolean"
+        ? raw["is_critical"]
+        : typeof raw["isCritical"] === "boolean"
+          ? raw["isCritical"]
+          : false;
 
-    const numOrNull = (v: unknown): number | null =>
-      typeof v === "number" && Number.isFinite(v) ? v : null;
+    const distanceKmNormal =
+      asNum(raw["distance_km_normal"]) ?? asNum(raw["distanceKmNormal"]) ?? null;
+
+    const timeMonthsNormal =
+      asNum(raw["time_months_normal"]) ?? asNum(raw["timeMonthsNormal"]) ?? null;
 
     return {
       serviceCode: serviceCodeRaw,
       label: labelRaw,
       jobType,
-      laborHours: numOrNull(hoursRaw),
+      laborHours: hoursRaw,
       notes: notesRaw,
       isCritical,
-      distanceKmNormal: numOrNull(raw?.distance_km_normal ?? raw?.distanceKmNormal),
-      timeMonthsNormal: numOrNull(raw?.time_months_normal ?? raw?.timeMonthsNormal),
+      distanceKmNormal,
+      timeMonthsNormal,
     };
   });
 }
@@ -127,16 +148,20 @@ export function WorkOrderSuggestionsPanel({
         const res = await fetch("/api/maintenance/suggestions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workOrderId }),
+          body: JSON.stringify({ workOrderId, vehicleId }),
         });
 
-        const json = await res.json().catch(() => ({} as any));
-        if (!res.ok) throw new Error(json?.error || "Failed to load suggestions");
+        const json: SuggestionsApiResponse = await res
+          .json()
+          .catch(() => ({} as SuggestionsApiResponse));
 
-        const suggestions = normalizeSuggestions(json?.suggestions);
+        if (!res.ok) throw new Error(json.error || "Failed to load suggestions");
+
+        const suggestions = normalizeSuggestions(json.suggestions);
         setItems(suggestions);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to load suggestions";
+      } catch (e: unknown) {
+        const msg =
+          e instanceof Error ? e.message : "Failed to load suggestions";
         setError(msg);
         setItems([]);
       } finally {
@@ -144,7 +169,7 @@ export function WorkOrderSuggestionsPanel({
         setRefreshing(false);
       }
     },
-    [workOrderId],
+    [workOrderId, vehicleId],
   );
 
   useEffect(() => {
@@ -177,15 +202,19 @@ export function WorkOrderSuggestionsPanel({
         }),
       });
 
-      const json = await res.json().catch(() => ({} as any));
-      if (!res.ok || json?.error) {
-        throw new Error(json?.error || "Failed to add maintenance job");
+      const json: AddSuggestedLinesResponse = await res
+        .json()
+        .catch(() => ({} as AddSuggestedLinesResponse));
+
+      if (!res.ok || json.error) {
+        throw new Error(json.error || "Failed to add maintenance job");
       }
 
       toast.success("Maintenance job added and queued for parts quote");
       await onAdded?.();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to add maintenance job";
+    } catch (e: unknown) {
+      const msg =
+        e instanceof Error ? e.message : "Failed to add maintenance job";
       toast.error(msg);
     } finally {
       setAddingKey(null);
@@ -247,8 +276,10 @@ export function WorkOrderSuggestionsPanel({
             const key = s.serviceCode || s.label;
             const dueBits: string[] = [];
 
-            if (s.distanceKmNormal != null) dueBits.push(`${s.distanceKmNormal.toLocaleString()} km`);
-            if (s.timeMonthsNormal != null) dueBits.push(`${s.timeMonthsNormal} months`);
+            if (s.distanceKmNormal != null)
+              dueBits.push(`${s.distanceKmNormal.toLocaleString()} km`);
+            if (s.timeMonthsNormal != null)
+              dueBits.push(`${s.timeMonthsNormal} months`);
 
             return (
               <div
@@ -278,7 +309,9 @@ export function WorkOrderSuggestionsPanel({
                       {typeof s.laborHours === "number"
                         ? `${s.laborHours.toFixed(1)}h`
                         : "Labor TBD"}
-                      {dueBits.length > 0 && <> • Due around: {dueBits.join(" or ")}</>}
+                      {dueBits.length > 0 && (
+                        <> • Due around: {dueBits.join(" or ")}</>
+                      )}
                     </div>
 
                     {s.notes && (
