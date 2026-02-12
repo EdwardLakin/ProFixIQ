@@ -7,6 +7,7 @@
 // - Parts are grouped under their related line items when possible
 //   (best-effort mapping: work_order_parts.work_order_line_id OR allocations.work_order_line_id if present)
 // - Also prints an overall Parts section (so nothing is lost) + Totals always appears
+// - ✅ Labor shows as $ per line (hours × shop.labor_rate) + shows rate
 //
 // Notes
 // - This uses ONLY pdf-lib (no React-PDF).
@@ -143,8 +144,6 @@ type PartDisplayRow = {
   qty: number;
   unitPrice: number;
   totalPrice: number;
-
-  // optional mapping to line
   lineId?: string;
 };
 
@@ -169,7 +168,10 @@ type BilledPartRow = Pick<
   work_order_line_id?: string | null;
 };
 
-type AllocPartRow = Pick<WorkOrderPartAllocRow, "part_id" | "qty" | "unit_cost"> & {
+type AllocPartRow = Pick<
+  WorkOrderPartAllocRow,
+  "part_id" | "qty" | "unit_cost"
+> & {
   work_order_line_id?: string | null;
 };
 
@@ -194,9 +196,7 @@ export async function GET(
 
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
-    .select(
-      "id, shop_id, customer_id, vehicle_id, customer_name, custom_id, created_at",
-    )
+    .select("id,shop_id,customer_id,vehicle_id,customer_name,custom_id,created_at")
     .eq("id", workOrderId)
     .maybeSingle<
       Pick<
@@ -217,9 +217,7 @@ export async function GET(
 
   const { data: inv, error: invErr } = await supabase
     .from("invoices")
-    .select(
-      "id, invoice_number, currency, subtotal, parts_cost, labor_cost, discount_total, tax_total, total, issued_at, notes, created_at",
-    )
+    .select("id,invoice_number,currency,subtotal,parts_cost,labor_cost,discount_total,tax_total,total,issued_at,notes,created_at")
     .eq("work_order_id", workOrderId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -245,11 +243,10 @@ export async function GET(
     console.warn("[invoice-pdf] invoices query failed", invErr.message);
   }
 
+  // ✅ include labor_rate so we can print labor dollars per line
   const { data: shop } = await supabase
     .from("shops")
-    .select(
-      "business_name, shop_name, name, phone_number, email, street, city, province, postal_code, country",
-    )
+    .select("business_name,shop_name,name,phone_number,email,street,city,province,postal_code,country,labor_rate")
     .eq("id", wo.shop_id)
     .maybeSingle<
       Pick<
@@ -264,6 +261,7 @@ export async function GET(
         | "province"
         | "postal_code"
         | "country"
+        | "labor_rate"
       >
     >();
 
@@ -280,8 +278,9 @@ export async function GET(
   ]);
 
   const currency: "CAD" | "USD" =
-    currencyFromInvoice(inv?.currency) ??
-    currencyFromShopCountry(shop?.country);
+    currencyFromInvoice(inv?.currency) ?? currencyFromShopCountry(shop?.country);
+
+  const laborRate = safeMoney(shop?.labor_rate);
 
   // Customer
   let customer:
@@ -304,9 +303,7 @@ export async function GET(
   if (wo.customer_id) {
     const { data: c } = await supabase
       .from("customers")
-      .select(
-        "name,first_name,last_name,phone,phone_number,email,business_name,street,city,province,postal_code",
-      )
+      .select("name,first_name,last_name,phone,phone_number,email,business_name,street,city,province,postal_code")
       .eq("id", wo.customer_id)
       .maybeSingle<
         Pick<
@@ -359,9 +356,7 @@ export async function GET(
   if (wo.vehicle_id) {
     const { data: v } = await supabase
       .from("vehicles")
-      .select(
-        "year,make,model,vin,license_plate,unit_number,mileage,color,engine_hours",
-      )
+      .select("year,make,model,vin,license_plate,unit_number,mileage,color,engine_hours")
       .eq("id", wo.vehicle_id)
       .maybeSingle<
         Pick<
@@ -397,9 +392,7 @@ export async function GET(
   // Lines
   const { data: lines } = await supabase
     .from("work_order_lines")
-    .select(
-      "id, line_no, description, complaint, cause, correction, labor_time, price_estimate",
-    )
+    .select("id,line_no,description,complaint,cause,correction,labor_time,price_estimate")
     .eq("work_order_id", workOrderId)
     .order("line_no", { ascending: true });
 
@@ -417,13 +410,10 @@ export async function GET(
     >
   >;
 
-  // -------------------------------------------------------------------
-  // Parts: Prefer work_order_parts (billed parts). Fallback to allocations.
-  // Best-effort grouping by line id if the column exists.
-  // -------------------------------------------------------------------
+  // Parts: Prefer billed parts, fallback to allocations
   const { data: wop } = await supabase
     .from("work_order_parts")
-    .select("part_id, quantity, unit_price, total_price, work_order_line_id")
+    .select("part_id,quantity,unit_price,total_price,work_order_line_id")
     .eq("work_order_id", workOrderId);
 
   const billedParts = (Array.isArray(wop) ? wop : []) as BilledPartRow[];
@@ -438,7 +428,7 @@ export async function GET(
   if (billedParts.length === 0) {
     const { data: alloc } = await supabase
       .from("work_order_part_allocations")
-      .select("part_id, qty, unit_cost, work_order_line_id")
+      .select("part_id,qty,unit_cost,work_order_line_id")
       .eq("work_order_id", workOrderId);
 
     const allocRows = (Array.isArray(alloc) ? alloc : []) as AllocPartRow[];
@@ -459,9 +449,7 @@ export async function GET(
       [
         ...billedParts
           .map((r) => r.part_id)
-          .filter(
-            (id): id is string => typeof id === "string" && id.length > 0,
-          ),
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
         ...allocParts.map((r) => r.part_id),
       ].filter(Boolean),
     ),
@@ -473,7 +461,6 @@ export async function GET(
   >();
 
   if (partIds.length > 0) {
-    // ✅ single-line select string (this is what was breaking your build)
     const { data: parts } = await supabase
       .from("parts")
       .select("id,name,part_number,sku,unit")
@@ -581,10 +568,7 @@ export async function GET(
 
   const lineH = (size: number) => size + 6;
 
-  const titleId = wo.custom_id
-    ? asString(wo.custom_id)
-    : `WO-${wo.id.slice(0, 8)}`;
-
+  const titleId = wo.custom_id ? asString(wo.custom_id) : `WO-${wo.id.slice(0, 8)}`;
   const invoiceNumber = (inv?.invoice_number ?? "").trim();
 
   const issuedAt =
@@ -603,71 +587,26 @@ export async function GET(
   const drawHeader = (page: ReturnType<PDFDocument["addPage"]>) => {
     const headerY = PAGE_H - headerH;
 
-    page.drawRectangle({
-      x: 0,
-      y: headerY,
-      width: PAGE_W,
-      height: headerH,
-      color: C_HEADER_BG,
-    });
+    page.drawRectangle({ x: 0, y: headerY, width: PAGE_W, height: headerH, color: C_HEADER_BG });
 
     const headerTop = PAGE_H - 26;
 
-    page.drawText(shopName, {
-      x: marginX,
-      y: headerTop,
-      size: 16,
-      font: bold,
-      color: C_COPPER,
-    });
+    page.drawText(shopName, { x: marginX, y: headerTop, size: 16, font: bold, color: C_COPPER });
 
     if (shopAddress.trim().length) {
-      page.drawText(shopAddress, {
-        x: marginX,
-        y: headerTop - 20,
-        size: 9.5,
-        font,
-        color: C_LIGHT,
-      });
+      page.drawText(shopAddress, { x: marginX, y: headerTop - 20, size: 9.5, font, color: C_LIGHT });
     }
 
     if (shopContact.trim().length) {
-      page.drawText(shopContact, {
-        x: marginX,
-        y: headerTop - 34,
-        size: 9.5,
-        font,
-        color: rgb(0.85, 0.85, 0.85),
-      });
+      page.drawText(shopContact, { x: marginX, y: headerTop - 34, size: 9.5, font, color: rgb(0.85, 0.85, 0.85) });
     }
 
-    page.drawText("INVOICE", {
-      x: rightX,
-      y: headerTop,
-      size: 18,
-      font: bold,
-      color: C_WHITE,
-    });
+    page.drawText("INVOICE", { x: rightX, y: headerTop, size: 18, font: bold, color: C_WHITE });
 
-    const meta1 = invoiceNumber.length
-      ? `Invoice #: ${invoiceNumber}`
-      : `Work Order: ${titleId}`;
+    const meta1 = invoiceNumber.length ? `Invoice #: ${invoiceNumber}` : `Work Order: ${titleId}`;
+    page.drawText(meta1, { x: rightX, y: headerTop - 20, size: 10, font, color: rgb(0.88, 0.88, 0.88) });
 
-    page.drawText(meta1, {
-      x: rightX,
-      y: headerTop - 20,
-      size: 10,
-      font,
-      color: rgb(0.88, 0.88, 0.88),
-    });
-
-    page.drawText(`Issued: ${issuedAt}`, {
-      x: rightX,
-      y: headerTop - 34,
-      size: 10,
-      font,
-      color: rgb(0.7, 0.7, 0.7),
-    });
+    page.drawText(`Issued: ${issuedAt}`, { x: rightX, y: headerTop - 34, size: 10, font, color: rgb(0.7, 0.7, 0.7) });
 
     const divY = headerY - 22;
     page.drawRectangle({
@@ -682,29 +621,10 @@ export async function GET(
   };
 
   const drawFooter = (page: ReturnType<PDFDocument["addPage"]>) => {
-    page.drawRectangle({
-      x: 0,
-      y: 0,
-      width: PAGE_W,
-      height: footerH,
-      color: C_HEADER_BG,
-    });
+    page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: footerH, color: C_HEADER_BG });
 
-    page.drawText(`${shopName} • Invoice`, {
-      x: marginX,
-      y: 14,
-      size: 9,
-      font,
-      color: rgb(0.8, 0.8, 0.8),
-    });
-
-    page.drawText(`Work Order: ${titleId}`, {
-      x: rightX,
-      y: 14,
-      size: 9,
-      font,
-      color: rgb(0.65, 0.65, 0.65),
-    });
+    page.drawText(`${shopName} • Invoice`, { x: marginX, y: 14, size: 9, font, color: rgb(0.8, 0.8, 0.8) });
+    page.drawText(`Work Order: ${titleId}`, { x: rightX, y: 14, size: 9, font, color: rgb(0.65, 0.65, 0.65) });
   };
 
   const newPage = (): PdfCtx => {
@@ -788,23 +708,26 @@ export async function GET(
       const complaint = asString(row.complaint || row.description || "—");
       const cause = asString(row.cause || "");
       const correction = asString(row.correction || "");
-      const labor = row.labor_time != null ? String(row.labor_time) : "";
-      const est = safeMoney(row.price_estimate);
+
+      const laborHours = safeMoney(row.labor_time);
+      const laborDollars = Math.max(0, laborHours * laborRate);
 
       const complaintLines = wrapText(complaint, 78);
       const causeLines = cause.trim() ? wrapText(cause, 78) : [];
       const correctionLines = correction.trim() ? wrapText(correction, 78) : [];
 
       const lineParts = row.id ? partsByLineId.get(row.id) ?? [] : [];
+      const linePartsDollars = lineParts.reduce((sum, p) => sum + safeMoney(p.totalPrice), 0);
+      const lineTotal = laborDollars + linePartsDollars;
 
       const approx =
         26 +
         (complaintLines.length + causeLines.length + correctionLines.length) * 16 +
-        (labor.trim() ? 16 : 0) +
-        (est > 0 ? 16 : 0) +
-        (lineParts.length ? 24 + Math.min(lineParts.length, 8) * 16 : 0);
+        (laborHours > 0 ? 32 : 0) +
+        (lineParts.length ? 24 + Math.min(lineParts.length, 8) * 16 : 0) +
+        (lineTotal > 0 ? 16 : 0);
 
-      ctxPdf = ensureSpace(ctxPdf, Math.max(100, approx));
+      ctxPdf = ensureSpace(ctxPdf, Math.max(110, approx));
 
       const label =
         row.line_no != null && asString(row.line_no).trim().length
@@ -821,8 +744,20 @@ export async function GET(
       for (const c of causeLines) ctxPdf = drawText(ctxPdf, `Cause: ${c}`, { size: 10, color: C_MUTED });
       for (const c of correctionLines) ctxPdf = drawText(ctxPdf, `Correction: ${c}`, { size: 10, color: C_MUTED });
 
-      if (labor.trim()) ctxPdf = drawText(ctxPdf, `Labor time: ${labor} hr`, { size: 10, color: C_MUTED });
-      if (est > 0) ctxPdf = drawText(ctxPdf, `Estimate: ${moneyLabel(est, currency)}`, { size: 10, color: C_MUTED });
+      // ✅ Labor as dollars (with hours + rate)
+      if (laborHours > 0 && laborRate > 0) {
+        ctxPdf = drawText(
+          ctxPdf,
+          `Labor: ${moneyLabel(laborDollars, currency)} (${laborHours} hr × ${moneyLabel(laborRate, currency)}/hr)`,
+          { size: 10, color: C_MUTED },
+        );
+      } else if (laborHours > 0) {
+        ctxPdf = drawText(ctxPdf, `Labor time: ${laborHours} hr`, { size: 10, color: C_MUTED });
+      }
+
+      if (lineTotal > 0) {
+        ctxPdf = drawText(ctxPdf, `Line total: ${moneyLabel(lineTotal, currency)}`, { size: 10, color: C_MUTED });
+      }
 
       if (lineParts.length) {
         ctxPdf = drawText(ctxPdf, "Parts for this line:", { size: 10, bold: true, color: C_MUTED });
@@ -859,10 +794,7 @@ export async function GET(
     ctxPdf = drawText(ctxPdf, "— No parts on this work order —", { size: 10, color: C_MUTED });
   } else {
     ctxPdf = ensureSpace(ctxPdf, 40);
-    ctxPdf = drawText(ctxPdf, "Qty   Part                                Unit     Total", {
-      size: 10,
-      bold: true,
-    });
+    ctxPdf = drawText(ctxPdf, "Qty   Part                                Unit     Total", { size: 10, bold: true });
 
     ctxPdf.page.drawRectangle({
       x: marginX,
@@ -930,9 +862,11 @@ export async function GET(
     ctxPdf = drawText(ctxPdf, `Subtotal: ${moneyLabel(subtotal, currency)}`, { size: 11 });
     ctxPdf = drawText(ctxPdf, `Labor: ${moneyLabel(laborCost, currency)}`, { size: 11, color: C_MUTED });
     ctxPdf = drawText(ctxPdf, `Parts: ${moneyLabel(partsCost, currency)}`, { size: 11, color: C_MUTED });
+
     if (discountTotal > 0) {
       ctxPdf = drawText(ctxPdf, `Discount: -${moneyLabel(discountTotal, currency)}`, { size: 11, color: C_MUTED });
     }
+
     ctxPdf = drawText(ctxPdf, `Tax: ${moneyLabel(taxTotal, currency)}`, { size: 11, color: C_MUTED });
     ctxPdf = drawText(ctxPdf, `Total: ${moneyLabel(grandTotal, currency)}`, { size: 13, bold: true });
   }
