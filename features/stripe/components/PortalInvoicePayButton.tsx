@@ -1,9 +1,8 @@
-// features/stripe/components/PortalInvoicePayButton.tsx
+// features/stripe/components/PortalInvoicePayButton.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@shared/components/ui/Button";
 
 type Props = {
   shopId: string;
@@ -13,26 +12,27 @@ type Props = {
   disabled?: boolean;
 };
 
-function formatCurrencyLabel(currency: "usd" | "cad"): string {
-  return currency === "cad" ? "CAD" : "USD";
-}
-
-export default function PortalInvoicePayButton(props: Props) {
+export default function PortalInvoicePayButton({
+  shopId,
+  workOrderId,
+  amountCents,
+  currency,
+  disabled,
+}: Props) {
   const [busy, setBusy] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
 
-  const canPay = useMemo(() => {
-    return (
-      !props.disabled &&
-      typeof props.amountCents === "number" &&
-      Number.isFinite(props.amountCents) &&
-      props.amountCents >= 50 &&
-      props.shopId.trim().length > 0 &&
-      props.workOrderId.trim().length > 0
-    );
-  }, [props.amountCents, props.disabled, props.shopId, props.workOrderId]);
+  const labelCurrency = useMemo(() => (currency === "cad" ? "CAD" : "USD"), [currency]);
 
   async function startCheckout(): Promise<void> {
-    if (!canPay || busy) return;
+    if (busy || disabled) return;
+
+    setInlineError(null);
+
+    if (!Number.isFinite(amountCents) || amountCents < 50) {
+      setInlineError("Invoice total is not payable (amount too low).");
+      return;
+    }
 
     setBusy(true);
     try {
@@ -40,19 +40,23 @@ export default function PortalInvoicePayButton(props: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          shopId: props.shopId,
-          workOrderId: props.workOrderId,
-          amountCents: props.amountCents,
-          currency: props.currency,
+          shopId,
+          workOrderId,
+          amountCents,
+          currency,
         }),
       });
 
-      const j = (await res.json().catch(() => ({}))) as {
-        url?: string;
-        error?: string;
-      };
+      const j = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
 
       if (!res.ok || !j.url) {
+        // ✅ Inline for “not connected/onboarding”
+        if (res.status === 409) {
+          setInlineError(j.error || "Payments are not enabled for this shop yet.");
+          return;
+        }
+
+        // Other errors can still toast
         toast.error(j.error || "Failed to start checkout.");
         return;
       }
@@ -64,31 +68,40 @@ export default function PortalInvoicePayButton(props: Props) {
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 backdrop-blur">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
             Payment
           </div>
-          <div className="mt-1 text-sm text-neutral-400">
-            Pay your invoice with card • {formatCurrencyLabel(props.currency)}
+          <div className="mt-1 text-sm text-neutral-200">
+            Pay your invoice with card • {labelCurrency}
+          </div>
+          <div className="mt-0.5 text-[11px] text-neutral-500">
+            You’ll be redirected to Stripe Checkout.
           </div>
         </div>
 
-        <Button onClick={startCheckout} disabled={!canPay || busy}>
+        <button
+          type="button"
+          onClick={() => void startCheckout()}
+          disabled={busy || disabled}
+          className={
+            "rounded-xl px-4 py-2 text-sm font-semibold border " +
+            (busy || disabled
+              ? "border-white/10 bg-black/30 text-neutral-500"
+              : "border-white/20 bg-black/50 text-white hover:bg-black/60 active:scale-[0.99]")
+          }
+        >
           {busy ? "Starting…" : "Pay invoice"}
-        </Button>
+        </button>
       </div>
 
-      {!canPay ? (
-        <div className="mt-2 text-[11px] text-neutral-500">
-          Payment isn’t available for this invoice yet.
+      {inlineError ? (
+        <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+          {inlineError}
         </div>
-      ) : (
-        <div className="mt-2 text-[11px] text-neutral-500">
-          You’ll be redirected to Stripe Checkout.
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

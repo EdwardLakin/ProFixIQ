@@ -21,10 +21,23 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
 const PLATFORM_FEE_BPS = 300;
 
 type Payload = {
-  shopId?: string;
   workOrderId?: string;
-  amountCents?: number;
-  currency?: string; // "usd" | "cad"
+};
+
+type ShopStripeRow = {
+  id: string;
+  stripe_account_id: string | null;
+  stripe_charges_enabled: boolean | null;
+  stripe_payouts_enabled: boolean | null;
+  labor_rate: number | null;
+  country: string | null;
+};
+
+type InvoiceRowLite = {
+  id: string;
+  currency: string | null;
+  total: number | null;
+  created_at: string | null;
 };
 
 function getBaseUrl(): string {
@@ -40,8 +53,17 @@ function clampCurrency(v: unknown): "usd" | "cad" {
   return s === "cad" ? "cad" : "usd";
 }
 
-function isId(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length > 0;
+function currencyFromCountry(country: unknown): "usd" | "cad" {
+  const c = String(country ?? "").trim().toUpperCase();
+  return c === "CA" ? "cad" : "usd";
+}
+
+function safeCentsFromAmount(amount: unknown): number | null {
+  if (amount == null) return null;
+  const n = typeof amount === "number" ? amount : Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // amount is dollars -> cents
+  return Math.round(n * 100);
 }
 
 export async function POST(req: Request) {
@@ -55,61 +77,33 @@ export async function POST(req: Request) {
 
     const supabase = createRouteHandlerClient<DB>({ cookies: nextCookies });
 
-    // ✅ Your helper only returns {id}
+    // Auth
     const { id: userId } = await requireAuthedUser(supabase);
     const customer = await requirePortalCustomer(supabase, userId);
 
-    // ✅ Fetch email from supabase auth user (safe + typed)
+    // Read email safely (requireAuthedUser may only return id)
     const {
       data: { user },
-      error: userErr,
     } = await supabase.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const email = (user.email ?? null) as string | null;
+    const email = user?.email ?? null;
 
     const body = (await req.json().catch(() => null)) as Payload | null;
-
-    if (!isId(body?.shopId)) {
-      return NextResponse.json({ error: "Missing shopId" }, { status: 400 });
-    }
-    if (!isId(body?.workOrderId)) {
+    const workOrderId = body?.workOrderId?.trim();
+    if (!workOrderId) {
       return NextResponse.json({ error: "Missing workOrderId" }, { status: 400 });
     }
 
-    const amountCents =
-      typeof body?.amountCents === "number" ? Math.trunc(body.amountCents) : NaN;
+    // Ownership check (throws/redirects in other contexts; here we just ensure it exists)
+    const wo = await requireWorkOrderOwnedByCustomer(supabase, workOrderId, customer.id);
 
-    if (!Number.isFinite(amountCents) || amountCents < 50) {
-      return NextResponse.json(
-        { error: "Invalid amountCents" },
-        { status: 400 },
-      );
-    }
-
-    // Ownership enforcement (customer must own this WO)
-    await requireWorkOrderOwnedByCustomer(
-      supabase,
-      body.workOrderId,
-      customer.id,
-    );
-
-    // Shop connect status
+    // Load shop Stripe fields (+ labor rate and country for currency fallback)
     const { data: shop, error: shopErr } = await supabase
       .from("shops")
       .select(
-        "id, stripe_account_id, stripe_charges_enabled, stripe_payouts_enabled",
+        "id, stripe_account_id, stripe_charges_enabled, stripe_payouts_enabled, labor_rate, country",
       )
-      .eq("id", body.shopId)
-      .maybeSingle<{
-        id: string;
-        stripe_account_id: string | null;
-        stripe_charges_enabled: boolean | null;
-        stripe_payouts_enabled: boolean | null;
-      }>();
+      .eq("id", wo.shop_id)
+      .maybeSingle<ShopStripeRow>();
 
     if (shopErr) {
       return NextResponse.json({ error: shopErr.message }, { status: 500 });
@@ -133,19 +127,57 @@ export async function POST(req: Request) {
       );
     }
 
-    const currency = clampCurrency(body.currency);
+    // Get latest invoice total if present
+    const { data: inv } = await supabase
+      .from("invoices")
+      .select("id, currency, total, created_at")
+      .eq("work_order_id", workOrderId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<InvoiceRowLite>();
+
+    const centsFromInvoice = safeCentsFromAmount(inv?.total);
+    const centsFromWO = safeCentsFromAmount(
+      
+      (wo as unknown as { invoice_total?: number | null }).invoice_total ??
+        null,
+    );
+
+    // Last fallback: labor_total + parts_total if present
+    const laborTotal =
+      safeCentsFromAmount(
+        
+        (wo as unknown as { labor_total?: number | null }).labor_total ?? null,
+      ) ?? 0;
+    const partsTotal =
+      safeCentsFromAmount(
+        
+        (wo as unknown as { parts_total?: number | null }).parts_total ?? null,
+      ) ?? 0;
+
+    const cents =
+      centsFromInvoice ??
+      centsFromWO ??
+      (laborTotal + partsTotal > 0 ? laborTotal + partsTotal : null);
+
+    if (!cents || cents < 50) {
+      return NextResponse.json(
+        { error: "Invoice total is missing or invalid" },
+        { status: 400 },
+      );
+    }
+
+    const currency =
+      inv?.currency != null
+        ? clampCurrency(inv.currency)
+        : currencyFromCountry(shop.country);
+
     const base = getBaseUrl();
 
-    // Return customer to the invoice page either way
-    const successUrl = `${base}/portal/invoices/${encodeURIComponent(
-      body.workOrderId,
-    )}?paid=1&session_id={CHECKOUT_SESSION_ID}`;
+    const successUrl = `${base}/portal/invoices/${workOrderId}?paid=1&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${base}/portal/invoices/${workOrderId}`;
 
-    const cancelUrl = `${base}/portal/invoices/${encodeURIComponent(
-      body.workOrderId,
-    )}?canceled=1`;
-
-    const applicationFee = Math.floor((amountCents * PLATFORM_FEE_BPS) / 10_000);
+    const applicationFee = Math.floor((cents * PLATFORM_FEE_BPS) / 10_000);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -156,8 +188,10 @@ export async function POST(req: Request) {
           quantity: 1,
           price_data: {
             currency,
-            unit_amount: amountCents,
-            product_data: { name: "Invoice payment" },
+            unit_amount: cents,
+            product_data: {
+              name: `Invoice payment (${workOrderId.slice(0, 8)}…)`,
+            },
           },
         },
       ],
@@ -165,8 +199,8 @@ export async function POST(req: Request) {
         application_fee_amount: applicationFee,
         transfer_data: { destination: acct },
         metadata: {
-          shop_id: body.shopId,
-          work_order_id: body.workOrderId,
+          shop_id: shop.id,
+          work_order_id: workOrderId,
           customer_id: customer.id,
           created_by: userId,
           purpose: "portal_invoice_payment",
@@ -174,8 +208,8 @@ export async function POST(req: Request) {
         },
       },
       metadata: {
-        shop_id: body.shopId,
-        work_order_id: body.workOrderId,
+        shop_id: shop.id,
+        work_order_id: workOrderId,
         customer_id: customer.id,
         created_by: userId,
         purpose: "portal_invoice_payment",
