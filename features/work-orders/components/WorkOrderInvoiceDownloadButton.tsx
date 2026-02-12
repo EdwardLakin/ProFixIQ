@@ -1,3 +1,4 @@
+// features/work-orders/components/WorkOrderInvoiceDownloadButton.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,68 +24,38 @@ export function WorkOrderInvoiceDownloadButton({
 }: Props) {
   const [busy, setBusy] = useState(false);
 
-  const fileName = useMemo(
-    () => `Invoice_WorkOrder_${workOrderId}.pdf`,
+  const href = useMemo(
+    () => `/api/work-orders/${workOrderId}/invoice-pdf`,
     [workOrderId],
   );
 
-  const download = useCallback(async (): Promise<void> => {
-    if (busy) return;
+  const open = useCallback(() => {
     if (!workOrderId) return;
 
+    // busy just prevents double clicks
     setBusy(true);
+    window.open(href, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => setBusy(false), 300);
+  }, [workOrderId, href]);
 
-    let url: string | null = null;
-
-    try {
-      const res = await fetch(`/api/work-orders/${workOrderId}/invoice-pdf`, {
-        method: "GET",
-        headers: { Accept: "application/pdf" },
-      });
-
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || `PDF download failed (${res.status})`);
-      }
-
-      const blob = await res.blob();
-      url = URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } finally {
-      if (url) {
-        // give the browser a beat before revoking
-        window.setTimeout(() => URL.revokeObjectURL(url as string), 1500);
-      }
-      setBusy(false);
-    }
-  }, [busy, workOrderId, fileName]);
-
-  // optional auto-trigger (runs once per mount when enabled)
   useEffect(() => {
     if (!autoTrigger) return;
     if (!workOrderId) return;
 
-    // queue microtask to avoid blocking paint
-    queueMicrotask(() => void download());
-  }, [autoTrigger, workOrderId, download]);
+    queueMicrotask(() => open());
+  }, [autoTrigger, workOrderId, open]);
 
   return (
     <button
       type="button"
-      onClick={() => void download()}
+      onClick={open}
       disabled={!workOrderId || busy}
       className={
         className ??
         "rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-black hover:brightness-110 disabled:opacity-60"
       }
     >
-      {busy ? "Generating…" : "Download invoice PDF"}
+      {busy ? "Opening…" : "Open invoice PDF"}
     </button>
   );
 }
