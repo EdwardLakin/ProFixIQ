@@ -404,7 +404,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
 
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <Link
-                      href={`/work-orders/${r.id}/invoice`}
+                      href={`/work-orders/invoice/${r.id}`}
                       className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
                       title="Open invoice inside ProFixIQ (staff view)"
                     >
