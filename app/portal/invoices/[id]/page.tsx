@@ -11,6 +11,8 @@ import {
   requireWorkOrderOwnedByCustomer,
 } from "@/features/portal/server/portalAuth";
 
+import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
+
 export const dynamic = "force-dynamic";
 
 const COPPER = "#C57A4A";
@@ -106,6 +108,11 @@ function compactCsv(parts: Array<string | undefined>): string {
     .join(", ");
 }
 
+function dollarsToCents(n: number | null): number {
+  if (n == null || !Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n * 100));
+}
+
 export default async function PortalInvoicePage({
   params,
 }: {
@@ -143,16 +150,14 @@ export default async function PortalInvoicePage({
 
   let currency: "CAD" | "USD" = "USD";
   let parts: PartDisplayRow[] = [];
+  let stripeCurrency: "usd" | "cad" = "usd";
 
   try {
-    // Auth + portal ownership checks
     const { id: userId } = await requireAuthedUser(supabase);
     const customer = await requirePortalCustomer(supabase, userId);
 
-    // ✅ Keep your ownership check (whatever it returns internally)
     await requireWorkOrderOwnedByCustomer(supabase, workOrderId, customer.id);
 
-    // ✅ Re-fetch the exact columns this page uses (prevents TS + runtime mismatch)
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
       .select(
@@ -216,6 +221,8 @@ export default async function PortalInvoicePage({
     currency = invoice?.currency
       ? normalizeInvoiceCurrency(invoice.currency)
       : normalizeCurrencyFromCountry(shopCountry);
+
+    stripeCurrency = currency === "CAD" ? "cad" : "usd";
 
     // Load work order lines for display
     const { data: lineRows, error: lineErr } = await supabase
@@ -332,7 +339,6 @@ export default async function PortalInvoicePage({
   const titleLabel =
     workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
 
-  // ✅ Totals: prefer invoice row; otherwise show "—" unless we have real WO totals
   const woInvoiceTotal = safeNumberOrNull(workOrder.invoice_total);
   const woLabor = safeNumberOrNull(workOrder.labor_total);
   const woParts = safeNumberOrNull(workOrder.parts_total);
@@ -385,6 +391,8 @@ export default async function PortalInvoicePage({
     (acc, p) => acc + (Number.isFinite(p.qty) ? p.qty : 0),
     0,
   );
+
+  const payAmountCents = dollarsToCents(total);
 
   return (
     <div className="min-h-screen px-4 text-foreground bg-background bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]">
@@ -465,6 +473,20 @@ export default async function PortalInvoicePage({
             </div>
           </div>
 
+          {/* ✅ Payment (Stripe Checkout) */}
+          {workOrder.shop_id ? (
+            <div className="mb-6">
+              <PortalInvoicePayButton
+                shopId={workOrder.shop_id}
+                workOrderId={workOrder.id}
+                amountCents={payAmountCents}
+                currency={stripeCurrency}
+                disabled={payAmountCents < 50}
+              />
+            </div>
+          ) : null}
+
+          {/* Optional PDF link */}
           {workOrder.invoice_pdf_url ? (
             <div className="mb-6">
               <a
@@ -478,35 +500,22 @@ export default async function PortalInvoicePage({
             </div>
           ) : null}
 
-          {workOrder.invoice_url ? (
-            <div className="mb-6">
-              <a
-                href={workOrder.invoice_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-100 hover:bg-black/80"
-              >
-                <span>Open Online Invoice</span>
-              </a>
-            </div>
-          ) : null}
+          {/* ✅ Removed: Open Online Invoice (it just loops back into portal) */}
 
+          {/* Totals breakdown */}
           <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
                 Totals
               </div>
               <div className="text-[11px] text-neutral-500">
-                {invoice?.id
-                  ? "From invoice record"
-                  : "Estimate (work order totals)"}
+                {invoice?.id ? "From invoice record" : "Estimate (work order totals)"}
               </div>
             </div>
 
             {!invoice?.id ? (
               <div className="text-xs text-neutral-400">
-                The shop hasn’t finalized an invoice record yet. Some totals may
-                be estimated.
+                The shop hasn’t finalized an invoice record yet. Some totals may be estimated.
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -561,10 +570,7 @@ export default async function PortalInvoicePage({
                   <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                     Total
                   </div>
-                  <div
-                    className="mt-1 text-lg font-semibold"
-                    style={{ color: COPPER }}
-                  >
+                  <div className="mt-1 text-lg font-semibold" style={{ color: COPPER }}>
                     {formatCurrency(total ?? null, currency)}
                   </div>
                 </div>
@@ -572,6 +578,7 @@ export default async function PortalInvoicePage({
             )}
           </div>
 
+          {/* Notes */}
           {notes.length ? (
             <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
@@ -583,15 +590,14 @@ export default async function PortalInvoicePage({
             </div>
           ) : null}
 
+          {/* Line items */}
           <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
                 Line Items
               </div>
               <div className="text-[11px] text-neutral-500">
-                {invoiceLines.length === 0
-                  ? "No line items recorded yet"
-                  : `${invoiceLines.length} items`}
+                {invoiceLines.length === 0 ? "No line items recorded yet" : `${invoiceLines.length} items`}
               </div>
             </div>
 
@@ -608,9 +614,7 @@ export default async function PortalInvoicePage({
                       </div>
                       <div className="text-[11px] text-neutral-500">
                         {line.job_type ?? "—"}
-                        {line.labor_time != null
-                          ? ` • ${line.labor_time} hr`
-                          : ""}
+                        {line.labor_time != null ? ` • ${line.labor_time} hr` : ""}
                       </div>
                     </div>
 
@@ -626,9 +630,7 @@ export default async function PortalInvoicePage({
                         )}
                       </div>
                       {line.line_no != null ? (
-                        <div className="text-[11px] text-neutral-500">
-                          Line #{line.line_no}
-                        </div>
+                        <div className="text-[11px] text-neutral-500">Line #{line.line_no}</div>
                       ) : null}
                     </div>
                   </div>
@@ -636,21 +638,19 @@ export default async function PortalInvoicePage({
               </div>
             ) : (
               <div className="text-xs text-neutral-400">
-                Once the shop finalizes the invoice, you&apos;ll see line items
-                for labour and parts here.
+                Once the shop finalizes the invoice, you&apos;ll see line items for labour and parts here.
               </div>
             )}
           </div>
 
+          {/* Parts */}
           <div className="mt-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
                 Parts
               </div>
               <div className="text-[11px] text-neutral-500">
-                {parts.length === 0
-                  ? "No parts recorded"
-                  : `${parts.length} parts • Qty ${partCount}`}
+                {parts.length === 0 ? "No parts recorded" : `${parts.length} parts • Qty ${partCount}`}
               </div>
             </div>
 
@@ -669,17 +669,11 @@ export default async function PortalInvoicePage({
                       className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-white/5 bg-black/40 px-3 py-2"
                     >
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-neutral-100">
-                          {p.name}
-                        </div>
+                        <div className="text-sm font-medium text-neutral-100">{p.name}</div>
                         {meta.length ? (
-                          <div className="text-[11px] text-neutral-500">
-                            {meta}
-                          </div>
+                          <div className="text-[11px] text-neutral-500">{meta}</div>
                         ) : null}
-                        <div className="text-[11px] text-neutral-500">
-                          Qty: {p.qty}
-                        </div>
+                        <div className="text-[11px] text-neutral-500">Qty: {p.qty}</div>
                       </div>
 
                       <div className="text-right text-xs text-neutral-300">

@@ -6733,6 +6733,59 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_vehicle_menu_items: {
+        Row: {
+          created_at: string
+          id: string
+          menu_item_id: string
+          shop_id: string
+          vehicle_menu_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          menu_item_id: string
+          shop_id: string
+          vehicle_menu_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          menu_item_id?: string
+          shop_id?: string
+          vehicle_menu_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_vehicle_menu_items_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_vehicle_menu_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_vehicle_menu_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_vehicle_menu_items_vehicle_menu_id_fkey"
+            columns: ["vehicle_menu_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_menus"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shops: {
         Row: {
           accepts_online_booking: boolean | null
@@ -10433,6 +10486,18 @@ export type Database = {
     }
     Functions: {
       _ensure_same_shop: { Args: { _wo: string }; Returns: boolean }
+      add_repair_line_from_vehicle_service: {
+        Args: {
+          p_engine_family: string
+          p_qty?: number
+          p_service_code: string
+          p_vehicle_make: string
+          p_vehicle_model: string
+          p_vehicle_year: number
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       agent_approve_action: {
         Args: { p_action_id: string; p_approved_by?: string }
         Returns: {
@@ -10759,6 +10824,17 @@ export type Database = {
       }
       current_shop_id: { Args: never; Returns: string }
       delete_part_request: { Args: { p_request_id: string }; Returns: string }
+      find_menu_item_for_vehicle_service: {
+        Args: {
+          p_engine_family: string
+          p_make: string
+          p_model: string
+          p_service_code: string
+          p_shop_id: string
+          p_year: number
+        }
+        Returns: string
+      }
       first_segment_uuid: { Args: { p: string }; Returns: string }
       generate_next_work_order_custom_id: {
         Args: { p_shop_id: string; p_user_id: string }
@@ -10875,6 +10951,14 @@ export type Database = {
           p_signature_image_path?: string
           p_signed_name: string
         }
+        Returns: undefined
+      }
+      sync_invoice_from_work_order: {
+        Args: { p_work_order_id: string }
+        Returns: undefined
+      }
+      sync_invoice_from_work_order_admin: {
+        Args: { p_work_order_id: string }
         Returns: undefined
       }
       unreserve_part_request_item: {
