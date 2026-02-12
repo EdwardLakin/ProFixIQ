@@ -44,6 +44,9 @@ type ShopInfo = {
   city?: string;
   province?: string;
   postal_code?: string;
+
+  // ✅ needed to convert hours -> $
+  labor_rate?: number;
 };
 
 type Props = {
@@ -69,6 +72,8 @@ type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
+type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
+type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 
 type InvoiceLinePayload = {
   complaint?: string | null;
@@ -156,6 +161,41 @@ function numToStringOrUndef(v: unknown): string | undefined {
   return undefined;
 }
 
+function numOrUndef(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function safeMoney(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * PDF line-parts shape expected by WorkOrderInvoicePDF extractor:
+ * { qty, name, unit_price, total }
+ */
+type PdfLinePart = {
+  qty: number;
+  name: string;
+  unit_price: number;
+  total: number;
+};
+
+// ✅ Your DB types for work_order_parts do NOT have qty/line_total/description.
+// Use quantity/total_price and pull names from parts table.
+// work_order_line_id is treated as optional (in case your DB has it but types are stale).
+type WorkOrderPartWithLine = Pick<
+  WorkOrderPartRow,
+  "id" | "part_id" | "quantity" | "unit_price" | "total_price"
+> & {
+  work_order_line_id?: string | null;
+};
+
 export default function InvoicePreviewPageClient({
   workOrderId,
   vehicleInfo,
@@ -200,9 +240,12 @@ export default function InvoicePreviewPageClient({
   const [fCustomerInfo, setFCustomerInfo] = useState<CustomerInfo | undefined>(
     undefined,
   );
-  const [fLines, setFLines] = useState<Array<RepairLine & { lineId?: string }>>(
-    [],
-  );
+
+  // ✅ our fetched lines can include parts
+  const [fLines, setFLines] = useState<
+    Array<RepairLine & { lineId?: string; parts?: PdfLinePart[] }>
+  >([]);
+
   const [fSummary, setFSummary] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
 
@@ -211,7 +254,11 @@ export default function InvoicePreviewPageClient({
 
   const effectiveLines = useMemo(() => {
     const provided = Array.isArray(lines) ? lines : undefined;
-    return provided ?? fLines;
+    return (
+      (provided as
+        | Array<RepairLine & { lineId?: string; parts?: PdfLinePart[] }>
+        | undefined) ?? fLines
+    );
   }, [lines, fLines]);
 
   const effectiveSummary = summary ?? fSummary;
@@ -267,10 +314,11 @@ export default function InvoicePreviewPageClient({
       setWo(woRow);
       setShopId(woRow.shop_id);
 
+      // ✅ include labor_rate
       const { data: shop, error: sErr } = await supabase
         .from("shops")
         .select(
-          "stripe_account_id, country, business_name, shop_name, name, phone_number, email, street, city, province, postal_code",
+          "stripe_account_id, country, business_name, shop_name, name, phone_number, email, street, city, province, postal_code, labor_rate",
         )
         .eq("id", woRow.shop_id)
         .maybeSingle<
@@ -287,6 +335,7 @@ export default function InvoicePreviewPageClient({
             | "city"
             | "province"
             | "postal_code"
+            | "labor_rate"
           >
         >();
 
@@ -299,6 +348,7 @@ export default function InvoicePreviewPageClient({
       } else {
         setStripeAccountId(shop?.stripe_account_id ?? null);
         setCurrency(normalizeCurrencyFromCountry(shop?.country));
+
         setShopInfo({
           name: pickShopName(shop ?? null),
           phone_number: trimOrUndef(shop?.phone_number),
@@ -307,6 +357,7 @@ export default function InvoicePreviewPageClient({
           city: trimOrUndef(shop?.city),
           province: trimOrUndef(shop?.province),
           postal_code: trimOrUndef(shop?.postal_code),
+          labor_rate: numOrUndef(shop?.labor_rate),
         });
       }
 
@@ -352,9 +403,7 @@ export default function InvoicePreviewPageClient({
           postal_code: trimOrUndef(c?.postal_code),
         });
       } else if (needCustomer) {
-        setFCustomerInfo({
-          name: trimOrUndef(woRow.customer_name),
-        });
+        setFCustomerInfo({ name: trimOrUndef(woRow.customer_name) });
       }
 
       if (needVehicle && woRow.vehicle_id) {
@@ -382,7 +431,10 @@ export default function InvoicePreviewPageClient({
         if (cancelled) return;
 
         setFVehicleInfo({
-          year: v?.year !== null && v?.year !== undefined ? String(v.year) : undefined,
+          year:
+            v?.year !== null && v?.year !== undefined
+              ? String(v.year)
+              : undefined,
           make: trimOrUndef(v?.make),
           model: trimOrUndef(v?.model),
           vin: trimOrUndef(v?.vin),
@@ -397,14 +449,110 @@ export default function InvoicePreviewPageClient({
       }
 
       if (needLines) {
+        // 1) load lines
         const { data: wol, error: wolErr } = await supabase
           .from("work_order_lines")
-          .select("id, line_no, description, complaint, cause, correction, labor_time")
+          .select(
+            "id, line_no, description, complaint, cause, correction, labor_time",
+          )
           .eq("work_order_id", workOrderId)
           .order("line_no", { ascending: true });
 
-        if (!wolErr && Array.isArray(wol)) {
-          const mapped: Array<RepairLine & { lineId?: string }> = wol.map(
+        if (cancelled) return;
+
+        if (wolErr || !Array.isArray(wol) || wol.length === 0) {
+          setFLines([]);
+        } else {
+          // 2) load parts for this work order
+          // ✅ use real columns: quantity/total_price + optional work_order_line_id
+          const { data: wopRaw } = await supabase
+            .from("work_order_parts")
+            .select(
+              "id, work_order_line_id, part_id, quantity, unit_price, total_price",
+            )
+            .eq("work_order_id", workOrderId);
+
+          const wop = (Array.isArray(wopRaw) ? wopRaw : []) as WorkOrderPartWithLine[];
+
+          // 3) join to parts table for names + part_number
+          const partIds = Array.from(
+            new Set(
+              wop
+                .map((p) => p.part_id)
+                .filter(
+                  (id): id is string =>
+                    typeof id === "string" && id.trim().length > 0,
+                ),
+            ),
+          );
+
+          let partsById = new Map<
+            string,
+            Pick<PartRow, "id" | "name" | "part_number">
+          >();
+
+          if (partIds.length > 0) {
+            const { data: parts } = await supabase
+              .from("parts")
+              .select("id, name, part_number")
+              .in("id", partIds);
+
+            const arr = (Array.isArray(parts) ? parts : []) as Array<
+              Pick<PartRow, "id" | "name" | "part_number">
+            >;
+
+            partsById = new Map(
+              arr
+                .filter(
+                  (p) =>
+                    typeof p.id === "string" &&
+                    p.id.length > 0 &&
+                    typeof p.name === "string",
+                )
+                .map((p) => [p.id, p]),
+            );
+          }
+
+          const perLine = new Map<string, PdfLinePart[]>();
+
+          for (const p of wop) {
+            const lidRaw = p.work_order_line_id;
+            const lid =
+              typeof lidRaw === "string" && lidRaw.trim().length > 0
+                ? lidRaw.trim()
+                : "";
+            if (!lid) continue;
+
+            const qty = Number(p.quantity ?? 1);
+            const unit = safeMoney(p.unit_price);
+            const totalFromRow = safeMoney(p.total_price);
+            const total =
+              totalFromRow > 0
+                ? totalFromRow
+                : Math.max(0, (Number.isFinite(qty) ? qty : 0) * unit);
+
+            const partMeta =
+              typeof p.part_id === "string" ? partsById.get(p.part_id) : undefined;
+
+            const baseName = (partMeta?.name ?? "").trim() || "Part";
+            const pretty =
+              partMeta?.part_number && partMeta.part_number.trim().length > 0
+                ? `${baseName} (${partMeta.part_number.trim()})`
+                : baseName;
+
+            const arr = perLine.get(lid) ?? [];
+            arr.push({
+              qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+              name: pretty,
+              unit_price: Number.isFinite(unit) ? unit : 0,
+              total: Number.isFinite(total) ? total : 0,
+            });
+            perLine.set(lid, arr);
+          }
+
+          const mapped: Array<
+            RepairLine & { lineId?: string; parts?: PdfLinePart[] }
+          > = wol.map(
             (
               l: Pick<
                 WorkOrderLineRow,
@@ -418,18 +566,21 @@ export default function InvoicePreviewPageClient({
               >,
             ) => {
               const complaint = (l.description ?? l.complaint ?? "") || "";
+              const id =
+                typeof l.id === "string" && l.id.length > 0 ? l.id : undefined;
+
               return {
                 complaint,
                 cause: l.cause ?? "",
                 correction: l.correction ?? "",
                 labor_time: parseLaborTimeToNumber(l.labor_time),
-                lineId: l.id,
+                lineId: id,
+                parts: id ? perLine.get(id) ?? [] : [],
               };
             },
           );
+
           setFLines(mapped);
-        } else {
-          setFLines([]);
         }
       }
 
@@ -642,7 +793,9 @@ export default function InvoicePreviewPageClient({
             ) : reviewOk ? (
               <span className="text-[0.7rem] text-emerald-300">Invoice ready</span>
             ) : (
-              <span className="text-[0.7rem] text-amber-300">Missing required info</span>
+              <span className="text-[0.7rem] text-amber-300">
+                Missing required info
+              </span>
             )}
           </div>
 
@@ -690,7 +843,9 @@ export default function InvoicePreviewPageClient({
             </div>
 
             {reviewError ? (
-              <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div>
+              <div className="mt-2 text-[0.75rem] text-red-200">
+                {reviewError}
+              </div>
             ) : null}
 
             <ul className="mt-2 space-y-1 text-[0.8rem] text-neutral-200">
@@ -759,6 +914,7 @@ export default function InvoicePreviewPageClient({
             <div className={reviewOk ? "" : "opacity-60 pointer-events-none"}>
               <WorkOrderInvoiceDownloadButton
                 workOrderId={workOrderId}
+                // ✅ pass rich data so your PDF template can render parts-per-line (if it uses it)
                 lines={effectiveLines}
                 summary={effectiveSummary}
                 vehicleInfo={effectiveVehicleInfo}

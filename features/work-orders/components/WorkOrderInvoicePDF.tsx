@@ -1,7 +1,14 @@
 // features/work-orders/components/WorkOrderInvoicePDF.tsx
 "use client";
 
-import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
+import {
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  Image,
+} from "@react-pdf/renderer";
 import type { RepairLine } from "@ai/lib/parseRepairOutput";
 
 type VehicleInfo = {
@@ -10,7 +17,6 @@ type VehicleInfo = {
   model?: string;
   vin?: string;
 
-  // extra fields (from your vehicles table)
   license_plate?: string;
   unit_number?: string;
   mileage?: string;
@@ -23,7 +29,6 @@ type CustomerInfo = {
   phone?: string;
   email?: string;
 
-  // extra fields (from your customers table)
   business_name?: string;
   street?: string;
   city?: string;
@@ -32,7 +37,6 @@ type CustomerInfo = {
 };
 
 type ShopInfo = {
-  // extra fields (from your shops table)
   name?: string;
   phone_number?: string;
   email?: string;
@@ -40,32 +44,46 @@ type ShopInfo = {
   city?: string;
   province?: string;
   postal_code?: string;
+
+  // ✅ optional (if fetched) so we can show labor as $
+  labor_rate?: number | string;
 };
+
+type Currency = "usd" | "cad";
 
 type Props = {
   workOrderId: string;
   vehicleInfo?: VehicleInfo;
   customerInfo?: CustomerInfo;
-  shopInfo?: ShopInfo; // ✅ added so we can put shop details in invoice header
+  shopInfo?: ShopInfo;
   lines: RepairLine[];
   summary?: string;
   signatureImage?: string;
+
+  // ✅ optional totals/currency (ideal: pass from work_orders row)
+  currency?: Currency;
+  laborTotal?: number;
+  partsTotal?: number;
+  taxTotal?: number;
+  invoiceTotal?: number;
 };
 
-// ✅ NOTE:
-// Do NOT Font.register Helvetica with an undefined src.
-// React-PDF includes Helvetica by default, so we can just use it safely.
+const FOOTER_H = 40;
 
 const styles = StyleSheet.create({
   page: {
     paddingTop: 28,
-    paddingBottom: 28,
     paddingHorizontal: 32,
+
+    // ✅ critical: leave room for fixed footer + PDF viewer UI
+    paddingBottom: 28 + FOOTER_H + 28,
+
     fontSize: 11,
     fontFamily: "Helvetica",
     lineHeight: 1.4,
     color: "#0a0a0a",
   },
+
   header: {
     marginBottom: 14,
     paddingBottom: 10,
@@ -74,7 +92,6 @@ const styles = StyleSheet.create({
     borderBottomStyle: "solid",
   },
 
-  // NEW: header rows for shop details
   headerTop: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
   shopBlock: { flexGrow: 1 },
   shopName: { fontSize: 14, fontWeight: 700, color: "#111" },
@@ -82,9 +99,6 @@ const styles = StyleSheet.create({
   invoiceBlock: { alignItems: "flex-end" },
   invoiceTitle: { fontSize: 18, fontWeight: 700, color: "#111" },
   invoiceMeta: { marginTop: 2, fontSize: 10, color: "#444" },
-
-  title: { fontSize: 18, fontWeight: 700, textAlign: "center" },
-  subtitle: { marginTop: 4, fontSize: 10, textAlign: "center", color: "#444" },
 
   grid2: { flexDirection: "row", gap: 12, marginTop: 10 },
   box: {
@@ -115,6 +129,51 @@ const styles = StyleSheet.create({
   bullet: { fontSize: 10, marginBottom: 2, color: "#111" },
   subText: { fontSize: 9.5, color: "#333" },
 
+  partsWrap: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#ededed",
+    borderTopStyle: "solid",
+  },
+  partsTitle: { fontSize: 9.5, fontWeight: 700, color: "#111", marginBottom: 4 },
+  partsHeader: {
+    flexDirection: "row",
+    gap: 8,
+    paddingBottom: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+    borderBottomStyle: "solid",
+    marginBottom: 3,
+  },
+  partsRow: { flexDirection: "row", gap: 8, marginBottom: 2 },
+  colQty: { width: 32, fontSize: 9.5, color: "#111" },
+  colPart: { flexGrow: 1, fontSize: 9.5, color: "#111" },
+  colMoney: { width: 72, fontSize: 9.5, color: "#111", textAlign: "right" },
+
+  totalsBox: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#e6e6e6",
+    borderStyle: "solid",
+    borderRadius: 6,
+    padding: 10,
+    alignSelf: "flex-end",
+    width: 260,
+  },
+  totalsTitle: { fontSize: 10, fontWeight: 700, marginBottom: 6, color: "#111" },
+  totalsRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2 },
+  totalsLabel: { fontSize: 10, color: "#333" },
+  totalsValue: { fontSize: 10, color: "#111" },
+  totalsDivider: {
+    marginTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#e8e8e8",
+    borderTopStyle: "solid",
+    paddingTop: 6,
+  },
+  totalsGrand: { fontSize: 11, fontWeight: 700, color: "#111" },
+
   signatureWrap: {
     marginTop: 18,
     borderTopWidth: 1,
@@ -138,7 +197,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 32,
     right: 32,
-    bottom: 18,
+    bottom: 14,
     borderTopWidth: 1,
     borderTopColor: "#e8e8e8",
     borderTopStyle: "solid",
@@ -227,6 +286,71 @@ function getRepairLineField(line: RepairLine, key: keyof RepairLineFields): stri
   return s.length ? s : "—";
 }
 
+function parseNum(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function fmtMoney(amount: number, currency: Currency): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    const sign = currency === "cad" ? "CA$" : "$";
+    return `${sign}${amount.toFixed(2)}`;
+  }
+}
+
+type LinePart = { qty: number; name: string; unitPrice: number; total: number };
+
+function extractLineParts(line: RepairLine): LinePart[] {
+  const raw = line as unknown;
+  if (!isRecord(raw)) return [];
+
+  const candidates: unknown[] = [
+    raw["parts"],
+    raw["partLines"],
+    raw["part_lines"],
+    raw["line_parts"],
+    raw["lineParts"],
+  ];
+
+  const arr = candidates.find((x) => Array.isArray(x));
+  if (!Array.isArray(arr)) return [];
+
+  const out: LinePart[] = [];
+  for (const p of arr) {
+    if (!isRecord(p)) continue;
+
+    const qty = parseNum(p["qty"] ?? p["quantity"]) ?? 1;
+    const unit = parseNum(p["unit_price"] ?? p["unitPrice"] ?? p["price"]) ?? 0;
+    const total =
+      parseNum(p["total"] ?? p["line_total"] ?? p["lineTotal"]) ?? unit * qty;
+
+    const name =
+      safeStr(p["name"] ?? p["part_name"] ?? p["description"] ?? p["sku"]).trim();
+
+    if (!name) continue;
+
+    out.push({
+      qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+      name,
+      unitPrice: Number.isFinite(unit) ? unit : 0,
+      total: Number.isFinite(total) ? total : 0,
+    });
+  }
+
+  return out;
+}
+
 export function WorkOrderInvoicePDF({
   workOrderId,
   vehicleInfo,
@@ -235,6 +359,11 @@ export function WorkOrderInvoicePDF({
   lines,
   summary,
   signatureImage,
+  currency = "usd",
+  laborTotal,
+  partsTotal,
+  taxTotal,
+  invoiceTotal,
 }: Props): JSX.Element {
   const customerName = safeStr(customerInfo?.name).trim() || "—";
   const customerPhone = safeStr(customerInfo?.phone).trim() || "—";
@@ -260,11 +389,46 @@ export function WorkOrderInvoicePDF({
 
   const generatedOn = new Date().toLocaleDateString();
 
+  const laborRate = parseNum(shopInfo?.labor_rate) ?? null;
+
+  // best-effort derive totals if not passed
+  let derivedLabor = 0;
+  let derivedParts = 0;
+
+  for (const l of lines ?? []) {
+    const hrs = parseNum((l as unknown as Record<string, unknown>)?.["labor_time"]) ?? 0;
+    if (laborRate !== null) derivedLabor += Math.max(0, hrs) * laborRate;
+
+    const parts = extractLineParts(l);
+    for (const p of parts) derivedParts += p.total;
+  }
+
+  const safeLaborTotal =
+    typeof laborTotal === "number" && Number.isFinite(laborTotal)
+      ? laborTotal
+      : laborRate !== null
+        ? derivedLabor
+        : 0;
+
+  const safePartsTotal =
+    typeof partsTotal === "number" && Number.isFinite(partsTotal)
+      ? partsTotal
+      : derivedParts;
+
+  const safeTaxTotal =
+    typeof taxTotal === "number" && Number.isFinite(taxTotal) ? taxTotal : 0;
+
+  const safeSubtotal = safeLaborTotal + safePartsTotal;
+
+  const safeInvoiceTotal =
+    typeof invoiceTotal === "number" && Number.isFinite(invoiceTotal) && invoiceTotal > 0
+      ? invoiceTotal
+      : safeSubtotal + safeTaxTotal;
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-          {/* ✅ Shop header + invoice meta */}
           <View style={styles.headerTop}>
             <View style={styles.shopBlock}>
               <Text style={styles.shopName}>{shopName}</Text>
@@ -277,7 +441,7 @@ export function WorkOrderInvoicePDF({
             </View>
 
             <View style={styles.invoiceBlock}>
-              <Text style={styles.invoiceTitle}>Invoice</Text>
+              <Text style={styles.invoiceTitle}>INVOICE</Text>
               <Text style={styles.invoiceMeta}>Work Order #{workOrderId}</Text>
               <Text style={styles.invoiceMeta}>Generated {generatedOn}</Text>
             </View>
@@ -362,7 +526,7 @@ export function WorkOrderInvoicePDF({
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Work Performed</Text>
+          <Text style={styles.sectionTitle}>Line Items</Text>
 
           {(lines ?? []).length === 0 ? (
             <Text style={styles.paragraph}>—</Text>
@@ -371,23 +535,102 @@ export function WorkOrderInvoicePDF({
               const complaint = getRepairLineField(line, "complaint");
               const cause = getRepairLineField(line, "cause");
               const correction = getRepairLineField(line, "correction");
-              const laborTime = getRepairLineField(line, "labor_time");
+
+              const hrs = parseNum((line as unknown as Record<string, unknown>)?.["labor_time"]) ?? 0;
+              const lineLabor = laborRate !== null ? Math.max(0, hrs) * laborRate : 0;
+
+              const parts = extractLineParts(line);
+              const linePartsTotal = parts.reduce((a, p) => a + p.total, 0);
 
               return (
                 <View key={`line-${idx}`} style={styles.lineItem}>
-                  <Text style={styles.bullet}>• Complaint: {complaint}</Text>
+                  <Text style={styles.bullet}>#{idx + 1} Complaint: {complaint}</Text>
                   <Text style={styles.subText}>Cause: {cause}</Text>
                   <Text style={styles.subText}>Correction: {correction}</Text>
-                  <Text style={styles.subText}>Labor Time: {laborTime} hrs</Text>
+
+                  {laborRate !== null ? (
+                    <Text style={styles.subText}>
+                      Labor: {fmtMoney(lineLabor, currency)}{" "}
+                      <Text style={{ color: "#666" }}>
+                        ({hrs.toFixed(1)} hrs @ {fmtMoney(laborRate, currency)}/hr)
+                      </Text>
+                    </Text>
+                  ) : (
+                    <Text style={styles.subText}>Labor time: {hrs.toFixed(1)} hrs</Text>
+                  )}
+
+                  {parts.length > 0 ? (
+                    <View style={styles.partsWrap}>
+                      <Text style={styles.partsTitle}>
+                        Parts (Line Total: {fmtMoney(linePartsTotal, currency)})
+                      </Text>
+
+                      <View style={styles.partsHeader}>
+                        <Text style={styles.colQty}>Qty</Text>
+                        <Text style={styles.colPart}>Part</Text>
+                        <Text style={styles.colMoney}>Unit</Text>
+                        <Text style={styles.colMoney}>Total</Text>
+                      </View>
+
+                      {parts.slice(0, 12).map((p, i2) => (
+                        <View key={`p-${idx}-${i2}`} style={styles.partsRow}>
+                          <Text style={styles.colQty}>{String(p.qty)}</Text>
+                          <Text style={styles.colPart}>{p.name}</Text>
+                          <Text style={styles.colMoney}>{fmtMoney(p.unitPrice, currency)}</Text>
+                          <Text style={styles.colMoney}>{fmtMoney(p.total, currency)}</Text>
+                        </View>
+                      ))}
+
+                      {parts.length > 12 ? (
+                        <Text style={{ fontSize: 9, color: "#666", marginTop: 2 }}>
+                          …and {parts.length - 12} more
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
                 </View>
               );
             })
           )}
+
+          <View style={styles.totalsBox}>
+            <Text style={styles.totalsTitle}>Totals</Text>
+
+            <View style={styles.totalsRow}>
+              <Text style={styles.totalsLabel}>Labor</Text>
+              <Text style={styles.totalsValue}>{fmtMoney(safeLaborTotal, currency)}</Text>
+            </View>
+
+            <View style={styles.totalsRow}>
+              <Text style={styles.totalsLabel}>Parts</Text>
+              <Text style={styles.totalsValue}>{fmtMoney(safePartsTotal, currency)}</Text>
+            </View>
+
+            <View style={styles.totalsRow}>
+              <Text style={styles.totalsLabel}>Subtotal</Text>
+              <Text style={styles.totalsValue}>{fmtMoney(safeSubtotal, currency)}</Text>
+            </View>
+
+            {safeTaxTotal > 0 ? (
+              <View style={styles.totalsRow}>
+                <Text style={styles.totalsLabel}>Tax</Text>
+                <Text style={styles.totalsValue}>{fmtMoney(safeTaxTotal, currency)}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.totalsDivider}>
+              <View style={styles.totalsRow}>
+                <Text style={styles.totalsGrand}>Total</Text>
+                <Text style={styles.totalsGrand}>{fmtMoney(safeInvoiceTotal, currency)}</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         {sig ? (
           <View style={styles.signatureWrap}>
             <Text style={styles.signatureLabel}>Customer Signature</Text>
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
             <Image src={sig} style={styles.signatureImage} />
           </View>
         ) : null}
