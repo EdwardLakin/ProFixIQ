@@ -109,9 +109,10 @@ function compactCsv(parts: Array<string | undefined>): string {
 export default async function PortalInvoicePage({
   params,
 }: {
-  params: { id: string };
+  // ✅ IMPORTANT: your Next-generated PageProps expects params as a Promise
+  params: Promise<{ id: string }>;
 }) {
-  const workOrderId = params.id;
+  const { id: workOrderId } = await params;
 
   const cookieStore = cookies();
   const supabase = createServerComponentClient<DB>({
@@ -162,7 +163,8 @@ export default async function PortalInvoicePage({
       .maybeSingle<WorkOrderForPortalInvoice>();
 
     if (woErr) throw woErr;
-    if (!wo) throw new Error("Work order not found or not owned by this customer");
+    if (!wo)
+      throw new Error("Work order not found or not owned by this customer");
     workOrder = wo;
 
     // Load shop (for currency fallback)
@@ -224,7 +226,10 @@ export default async function PortalInvoicePage({
 
     if (lineErr) {
       // eslint-disable-next-line no-console
-      console.warn("[portal invoice] work_order_lines query failed:", lineErr.message);
+      console.warn(
+        "[portal invoice] work_order_lines query failed:",
+        lineErr.message,
+      );
     }
 
     if (Array.isArray(lineRows)) {
@@ -254,7 +259,10 @@ export default async function PortalInvoicePage({
 
     if (wopErr) {
       // eslint-disable-next-line no-console
-      console.warn("[portal invoice] work_order_parts query failed:", wopErr.message);
+      console.warn(
+        "[portal invoice] work_order_parts query failed:",
+        wopErr.message,
+      );
     }
 
     const workOrderParts = Array.isArray(wop) ? wop : [];
@@ -263,7 +271,9 @@ export default async function PortalInvoicePage({
       new Set(
         workOrderParts
           .map((r) => r.part_id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0),
+          .filter(
+            (id): id is string => typeof id === "string" && id.length > 0,
+          ),
       ),
     );
 
@@ -319,7 +329,8 @@ export default async function PortalInvoicePage({
 
   if (!workOrder) redirect("/portal");
 
-  const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
+  const titleLabel =
+    workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
 
   // ✅ Totals: prefer invoice row; otherwise show "—" unless we have real WO totals
   const woInvoiceTotal = safeNumberOrNull(workOrder.invoice_total);
@@ -334,16 +345,24 @@ export default async function PortalInvoicePage({
         : null;
 
   const total =
-    invoice?.total != null ? safeNumberOrNull(invoice.total) : invoiceTotalFallback;
+    invoice?.total != null
+      ? safeNumberOrNull(invoice.total)
+      : invoiceTotalFallback;
 
   const subtotal =
     invoice?.subtotal != null ? safeNumberOrNull(invoice.subtotal) : undefined;
   const laborCost =
-    invoice?.labor_cost != null ? safeNumberOrNull(invoice.labor_cost) : undefined;
+    invoice?.labor_cost != null
+      ? safeNumberOrNull(invoice.labor_cost)
+      : undefined;
   const partsCost =
-    invoice?.parts_cost != null ? safeNumberOrNull(invoice.parts_cost) : undefined;
+    invoice?.parts_cost != null
+      ? safeNumberOrNull(invoice.parts_cost)
+      : undefined;
   const discountTotal =
-    invoice?.discount_total != null ? safeNumberOrNull(invoice.discount_total) : undefined;
+    invoice?.discount_total != null
+      ? safeNumberOrNull(invoice.discount_total)
+      : undefined;
   const taxTotal =
     invoice?.tax_total != null ? safeNumberOrNull(invoice.tax_total) : undefined;
 
@@ -478,13 +497,16 @@ export default async function PortalInvoicePage({
                 Totals
               </div>
               <div className="text-[11px] text-neutral-500">
-                {invoice?.id ? "From invoice record" : "Estimate (work order totals)"}
+                {invoice?.id
+                  ? "From invoice record"
+                  : "Estimate (work order totals)"}
               </div>
             </div>
 
             {!invoice?.id ? (
               <div className="text-xs text-neutral-400">
-                The shop hasn’t finalized an invoice record yet. Some totals may be estimated.
+                The shop hasn’t finalized an invoice record yet. Some totals may
+                be estimated.
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -539,7 +561,10 @@ export default async function PortalInvoicePage({
                   <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                     Total
                   </div>
-                  <div className="mt-1 text-lg font-semibold" style={{ color: COPPER }}>
+                  <div
+                    className="mt-1 text-lg font-semibold"
+                    style={{ color: COPPER }}
+                  >
                     {formatCurrency(total ?? null, currency)}
                   </div>
                 </div>
@@ -583,7 +608,9 @@ export default async function PortalInvoicePage({
                       </div>
                       <div className="text-[11px] text-neutral-500">
                         {line.job_type ?? "—"}
-                        {line.labor_time != null ? ` • ${line.labor_time} hr` : ""}
+                        {line.labor_time != null
+                          ? ` • ${line.labor_time} hr`
+                          : ""}
                       </div>
                     </div>
 
@@ -609,8 +636,8 @@ export default async function PortalInvoicePage({
               </div>
             ) : (
               <div className="text-xs text-neutral-400">
-                Once the shop finalizes the invoice, you&apos;ll see line items for labour and
-                parts here.
+                Once the shop finalizes the invoice, you&apos;ll see line items
+                for labour and parts here.
               </div>
             )}
           </div>
@@ -621,7 +648,9 @@ export default async function PortalInvoicePage({
                 Parts
               </div>
               <div className="text-[11px] text-neutral-500">
-                {parts.length === 0 ? "No parts recorded" : `${parts.length} parts • Qty ${partCount}`}
+                {parts.length === 0
+                  ? "No parts recorded"
+                  : `${parts.length} parts • Qty ${partCount}`}
               </div>
             </div>
 
@@ -640,11 +669,17 @@ export default async function PortalInvoicePage({
                       className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-white/5 bg-black/40 px-3 py-2"
                     >
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-neutral-100">{p.name}</div>
+                        <div className="text-sm font-medium text-neutral-100">
+                          {p.name}
+                        </div>
                         {meta.length ? (
-                          <div className="text-[11px] text-neutral-500">{meta}</div>
+                          <div className="text-[11px] text-neutral-500">
+                            {meta}
+                          </div>
                         ) : null}
-                        <div className="text-[11px] text-neutral-500">Qty: {p.qty}</div>
+                        <div className="text-[11px] text-neutral-500">
+                          Qty: {p.qty}
+                        </div>
                       </div>
 
                       <div className="text-right text-xs text-neutral-300">
