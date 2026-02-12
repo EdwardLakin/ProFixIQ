@@ -1,7 +1,6 @@
-// app/portal/invoices/page.tsx
+// /app/portal/invoices/page.tsx
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -62,6 +61,10 @@ type InvoiceListItem = {
   onlineUrl: string | null;
 };
 
+function errorCardClass() {
+  return "rounded-3xl border border-red-500/35 bg-red-900/20 p-4 text-sm text-red-100 backdrop-blur-md shadow-card";
+}
+
 function safeNumber(v: unknown): number | null {
   if (v == null) return null;
   const n = typeof v === "number" ? v : Number(v);
@@ -119,11 +122,9 @@ export default async function PortalInvoicesIndexPage() {
   });
 
   try {
-    // Auth + portal customer
     const { id: userId } = await requireAuthedUser(supabase);
     const customer = await requirePortalCustomer(supabase, userId);
 
-    // 1) Work orders for this customer (labels + portal markers)
     const { data: woRows, error: woErr } = await supabase
       .from("work_orders")
       .select(
@@ -133,12 +134,11 @@ export default async function PortalInvoicesIndexPage() {
       .order("created_at", { ascending: false })
       .returns<WorkOrderLite[]>();
 
-    if (woErr) throw woErr;
+    if (woErr) throw new Error(woErr.message);
 
     const workOrders = Array.isArray(woRows) ? woRows : [];
     const workOrderIds = workOrders.map((w) => w.id);
 
-    // 2) Invoices for those work orders (latest per WO)
     let invoiceRows: InvoiceLite[] = [];
     if (workOrderIds.length > 0) {
       const { data: invRows, error: invErr } = await supabase
@@ -150,18 +150,9 @@ export default async function PortalInvoicesIndexPage() {
         .order("created_at", { ascending: false })
         .returns<InvoiceLite[]>();
 
-      if (invErr) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          "[portal invoices index] invoices query failed:",
-          invErr.message,
-        );
-      } else {
-        invoiceRows = Array.isArray(invRows) ? invRows : [];
-      }
+      if (!invErr) invoiceRows = Array.isArray(invRows) ? invRows : [];
     }
 
-    // ✅ Narrow away null work_order_id so TS is happy
     const invoiceRowsWithWO = invoiceRows.filter(
       (inv): inv is InvoiceLite & { work_order_id: string } =>
         isNonEmptyString(inv.work_order_id),
@@ -171,14 +162,13 @@ export default async function PortalInvoicesIndexPage() {
       string,
       InvoiceLite & { work_order_id: string }
     >();
+
     for (const inv of invoiceRowsWithWO) {
       if (!latestInvoiceByWO.has(inv.work_order_id)) {
         latestInvoiceByWO.set(inv.work_order_id, inv);
       }
     }
 
-    // 3) Build list items:
-    // show WO if it has invoice row OR it has portal invoice markers on the WO
     const items: InvoiceListItem[] = workOrders
       .map((wo) => {
         const inv = latestInvoiceByWO.get(wo.id) ?? null;
@@ -218,7 +208,6 @@ export default async function PortalInvoicesIndexPage() {
       })
       .filter((x): x is InvoiceListItem => x !== null);
 
-    // Sort: most recently issued/sent/created first
     items.sort((a, b) => {
       const ad = new Date(a.issuedAt ?? a.sentAt ?? 0).getTime();
       const bd = new Date(b.issuedAt ?? b.sentAt ?? 0).getTime();
@@ -227,7 +216,6 @@ export default async function PortalInvoicesIndexPage() {
 
     return (
       <div className="space-y-6 text-white">
-        {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
@@ -249,7 +237,6 @@ export default async function PortalInvoicesIndexPage() {
           </Link>
         </div>
 
-        {/* List */}
         <div className="rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card ring-1 ring-inset ring-white/5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
@@ -273,6 +260,8 @@ export default async function PortalInvoicesIndexPage() {
                 <Link
                   key={it.workOrderId}
                   href={`/portal/invoices/${it.workOrderId}`}
+                  target="_blank"
+                  rel="noreferrer"
                   className="block rounded-2xl border border-white/10 bg-black/35 px-4 py-3 transition hover:bg-black/45 hover:border-white/14"
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -354,8 +343,23 @@ export default async function PortalInvoicesIndexPage() {
       </div>
     );
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[portal invoices index] failed:", err);
-    redirect("/portal");
+    const msg = err instanceof Error ? err.message : "Failed to load invoices";
+    return (
+      <div className="space-y-4 text-white">
+        <div>
+          <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
+            Invoices
+          </h1>
+          <p className="mt-1 text-sm text-neutral-400">
+            View and download invoices for completed work orders.
+          </p>
+        </div>
+
+        <div className={errorCardClass()}>
+          <div className="font-semibold">Couldn’t load invoices.</div>
+          <div className="mt-1 text-xs text-red-100/90">{msg}</div>
+        </div>
+      </div>
+    );
   }
 }

@@ -1,12 +1,43 @@
-//features/portal/server/portalAuth.ts
-
+// /features/portal/server/portalAuth.ts
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 export type DB = Database;
 
 export type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 export type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-export type ShopRow = Pick<DB["public"]["Tables"]["shops"]["Row"], "id" | "slug" | "timezone">;
+export type ShopRow = Pick<
+  DB["public"]["Tables"]["shops"]["Row"],
+  "id" | "slug" | "timezone"
+>;
+
+export type PortalCustomer = Pick<
+  CustomerRow,
+  "id" | "user_id" | "shop_id" | "first_name" | "last_name" | "email" | "phone"
+>;
+
+// ✅ Include EVERYTHING portal pages read from work_orders
+export type PortalWorkOrder = Pick<
+  WorkOrderRow,
+  | "id"
+  | "shop_id"
+  | "customer_id"
+  | "vehicle_id"
+  | "status"
+  | "approval_state"
+  | "is_waiter"
+  | "notes"
+  | "created_at"
+  | "updated_at"
+  | "custom_id"
+  | "invoice_sent_at"
+  | "invoice_last_sent_to"
+  | "invoice_pdf_url"
+  | "invoice_url"
+  | "invoice_total"
+  | "labor_total"
+  | "parts_total"
+>;
 
 export function nonEmpty(s: unknown): s is string {
   return typeof s === "string" && s.trim().length > 0;
@@ -19,7 +50,7 @@ export function asIsoOrThrow(iso: string, label: string): string {
 }
 
 export async function requireAuthedUser(
-  supabase: { auth: { getUser: () => Promise<{ data: { user: { id: string } | null }; error: { message: string } | null }> } },
+  supabase: SupabaseClient<DB>,
 ): Promise<{ id: string }> {
   const {
     data: { user },
@@ -27,71 +58,79 @@ export async function requireAuthedUser(
   } = await supabase.auth.getUser();
 
   if (error || !user) {
-    const msg = error?.message || "Not authenticated";
-    throw new Error(msg);
+    throw new Error(error?.message || "Not authenticated");
   }
 
   return { id: user.id };
 }
 
 export async function requirePortalCustomer(
-  supabase: {
-    from: (t: "customers") => {
-      select: (cols: string) => any;
-    };
-  },
+  supabase: SupabaseClient<DB>,
   userId: string,
-): Promise<CustomerRow> {
-  const { data, error } = await (supabase as any)
+): Promise<PortalCustomer> {
+  const { data, error } = await supabase
     .from("customers")
     .select("id,user_id,shop_id,first_name,last_name,email,phone")
     .eq("user_id", userId)
-    .maybeSingle();
+    .maybeSingle<PortalCustomer>();
 
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Customer profile not found for this user");
 
-  return data as CustomerRow;
+  return data;
 }
 
 export async function requireWorkOrderOwnedByCustomer(
-  supabase: {
-    from: (t: "work_orders") => {
-      select: (cols: string) => any;
-    };
-  },
+  supabase: SupabaseClient<DB>,
   workOrderId: string,
   customerId: string,
-): Promise<WorkOrderRow> {
-  const { data, error } = await (supabase as any)
+): Promise<PortalWorkOrder> {
+  const { data, error } = await supabase
     .from("work_orders")
-    .select("id,shop_id,customer_id,vehicle_id,status,approval_state,is_waiter,notes,created_at,updated_at")
+    .select(
+      [
+        "id",
+        "shop_id",
+        "customer_id",
+        "vehicle_id",
+        "status",
+        "approval_state",
+        "is_waiter",
+        "notes",
+        "created_at",
+        "updated_at",
+        "custom_id",
+        "invoice_sent_at",
+        "invoice_last_sent_to",
+        "invoice_pdf_url",
+        "invoice_url",
+        "invoice_total",
+        "labor_total",
+        "parts_total",
+      ].join(","),
+    )
     .eq("id", workOrderId)
     .eq("customer_id", customerId)
-    .maybeSingle();
+    .maybeSingle<PortalWorkOrder>();
 
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Work order not found or not owned by this customer");
 
-  return data as WorkOrderRow;
+  return data;
 }
 
 export async function requireShopBySlug(
-  supabase: {
-    from: (t: "shops") => {
-      select: (cols: string) => any;
-    };
-  },
+  supabase: SupabaseClient<DB>,
   shopSlug: string,
 ): Promise<ShopRow> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from("shops")
     .select("id,slug,timezone")
     .eq("slug", shopSlug)
-    .maybeSingle();
+    .maybeSingle<ShopRow>();
 
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Shop not found");
 
-  return data as ShopRow;
+  return data;
 }
