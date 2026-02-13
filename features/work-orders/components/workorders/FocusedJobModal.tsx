@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
@@ -81,6 +82,10 @@ type WorkflowStatus =
   | "assigned"
   | "unassigned";
 
+function safeTrim(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
 export default function FocusedJobModal(props: {
   isOpen: boolean;
   onClose: () => void;
@@ -89,6 +94,10 @@ export default function FocusedJobModal(props: {
   mode?: Mode;
 }) {
   const { isOpen, onClose, workOrderLineId, onChanged, mode = "tech" } = props;
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const lastSetShopId = useRef<string | null>(null);
@@ -157,8 +166,74 @@ export default function FocusedJobModal(props: {
     setOpenVehicleHistory(false);
   };
 
+  // ---------- URL helpers for vehicle-history reopen ----------
+
+  const buildUrlWithVehicleHistory = useCallback(
+    (vehicleId: string, shopId: string | null) => {
+      const sp = new URLSearchParams(searchParams.toString());
+      sp.set("vh", "1");
+      sp.set("vh_vehicle", vehicleId);
+      if (shopId && safeTrim(shopId)) sp.set("vh_shop", shopId);
+      else sp.delete("vh_shop");
+
+      const qs = sp.toString();
+      return qs ? `${pathname}?${qs}` : pathname;
+    },
+    [pathname, searchParams],
+  );
+
+  const clearVehicleHistoryFromUrl = useCallback(() => {
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.delete("vh");
+    sp.delete("vh_vehicle");
+    sp.delete("vh_shop");
+    const qs = sp.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const syncVehicleHistoryOpenToUrl = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        clearVehicleHistoryFromUrl();
+        return;
+      }
+
+      const vid = safeTrim(vehicle?.id);
+      if (!vid) return;
+
+      const sid = (workOrder?.shop_id as string | null) ?? null;
+      const url = buildUrlWithVehicleHistory(vid, sid);
+      router.replace(url, { scroll: false });
+    },
+    [buildUrlWithVehicleHistory, clearVehicleHistoryFromUrl, router, vehicle?.id, workOrder?.shop_id],
+  );
+
+  // If modal opens and URL already says vh=1, auto-open VehicleHistoryModal.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const vh = safeTrim(searchParams.get("vh"));
+    const urlVid = safeTrim(searchParams.get("vh_vehicle"));
+    if (vh !== "1" || !urlVid) return;
+
+    // Only auto-open if it matches the current job's vehicle.
+    const currentVid = safeTrim(vehicle?.id);
+    if (!currentVid) return;
+    if (currentVid !== urlVid) return;
+
+    setOpenVehicleHistory(true);
+  }, [isOpen, searchParams, vehicle?.id]);
+
+  // Keep URL in sync when user opens/closes VehicleHistoryModal inside FocusedJobModal.
+  useEffect(() => {
+    if (!isOpen) return;
+    syncVehicleHistoryOpenToUrl(openVehicleHistory);
+  }, [isOpen, openVehicleHistory, syncVehicleHistoryOpenToUrl]);
+
+  // When FocusedJobModal closes, strip vh params so you don't reopen later unexpectedly.
   useEffect(() => {
     if (!isOpen) {
+      clearVehicleHistoryFromUrl();
       closeAllSubModals();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -432,7 +507,6 @@ export default function FocusedJobModal(props: {
   const uploadPhoto = async (file: File) => {
     if (!workOrderLineId || !workOrder?.id) return;
 
-    // (Optional) scope for storage-related RLS setups
     try {
       await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
     } catch (e) {
@@ -743,7 +817,7 @@ export default function FocusedJobModal(props: {
                         AI Assist
                       </button>
 
-                      {/* ✅ NEW: Vehicle History */}
+                      {/* ✅ Vehicle History (URL-synced) */}
                       <button
                         type="button"
                         className={btnNeutral}
@@ -752,14 +826,6 @@ export default function FocusedJobModal(props: {
                             toast.error("No vehicle linked to this work order yet.");
                             return;
                           }
-                          // Keep other submodals closed so user focus stays here
-                          setOpenComplete(false);
-                          setOpenParts(false);
-                          setOpenHold(false);
-                          setOpenPhoto(false);
-                          setOpenChat(false);
-                          setOpenAddJob(false);
-                          setOpenAi(false);
                           setOpenVehicleHistory(true);
                         }}
                         disabled={busy || !vehicle?.id}
@@ -801,7 +867,7 @@ export default function FocusedJobModal(props: {
                         DTC Assist (AI)
                       </button>
 
-                      {/* ✅ NEW: Vehicle History (view mode too) */}
+                      {/* ✅ Vehicle History (URL-synced) */}
                       <button
                         type="button"
                         className={btnNeutral}
@@ -930,7 +996,6 @@ export default function FocusedJobModal(props: {
           initialCause={prefillCause}
           initialCorrection={prefillCorrection}
           onSubmit={async (cause: string, correction: string) => {
-            // ✅ IMPORTANT: throw on error so modal shows error + stays open
             await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
 
             const nowIso = new Date().toISOString();
@@ -942,7 +1007,6 @@ export default function FocusedJobModal(props: {
               status: "completed",
             };
 
-            // If never started, some schemas require a start timestamp before completion.
             if (!line.punched_in_at) update.punched_in_at = nowIso;
 
             const { error } = await supabase
@@ -1043,7 +1107,10 @@ export default function FocusedJobModal(props: {
           onClose={() => setOpenAddJob(false)}
           workOrderId={workOrder.id}
           vehicleId={vehicle?.id ?? null}
-          techId={(line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ?? "system"}
+          techId={
+            (line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ??
+            "system"
+          }
           shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {
             await refresh();

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Dialog } from "@headlessui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
+import { usePathname, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -12,7 +13,10 @@ type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
-type Row = Pick<WorkOrder, "id" | "custom_id" | "status" | "updated_at" | "created_at" | "customer_id" | "shop_id"> & {
+type Row = Pick<
+  WorkOrder,
+  "id" | "custom_id" | "status" | "updated_at" | "created_at" | "customer_id" | "shop_id"
+> & {
   customers?: Pick<Customer, "first_name" | "last_name" | "email" | "phone"> | null;
 };
 
@@ -24,10 +28,14 @@ function fmtCustomerName(c: Row["customers"]): string {
 
 function chipClass(status: string | null | undefined): string {
   const s = (status ?? "").toLowerCase();
-  if (s.includes("paid") || s.includes("completed")) return "border-emerald-400/60 bg-emerald-500/10 text-emerald-200";
-  if (s.includes("invoice")) return "border-orange-400/60 bg-orange-500/10 text-orange-200";
-  if (s.includes("approval")) return "border-blue-400/60 bg-blue-500/10 text-blue-200";
-  if (s.includes("hold")) return "border-amber-400/60 bg-amber-500/10 text-amber-200";
+  if (s.includes("paid") || s.includes("completed"))
+    return "border-emerald-400/60 bg-emerald-500/10 text-emerald-200";
+  if (s.includes("invoice"))
+    return "border-orange-400/60 bg-orange-500/10 text-orange-200";
+  if (s.includes("approval"))
+    return "border-blue-400/60 bg-blue-500/10 text-blue-200";
+  if (s.includes("hold"))
+    return "border-amber-400/60 bg-amber-500/10 text-amber-200";
   return "border-white/15 bg-white/5 text-neutral-200";
 }
 
@@ -39,6 +47,9 @@ export default function VehicleHistoryModal(props: {
 }): JSX.Element {
   const { isOpen, onClose, vehicleId, shopId } = props;
 
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const lastSetShopId = useRef<string | null>(null);
 
@@ -47,17 +58,35 @@ export default function VehicleHistoryModal(props: {
   const [rows, setRows] = useState<Row[]>([]);
   const [q, setQ] = useState("");
 
-  const ensureShopContext = useCallback(async (id: string | null) => {
-    if (!id) return;
-    if (lastSetShopId.current === id) return;
+  const ensureShopContext = useCallback(
+    async (id: string | null) => {
+      if (!id) return;
+      if (lastSetShopId.current === id) return;
 
-    const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: id });
-    if (error) {
-      lastSetShopId.current = null;
-      throw error;
-    }
-    lastSetShopId.current = id;
-  }, [supabase]);
+      const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: id });
+      if (error) {
+        lastSetShopId.current = null;
+        throw error;
+      }
+      lastSetShopId.current = id;
+    },
+    [supabase],
+  );
+
+  const buildReturnUrl = useCallback((): string => {
+    // Clone current query params
+    const sp = new URLSearchParams(searchParams.toString());
+
+    // Encode "vehicle history modal is open" into the URL.
+    // You can later wire your parent to open the modal when vh=1.
+    sp.set("vh", "1");
+    sp.set("vh_vehicle", vehicleId);
+
+    if (shopId) sp.set("vh_shop", shopId);
+
+    const qs = sp.toString();
+    return qs ? `${pathname}?${qs}` : pathname;
+  }, [pathname, searchParams, vehicleId, shopId]);
 
   const load = useCallback(async () => {
     if (!vehicleId) return;
@@ -66,12 +95,10 @@ export default function VehicleHistoryModal(props: {
     setErr(null);
 
     try {
-      // scope shop context if provided (aligns with your staff write/read patterns)
       if (shopId) {
         try {
           await ensureShopContext(shopId);
         } catch (e) {
-          // don't hard-fail the modal if this RPC fails; RLS may still allow reads
           // eslint-disable-next-line no-console
           console.warn("[VehicleHistoryModal] set_current_shop_id failed:", e);
         }
@@ -79,7 +106,9 @@ export default function VehicleHistoryModal(props: {
 
       let query = supabase
         .from("work_orders")
-        .select("id, custom_id, status, updated_at, created_at, customer_id, shop_id, customers:customers(first_name,last_name,email,phone)")
+        .select(
+          "id, custom_id, status, updated_at, created_at, customer_id, shop_id, customers:customers(first_name,last_name,email,phone)",
+        )
         .eq("vehicle_id", vehicleId)
         .order("updated_at", { ascending: false })
         .limit(50);
@@ -126,6 +155,8 @@ export default function VehicleHistoryModal(props: {
     if (!isOpen) return;
     void load();
   }, [isOpen, load]);
+
+  const returnUrl = buildReturnUrl();
 
   return (
     <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-[120] flex items-center justify-center">
@@ -206,11 +237,13 @@ export default function VehicleHistoryModal(props: {
                   const updatedIso = r.updated_at ?? r.created_at ?? null;
                   const updated = updatedIso ? format(new Date(updatedIso), "PP") : "—";
 
+                  const href = `/work-orders/view/${r.id}?return=${encodeURIComponent(returnUrl)}`;
+
                   return (
                     <li key={r.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
                       <div className="col-span-4 min-w-0">
                         <Link
-                          href={`/work-orders/view/${r.id}`}
+                          href={href}
                           className="truncate font-mono text-orange-300 underline decoration-transparent underline-offset-2 hover:decoration-orange-400"
                         >
                           {label}
@@ -228,14 +261,17 @@ export default function VehicleHistoryModal(props: {
                       </div>
 
                       <div className="col-span-2">
-                        <span className={"inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] " + chipClass(r.status)}>
+                        <span
+                          className={
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] " +
+                            chipClass(r.status)
+                          }
+                        >
                           {String(r.status ?? "—").replaceAll("_", " ")}
                         </span>
                       </div>
 
-                      <div className="col-span-2 text-right text-[11px] text-neutral-400">
-                        {updated}
-                      </div>
+                      <div className="col-span-2 text-right text-[11px] text-neutral-400">{updated}</div>
                     </li>
                   );
                 })}
@@ -244,7 +280,9 @@ export default function VehicleHistoryModal(props: {
           )}
 
           <div className="mt-3 text-[11px] text-neutral-500">
-            Tip: this modal links to the new staff read-only route: <span className="font-mono text-neutral-300">/work-orders/view/[id]</span>
+            This list links to:{" "}
+            <span className="font-mono text-neutral-300">/work-orders/view/[id]</span>{" "}
+            with a <span className="font-mono text-neutral-300">return=</span> that can reopen this modal.
           </div>
         </div>
       </div>
