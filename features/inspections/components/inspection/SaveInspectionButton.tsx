@@ -1,5 +1,3 @@
-//features/inspections/components/inspection/SaveInspectionButton.tsx
-
 "use client";
 
 import { toast } from "sonner";
@@ -12,18 +10,32 @@ type Props = {
   workOrderLineId: string;
 };
 
-export function SaveInspectionButton({ session, workOrderLineId }: Props) {
-  const handleSave = async () => {
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const rec = err as Record<string, unknown>;
+    const msg = rec.message;
+    if (typeof msg === "string") return msg;
+  }
+  return "Failed to save inspection.";
+}
+
+export function SaveInspectionButton({
+  session,
+  workOrderLineId,
+}: Props): JSX.Element {
+  const handleSave = async (): Promise<void> => {
     try {
       if (!workOrderLineId) {
         throw new Error("Missing workOrderLineId");
       }
       await saveInspectionSession(session, workOrderLineId);
       toast.success("Inspection saved.");
-    } catch (error: any) {
+    } catch (err: unknown) {
       // eslint-disable-next-line no-console
-      console.error("Save error:", error);
-      toast.error(error?.message || "Failed to save inspection.");
+      console.error("Save error:", err);
+      toast.error(errorMessage(err));
     }
   };
 

@@ -1,13 +1,15 @@
-//features/inspections/components/inspection/FinishInspectionButton.tsx
-
 "use client";
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/Button";
+import type {
+  InspectionSession,
+  InspectionSection,
+} from "@inspections/lib/inspection/types";
 
 type Props = {
-  session: any;
+  session: InspectionSession;
   workOrderLineId?: string | null;
 };
 
@@ -22,78 +24,101 @@ function isBadStatus(s: unknown): s is "fail" | "recommend" {
   return v === "fail" || v === "recommend";
 }
 
-function summarizeFromSections(session: any): {
+type MinimalItem = {
+  status?: unknown;
+  item?: unknown;
+  name?: unknown;
+  notes?: unknown;
+};
+
+function summarizeFromSections(session: InspectionSession): {
   failed: string[];
   recommended: string[];
 } {
-  const sections: any[] = Array.isArray(session?.sections) ? session.sections : [];
+  const sections: InspectionSection[] = Array.isArray(session.sections)
+    ? session.sections
+    : [];
+
   const failed: string[] = [];
   const recommended: string[] = [];
 
   for (const sec of sections) {
     const secTitle = cleanText(sec?.title);
-    const items: any[] = Array.isArray(sec?.items) ? sec.items : [];
+    const items: unknown[] = Array.isArray(sec?.items) ? sec.items : [];
 
-    for (const it of items) {
-      if (!isBadStatus(it?.status)) continue;
+    for (const raw of items) {
+      const it = (raw ?? {}) as MinimalItem;
+      if (!isBadStatus(it.status)) continue;
 
-      const label = cleanText(it?.item || it?.name || "Item");
-      const note = cleanText(it?.notes);
-      const line = note
-        ? `${secTitle ? `${secTitle}: ` : ""}${label} — ${note}`
-        : `${secTitle ? `${secTitle}: ` : ""}${label}`;
+      const label = cleanText(it.item ?? it.name ?? "Item");
+      const note = cleanText(it.notes);
+      const prefix = secTitle ? `${secTitle}: ` : "";
+      const line = note ? `${prefix}${label} — ${note}` : `${prefix}${label}`;
 
-      if (it.status === "fail") failed.push(line);
-      if (it.status === "recommend") recommended.push(line);
+      if (String(it.status).toLowerCase() === "fail") failed.push(line);
+      if (String(it.status).toLowerCase() === "recommend") recommended.push(line);
     }
   }
 
   return { failed, recommended };
 }
 
-function summarizeFromQuote(session: any): { failed: string[]; recommended: string[] } {
-  const raw = session?.quote;
-  const items: any[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
+type MinimalQuoteItem = {
+  status?: unknown;
+  description?: unknown;
+  item?: unknown;
+  name?: unknown;
+  notes?: unknown;
+};
+
+function summarizeFromQuote(session: InspectionSession): {
+  failed: string[];
+  recommended: string[];
+} {
+  const raw = (session as unknown as { quote?: unknown }).quote;
+  const items: unknown[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
+
   const failed: string[] = [];
   const recommended: string[] = [];
 
-  for (const q of items) {
-    if (!isBadStatus(q?.status)) continue;
+  for (const qRaw of items) {
+    const q = (qRaw ?? {}) as MinimalQuoteItem;
+    if (!isBadStatus(q.status)) continue;
 
-    const label = cleanText(q?.description || q?.item || q?.name || "Item");
-    const note = cleanText(q?.notes);
+    const label = cleanText(q.description ?? q.item ?? q.name ?? "Item");
+    const note = cleanText(q.notes);
     const line = note ? `${label} — ${note}` : label;
 
-    if (q.status === "fail") failed.push(line);
-    if (q.status === "recommend") recommended.push(line);
+    if (String(q.status).toLowerCase() === "fail") failed.push(line);
+    if (String(q.status).toLowerCase() === "recommend") recommended.push(line);
   }
 
   return { failed, recommended };
 }
 
-function buildCauseCorrection(session: any): Corr {
-  // 1) Prefer true inspection data (sections/items)
+function buildCauseCorrection(session: InspectionSession): Corr {
   const fromSections = summarizeFromSections(session);
   const hasSectionsData =
     fromSections.failed.length > 0 || fromSections.recommended.length > 0;
 
-  // 2) Fallback to quote lines if needed
   const fromQuote = hasSectionsData
     ? { failed: [], recommended: [] }
     : summarizeFromQuote(session);
 
   const failed = hasSectionsData ? fromSections.failed : fromQuote.failed;
-  const recommended = hasSectionsData ? fromSections.recommended : fromQuote.recommended;
+  const recommended = hasSectionsData
+    ? fromSections.recommended
+    : fromQuote.recommended;
 
   if (failed.length === 0 && recommended.length === 0) {
     return {
       cause: "Inspection completed.",
-      correction: "Inspection completed. No failed or recommended items were recorded.",
+      correction:
+        "Inspection completed. No failed or recommended items were recorded.",
     };
   }
 
-  // Keep it readable in WO line fields (don’t dump a novel)
-  const limit = 8; // tweak as desired
+  const limit = 8;
   const parts: string[] = [];
 
   if (failed.length) {
@@ -104,7 +129,8 @@ function buildCauseCorrection(session: any): Corr {
 
   if (recommended.length) {
     const slice = recommended.slice(0, limit);
-    const more = recommended.length > limit ? ` (+${recommended.length - limit} more)` : "";
+    const more =
+      recommended.length > limit ? ` (+${recommended.length - limit} more)` : "";
     parts.push(`Recommended: ${slice.join("; ")}${more}.`);
   }
 
@@ -114,12 +140,26 @@ function buildCauseCorrection(session: any): Corr {
   };
 }
 
-export default function FinishInspectionButton({ session, workOrderLineId }: Props) {
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const rec = err as Record<string, unknown>;
+    const msg = rec.error ?? rec.message;
+    if (typeof msg === "string") return msg;
+  }
+  return "Unable to finish inspection";
+}
+
+export default function FinishInspectionButton({
+  session,
+  workOrderLineId,
+}: Props): JSX.Element {
   const [busy, setBusy] = useState(false);
 
   const payload = useMemo(() => buildCauseCorrection(session), [session]);
 
-  const handleFinish = async () => {
+  const handleFinish = async (): Promise<void> => {
     if (!workOrderLineId) {
       toast.error("Missing work order line id — can’t finish.");
       return;
@@ -134,16 +174,26 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "Failed to finish inspection");
+      const json: unknown = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg =
+          json && typeof json === "object"
+            ? (json as Record<string, unknown>).error ??
+              (json as Record<string, unknown>).message
+            : null;
+        throw new Error(typeof msg === "string" ? msg : "Failed to finish inspection");
+      }
 
       // ✅ clear local draft so it doesn’t resurrect on refresh
+      // NOTE: your screen uses `draftKey`, not `inspection-${id}`. This only clears legacy key.
       try {
-        const inspectionId = String(session?.id || "");
+        const inspectionId = String(session.id ?? "");
         if (inspectionId && typeof window !== "undefined") {
           localStorage.removeItem(`inspection-${inspectionId}`);
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(
@@ -158,8 +208,8 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
       }
 
       toast.success("Inspection finished.");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Unable to finish inspection");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     } finally {
       setBusy(false);
     }
