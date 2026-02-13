@@ -373,7 +373,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
-                        href={`/work-orders/${r.id}`}
+                        href={`/work-orders/view/${r.id}`}
                         className="font-mono text-sm text-orange-300 underline decoration-transparent underline-offset-2 hover:decoration-orange-400"
                       >
                         {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
