@@ -3132,6 +3132,7 @@ export type Database = {
           user_id: string | null
           vehicle_id: string | null
           work_order_id: string | null
+          work_order_line_id: string | null
         }
         Insert: {
           ai_summary?: string | null
@@ -3158,6 +3159,7 @@ export type Database = {
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null
+          work_order_line_id?: string | null
         }
         Update: {
           ai_summary?: string | null
@@ -3184,6 +3186,7 @@ export type Database = {
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null
+          work_order_line_id?: string | null
         }
         Relationships: [
           {
@@ -3222,17 +3225,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "inspections_work_order_id_fkey"
-            columns: ["work_order_id"]
+            foreignKeyName: "inspections_work_order_line_fk"
+            columns: ["work_order_line_id"]
             isOneToOne: false
-            referencedRelation: "v_portal_invoices"
-            referencedColumns: ["work_order_id"]
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "inspections_work_order_id_fkey"
-            columns: ["work_order_id"]
+            foreignKeyName: "inspections_work_order_line_fk"
+            columns: ["work_order_line_id"]
             isOneToOne: false
-            referencedRelation: "work_orders"
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_line_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
         ]
@@ -4105,24 +4115,53 @@ export type Database = {
       }
       organizations: {
         Row: {
+          billing_email: string | null
+          billing_status: string | null
           created_at: string
           created_by: string | null
+          default_currency: string | null
           id: string
+          metadata: Json | null
           name: string
+          owner_profile_id: string | null
+          slug: string | null
+          stripe_customer_id: string | null
         }
         Insert: {
+          billing_email?: string | null
+          billing_status?: string | null
           created_at?: string
           created_by?: string | null
+          default_currency?: string | null
           id?: string
+          metadata?: Json | null
           name: string
+          owner_profile_id?: string | null
+          slug?: string | null
+          stripe_customer_id?: string | null
         }
         Update: {
+          billing_email?: string | null
+          billing_status?: string | null
           created_at?: string
           created_by?: string | null
+          default_currency?: string | null
           id?: string
+          metadata?: Json | null
           name?: string
+          owner_profile_id?: string | null
+          slug?: string | null
+          stripe_customer_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_owner_profile_fk"
+            columns: ["owner_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       part_barcodes: {
         Row: {
@@ -6314,6 +6353,59 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_shop_boost_overview"
             referencedColumns: ["intake_id"]
+          },
+        ]
+      }
+      shop_members: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          role: string
+          shop_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          role: string
+          shop_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          role?: string
+          shop_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_members_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_members_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_members_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -10861,7 +10953,8 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_agent_developer: { Args: never; Returns: boolean }
       is_customer: { Args: { _customer: string }; Returns: boolean }
-      is_shop_member: { Args: { p_shop: string }; Returns: boolean }
+      is_shop_member: { Args: { shop_id: string }; Returns: boolean }
+      is_shop_member_v2: { Args: { shop_id: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
       mark_active: { Args: never; Returns: undefined }
       maybe_release_line_hold_for_parts: {
@@ -10940,6 +11033,8 @@ export type Database = {
         Returns: undefined
       }
       shop_id_for: { Args: { uid: string }; Returns: string }
+      shop_role: { Args: { shop_id: string }; Returns: string }
+      shop_role_v2: { Args: { shop_id: string }; Returns: string }
       shop_staff_user_count: { Args: { p_shop_id: string }; Returns: number }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
