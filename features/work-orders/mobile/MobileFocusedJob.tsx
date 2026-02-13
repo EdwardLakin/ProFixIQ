@@ -18,6 +18,8 @@ import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 
+import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
+
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -49,11 +51,9 @@ const btnWarn =
   btnBase +
   " border-amber-400/80 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
 const btnDanger =
-  btnBase +
-  " border-red-500/80 bg-red-500/10 text-red-100 hover:bg-red-500/20";
+  btnBase + " border-red-500/80 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnInfo =
-  btnBase +
-  " border-sky-500/80 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
+  btnBase + " border-sky-500/80 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
 const btnAccent =
   btnBase +
   " border-[var(--accent-copper-light)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]";
@@ -128,6 +128,9 @@ export default function MobileFocusedJob(props: {
   const [openAddJob, setOpenAddJob] = useState(false);
   const [openAi, setOpenAi] = useState(false);
 
+  // ✅ vehicle history modal
+  const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
+
   // prefill
   const [prefillCause, setPrefillCause] = useState("");
   const [prefillCorrection, setPrefillCorrection] = useState("");
@@ -138,6 +141,7 @@ export default function MobileFocusedJob(props: {
 
   const showErr = (prefix: string, err?: { message?: string } | null) => {
     toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
+    // eslint-disable-next-line no-console
     console.error(prefix, err);
   };
 
@@ -149,6 +153,7 @@ export default function MobileFocusedJob(props: {
     setOpenChat(false);
     setOpenAddJob(false);
     setOpenAi(false);
+    setOpenVehicleHistory(false);
   };
 
   const loadVehicle = useCallback(
@@ -242,6 +247,7 @@ export default function MobileFocusedJob(props: {
       if (error) throw error;
       setAllocs((data as AllocationRow[]) ?? []);
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.warn("[MobileFocusedJob] load allocations failed", e);
     } finally {
       setAllocsLoading(false);
@@ -790,6 +796,22 @@ export default function MobileFocusedJob(props: {
                       >
                         AI Assist
                       </button>
+
+                      {/* ✅ NEW: Vehicle History */}
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          if (!vehicle?.id) {
+                            toast.error("No vehicle linked to this work order yet.");
+                            return;
+                          }
+                          setOpenVehicleHistory(true);
+                        }}
+                        disabled={busy || !vehicle?.id}
+                      >
+                        Vehicle History
+                      </button>
                     </>
                   ) : (
                     <>
@@ -812,6 +834,22 @@ export default function MobileFocusedJob(props: {
                         }}
                       >
                         AI Assist
+                      </button>
+
+                      {/* ✅ NEW: Vehicle History */}
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          if (!vehicle?.id) {
+                            toast.error("No vehicle linked to this work order yet.");
+                            return;
+                          }
+                          setOpenVehicleHistory(true);
+                        }}
+                        disabled={busy || !vehicle?.id}
+                      >
+                        Vehicle History
                       </button>
                     </>
                   )}
@@ -921,6 +959,16 @@ export default function MobileFocusedJob(props: {
           </div>
         </main>
       </div>
+
+      {/* ✅ Vehicle history modal */}
+      {openVehicleHistory && vehicle?.id ? (
+        <VehicleHistoryModal
+          isOpen={openVehicleHistory}
+          onClose={() => setOpenVehicleHistory(false)}
+          vehicleId={vehicle.id}
+          shopId={(workOrder?.shop_id as string | null) ?? null}
+        />
+      ) : null}
 
       {/* sub-modals */}
       {openComplete && line && (

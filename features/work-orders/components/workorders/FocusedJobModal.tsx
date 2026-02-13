@@ -20,6 +20,7 @@ import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
+import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -111,6 +112,9 @@ export default function FocusedJobModal(props: {
   const [openAi, setOpenAi] = useState(false);
   const [_openDtc, setOpenDtc] = useState(false);
 
+  // ✅ vehicle history modal
+  const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
+
   // prefill
   const [prefillCause, setPrefillCause] = useState("");
   const [prefillCorrection, setPrefillCorrection] = useState("");
@@ -121,6 +125,7 @@ export default function FocusedJobModal(props: {
 
   const showErr = (prefix: string, err?: { message?: string } | null) => {
     toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
+    // eslint-disable-next-line no-console
     console.error(prefix, err);
   };
 
@@ -149,12 +154,14 @@ export default function FocusedJobModal(props: {
     setOpenAddJob(false);
     setOpenAi(false);
     // setOpenDtc(false);
+    setOpenVehicleHistory(false);
   };
 
   useEffect(() => {
     if (!isOpen) {
       closeAllSubModals();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // initial load
@@ -189,6 +196,7 @@ export default function FocusedJobModal(props: {
             try {
               await ensureShopContext(sid);
             } catch (e) {
+              // eslint-disable-next-line no-console
               console.warn("[FocusedJob] set_current_shop_id failed:", e);
             }
           }
@@ -264,6 +272,7 @@ export default function FocusedJobModal(props: {
       if (error) throw error;
       setAllocs((data as AllocationRow[]) ?? []);
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.warn("[FocusedJob] load allocations failed", e);
     } finally {
       setAllocsLoading(false);
@@ -733,6 +742,30 @@ export default function FocusedJobModal(props: {
                       >
                         AI Assist
                       </button>
+
+                      {/* ✅ NEW: Vehicle History */}
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          if (!vehicle?.id) {
+                            toast.error("No vehicle linked to this work order yet.");
+                            return;
+                          }
+                          // Keep other submodals closed so user focus stays here
+                          setOpenComplete(false);
+                          setOpenParts(false);
+                          setOpenHold(false);
+                          setOpenPhoto(false);
+                          setOpenChat(false);
+                          setOpenAddJob(false);
+                          setOpenAi(false);
+                          setOpenVehicleHistory(true);
+                        }}
+                        disabled={busy || !vehicle?.id}
+                      >
+                        Vehicle History
+                      </button>
                     </>
                   ) : (
                     <>
@@ -766,6 +799,22 @@ export default function FocusedJobModal(props: {
                         disabled={busy}
                       >
                         DTC Assist (AI)
+                      </button>
+
+                      {/* ✅ NEW: Vehicle History (view mode too) */}
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          if (!vehicle?.id) {
+                            toast.error("No vehicle linked to this work order yet.");
+                            return;
+                          }
+                          setOpenVehicleHistory(true);
+                        }}
+                        disabled={busy || !vehicle?.id}
+                      >
+                        Vehicle History
                       </button>
                     </>
                   )}
@@ -861,6 +910,16 @@ export default function FocusedJobModal(props: {
           </div>
         </div>
       </Dialog>
+
+      {/* ✅ Vehicle history modal */}
+      {openVehicleHistory && vehicle?.id ? (
+        <VehicleHistoryModal
+          isOpen={openVehicleHistory}
+          onClose={() => setOpenVehicleHistory(false)}
+          vehicleId={vehicle.id}
+          shopId={(workOrder?.shop_id as string | null) ?? null}
+        />
+      ) : null}
 
       {/* sub-modals */}
       {openComplete && line && (
