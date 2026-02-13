@@ -21,7 +21,6 @@ export const dynamic = "force-dynamic";
 type DB = Database;
 
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
@@ -84,7 +83,10 @@ type ShopLite = Pick<
   | "country"
 >;
 
-type PartLookupRow = Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit">;
+type PartLookupRow = Pick<
+  PartRow,
+  "id" | "name" | "sku" | "part_number" | "unit"
+>;
 
 function normalizeCurrencyFromCountry(country: unknown): "CAD" | "USD" {
   const c = String(country ?? "").trim().toUpperCase();
@@ -101,14 +103,18 @@ function dollarsToCents(n: number | null): number {
   return Math.max(0, Math.round(n * 100));
 }
 
-function pickCustomerPhone(c?: Pick<CustomerLite, "phone" | "phone_number"> | null): string | null {
+function pickCustomerPhone(
+  c?: Pick<CustomerLite, "phone" | "phone_number"> | null,
+): string | null {
   const p1 = (c?.phone_number ?? "").trim();
   const p2 = (c?.phone ?? "").trim();
   const out = p1 || p2;
   return out.length ? out : null;
 }
 
-function pickShopName(s?: Pick<ShopLite, "business_name" | "shop_name" | "name"> | null): string | null {
+function pickShopName(
+  s?: Pick<ShopLite, "business_name" | "shop_name" | "name"> | null,
+): string | null {
   const a = (s?.business_name ?? "").trim();
   const b = (s?.shop_name ?? "").trim();
   const c = (s?.name ?? "").trim();
@@ -119,17 +125,23 @@ function pickShopName(s?: Pick<ShopLite, "business_name" | "shop_name" | "name">
 export default async function PortalWorkOrderViewerPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }) {
-  const { id: workOrderId } = await params;
+  const workOrderId = params.id;
 
   const cookieStore = cookies();
-  const supabase = createServerComponentClient<DB>({ cookies: () => cookieStore });
+  const supabase = createServerComponentClient<DB>({
+    cookies: () => cookieStore,
+  });
 
   try {
     const { id: userId } = await requireAuthedUser(supabase);
-    const customer = await requirePortalCustomer(supabase, userId);
-    await requireWorkOrderOwnedByCustomer(supabase, workOrderId, customer.id);
+    const portalCustomer = await requirePortalCustomer(supabase, userId);
+    await requireWorkOrderOwnedByCustomer(
+      supabase,
+      workOrderId,
+      portalCustomer.id,
+    );
 
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
@@ -137,7 +149,7 @@ export default async function PortalWorkOrderViewerPage({
         "id, custom_id, status, created_at, updated_at, invoice_total, labor_total, parts_total, shop_id, customer_id, vehicle_id, invoice_pdf_url",
       )
       .eq("id", workOrderId)
-      .eq("customer_id", customer.id)
+      .eq("customer_id", portalCustomer.id)
       .maybeSingle<WorkOrderLite>();
 
     if (woErr) throw woErr;
@@ -148,7 +160,9 @@ export default async function PortalWorkOrderViewerPage({
     if (wo.shop_id) {
       const { data: s } = await supabase
         .from("shops")
-        .select("business_name, shop_name, name, phone_number, email, street, city, province, postal_code, country")
+        .select(
+          "business_name, shop_name, name, phone_number, email, street, city, province, postal_code, country",
+        )
         .eq("id", wo.shop_id)
         .maybeSingle<ShopLite>();
       shop = s ?? null;
@@ -162,7 +176,9 @@ export default async function PortalWorkOrderViewerPage({
     if (wo.customer_id) {
       const { data: c } = await supabase
         .from("customers")
-        .select("name, business_name, phone, phone_number, email, street, city, province, postal_code")
+        .select(
+          "name, business_name, phone, phone_number, email, street, city, province, postal_code",
+        )
         .eq("id", wo.customer_id)
         .maybeSingle<CustomerLite>();
       customerRow = c ?? null;
@@ -173,53 +189,69 @@ export default async function PortalWorkOrderViewerPage({
     if (wo.vehicle_id) {
       const { data: v } = await supabase
         .from("vehicles")
-        .select("year, make, model, vin, license_plate, unit_number, mileage, color, engine_hours")
+        .select(
+          "year, make, model, vin, license_plate, unit_number, mileage, color, engine_hours",
+        )
         .eq("id", wo.vehicle_id)
         .maybeSingle<VehicleLite>();
       vehicle = v ?? null;
     }
 
     // Lines
-    const { data: wol } = await supabase
+    const { data: wol, error: wolErr } = await supabase
       .from("work_order_lines")
       .select("id, line_no, description, complaint, cause, correction, labor_time")
       .eq("work_order_id", workOrderId)
       .order("line_no", { ascending: true });
 
+    if (wolErr) throw wolErr;
+
     const lines = (Array.isArray(wol) ? wol : []) as WorkOrderViewerLine[];
 
     // Allocations (truth for parts)
-    const { data: allocRaw } = await supabase
+    const { data: allocRaw, error: allocErr } = await supabase
       .from("work_order_part_allocations")
       .select("id, work_order_line_id, part_id, qty, unit_cost")
       .eq("work_order_id", workOrderId);
 
+    if (allocErr) throw allocErr;
+
     const allocations = (Array.isArray(allocRaw) ? allocRaw : []) as Array<
-      Pick<AllocationRow, "id" | "work_order_line_id" | "part_id" | "qty" | "unit_cost">
+      Pick<
+        AllocationRow,
+        "id" | "work_order_line_id" | "part_id" | "qty" | "unit_cost"
+      >
     >;
 
     const partIds = Array.from(
       new Set(
         allocations
           .map((a) => a.part_id)
-          .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
+          .filter(
+            (id): id is string =>
+              typeof id === "string" && id.trim().length > 0,
+          ),
       ),
     );
 
     const partsMap = new Map<string, PartLookupRow>();
 
     if (partIds.length > 0) {
-      const { data: partRows } = await supabase
+      const { data: partRows, error: partErr } = await supabase
         .from("parts")
         .select("id, name, sku, part_number, unit")
-        .in("id", partIds)
-        .returns<PartLookupRow[]>();
+        .in("id", partIds);
 
-      for (const p of Array.isArray(partRows) ? partRows : []) partsMap.set(p.id, p);
+      if (partErr) throw partErr;
+
+      for (const p of Array.isArray(partRows) ? partRows : []) {
+        partsMap.set(p.id, p as PartLookupRow);
+      }
     }
 
     const parts: WorkOrderViewerPart[] = allocations.map((a) => {
-      const meta = typeof a.part_id === "string" ? partsMap.get(a.part_id) : undefined;
+      const meta =
+        typeof a.part_id === "string" ? partsMap.get(a.part_id) : undefined;
 
       const qty = Math.max(0, safeNumber(a.qty)) || 1;
       const unitCost = Math.max(0, safeNumber(a.unit_cost));
@@ -234,7 +266,8 @@ export default async function PortalWorkOrderViewerPage({
         partNumber && partNumber.length ? `${baseName} (${partNumber})` : baseName;
 
       const lineId =
-        typeof a.work_order_line_id === "string" && a.work_order_line_id.trim().length > 0
+        typeof a.work_order_line_id === "string" &&
+        a.work_order_line_id.trim().length > 0
           ? a.work_order_line_id.trim()
           : undefined;
 
@@ -251,11 +284,7 @@ export default async function PortalWorkOrderViewerPage({
       };
     });
 
-    const woInvoiceTotal =
-      (typeof wo.invoice_total === "number" && Number.isFinite(wo.invoice_total))
-        ? wo.invoice_total
-        : safeNumber(wo.invoice_total);
-
+    const woInvoiceTotal = safeNumber(wo.invoice_total);
     const payAmountCents = dollarsToCents(woInvoiceTotal > 0 ? woInvoiceTotal : null);
 
     return (
