@@ -1,4 +1,3 @@
-// app/api/invoices/send/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -8,6 +7,7 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
+type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 
 const supabaseAdmin = createClient<DB>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,6 +22,8 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
 
 const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || "support@profixiq.com";
 const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || "ProFixIQ";
+
+const INSPECTION_PDF_BUCKET = "inspection_pdfs";
 
 if (!SENDGRID_API_KEY) console.warn("[invoices/send] SENDGRID_API_KEY is not set");
 if (!SENDGRID_TEMPLATE_ID) console.warn("[invoices/send] SENDGRID_INVOICE_TEMPLATE_ID is not set");
@@ -150,16 +152,26 @@ function sanitizeLines(x: unknown): InvoiceLinePayload[] | undefined {
 
     const lineId =
       (typeof item.lineId === "string" ? item.lineId.trim() : undefined) ??
-      (typeof item.id === "string" ? item.id.trim() : undefined) ??
-      (typeof item.line_id === "string" ? item.line_id.trim() : undefined) ??
-      (typeof item.work_order_line_id === "string" ? item.work_order_line_id.trim() : undefined);
+      (typeof (item as Record<string, unknown>).id === "string"
+        ? String((item as Record<string, unknown>).id).trim()
+        : undefined) ??
+      (typeof (item as Record<string, unknown>).line_id === "string"
+        ? String((item as Record<string, unknown>).line_id).trim()
+        : undefined) ??
+      (typeof (item as Record<string, unknown>).work_order_line_id === "string"
+        ? String((item as Record<string, unknown>).work_order_line_id).trim()
+        : undefined);
 
     out.push({
       complaint: complaint?.length ? complaint : null,
       cause: cause?.length ? cause : null,
       correction: correction?.length ? correction : null,
       labor_time:
-        labor_time_num !== undefined ? labor_time_num : labor_time_str?.length ? labor_time_str : null,
+        labor_time_num !== undefined
+          ? labor_time_num
+          : labor_time_str?.length
+            ? labor_time_str
+            : null,
       lineId: lineId?.length ? lineId : null,
     });
   }
@@ -225,6 +237,51 @@ function pickCustomerPhone(c?: Pick<CustomerRow, "phone" | "phone_number"> | nul
   return out.length ? out : undefined;
 }
 
+async function blobToBase64(b: Blob): Promise<string> {
+  const ab = await b.arrayBuffer();
+  return Buffer.from(ab).toString("base64");
+}
+
+async function loadLatestInspectionPdfAttachment(workOrderId: string): Promise<
+  | { filename: string; contentBase64: string; storagePath: string }
+  | null
+> {
+  // Pick the latest finalized/locked PDF for the WO
+  const { data: insp, error: inspErr } = await supabaseAdmin
+    .from("inspections")
+    .select("id, pdf_storage_path, finalized_at, created_at, locked, completed, is_draft")
+    .eq("work_order_id", workOrderId)
+    .not("pdf_storage_path", "is", null)
+    .order("finalized_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<
+      Pick<
+        InspectionRow,
+        "id" | "pdf_storage_path" | "finalized_at" | "created_at" | "locked" | "completed" | "is_draft"
+      >
+    >();
+
+  if (inspErr) {
+    console.warn("[invoices/send] inspections lookup failed:", inspErr.message);
+    return null;
+  }
+
+  const path = (insp?.pdf_storage_path ?? "").trim();
+  if (!path) return null;
+
+  const { data, error } = await supabaseAdmin.storage.from(INSPECTION_PDF_BUCKET).download(path);
+  if (error || !data) {
+    console.warn("[invoices/send] inspection pdf download failed:", error?.message ?? "no data");
+    return null;
+  }
+
+  const contentBase64 = await blobToBase64(data);
+  const filename = `inspection-${workOrderId}.pdf`;
+
+  return { filename, contentBase64, storagePath: path };
+}
+
 /* ------------------------------------------------------------------ */
 
 export async function POST(req: Request) {
@@ -244,7 +301,7 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------------
-    // 1) Fetch work order (for totals + relations)
+    // 1) Fetch work order
     // ------------------------------------------------------------------
     const { data: wo, error: woErr } = await supabaseAdmin
       .from("work_orders")
@@ -268,7 +325,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid work order" }, { status: 404 });
     }
 
-    // compute totals (prefer client-provided invoiceTotal, then DB invoice_total, else labor+parts)
     const laborTotal = Number(wo.labor_total ?? 0);
     const partsTotal = Number(wo.parts_total ?? 0);
     const computedInvoiceTotal =
@@ -279,7 +335,7 @@ export async function POST(req: Request) {
           : laborTotal + partsTotal;
 
     // ------------------------------------------------------------------
-    // 2) Fetch shop details (header + contact)
+    // 2) Fetch shop details
     // ------------------------------------------------------------------
     const { data: shop, error: shopErr } = await supabaseAdmin
       .from("shops")
@@ -293,7 +349,6 @@ export async function POST(req: Request) {
       >();
 
     if (shopErr) {
-      // non-fatal
       console.warn("[invoices/send] shops lookup failed:", shopErr.message);
     }
 
@@ -366,7 +421,7 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------------
-    // 4) Fetch vehicle details (if we didn't get them from request)
+    // 4) Fetch vehicle details (if missing)
     // ------------------------------------------------------------------
     let resolvedVehicleInfo: VehicleInfo | undefined = vehicleInfo;
 
@@ -405,40 +460,65 @@ export async function POST(req: Request) {
     const portalInvoiceUrl = `${base}/portal/invoices/${workOrderId}`;
 
     // ------------------------------------------------------------------
-    // 6) Send invoice email via SendGrid
+    // 6) Attach latest inspection PDF (if present)
     // ------------------------------------------------------------------
-    const emailPayload = {
+    const inspectionPdf = await loadLatestInspectionPdfAttachment(workOrderId);
+
+    // ------------------------------------------------------------------
+    // 7) Send invoice email via SendGrid
+    // ------------------------------------------------------------------
+    const emailPayload: {
+      personalizations: Array<{
+        to: Array<{ email: string }>;
+        dynamic_template_data: Record<string, unknown>;
+      }>;
+      from: { email: string; name: string };
+      template_id: string;
+      attachments?: Array<{
+        content: string;
+        filename: string;
+        type: string;
+        disposition: "attachment";
+      }>;
+    } = {
       personalizations: [
         {
           to: [{ email: customerEmail }],
           dynamic_template_data: {
-            // ids
             workOrderId,
-
-            // names
             customerName: (customerInfo?.name ?? (customerName ?? "").trim()) || null,
             shopName: resolvedShopName,
 
-            // totals
             laborTotal,
             partsTotal,
             invoiceTotal: computedInvoiceTotal,
 
-            // rich info blocks
             customerInfo: customerInfo ?? null,
             vehicleInfo: resolvedVehicleInfo ?? null,
             shopInfo,
 
-            // lines
             lines: lines ?? null,
-
-            // portal link (IMPORTANT: template must use {{{portalUrl}}})
             portalUrl: portalInvoiceUrl,
+
+            // optional for template display/debug
+            inspectionPdfPath: inspectionPdf?.storagePath ?? null,
           },
         },
       ],
       from: { email: SENDGRID_FROM_EMAIL, name: SENDGRID_FROM_NAME },
       template_id: SENDGRID_TEMPLATE_ID,
+      ...(inspectionPdf
+        ? {
+            attachments: [
+              {
+                content: inspectionPdf.contentBase64,
+                filename: inspectionPdf.filename,
+                type: "application/pdf",
+                disposition: "attachment",
+              },
+            ],
+          }
+        : {}),
     };
 
     const sgRes = await fetch("https://api.sendgrid.com/v3/mail/send", {
@@ -457,7 +537,7 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------------
-    // 7) Update invoice metadata on the work order
+    // 8) Update invoice metadata on the work order
     // ------------------------------------------------------------------
     await supabaseAdmin
       .from("work_orders")
@@ -470,7 +550,7 @@ export async function POST(req: Request) {
       .eq("id", workOrderId);
 
     // ------------------------------------------------------------------
-    // 8) Create portal notification (if we have a portal user)
+    // 9) Create portal notification (if we have a portal user)
     // ------------------------------------------------------------------
     if (portalUserId) {
       await supabaseAdmin.from("portal_notifications").insert({

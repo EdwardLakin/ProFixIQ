@@ -13,29 +13,19 @@ type Props = {
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
-  if (err && typeof err === "object") {
-    const rec = err as Record<string, unknown>;
-    const msg = rec.message;
-    if (typeof msg === "string") return msg;
-  }
   return "Failed to save inspection.";
 }
 
-export function SaveInspectionButton({
-  session,
-  workOrderLineId,
-}: Props): JSX.Element {
+export function SaveInspectionButton({ session, workOrderLineId }: Props) {
   const handleSave = async (): Promise<void> => {
     try {
-      if (!workOrderLineId) {
-        throw new Error("Missing workOrderLineId");
-      }
+      if (!workOrderLineId) throw new Error("Missing workOrderLineId");
       await saveInspectionSession(session, workOrderLineId);
       toast.success("Inspection saved.");
-    } catch (err: unknown) {
+    } catch (error: unknown) {
       // eslint-disable-next-line no-console
-      console.error("Save error:", err);
-      toast.error(errorMessage(err));
+      console.error("Save error:", error);
+      toast.error(errorMessage(error));
     }
   };
 
