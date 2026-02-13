@@ -6,7 +6,6 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
@@ -50,11 +49,14 @@ const btnBase =
 const btnNeutral =
   btnBase + " border-white/15 bg-black/40 text-neutral-100 hover:bg-white/5";
 const btnWarn =
-  btnBase + " border-amber-400/80 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
+  btnBase +
+  " border-amber-400/80 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
 const btnDanger =
-  btnBase + " border-red-500/80 bg-red-500/10 text-red-100 hover:bg-red-500/20";
+  btnBase +
+  " border-red-500/80 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnInfo =
-  btnBase + " border-sky-500/80 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
+  btnBase +
+  " border-sky-500/80 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
 const btnAccent =
   btnBase +
   " border-[var(--accent-copper-light)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]";
@@ -82,10 +84,6 @@ type WorkflowStatus =
   | "assigned"
   | "unassigned";
 
-function safeTrim(v: unknown): string {
-  return typeof v === "string" ? v.trim() : "";
-}
-
 export default function FocusedJobModal(props: {
   isOpen: boolean;
   onClose: () => void;
@@ -94,10 +92,6 @@ export default function FocusedJobModal(props: {
   mode?: Mode;
 }) {
   const { isOpen, onClose, workOrderLineId, onChanged, mode = "tech" } = props;
-
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const lastSetShopId = useRef<string | null>(null);
@@ -138,21 +132,25 @@ export default function FocusedJobModal(props: {
     console.error(prefix, err);
   };
 
-  async function ensureShopContext(id: string | null) {
-    if (!id) return;
-    if (lastSetShopId.current === id) return;
+  // ✅ FIX: stable callback so exhaustive-deps is satisfied
+  const ensureShopContext = useCallback(
+    async (id: string | null) => {
+      if (!id) return;
+      if (lastSetShopId.current === id) return;
 
-    const { error } = await supabase.rpc("set_current_shop_id", {
-      p_shop_id: id,
-    });
+      const { error } = await supabase.rpc("set_current_shop_id", {
+        p_shop_id: id,
+      });
 
-    if (error) {
-      lastSetShopId.current = null;
-      throw error;
-    }
+      if (error) {
+        lastSetShopId.current = null;
+        throw error;
+      }
 
-    lastSetShopId.current = id;
-  }
+      lastSetShopId.current = id;
+    },
+    [supabase],
+  );
 
   const closeAllSubModals = () => {
     setOpenComplete(false);
@@ -162,86 +160,19 @@ export default function FocusedJobModal(props: {
     setOpenChat(false);
     setOpenAddJob(false);
     setOpenAi(false);
-    // setOpenDtc(false);
     setOpenVehicleHistory(false);
   };
 
-  // ---------- URL helpers for vehicle-history reopen ----------
-
-  const buildUrlWithVehicleHistory = useCallback(
-    (vehicleId: string, shopId: string | null) => {
-      const sp = new URLSearchParams(searchParams.toString());
-      sp.set("vh", "1");
-      sp.set("vh_vehicle", vehicleId);
-      if (shopId && safeTrim(shopId)) sp.set("vh_shop", shopId);
-      else sp.delete("vh_shop");
-
-      const qs = sp.toString();
-      return qs ? `${pathname}?${qs}` : pathname;
-    },
-    [pathname, searchParams],
-  );
-
-  const clearVehicleHistoryFromUrl = useCallback(() => {
-    const sp = new URLSearchParams(searchParams.toString());
-    sp.delete("vh");
-    sp.delete("vh_vehicle");
-    sp.delete("vh_shop");
-    const qs = sp.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
-
-  const syncVehicleHistoryOpenToUrl = useCallback(
-    (nextOpen: boolean) => {
-      if (!nextOpen) {
-        clearVehicleHistoryFromUrl();
-        return;
-      }
-
-      const vid = safeTrim(vehicle?.id);
-      if (!vid) return;
-
-      const sid = (workOrder?.shop_id as string | null) ?? null;
-      const url = buildUrlWithVehicleHistory(vid, sid);
-      router.replace(url, { scroll: false });
-    },
-    [buildUrlWithVehicleHistory, clearVehicleHistoryFromUrl, router, vehicle?.id, workOrder?.shop_id],
-  );
-
-  // If modal opens and URL already says vh=1, auto-open VehicleHistoryModal.
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const vh = safeTrim(searchParams.get("vh"));
-    const urlVid = safeTrim(searchParams.get("vh_vehicle"));
-    if (vh !== "1" || !urlVid) return;
-
-    // Only auto-open if it matches the current job's vehicle.
-    const currentVid = safeTrim(vehicle?.id);
-    if (!currentVid) return;
-    if (currentVid !== urlVid) return;
-
-    setOpenVehicleHistory(true);
-  }, [isOpen, searchParams, vehicle?.id]);
-
-  // Keep URL in sync when user opens/closes VehicleHistoryModal inside FocusedJobModal.
-  useEffect(() => {
-    if (!isOpen) return;
-    syncVehicleHistoryOpenToUrl(openVehicleHistory);
-  }, [isOpen, openVehicleHistory, syncVehicleHistoryOpenToUrl]);
-
-  // When FocusedJobModal closes, strip vh params so you don't reopen later unexpectedly.
   useEffect(() => {
     if (!isOpen) {
-      clearVehicleHistoryFromUrl();
       closeAllSubModals();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // initial load
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
+
     (async () => {
       setBusy(true);
       try {
@@ -307,7 +238,7 @@ export default function FocusedJobModal(props: {
         setBusy(false);
       }
     })();
-  }, [isOpen, workOrderLineId, supabase]);
+  }, [isOpen, workOrderLineId, supabase, ensureShopContext]);
 
   // realtime line
   useEffect(() => {
@@ -507,6 +438,7 @@ export default function FocusedJobModal(props: {
   const uploadPhoto = async (file: File) => {
     if (!workOrderLineId || !workOrder?.id) return;
 
+    // (Optional) scope for storage-related RLS setups
     try {
       await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
     } catch (e) {
@@ -651,7 +583,11 @@ export default function FocusedJobModal(props: {
                     <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                       Status
                     </div>
-                    <div className={`mt-1 text-sm font-semibold ${chip(line.status ?? null)}`}>
+                    <div
+                      className={`mt-1 text-sm font-semibold ${chip(
+                        line.status ?? null,
+                      )}`}
+                    >
                       {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
@@ -659,13 +595,17 @@ export default function FocusedJobModal(props: {
                     <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                       Start
                     </div>
-                    <div className="mt-1 text-sm text-neutral-100">{createdStart}</div>
+                    <div className="mt-1 text-sm text-neutral-100">
+                      {createdStart}
+                    </div>
                   </div>
                   <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                       Finish
                     </div>
-                    <div className="mt-1 text-sm text-neutral-100">{createdFinish}</div>
+                    <div className="mt-1 text-sm text-neutral-100">
+                      {createdFinish}
+                    </div>
                   </div>
                   <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
@@ -685,13 +625,16 @@ export default function FocusedJobModal(props: {
                       </div>
                       <div className="mt-1 truncate text-neutral-100">
                         {vehicle
-                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
+                              vehicle.model ?? ""
+                            }`
                               .trim()
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-neutral-400">
-                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                        VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
+                        {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
                     <div>
@@ -706,7 +649,8 @@ export default function FocusedJobModal(props: {
                           : "—"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-neutral-400">
-                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                        {customer?.phone ?? "—"}{" "}
+                        {customer?.email ? `• ${customer.email}` : ""}
                       </div>
                     </div>
                   </div>
@@ -734,7 +678,8 @@ export default function FocusedJobModal(props: {
                           ? "Awaiting approval — punching disabled"
                           : line.status === "declined"
                             ? "Declined — punching disabled"
-                            : line.approval_state && line.approval_state !== "approved"
+                            : line.approval_state &&
+                                line.approval_state !== "approved"
                               ? "Not approved — punching disabled"
                               : ""}
                       </div>
@@ -817,15 +762,23 @@ export default function FocusedJobModal(props: {
                         AI Assist
                       </button>
 
-                      {/* ✅ Vehicle History (URL-synced) */}
                       <button
                         type="button"
                         className={btnNeutral}
                         onClick={() => {
                           if (!vehicle?.id) {
-                            toast.error("No vehicle linked to this work order yet.");
+                            toast.error(
+                              "No vehicle linked to this work order yet.",
+                            );
                             return;
                           }
+                          setOpenComplete(false);
+                          setOpenParts(false);
+                          setOpenHold(false);
+                          setOpenPhoto(false);
+                          setOpenChat(false);
+                          setOpenAddJob(false);
+                          setOpenAi(false);
                           setOpenVehicleHistory(true);
                         }}
                         disabled={busy || !vehicle?.id}
@@ -867,13 +820,14 @@ export default function FocusedJobModal(props: {
                         DTC Assist (AI)
                       </button>
 
-                      {/* ✅ Vehicle History (URL-synced) */}
                       <button
                         type="button"
                         className={btnNeutral}
                         onClick={() => {
                           if (!vehicle?.id) {
-                            toast.error("No vehicle linked to this work order yet.");
+                            toast.error(
+                              "No vehicle linked to this work order yet.",
+                            );
                             return;
                           }
                           setOpenVehicleHistory(true);
@@ -886,7 +840,6 @@ export default function FocusedJobModal(props: {
                   )}
                 </div>
 
-                {/* parts used */}
                 <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
                   <div className="mb-2 text-sm font-medium text-neutral-100">
                     Parts used
@@ -895,7 +848,9 @@ export default function FocusedJobModal(props: {
                   {allocsLoading ? (
                     <div className="text-sm text-neutral-300">Loading…</div>
                   ) : allocs.length === 0 ? (
-                    <div className="text-sm text-neutral-300">No parts used yet.</div>
+                    <div className="text-sm text-neutral-300">
+                      No parts used yet.
+                    </div>
                   ) : (
                     <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
                       <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
@@ -927,7 +882,6 @@ export default function FocusedJobModal(props: {
                   )}
                 </div>
 
-                {/* tech notes */}
                 <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
                   <label className="mb-1 block text-sm font-medium text-neutral-100">
                     Tech Notes
@@ -943,7 +897,6 @@ export default function FocusedJobModal(props: {
                   />
                 </div>
 
-                {/* AI suggestions */}
                 <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
                   <h3 className="mb-2 text-sm font-medium text-neutral-100">
                     AI Suggested Repairs
@@ -967,7 +920,9 @@ export default function FocusedJobModal(props: {
 
                 <div className="text-xs text-neutral-400">
                   Job ID: {line.id}
-                  {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
+                  {typeof line.labor_time === "number"
+                    ? ` • Labor: ${line.labor_time.toFixed(1)}h`
+                    : ""}
                   {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
                   {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
                 </div>
@@ -977,7 +932,6 @@ export default function FocusedJobModal(props: {
         </div>
       </Dialog>
 
-      {/* ✅ Vehicle history modal */}
       {openVehicleHistory && vehicle?.id ? (
         <VehicleHistoryModal
           isOpen={openVehicleHistory}
@@ -987,7 +941,6 @@ export default function FocusedJobModal(props: {
         />
       ) : null}
 
-      {/* sub-modals */}
       {openComplete && line && (
         <CauseCorrectionModal
           isOpen={openComplete}
@@ -1108,8 +1061,8 @@ export default function FocusedJobModal(props: {
           workOrderId={workOrder.id}
           vehicleId={vehicle?.id ?? null}
           techId={
-            (line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ??
-            "system"
+            (line as unknown as { assigned_tech_id?: string | null })
+              ?.assigned_tech_id ?? "system"
           }
           shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {
