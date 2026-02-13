@@ -83,10 +83,7 @@ type ShopLite = Pick<
   | "country"
 >;
 
-type PartLookupRow = Pick<
-  PartRow,
-  "id" | "name" | "sku" | "part_number" | "unit"
->;
+type PartLookupRow = Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit">;
 
 function normalizeCurrencyFromCountry(country: unknown): "CAD" | "USD" {
   const c = String(country ?? "").trim().toUpperCase();
@@ -125,9 +122,9 @@ function pickShopName(
 export default async function PortalWorkOrderViewerPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const workOrderId = params.id;
+  const { id: workOrderId } = await params;
 
   const cookieStore = cookies();
   const supabase = createServerComponentClient<DB>({
@@ -158,13 +155,14 @@ export default async function PortalWorkOrderViewerPage({
     // Shop (currency + footer + pay button needs shopId)
     let shop: ShopLite | null = null;
     if (wo.shop_id) {
-      const { data: s } = await supabase
+      const { data: s, error: sErr } = await supabase
         .from("shops")
         .select(
           "business_name, shop_name, name, phone_number, email, street, city, province, postal_code, country",
         )
         .eq("id", wo.shop_id)
         .maybeSingle<ShopLite>();
+      if (sErr) throw sErr;
       shop = s ?? null;
     }
 
@@ -174,26 +172,28 @@ export default async function PortalWorkOrderViewerPage({
     // Customer
     let customerRow: CustomerLite | null = null;
     if (wo.customer_id) {
-      const { data: c } = await supabase
+      const { data: c, error: cErr } = await supabase
         .from("customers")
         .select(
           "name, business_name, phone, phone_number, email, street, city, province, postal_code",
         )
         .eq("id", wo.customer_id)
         .maybeSingle<CustomerLite>();
+      if (cErr) throw cErr;
       customerRow = c ?? null;
     }
 
     // Vehicle
     let vehicle: VehicleLite | null = null;
     if (wo.vehicle_id) {
-      const { data: v } = await supabase
+      const { data: v, error: vErr } = await supabase
         .from("vehicles")
         .select(
           "year, make, model, vin, license_plate, unit_number, mileage, color, engine_hours",
         )
         .eq("id", wo.vehicle_id)
         .maybeSingle<VehicleLite>();
+      if (vErr) throw vErr;
       vehicle = v ?? null;
     }
 
@@ -217,20 +217,14 @@ export default async function PortalWorkOrderViewerPage({
     if (allocErr) throw allocErr;
 
     const allocations = (Array.isArray(allocRaw) ? allocRaw : []) as Array<
-      Pick<
-        AllocationRow,
-        "id" | "work_order_line_id" | "part_id" | "qty" | "unit_cost"
-      >
+      Pick<AllocationRow, "id" | "work_order_line_id" | "part_id" | "qty" | "unit_cost">
     >;
 
     const partIds = Array.from(
       new Set(
         allocations
           .map((a) => a.part_id)
-          .filter(
-            (id): id is string =>
-              typeof id === "string" && id.trim().length > 0,
-          ),
+          .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
       ),
     );
 
@@ -240,18 +234,18 @@ export default async function PortalWorkOrderViewerPage({
       const { data: partRows, error: partErr } = await supabase
         .from("parts")
         .select("id, name, sku, part_number, unit")
-        .in("id", partIds);
+        .in("id", partIds)
+        .returns<PartLookupRow[]>();
 
       if (partErr) throw partErr;
 
       for (const p of Array.isArray(partRows) ? partRows : []) {
-        partsMap.set(p.id, p as PartLookupRow);
+        partsMap.set(p.id, p);
       }
     }
 
     const parts: WorkOrderViewerPart[] = allocations.map((a) => {
-      const meta =
-        typeof a.part_id === "string" ? partsMap.get(a.part_id) : undefined;
+      const meta = typeof a.part_id === "string" ? partsMap.get(a.part_id) : undefined;
 
       const qty = Math.max(0, safeNumber(a.qty)) || 1;
       const unitCost = Math.max(0, safeNumber(a.unit_cost));
@@ -262,12 +256,10 @@ export default async function PortalWorkOrderViewerPage({
       const sku = (meta?.sku ?? "").trim() || undefined;
       const unit = (meta?.unit ?? "").trim() || undefined;
 
-      const pretty =
-        partNumber && partNumber.length ? `${baseName} (${partNumber})` : baseName;
+      const pretty = partNumber ? `${baseName} (${partNumber})` : baseName;
 
       const lineId =
-        typeof a.work_order_line_id === "string" &&
-        a.work_order_line_id.trim().length > 0
+        typeof a.work_order_line_id === "string" && a.work_order_line_id.trim().length > 0
           ? a.work_order_line_id.trim()
           : undefined;
 
