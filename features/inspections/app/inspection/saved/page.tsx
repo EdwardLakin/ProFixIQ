@@ -1,5 +1,10 @@
 // app/inspection/saved/page.tsx  ✅ FULL FILE REPLACEMENT
 // Compliance View: shop-scoped inspection history w/ vehicle + WO + customer + PDF links (no `any`)
+//
+// FIX: PostgREST embed ambiguity between `inspections` and `work_orders`.
+// Instead of embedding `work_orders(...)` (which can error when PostgREST detects
+// multiple relationships), we fetch inspections first, then fetch work_orders + customers
+// in follow-up queries and stitch client-side.
 
 "use client";
 
@@ -20,6 +25,9 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
 
+type WorkOrderLite = Pick<WorkOrderRow, "id" | "custom_id" | "status" | "customer_id">;
+type CustomerLite = Pick<CustomerRow, "id" | "first_name" | "last_name" | "business_name">;
+
 type InspectionComplianceRow = Pick<
   InspectionRow,
   | "id"
@@ -39,10 +47,7 @@ type InspectionComplianceRow = Pick<
   > | null;
   work_orders:
     | (Pick<WorkOrderRow, "id" | "custom_id" | "status" | "customer_id"> & {
-        customers: Pick<
-          CustomerRow,
-          "first_name" | "last_name" | "business_name"
-        > | null;
+        customers: Pick<CustomerRow, "first_name" | "last_name" | "business_name"> | null;
       })
     | null;
   // ✅ DB columns are: template_name, description
@@ -69,8 +74,7 @@ function isCompletedInspection(
   row: Pick<InspectionComplianceRow, "status" | "pdf_url" | "pdf_storage_path">,
 ): boolean {
   const st = normalizeStatus(row.status);
-  if (st.includes("complete") || st.includes("final") || st.includes("done"))
-    return true;
+  if (st.includes("complete") || st.includes("final") || st.includes("done")) return true;
 
   // If it has a PDF, it’s effectively “finalized” for compliance purposes
   if (safeStr(row.pdf_url).trim().length > 0) return true;
@@ -98,6 +102,19 @@ function toIsoEndOfDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00.000Z`);
   d.setUTCHours(23, 59, 59, 999);
   return d.toISOString();
+}
+
+function uniqStrings(list: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of list) {
+    const s = (v ?? "").toString().trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
 }
 
 export default function SavedInspectionsPage(): JSX.Element {
@@ -176,7 +193,9 @@ export default function SavedInspectionsPage(): JSX.Element {
 
     // NOTE:
     // - This is intentionally shop-scoped for compliance.
-    // - We join vehicle + work order + customer + template for a single “audit log” row.
+    // - We embed vehicles + template (typically unambiguous),
+    //   but we DO NOT embed work_orders because PostgREST can throw:
+    //   "more than one relationship was found for inspections and work_orders".
     let query = supabase
       .from("inspections")
       .select(
@@ -192,13 +211,6 @@ export default function SavedInspectionsPage(): JSX.Element {
           pdf_url,
           pdf_storage_path,
           vehicles:vehicles(year,make,model,vin,license_plate,unit_number),
-          work_orders:work_orders(
-            id,
-            custom_id,
-            status,
-            customer_id,
-            customers:customers(first_name,last_name,business_name)
-          ),
           inspection_templates:inspection_templates(template_name,description)
         `,
       )
@@ -206,28 +218,118 @@ export default function SavedInspectionsPage(): JSX.Element {
       .order("created_at", { ascending: false })
       .limit(400);
 
-    // ✅ IMPORTANT: do NOT call .returns() before gte/lte — it changes the builder type
     if (from) query = query.gte("created_at", toIsoStartOfDay(from));
     if (to) query = query.lte("created_at", toIsoEndOfDay(to));
 
-    const { data, error } = await query;
+    const { data: baseData, error: baseErr } = await query;
 
-    if (error) {
-      setErr(error.message);
+    if (baseErr) {
+      setErr(baseErr.message);
       setRows([]);
       setLoading(false);
       return;
     }
 
-    const list: InspectionComplianceRow[] = Array.isArray(data)
-      ? (data as unknown as InspectionComplianceRow[])
-      : [];
+    const baseList: Array<
+      Pick<
+        InspectionRow,
+        | "id"
+        | "shop_id"
+        | "vehicle_id"
+        | "work_order_id"
+        | "status"
+        | "summary"
+        | "created_at"
+        | "updated_at"
+        | "pdf_url"
+        | "pdf_storage_path"
+      > & {
+        vehicles: Pick<
+          VehicleRow,
+          "year" | "make" | "model" | "vin" | "license_plate" | "unit_number"
+        > | null;
+        inspection_templates: Pick<TemplateRow, "template_name" | "description"> | null;
+      }
+    > = Array.isArray(baseData) ? (baseData as unknown as typeof baseList) : [];
+
+    const workOrderIds = uniqStrings(baseList.map((r) => (r.work_order_id as unknown as string | null) ?? null));
+
+    const woMap = new Map<string, WorkOrderLite>();
+    const custMap = new Map<string, CustomerLite>();
+
+    if (workOrderIds.length > 0) {
+      // Fetch work orders
+      const { data: woRows, error: woErr } = await supabase
+        .from("work_orders")
+        .select("id, custom_id, status, customer_id")
+        .in("id", workOrderIds)
+        .returns<WorkOrderLite[]>();
+
+      if (woErr) {
+        // Not fatal for the whole page (compliance still works without WO join)
+        // eslint-disable-next-line no-console
+        console.warn("[saved inspections] work_orders fetch failed:", woErr.message);
+      } else {
+        for (const w of Array.isArray(woRows) ? woRows : []) {
+          if (w?.id) woMap.set(w.id, w);
+        }
+
+        const customerIds = uniqStrings(
+          (Array.isArray(woRows) ? woRows : []).map((w) => (w.customer_id as unknown as string | null) ?? null),
+        );
+
+        if (customerIds.length > 0) {
+          const { data: custRows, error: custErr } = await supabase
+            .from("customers")
+            .select("id, first_name, last_name, business_name")
+            .in("id", customerIds)
+            .returns<CustomerLite[]>();
+
+          if (custErr) {
+            // eslint-disable-next-line no-console
+            console.warn("[saved inspections] customers fetch failed:", custErr.message);
+          } else {
+            for (const c of Array.isArray(custRows) ? custRows : []) {
+              if (c?.id) custMap.set(c.id, c);
+            }
+          }
+        }
+      }
+    }
+
+    // Stitch rows into the shape the UI expects
+    const stitched: InspectionComplianceRow[] = baseList.map((r) => {
+      const woId = (r.work_order_id as unknown as string | null) ?? null;
+      const wo = woId ? woMap.get(woId) : undefined;
+
+      const custId = wo?.customer_id ?? null;
+      const cust = custId ? custMap.get(custId) : undefined;
+
+      return {
+        ...r,
+        work_orders: wo
+          ? {
+              id: wo.id,
+              custom_id: wo.custom_id ?? null,
+              status: wo.status ?? null,
+              customer_id: wo.customer_id ?? null,
+              customers: cust
+                ? {
+                    first_name: cust.first_name ?? null,
+                    last_name: cust.last_name ?? null,
+                    business_name: cust.business_name ?? null,
+                  }
+                : null,
+            }
+          : null,
+      } as InspectionComplianceRow;
+    });
 
     // Status filter (client-side to be resilient across status enum changes)
     const statusFiltered =
       statusFilter === "all"
-        ? list
-        : list.filter((r) => {
+        ? stitched
+        : stitched.filter((r) => {
             const completed = isCompletedInspection(r);
             if (statusFilter === "completed") return completed;
             if (statusFilter === "in_progress") return !completed;
@@ -250,9 +352,7 @@ export default function SavedInspectionsPage(): JSX.Element {
           const plate = safeStr(v?.license_plate).toLowerCase();
           const vin = safeStr(v?.vin).toLowerCase();
           const unit = safeStr(v?.unit_number).toLowerCase();
-          const ymm = [v?.year ?? "", v?.make ?? "", v?.model ?? ""]
-            .join(" ")
-            .toLowerCase();
+          const ymm = [v?.year ?? "", v?.make ?? "", v?.model ?? ""].join(" ").toLowerCase();
 
           const wo = r.work_orders;
           const woId = safeStr(wo?.id).toLowerCase();
@@ -260,10 +360,7 @@ export default function SavedInspectionsPage(): JSX.Element {
           const woStatus = normalizeStatus(wo?.status);
 
           const cust = wo?.customers;
-          const custName = joinName(
-            cust?.first_name ?? null,
-            cust?.last_name ?? null,
-          ).toLowerCase();
+          const custName = joinName(cust?.first_name ?? null, cust?.last_name ?? null).toLowerCase();
           const biz = safeStr(cust?.business_name).toLowerCase();
 
           const tpl = r.inspection_templates;
@@ -317,25 +414,17 @@ export default function SavedInspectionsPage(): JSX.Element {
     ];
 
     const lines = rows.map((r) => {
-      const created = r.created_at
-        ? format(new Date(r.created_at), "yyyy-MM-dd HH:mm")
-        : "";
+      const created = r.created_at ? format(new Date(r.created_at), "yyyy-MM-dd HH:mm") : "";
       const status = deriveDisplayStatus(r);
 
       const tpl = r.inspection_templates;
       const tplName = safeStr(tpl?.template_name).trim();
 
       const v = r.vehicles;
-      const vehicle = v
-        ? `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()
-        : "";
+      const vehicle = v ? `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim() : "";
 
       const wo = r.work_orders;
-      const woLabel = wo?.custom_id
-        ? `#${wo.custom_id}`
-        : wo?.id
-          ? `#${wo.id.slice(0, 8)}`
-          : "";
+      const woLabel = wo?.custom_id ? `#${wo.custom_id}` : wo?.id ? `#${wo.id.slice(0, 8)}` : "";
 
       const cust = wo?.customers;
       const custName = joinName(cust?.first_name ?? null, cust?.last_name ?? null);
@@ -374,10 +463,7 @@ export default function SavedInspectionsPage(): JSX.Element {
     URL.revokeObjectURL(url);
   }
 
-  const completedCount = useMemo(
-    () => rows.filter((r) => isCompletedInspection(r)).length,
-    [rows],
-  );
+  const completedCount = useMemo(() => rows.filter((r) => isCompletedInspection(r)).length, [rows]);
   const inProgressCount = rows.length - completedCount;
 
   return (
@@ -400,8 +486,7 @@ export default function SavedInspectionsPage(): JSX.Element {
               </span>
             </div>
             <p className="text-xs text-neutral-400">
-              Shop-scoped audit log of inspections. Filter, search, export, and open
-              PDFs for compliance records.
+              Shop-scoped audit log of inspections. Filter, search, export, and open PDFs for compliance records.
             </p>
           </div>
 
@@ -522,9 +607,7 @@ export default function SavedInspectionsPage(): JSX.Element {
         ) : (
           <div className="grid gap-2">
             {rows.map((r) => {
-              const created = r.created_at
-                ? format(new Date(r.created_at), "PPpp")
-                : "—";
+              const created = r.created_at ? format(new Date(r.created_at), "PPpp") : "—";
               const status = deriveDisplayStatus(r);
               const completed = isCompletedInspection(r);
 
@@ -532,25 +615,16 @@ export default function SavedInspectionsPage(): JSX.Element {
               const tplName = safeStr(tpl?.template_name).trim();
 
               const v = r.vehicles;
-              const vehicle = v
-                ? `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()
-                : "—";
+              const vehicle = v ? `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim() : "—";
               const plate = v?.license_plate ? `(${v.license_plate})` : "";
               const unit = v?.unit_number ? `Unit: ${v.unit_number}` : "";
               const vin = v?.vin ? `VIN: ${v.vin}` : "";
 
               const wo = r.work_orders;
-              const woLabel = wo?.custom_id
-                ? `#${wo.custom_id}`
-                : wo?.id
-                  ? `#${wo.id.slice(0, 8)}`
-                  : null;
+              const woLabel = wo?.custom_id ? `#${wo.custom_id}` : wo?.id ? `#${wo.id.slice(0, 8)}` : null;
 
               const cust = wo?.customers;
-              const custName = joinName(
-                cust?.first_name ?? null,
-                cust?.last_name ?? null,
-              );
+              const custName = joinName(cust?.first_name ?? null, cust?.last_name ?? null);
               const biz = safeStr(cust?.business_name).trim();
 
               const pdfHref = pickPdfHref(r);
@@ -582,9 +656,7 @@ export default function SavedInspectionsPage(): JSX.Element {
                         {status}
                       </span>
 
-                      <span className="text-[11px] text-neutral-400">
-                        {created}
-                      </span>
+                      <span className="text-[11px] text-neutral-400">{created}</span>
 
                       {woLabel ? (
                         <span className="rounded-full border border-white/10 bg-black/60 px-2 py-0.5 text-[10px] font-mono text-neutral-400">
@@ -594,16 +666,13 @@ export default function SavedInspectionsPage(): JSX.Element {
                     </div>
 
                     <div className="mt-1 truncate text-sm text-neutral-300">
-                      {vehicle} {plate} {unit ? `• ${unit}` : ""}{" "}
-                      {vin ? `• ${vin}` : ""}
+                      {vehicle} {plate} {unit ? `• ${unit}` : ""} {vin ? `• ${vin}` : ""}
                     </div>
 
                     {custName || biz ? (
                       <div className="mt-0.5 text-[11px] text-neutral-400">
                         Customer:{" "}
-                        {biz
-                          ? `${biz}${custName ? ` • ${custName}` : ""}`
-                          : custName}
+                        {biz ? `${biz}${custName ? ` • ${custName}` : ""}` : custName}
                       </div>
                     ) : null}
 
