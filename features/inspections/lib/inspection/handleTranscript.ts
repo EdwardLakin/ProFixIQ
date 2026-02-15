@@ -38,11 +38,10 @@
 // - Add a strong phrase-match boost in scoreLabel (direct label ↔ speech match)
 // - Lower min score threshold slightly (30 -> 20) so general items resolve reliably
 //
-// ✅ NEW (your request):
-// - One-shot FAIL/RECOMMEND + NOTE support (no follow-up required)
-//   - If command already carries note/notes => apply with status
-//   - Else infer note from rawSpeech (everything after "item + fail/recommend")
-//   - Merge notes (append) instead of overwriting
+// ✅ NEW (one-shot status + note):
+// - In status/update_status modes, if no explicit note is provided,
+//   infer an inline note from rawSpeech (e.g., "tie rod ends fail left front worn out").
+// - Do not overwrite existing notes.
 //
 // No `any`.
 
@@ -217,7 +216,8 @@ function extractHintTokens(text: string): string[] {
 
   if (n.includes("steer") && !/\bsteer\s*\d+\b/.test(n)) out.push("steer 1");
   if (n.includes("drive") && !/\bdrive\s*\d+\b/.test(n)) out.push("drive 1");
-  if (n.includes("trailer") && !/\btrailer\s*\d+\b/.test(n)) out.push("trailer 1");
+  if (n.includes("trailer") && !/\btrailer\s*\d+\b/.test(n))
+    out.push("trailer 1");
 
   return Array.from(new Set(out.map((t) => norm(t))));
 }
@@ -244,7 +244,8 @@ function hasCornerSpecificityInSpeech(speech: string): boolean {
 function isGridLikeLabel(label: string): boolean {
   const l = norm(label);
   const hasSide = /\b(left|right|lf|rf|lr|rr)\b/.test(l);
-  const hasAxle = /\b(steer|drive|trailer)\s+\d+\b/.test(l) || /\btag\b/.test(l);
+  const hasAxle =
+    /\b(steer|drive|trailer)\s+\d+\b/.test(l) || /\btag\b/.test(l);
   const hasCornerPhrase = /\b(left|right)\s+(front|rear)\b/.test(l);
   return (hasSide && hasAxle) || hasCornerPhrase || hasAxle;
 }
@@ -254,7 +255,10 @@ function isPlainPushrodLabel(label: string): boolean {
   return (
     l === "pushrod travel" ||
     l === "push rod travel" ||
-    (l.includes("push") && l.includes("rod") && l.includes("travel") && !isGridLikeLabel(label))
+    (l.includes("push") &&
+      l.includes("rod") &&
+      l.includes("travel") &&
+      !isGridLikeLabel(label))
   );
 }
 
@@ -290,7 +294,7 @@ function scoreLabel(args: {
 
   let score = 0;
 
-  // ✅ phrase match boost
+  // ✅ NEW: phrase match boost (fixes "engine oil level ok" -> "engine oil level")
   const cleanedSpeech = stripStatusForMatch(rawSpeech);
   const speechKey = norm(cleanedSpeech);
   if (speechKey) {
@@ -378,7 +382,8 @@ function scoreLabel(args: {
       tok === "lining" ||
       tok === "linings"
     ) {
-      if (l.includes("pad") || l.includes("shoe") || l.includes("lining")) score += 22;
+      if (l.includes("pad") || l.includes("shoe") || l.includes("lining"))
+        score += 22;
       continue;
     }
     if (tok === "rotor" || tok === "drum") {
@@ -417,7 +422,9 @@ function scoreLabel(args: {
 
   // ✅ Pushrod travel split rule
   const speechN = norm(rawSpeech);
-  const mentionsPushrod = speechN.includes("pushrod") || (speechN.includes("push") && speechN.includes("rod"));
+  const mentionsPushrod =
+    speechN.includes("pushrod") ||
+    (speechN.includes("push") && speechN.includes("rod"));
   const numeric = hasNumericInSpeech(rawSpeech);
 
   if (mentionsPushrod && (mode === "status" || mode === "update_status")) {
@@ -481,7 +488,11 @@ function scoreSectionTitle(title: string, hintTokens: string[]): number {
     hintTokens.includes("steer") ||
     hintTokens.includes("trailer");
 
-  if (wantsAxle && (t.includes("tire") || t.includes("brake") || t.includes("corner"))) score += 8;
+  if (
+    wantsAxle &&
+    (t.includes("tire") || t.includes("brake") || t.includes("corner"))
+  )
+    score += 8;
 
   return score;
 }
@@ -495,12 +506,14 @@ function resolveTargetFromSpeech(args: {
   const { speech, sections, explicitSectionName, mode } = args;
   if (!Array.isArray(sections) || sections.length === 0) return null;
 
+  // ✅ NEW: strip status words before extracting hints/scoring
   const cleanedSpeech = stripStatusForMatch(speech);
   const speechForHints = cleanedSpeech || speech;
 
   const hints = extractHintTokens(speechForHints);
   const explicitSection = explicitSectionName ? norm(explicitSectionName) : "";
 
+  // ✅ Gate grids when speech is generic (no numeric + no corner/axle specificity)
   const numeric = hasNumericInSpeech(speech);
   const specific = hasCornerSpecificityInSpeech(speech);
   const gateOutGridLabels = !numeric && !specific;
@@ -541,6 +554,7 @@ function resolveTargetFromSpeech(args: {
     }
   }
 
+  // ✅ NEW: slightly lower threshold so general items resolve (was 30)
   if (!best || best.score < 20) return null;
   return best.target;
 }
@@ -569,28 +583,40 @@ function buildSpeechHintFromCommand(params: {
 
 function clampTargetToSession(session: InspectionSession, t: Target): Target {
   const sIdx =
-    typeof t.sectionIndex === "number" && t.sectionIndex >= 0 && t.sectionIndex < session.sections.length
+    typeof t.sectionIndex === "number" &&
+    t.sectionIndex >= 0 &&
+    t.sectionIndex < session.sections.length
       ? t.sectionIndex
       : 0;
 
   const itemsLen = session.sections[sIdx]?.items?.length ?? 0;
 
   const iIdx =
-    typeof t.itemIndex === "number" && t.itemIndex >= 0 && t.itemIndex < itemsLen ? t.itemIndex : 0;
+    typeof t.itemIndex === "number" &&
+    t.itemIndex >= 0 &&
+    t.itemIndex < itemsLen
+      ? t.itemIndex
+      : 0;
 
   return { sectionIndex: sIdx, itemIndex: iIdx };
 }
 
-function resolveSectionIndexByName(session: InspectionSession, sectionName: string): number {
+function resolveSectionIndexByName(
+  session: InspectionSession,
+  sectionName: string,
+): number {
   const needle = norm(sectionName);
   if (!needle) return -1;
 
-  return session.sections.findIndex((sec) => norm(String(sec.title ?? "")).includes(needle));
+  return session.sections.findIndex((sec) =>
+    norm(String(sec.title ?? "")).includes(needle),
+  );
 }
 
 function normalizeStatusMaybe(raw: unknown): InspectionItemStatus | undefined {
   const s = String(raw ?? "").toLowerCase().trim();
-  if (s === "ok" || s === "fail" || s === "na" || s === "recommend") return s as InspectionItemStatus;
+  if (s === "ok" || s === "fail" || s === "na" || s === "recommend")
+    return s as InspectionItemStatus;
   if (s === "n/a" || s === "n a") return "na";
   if (s === "okay" || s === "pass") return "ok";
   if (s === "rec") return "recommend";
@@ -601,6 +627,7 @@ function inferStatusFromText(text: string): InspectionItemStatus | undefined {
   const t = norm(text);
   if (!t) return undefined;
 
+  // explicit first
   const direct = normalizeStatusMaybe(t);
   if (direct) return direct;
 
@@ -646,7 +673,12 @@ function coercePartsFromUnknown(v: unknown): PartLine[] | undefined {
     if (!isRecord(row)) continue;
     const description = String(row.description ?? "").trim();
     const qtyRaw = row.qty;
-    const qty = typeof qtyRaw === "number" ? qtyRaw : Number.isFinite(Number(qtyRaw)) ? Number(qtyRaw) : 1;
+    const qty =
+      typeof qtyRaw === "number"
+        ? qtyRaw
+        : Number.isFinite(Number(qtyRaw))
+          ? Number(qtyRaw)
+          : 1;
 
     if (!description) continue;
     out.push({ description, qty: qty > 0 ? qty : 1 });
@@ -678,9 +710,13 @@ function isThisSectionName(sectionName: string | undefined): boolean {
 }
 
 function getSafeCurrentSectionIndex(session: InspectionSession): number {
-  const idx = typeof session.currentSectionIndex === "number" ? session.currentSectionIndex : 0;
+  const idx =
+    typeof session.currentSectionIndex === "number"
+      ? session.currentSectionIndex
+      : 0;
   if (idx < 0) return 0;
-  if (idx >= session.sections.length) return Math.max(0, session.sections.length - 1);
+  if (idx >= session.sections.length)
+    return Math.max(0, session.sections.length - 1);
   return idx;
 }
 
@@ -712,6 +748,7 @@ function findItemIndexByNamePreferNonGrid(params: {
   const n = norm(needle);
   if (!n) return -1;
 
+  // pass 1: prefer non-grid if gated
   if (gateOutGridLabels) {
     const idx = items.findIndex((it) => {
       const label = String(it.name ?? it.item ?? "");
@@ -720,59 +757,47 @@ function findItemIndexByNamePreferNonGrid(params: {
     if (idx >= 0) return idx;
   }
 
-  return items.findIndex((it) => norm(String(it.name ?? it.item ?? "")).includes(n));
+  // pass 2: any match
+  return items.findIndex((it) =>
+    norm(String(it.name ?? it.item ?? "")).includes(n),
+  );
 }
 
-/* ------------------- NOTE HELPERS (NEW) ------------------- */
+/* ------------------- one-shot status + note helpers (NEW) ------------------- */
 
-function mergeNotes(existing: unknown, incoming: string): string {
-  const ex = String(existing ?? "").trim();
-  const inc = String(incoming ?? "").trim();
-  if (!inc) return ex;
-  if (!ex) return inc;
-  if (norm(ex).includes(norm(inc))) return ex;
-  return `${ex}; ${inc}`;
+function hasExistingNote(v: unknown): boolean {
+  if (v === null || v === undefined) return false;
+  const s = String(v).trim();
+  return s.length > 0;
 }
 
-function inferNoteFromSpeech(params: {
-  rawSpeech?: string;
-  item?: string;
-  section?: string;
-  status?: InspectionItemStatus;
-}): string | undefined {
-  const { rawSpeech, item, section, status } = params;
-  if (!rawSpeech) return undefined;
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-  // only infer notes for fail/recommend
-  if (status !== "fail" && status !== "recommend") return undefined;
+function inferInlineNoteFromSpeech(params: {
+  rawSpeech: string;
+  itemLabel?: string;
+}): string {
+  const raw = String(params.rawSpeech ?? "").trim();
+  if (!raw) return "";
 
-  const speech = norm(rawSpeech);
-  if (!speech) return undefined;
+  let t = norm(raw);
 
-  const itemN = norm(item ?? "");
-  const sectionN = norm(section ?? "");
-
-  // best case: take everything AFTER the item phrase
-  let tail = "";
-  if (itemN) {
-    const idx = speech.indexOf(itemN);
-    if (idx >= 0) tail = speech.slice(idx + itemN.length);
+  const label = norm(String(params.itemLabel ?? ""));
+  if (label) {
+    const re = new RegExp(`\\b${escapeRegExp(label)}\\b`, "i");
+    t = t.replace(re, " ").trim();
   }
 
-  // remove obvious status words and the section title if it leaks in
-  const candidateBase = tail || speech;
+  t = stripStatusWords(t);
 
-  let candidate = candidateBase;
-  if (itemN) candidate = candidate.replace(new RegExp(`\\b${itemN}\\b`, "g"), " ");
-  if (sectionN) candidate = candidate.replace(new RegExp(`\\b${sectionN}\\b`, "g"), " ");
+  t = t.replace(/\b(because|cause|cuz|due to)\b/g, " ");
+  t = t.replace(/\s+/g, " ").trim();
 
-  candidate = stripStatusWords(candidate).trim();
+  if (t.length < 3) return "";
 
-  // if candidate is empty or basically just the item name, bail
-  if (!candidate) return undefined;
-  if (itemN && norm(candidate) === itemN) return undefined;
-
-  return candidate;
+  return t;
 }
 
 /* -------------------------------------------------------------------------------------------------
@@ -806,13 +831,22 @@ async function applySingleCommand(args: {
     mode = c.command;
 
     status = normalizeStatusMaybe((c as unknown as { status?: unknown })?.status);
-    value = (c as unknown as { value?: unknown })?.value as string | number | undefined;
+    value = (c as unknown as { value?: unknown })?.value as
+      | string
+      | number
+      | undefined;
     unit = (c as unknown as { unit?: unknown })?.unit as string | undefined;
 
-    if (typeof (c as unknown as { sectionIndex?: unknown })?.sectionIndex === "number") {
-      explicitSectionIndex = (c as unknown as { sectionIndex: number }).sectionIndex;
+    if (
+      typeof (c as unknown as { sectionIndex?: unknown })?.sectionIndex ===
+      "number"
+    ) {
+      explicitSectionIndex = (c as unknown as { sectionIndex: number })
+        .sectionIndex;
     }
-    if (typeof (c as unknown as { itemIndex?: unknown })?.itemIndex === "number") {
+    if (
+      typeof (c as unknown as { itemIndex?: unknown })?.itemIndex === "number"
+    ) {
       explicitItemIndex = (c as unknown as { itemIndex: number }).itemIndex;
     }
 
@@ -861,6 +895,7 @@ async function applySingleCommand(args: {
   const cornerSpecific = rawSpeech ? hasCornerSpecificityInSpeech(rawSpeech) : false;
   const gateOutGridLabels = !numericInSpeech && !cornerSpecific;
 
+  // ✅ If status wasn't provided, infer it from speech/item/note (fixes “brake shoe linings okay”)
   const isStatusMode = mode === "status" || mode === "update_status";
   if (isStatusMode && !status) {
     const fromSpeech = rawSpeech ? inferStatusFromText(rawSpeech) : undefined;
@@ -869,15 +904,10 @@ async function applySingleCommand(args: {
     status = fromSpeech ?? fromItem ?? fromNote;
   }
 
+  // ✅ If item contains status words, strip them for matching/resolution
   const cleanedItem = item ? stripStatusWords(item) : "";
   if (cleanedItem && cleanedItem !== norm(item ?? "")) {
     item = cleanedItem;
-  }
-
-  // ✅ NEW: if it's FAIL/RECOMMEND and no note was provided, infer from speech
-  if (isStatusMode && (status === "fail" || status === "recommend") && (!note || !String(note).trim())) {
-    const inferred = inferNoteFromSpeech({ rawSpeech, item, section, status });
-    if (inferred) note = inferred;
   }
 
   const isSectionWide =
@@ -891,7 +921,10 @@ async function applySingleCommand(args: {
 
     const sIdx =
       typeof explicitSectionIndex === "number"
-        ? clampTargetToSession(session, { sectionIndex: explicitSectionIndex, itemIndex: 0 }).sectionIndex
+        ? clampTargetToSession(session, {
+            sectionIndex: explicitSectionIndex,
+            itemIndex: 0,
+          }).sectionIndex
         : isThisSectionName(section)
           ? currentIdx
           : section
@@ -901,7 +934,9 @@ async function applySingleCommand(args: {
               })()
             : currentIdx;
 
-    const st = status ?? normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
+    const st =
+      status ??
+      normalizeStatusMaybe((command as unknown as Record<string, unknown>)?.status);
     if (!st) return null;
 
     const itemsLen = session.sections[sIdx]?.items?.length ?? 0;
@@ -911,17 +946,25 @@ async function applySingleCommand(args: {
   }
 
   // Direct index apply (trust indices)
-  if (typeof explicitSectionIndex === "number" && typeof explicitItemIndex === "number") {
+  if (
+    typeof explicitSectionIndex === "number" &&
+    typeof explicitItemIndex === "number"
+  ) {
     const safe = clampTargetToSession(session, {
       sectionIndex: explicitSectionIndex,
       itemIndex: explicitItemIndex,
     });
 
-    const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
+    const itemUpdates: Partial<
+      InspectionSession["sections"][number]["items"][number]
+    > = {};
     const targetRow =
-      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex] ?? ({} as Record<string, unknown>);
+      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex] ??
+      ({} as Record<string, unknown>);
     const targetLabel = String(
-      (targetRow as { item?: unknown; name?: unknown }).item ?? (targetRow as { name?: unknown }).name ?? "",
+      (targetRow as { item?: unknown; name?: unknown }).item ??
+        (targetRow as { name?: unknown }).name ??
+        "",
     );
 
     switch (mode) {
@@ -929,10 +972,18 @@ async function applySingleCommand(args: {
       case "status": {
         if (status) itemUpdates.status = status;
 
-        // ✅ NEW: one-shot note for FAIL/RECOMMEND
-        if ((status === "fail" || status === "recommend") && note) {
-          itemUpdates.notes = mergeNotes((targetRow as { notes?: unknown }).notes, note);
+        // ✅ One-shot: infer notes from rawSpeech when not provided
+        const existingNotes = (targetRow as { notes?: unknown }).notes;
+        if (!note && rawSpeech && !hasExistingNote(existingNotes)) {
+          const inferred = inferInlineNoteFromSpeech({
+            rawSpeech,
+            itemLabel: targetLabel,
+          });
+          if (inferred) itemUpdates.notes = inferred;
+        } else if (note && !hasExistingNote(existingNotes)) {
+          itemUpdates.notes = note;
         }
+
         break;
       }
 
@@ -941,8 +992,10 @@ async function applySingleCommand(args: {
         const existing = (targetRow as { value?: unknown }).value;
         if (value !== undefined && !hasExistingMeasurement(existing)) {
           if (isBatteryLikeLabel(targetLabel)) {
-            if ((unit ?? "").toUpperCase() === "CCA") (itemUpdates as Record<string, unknown>).cca = value;
-            else if ((unit ?? "").toUpperCase() === "V") (itemUpdates as Record<string, unknown>).voltage = value;
+            if ((unit ?? "").toUpperCase() === "CCA")
+              (itemUpdates as Record<string, unknown>).cca = value;
+            else if ((unit ?? "").toUpperCase() === "V")
+              (itemUpdates as Record<string, unknown>).voltage = value;
             itemUpdates.value = value;
           } else {
             itemUpdates.value = value;
@@ -954,13 +1007,13 @@ async function applySingleCommand(args: {
 
       case "add_note":
       case "add":
-        if (note) itemUpdates.notes = mergeNotes((targetRow as { notes?: unknown }).notes, note);
+        if (note) itemUpdates.notes = note;
         break;
 
       case "recommend":
         if (note) {
           itemUpdates.status = "recommend";
-          itemUpdates.notes = mergeNotes((targetRow as { notes?: unknown }).notes, note);
+          itemUpdates.notes = note;
           itemUpdates.recommend = [note];
         }
         break;
@@ -972,7 +1025,8 @@ async function applySingleCommand(args: {
     if (parts) itemUpdates.parts = parts;
     if (laborHours !== undefined) itemUpdates.laborHours = laborHours;
 
-    if (Object.keys(itemUpdates).length > 0) updateItem(safe.sectionIndex, safe.itemIndex, itemUpdates);
+    if (Object.keys(itemUpdates).length > 0)
+      updateItem(safe.sectionIndex, safe.itemIndex, itemUpdates);
 
     return Object.keys(itemUpdates).length > 0 ? safe : null;
   }
@@ -981,9 +1035,12 @@ async function applySingleCommand(args: {
 
   const sectionIndexByName =
     section && section.trim().length > 0 && !isThisSectionName(section)
-      ? session.sections.findIndex((sec) => String(sec.title ?? "").toLowerCase().includes(section.toLowerCase()))
+      ? session.sections.findIndex((sec) =>
+          String(sec.title ?? "").toLowerCase().includes(section.toLowerCase()),
+        )
       : -1;
 
+  // ✅ Name resolution with grid gate
   const itemIndexByName =
     sectionIndexByName >= 0 && item && item.trim().length > 0
       ? findItemIndexByNamePreferNonGrid({
@@ -1010,7 +1067,11 @@ async function applySingleCommand(args: {
     target = { sectionIndex: currentSectionIndex, itemIndex: itemIndexInCurrent };
   } else {
     const explicitSectionName =
-      section && !isThisSectionName(section) && resolveSectionIndexByName(session, section) >= 0 ? section : undefined;
+      section &&
+      !isThisSectionName(section) &&
+      resolveSectionIndexByName(session, section) >= 0
+        ? section
+        : undefined;
 
     const rawHint = String(rawSpeech ?? "").trim();
 
@@ -1021,7 +1082,8 @@ async function applySingleCommand(args: {
       unit,
     });
 
-    const hint = rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
+    const hint =
+      rawHint.length > 0 ? rawHint : parsedHint.length > 0 ? parsedHint : "";
 
     if (hint) {
       target = resolveTargetFromSpeech({
@@ -1049,11 +1111,16 @@ async function applySingleCommand(args: {
 
   const safeTarget = clampTargetToSession(session, target);
 
-  const itemUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {};
+  const itemUpdates: Partial<
+    InspectionSession["sections"][number]["items"][number]
+  > = {};
   const targetRow =
-    session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex] ?? ({} as Record<string, unknown>);
+    session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex] ??
+    ({} as Record<string, unknown>);
   const targetLabel = String(
-    (targetRow as { item?: unknown; name?: unknown }).item ?? (targetRow as { name?: unknown }).name ?? "",
+    (targetRow as { item?: unknown; name?: unknown }).item ??
+      (targetRow as { name?: unknown }).name ??
+      "",
   );
 
   switch (mode) {
@@ -1061,10 +1128,18 @@ async function applySingleCommand(args: {
     case "status": {
       if (status) itemUpdates.status = status;
 
-      // ✅ NEW: one-shot note for FAIL/RECOMMEND
-      if ((status === "fail" || status === "recommend") && note) {
-        itemUpdates.notes = mergeNotes((targetRow as { notes?: unknown }).notes, note);
+      // ✅ One-shot: infer notes from rawSpeech when not provided
+      const existingNotes = (targetRow as { notes?: unknown }).notes;
+      if (!note && rawSpeech && !hasExistingNote(existingNotes)) {
+        const inferred = inferInlineNoteFromSpeech({
+          rawSpeech,
+          itemLabel: targetLabel,
+        });
+        if (inferred) itemUpdates.notes = inferred;
+      } else if (note && !hasExistingNote(existingNotes)) {
+        itemUpdates.notes = note;
       }
+
       break;
     }
 
@@ -1073,8 +1148,10 @@ async function applySingleCommand(args: {
       const existing = (targetRow as { value?: unknown }).value;
       if (value !== undefined && !hasExistingMeasurement(existing)) {
         if (isBatteryLikeLabel(targetLabel)) {
-          if ((unit ?? "").toUpperCase() === "CCA") (itemUpdates as Record<string, unknown>).cca = value;
-          else if ((unit ?? "").toUpperCase() === "V") (itemUpdates as Record<string, unknown>).voltage = value;
+          if ((unit ?? "").toUpperCase() === "CCA")
+            (itemUpdates as Record<string, unknown>).cca = value;
+          else if ((unit ?? "").toUpperCase() === "V")
+            (itemUpdates as Record<string, unknown>).voltage = value;
           itemUpdates.value = value;
         } else {
           itemUpdates.value = value;
@@ -1086,13 +1163,13 @@ async function applySingleCommand(args: {
 
     case "add_note":
     case "add":
-      if (note) itemUpdates.notes = mergeNotes((targetRow as { notes?: unknown }).notes, note);
+      if (note) itemUpdates.notes = note;
       break;
 
     case "recommend":
       if (note) {
         itemUpdates.status = "recommend";
-        itemUpdates.notes = mergeNotes((targetRow as { notes?: unknown }).notes, note);
+        itemUpdates.notes = note;
         itemUpdates.recommend = [note];
       }
       break;
