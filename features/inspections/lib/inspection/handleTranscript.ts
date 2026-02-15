@@ -38,6 +38,11 @@
 // - Add a strong phrase-match boost in scoreLabel (direct label ↔ speech match)
 // - Lower min score threshold slightly (30 -> 20) so general items resolve reliably
 //
+// ✅ NEW (one-shot status + note):
+// - In status/update_status modes, if no explicit note is provided,
+//   infer an inline note from rawSpeech (e.g., "tie rod ends fail left front worn out").
+// - Do not overwrite existing notes.
+//
 // No `any`.
 
 import {
@@ -758,6 +763,43 @@ function findItemIndexByNamePreferNonGrid(params: {
   );
 }
 
+/* ------------------- one-shot status + note helpers (NEW) ------------------- */
+
+function hasExistingNote(v: unknown): boolean {
+  if (v === null || v === undefined) return false;
+  const s = String(v).trim();
+  return s.length > 0;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function inferInlineNoteFromSpeech(params: {
+  rawSpeech: string;
+  itemLabel?: string;
+}): string {
+  const raw = String(params.rawSpeech ?? "").trim();
+  if (!raw) return "";
+
+  let t = norm(raw);
+
+  const label = norm(String(params.itemLabel ?? ""));
+  if (label) {
+    const re = new RegExp(`\\b${escapeRegExp(label)}\\b`, "i");
+    t = t.replace(re, " ").trim();
+  }
+
+  t = stripStatusWords(t);
+
+  t = t.replace(/\b(because|cause|cuz|due to)\b/g, " ");
+  t = t.replace(/\s+/g, " ").trim();
+
+  if (t.length < 3) return "";
+
+  return t;
+}
+
 /* -------------------------------------------------------------------------------------------------
  * Main apply
  * ------------------------------------------------------------------------------------------------- */
@@ -927,9 +969,23 @@ async function applySingleCommand(args: {
 
     switch (mode) {
       case "update_status":
-      case "status":
+      case "status": {
         if (status) itemUpdates.status = status;
+
+        // ✅ One-shot: infer notes from rawSpeech when not provided
+        const existingNotes = (targetRow as { notes?: unknown }).notes;
+        if (!note && rawSpeech && !hasExistingNote(existingNotes)) {
+          const inferred = inferInlineNoteFromSpeech({
+            rawSpeech,
+            itemLabel: targetLabel,
+          });
+          if (inferred) itemUpdates.notes = inferred;
+        } else if (note && !hasExistingNote(existingNotes)) {
+          itemUpdates.notes = note;
+        }
+
         break;
+      }
 
       case "update_value":
       case "measurement": {
@@ -1069,9 +1125,23 @@ async function applySingleCommand(args: {
 
   switch (mode) {
     case "update_status":
-    case "status":
+    case "status": {
       if (status) itemUpdates.status = status;
+
+      // ✅ One-shot: infer notes from rawSpeech when not provided
+      const existingNotes = (targetRow as { notes?: unknown }).notes;
+      if (!note && rawSpeech && !hasExistingNote(existingNotes)) {
+        const inferred = inferInlineNoteFromSpeech({
+          rawSpeech,
+          itemLabel: targetLabel,
+        });
+        if (inferred) itemUpdates.notes = inferred;
+      } else if (note && !hasExistingNote(existingNotes)) {
+        itemUpdates.notes = note;
+      }
+
       break;
+    }
 
     case "update_value":
     case "measurement": {
