@@ -1,4 +1,3 @@
-// features/shared/components/tabs/TabsBar.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,6 +14,7 @@ const AUTH_ROUTES = new Set([
 export default function TabsBar() {
   const { tabs, activeHref, activateTab, closeTab, closeOthers, closeAll } =
     useTabs();
+
   const pathname = usePathname() || "/";
 
   // No full tab UI on dashboard or auth pages – just a subtle divider line
@@ -22,19 +22,17 @@ export default function TabsBar() {
     return <div className="w-full border-b border-neutral-800" />;
   }
 
-  if (!tabs.length) {
-    return <div className="w-full border-b border-neutral-800" />;
-  }
+  // ✅ ALWAYS render the full bar (even if only the pinned Dashboard exists)
+  // This prevents “it disappears” confusion and makes debugging obvious.
+  const safeTabs = Array.isArray(tabs) ? tabs : [];
 
   return (
     <div className="w-full min-w-0 border-b border-neutral-800 bg-neutral-950/60 px-2 backdrop-blur-sm overflow-x-hidden">
-      {/* Outer row: tabs scroller on the left, controls on the right */}
       <div className="flex min-w-0 items-center gap-2 py-1.5">
-        {/* Scrollable tabs area – this is the ONLY thing that scrolls horizontally */}
         <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden">
           <div className="flex w-max items-center gap-2">
             <AnimatePresence initial={false}>
-              {tabs.map((t) => {
+              {safeTabs.map((t) => {
                 const active = t.href === activeHref;
                 const pinned = !!t.pinned;
 
@@ -75,10 +73,16 @@ export default function TabsBar() {
                 );
               })}
             </AnimatePresence>
+
+            {/* If something goes super wrong, show a tiny hint rather than “nothing” */}
+            {safeTabs.length === 0 ? (
+              <div className="px-2 py-1 text-xs text-neutral-500">
+                No tabs yet
+              </div>
+            ) : null}
           </div>
         </div>
 
-        {/* Controls – fixed width, never forces layout wider */}
         <div className="ml-2 flex shrink-0 items-center gap-2">
           <button
             type="button"

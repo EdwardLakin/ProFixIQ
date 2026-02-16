@@ -131,7 +131,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
   },
 
-  // Inspection templates (tiles.ts uses /inspection/templates for this)
+  // Inspection templates (tiles.ts uses /inspections/templates for this)
   "/inspections/templates": {
     title: () => "Inspection Templates",
     icon: "🗂️",

@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { metaFor } from "@/features/shared/lib/routeMeta";
 
@@ -17,6 +24,7 @@ type TabsContextValue = {
 };
 
 const TabsCtx = createContext<TabsContextValue | null>(null);
+
 export const useTabs = (): TabsContextValue => {
   const ctx = useContext(TabsCtx);
   if (!ctx) throw new Error("useTabs must be used inside <TabsProvider>");
@@ -29,6 +37,15 @@ function storageKey(userId?: string) {
 
 type PersistShape = { tabs: Tab[]; activeHref: string };
 
+const DASH_TAB: Tab = { href: "/dashboard", title: "Dashboard", pinned: true };
+
+function ensurePinnedDashboard(list: Tab[]): Tab[] {
+  const withoutDash = (Array.isArray(list) ? list : []).filter(
+    (t) => t?.href && t.href !== "/dashboard",
+  );
+  return [DASH_TAB, ...withoutDash];
+}
+
 export function TabsProvider({
   children,
   userId,
@@ -38,17 +55,10 @@ export function TabsProvider({
 }) {
   const router = useRouter();
   const pathname = usePathname() || "/";
-  const [tabs, setTabs] = useState<Tab[]>([]);
-  const [activeHref, setActiveHref] = useState<string>("");
 
-  // Seed with pinned Dashboard on first paint
-  useEffect(() => {
-    setTabs((prev) => {
-      if (prev.some((t) => t.href === "/dashboard")) return prev;
-      return [{ href: "/dashboard", title: "Dashboard", pinned: true }];
-    });
-    if (!activeHref) setActiveHref("/dashboard");
-  }, []); // once
+  // ✅ Synchronous initial state: dashboard tab exists immediately
+  const [tabs, setTabs] = useState<Tab[]>(() => [DASH_TAB]);
+  const [activeHref, setActiveHref] = useState<string>(() => "/dashboard");
 
   // Load persisted (but always ensure dashboard pinned)
   useEffect(() => {
@@ -56,37 +66,44 @@ export function TabsProvider({
       const raw = localStorage.getItem(storageKey(userId));
       if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<PersistShape>;
+
       const loaded = Array.isArray(parsed.tabs) ? parsed.tabs : [];
-      const withPinned = [
-        { href: "/dashboard", title: "Dashboard", pinned: true },
-        ...loaded.filter((t) => t.href !== "/dashboard"),
-      ];
-      setTabs(withPinned);
-      if (typeof parsed.activeHref === "string") setActiveHref(parsed.activeHref || "/dashboard");
-    } catch {}
+      setTabs(ensurePinnedDashboard(loaded));
+
+      if (typeof parsed.activeHref === "string" && parsed.activeHref.trim()) {
+        setActiveHref(parsed.activeHref);
+      } else {
+        setActiveHref("/dashboard");
+      }
+    } catch {
+      // noop
+    }
   }, [userId]);
 
   // Persist
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey(userId), JSON.stringify({ tabs, activeHref }));
-    } catch {}
+      localStorage.setItem(
+        storageKey(userId),
+        JSON.stringify({ tabs, activeHref }),
+      );
+    } catch {
+      // noop
+    }
   }, [tabs, activeHref, userId]);
 
-  // Sync across tabs
+  // Sync across browser tabs/windows
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== storageKey(userId) || !e.newValue) return;
       try {
         const parsed = JSON.parse(e.newValue) as PersistShape;
-        const loaded = parsed.tabs ?? [];
-        const withPinned = [
-          { href: "/dashboard", title: "Dashboard", pinned: true },
-          ...loaded.filter((t) => t.href !== "/dashboard"),
-        ];
-        setTabs(withPinned);
+        const loaded = Array.isArray(parsed.tabs) ? parsed.tabs : [];
+        setTabs(ensurePinnedDashboard(loaded));
         setActiveHref(parsed.activeHref || "/dashboard");
-      } catch {}
+      } catch {
+        // noop
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -99,12 +116,17 @@ export function TabsProvider({
     lastPath.current = pathname;
 
     const { title, icon, show } = metaFor(pathname);
-    if (!show) {
-      setActiveHref(pathname);
-      return;
-    }
-    setTabs((prev) => (prev.some((t) => t.href === pathname) ? prev : [...prev, { href: pathname, title, icon }]));
+
+    // Always keep activeHref in sync with navigation
     setActiveHref(pathname);
+
+    if (!show) return;
+
+    setTabs((prev) => {
+      const next = ensurePinnedDashboard(prev);
+      if (next.some((t) => t.href === pathname)) return next;
+      return [...next, { href: pathname, title, icon }];
+    });
   }, [pathname]);
 
   const api = useMemo<TabsContextValue>(
@@ -114,14 +136,17 @@ export function TabsProvider({
 
       openTab: (href) => {
         const { title, icon, show } = metaFor(href);
-        if (!show) {
-          setActiveHref(href);
-          router.push(href);
-          return;
-        }
-        setTabs((prev) => (prev.some((t) => t.href === href) ? prev : [...prev, { href, title, icon }]));
+
         setActiveHref(href);
         router.push(href);
+
+        if (!show) return;
+
+        setTabs((prev) => {
+          const next = ensurePinnedDashboard(prev);
+          if (next.some((t) => t.href === href)) return next;
+          return [...next, { href, title, icon }];
+        });
       },
 
       activateTab: (href) => {
@@ -130,30 +155,43 @@ export function TabsProvider({
       },
 
       closeTab: (href) => {
-        // never close pinned
-        if (href === "/dashboard") return;
-        setTabs((prev) => prev.filter((t) => t.href !== href));
-        if (activeHref === href) {
-          const remaining = tabs.filter((t) => t.href !== href);
-          const next = remaining.length ? remaining[remaining.length - 1].href : "/dashboard";
-          setActiveHref(next);
-          router.push(next);
-        }
+        if (href === "/dashboard") return; // pinned
+
+        setTabs((prev) => {
+          const nextTabs = ensurePinnedDashboard(
+            prev.filter((t) => t.href !== href),
+          );
+
+          // If closing active tab, pick a new active tab based on nextTabs
+          if (activeHref === href) {
+            const last = nextTabs[nextTabs.length - 1]?.href ?? "/dashboard";
+            setActiveHref(last);
+            router.push(last);
+          }
+
+          return nextTabs;
+        });
       },
 
       closeOthers: (href) => {
-        setTabs((prev) => [{ href: "/dashboard", title: "Dashboard", pinned: true }, ...prev.filter((t) => t.href === href && href !== "/dashboard")]);
+        setTabs((prev) => {
+          const keep =
+            href === "/dashboard"
+              ? [DASH_TAB]
+              : [DASH_TAB, ...prev.filter((t) => t.href === href)];
+          return ensurePinnedDashboard(keep);
+        });
         setActiveHref(href);
         router.push(href);
       },
 
       closeAll: () => {
-        setTabs([{ href: "/dashboard", title: "Dashboard", pinned: true }]);
+        setTabs([DASH_TAB]);
         setActiveHref("/dashboard");
         router.push("/dashboard");
       },
     }),
-    [tabs, activeHref, router]
+    [tabs, activeHref, router],
   );
 
   return <TabsCtx.Provider value={api}>{children}</TabsCtx.Provider>;
