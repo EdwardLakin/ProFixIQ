@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import {
+import type {
   SessionCustomer as CustomerInfo,
   SessionVehicle as VehicleInfo,
 } from "@inspections/lib/inspection/types";
@@ -21,6 +21,7 @@ type CustomerRow = {
   city?: string | null;
   province?: string | null;
   postal_code?: string | null;
+  created_at?: string | null;
 };
 
 type VehicleRow = {
@@ -34,10 +35,12 @@ type VehicleRow = {
   unit_number?: string | null;
   color?: string | null;
   engine_hours?: number | null;
+
   engine?: string | null;
   transmission?: string | null;
   fuel_type?: string | null;
   drivetrain?: string | null;
+
   customer_id?: string | null;
   created_at?: string | null;
 };
@@ -61,7 +64,7 @@ interface Props {
 /** Internal view of handlers (kept private to this file) */
 type Handlers = {
   onCustomerChange?: (
-    field: keyof CustomerInfo | "business_name",
+    field: keyof CustomerInfo,
     value: string | null,
   ) => void;
   onVehicleChange?: (field: keyof VehicleInfo, value: string | null) => void;
@@ -122,11 +125,11 @@ function CustomerAutocomplete({
         const { data, error } = await supabase
           .from("customers")
           .select(
-            "id, business_name, first_name, last_name, phone, email, created_at",
+            "id, business_name, first_name, last_name, name, phone, email, address, city, province, postal_code, created_at",
           )
           .eq("shop_id", shopId)
           .or(
-            `business_name.ilike.${like},first_name.ilike.${like},last_name.ilike.${like}`,
+            `business_name.ilike.${like},first_name.ilike.${like},last_name.ilike.${like},name.ilike.${like}`,
           )
           .order("created_at", { ascending: false })
           .limit(12);
@@ -171,7 +174,7 @@ function CustomerAutocomplete({
           )}
           {rows.map((c) => {
             const contact = [c.first_name, c.last_name].filter(Boolean).join(" ");
-            const top = c.business_name || contact || "Unnamed";
+            const top = c.business_name || contact || c.name || "Unnamed";
             const sub =
               c.business_name && contact
                 ? contact
@@ -247,7 +250,7 @@ function UnitNumberAutocomplete({
         const { data, error } = await supabase
           .from("vehicles")
           .select(
-            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, transmission, fuel_type, drivetrain, created_at",
+            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, transmission, fuel_type, drivetrain, customer_id, created_at",
           )
           .eq("shop_id", shopId)
           .eq("customer_id", customerId)
@@ -348,12 +351,11 @@ export default function CustomerVehicleForm({
   vehicle,
   saving = false,
   workOrderExists = false,
-  shopId, // 🔒 REQUIRED
+  shopId,
   handlers,
 }: Props) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
-  // Safely unwrap handlers (no-ops by default)
   const {
     onCustomerChange = () => {},
     onVehicleChange = () => {},
@@ -365,45 +367,56 @@ export default function CustomerVehicleForm({
 
   const [currentCustomerId, setCurrentCustomerId] = useState<string | null>(null);
 
+  const safeSetCustomer = useCallback(
+    (field: keyof CustomerInfo, value: string | null | undefined) => {
+      onCustomerChange(field, value ?? null);
+    },
+    [onCustomerChange],
+  );
+
+  const safeSetVehicle = useCallback(
+    (field: keyof VehicleInfo, value: string | null | undefined) => {
+      onVehicleChange(field, value ?? null);
+    },
+    [onVehicleChange],
+  );
+
   async function handlePickedCustomer(c: CustomerRow) {
     const fallback = splitNamefallback(c.name);
 
-    // Fill immediate customer fields (fallback to "name" when needed)
-    (onCustomerChange as Handlers["onCustomerChange"])?.(
-      "business_name",
-      c.business_name ?? null,
-    );
-    onCustomerChange("first_name", (c.first_name ?? fallback.first) ?? null);
-    onCustomerChange("last_name", (c.last_name ?? fallback.last) ?? null);
-    onCustomerChange("phone", c.phone ?? null);
-    onCustomerChange("email", c.email ?? null);
+    // Fill immediate customer fields
+    safeSetCustomer("business_name", c.business_name ?? null);
+    safeSetCustomer("name", c.name ?? null);
+    safeSetCustomer("first_name", c.first_name ?? fallback.first ?? null);
+    safeSetCustomer("last_name", c.last_name ?? fallback.last ?? null);
+    safeSetCustomer("phone", c.phone ?? null);
+    safeSetCustomer("email", c.email ?? null);
 
-    // Fill remaining fields (also ensure business_name)
+    // Fill remaining fields
     try {
       const { data } = await supabase
         .from("customers")
         .select("*")
         .eq("id", c.id)
         .maybeSingle();
+
       if (data) {
         const d = data as CustomerRow;
         const fb = splitNamefallback(d.name);
-        (onCustomerChange as Handlers["onCustomerChange"])?.(
-          "business_name",
-          d.business_name ?? null,
-        );
-        onCustomerChange("first_name", (d.first_name ?? fb.first) ?? null);
-        onCustomerChange("last_name", (d.last_name ?? fb.last) ?? null);
-        onCustomerChange("address", d.address ?? null);
-        onCustomerChange("city", d.city ?? null);
-        onCustomerChange("province", d.province ?? null);
-        onCustomerChange("postal_code", d.postal_code ?? null);
+
+        safeSetCustomer("business_name", d.business_name ?? null);
+        safeSetCustomer("name", d.name ?? null);
+        safeSetCustomer("first_name", d.first_name ?? fb.first ?? null);
+        safeSetCustomer("last_name", d.last_name ?? fb.last ?? null);
+        safeSetCustomer("address", d.address ?? null);
+        safeSetCustomer("city", d.city ?? null);
+        safeSetCustomer("province", d.province ?? null);
+        safeSetCustomer("postal_code", d.postal_code ?? null);
       }
     } catch {
       /* ignore */
     }
 
-    // let parent capture id, and keep locally for Unit# selector
     onCustomerSelected?.(c.id);
     setCurrentCustomerId(c.id);
 
@@ -422,34 +435,24 @@ export default function CustomerVehicleForm({
       const arr = (vehs ?? []) as VehicleRow[];
       if (arr.length === 1) {
         const v = arr[0];
-        onVehicleChange("vin", (v.vin ?? "") || null);
-        onVehicleChange("year", v.year != null ? String(v.year) : null);
-        onVehicleChange("make", v.make ?? null);
-        onVehicleChange("model", v.model ?? null);
-        onVehicleChange("license_plate", v.license_plate ?? null);
-        onVehicleChange("mileage", (v.mileage ?? "") || null);
-        onVehicleChange("unit_number", v.unit_number ?? null);
-        onVehicleChange("color", v.color ?? null);
-        onVehicleChange(
+        safeSetVehicle("vin", v.vin ?? null);
+        safeSetVehicle("year", v.year != null ? String(v.year) : null);
+        safeSetVehicle("make", v.make ?? null);
+        safeSetVehicle("model", v.model ?? null);
+        safeSetVehicle("license_plate", v.license_plate ?? null);
+        safeSetVehicle("mileage", v.mileage ?? null);
+        safeSetVehicle("unit_number", v.unit_number ?? null);
+        safeSetVehicle("color", v.color ?? null);
+        safeSetVehicle(
           "engine_hours",
           v.engine_hours != null ? String(v.engine_hours) : null,
         );
-        onVehicleChange(
-          "engine" as keyof VehicleInfo,
-          (v.engine ?? null) as string | null,
-        );
-        onVehicleChange(
-          "transmission" as keyof VehicleInfo,
-          (v.transmission ?? null) as string | null,
-        );
-        onVehicleChange(
-          "fuel_type" as keyof VehicleInfo,
-          (v.fuel_type ?? null) as string | null,
-        );
-        onVehicleChange(
-          "drivetrain" as keyof VehicleInfo,
-          (v.drivetrain ?? null) as string | null,
-        );
+
+        safeSetVehicle("engine", v.engine ?? null);
+        safeSetVehicle("transmission", v.transmission ?? null);
+        safeSetVehicle("fuel_type", v.fuel_type ?? null);
+        safeSetVehicle("drivetrain", v.drivetrain ?? null);
+
         onVehicleSelected?.(v.id);
       }
     } catch {
@@ -457,43 +460,23 @@ export default function CustomerVehicleForm({
     }
   }
 
-  /**
-   * Save & Continue handler:
-   * - Runs the parent onSave (can be sync or async)
-   * - Then triggers rule generation for this YMM (+ engine) in the background
-   */
   const handleSaveClick = async () => {
     try {
-      if (onSave) {
-        const maybePromise = onSave();
-        if (
-          maybePromise &&
-          typeof (maybePromise as { then?: unknown }).then === "function"
-        ) {
-          await (maybePromise as Promise<void>);
-        }
-      }
+      if (onSave) await onSave();
 
-      // After save: fire-and-forget rule generation for this YMM
+      // After save: fire-and-forget rule generation for this YMM (+ engine)
       const yearStr = vehicle.year ?? null;
       const year = yearStr ? parseInt(yearStr, 10) : null;
       const make = vehicle.make?.trim() || "";
       const model = vehicle.model?.trim() || "";
-      const engineFamily = ((vehicle as any).engine as string | null) ?? null;
+      const engineFamily = vehicle.engine ?? null;
 
-      if (!year || !make || !model) {
-        return;
-      }
+      if (!year || !make || !model) return;
 
       void fetch("/api/maintenance/generate-rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          year,
-          make,
-          model,
-          engineFamily,
-        }),
+        body: JSON.stringify({ year, make, model, engineFamily }),
       }).catch(() => {});
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -511,8 +494,8 @@ export default function CustomerVehicleForm({
               Customer &amp; Vehicle
             </h1>
             <p className="mt-1 text-[0.75rem] text-white/55">
-              Search existing customers and units, or enter new details to
-              attach to this visit.
+              Search existing customers and units, or enter new details to attach
+              to this visit.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -550,26 +533,18 @@ export default function CustomerVehicleForm({
             {/* Business name + autocomplete */}
             <div className="sm:col-span-2 space-y-1">
               <label className="text-xs text-white/60">
-                Business name{" "}
-                <span className="text-white/35">(optional)</span>
+                Business name <span className="text-white/35">(optional)</span>
               </label>
               <input
                 className="input"
                 placeholder="Business name"
-                value={
-                  (customer as { business_name?: string | null }).business_name ?? ""
-                }
+                value={customer.business_name ?? ""}
                 onChange={(e) =>
-                  (onCustomerChange as Handlers["onCustomerChange"])?.(
-                    "business_name",
-                    e.target.value || null,
-                  )
+                  safeSetCustomer("business_name", e.target.value || null)
                 }
               />
               <CustomerAutocomplete
-                q={
-                  (customer as { business_name?: string | null }).business_name ?? ""
-                }
+                q={customer.business_name ?? ""}
                 shopId={shopId}
                 onPick={handlePickedCustomer}
               />
@@ -582,7 +557,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="First name"
                 value={customer.first_name ?? ""}
-                onChange={(e) => onCustomerChange("first_name", e.target.value || null)}
+                onChange={(e) => safeSetCustomer("first_name", e.target.value || null)}
               />
               <CustomerAutocomplete
                 q={customer.first_name ?? ""}
@@ -598,7 +573,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Last name"
                 value={customer.last_name ?? ""}
-                onChange={(e) => onCustomerChange("last_name", e.target.value || null)}
+                onChange={(e) => safeSetCustomer("last_name", e.target.value || null)}
               />
               <CustomerAutocomplete
                 q={customer.last_name ?? ""}
@@ -614,7 +589,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Phone"
                 value={customer.phone ?? ""}
-                onChange={(e) => onCustomerChange("phone", e.target.value || null)}
+                onChange={(e) => safeSetCustomer("phone", e.target.value || null)}
               />
             </div>
 
@@ -626,7 +601,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Email"
                 value={customer.email ?? ""}
-                onChange={(e) => onCustomerChange("email", e.target.value || null)}
+                onChange={(e) => safeSetCustomer("email", e.target.value || null)}
               />
             </div>
 
@@ -637,7 +612,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Street address"
                 value={customer.address ?? ""}
-                onChange={(e) => onCustomerChange("address", e.target.value || null)}
+                onChange={(e) => safeSetCustomer("address", e.target.value || null)}
               />
             </div>
 
@@ -648,7 +623,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="City"
                 value={customer.city ?? ""}
-                onChange={(e) => onCustomerChange("city", e.target.value || null)}
+                onChange={(e) => safeSetCustomer("city", e.target.value || null)}
               />
             </div>
 
@@ -659,7 +634,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Province / State"
                 value={customer.province ?? ""}
-                onChange={(e) => onCustomerChange("province", e.target.value || null)}
+                onChange={(e) => safeSetCustomer("province", e.target.value || null)}
               />
             </div>
 
@@ -671,7 +646,7 @@ export default function CustomerVehicleForm({
                 placeholder="Postal code"
                 value={customer.postal_code ?? ""}
                 onChange={(e) =>
-                  onCustomerChange("postal_code", e.target.value || null)
+                  safeSetCustomer("postal_code", e.target.value || null)
                 }
               />
             </div>
@@ -697,41 +672,33 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Unit #"
                 value={vehicle.unit_number ?? ""}
-                onChange={(e) => onVehicleChange("unit_number", e.target.value || null)}
+                onChange={(e) =>
+                  safeSetVehicle("unit_number", e.target.value || null)
+                }
               />
               <UnitNumberAutocomplete
                 q={vehicle.unit_number ?? ""}
                 shopId={shopId}
                 customerId={currentCustomerId}
                 onPick={(v) => {
-                  onVehicleChange("unit_number", v.unit_number ?? null);
-                  onVehicleChange("vin", (v.vin ?? "") || null);
-                  onVehicleChange("year", v.year != null ? String(v.year) : null);
-                  onVehicleChange("make", v.make ?? null);
-                  onVehicleChange("model", v.model ?? null);
-                  onVehicleChange("license_plate", v.license_plate ?? null);
-                  onVehicleChange("mileage", (v.mileage ?? "") || null);
-                  onVehicleChange("color", v.color ?? null);
-                  onVehicleChange(
+                  safeSetVehicle("unit_number", v.unit_number ?? null);
+                  safeSetVehicle("vin", v.vin ?? null);
+                  safeSetVehicle("year", v.year != null ? String(v.year) : null);
+                  safeSetVehicle("make", v.make ?? null);
+                  safeSetVehicle("model", v.model ?? null);
+                  safeSetVehicle("license_plate", v.license_plate ?? null);
+                  safeSetVehicle("mileage", v.mileage ?? null);
+                  safeSetVehicle("color", v.color ?? null);
+                  safeSetVehicle(
                     "engine_hours",
                     v.engine_hours != null ? String(v.engine_hours) : null,
                   );
-                  onVehicleChange(
-                    "engine" as keyof VehicleInfo,
-                    (v.engine ?? null) as string | null,
-                  );
-                  onVehicleChange(
-                    "transmission" as keyof VehicleInfo,
-                    (v.transmission ?? null) as string | null,
-                  );
-                  onVehicleChange(
-                    "fuel_type" as keyof VehicleInfo,
-                    (v.fuel_type ?? null) as string | null,
-                  );
-                  onVehicleChange(
-                    "drivetrain" as keyof VehicleInfo,
-                    (v.drivetrain ?? null) as string | null,
-                  );
+
+                  safeSetVehicle("engine", v.engine ?? null);
+                  safeSetVehicle("transmission", v.transmission ?? null);
+                  safeSetVehicle("fuel_type", v.fuel_type ?? null);
+                  safeSetVehicle("drivetrain", v.drivetrain ?? null);
+
                   onVehicleSelected?.(v.id);
                 }}
               />
@@ -745,7 +712,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Year"
                 value={vehicle.year ?? ""}
-                onChange={(e) => onVehicleChange("year", e.target.value || null)}
+                onChange={(e) => safeSetVehicle("year", e.target.value || null)}
               />
             </div>
 
@@ -756,7 +723,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Make"
                 value={vehicle.make ?? ""}
-                onChange={(e) => onVehicleChange("make", e.target.value || null)}
+                onChange={(e) => safeSetVehicle("make", e.target.value || null)}
               />
             </div>
 
@@ -767,7 +734,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Model"
                 value={vehicle.model ?? ""}
-                onChange={(e) => onVehicleChange("model", e.target.value || null)}
+                onChange={(e) => safeSetVehicle("model", e.target.value || null)}
               />
             </div>
 
@@ -778,7 +745,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="VIN"
                 value={vehicle.vin ?? ""}
-                onChange={(e) => onVehicleChange("vin", e.target.value || null)}
+                onChange={(e) => safeSetVehicle("vin", e.target.value || null)}
               />
             </div>
 
@@ -790,7 +757,7 @@ export default function CustomerVehicleForm({
                 placeholder="License plate"
                 value={vehicle.license_plate ?? ""}
                 onChange={(e) =>
-                  onVehicleChange("license_plate", e.target.value || null)
+                  safeSetVehicle("license_plate", e.target.value || null)
                 }
               />
             </div>
@@ -803,7 +770,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Mileage"
                 value={vehicle.mileage ?? ""}
-                onChange={(e) => onVehicleChange("mileage", e.target.value || null)}
+                onChange={(e) => safeSetVehicle("mileage", e.target.value || null)}
               />
             </div>
 
@@ -814,7 +781,7 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Color"
                 value={vehicle.color ?? ""}
-                onChange={(e) => onVehicleChange("color", e.target.value || null)}
+                onChange={(e) => safeSetVehicle("color", e.target.value || null)}
               />
             </div>
 
@@ -827,7 +794,7 @@ export default function CustomerVehicleForm({
                 placeholder="Engine hours"
                 value={vehicle.engine_hours ?? ""}
                 onChange={(e) =>
-                  onVehicleChange("engine_hours", e.target.value || null)
+                  safeSetVehicle("engine_hours", e.target.value || null)
                 }
               />
             </div>
@@ -838,8 +805,8 @@ export default function CustomerVehicleForm({
               <input
                 className="input"
                 placeholder="e.g. 3.5L EcoBoost"
-                value={(vehicle as any).engine ?? ""}
-                onChange={(e) => (onVehicleChange as any)("engine", e.target.value || null)}
+                value={vehicle.engine ?? ""}
+                onChange={(e) => safeSetVehicle("engine", e.target.value || null)}
               />
             </div>
 
@@ -848,9 +815,9 @@ export default function CustomerVehicleForm({
               <label className="text-xs text-white/60">Transmission</label>
               <select
                 className="input"
-                value={(vehicle as any).transmission ?? ""}
+                value={vehicle.transmission ?? ""}
                 onChange={(e) =>
-                  (onVehicleChange as any)("transmission", e.target.value || null)
+                  safeSetVehicle("transmission", e.target.value || null)
                 }
               >
                 <option value="">Select transmission</option>
@@ -867,8 +834,10 @@ export default function CustomerVehicleForm({
               <label className="text-xs text-white/60">Fuel type</label>
               <select
                 className="input"
-                value={(vehicle as any).fuel_type ?? ""}
-                onChange={(e) => (onVehicleChange as any)("fuel_type", e.target.value || null)}
+                value={vehicle.fuel_type ?? ""}
+                onChange={(e) =>
+                  safeSetVehicle("fuel_type", e.target.value || null)
+                }
               >
                 <option value="">Select fuel type</option>
                 <option value="gasoline">Gasoline</option>
@@ -885,8 +854,10 @@ export default function CustomerVehicleForm({
               <label className="text-xs text-white/60">Drivetrain</label>
               <select
                 className="input"
-                value={(vehicle as any).drivetrain ?? ""}
-                onChange={(e) => (onVehicleChange as any)("drivetrain", e.target.value || null)}
+                value={vehicle.drivetrain ?? ""}
+                onChange={(e) =>
+                  safeSetVehicle("drivetrain", e.target.value || null)
+                }
               >
                 <option value="">Select drivetrain</option>
                 <option value="fwd">FWD</option>
@@ -922,7 +893,11 @@ export default function CustomerVehicleForm({
                   : "Create Work Order with these details"
               }
             >
-              {saving ? "Saving…" : workOrderExists ? "Update & Continue" : "Save & Continue"}
+              {saving
+                ? "Saving…"
+                : workOrderExists
+                  ? "Update & Continue"
+                  : "Save & Continue"}
             </button>
           )}
 
@@ -941,53 +916,6 @@ export default function CustomerVehicleForm({
               Clear
             </button>
           )}
-
-          {/* 🔵 DEBUG SHOP */}
-          <button
-            type="button"
-            className="
-              inline-flex items-center rounded-full
-              border border-blue-500/45 bg-blue-500/10
-              px-3 py-1.5 text-[11px] font-medium text-blue-200
-              shadow-[0_0_16px_rgba(37,99,235,0.25)]
-              hover:bg-blue-500/15
-            "
-            onClick={async () => {
-              try {
-                const {
-                  data: { user },
-                } = await supabase.auth.getUser();
-                const uid = user?.id ?? null;
-
-                let profileShop: string | null = null;
-                if (uid) {
-                  const prof = await supabase
-                    .from("profiles")
-                    .select("user_id, shop_id")
-                    .eq("user_id", uid)
-                    .maybeSingle();
-
-                  profileShop = prof.data?.shop_id ?? null;
-                }
-
-                alert(
-                  JSON.stringify(
-                    {
-                      auth_uid: uid,
-                      profile_shop_id: profileShop,
-                      form_shop_id: shopId ?? null,
-                    },
-                    null,
-                    2,
-                  ),
-                );
-              } catch (err) {
-                alert(`Debug failed: ${(err as Error)?.message || "unknown error"}`);
-              }
-            }}
-          >
-            Debug Shop
-          </button>
 
           {workOrderExists ? (
             <span className="text-xs text-white/45">

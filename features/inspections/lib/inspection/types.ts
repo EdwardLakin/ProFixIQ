@@ -298,7 +298,16 @@ export interface InspectionSummary {
 }
 
 /** ---------- Session (customer/vehicle) ---------- */
+/**
+ * NOTE:
+ * These session shapes are what UI forms edit. They should include the fields
+ * the forms actually render, so we don’t need `any` casts in components.
+ */
 export interface SessionCustomer {
+  business_name?: string | null;
+  /** Some flows still store a single name field */
+  name?: string | null;
+
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
@@ -317,9 +326,16 @@ export interface SessionVehicle {
   license_plate: string | null;
   mileage: string | null;
   color: string | null;
+
   /** Added for your form */
   unit_number?: string | null;
   engine_hours?: string | null;
+
+  /** ✅ Added to match the create flow + form UI (remove `any`) */
+  engine?: string | null;
+  transmission?: string | null;
+  fuel_type?: string | null;
+  drivetrain?: string | null;
 }
 
 /** ---------- Session status ---------- */

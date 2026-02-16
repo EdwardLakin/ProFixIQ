@@ -1075,7 +1075,7 @@ const openInspectionForLine = useCallback(
     setInspectionOpen(true);
     toast.success("Inspection opened");
   },
-  [wo?.id, customer, vehicle, fetchLatestReview],
+  [wo?.id, customer, vehicle,],
 );
 
   useEffect(() => {

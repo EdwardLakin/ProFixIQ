@@ -1,4 +1,11 @@
-// features/work-orders/app/work-orders/create/page.tsx
+// /features/work-orders/app/work-orders/create/page.tsx (FULL FILE REPLACEMENT)
+// Fixes TS + lint:
+// - Removes unsafe indexed assignment in customer draft hydration (kills TS2322)
+// - Normalizes VIN decoded year to string|null
+// - Ensures p_notes is string (not string|null)
+// - Avoids passing undefined for vehicleId props
+// - Fixes accidental `};` after function declaration
+
 "use client";
 
 /**
@@ -7,7 +14,7 @@
  * Integrated with VIN scanner + draft store.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -50,6 +57,64 @@ type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type WOType = "inspection" | "maintenance" | "diagnosis";
 type UploadSummary = { uploaded: number; failed: number };
 
+// Allow a couple extra fields used by UI/drafts without using `any`
+type CustomerWithBusiness = SessionCustomer & { business_name?: string | null };
+type VehicleWithExtra = SessionVehicle & {
+  engine?: string | null;
+  fuel_type?: string | null;
+  drivetrain?: string | null;
+  transmission?: string | null;
+};
+
+type WorkOrderWaiterRow = WorkOrderRow & { is_waiter?: boolean | null };
+
+// ✅ VIN decode payload can be string/number, but we normalize before storing
+type VinDecoded = {
+  vin: string;
+  year?: string | number | null;
+  make?: string | null;
+  model?: string | null;
+  engine?: string | null;
+  fuelType?: string | null;
+  driveType?: string | null;
+  transmission?: string | null;
+};
+
+type CustomerRowWithBusiness = CustomerRow & { business_name?: string | null };
+
+type CreateWoRpcRow = Pick<
+  WorkOrderRow,
+  "id" | "shop_id" | "custom_id" | "customer_id" | "vehicle_id"
+> & {
+  is_waiter?: boolean | null;
+};
+
+// Type the draft hooks once so we don't need `any` where the hook typing is loose
+type CustomerVehicleDraftHook = {
+  customer?: Partial<CustomerWithBusiness>;
+  vehicle?: Partial<VehicleWithExtra> & { plate?: string | null };
+  setCustomerField: (
+    field: keyof SessionCustomer | "business_name",
+    value: string | null,
+  ) => void;
+  setVehicleField: (field: keyof SessionVehicle, value: string | null) => void;
+  bulkSet: (data: {
+    customer?: Partial<CustomerWithBusiness>;
+    vehicle?: Partial<VehicleWithExtra>;
+  }) => void;
+  reset: () => void;
+};
+
+type WorkOrderDraftHook = {
+  customer?: Partial<SessionCustomer>;
+  vehicle?: Partial<VehicleWithExtra> & {
+    license_plate?: string | null;
+    plate?: string | null;
+  };
+  setVehicle: (vehicle: Partial<VehicleWithExtra>) => void;
+  reset: () => void;
+};
+
 // Extended line type so we can read template metadata safely
 type WorkOrderLineWithInspectionMeta = LineRow & {
   inspection_template?: string | null;
@@ -88,12 +153,22 @@ const strOrNull = (v: string | null | undefined) => {
   const t = (v ?? "").trim();
   return t ? t : null;
 };
+
 const numOrNull = (v: string | number | null | undefined) => {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+};
+
+// ✅ normalize year into SessionVehicle.year (string|null)
+const yearToStrOrNull = (
+  v: string | number | null | undefined,
+): string | null => {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return s ? s : null;
 };
 
 /** Normalize “where is the inspection template id stored for this line?” */
@@ -142,98 +217,135 @@ export default function CreateWorkOrderPage() {
     autoWO: boolean;
   });
 
-  // Session-shaped state
-  const defaultCustomer: SessionCustomer = {
-    first_name: null,
-    last_name: null,
-    phone: null,
-    email: null,
-    address: null,
-    city: null,
-    province: null,
-    postal_code: null,
-  };
-  const defaultVehicle: SessionVehicle = {
-    year: null,
-    make: null,
-    model: null,
-    vin: null,
-    license_plate: null,
-    mileage: null,
-    color: null,
-    unit_number: null,
-    engine_hours: null,
-  };
+  // ✅ memoized defaults to satisfy exhaustive-deps (stable identity)
+  const defaultCustomer = useMemo<SessionCustomer>(
+    () => ({
+      first_name: null,
+      last_name: null,
+      phone: null,
+      email: null,
+      address: null,
+      city: null,
+      province: null,
+      postal_code: null,
+    }),
+    [],
+  );
 
-  const [customer, setCustomer] = useTabState<SessionCustomer>(
+  const defaultVehicle = useMemo<SessionVehicle>(
+    () => ({
+      year: null,
+      make: null,
+      model: null,
+      vin: null,
+      license_plate: null,
+      mileage: null,
+      color: null,
+      unit_number: null,
+      engine_hours: null,
+    }),
+    [],
+  );
+
+  const [customer, setCustomer] = useTabState<CustomerWithBusiness>(
     "__cv_customer",
     defaultCustomer,
   );
-  const [vehicle, setVehicle] = useTabState<SessionVehicle>(
+  const [vehicle, setVehicle] = useTabState<VehicleWithExtra>(
     "__cv_vehicle",
     defaultVehicle,
   );
 
   // CV draft (session persisted)
-  const cvDraft = useCustomerVehicleDraft();
+  const cvDraft =
+    useCustomerVehicleDraft() as unknown as CustomerVehicleDraftHook;
 
   // Hydrate from CV draft on first load (only fill empty fields)
   useEffect(() => {
     const d = cvDraft;
     if (!d) return;
 
-    const hasDraftCust = Object.values(d.customer || {}).some(Boolean);
-    const hasDraftVeh = Object.values(d.vehicle || {}).some(Boolean);
+    const dc = (d.customer ?? {}) as Partial<CustomerWithBusiness>;
+    const dv = (d.vehicle ?? {}) as Partial<VehicleWithExtra> & {
+      plate?: string | null;
+    };
+
+    const hasDraftCust = Object.values(dc).some(Boolean);
+    const hasDraftVeh = Object.values(dv).some(Boolean);
 
     if (hasDraftCust) {
+      // ✅ Explicit per-field hydration (no indexed assignment -> no TS2322)
       setCustomer((prev) => ({
         ...prev,
-        ...Object.fromEntries(
-          Object.entries(d.customer).map(([k, v]) => [
-            k as keyof SessionCustomer,
-            (prev as any)[k] ?? v ?? null,
-          ]),
-        ),
+        business_name:
+          (prev.business_name ?? "") !== ""
+            ? prev.business_name ?? null
+            : (dc.business_name ?? prev.business_name ?? null),
+        first_name:
+          prev.first_name == null || prev.first_name === ""
+            ? (dc.first_name ?? prev.first_name ?? null)
+            : prev.first_name,
+        last_name:
+          prev.last_name == null || prev.last_name === ""
+            ? (dc.last_name ?? prev.last_name ?? null)
+            : prev.last_name,
+        phone:
+          prev.phone == null || prev.phone === ""
+            ? (dc.phone ?? prev.phone ?? null)
+            : prev.phone,
+        email:
+          prev.email == null || prev.email === ""
+            ? (dc.email ?? prev.email ?? null)
+            : prev.email,
+        address:
+          prev.address == null || prev.address === ""
+            ? (dc.address ?? prev.address ?? null)
+            : prev.address,
+        city:
+          prev.city == null || prev.city === ""
+            ? (dc.city ?? prev.city ?? null)
+            : prev.city,
+        province:
+          prev.province == null || prev.province === ""
+            ? (dc.province ?? prev.province ?? null)
+            : prev.province,
+        postal_code:
+          prev.postal_code == null || prev.postal_code === ""
+            ? (dc.postal_code ?? prev.postal_code ?? null)
+            : prev.postal_code,
       }));
     }
+
     if (hasDraftVeh) {
       setVehicle((prev) => ({
         ...prev,
-        vin: d.vehicle.vin ?? prev.vin,
-        year: d.vehicle.year ?? prev.year,
-        make: d.vehicle.make ?? prev.make,
-        model: d.vehicle.model ?? prev.model,
+        vin: dv.vin ?? prev.vin,
+        year: yearToStrOrNull(dv.year ?? prev.year),
+        make: dv.make ?? prev.make,
+        model: dv.model ?? prev.model,
         license_plate:
-          // support both new `license_plate` and legacy `plate` fields
-          (d.vehicle as any).license_plate ??
-          (d.vehicle as any).plate ??
-          prev.license_plate,
+          dv.license_plate ?? dv.plate ?? prev.license_plate ?? null,
       }));
     }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // once
+  }, []); // one-time hydration is intentional
 
-  const onCustomerChange = (
-    field: keyof SessionCustomer | "business_name",
-    value: string | null,
-  ) => {
-    if (field === "business_name") {
-      // store extra field alongside SessionCustomer shape
-      setCustomer((c) => ({ ...(c as any), business_name: value } as any));
-      cvDraft.setCustomerField(field as any, value);
-    } else {
+  const onCustomerChange = useCallback(
+    (field: keyof SessionCustomer | "business_name", value: string | null) => {
       setCustomer((c) => ({ ...c, [field]: value }));
-      cvDraft.setCustomerField(field as any, value);
-    }
-  };
+      cvDraft.setCustomerField(field, value);
+    },
+    [cvDraft, setCustomer],
+  );
 
-  const onVehicleChange = (
-    field: keyof SessionVehicle,
-    value: string | null,
-  ) => {
-    setVehicle((v) => ({ ...v, [field]: value }));
-    cvDraft.setVehicleField(field as any, value);
-  };
+  const onVehicleChange = useCallback(
+    (field: keyof SessionVehicle, value: string | null) => {
+      setVehicle((v) => ({ ...v, [field]: value }));
+      cvDraft.setVehicleField(field, value);
+    },
+    [cvDraft, setVehicle],
+  );
 
   // Captured ids
   const [customerId, setCustomerId] = useTabState<string | null>(
@@ -267,9 +379,7 @@ export default function CreateWorkOrderPage() {
   // Uploads
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [docFiles, setDocFiles] = useState<File[]>([]);
-  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(
-    null,
-  );
+  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
 
   // UI state
   const [loading, setLoading] = useTabState("loading", false);
@@ -316,31 +426,32 @@ export default function CreateWorkOrderPage() {
   }, [supabase]);
 
   // VIN / OCR draft hydration
-  const draft = useWorkOrderDraft();
+  const draft = useWorkOrderDraft() as unknown as WorkOrderDraftHook;
+
   useEffect(() => {
-    const hasVeh = Object.values(draft.vehicle || {}).some((v) => v);
-    const hasCust = Object.values(draft.customer || {}).some((v) => v);
+    const hasVeh = Object.values(draft.vehicle || {}).some((v) => Boolean(v));
+    const hasCust = Object.values(draft.customer || {}).some((v) => Boolean(v));
 
     if (hasVeh) {
       setVehicle((prev) => ({
         ...prev,
-        vin: draft.vehicle.vin ?? prev.vin,
-        year: draft.vehicle.year ?? prev.year,
-        make: draft.vehicle.make ?? prev.make,
-        model: draft.vehicle.model ?? prev.model,
+        vin: draft.vehicle?.vin ?? prev.vin,
+        year: yearToStrOrNull(draft.vehicle?.year ?? prev.year),
+        make: draft.vehicle?.make ?? prev.make,
+        model: draft.vehicle?.model ?? prev.model,
         license_plate:
-          (draft.vehicle as any).license_plate ??
-          (draft.vehicle as any).plate ??
+          draft.vehicle?.license_plate ??
+          draft.vehicle?.plate ??
           prev.license_plate,
       }));
     }
     if (hasCust) {
       setCustomer((prev) => ({
         ...prev,
-        first_name: draft.customer.first_name ?? prev.first_name,
-        last_name: draft.customer.last_name ?? prev.last_name,
-        phone: draft.customer.phone ?? prev.phone,
-        email: draft.customer.email ?? prev.email,
+        first_name: draft.customer?.first_name ?? prev.first_name,
+        last_name: draft.customer?.last_name ?? prev.last_name,
+        phone: draft.customer?.phone ?? prev.phone,
+        email: draft.customer?.email ?? prev.email,
       }));
     }
 
@@ -353,12 +464,12 @@ export default function CreateWorkOrderPage() {
       draft.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // one-time hydration is intentional
 
   // keep waiter state in sync with an existing WO (editing case)
   useEffect(() => {
     if (!wo) return;
-    const flag = (wo as any).is_waiter ?? false;
+    const flag = (wo as WorkOrderWaiterRow).is_waiter ?? false;
     setIsWaiter(Boolean(flag));
   }, [wo, setIsWaiter]);
 
@@ -372,9 +483,7 @@ export default function CreateWorkOrderPage() {
     })();
   }, [supabase]);
 
-  // ✅ patched: align to profiles.user_id first; fallback to profiles.id
   async function getOrLinkShopId(userId: string): Promise<string | null> {
-    // 1) try profile by user_id (new schema)
     const byUserId = await supabase
       .from("profiles")
       .select("shop_id")
@@ -384,7 +493,6 @@ export default function CreateWorkOrderPage() {
     if (byUserId.error) throw byUserId.error;
     if (byUserId.data?.shop_id) return byUserId.data.shop_id;
 
-    // 2) fallback: legacy profile keyed by id
     const byId = await supabase
       .from("profiles")
       .select("shop_id")
@@ -394,7 +502,6 @@ export default function CreateWorkOrderPage() {
     if (byId.error) throw byId.error;
     if (byId.data?.shop_id) return byId.data.shop_id;
 
-    // 3) see if this user owns a shop
     const ownedShop = await supabase
       .from("shops")
       .select("id")
@@ -404,7 +511,6 @@ export default function CreateWorkOrderPage() {
     if (ownedShop.error) throw ownedShop.error;
     if (!ownedShop.data?.id) return null;
 
-    // 4) write it back to profile so future calls are fast
     const updByUserId = await supabase
       .from("profiles")
       .update({ shop_id: ownedShop.data.id })
@@ -422,8 +528,8 @@ export default function CreateWorkOrderPage() {
     return ownedShop.data.id;
   }
 
-  const buildCustomerInsert = (c: SessionCustomer, shopId: string | null) => ({
-    business_name: strOrNull((c as any).business_name ?? null),
+  const buildCustomerInsert = (c: CustomerWithBusiness, shopId: string) => ({
+    business_name: strOrNull(c.business_name ?? null),
     first_name: strOrNull(c.first_name),
     last_name: strOrNull(c.last_name),
     phone: strOrNull(c.phone),
@@ -436,11 +542,11 @@ export default function CreateWorkOrderPage() {
   });
 
   const buildVehicleInsert = (
-    v: SessionVehicle,
-    customerId: string,
-    shopId: string | null,
+    v: VehicleWithExtra,
+    customerIdIn: string,
+    shopId: string,
   ) => ({
-    customer_id: customerId,
+    customer_id: customerIdIn,
     vin: strOrNull(v.vin),
     year: numOrNull(v.year),
     make: strOrNull(v.make),
@@ -453,9 +559,8 @@ export default function CreateWorkOrderPage() {
     shop_id: shopId,
   });
 
-  // helper to hydrate customer state from DB row (including business_name when present)
-  const hydrateCustomerFromRow = (row: any): SessionCustomer => {
-    const base: any = {
+  const hydrateCustomerFromRow = useCallback(
+    (row: CustomerRowWithBusiness): CustomerWithBusiness => ({
       first_name: row.first_name ?? null,
       last_name: row.last_name ?? null,
       phone: getStrField(row, "phone"),
@@ -464,12 +569,10 @@ export default function CreateWorkOrderPage() {
       city: getStrField(row, "city"),
       province: getStrField(row, "province"),
       postal_code: getStrField(row, "postal_code"),
-    };
-    if (row.business_name) {
-      base.business_name = row.business_name;
-    }
-    return base as SessionCustomer;
-  };
+      business_name: row.business_name ?? null,
+    }),
+    [],
+  );
 
   // Read query params (prefill)
   useEffect(() => {
@@ -497,7 +600,7 @@ export default function CreateWorkOrderPage() {
             .eq("id", prefillCustomerId)
             .single();
           if (!cancelled && data) {
-            setCustomer(hydrateCustomerFromRow(data));
+            setCustomer(hydrateCustomerFromRow(data as CustomerRowWithBusiness));
             setCustomerId(data.id);
           }
         }
@@ -531,14 +634,16 @@ export default function CreateWorkOrderPage() {
                 .eq("id", data.customer_id)
                 .maybeSingle();
               if (cust) {
-                setCustomer(hydrateCustomerFromRow(cust));
+                setCustomer(
+                  hydrateCustomerFromRow(cust as CustomerRowWithBusiness),
+                );
                 setCustomerId(cust.id);
               }
             }
           }
         }
       } catch {
-        // noop
+        /* noop */
       }
     })();
     return () => {
@@ -553,17 +658,17 @@ export default function CreateWorkOrderPage() {
     setCustomerId,
     setVehicleId,
     customerId,
+    hydrateCustomerFromRow,
   ]);
 
-  // Ensure / create: Customer & Vehicle
-  async function ensureCustomer(shopId: string): Promise<CustomerRow> {
+  async function ensureCustomer(shopId: string): Promise<CustomerRowWithBusiness> {
     if (customerId) {
       const { data } = await supabase
         .from("customers")
         .select("*")
         .eq("id", customerId)
         .single();
-      if (data) return data;
+      if (data) return data as CustomerRowWithBusiness;
     }
 
     let q = supabase
@@ -578,7 +683,7 @@ export default function CreateWorkOrderPage() {
     const { data: found } = await q;
     if (found?.length) {
       setCustomerId(found[0].id);
-      return found[0];
+      return found[0] as CustomerRowWithBusiness;
     }
 
     const { data: inserted, error: insErr } = await supabase
@@ -591,12 +696,12 @@ export default function CreateWorkOrderPage() {
       throw new Error(insErr?.message ?? "Failed to create customer");
 
     setCustomerId(inserted.id);
-    return inserted;
+    return inserted as CustomerRowWithBusiness;
   }
 
   async function ensureVehicleRow(
     cust: CustomerRow,
-    shopId: string | null,
+    shopId: string,
   ): Promise<VehicleRow> {
     if (vehicleId) {
       const { data } = await supabase
@@ -604,7 +709,7 @@ export default function CreateWorkOrderPage() {
         .select("*")
         .eq("id", vehicleId)
         .single();
-      if (data) return data;
+      if (data) return data as VehicleRow;
     }
 
     const orParts = [
@@ -637,7 +742,6 @@ export default function CreateWorkOrderPage() {
     return inserted as VehicleRow;
   }
 
-  // Save & Continue (creates/links WO right away)
   const [savingCv, setSavingCv] = useState(false);
 
   const fetchLines = useCallback(async () => {
@@ -651,8 +755,8 @@ export default function CreateWorkOrderPage() {
     setLines(data ?? []);
   }, [supabase, wo?.id, setLines]);
 
-  // ✅ patched: return the WO id so submit flow never relies on stale state
-  const handleSaveCustomerVehicle = useCallback(async (): Promise<string> => {
+  // ✅ normal function (no hook deps warnings, no parser issues)
+  async function handleSaveCustomerVehicle(): Promise<string> {
     if (savingCv) return wo?.id ?? "";
     setSavingCv(true);
     setError("");
@@ -685,10 +789,8 @@ export default function CreateWorkOrderPage() {
           city: customer.city ?? null,
           province: customer.province ?? null,
           postal_code: customer.postal_code ?? null,
-          ...(cust as any).business_name
-            ? { business_name: (cust as any).business_name }
-            : {},
-        } as any,
+          ...(cust.business_name ? { business_name: cust.business_name } : {}),
+        },
         vehicle: {
           vin: veh.vin ?? null,
           year: veh.year != null ? String(veh.year) : null,
@@ -702,18 +804,17 @@ export default function CreateWorkOrderPage() {
         },
       });
 
-      // If WO already exists, just update its links
       if (wo?.id) {
         if (wo.customer_id !== cust.id || wo.vehicle_id !== veh.id) {
+          const waiter = (wo as WorkOrderWaiterRow).is_waiter;
+
           const { data: updated, error: updErr } = await supabase
             .from("work_orders")
             .update({
               customer_id: cust.id,
               vehicle_id: veh.id,
-              ...(typeof (wo as any).is_waiter !== "undefined"
-                ? { is_waiter: (wo as any).is_waiter }
-                : {}),
-            } as any)
+              ...(waiter !== undefined ? { is_waiter: waiter } : {}),
+            })
             .eq("id", wo.id)
             .select("*")
             .single();
@@ -726,14 +827,14 @@ export default function CreateWorkOrderPage() {
         return wo.id;
       }
 
-      // ✅ Create WO via DB RPC (handles custom_id + retries + uniqueness)
-      const { data: created, error: rpcErr } = await (supabase as any).rpc(
+      const { data: created, error: rpcErr } = await supabase.rpc(
         "create_work_order_with_custom_id",
         {
           p_shop_id: shopId,
           p_customer_id: cust.id,
           p_vehicle_id: veh.id,
-          p_notes: strOrNull(notes),
+          // ✅ ensure string
+          p_notes: strOrNull(notes) ?? "",
           p_priority: priority,
           p_is_waiter: isWaiter,
         },
@@ -742,14 +843,16 @@ export default function CreateWorkOrderPage() {
       if (rpcErr) {
         throw new Error(rpcErr.message || "Failed to create work order.");
       }
-      if (!created?.id) {
+
+      const createdRow = (created as unknown as CreateWoRpcRow | null) ?? null;
+      if (!createdRow?.id) {
         throw new Error("Failed to create work order (no row returned).");
       }
 
-      setWo(created as WorkOrderRow);
+      setWo(createdRow as unknown as WorkOrderRow);
       await fetchLines();
 
-      return String(created.id);
+      return String(createdRow.id);
     } catch (e) {
       const msg =
         e instanceof Error ? e.message : "Failed to save customer/vehicle.";
@@ -758,25 +861,10 @@ export default function CreateWorkOrderPage() {
     } finally {
       setSavingCv(false);
     }
-  }, [
-    savingCv,
-    supabase,
-    wo?.id,
-    wo?.customer_id,
-    wo?.vehicle_id,
-    notes,
-    customer,
-    fetchLines,
-    cvDraft,
-    vehicle,
-    priority,
-    isWaiter,
-    wo,
-  ]);
+  }
 
-  // Clear form
   const handleClearForm = useCallback(() => {
-    setCustomer(defaultCustomer as any);
+    setCustomer(defaultCustomer);
     setVehicle(defaultVehicle);
     setCustomerId(null);
     setVehicleId(null);
@@ -790,25 +878,23 @@ export default function CreateWorkOrderPage() {
     setIsWaiter(false);
     cvDraft.reset();
   }, [
+    defaultCustomer,
+    defaultVehicle,
     setCustomer,
     setVehicle,
     setCustomerId,
     setVehicleId,
     setPrefillCustomerId,
     setPrefillVehicleId,
-    setPhotoFiles,
-    setDocFiles,
-    setUploadSummary,
     setInviteNotice,
     setSendInvite,
     setIsWaiter,
     cvDraft,
   ]);
 
-  // Upload helpers
   async function uploadVehicleFiles(vId: string): Promise<UploadSummary> {
-    let uploaded = 0,
-      failed = 0;
+    let uploaded = 0;
+    let failed = 0;
 
     const {
       data: { user },
@@ -855,20 +941,20 @@ export default function CreateWorkOrderPage() {
       if (!ok) return;
 
       try {
-        const q = supabase
+        const base = supabase
           .from("work_order_lines")
           .delete()
           .eq("id", lineId)
           .eq("work_order_id", wo.id);
 
-        if (wo.shop_id) (q as any).eq("shop_id", wo.shop_id);
+        const res = wo.shop_id
+          ? await base.eq("shop_id", wo.shop_id).select("id").maybeSingle()
+          : await base.select("id").maybeSingle();
 
-        const { data: deleted, error } = await (q as any)
-          .select("id")
-          .maybeSingle();
+        const { data: deleted, error: delErr } = res;
 
-        if (error) {
-          alert(error.message || "Delete failed");
+        if (delErr) {
+          alert(delErr.message || "Delete failed");
           return;
         }
         if (!deleted) {
@@ -888,69 +974,63 @@ export default function CreateWorkOrderPage() {
     [supabase, wo?.id, wo?.shop_id, fetchLines, setLines],
   );
 
-  // ✅ UPDATED openInspectionForLine (Create Work Order page)
-// - Adds templateName (if available) and keeps templateId
-// - Uses /inspections/run (your create flow) and keeps embed/mobile view
-// - No DB fetch needed here (fast)
+  const openInspectionForLine = useCallback(
+    async (ln: WorkOrderLine) => {
+      if (!ln?.id) return;
 
-const openInspectionForLine = useCallback(
-  async (ln: WorkOrderLine) => {
-    if (!ln?.id) return;
+      const anyLine = ln as WorkOrderLineWithInspectionMeta;
+      const templateId = extractInspectionTemplateId(anyLine);
 
-    const anyLine = ln as WorkOrderLineWithInspectionMeta;
-    const templateId = extractInspectionTemplateId(anyLine);
+      if (!templateId) {
+        toast.error(
+          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+        );
+        return;
+      }
 
-    if (!templateId) {
-      toast.error(
-        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
-      );
-      return;
-    }
+      const templateName =
+        anyLine.inspection_template ??
+        anyLine.inspectionTemplate ??
+        anyLine.template ??
+        getMetaString(anyLine.metadata, "inspection_template") ??
+        getMetaString(anyLine.metadata, "template") ??
+        null;
 
-    const templateName =
-      anyLine.inspection_template ??
-      anyLine.inspectionTemplate ??
-      anyLine.template ??
-      getMetaString(anyLine.metadata, "inspection_template") ??
-      getMetaString(anyLine.metadata, "template") ??
-      null;
+      const sp = new URLSearchParams();
 
-    const sp = new URLSearchParams();
+      if (wo?.id) {
+        sp.set("workOrderId", wo.id);
+        sp.set("work_order_id", wo.id);
+      }
 
-    if (wo?.id) {
-      sp.set("workOrderId", wo.id);
-      sp.set("work_order_id", wo.id);
-    }
+      sp.set("workOrderLineId", ln.id);
+      sp.set("work_order_line_id", ln.id);
+      sp.set("lineId", ln.id);
 
-    sp.set("workOrderLineId", ln.id);
-    sp.set("work_order_line_id", ln.id);
-    sp.set("lineId", ln.id);
+      sp.set("templateId", templateId);
+      sp.set("template_id", templateId);
 
-    sp.set("templateId", templateId);
-    sp.set("template_id", templateId);
+      if (templateName) {
+        sp.set("templateName", templateName);
+        sp.set("template_name", templateName);
+      }
 
-    if (templateName) {
-      sp.set("templateName", templateName);
-      sp.set("template_name", templateName);
-    }
+      sp.set("embed", "1");
+      sp.set("view", "mobile");
 
-    sp.set("embed", "1");
-    sp.set("view", "mobile");
+      if (ln.description) {
+        sp.set("seed", String(ln.description));
+      }
 
-    if (ln.description) {
-      sp.set("seed", String(ln.description));
-    }
+      const url = `/inspections/run?${sp.toString()}`;
 
-    const url = `/inspections/run?${sp.toString()}`;
+      setInspectionSrc(url);
+      setInspectionOpen(true);
+      toast.success("Inspection opened");
+    },
+    [wo?.id],
+  );
 
-    setInspectionSrc(url);
-    setInspectionOpen(true);
-    toast.success("Inspection opened");
-  },
-  [wo?.id],
-);
-
-  // Submit → Review & Sign
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loading) return;
@@ -960,7 +1040,6 @@ const openInspectionForLine = useCallback(
     setUploadSummary(null);
 
     try {
-      // ✅ always get a real WO id from the save action (no stale state)
       const woId = await handleSaveCustomerVehicle();
       if (!woId) throw new Error("Could not create work order.");
 
@@ -980,8 +1059,6 @@ const openInspectionForLine = useCallback(
         setUploadSummary(summary);
       }
 
-      // ✅ Send portal invite via API (SendGrid + Supabase admin magic link)
-      // NOTE: this runs on submit (Approve & Sign), not on Save & Continue.
       if (sendInvite && customer.email) {
         try {
           const res = await fetch("/api/portal/send-invite", {
@@ -989,7 +1066,7 @@ const openInspectionForLine = useCallback(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               email: customer.email,
-              next: "/portal", // ✅ after confirm, land on portal root
+              next: "/portal",
             }),
           });
 
@@ -1025,7 +1102,6 @@ const openInspectionForLine = useCallback(
     }
   }
 
-  // Realtime line refresh
   useEffect(() => {
     if (!wo?.id) return;
     void fetchLines();
@@ -1059,7 +1135,6 @@ const openInspectionForLine = useCallback(
     return () => window.removeEventListener("wo:line-added", h);
   }, [fetchLines]);
 
-  // Vehicle label for AI modal context
   const vehicleLabel =
     vehicle.year || vehicle.make || vehicle.model
       ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
@@ -1067,7 +1142,9 @@ const openInspectionForLine = useCallback(
         ? `Plate ${vehicle.license_plate}`
         : null;
 
-  /* UI */
+  // ✅ never undefined
+  const vehicleIdProp: string | null = vehicleId ?? wo?.vehicle_id ?? null;
+
   return (
     <div className="relative min-h-[calc(100vh-4rem)] px-4 py-6 text-white">
       <div
@@ -1164,45 +1241,43 @@ const openInspectionForLine = useCallback(
                 <VinCaptureModal
                   userId={currentUserId ?? "anon"}
                   action="/api/vin"
-                  onDecoded={(d) => {
+                  onDecoded={(d: VinDecoded) => {
+                    const y = yearToStrOrNull(d.year);
+
                     draft.setVehicle({
                       vin: d.vin,
-                      year: d.year ?? null,
+                      year: y,
                       make: d.make ?? null,
                       model: d.model ?? null,
                       engine: d.engine ?? null,
                       fuel_type: d.fuelType ?? null,
                       drivetrain: d.driveType ?? null,
                       transmission: d.transmission ?? null,
-                    } as any);
+                    });
 
-                    setVehicle((prev) =>
-                      ({
-                        ...prev,
-                        vin: d.vin || prev.vin,
-                        year: d.year ?? prev.year,
-                        make: d.make ?? prev.make,
-                        model: d.model ?? prev.model,
-                        engine: d.engine ?? (prev as any).engine ?? null,
-                        fuel_type: d.fuelType ?? (prev as any).fuel_type ?? null,
-                        drivetrain:
-                          d.driveType ?? (prev as any).drivetrain ?? null,
-                        transmission:
-                          d.transmission ?? (prev as any).transmission ?? null,
-                      } as any),
-                    );
+                    setVehicle((prev) => ({
+                      ...prev,
+                      vin: d.vin || prev.vin,
+                      year: y ?? prev.year,
+                      make: d.make ?? prev.make,
+                      model: d.model ?? prev.model,
+                      engine: d.engine ?? prev.engine ?? null,
+                      fuel_type: d.fuelType ?? prev.fuel_type ?? null,
+                      drivetrain: d.driveType ?? prev.drivetrain ?? null,
+                      transmission: d.transmission ?? prev.transmission ?? null,
+                    }));
 
                     cvDraft.bulkSet({
                       vehicle: {
                         vin: d.vin ?? null,
-                        year: d.year ?? null,
+                        year: y,
                         make: d.make ?? null,
                         model: d.model ?? null,
                         engine: d.engine ?? null,
                         fuel_type: d.fuelType ?? null,
                         drivetrain: d.driveType ?? null,
                         transmission: d.transmission ?? null,
-                      } as any,
+                      },
                     });
                   }}
                 >
@@ -1253,7 +1328,9 @@ const openInspectionForLine = useCallback(
                     type="file"
                     accept="application/pdf,image/*"
                     multiple
-                    onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))}
+                    onChange={(e) =>
+                      setDocFiles(Array.from(e.target.files ?? []))
+                    }
                     className="input"
                     disabled={loading}
                   />
@@ -1277,7 +1354,7 @@ const openInspectionForLine = useCallback(
                 </h2>
                 <NewWorkOrderLineForm
                   workOrderId={wo.id}
-                  vehicleId={vehicleId}
+                  vehicleId={vehicleIdProp}
                   defaultJobType={type}
                   shopId={wo.shop_id ?? null}
                   onCreated={fetchLines}
@@ -1300,6 +1377,7 @@ const openInspectionForLine = useCallback(
                   </button>
                 )}
               </div>
+
               {!wo?.id || lines.length === 0 ? (
                 <p className="text-sm text-neutral-400">No lines yet.</p>
               ) : (
@@ -1461,8 +1539,8 @@ const openInspectionForLine = useCallback(
               open={aiSuggestOpen}
               onClose={() => setAiSuggestOpen(false)}
               workOrderId={wo.id}
-              vehicleId={vehicleId}
-              vehicleLabel={vehicleLabel}
+              vehicleId={vehicleIdProp}
+              vehicleLabel={vehicleLabel ?? undefined}
               onAdded={() => {
                 void fetchLines();
               }}
