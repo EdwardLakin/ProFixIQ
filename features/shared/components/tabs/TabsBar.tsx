@@ -1,3 +1,4 @@
+// features/shared/components/tabs/TabsBar.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -27,7 +28,13 @@ export default function TabsBar() {
   const safeTabs = Array.isArray(tabs) ? tabs : [];
 
   return (
-    <div className="w-full min-w-0 border-b border-neutral-800 bg-neutral-950/60 px-2 backdrop-blur-sm overflow-x-hidden">
+    <div className="sticky top-0 z-50 w-full min-w-0 border-b border-neutral-800 bg-neutral-950/90 px-2 backdrop-blur-sm overflow-x-hidden shadow-[0_10px_30px_rgba(0,0,0,0.6)]">
+      {/* DEBUG BANNER: confirms TabsBar is mounted + shows state */}
+      <div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-[0.18em] text-orange-300">
+        TabsBar mounted • path: {pathname} • tabs: {safeTabs.length} • active:{" "}
+        {activeHref || "—"}
+      </div>
+
       <div className="flex min-w-0 items-center gap-2 py-1.5">
         <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden">
           <div className="flex w-max items-center gap-2">
@@ -76,9 +83,7 @@ export default function TabsBar() {
 
             {/* If something goes super wrong, show a tiny hint rather than “nothing” */}
             {safeTabs.length === 0 ? (
-              <div className="px-2 py-1 text-xs text-neutral-500">
-                No tabs yet
-              </div>
+              <div className="px-2 py-1 text-xs text-neutral-500">No tabs yet</div>
             ) : null}
           </div>
         </div>
