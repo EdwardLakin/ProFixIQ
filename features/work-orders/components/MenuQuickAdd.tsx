@@ -2,15 +2,10 @@
 // FULL FILE REPLACEMENT
 //
 // Fix: Menu item parts not allocating into work order
-// ✅ Uses server action allocateMenuItemParts() which calls consumePart() (same pipeline as Add Part button)
-// ✅ Fixes TS error: no more `work_order_id` property passed to server action
-// ✅ Forces refresh after allocation so PartsUsedList updates
-//
-// IMPORTANT:
-// - This file assumes you created a server action export named `allocateMenuItemParts`
-//   (the code you pasted) at:
-//     "@/features/work-orders/lib/parts/allocateMenuItemParts"
-//   If your path is different, update the import below.
+// - Uses server action allocateMenuItemParts() (which calls consumePart())
+// - Correct input shape: { menu_item_id, work_order_line_id } (NO work_order_id)
+// - Surfaces errors + shows allocated/skipped counts
+// - Keeps existing shop context logic for menu/template loading
 
 "use client";
 
@@ -21,6 +16,8 @@ import { toast } from "sonner";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
 import { calculateTax, type ProvinceCode } from "@/features/integrations/tax";
+
+// ✅ server action that reads menu_item_parts + calls consumePart()
 import { allocateMenuItemParts } from "@/features/work-orders/lib/parts/allocateMenuItemParts";
 
 type DB = Database;
@@ -171,6 +168,8 @@ function scoreMenuItemFit(args: { mi: MenuItemRow; vehicle: VehicleLite | null }
 
   if (miEng && vEng && miEng === vEng) score += 6;
   else if (!miEng) score += 1;
+
+  if (miTrans && vTrans && miEng === vEng) score += 0;
 
   if (miTrans && vTrans && miTrans === vTrans) score += 6;
   else if (!miTrans) score += 1;
@@ -358,7 +357,10 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       if (!id) return;
       if (lastSetShopId.current === id) return;
 
-      const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: id });
+      const { error } = await supabase.rpc("set_current_shop_id", {
+        p_shop_id: id,
+      });
+
       if (error) throw new Error(error.message || "Failed to set shop context");
       lastSetShopId.current = id;
     },
@@ -457,6 +459,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         .limit(400);
 
       if (error) throw error;
+
       setMenuItemsAll((data ?? []) as MenuItemRow[]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to load menu items.";
@@ -508,10 +511,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     void loadTemplates();
   }, [shopId, loadMenuItems, loadTemplates]);
 
-  async function allocatePartsForMenuItem(args: { menuItemId: string; workOrderLineId: string }) {
-    const { menuItemId, workOrderLineId } = args;
+  async function allocatePartsFromMenu(menuItemId: string, workOrderLineId: string) {
+    // ✅ this confirms the call happened
+    // (you’ll see it in browser console)
+    console.log("ALLOCATE MENU PARTS", { menu_item_id: menuItemId, work_order_line_id: workOrderLineId });
 
-    const tid = toast.loading("Allocating menu parts…");
+    const tid = toast.loading("Allocating menu parts...");
     try {
       const res = await allocateMenuItemParts({
         menu_item_id: menuItemId,
@@ -519,28 +524,27 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       });
 
       const allocated =
-        res && typeof res === "object" && "allocated" in res && typeof (res as any).allocated === "number"
-          ? (res as any).allocated
+        res && typeof (res as { allocated?: unknown }).allocated === "number"
+          ? (res as { allocated: number }).allocated
           : 0;
 
       const skipped =
-        res && typeof res === "object" && "skipped" in res && typeof (res as any).skipped === "number"
-          ? (res as any).skipped
+        res && typeof (res as { skipped?: unknown }).skipped === "number"
+          ? (res as { skipped: number }).skipped
           : 0;
 
-      toast.success(
-        allocated > 0
-          ? `Allocated ${allocated} part${allocated === 1 ? "" : "s"}${skipped ? ` (${skipped} skipped)` : ""}`
-          : `No parts allocated${skipped ? ` (${skipped} skipped)` : ""}`,
-        { id: tid },
-      );
+      toast.dismiss(tid);
 
-      // Ensure UI refreshes allocations list (server components / SWR / etc)
-      window.dispatchEvent(new CustomEvent("wo:parts-used"));
-      router.refresh();
+      if (allocated > 0) {
+        window.dispatchEvent(new CustomEvent("wo:parts-used"));
+        toast.success(`Allocated ${allocated} part${allocated === 1 ? "" : "s"}${skipped ? ` (skipped ${skipped})` : ""}`);
+      } else {
+        toast.message(`No parts allocated${skipped ? ` (skipped ${skipped})` : ""}. Check menu_item_parts + part links.`);
+      }
     } catch (e: unknown) {
+      toast.dismiss(tid);
       const msg = e instanceof Error ? e.message : "Failed to allocate menu parts.";
-      toast.error(msg, { id: tid });
+      toast.error(msg);
     }
   }
 
@@ -573,7 +577,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
         window.dispatchEvent(new CustomEvent("wo:line-added"));
         toast.success("Inspection added");
-        router.refresh();
         return data?.id ?? null;
       }
 
@@ -592,14 +595,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       const { data, error } = await supabase.from("work_order_lines").insert(line).select("id").single();
       if (error) throw new Error(error.message);
 
-      // ✅ Allocate menu parts using SAME server-side pipeline as Add Part (consumePart)
+      // ✅ allocate menu parts via server action (consumePart pipeline)
       if (params.menuItemIdForParts && data?.id) {
-        await allocatePartsForMenuItem({ menuItemId: params.menuItemIdForParts, workOrderLineId: data.id });
+        await allocatePartsFromMenu(params.menuItemIdForParts, data.id);
       }
 
       window.dispatchEvent(new CustomEvent("wo:line-added"));
       toast.success("Job added");
-      router.refresh();
 
       return params.returnLineId ? (data?.id ?? null) : null;
     } catch (e: unknown) {
@@ -819,7 +821,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
               const laborLabel = p.laborHours > 0 ? `${p.laborHours.toFixed(1)}h` : "Labor TBD";
               const partsLabel = p.partsTotal > 0 ? `${moneyLabel(currency, p.partsTotal)} parts` : "No parts";
               const totalLabel = p.total > 0 ? moneyLabel(currency, p.total) : "No total";
-              const taxLabel = p.taxTotal > 0 ? `${p.taxLabel ?? "Tax"} ${moneyLabel(currency, p.taxTotal)}` : null;
+              const taxLabel =
+                p.taxTotal > 0 ? `${p.taxLabel ?? "Tax"} ${moneyLabel(currency, p.taxTotal)}` : null;
 
               return (
                 <button
@@ -847,12 +850,16 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                     )}
                   </div>
 
-                  {mi.service_key ? <div className="mt-1 font-mono text-[10px] text-neutral-500">{mi.service_key}</div> : null}
+                  {mi.service_key ? (
+                    <div className="mt-1 font-mono text-[10px] text-neutral-500">{mi.service_key}</div>
+                  ) : null}
                 </button>
               );
             })
           ) : (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">No menu items match this filter.</div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+              No menu items match this filter.
+            </div>
           )}
         </div>
       </div>
