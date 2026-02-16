@@ -1,13 +1,17 @@
-// features/work-orders/components/MenuQuickAdd.tsx (or wherever this file lives)
+// features/work-orders/components/MenuQuickAdd.tsx
 // FULL FILE REPLACEMENT
 //
 // Fix: Menu item parts not allocating into work order
-// - Filters menu_item_parts by BOTH menu_item_id and shop_id (common RLS requirement)
-// - Filters part_stock by shop_id (common RLS + multi-shop correctness)
-// - Adds clearer toasts when zero parts are found vs blocked vs missing part_id
-// - Removes a couple “unknown as …[]” casts by using typed helpers
+// ✅ Uses SERVER action allocation path (same system as consumePart -> work_order_part_allocations)
+// ✅ No client-side inserts into work_order_part_allocations (avoids RLS / ctx issues)
+// ✅ Still uses set_current_shop_id for shop-scoped reads (menu/templates)
+// ✅ Clear toasts for “no parts”, “missing part_id”, and server/RLS failures
 //
-// NOTE: If your `part_stock` table does NOT have `shop_id`, remove the `.eq("shop_id", shop)` line.
+// IMPORTANT:
+// - Requires server action file to exist:
+//   "@/features/work-orders/lib/parts/allocateMenuItemParts"
+// - That server action should read menu_item_parts, pick MAIN/default location, call apply_stock_move,
+//   and insert into work_order_part_allocations (like consumePart does).
 
 "use client";
 
@@ -18,6 +22,7 @@ import { toast } from "sonner";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
 import { calculateTax, type ProvinceCode } from "@/features/integrations/tax";
+import { allocateMenuItemParts } from "@/features/work-orders/lib/parts/allocateMenuItemParts";
 
 type DB = Database;
 type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
@@ -123,7 +128,10 @@ function isGlobalMenuItem(mi: MenuItemRow): boolean {
   return !has;
 }
 
-function scoreMenuItemFit(args: { mi: MenuItemRow; vehicle: VehicleLite | null }): number {
+function scoreMenuItemFit(args: {
+  mi: MenuItemRow;
+  vehicle: VehicleLite | null;
+}): number {
   const { mi, vehicle } = args;
   if (!vehicle) return isGlobalMenuItem(mi) ? 5 : 0;
 
@@ -241,7 +249,9 @@ function calcMenuTotals(args: {
       : 0;
 
   const partsTotal =
-    typeof mi.part_cost === "number" && Number.isFinite(mi.part_cost) ? mi.part_cost : 0;
+    typeof mi.part_cost === "number" && Number.isFinite(mi.part_cost)
+      ? mi.part_cost
+      : 0;
 
   const laborRate =
     shop && typeof shop.labor_rate === "number" && Number.isFinite(shop.labor_rate)
@@ -287,15 +297,6 @@ function calcMenuTotals(args: {
     taxLabel: pct > 0 ? "Tax" : null,
   };
 }
-
-type MenuItemPartRow = {
-  id: string;
-  name: string | null;
-  quantity: number | null;
-  unit_cost: number;
-  part_id: string | null;
-  shop_id: string | null;
-};
 
 export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -487,7 +488,10 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       const [{ data: auth }, { data, error }] = await Promise.all([
         supabase.auth.getUser(),
-        supabase.from("inspection_templates").select("*").order("created_at", { ascending: false }),
+        supabase
+          .from("inspection_templates")
+          .select("*")
+          .order("created_at", { ascending: false }),
       ]);
 
       if (error) throw error;
@@ -519,116 +523,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     void loadTemplates();
   }, [shopId, loadMenuItems, loadTemplates]);
 
-  async function pickDefaultLocationId(partId: string, shop: string): Promise<string | null> {
-    await ensureShopContext(shop);
-
-    // Prefer a location that has stock.
-    // NOTE: if your part_stock table doesn't have shop_id, remove that filter.
-    const withStock = await supabase
-      .from("part_stock")
-      .select("location_id, qty")
-      .eq("part_id", partId)
-      .eq("shop_id", shop)
-      .order("qty", { ascending: false })
-      .limit(1);
-
-    if (withStock.error) {
-      throw new Error(`part_stock read blocked: ${withStock.error.message}`);
-    }
-    if (withStock.data?.length) {
-      return (withStock.data[0] as { location_id: string }).location_id;
-    }
-
-    // Fall back to first location in this shop.
-    const anyLoc = await supabase
-      .from("stock_locations")
-      .select("id")
-      .eq("shop_id", shop)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (anyLoc.error) {
-      throw new Error(`stock_locations read blocked: ${anyLoc.error.message}`);
-    }
-    return anyLoc.data?.id ?? null;
-  }
-
-  async function autoAllocateMenuParts(menuItemId: string, workOrderLineId: string) {
-    if (!shopId) return;
-
-    await ensureShopContext(shopId);
-
-    // 🔧 CRITICAL: filter by shop_id as well (very common RLS requirement)
-    const { data: rows, error } = await supabase
-      .from("menu_item_parts")
-      .select("id, name, quantity, unit_cost, part_id, shop_id")
-      .eq("menu_item_id", menuItemId)
-      .eq("shop_id", shopId);
-
-    if (error) {
-      toast.warning(`Added job, but menu parts read was blocked: ${error.message}`);
-      return;
-    }
-
-    const mParts = (rows ?? []) as MenuItemPartRow[];
-    if (!mParts.length) {
-      toast.message("Job added (no menu parts to allocate).");
-      return;
-    }
-
-    const allocations: DB["public"]["Tables"]["work_order_part_allocations"]["Insert"][] = [];
-
-    for (const p of mParts) {
-      const qty = typeof p.quantity === "number" && p.quantity > 0 ? p.quantity : 0;
-      if (!qty) continue;
-
-      const partId = typeof p.part_id === "string" && p.part_id ? p.part_id : null;
-      if (!partId) {
-        toast.message(`Menu part "${p.name ?? "Part"}" is missing a linked Part (part_id).`);
-        continue;
-      }
-
-      let locId: string | null = null;
-      try {
-        locId = await pickDefaultLocationId(partId, shopId);
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "location lookup blocked";
-        toast.warning(`Added job, but ${msg}`);
-        return;
-      }
-
-      if (!locId) {
-        toast.message(`Skipped "${p.name ?? "part"}" (no stock location).`);
-        continue;
-      }
-
-      allocations.push({
-  work_order_line_id: workOrderLineId,
-  part_id: partId,
-  location_id: locId,
-  qty,
-  unit_cost: typeof p.unit_cost === "number" ? p.unit_cost : undefined,
-  shop_id: shopId,             // ✅ REQUIRED by types
-  work_order_id: workOrderId,  // ✅ optional but very useful
-});
-    }
-
-    if (!allocations.length) {
-      toast.message("Job added (no allocatable parts found).");
-      return;
-    }
-
-    const { error: allocErr } = await supabase.from("work_order_part_allocations").insert(allocations);
-
-    if (allocErr) {
-      toast.warning(`Job added, but parts couldn't be allocated: ${allocErr.message}`);
-    } else {
-      window.dispatchEvent(new CustomEvent("wo:parts-used"));
-      toast.success(`Allocated ${allocations.length} part${allocations.length > 1 ? "s" : ""}`);
-    }
-  }
-
   async function addMenuItem(params: AddMenuParams): Promise<string | null> {
     if (!shopReady || !shopId) return null;
 
@@ -638,22 +532,30 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       await ensureShopContext(shopId);
 
       if (params.kind === "template") {
-        const line: WorkOrderLineInsert & { inspection_template_id?: string | null } = {
-          work_order_id: workOrderId,
-          vehicle_id: vehicleId,
-          description: params.name ?? params.template.template_name ?? "Inspection",
-          job_type: "inspection",
-          labor_time:
-            params.laborHours ??
-            (typeof params.template.labor_hours === "number" ? params.template.labor_hours : null),
-          status: "awaiting",
-          priority: 3,
-          notes: params.template.description ?? null,
-          shop_id: shopId,
-          inspection_template_id: params.template.id,
-        };
+        const line: WorkOrderLineInsert & { inspection_template_id?: string | null } =
+          {
+            work_order_id: workOrderId,
+            vehicle_id: vehicleId,
+            description:
+              params.name ?? params.template.template_name ?? "Inspection",
+            job_type: "inspection",
+            labor_time:
+              params.laborHours ??
+              (typeof params.template.labor_hours === "number"
+                ? params.template.labor_hours
+                : null),
+            status: "awaiting",
+            priority: 3,
+            notes: params.template.description ?? null,
+            shop_id: shopId,
+            inspection_template_id: params.template.id,
+          };
 
-        const { data, error } = await supabase.from("work_order_lines").insert(line).select("id").single();
+        const { data, error } = await supabase
+          .from("work_order_lines")
+          .insert(line)
+          .select("id")
+          .single();
         if (error) throw new Error(error.message);
 
         window.dispatchEvent(new CustomEvent("wo:line-added"));
@@ -673,11 +575,56 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         shop_id: shopId,
       };
 
-      const { data, error } = await supabase.from("work_order_lines").insert(line).select("id").single();
+      const { data, error } = await supabase
+        .from("work_order_lines")
+        .insert(line)
+        .select("id")
+        .single();
       if (error) throw new Error(error.message);
 
+      // ✅ Allocate parts using the SAME server-side pipeline as consumePart()
       if (params.menuItemIdForParts && data?.id) {
-        await autoAllocateMenuParts(params.menuItemIdForParts, data.id);
+        const tid = toast.loading("Allocating menu parts…");
+        try {
+          const res = await allocateMenuItemParts({
+           
+            work_order_line_id: data.id,
+            menu_item_id: params.menuItemIdForParts,
+          });
+
+          // Expected: { allocated: number, skipped: number, reasons?: string[] }
+          const allocated =
+            res && typeof (res as { allocated?: unknown }).allocated === "number"
+              ? (res as { allocated: number }).allocated
+              : 0;
+
+          const skipped =
+            res && typeof (res as { skipped?: unknown }).skipped === "number"
+              ? (res as { skipped: number }).skipped
+              : 0;
+
+          toast.dismiss(tid);
+
+          if (allocated > 0) {
+            window.dispatchEvent(new CustomEvent("wo:parts-used"));
+            toast.success(
+              `Allocated ${allocated} part${allocated === 1 ? "" : "s"}${
+                skipped ? ` (${skipped} skipped)` : ""
+              }`,
+            );
+          } else {
+            toast.message(
+              skipped
+                ? `No parts allocated (${skipped} skipped). Check part links / quantities.`
+                : "No parts were allocated for this menu item.",
+            );
+          }
+        } catch (e: unknown) {
+          toast.dismiss(tid);
+          const msg =
+            e instanceof Error ? e.message : "Parts allocation failed.";
+          toast.warning(`Job added, but parts couldn't be allocated: ${msg}`);
+        }
       }
 
       window.dispatchEvent(new CustomEvent("wo:line-added"));
@@ -713,7 +660,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       laborHours:
         typeof mi.labor_time === "number"
           ? mi.labor_time
-          : typeof (mi as unknown as { labor_hours?: number | null }).labor_hours === "number"
+          : typeof (mi as unknown as { labor_hours?: number | null }).labor_hours ===
+              "number"
             ? (mi as unknown as { labor_hours: number }).labor_hours
             : null,
       notes: mi.description ?? null,
@@ -767,7 +715,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-orange-400">Quick Add Jobs</h3>
+              <h3 className="text-sm font-semibold text-orange-400">
+                Quick Add Jobs
+              </h3>
               <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-mono text-neutral-300">
                 WO {workOrderId.slice(0, 8)}…
               </span>
@@ -780,21 +730,30 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
             {vehicleLabel ? (
               <p className="text-[11px] text-neutral-400">
-                Vehicle:&nbsp;<span className="font-medium text-neutral-200">{vehicleLabel}</span>
+                Vehicle:&nbsp;
+                <span className="font-medium text-neutral-200">
+                  {vehicleLabel}
+                </span>
               </p>
             ) : (
-              <p className="text-[11px] text-neutral-500">Add lines now — you can update vehicle details later.</p>
+              <p className="text-[11px] text-neutral-500">
+                Add lines now — you can update vehicle details later.
+              </p>
             )}
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => router.push(`/work-orders/quote-review?woId=${workOrderId}`)}
+              onClick={() =>
+                router.push(`/work-orders/quote-review?woId=${workOrderId}`)
+              }
               className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 hover:border-orange-500 hover:bg-neutral-800"
             >
               Review quote
-              {typeof woLineCount === "number" && woLineCount > 0 ? ` (${woLineCount})` : ""}
+              {typeof woLineCount === "number" && woLineCount > 0
+                ? ` (${woLineCount})`
+                : ""}
             </button>
             <button
               type="button"
@@ -810,8 +769,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Packages</h4>
-          <p className="text-[10px] text-neutral-500">Common services with pre-set labor & notes.</p>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
+            Packages
+          </h4>
+          <p className="text-[10px] text-neutral-500">
+            Common services with pre-set labor & notes.
+          </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           {packages.map((p) => (
@@ -830,9 +793,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 </span>
               </div>
               <div className="mt-1 text-xs text-neutral-400">
-                {p.estLaborHours != null ? `~${p.estLaborHours.toFixed(1)}h` : "Labor TBD"}
+                {p.estLaborHours != null
+                  ? `~${p.estLaborHours.toFixed(1)}h`
+                  : "Labor TBD"}
               </div>
-              <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">{p.summary}</div>
+              <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
+                {p.summary}
+              </div>
             </button>
           ))}
         </div>
@@ -840,12 +807,18 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Inspection Templates</h4>
-          <p className="text-[10px] text-neutral-500">Saved/standard inspections you can attach as jobs.</p>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
+            Inspection Templates
+          </h4>
+          <p className="text-[10px] text-neutral-500">
+            Saved/standard inspections you can attach as jobs.
+          </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {templatesLoading ? (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">Loading templates…</div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+              Loading templates…
+            </div>
           ) : templates.length ? (
             templates.slice(0, 9).map((t) => (
               <button
@@ -856,14 +829,21 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
                 title={t.description ?? undefined}
               >
-                <span className="font-medium text-neutral-50">{t.template_name ?? "Inspection"}</span>
+                <span className="font-medium text-neutral-50">
+                  {t.template_name ?? "Inspection"}
+                </span>
                 <div className="mt-1 text-xs text-neutral-400">
-                  inspection • {typeof t.labor_hours === "number" ? `${t.labor_hours.toFixed(1)}h` : "Labor TBD"}
+                  inspection •{" "}
+                  {typeof t.labor_hours === "number"
+                    ? `${t.labor_hours.toFixed(1)}h`
+                    : "Labor TBD"}
                 </div>
               </button>
             ))
           ) : (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">No templates yet.</div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+              No templates yet.
+            </div>
           )}
         </div>
       </div>
@@ -871,9 +851,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">From My Menu</h4>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
+              From My Menu
+            </h4>
             <p className="text-[10px] text-neutral-500">
-              Matches for this vehicle are shown first. Totals use shop labor + tax rules (province engine for CA).
+              Matches for this vehicle are shown first. Totals use shop labor +
+              tax rules (province engine for CA).
             </p>
           </div>
 
@@ -898,17 +881,24 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {menuLoading ? (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">Loading menu items…</div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+              Loading menu items…
+            </div>
           ) : menuItemsDisplay.length ? (
             menuItemsDisplay.slice(0, 12).map((mi) => {
               const p = calcMenuTotals({ mi, shop: shopDefaults });
 
-              const laborLabel = p.laborHours > 0 ? `${p.laborHours.toFixed(1)}h` : "Labor TBD";
+              const laborLabel =
+                p.laborHours > 0 ? `${p.laborHours.toFixed(1)}h` : "Labor TBD";
               const partsLabel =
-                p.partsTotal > 0 ? `${moneyLabel(currency, p.partsTotal)} parts` : "No parts";
+                p.partsTotal > 0
+                  ? `${moneyLabel(currency, p.partsTotal)} parts`
+                  : "No parts";
               const totalLabel = p.total > 0 ? moneyLabel(currency, p.total) : "No total";
               const taxLabel =
-                p.taxTotal > 0 ? `${p.taxLabel ?? "Tax"} ${moneyLabel(currency, p.taxTotal)}` : null;
+                p.taxTotal > 0
+                  ? `${p.taxLabel ?? "Tax"} ${moneyLabel(currency, p.taxTotal)}`
+                  : null;
 
               return (
                 <button
@@ -922,8 +912,11 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   <span className="font-medium text-neutral-50">{mi.name}</span>
 
                   <div className="mt-1 text-xs text-neutral-400">
-                    {laborLabel} • {partsLabel} • <span className="text-neutral-100">{totalLabel}</span>
-                    {taxLabel ? <span className="ml-1 text-neutral-500">• {taxLabel}</span> : null}
+                    {laborLabel} • {partsLabel} •{" "}
+                    <span className="text-neutral-100">{totalLabel}</span>
+                    {taxLabel ? (
+                      <span className="ml-1 text-neutral-500">• {taxLabel}</span>
+                    ) : null}
 
                     {isGlobalMenuItem(mi) ? (
                       <span className="ml-2 rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-300">
@@ -937,7 +930,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   </div>
 
                   {mi.service_key ? (
-                    <div className="mt-1 font-mono text-[10px] text-neutral-500">{mi.service_key}</div>
+                    <div className="mt-1 font-mono text-[10px] text-neutral-500">
+                      {mi.service_key}
+                    </div>
                   ) : null}
                 </button>
               );
@@ -957,7 +952,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         vehicleId={vehicleId ?? null}
         vehicleLabel={vehicleLabel ?? null}
         onAdded={(count) => {
-          setWoLineCount((prev) => (typeof prev === "number" ? prev + count : prev));
+          setWoLineCount((prev) =>
+            typeof prev === "number" ? prev + count : prev,
+          );
         }}
       />
     </div>
