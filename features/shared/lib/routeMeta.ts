@@ -132,7 +132,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   },
 
   // Inspection templates (tiles.ts uses /inspection/templates for this)
-  "/inspection/templates": {
+  "/inspections/templates": {
     title: () => "Inspection Templates",
     icon: "🗂️",
     roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],

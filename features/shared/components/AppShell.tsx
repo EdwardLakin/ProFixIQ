@@ -456,13 +456,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* content (CRITICAL: min-w-0 + overflow-x-hidden prevents tab row from widening layout) */}
           <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-neutral-950 px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
-            {userId ? (
-              <TabsBridge>
-                <div className="relative z-0 min-w-0">{children}</div>
-              </TabsBridge>
-            ) : (
+            <TabsBridge>
               <div className="relative z-0 min-w-0">{children}</div>
-            )}
+            </TabsBridge>
           </main>
 
           {/* mobile nav */}
