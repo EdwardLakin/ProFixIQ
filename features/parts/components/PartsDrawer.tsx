@@ -6,7 +6,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import PartPicker, { type PickedPart } from "@/features/parts/components/PartPicker";
+import PartPicker, {
+  type PickedPart,
+} from "@/features/parts/components/PartPicker";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 import { toast } from "sonner";
 import { consumePart } from "@/features/work-orders/lib/parts/consumePart";
@@ -29,13 +31,18 @@ type Props = {
   closeEventName?: string;
 };
 
+function asFiniteNumberOrUndefined(v: unknown): number | undefined {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export default function PartsDrawer({
   open,
   workOrderId,
   workOrderLineId,
-  vehicleSummary: vehicleSummary = null,
-  jobDescription: jobDescription = null,
-  jobNotes: jobNotes = null,
+  vehicleSummary = null,
+  jobDescription = null,
+  jobNotes = null,
   closeEventName = "parts-drawer:closed",
 }: Props) {
   const [tab, setTab] = useState<"use" | "request">("use");
@@ -53,12 +60,14 @@ export default function PartsDrawer({
           return;
         }
 
+        const unitCost = asFiniteNumberOrUndefined(picked.unit_cost);
+
         await consumePart({
           work_order_line_id: workOrderLineId,
           part_id: picked.part_id,
           qty,
           location_id: picked.location_id ?? undefined,
-          unit_cost: picked.unit_cost ?? null,
+          ...(typeof unitCost === "number" ? { unit_cost: unitCost } : {}),
           availability: picked.availability ?? null,
         });
 
@@ -141,7 +150,11 @@ export default function PartsDrawer({
 
         {/* Tabs */}
         <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3 md:px-5">
-          <button className={tabBtn(tab === "use")} onClick={() => setTab("use")} type="button">
+          <button
+            className={tabBtn(tab === "use")}
+            onClick={() => setTab("use")}
+            type="button"
+          >
             Use from Inventory
           </button>
           <button
