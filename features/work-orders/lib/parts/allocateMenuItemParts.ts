@@ -1,15 +1,16 @@
-  "use server";
+// features/work-orders/lib/parts/allocateMenuItemParts.ts
+"use server";
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { consumePart } from "@/features/work-orders/lib/parts/consumePart";
 import { ensureMainLocation } from "@parts/lib/locations";
 
 type DB = Database;
 
 type MenuItemPartRow = DB["public"]["Tables"]["menu_item_parts"]["Row"];
-type AllocationInsert = DB["public"]["Tables"]["work_order_part_allocations"]["Insert"];
 
 export type AllocateMenuItemPartsInput = {
   menu_item_id: string;
@@ -22,9 +23,9 @@ function asPositiveNumber(v: unknown): number | null {
   return n;
 }
 
-function asFiniteNumberOrNull(v: unknown): number | null {
+function asFiniteNumberOrUndefined(v: unknown): number | undefined {
   const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? n : undefined;
 }
 
 export async function allocateMenuItemParts(input: AllocateMenuItemPartsInput) {
@@ -46,7 +47,7 @@ export async function allocateMenuItemParts(input: AllocateMenuItemPartsInput) {
   if (!workOrderId) throw new Error("Missing work_order_id on line");
   if (!shopId) throw new Error("Missing shop_id on line");
 
-  // 2) CRITICAL: set current_shop_id() for THIS server session
+  // 2) CRITICAL: set current_shop_id() for THIS server session (RLS)
   const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
     p_shop_id: shopId,
   });
@@ -70,7 +71,7 @@ export async function allocateMenuItemParts(input: AllocateMenuItemPartsInput) {
     return { ok: true, allocated: 0, skipped: 0 };
   }
 
-  // 4) Allocation-only workflow: choose default location (MAIN for shop)
+  // 4) Default location fallback is MAIN (consumePart can also resolve best-bin if you omit)
   const mainLoc = await ensureMainLocation(shopId);
   const locationId = typeof mainLoc?.id === "string" ? mainLoc.id : null;
   if (!locationId) throw new Error("Failed to resolve MAIN stock location");
@@ -78,8 +79,7 @@ export async function allocateMenuItemParts(input: AllocateMenuItemPartsInput) {
   let allocated = 0;
   let skipped = 0;
 
-  const inserts: AllocationInsert[] = [];
-
+  // 5) Allocate each part via consumePart() (creates stock move + allocation)
   for (const p of rows) {
     const partId =
       typeof p.part_id === "string" && p.part_id.length ? p.part_id : null;
@@ -94,36 +94,18 @@ export async function allocateMenuItemParts(input: AllocateMenuItemPartsInput) {
       continue;
     }
 
-    const unitCost = asFiniteNumberOrNull(p.unit_cost);
+    const unitCost = asFiniteNumberOrUndefined(p.unit_cost);
 
-    // CRITICAL: include shop_id to satisfy shop-scoped INSERT policy
-    const baseInsert = {
-  shop_id: shopId,
-  work_order_id: workOrderId,
-  work_order_line_id: input.work_order_line_id,
-  part_id: partId,
-  location_id: locationId,
-  qty,
-};
-
-inserts.push(
-  typeof unitCost === "number"
-    ? { ...baseInsert, unit_cost: unitCost }
-    : baseInsert,
-);
+    await consumePart({
+      work_order_line_id: input.work_order_line_id,
+      part_id: partId,
+      qty,
+      location_id: locationId, // satisfies NOT NULL + consistent default
+      ...(typeof unitCost === "number" ? { unit_cost: unitCost } : {}),
+    });
 
     allocated += 1;
   }
-
-  if (!inserts.length) {
-    return { ok: true, allocated: 0, skipped };
-  }
-
-  const { error: insErr } = await supabase
-    .from("work_order_part_allocations")
-    .insert(inserts);
-
-  if (insErr) throw insErr;
 
   revalidatePath(`/work-orders/${workOrderId}`);
 
