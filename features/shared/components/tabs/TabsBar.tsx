@@ -19,20 +19,19 @@ export default function TabsBar() {
 
   // No full tab UI on dashboard or auth pages – just a subtle divider line
   if (pathname === "/dashboard" || AUTH_ROUTES.has(pathname)) {
-    return <div className="border-b border-neutral-800" />;
+    return <div className="w-full border-b border-neutral-800" />;
   }
 
   if (!tabs.length) {
-    return <div className="border-b border-neutral-800" />;
+    return <div className="w-full border-b border-neutral-800" />;
   }
 
   return (
-    <div className="border-b border-neutral-800 bg-neutral-950/60 px-2 backdrop-blur-sm">
+    <div className="w-full min-w-0 border-b border-neutral-800 bg-neutral-950/60 px-2 backdrop-blur-sm overflow-x-hidden">
       {/* Outer row: tabs scroller on the left, controls on the right */}
-      <div className="flex items-center gap-2 py-1.5">
+      <div className="flex min-w-0 items-center gap-2 py-1.5">
         {/* Scrollable tabs area – this is the ONLY thing that scrolls horizontally */}
-        <div className="flex min-w-0 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden">
-          {/* w-max lets the row be wider than viewport without stretching the layout */}
+        <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden">
           <div className="flex w-max items-center gap-2">
             <AnimatePresence initial={false}>
               {tabs.map((t) => {

@@ -300,7 +300,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="rounded-full border border-red-500/30 bg-red-950/30 px-3 py-1 text-[11px] font-semibold text-red-100 shadow-sm backdrop-blur transition hover:border-red-400/40">
           Billing issue:{" "}
           <span className="ml-1 uppercase tracking-[0.12em]">{statusLabel}</span>
-          {dueLabel ? <span className="ml-2 text-red-200/80">{dueLabel}</span> : null}
+          {dueLabel ? (
+            <span className="ml-2 text-red-200/80">{dueLabel}</span>
+          ) : null}
         </div>
       </button>
     );
@@ -309,12 +311,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // ✅ MAIN APP SHELL (dashboard + tabs)
   return (
     <>
-      {/* overflow-x-hidden keeps the whole shell from growing wider than the viewport */}
+      {/* Root: prevent horizontal growth; main fix is min-w-0 + sidebar shrink-0 */}
       <div className="flex min-h-screen bg-neutral-950 text-foreground overflow-x-hidden">
-        {/* Sidebar */}
+        {/* Sidebar (CRITICAL: shrink-0 so it never collapses when tabs grow) */}
         <aside
           className={cn(
-            "hidden overflow-hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
+            "hidden shrink-0 overflow-hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/95 via-neutral-950 to-black/95 backdrop-blur-xl transition-all duration-300",
             HEADER_OFFSET_DESKTOP,
             sidebarOpen
               ? "md:w-64 translate-x-0"
@@ -347,8 +349,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
 
-        {/* Main */}
-        <div className="flex min-h-screen flex-1 flex-col">
+        {/* Main column (CRITICAL: min-w-0 so content can shrink + not push sidebar off) */}
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
           {/* Top bar */}
           <header className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/95 via-neutral-950/95 to-black/95 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex">
             <div className="flex items-center gap-3">
@@ -452,15 +454,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           ) : null}
 
-          {/* content */}
-          <main className="flex w-full flex-1 flex-col bg-neutral-950 px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
-            {/* TabsBridge only for MAIN APP routes when signed in */}
+          {/* content (CRITICAL: min-w-0 + overflow-x-hidden prevents tab row from widening layout) */}
+          <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-neutral-950 px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20 lg:px-10 xl:px-16">
             {userId ? (
               <TabsBridge>
-                <main className="relative z-0">{children}</main>
+                <div className="relative z-0 min-w-0">{children}</div>
               </TabsBridge>
             ) : (
-              <main className="relative z-0">{children}</main>
+              <div className="relative z-0 min-w-0">{children}</div>
             )}
           </main>
 
@@ -471,7 +472,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <NavItem href="/work-orders" label="Work Orders" />
               <NavItem href="/inspections" label="Inspections" />
               <NavItem href="/chat" label="Messages" />
-              {/* 🔁 Point to actual mobile appointments route, not /mobile/planner */}
               <NavItem href="/mobile/appointments" label="Schedule" />
 
               <button
@@ -489,7 +489,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {/* ✅ Force password change modal (blocks app until complete) */}
       <ForcePasswordChangeModal
         open={!!userId && mustChangePassword}
         onDone={() => {
@@ -498,7 +497,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }}
       />
 
-      {/* Global chat modal (main app only) */}
       <NewChatModal
         isOpen={chatOpen}
         onClose={() => {
@@ -511,7 +509,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         activeConversationId={incomingConvoId}
       />
 
-      {/* Global Agent Request modal (main app only) */}
       {userId && (
         <AgentRequestModal
           open={agentDialogOpen}
