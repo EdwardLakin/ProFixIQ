@@ -1,3 +1,5 @@
+// app/api/inspections/finalize/pdf/route.ts ✅ FULL FILE REPLACEMENT
+
 import "server-only";
 
 export const runtime = "nodejs";
@@ -37,7 +39,10 @@ export async function POST(req: NextRequest) {
   const body = raw as Body;
   const workOrderLineId = asString(body.workOrderLineId);
   if (!workOrderLineId) {
-    return NextResponse.json({ error: "Missing workOrderLineId" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing workOrderLineId" },
+      { status: 400 },
+    );
   }
 
   // 2) Auth
@@ -59,16 +64,22 @@ export async function POST(req: NextRequest) {
 
   if (lineErr) {
     console.error("[inspections/finalize/pdf] line lookup failed", lineErr);
-    return NextResponse.json({ error: "Failed to look up work order line" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to look up work order line" },
+      { status: 500 },
+    );
   }
   if (!line?.work_order_id) {
-    return NextResponse.json({ error: "Work order line missing work_order_id" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Work order line missing work_order_id" },
+      { status: 400 },
+    );
   }
 
   // 4) Find the inspection record (latest for WO)
   const { data: insp, error: inspErr } = await supabase
     .from("inspections")
-    .select("id, work_order_id, vehicle_id, user_id, summary, pdf_storage_path, shop_id")
+    .select("id, work_order_id, vehicle_id, user_id, summary, pdf_storage_path, shop_id, created_at")
     .eq("work_order_id", line.work_order_id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -84,7 +95,10 @@ export async function POST(req: NextRequest) {
 
   const session = insp.summary as unknown as InspectionSession | null;
   if (!session || typeof session !== "object") {
-    return NextResponse.json({ error: "Inspection summary missing/invalid" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Inspection summary missing/invalid" },
+      { status: 400 },
+    );
   }
 
   // 5) Generate PDF bytes (session-based)
@@ -101,7 +115,7 @@ export async function POST(req: NextRequest) {
 
   const { error: uploadErr } = await supabase.storage
     .from(bucket)
-    .upload(path, pdfBytes, {
+    .upload(path, Buffer.from(pdfBytes), {
       contentType: "application/pdf",
       upsert: true,
     });

@@ -1,3 +1,4 @@
+// features/inspections/components/FinishInspectionButton.tsx ✅ FULL FILE REPLACEMENT
 "use client";
 
 import { useMemo, useState } from "react";
@@ -117,6 +118,7 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
 
     setBusy(true);
     try {
+      // 1) Finish the line (your existing behavior)
       const res = await fetch(`/api/work-orders/lines/${workOrderLineId}/finish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -125,6 +127,22 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
 
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) throw new Error(json?.error || "Failed to finish inspection");
+
+      // 2) Finalize + generate + upload inspection PDF (THIS was missing)
+      const pdfRes = await fetch(`/api/inspections/finalize/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workOrderLineId }),
+      });
+
+      const pdfJson = (await pdfRes.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; pdf_url?: string | null }
+        | null;
+
+      if (!pdfRes.ok || !pdfJson?.ok) {
+        // Don’t fail the whole finish if PDF upload hiccups — but show a toast.
+        toast.error(pdfJson?.error || "Inspection finished, but PDF finalize failed.");
+      }
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(
@@ -156,7 +174,6 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
       disabled={busy}
       type="button"
       size="sm"
-      // ✅ force visible styling regardless of how Button variants behave in embed mode
       className={[
         "font-semibold tracking-[0.18em] uppercase text-[11px]",
         "border border-[var(--accent-copper-light)]",

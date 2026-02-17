@@ -1,3 +1,5 @@
+// app/api/inspections/pdf/route.ts ✅ FULL FILE REPLACEMENT
+
 import "server-only";
 
 export const runtime = "nodejs";
