@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
+import SignaturePad, {
+  openSignaturePad,
+} from "@/features/shared/signaturePad/controller";
+
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
 type TechPrefs = {
@@ -12,6 +16,27 @@ type TechPrefs = {
   compactCards: boolean;
   autoRefresh: boolean;
 };
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [head, b64] = dataUrl.split(",");
+  const mime = /data:(.*?);base64/.exec(head)?.[1] ?? "image/png";
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function sha256Base64(dataUrl: string): Promise<string> {
+  const comma = dataUrl.indexOf(",");
+  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 export default function TechSettingsPage() {
   const supabase = createClientComponentClient<Database>();
@@ -32,6 +57,10 @@ export default function TechSettingsPage() {
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
   const [postal, setPostal] = useState("");
+
+  // ✅ saved tech signature state
+  const [sigPath, setSigPath] = useState<string | null>(null);
+  const [sigBusy, setSigBusy] = useState(false);
 
   // local (non-DB) prefs for the tech queue
   const [prefs, setPrefs] = useState<TechPrefs>({
@@ -60,7 +89,7 @@ export default function TechSettingsPage() {
       const { data: profile, error: profErr } = await supabase
         .from("profiles")
         .select(
-          "id, shop_id, username, full_name, email, phone, street, city, province, postal_code",
+          "id, shop_id, username, full_name, email, phone, street, city, province, postal_code, tech_signature_path, tech_signature_hash",
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -82,6 +111,11 @@ export default function TechSettingsPage() {
         setCity(profile.city ?? "");
         setProvince(profile.province ?? "");
         setPostal(profile.postal_code ?? "");
+
+        const p = profile as unknown as {
+          tech_signature_path?: string | null;
+        };
+        setSigPath(p.tech_signature_path ?? null);
       }
 
       // local prefs
@@ -143,6 +177,53 @@ export default function TechSettingsPage() {
       setError(e instanceof Error ? e.message : "Failed to save profile.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ✅ capture and persist a saved tech signature (1-time setup, update anytime)
+  const captureAndSaveSignature = async () => {
+    if (!profileId) return;
+
+    setSigBusy(true);
+    setError(null);
+    setOk(null);
+
+    try {
+      const dataUrl = await openSignaturePad({ shopName: "ProFixIQ" });
+      if (!dataUrl) return; // user cancelled
+
+      const blob = dataUrlToBlob(dataUrl);
+      const hash = await sha256Base64(dataUrl);
+
+      const path = `tech-signatures/${profileId}.png`;
+
+      const up = await supabase.storage.from("signatures").upload(path, blob, {
+        upsert: true,
+        contentType: "image/png",
+      });
+
+      if (up.error) throw up.error;
+
+      const update: Database["public"]["Tables"]["profiles"]["Update"] = {
+        tech_signature_path: path,
+        tech_signature_hash: hash,
+        tech_signature_updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error: updErr } = await supabase
+        .from("profiles")
+        .update(update)
+        .eq("id", profileId);
+
+      if (updErr) throw updErr;
+
+      setSigPath(path);
+      setOk("Signature saved. Technician signing will now auto-use it.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save signature.");
+    } finally {
+      setSigBusy(false);
     }
   };
 
@@ -293,6 +374,57 @@ export default function TechSettingsPage() {
             </div>
           </section>
 
+          {/* ✅ Saved Signature */}
+          <section className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-neutral-100">
+                  Saved Signature
+                </h2>
+                <p className="text-xs text-neutral-400">
+                  Used automatically when you sign inspections as a technician.
+                </p>
+              </div>
+              <span className="text-[10px] text-neutral-500">
+                Signatures bucket
+              </span>
+            </div>
+
+            <div className="text-xs text-neutral-300">
+              Status:{" "}
+              {sigPath ? (
+                <span className="text-green-300">On file ✅</span>
+              ) : (
+                <span className="text-amber-300">Not set</span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={captureAndSaveSignature}
+                disabled={sigBusy || !profileId}
+                className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
+              >
+                {sigBusy
+                  ? "Opening…"
+                  : sigPath
+                    ? "Update signature"
+                    : "Capture signature"}
+              </button>
+              {sigPath ? (
+                <span className="text-[11px] text-neutral-400 truncate">
+                  {sigPath}
+                </span>
+              ) : null}
+            </div>
+
+            <p className="text-[10px] text-neutral-500">
+              Tech signing will pull this signature automatically, so you don’t
+              have to re-sign every inspection.
+            </p>
+          </section>
+
           {/* Notifications */}
           <section className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 space-y-3">
             <div className="flex items-center justify-between">
@@ -331,6 +463,9 @@ export default function TechSettingsPage() {
               Show unassigned jobs too
             </label>
           </section>
+
+          {/* ✅ Host for the signature modal */}
+          <SignaturePad />
         </div>
 
         {/* RIGHT: work prefs */}

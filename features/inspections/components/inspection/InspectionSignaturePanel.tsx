@@ -1,4 +1,3 @@
-// features/inspections/components/inspection/InspectionSignaturePanel.tsx
 "use client";
 
 import type React from "react";
@@ -12,6 +11,12 @@ export type InspectionSignaturePanelProps = {
   role: SignatureRole;
   defaultName?: string;
   onSigned?: () => void;
+
+  /**
+   * Optional: where to send a tech to save their signature (one-time setup).
+   * If omitted, we’ll just show a toast message.
+   */
+  techSettingsHref?: string;
 };
 
 function roleLabel(role: SignatureRole): string {
@@ -20,15 +25,54 @@ function roleLabel(role: SignatureRole): string {
   return "Service advisor";
 }
 
+type SavedSigResponse = {
+  ok?: boolean;
+  error?: string;
+  signatureImagePath?: string | null;
+  signatureHash?: string | null;
+};
+
 const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
   inspectionId,
   role,
   defaultName,
   onSigned,
+  techSettingsHref,
 }) => {
   const [name, setName] = useState(defaultName ?? "");
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  async function fetchSavedTechSignature(): Promise<{
+    signatureImagePath: string;
+    signatureHash: string | null;
+  } | null> {
+    try {
+      const res = await fetch("/api/profile/signature", {
+        method: "GET",
+        credentials: "include",
+        headers: { "Cache-Control": "no-store" },
+      });
+
+      const json = (await res.json().catch(() => null)) as SavedSigResponse | null;
+
+      if (!res.ok || json?.error) {
+        throw new Error(json?.error || "Failed to load saved signature");
+      }
+
+      const path = json?.signatureImagePath ?? null;
+      if (!path) return null;
+
+      return {
+        signatureImagePath: path,
+        signatureHash: json?.signatureHash ?? null,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load saved signature";
+      toast.error(msg);
+      return null;
+    }
+  }
 
   const handleSign = async () => {
     if (!inspectionId) {
@@ -48,6 +92,25 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
     setBusy(true);
 
     try {
+      let signatureImagePath: string | null = null;
+      let signatureHash: string | null = null;
+
+      // ✅ Technician: pull saved signature automatically
+      if (role === "technician") {
+        const saved = await fetchSavedTechSignature();
+        if (!saved?.signatureImagePath) {
+          if (techSettingsHref) {
+            toast.error("No saved tech signature. Please add one in Tech Settings.");
+            // You can optionally navigate here in your parent, but we won’t force it.
+          } else {
+            toast.error("No saved tech signature. Add one in Tech Settings.");
+          }
+          return;
+        }
+        signatureImagePath = saved.signatureImagePath;
+        signatureHash = saved.signatureHash;
+      }
+
       const res = await fetch("/api/inspections/sign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -56,8 +119,8 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
           inspectionId,
           role,
           signedName: name.trim(),
-          signatureImagePath: null,
-          signatureHash: null,
+          signatureImagePath,
+          signatureHash,
         }),
       });
 
@@ -68,10 +131,10 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
 
       toast.success(`${roleLabel(role)} signature captured.`);
       onSigned?.();
-    } catch (e: any) {
+    } catch (e) {
       // eslint-disable-next-line no-console
       console.error("sign error", e);
-      toast.error(e?.message ?? "Unable to save signature.");
+      toast.error(e instanceof Error ? e.message : "Unable to save signature.");
     } finally {
       setBusy(false);
     }
@@ -85,7 +148,9 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
             {roleLabel(role)} Signature
           </div>
           <div className="text-[11px] text-zinc-500">
-            Sign to lock this inspection snapshot.
+            {role === "technician"
+              ? "Uses your saved signature (no re-signing every time)."
+              : "Sign to lock this inspection snapshot."}
           </div>
         </div>
       </div>
@@ -118,6 +183,12 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
         <p className="text-[11px] text-amber-300">
           This inspection has not been saved to the database yet. Once it has a
           persistent <code>inspection_id</code>, this panel will allow signing.
+        </p>
+      )}
+
+      {role === "technician" && (
+        <p className="text-[11px] text-zinc-400">
+          If signing fails, it usually means no saved signature exists yet.
         </p>
       )}
 

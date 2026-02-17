@@ -5592,6 +5592,9 @@ export type Database = {
           shop_id: string | null
           shop_name: string | null
           street: string | null
+          tech_signature_hash: string | null
+          tech_signature_path: string | null
+          tech_signature_updated_at: string | null
           updated_at: string | null
           user_id: string | null
           username: string | null
@@ -5617,6 +5620,9 @@ export type Database = {
           shop_id?: string | null
           shop_name?: string | null
           street?: string | null
+          tech_signature_hash?: string | null
+          tech_signature_path?: string | null
+          tech_signature_updated_at?: string | null
           updated_at?: string | null
           user_id?: string | null
           username?: string | null
@@ -5642,6 +5648,9 @@ export type Database = {
           shop_id?: string | null
           shop_name?: string | null
           street?: string | null
+          tech_signature_hash?: string | null
+          tech_signature_path?: string | null
+          tech_signature_updated_at?: string | null
           updated_at?: string | null
           user_id?: string | null
           username?: string | null
