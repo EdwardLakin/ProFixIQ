@@ -60,19 +60,18 @@ type RpcReturn = {
 };
 
 /**
- * Small helper so we can call the RPC with our own args type
- * without using `any` or fighting the generated union of function types.
+ * Call RPC WITHOUT detaching `client.rpc` (it relies on `this.rest`)
  */
 async function callSignInspectionRpc(
   client: Supabase,
   args: SignInspectionArgs,
 ): Promise<RpcReturn> {
-  const rpc = client.rpc as unknown as (
-    fn: string,
-    args: SignInspectionArgs,
-  ) => Promise<RpcReturn>;
+  // We keep the method call form: client.rpc(...)
+  const res = (client as unknown as {
+    rpc: (fn: string, args: SignInspectionArgs) => Promise<RpcReturn>;
+  }).rpc("sign_inspection", args);
 
-  return rpc("sign_inspection", args);
+  return res;
 }
 
 export async function POST(req: NextRequest) {
@@ -82,10 +81,7 @@ export async function POST(req: NextRequest) {
   try {
     bodyUnknown = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   if (!isSignRequestBody(bodyUnknown)) {
@@ -95,13 +91,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const {
-    inspectionId,
-    role,
-    signedName,
-    signatureImagePath,
-    signatureHash,
-  } = bodyUnknown;
+  const { inspectionId, role, signedName, signatureImagePath, signatureHash } =
+    bodyUnknown;
 
   const rpcArgs: SignInspectionArgs = {
     p_inspection_id: inspectionId,
@@ -114,10 +105,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await callSignInspectionRpc(supabase, rpcArgs);
 
   if (error) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
   return NextResponse.json({ success: true, data });
