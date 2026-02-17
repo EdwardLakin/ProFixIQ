@@ -1,11 +1,4 @@
 // /features/work-orders/app/work-orders/create/page.tsx (FULL FILE REPLACEMENT)
-// Fixes TS + lint:
-// - Removes unsafe indexed assignment in customer draft hydration (kills TS2322)
-// - Normalizes VIN decoded year to string|null
-// - Ensures p_notes is string (not string|null)
-// - Avoids passing undefined for vehicleId props
-// - Fixes accidental `};` after function declaration
-
 "use client";
 
 /**

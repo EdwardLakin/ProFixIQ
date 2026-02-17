@@ -1,12 +1,4 @@
 // features/work-orders/components/MenuQuickAdd.tsx
-// FULL FILE REPLACEMENT
-//
-// Fix: Menu item parts not allocating into work order
-// - Uses server action allocateMenuItemParts() (which calls consumePart())
-// - Correct input shape: { menu_item_id, work_order_line_id } (NO work_order_id)
-// - Surfaces errors + shows allocated/skipped counts
-// - Keeps existing shop context logic for menu/template loading
-
 "use client";
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
@@ -16,9 +8,6 @@ import { toast } from "sonner";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
 import { calculateTax, type ProvinceCode } from "@/features/integrations/tax";
-
-// ✅ server action that reads menu_item_parts + calls consumePart()
-import { allocateMenuItemParts } from "@/features/work-orders/lib/parts/allocateMenuItemParts";
 
 type DB = Database;
 type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
@@ -77,7 +66,10 @@ type AddMenuParams =
       notes?: string | null;
       source?: "single" | "package" | "menu_item" | "ai" | "inspection";
       returnLineId?: boolean;
-      menuItemIdForParts?: string | null;
+
+      // ✅ persist linkage
+      menuItemId?: string | null;
+      inspectionTemplateId?: string | null;
     }
   | {
       kind: "template";
@@ -110,6 +102,14 @@ function normYear(v: unknown): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+function getStringField(obj: unknown, key: string): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  const v = (obj as Record<string, unknown>)[key];
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length ? t : null;
 }
 
 function isGlobalMenuItem(mi: MenuItemRow): boolean {
@@ -168,8 +168,6 @@ function scoreMenuItemFit(args: { mi: MenuItemRow; vehicle: VehicleLite | null }
 
   if (miEng && vEng && miEng === vEng) score += 6;
   else if (!miEng) score += 1;
-
-  if (miTrans && vTrans && miEng === vEng) score += 0;
 
   if (miTrans && vTrans && miTrans === vTrans) score += 6;
   else if (!miTrans) score += 1;
@@ -287,6 +285,18 @@ function calcMenuTotals(args: {
     total: subtotal + taxTotal,
     taxLabel: pct > 0 ? "Tax" : null,
   };
+}
+
+// ✅ Try to infer if a menu item represents a custom inspection
+function extractInspectionTemplateIdFromMenuItem(mi: MenuItemRow): string | null {
+  // common column names we’ve seen in ProFixIQ evolutions
+  return (
+    getStringField(mi, "inspection_template_id") ||
+    getStringField(mi, "template_id") ||
+    getStringField(mi, "inspectionTemplateId") ||
+    getStringField(mi, "inspection_template") ||
+    null
+  );
 }
 
 export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
@@ -511,43 +521,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     void loadTemplates();
   }, [shopId, loadMenuItems, loadTemplates]);
 
-  async function allocatePartsFromMenu(menuItemId: string, workOrderLineId: string) {
-    // ✅ this confirms the call happened
-    // (you’ll see it in browser console)
-    console.log("ALLOCATE MENU PARTS", { menu_item_id: menuItemId, work_order_line_id: workOrderLineId });
-
-    const tid = toast.loading("Allocating menu parts...");
-    try {
-      const res = await allocateMenuItemParts({
-        menu_item_id: menuItemId,
-        work_order_line_id: workOrderLineId,
-      });
-
-      const allocated =
-        res && typeof (res as { allocated?: unknown }).allocated === "number"
-          ? (res as { allocated: number }).allocated
-          : 0;
-
-      const skipped =
-        res && typeof (res as { skipped?: unknown }).skipped === "number"
-          ? (res as { skipped: number }).skipped
-          : 0;
-
-      toast.dismiss(tid);
-
-      if (allocated > 0) {
-        window.dispatchEvent(new CustomEvent("wo:parts-used"));
-        toast.success(`Allocated ${allocated} part${allocated === 1 ? "" : "s"}${skipped ? ` (skipped ${skipped})` : ""}`);
-      } else {
-        toast.message(`No parts allocated${skipped ? ` (skipped ${skipped})` : ""}. Check menu_item_parts + part links.`);
-      }
-    } catch (e: unknown) {
-      toast.dismiss(tid);
-      const msg = e instanceof Error ? e.message : "Failed to allocate menu parts.";
-      toast.error(msg);
-    }
-  }
-
   async function addMenuItem(params: AddMenuParams): Promise<string | null> {
     if (!shopReady || !shopId) return null;
 
@@ -580,7 +553,11 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         return data?.id ?? null;
       }
 
-      const line: WorkOrderLineInsert = {
+      const line: WorkOrderLineInsert & {
+        menu_item_id?: string | null;
+        inspection_template_id?: string | null;
+        template_id?: string | null;
+      } = {
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
         description: params.name,
@@ -590,15 +567,17 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         priority: 3,
         notes: params.notes ?? null,
         shop_id: shopId,
+
+        // ✅ persist linkages that invoicing/attachment logic can rely on
+        menu_item_id: params.menuItemId ?? null,
+        inspection_template_id: params.inspectionTemplateId ?? null,
+
+        // optional legacy mirror (harmless if column exists)
+        template_id: params.inspectionTemplateId ?? null,
       };
 
       const { data, error } = await supabase.from("work_order_lines").insert(line).select("id").single();
       if (error) throw new Error(error.message);
-
-      // ✅ allocate menu parts via server action (consumePart pipeline)
-      if (params.menuItemIdForParts && data?.id) {
-        await allocatePartsFromMenu(params.menuItemIdForParts, data.id);
-      }
 
       window.dispatchEvent(new CustomEvent("wo:line-added"));
       toast.success("Job added");
@@ -626,15 +605,23 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }
 
   async function addSavedMenuItem(mi: MenuItemRow) {
+    const templateId = extractInspectionTemplateIdFromMenuItem(mi);
+
     await addMenuItem({
       kind: "normal",
       name: mi.name ?? "Service",
-      jobType: "maintenance",
+
+      // ✅ if it has a template id, treat it as an inspection job
+      jobType: templateId ? "inspection" : "maintenance",
+
       laborHours: typeof mi.labor_time === "number" ? mi.labor_time : null,
       notes: mi.description ?? null,
       source: "menu_item",
       returnLineId: false,
-      menuItemIdForParts: mi.id ?? null,
+
+      // ✅ persist menu + inspection linkage
+      menuItemId: mi.id ?? null,
+      inspectionTemplateId: templateId,
     });
   }
 
@@ -678,6 +665,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
   return (
     <div className="space-y-5 text-white">
+      {/* header */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 sm:px-4 sm:py-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
@@ -723,6 +711,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
+      {/* packages */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Packages</h4>
@@ -753,6 +742,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
+      {/* templates */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Inspection Templates</h4>
@@ -783,6 +773,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
+      {/* menu items */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
