@@ -294,17 +294,30 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   "grid gap-2 p-2",
                   "lg:grid-cols-2 lg:gap-[2px] lg:bg-white/10 lg:p-[2px]",
 
-                  // ✅ base (1-col): zebra per item, subtle (28/24)
-                  "[&>*:nth-child(odd)]:bg-black/28",
-                  "[&>*:nth-child(even)]:bg-black/24",
-                  "[&>*:nth-child(odd)]:hover:bg-white/[0.035]",
-                  "[&>*:nth-child(even)]:hover:bg-white/[0.045]",
+                  // ✅ NEW: make each item wrapper a “glass card” (kills grey box vibe)
+                  "[&>*]:rounded-lg",
+                  "[&>*]:border [&>*]:border-white/10",
+                  "[&>*]:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),rgba(0,0,0,0.72))]",
+                  "[&>*]:shadow-[0_12px_28px_rgba(0,0,0,0.60)]",
+                  "[&>*]:backdrop-blur-md",
+                  "[&>*]:relative [&>*]:overflow-hidden",
 
-                  // ✅ lg (2-col): zebra per ROW (pairs), not checkerboard
-                  "lg:[&>*:nth-child(4n+1)]:bg-black/28 lg:[&>*:nth-child(4n+2)]:bg-black/28",
-                  "lg:[&>*:nth-child(4n+3)]:bg-black/24 lg:[&>*:nth-child(4n+4)]:bg-black/24",
-                  "lg:[&>*:nth-child(4n+1)]:hover:bg-white/[0.035] lg:[&>*:nth-child(4n+2)]:hover:bg-white/[0.035]",
-                  "lg:[&>*:nth-child(4n+3)]:hover:bg-white/[0.045] lg:[&>*:nth-child(4n+4)]:hover:bg-white/[0.045]",
+                  // copper “lip” highlight
+                  "[&>*]:before:absolute [&>*]:before:inset-x-0 [&>*]:before:top-0 [&>*]:before:h-[2px] [&>*]:before:content-['']",
+                  "[&>*]:before:bg-[linear-gradient(90deg,transparent,rgba(197,122,74,0.85),transparent)]",
+
+                  // hover pop
+                  "[&>*]:transition [&>*]:duration-150",
+                  "[&>*]:hover:-translate-y-[1px]",
+                  "[&>*]:hover:border-[rgba(197,122,74,0.45)]",
+                  "[&>*]:hover:shadow-[0_18px_38px_rgba(0,0,0,0.70)]",
+                  "[&>*]:hover:bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.14),rgba(0,0,0,0.74))]",
+
+                  // keep zebra, but subtle (brightness instead of grey blocks)
+                  "[&>*:nth-child(odd)]:brightness-[1.02]",
+                  "[&>*:nth-child(even)]:brightness-[0.98]",
+                  "lg:[&>*:nth-child(4n+1)]:brightness-[1.02] lg:[&>*:nth-child(4n+2)]:brightness-[1.02]",
+                  "lg:[&>*:nth-child(4n+3)]:brightness-[0.98] lg:[&>*:nth-child(4n+4)]:brightness-[0.98]",
                 ].join(" ")}
               >
                 {items.map((item, itemIndex) => {
@@ -318,7 +331,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   const isRec = status === "recommend";
                   const isFailOrRec = isFail || isRec;
 
-                  // ✅ support note vs notes
                   const note = getNote(item).trim();
 
                   const canShowSubmit =
@@ -341,7 +353,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   const k = `${sectionIndex}:${itemIndex}`;
                   const isEditing = Boolean(editByKey[k]);
 
-                  // default: open before submit; collapse after submit unless user expands or edits
                   const partsOpen =
                     isEditing || (partsOpenByKey[k] ?? !submitted);
 
@@ -351,18 +362,15 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                     <div
                       key={keyBase}
                       className={[
-                        "relative rounded-lg px-3 py-3 transition-colors",
+                        "relative px-3 py-3",
                         "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
                         rail,
-                        submitted
-                          ? "border border-emerald-500/40 shadow-[0_0_0_2px_rgba(16,185,129,0.12)]"
-                          : "border border-white/0",
+                        submitted ? "ring-1 ring-emerald-500/35" : "",
                       ].join(" ")}
                     >
                       <InspectionItemCard
                         item={{
                           ...item,
-                          // keep notes unified so textarea always reflects current value
                           notes: getNote(item),
                         }}
                         sectionIndex={sectionIndex}
@@ -398,10 +406,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                           ]);
                         };
 
-                        const updatePart = (
-                          idx: number,
-                          patch: Partial<PartRow>,
-                        ) => {
+                        const updatePart = (idx: number, patch: Partial<PartRow>) => {
                           const next = currentParts.map((p, i) =>
                             i === idx ? { ...p, ...patch } : p,
                           );
@@ -442,9 +447,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     <button
                                       type="button"
                                       className="text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:text-neutral-100"
-                                      onClick={() =>
-                                        setPartsOpen(k, !partsOpen)
-                                      }
+                                      onClick={() => setPartsOpen(k, !partsOpen)}
                                     >
                                       {partsOpen ? "Collapse" : "Expand"}
                                     </button>
@@ -479,7 +482,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                             {partsOpen && (
                               <>
-                                {/* Parts list */}
                                 <div className="space-y-2">
                                   {currentParts.map((p, pIdx) => (
                                     <div
@@ -491,16 +493,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                         className={[
                                           "min-w-0 flex-1 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
                                           "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                          lockInputs
-                                            ? "opacity-60 cursor-not-allowed"
-                                            : "",
+                                          lockInputs ? "opacity-60 cursor-not-allowed" : "",
                                         ].join(" ")}
                                         placeholder="Part description"
                                         value={p.description}
                                         onChange={(e) =>
-                                          updatePart(pIdx, {
-                                            description: e.target.value,
-                                          })
+                                          updatePart(pIdx, { description: e.target.value })
                                         }
                                       />
                                       <input
@@ -508,29 +506,21 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                         className={[
                                           "w-16 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
                                           "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                          lockInputs
-                                            ? "opacity-60 cursor-not-allowed"
-                                            : "",
+                                          lockInputs ? "opacity-60 cursor-not-allowed" : "",
                                         ].join(" ")}
                                         placeholder="Qty"
                                         type="number"
                                         min={1}
-                                        value={
-                                          Number.isFinite(p.qty) ? p.qty : ""
-                                        }
+                                        value={Number.isFinite(p.qty) ? p.qty : ""}
                                         onChange={(e) =>
-                                          updatePart(pIdx, {
-                                            qty: Number(e.target.value) || 1,
-                                          })
+                                          updatePart(pIdx, { qty: Number(e.target.value) || 1 })
                                         }
                                       />
                                       <button
                                         type="button"
                                         className={[
                                           "text-[11px] text-red-300 hover:text-red-200",
-                                          lockInputs
-                                            ? "opacity-40 pointer-events-none"
-                                            : "",
+                                          lockInputs ? "opacity-40 pointer-events-none" : "",
                                         ].join(" ")}
                                         onClick={() => removePart(pIdx)}
                                       >
@@ -555,7 +545,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   </button>
                                 </div>
 
-                                {/* Labor */}
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
                                   <span className="text-[11px] text-neutral-400">
                                     Labor hours
@@ -565,9 +554,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     className={[
                                       "w-20 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
                                       "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                      lockInputs
-                                        ? "opacity-60 cursor-not-allowed"
-                                        : "",
+                                      lockInputs ? "opacity-60 cursor-not-allowed" : "",
                                     ].join(" ")}
                                     placeholder="0.0"
                                     type="number"
@@ -576,9 +563,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     value={currentLabor ?? ""}
                                     onChange={(e) =>
                                       handleLaborChange(
-                                        e.target.value === ""
-                                          ? null
-                                          : Number(e.target.value) || 0,
+                                        e.target.value === "" ? null : Number(e.target.value) || 0,
                                       )
                                     }
                                   />
@@ -603,13 +588,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   size="sm"
                                   className="px-3"
                                   disabled={submitting}
-                                  onClick={() =>
-                                    onSubmitAI(sectionIndex, itemIndex)
-                                  }
+                                  onClick={() => onSubmitAI(sectionIndex, itemIndex)}
                                 >
-                                  {submitting
-                                    ? "Submitting…"
-                                    : "Submit for estimate"}
+                                  {submitting ? "Submitting…" : "Submit for estimate"}
                                 </Button>
                               );
                             }
@@ -622,9 +603,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   size="sm"
                                   className="px-3"
                                   disabled={submitting}
-                                  onClick={() =>
-                                    onSubmitAI(sectionIndex, itemIndex)
-                                  }
+                                  onClick={() => onSubmitAI(sectionIndex, itemIndex)}
                                 >
                                   {submitting ? "Updating…" : "Update estimate"}
                                 </Button>
