@@ -183,6 +183,12 @@ export default function AuthPage() {
 
   const isSignIn = mode === "sign-in";
 
+  const goForgotPassword = () => {
+    const redirect = sp.get("redirect");
+    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
+    router.push(`/forgot-password${tail}`);
+  };
+
   return (
     <div
       className="
@@ -373,6 +379,26 @@ export default function AuthPage() {
                 minLength={6}
               />
             </div>
+
+            {/* Forgot password */}
+            {isSignIn && (
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={goForgotPassword}
+                  disabled={loading}
+                  className="
+                    text-[11px] font-medium
+                    text-[var(--accent-copper-light)]
+                    hover:text-[var(--accent-copper)]
+                    hover:underline underline-offset-2
+                    disabled:cursor-not-allowed disabled:opacity-60
+                  "
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
 
             <button
               type="submit"
