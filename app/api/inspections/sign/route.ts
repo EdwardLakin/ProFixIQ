@@ -7,15 +7,8 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database as BaseDatabase } from "@shared/types/types/supabase";
 
 /**
- * Shape that matches the SQL function:
- *
- * create or replace function public.sign_inspection(
- *   p_inspection_id uuid,
- *   p_role text,
- *   p_signed_name text,
- *   p_signature_image_path text default null,
- *   p_signature_hash text default null
- * )
+ * SQL function shape:
+ * public.sign_inspection(p_inspection_id uuid, p_role text, p_signed_name text, p_signature_image_path text default null, p_signature_hash text default null)
  */
 type SignInspectionArgs = {
   p_inspection_id: string;
@@ -33,17 +26,6 @@ type SignRequestBody = {
   signedName: string;
   signatureImagePath?: string | null;
   signatureHash?: string | null;
-
-  /**
-   * OPTIONAL snapshot to allow the API to auto-create the inspection row
-   * when the inspection only exists locally (draft autosave).
-   *
-   * If you don't send this, the route will still attempt a minimal insert
-   * (id-only) and rely on DB defaults. If your inspections table requires
-   * additional NOT NULL fields without defaults, you'll need to send snapshot
-   * (or update DB defaults).
-   */
-  snapshot?: Record<string, unknown> | null;
 };
 
 const ALLOWED_ROLES: Role[] = ["technician", "customer", "advisor"];
@@ -59,7 +41,8 @@ function isSignRequestBody(value: unknown): value is SignRequestBody {
   const role = value.role;
   const signedName = value.signedName;
 
-  if (typeof inspectionId !== "string" || inspectionId.length < 8) return false;
+  if (typeof inspectionId !== "string" || inspectionId.trim().length < 8)
+    return false;
   if (typeof signedName !== "string" || signedName.trim().length === 0)
     return false;
   if (typeof role !== "string") return false;
@@ -74,8 +57,6 @@ type RpcReturn = {
   error: { message: string } | null;
 };
 
-type DbError = { message?: string } | null;
-
 /**
  * Call RPC WITHOUT detaching `client.rpc` (it relies on `this.rest`)
  */
@@ -83,100 +64,36 @@ async function callSignInspectionRpc(
   client: Supabase,
   args: SignInspectionArgs,
 ): Promise<RpcReturn> {
-  const res = (client as unknown as {
+  return (client as unknown as {
     rpc: (fn: string, args: SignInspectionArgs) => Promise<RpcReturn>;
   }).rpc("sign_inspection", args);
-
-  return res;
 }
 
 /**
  * Ensure the inspection row exists BEFORE signing.
  *
- * Strategy:
- *  1) SELECT inspections.id
- *  2) If missing: attempt INSERT
- *     - Prefer inserting a provided snapshot into a jsonb column if you have one.
- *     - Otherwise attempt minimal { id } insert and rely on DB defaults.
- *
- * IMPORTANT:
- *  - If your `inspections` table has required NOT NULL columns without defaults,
- *    the id-only insert will fail. In that case, send `snapshot` from the client
- *    (or add defaults on the DB side).
+ * Use UPSERT (no SELECT) to avoid RLS read issues.
+ * Since only `inspections.id` is NOT NULL, `{ id }` is sufficient.
  */
-async function ensureInspectionExists(args: {
-  supabase: Supabase;
-  inspectionId: string;
-  snapshot?: Record<string, unknown> | null;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { supabase, inspectionId, snapshot } = args;
+async function ensureInspectionExists(
+  supabase: Supabase,
+  inspectionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await supabase.from("inspections").upsert(
+    { id: inspectionId },
+    {
+      onConflict: "id",
+      ignoreDuplicates: true, // if it already exists, no-op
+    },
+  );
 
-  // 1) check existence
-  const existsRes = await supabase
-    .from("inspections")
-    .select("id")
-    .eq("id", inspectionId)
-    .maybeSingle();
-
-  if (existsRes.error) {
-    return {
-      ok: false,
-      error: `DB read failed: ${existsRes.error.message}`,
-    };
-  }
-
-  if (existsRes.data?.id) {
-    return { ok: true };
-  }
-
-  // 2) insert
-  // We try to be conservative: always include id, optionally include a snapshot
-  // under a common column name if your schema supports it.
-  //
-  // If your table does NOT have these columns, remove them OR switch to a DB RPC
-  // like `upsert_inspection_snapshot(...)`.
-  const baseInsert: Record<string, unknown> = {
-    id: inspectionId,
-  };
-
-  // Try a few common snapshot column names (only ONE will succeed if it exists).
-  // If none exist, we'll fall back to id-only.
-  const candidatePayloads: Record<string, unknown>[] = [];
-
-  if (snapshot && isRecord(snapshot)) {
-    candidatePayloads.push({ ...baseInsert, snapshot }); // if you have `snapshot jsonb`
-    candidatePayloads.push({ ...baseInsert, session: snapshot }); // if you have `session jsonb`
-    candidatePayloads.push({ ...baseInsert, data: snapshot }); // if you have `data jsonb`
-    candidatePayloads.push({ ...baseInsert, payload: snapshot }); // if you have `payload jsonb`
-  }
-
-  candidatePayloads.push(baseInsert); // id-only fallback
-
-  let lastErr: DbError = null;
-
-  for (const payload of candidatePayloads) {
-    const insRes = await supabase.from("inspections").insert(payload).select("id").maybeSingle();
-
-    if (!insRes.error) {
-      return { ok: true };
-    }
-
-    lastErr = insRes.error;
-    // keep trying next candidate
-  }
-
-  return {
-    ok: false,
-    error:
-      lastErr?.message ||
-      "Inspection not found and could not be auto-created (missing defaults or blocked by RLS).",
-  };
+  if (res.error) return { ok: false, error: res.error.message };
+  return { ok: true };
 }
 
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<BaseDatabase>({ cookies });
 
-  // Optional but helpful: ensure the request is authenticated
   const userRes = await supabase.auth.getUser();
   if (userRes.error || !userRes.data.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -196,24 +113,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { inspectionId, role, signedName, signatureImagePath, signatureHash, snapshot } =
+  const { inspectionId, role, signedName, signatureImagePath, signatureHash } =
     bodyUnknown;
 
-  // ✅ Ensure inspection exists before signing (prevents FK errors + “not found”)
-  const ensured = await ensureInspectionExists({
-    supabase,
-    inspectionId,
-    snapshot: snapshot ?? null,
-  });
-
+  // ✅ Auto-create (or no-op if it already exists)
+  const ensured = await ensureInspectionExists(supabase, inspectionId);
   if (!ensured.ok) {
     return NextResponse.json(
       {
         error:
-          `Inspection not found in database and auto-create failed. ` +
-          `Reason: ${ensured.error}. ` +
-          `If your inspections table requires NOT NULL fields, send a snapshot in the sign request ` +
-          `or ensure DB defaults exist.`,
+          `Unable to auto-create inspection before signing: ${ensured.error}. ` +
+          `This is usually an RLS INSERT/UPSERT policy issue on public.inspections.`,
       },
       { status: 400 },
     );
