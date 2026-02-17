@@ -7,8 +7,14 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database as BaseDatabase } from "@shared/types/types/supabase";
 
 /**
- * SQL function shape:
- * public.sign_inspection(p_inspection_id uuid, p_role text, p_signed_name text, p_signature_image_path text default null, p_signature_hash text default null)
+ * SQL function:
+ * public.sign_inspection(
+ *   p_inspection_id uuid,
+ *   p_role text,
+ *   p_signed_name text,
+ *   p_signature_image_path text default null,
+ *   p_signature_hash text default null
+ * )
  */
 type SignInspectionArgs = {
   p_inspection_id: string;
@@ -64,38 +70,51 @@ async function callSignInspectionRpc(
   client: Supabase,
   args: SignInspectionArgs,
 ): Promise<RpcReturn> {
-  return (client as unknown as {
+  const res = (client as unknown as {
     rpc: (fn: string, args: SignInspectionArgs) => Promise<RpcReturn>;
   }).rpc("sign_inspection", args);
+
+  return res;
 }
 
 /**
- * Ensure the inspection row exists BEFORE signing.
+ * Ensure inspection row exists BEFORE signing.
  *
- * Use UPSERT (no SELECT) to avoid RLS read issues.
- * Since only `inspections.id` is NOT NULL, `{ id }` is sufficient.
+ * With shop-scoped RLS policies, we MUST include shop_id on insert/upsert
+ * otherwise INSERT will be denied.
  */
-async function ensureInspectionExists(
-  supabase: Supabase,
-  inspectionId: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const res = await supabase.from("inspections").upsert(
-    { id: inspectionId },
-    {
-      onConflict: "id",
-      ignoreDuplicates: true, // if it already exists, no-op
-    },
-  );
+async function ensureInspectionExists(args: {
+  supabase: Supabase;
+  inspectionId: string;
+  shopId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { supabase, inspectionId, shopId } = args;
+
+  const res = await supabase
+    .from("inspections")
+    .upsert(
+      { id: inspectionId, shop_id: shopId },
+      {
+        onConflict: "id",
+        ignoreDuplicates: true,
+      },
+    )
+    .select("id")
+    .maybeSingle();
 
   if (res.error) return { ok: false, error: res.error.message };
+
+  // Even if RLS blocks the SELECT return, "no error" means the upsert executed.
   return { ok: true };
 }
 
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<BaseDatabase>({ cookies });
 
+  // Require authed user
   const userRes = await supabase.auth.getUser();
-  if (userRes.error || !userRes.data.user) {
+  const user = userRes.data.user;
+  if (userRes.error || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -116,14 +135,41 @@ export async function POST(req: NextRequest) {
   const { inspectionId, role, signedName, signatureImagePath, signatureHash } =
     bodyUnknown;
 
-  // ✅ Auto-create (or no-op if it already exists)
-  const ensured = await ensureInspectionExists(supabase, inspectionId);
+  // Fetch user's shop_id (required for RLS-scoped insert/upsert)
+  const prof = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (prof.error) {
+    return NextResponse.json(
+      { error: `Unable to read profile: ${prof.error.message}` },
+      { status: 400 },
+    );
+  }
+
+  const shopId = prof.data?.shop_id ? String(prof.data.shop_id) : null;
+  if (!shopId) {
+    return NextResponse.json(
+      { error: "Your profile is missing shop_id; cannot sign inspection." },
+      { status: 400 },
+    );
+  }
+
+  // ✅ auto-create inspection row (or no-op if exists)
+  const ensured = await ensureInspectionExists({
+    supabase,
+    inspectionId,
+    shopId,
+  });
+
   if (!ensured.ok) {
     return NextResponse.json(
       {
         error:
           `Unable to auto-create inspection before signing: ${ensured.error}. ` +
-          `This is usually an RLS INSERT/UPSERT policy issue on public.inspections.`,
+          `Check RLS policies on public.inspections and that profiles.shop_id is set.`,
       },
       { status: 400 },
     );
