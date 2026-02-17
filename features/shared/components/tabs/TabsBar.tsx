@@ -27,7 +27,8 @@ export default function TabsBar() {
   return (
     <div
       className="
-        sticky top-14 z-30
+        sticky top-0 z-30
+        -mt-2
         w-full min-w-0
         border-b border-neutral-800
         bg-neutral-950/80 backdrop-blur-md
