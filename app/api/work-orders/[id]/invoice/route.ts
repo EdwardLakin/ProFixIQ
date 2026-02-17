@@ -14,12 +14,11 @@ function isError(x: unknown): x is Error {
 
 export async function POST(
   _req: NextRequest,
-  ctx: { params: Promise<{ id: string }> },
+  ctx: { params: { id: string } },
 ) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const params = await ctx.params;
-  const woId = typeof params?.id === "string" ? params.id : "";
+  const woId = typeof ctx?.params?.id === "string" ? ctx.params.id : "";
 
   if (!woId) {
     return NextResponse.json(
@@ -38,7 +37,6 @@ export async function POST(
       kind: "invoice_review",
     });
 
-    // Optional: hard 404 on missing WO
     if (!result.ok && result.issues.some((i) => i.kind === "missing_wo")) {
       return NextResponse.json(result, { status: 404 });
     }

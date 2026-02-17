@@ -1,18 +1,14 @@
-// app/api/work-orders/[id]/invoice-pdf/route.ts (FULL FILE REPLACEMENT)
+// app/api/work-orders/[id]/invoice-pdf/route.ts ✅ FULL FILE REPLACEMENT
 //
 // ✅ Fixes
-// - Multi-page pagination (no more cut-off parts/totals)
-// - Never "breaks" content when out of space; it creates a new page and continues
-// - Safe mileage/engine-hours handling (no .trim() on numbers)
-// - Parts are grouped under their related line items when possible
-//   (best-effort mapping: work_order_parts.work_order_line_id OR allocations.work_order_line_id if present)
-// - Also prints an overall Parts section (so nothing is lost) + Totals always appears
-// - ✅ Labor shows as $ per line (hours × shop.labor_rate) + shows rate
+// - Multi-page pagination (no cut-off)
+// - Derives totals if invoices table is missing/incorrect (prevents Labor: $1.50, Total: $0.00)
+// - Adds Inspection summary (latest inspection for this work order)
+// - Content-Disposition: inline by default; attachment when ?download=1
 //
 // Notes
-// - This uses ONLY pdf-lib (no React-PDF).
-// - If your schema doesn't have work_order_line_id on parts tables, grouping falls back to "Unassigned".
-// - IMPORTANT: Supabase .select() must be a SINGLE LINE STRING (no newlines) or it will throw "Unterminated string constant".
+// - Uses pdf-lib only.
+// - Supabase .select() must be a SINGLE LINE STRING.
 
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -33,6 +29,7 @@ type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type WorkOrderPartAllocRow =
   DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 
 type PdfRgb = ReturnType<typeof rgb>;
 
@@ -136,6 +133,11 @@ function currencyFromShopCountry(country: unknown): "CAD" | "USD" {
   return c === "CA" ? "CAD" : "USD";
 }
 
+// Heuristic: if invoice labor_cost is tiny, it may be HOURS stored into a dollars field.
+function isProbablyHoursNotDollars(v: number): boolean {
+  return v > 0 && v < 20;
+}
+
 type PartDisplayRow = {
   name: string;
   partNumber?: string;
@@ -176,8 +178,8 @@ type AllocPartRow = Pick<
 };
 
 export async function GET(
-  _req: Request,
-  ctx: { params: Promise<{ id: string }> },
+  req: Request,
+  ctx: { params: { id: string } },
 ) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
@@ -186,13 +188,16 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id: workOrderId } = await ctx.params;
+  const workOrderId = typeof ctx?.params?.id === "string" ? ctx.params.id : "";
   if (!workOrderId) {
     return NextResponse.json(
       { error: "Missing work order id" },
       { status: 400 },
     );
   }
+
+  const url = new URL(req.url);
+  const forceDownload = url.searchParams.get("download") === "1";
 
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
@@ -281,6 +286,17 @@ export async function GET(
     currencyFromInvoice(inv?.currency) ?? currencyFromShopCountry(shop?.country);
 
   const laborRate = safeMoney(shop?.labor_rate);
+
+  // Inspection (latest for this work order)
+  const { data: insp } = await supabase
+    .from("inspections")
+    .select("id,inspection_type,status,created_at")
+    .eq("work_order_id", workOrderId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<
+      Pick<InspectionRow, "id" | "inspection_type" | "status" | "created_at">
+    >();
 
   // Customer
   let customer:
@@ -541,13 +557,47 @@ export async function GET(
     }
   }
 
-  // Totals (prefer invoice row)
-  const subtotal = safeMoney(inv?.subtotal);
-  const laborCost = safeMoney(inv?.labor_cost);
-  const partsCost = safeMoney(inv?.parts_cost);
-  const discountTotal = safeMoney(inv?.discount_total);
-  const taxTotal = safeMoney(inv?.tax_total);
-  const grandTotal = safeMoney(inv?.total);
+  // ---- Derived totals (fallback) ----
+  const derivedPartsCost = allPartRows.reduce(
+    (sum, p) => sum + safeMoney(p.totalPrice),
+    0,
+  );
+
+  const derivedLaborHours = lineRows.reduce(
+    (sum, l) => sum + safeMoney(l.labor_time),
+    0,
+  );
+
+  const derivedLaborCost =
+    laborRate > 0 ? Math.max(0, derivedLaborHours * laborRate) : 0;
+
+  const derivedSubtotal = derivedLaborCost + derivedPartsCost;
+
+  // If you don’t have invoice tax pipeline yet, keep as 0 (or compute from your tax integration)
+  const derivedTaxTotal = 0;
+  const derivedGrandTotal = derivedSubtotal + derivedTaxTotal;
+
+  // Totals: prefer invoice row IF it looks like real dollars, else fallback to derived
+  const invSubtotal = safeMoney(inv?.subtotal);
+  const invLabor = safeMoney(inv?.labor_cost);
+  const invParts = safeMoney(inv?.parts_cost);
+  const invDiscount = safeMoney(inv?.discount_total);
+  const invTax = safeMoney(inv?.tax_total);
+  const invTotal = safeMoney(inv?.total);
+
+  const invoiceLooksValid =
+    Boolean(inv?.id) &&
+    (invTotal > 0 ||
+      invSubtotal > 0 ||
+      invParts > 0 ||
+      (invLabor > 0 && !isProbablyHoursNotDollars(invLabor)));
+
+  const subtotal = invoiceLooksValid ? invSubtotal : derivedSubtotal;
+  const laborCost = invoiceLooksValid ? invLabor : derivedLaborCost;
+  const partsCost = invoiceLooksValid ? invParts : derivedPartsCost;
+  const discountTotal = invoiceLooksValid ? invDiscount : 0;
+  const taxTotal = invoiceLooksValid ? invTax : derivedTaxTotal;
+  const grandTotal = invoiceLooksValid ? invTotal : derivedGrandTotal;
 
   // ---------------- PDF (multi-page) ----------------
   const pdfDoc = await PDFDocument.create();
@@ -744,7 +794,6 @@ export async function GET(
       for (const c of causeLines) ctxPdf = drawText(ctxPdf, `Cause: ${c}`, { size: 10, color: C_MUTED });
       for (const c of correctionLines) ctxPdf = drawText(ctxPdf, `Correction: ${c}`, { size: 10, color: C_MUTED });
 
-      // ✅ Labor as dollars (with hours + rate)
       if (laborHours > 0 && laborRate > 0) {
         ctxPdf = drawText(
           ctxPdf,
@@ -847,29 +896,43 @@ export async function GET(
     }
   }
 
-  // Totals
-  ctxPdf = ensureSpace(ctxPdf, 140);
+  // Inspection summary
+  ctxPdf = ensureSpace(ctxPdf, 90);
+  ctxPdf = drawText(ctxPdf, "Inspection", { bold: true, size: 12, color: C_COPPER });
+
+  if (!insp?.id) {
+    ctxPdf = drawText(ctxPdf, "— No inspection linked to this work order —", {
+      size: 10,
+      color: C_MUTED,
+    });
+  } else {
+    const inspType = asString(insp.inspection_type).trim() || "Inspection";
+    const inspStatus = asString(insp.status).trim() || "—";
+    const inspDate =
+      insp.created_at ? new Date(insp.created_at).toLocaleString() : "—";
+
+    ctxPdf = drawText(ctxPdf, `Type: ${inspType}`, { size: 10, color: C_MUTED });
+    ctxPdf = drawText(ctxPdf, `Status: ${inspStatus}`, { size: 10, color: C_MUTED });
+    ctxPdf = drawText(ctxPdf, `Recorded: ${inspDate}`, { size: 10, color: C_MUTED });
+    ctxPdf = drawText(ctxPdf, `Inspection ID: ${insp.id}`, { size: 9.5, color: C_LIGHT });
+  }
+
+  ctxPdf = drawText(ctxPdf, "", { size: 8 });
+
+  // Totals (now correct even if invoice table is missing/wrong)
+  ctxPdf = ensureSpace(ctxPdf, 150);
   ctxPdf = drawText(ctxPdf, "Totals", { bold: true, size: 12, color: C_COPPER });
 
-  if (!inv?.id) {
-    ctxPdf = drawText(ctxPdf, "— No invoice record found yet for this work order —", { size: 10, color: C_MUTED });
-    ctxPdf = drawText(
-      ctxPdf,
-      "Create an invoice (public.invoices) to show full totals (subtotal/discount/tax/total).",
-      { size: 10, color: C_MUTED },
-    );
-  } else {
-    ctxPdf = drawText(ctxPdf, `Subtotal: ${moneyLabel(subtotal, currency)}`, { size: 11 });
-    ctxPdf = drawText(ctxPdf, `Labor: ${moneyLabel(laborCost, currency)}`, { size: 11, color: C_MUTED });
-    ctxPdf = drawText(ctxPdf, `Parts: ${moneyLabel(partsCost, currency)}`, { size: 11, color: C_MUTED });
+  ctxPdf = drawText(ctxPdf, `Subtotal: ${moneyLabel(subtotal, currency)}`, { size: 11 });
+  ctxPdf = drawText(ctxPdf, `Labor: ${moneyLabel(laborCost, currency)}`, { size: 11, color: C_MUTED });
+  ctxPdf = drawText(ctxPdf, `Parts: ${moneyLabel(partsCost, currency)}`, { size: 11, color: C_MUTED });
 
-    if (discountTotal > 0) {
-      ctxPdf = drawText(ctxPdf, `Discount: -${moneyLabel(discountTotal, currency)}`, { size: 11, color: C_MUTED });
-    }
-
-    ctxPdf = drawText(ctxPdf, `Tax: ${moneyLabel(taxTotal, currency)}`, { size: 11, color: C_MUTED });
-    ctxPdf = drawText(ctxPdf, `Total: ${moneyLabel(grandTotal, currency)}`, { size: 13, bold: true });
+  if (discountTotal > 0) {
+    ctxPdf = drawText(ctxPdf, `Discount: -${moneyLabel(discountTotal, currency)}`, { size: 11, color: C_MUTED });
   }
+
+  ctxPdf = drawText(ctxPdf, `Tax: ${moneyLabel(taxTotal, currency)}`, { size: 11, color: C_MUTED });
+  ctxPdf = drawText(ctxPdf, `Total: ${moneyLabel(grandTotal, currency)}`, { size: 13, bold: true });
 
   // Notes
   const notes = asString(inv?.notes).trim();
@@ -885,11 +948,15 @@ export async function GET(
 
   const pdfBytes = await pdfDoc.save();
 
+  const disposition = forceDownload
+    ? `attachment; filename="Invoice_${titleId}.pdf"`
+    : `inline; filename="Invoice_${titleId}.pdf"`;
+
   return new NextResponse(Buffer.from(pdfBytes), {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="Invoice_${titleId}.pdf"`,
+      "Content-Disposition": disposition,
       "Cache-Control": "no-store",
     },
   });

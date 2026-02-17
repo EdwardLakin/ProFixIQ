@@ -1,3 +1,4 @@
+// features/work-orders/components/WorkOrderInvoiceDownloadButton.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,26 +16,30 @@ type Props = {
   autoTrigger?: boolean;
   className?: string;
 
-  // ✅ New: open PDF in new tab (default true)
-  openInNewTab?: boolean;
+  // ✅ New: choose where the button goes
+  mode?: "pdf" | "preview"; // default "pdf"
 
-  // ✅ Optional: force download (uses ?download=1)
-  forceDownload?: boolean;
+  // ✅ PDF behavior
+  openInNewTab?: boolean; // default true
+  forceDownload?: boolean; // default false (uses ?download=1)
 };
 
 export function WorkOrderInvoiceDownloadButton({
   workOrderId,
   autoTrigger = false,
   className,
+  mode = "pdf",
   openInNewTab = true,
   forceDownload = false,
-}: Props) {
+}: Props): JSX.Element {
   const [busy, setBusy] = useState(false);
 
-  const pdfUrl = useMemo(() => {
+  const urlToOpen = useMemo(() => {
+    if (mode === "preview") return `/work-orders/${workOrderId}/invoice`;
+
     const base = `/api/work-orders/${workOrderId}/invoice-pdf`;
     return forceDownload ? `${base}?download=1` : base;
-  }, [workOrderId, forceDownload]);
+  }, [mode, workOrderId, forceDownload]);
 
   const open = useCallback(async (): Promise<void> => {
     if (busy) return;
@@ -43,23 +48,27 @@ export function WorkOrderInvoiceDownloadButton({
     setBusy(true);
     try {
       if (openInNewTab) {
-        // ✅ let the browser open the PDF viewer
-        window.open(pdfUrl, "_blank", "noopener,noreferrer");
+        window.open(urlToOpen, "_blank", "noopener,noreferrer");
         return;
       }
-
-      // Fallback: if you ever set openInNewTab={false}, we still navigate.
-      window.location.href = pdfUrl;
+      window.location.href = urlToOpen;
     } finally {
       setBusy(false);
     }
-  }, [busy, workOrderId, openInNewTab, pdfUrl]);
+  }, [busy, workOrderId, openInNewTab, urlToOpen]);
 
   useEffect(() => {
     if (!autoTrigger) return;
     if (!workOrderId) return;
     queueMicrotask(() => void open());
   }, [autoTrigger, workOrderId, open]);
+
+  const label =
+    mode === "preview"
+      ? "Open invoice preview"
+      : openInNewTab
+        ? "Open invoice PDF"
+        : "View invoice PDF";
 
   return (
     <button
@@ -71,7 +80,7 @@ export function WorkOrderInvoiceDownloadButton({
         "rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-black hover:brightness-110 disabled:opacity-60"
       }
     >
-      {busy ? "Opening…" : openInNewTab ? "Open invoice PDF" : "View invoice PDF"}
+      {busy ? "Opening…" : label}
     </button>
   );
 }
