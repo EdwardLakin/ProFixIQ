@@ -1,4 +1,7 @@
-// app/api/work-orders/[id]/invoice/route.ts  ✅ FULL FILE REPLACEMENT
+// app/api/work-orders/[id]/invoice/route.ts
+// ✅ FULL FILE REPLACEMENT — Next.js 15 params fix
+
+export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -14,11 +17,12 @@ function isError(x: unknown): x is Error {
 
 export async function POST(
   _req: NextRequest,
-  ctx: { params: { id: string } },
+  ctx: { params: Promise<{ id: string }> },
 ) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const woId = typeof ctx?.params?.id === "string" ? ctx.params.id : "";
+  const params = await ctx.params;
+  const woId = typeof params?.id === "string" ? params.id : "";
 
   if (!woId) {
     return NextResponse.json(
