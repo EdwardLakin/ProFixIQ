@@ -1,6 +1,7 @@
 // app/api/work-orders/[id]/invoice-pdf/route.ts ✅ FULL FILE REPLACEMENT
 //
 // ✅ Fixes
+// - Next.js 15 route handler ctx.params typing (Promise)
 // - Multi-page pagination (no cut-off)
 // - Derives totals if invoices table is missing/incorrect (prevents Labor: $1.50, Total: $0.00)
 // - Adds Inspection summary (latest inspection for this work order)
@@ -10,7 +11,9 @@
 // - Uses pdf-lib only.
 // - Supabase .select() must be a SINGLE LINE STRING.
 
-import { NextResponse } from "next/server";
+export const runtime = "nodejs";
+
+import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
@@ -178,8 +181,8 @@ type AllocPartRow = Pick<
 };
 
 export async function GET(
-  req: Request,
-  ctx: { params: { id: string } },
+  req: NextRequest,
+  ctx: { params: Promise<{ id: string }> },
 ) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
@@ -188,12 +191,10 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const workOrderId = typeof ctx?.params?.id === "string" ? ctx.params.id : "";
+  const params = await ctx.params;
+  const workOrderId = typeof params?.id === "string" ? params.id : "";
   if (!workOrderId) {
-    return NextResponse.json(
-      { error: "Missing work order id" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Missing work order id" }, { status: 400 });
   }
 
   const url = new URL(req.url);
@@ -248,7 +249,6 @@ export async function GET(
     console.warn("[invoice-pdf] invoices query failed", invErr.message);
   }
 
-  // ✅ include labor_rate so we can print labor dollars per line
   const { data: shop } = await supabase
     .from("shops")
     .select("business_name,shop_name,name,phone_number,email,street,city,province,postal_code,country,labor_rate")
@@ -287,7 +287,6 @@ export async function GET(
 
   const laborRate = safeMoney(shop?.labor_rate);
 
-  // Inspection (latest for this work order)
   const { data: insp } = await supabase
     .from("inspections")
     .select("id,inspection_type,status,created_at")
@@ -573,7 +572,6 @@ export async function GET(
 
   const derivedSubtotal = derivedLaborCost + derivedPartsCost;
 
-  // If you don’t have invoice tax pipeline yet, keep as 0 (or compute from your tax integration)
   const derivedTaxTotal = 0;
   const derivedGrandTotal = derivedSubtotal + derivedTaxTotal;
 
@@ -712,7 +710,6 @@ export async function GET(
     return { ...ctx2, y: y - 12 };
   };
 
-  // ---- start ----
   let ctxPdf = newPage();
 
   // Customer
@@ -891,7 +888,9 @@ export async function GET(
       ctxPdf = drawText(
         ctxPdf,
         `Note: ${unassignedParts.length} part(s) were not linked to a specific line item.`,
-        { size: 10, color: C_MUTED },
+        { size: 10,
+          color: C_MUTED,
+        },
       );
     }
   }
@@ -919,7 +918,7 @@ export async function GET(
 
   ctxPdf = drawText(ctxPdf, "", { size: 8 });
 
-  // Totals (now correct even if invoice table is missing/wrong)
+  // Totals
   ctxPdf = ensureSpace(ctxPdf, 150);
   ctxPdf = drawText(ctxPdf, "Totals", { bold: true, size: 12, color: C_COPPER });
 
