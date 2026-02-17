@@ -1,4 +1,3 @@
-// features/shared/components/AppShell.tsx
 "use client";
 
 import Link from "next/link";
@@ -22,6 +21,9 @@ const NON_APP_ROUTES = [
   "/sign-up",
   "/coming-soon",
   "/auth",
+  "/forgot-password",
+  "/auth/reset",
+  "/auth/set-password",
   "/mobile",
   // ✅ Demo funnel is marketing/public, not wrapped in dashboard
   "/demo",
@@ -275,7 +277,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           className="mr-2 hidden lg:flex items-center"
         >
           <div className="rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] font-semibold text-neutral-200 shadow-sm backdrop-blur transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/70">
-            <span className="text-[color:var(--accent-copper-light)]">Trial</span>
+            <span className="text-[color:var(--accent-copper-light)]">
+              Trial
+            </span>
             <span className="ml-2 text-neutral-300">{label}</span>
           </div>
         </button>
@@ -299,7 +303,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div className="rounded-full border border-red-500/30 bg-red-950/30 px-3 py-1 text-[11px] font-semibold text-red-100 shadow-sm backdrop-blur transition hover:border-red-400/40">
           Billing issue:{" "}
-          <span className="ml-1 uppercase tracking-[0.12em]">{statusLabel}</span>
+          <span className="ml-1 uppercase tracking-[0.12em]">
+            {statusLabel}
+          </span>
           {dueLabel ? (
             <span className="ml-2 text-red-200/80">{dueLabel}</span>
           ) : null}

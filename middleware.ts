@@ -1,4 +1,3 @@
-// middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
@@ -104,6 +103,10 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/mobile/sign-in") ||
+    // ✅ Password reset flow (public)
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/auth/reset") ||
+    pathname.startsWith("/auth/set-password") ||
     // ✅ Demo funnel: no login, one free run per email handled in API
     pathname.startsWith("/demo") ||
     isPortalAuthPage ||
@@ -176,7 +179,11 @@ export async function middleware(req: NextRequest) {
       // but if it's sending the user to the wrong portal surface, override.
       let to = redirectParam ?? (mode === "fleet" ? "/portal/fleet" : "/portal");
 
-      if (mode === "fleet" && to.startsWith("/portal") && !to.startsWith("/portal/fleet")) {
+      if (
+        mode === "fleet" &&
+        to.startsWith("/portal") &&
+        !to.startsWith("/portal/fleet")
+      ) {
         to = "/portal/fleet";
       }
       if (mode === "customer" && to.startsWith("/portal/fleet")) {
@@ -246,6 +253,9 @@ export const config = {
     "/confirm",
     "/signup",
     "/sign-in",
+    "/forgot-password", // ✅ password reset start
+    "/auth/reset", // ✅ password reset callback landing
+    "/auth/set-password", // ✅ set new password page
     "/demo/:path*", // ✅ add demo funnel to middleware
     "/portal/:path*",
     "/mobile/sign-in",
