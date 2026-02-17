@@ -1,4 +1,9 @@
 // app/work-orders/view/page.tsx
+// ✅ FULL FILE REPLACEMENT
+// - Removes "new" from filters
+// - Includes awaiting_approval in the default (empty) “Active” filter
+// - Wires StatusPickerModal into this page with role gating (advisor/manager/admin/owner)
+
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
@@ -10,6 +15,9 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
+import StatusPickerModal, {
+  type WorkOrderStatus,
+} from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -18,8 +26,12 @@ type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type Row = WorkOrder & {
-  customers: Pick<Customer, "first_name" | "last_name" | "phone" | "email"> | null;
-  vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
+  customers:
+    | Pick<Customer, "first_name" | "last_name" | "phone" | "email">
+    | null;
+  vehicles:
+    | Pick<Vehicle, "year" | "make" | "model" | "license_plate">
+    | null;
 };
 
 /* --------------------------- Invoice Review Types --------------------------- */
@@ -34,7 +46,6 @@ type StatusKey =
   | "in_progress"
   | "on_hold"
   | "planned"
-  | "new"
   | "completed"
   | "ready_to_invoice"
   | "invoiced";
@@ -50,7 +61,6 @@ const STATUS_BADGE: Record<StatusKey, string> = {
     "bg-[var(--accent-copper)]/15 border-[var(--accent-copper-light)]/70 text-[var(--accent-copper-light)]",
   on_hold: "bg-amber-500/10 border-amber-400/70 text-amber-100",
   planned: "bg-purple-500/10 border-purple-400/70 text-purple-100",
-  new: "bg-neutral-900/80 border-neutral-500/80 text-neutral-100",
   completed: "bg-green-500/10 border-green-400/70 text-green-100",
   ready_to_invoice: "bg-emerald-500/10 border-emerald-400/70 text-emerald-100",
   invoiced: "bg-teal-500/10 border-teal-400/70 text-teal-100",
@@ -62,18 +72,21 @@ const chip = (s: string | null | undefined) => {
   return `${BADGE_BASE} ${cls}`;
 };
 
-/** “Normal flow” = tech/active; hides AA, completed, billing states */
-const NORMAL_FLOW_STATUSES: StatusKey[] = [
+/** Default “Active” filter */
+const ACTIVE_FLOW_STATUSES: StatusKey[] = [
+  "awaiting_approval",
   "awaiting",
   "queued",
   "in_progress",
   "on_hold",
   "planned",
-  "new",
 ];
 
 // roles that can assign techs from this view
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+
+// roles that can change WO status from this view
+const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 /* --------------------------- Themed input styles --------------------------- */
 const INPUT_DARK =
@@ -85,6 +98,20 @@ const SELECT_DARK =
 const BUTTON_MUTED =
   "rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 shadow-[0_0_14px_rgba(0,0,0,0.7)] " +
   "transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15 hover:text-white active:opacity-80";
+
+function isStatusKey(x: string): x is StatusKey {
+  return (
+    x === "awaiting_approval" ||
+    x === "awaiting" ||
+    x === "queued" ||
+    x === "in_progress" ||
+    x === "on_hold" ||
+    x === "planned" ||
+    x === "completed" ||
+    x === "ready_to_invoice" ||
+    x === "invoiced"
+  );
+}
 
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -98,9 +125,9 @@ export default function WorkOrdersView(): JSX.Element {
 
   // assigning
   const [assigningFor, setAssigningFor] = useState<string | null>(null);
-  const [techs, setTechs] = useState<Array<Pick<Profile, "id" | "full_name" | "role">>>(
-    [],
-  );
+  const [techs, setTechs] = useState<
+    Array<Pick<Profile, "id" | "full_name" | "role">>
+  >([]);
   const [selectedTechId, setSelectedTechId] = useState<string>("");
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
@@ -112,8 +139,43 @@ export default function WorkOrdersView(): JSX.Element {
   const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
 
   // ✅ store review result per work order (gate + indicators)
-  const [reviewByWo, setReviewByWo] = useState<Record<string, ReviewResponse | undefined>>(
-    {},
+  const [reviewByWo, setReviewByWo] = useState<
+    Record<string, ReviewResponse | undefined>
+  >({});
+
+  // ✅ status picker modal
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
+  const [statusPickerWoId, setStatusPickerWoId] = useState<string | null>(null);
+  const [statusPickerCurrent, setStatusPickerCurrent] =
+    useState<WorkOrderStatus>("awaiting");
+
+  const openStatusPicker = useCallback((wo: Row) => {
+    const raw = String(wo.status ?? "awaiting")
+      .toLowerCase()
+      .replaceAll(" ", "_");
+
+    const current = (isStatusKey(raw) ? raw : "awaiting") as WorkOrderStatus;
+
+    setStatusPickerWoId(wo.id);
+    setStatusPickerCurrent(current);
+    setStatusPickerOpen(true);
+  }, []);
+
+  const applyWorkOrderStatus = useCallback(
+    async (woId: string, next: WorkOrderStatus) => {
+      const { error } = await supabase
+        .from("work_orders")
+        .update({ status: next } as DB["public"]["Tables"]["work_orders"]["Update"])
+        .eq("id", woId);
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success(`Status updated → ${next.replaceAll("_", " ")}`);
+    },
+    [supabase],
   );
 
   // -------------------------------------------------------------------
@@ -136,7 +198,7 @@ export default function WorkOrdersView(): JSX.Element {
       .limit(100);
 
     if (status === "") {
-      query = query.in("status", NORMAL_FLOW_STATUSES as unknown as string[]);
+      query = query.in("status", ACTIVE_FLOW_STATUSES as unknown as string[]);
     } else {
       query = query.eq("status", status);
     }
@@ -186,70 +248,69 @@ export default function WorkOrdersView(): JSX.Element {
   // Invoice review gate (AI)
   // -------------------------------------------------------------------
   const runInvoiceReview = useCallback(async (woId: string) => {
-  try {
-    setReviewLoadingId(woId);
-
-    const res = await fetch(`/api/work-orders/${woId}/invoice`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const raw = await res.text();
-
-    let parsed: unknown = null;
     try {
-      parsed = raw ? JSON.parse(raw) : null;
-    } catch {
-      parsed = null;
-    }
+      setReviewLoadingId(woId);
 
-    if (!res.ok) {
-      console.error("[invoice-review] Non-OK response", {
-        status: res.status,
-        statusText: res.statusText,
-        raw,
+      const res = await fetch(`/api/work-orders/${woId}/invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
       });
-      toast.error(`Invoice review failed (${res.status}).`);
-      return;
+
+      const raw = await res.text();
+
+      let parsed: unknown = null;
+      try {
+        parsed = raw ? JSON.parse(raw) : null;
+      } catch {
+        parsed = null;
+      }
+
+      if (!res.ok) {
+        console.error("[invoice-review] Non-OK response", {
+          status: res.status,
+          statusText: res.statusText,
+          raw,
+        });
+        toast.error(`Invoice review failed (${res.status}).`);
+        return;
+      }
+
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        typeof (parsed as Record<string, unknown>).ok !== "boolean"
+      ) {
+        console.error("[invoice-review] Invalid JSON shape", { raw, parsed });
+        toast.error("Invoice review failed (invalid response shape).");
+        return;
+      }
+
+      const obj = parsed as Record<string, unknown>;
+      const issues = Array.isArray(obj.issues) ? (obj.issues as ReviewIssue[]) : [];
+
+      const safeResult: ReviewResponse = {
+        ok: Boolean(obj.ok),
+        issues,
+      };
+
+      setReviewByWo((prev) => ({ ...prev, [woId]: safeResult }));
+
+      if (safeResult.ok) {
+        toast.success("Invoice review passed ✅ Ready to invoice.");
+      } else {
+        toast.error(
+          `Invoice review found ${issues.length} issue(s)${
+            issues[0]?.message ? `: ${issues[0].message}` : ""
+          }`,
+        );
+      }
+    } catch (e) {
+      console.error("[invoice-review] crash:", e);
+      toast.error("Invoice review crashed");
+    } finally {
+      setReviewLoadingId(null);
     }
-
-    // Validate shape
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      typeof (parsed as Record<string, unknown>).ok !== "boolean"
-    ) {
-      console.error("[invoice-review] Invalid JSON shape", { raw, parsed });
-      toast.error("Invoice review failed (invalid response shape).");
-      return;
-    }
-
-    const obj = parsed as Record<string, unknown>;
-    const issues = Array.isArray(obj.issues) ? (obj.issues as ReviewIssue[]) : [];
-
-    const safeResult: ReviewResponse = {
-      ok: Boolean(obj.ok),
-      issues,
-    };
-
-    setReviewByWo((prev) => ({ ...prev, [woId]: safeResult }));
-
-    if (safeResult.ok) {
-      toast.success("Invoice review passed ✅ Ready to invoice.");
-    } else {
-      toast.error(
-        `Invoice review found ${issues.length} issue(s)${
-          issues[0]?.message ? `: ${issues[0].message}` : ""
-        }`,
-      );
-    }
-  } catch (e) {
-    console.error("[invoice-review] crash:", e);
-    toast.error("Invoice review crashed");
-  } finally {
-    setReviewLoadingId(null);
-  }
-}, []);
+  }, []);
 
   // -------------------------------------------------------------------
   // Auth + portal role + mechanics
@@ -277,17 +338,16 @@ export default function WorkOrdersView(): JSX.Element {
         if (res.ok) {
           setTechs(json.data ?? []);
         } else {
-          // eslint-disable-next-line no-console
           console.warn("Failed to load mechanics:", json);
         }
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.warn("Failed to load mechanics:", e);
       }
     })();
   }, [supabase]);
 
   const canAssign = currentRole ? ASSIGN_ROLES.has(currentRole) : false;
+  const canPickStatus = currentRole ? STATUS_PICKER_ROLES.has(currentRole) : false;
 
   useEffect(() => {
     void load();
@@ -296,9 +356,13 @@ export default function WorkOrdersView(): JSX.Element {
   useEffect(() => {
     const ch = supabase
       .channel("work_orders:list")
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => {
-        setTimeout(() => void load(), 60);
-      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_orders" },
+        () => {
+          setTimeout(() => void load(), 60);
+        },
+      )
       .subscribe();
 
     return () => {
@@ -371,9 +435,6 @@ export default function WorkOrdersView(): JSX.Element {
     [selectedTechId, load],
   );
 
-  // -------------------------------------------------------------------
-  // NEW: open invoice page (replaces modal)
-  // -------------------------------------------------------------------
   const openInvoicePage = useCallback(
     (woId: string) => {
       if (!woId) return;
@@ -383,17 +444,26 @@ export default function WorkOrdersView(): JSX.Element {
   );
 
   const total = rows.length;
+
   const activeCount = useMemo(
     () =>
       rows.filter((r) =>
-        NORMAL_FLOW_STATUSES.includes(
-          (r.status ?? "awaiting").toLowerCase().replaceAll(" ", "_") as StatusKey,
+        ACTIVE_FLOW_STATUSES.includes(
+          String(r.status ?? "awaiting")
+            .toLowerCase()
+            .replaceAll(" ", "_") as StatusKey,
         ),
       ).length,
     [rows],
   );
+
   const awaitingApprovalCount = useMemo(
-    () => rows.filter((r) => (r.status ?? "").toLowerCase() === "awaiting_approval").length,
+    () =>
+      rows.filter(
+        (r) =>
+          String(r.status ?? "").toLowerCase().replaceAll(" ", "_") ===
+          "awaiting_approval",
+      ).length,
     [rows],
   );
 
@@ -442,14 +512,13 @@ export default function WorkOrdersView(): JSX.Element {
               className={SELECT_DARK + " min-w-[200px]"}
               aria-label="Filter by status"
             >
-              <option value="">Active (normal flow)</option>
+              <option value="">Active</option>
               <option value="awaiting_approval">Awaiting approval</option>
               <option value="awaiting">Awaiting</option>
               <option value="queued">Queued</option>
               <option value="in_progress">In progress</option>
               <option value="on_hold">On hold</option>
               <option value="planned">Planned</option>
-              <option value="new">New</option>
               <option value="completed">Completed</option>
               <option value="ready_to_invoice">Ready to invoice</option>
               <option value="invoiced">Invoiced</option>
@@ -468,20 +537,28 @@ export default function WorkOrdersView(): JSX.Element {
 
         <div className="flex items-center gap-4 text-[0.7rem] text-neutral-300">
           <div className="flex flex-col">
-            <span className="uppercase tracking-[0.13em] text-neutral-500">Total</span>
+            <span className="uppercase tracking-[0.13em] text-neutral-500">
+              Total
+            </span>
             <span className="text-sm font-semibold text-white">{total}</span>
           </div>
           <div className="h-7 w-px bg-white/10" />
           <div className="flex flex-col">
-            <span className="uppercase tracking-[0.13em] text-neutral-500">Active</span>
-            <span className="text-sm font-semibold text-sky-200">{activeCount}</span>
+            <span className="uppercase tracking-[0.13em] text-neutral-500">
+              Active
+            </span>
+            <span className="text-sm font-semibold text-sky-200">
+              {activeCount}
+            </span>
           </div>
           <div className="h-7 w-px bg-white/10" />
           <div className="flex flex-col">
             <span className="uppercase tracking-[0.13em] text-neutral-500">
               Awaiting approval
             </span>
-            <span className="text-sm font-semibold text-blue-200">{awaitingApprovalCount}</span>
+            <span className="text-sm font-semibold text-blue-200">
+              {awaitingApprovalCount}
+            </span>
           </div>
         </div>
       </section>
@@ -544,7 +621,7 @@ export default function WorkOrdersView(): JSX.Element {
                     {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
                   </div>
 
-                  {/* Main: id, status, customer + vehicle */}
+                  {/* Main */}
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
@@ -564,7 +641,6 @@ export default function WorkOrdersView(): JSX.Element {
                         {(r.status ?? "awaiting").replaceAll("_", " ")}
                       </span>
 
-                      {/* ✅ Review result pill */}
                       {review ? (
                         reviewedOk ? (
                           <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[0.65rem] text-emerald-200">
@@ -588,7 +664,7 @@ export default function WorkOrdersView(): JSX.Element {
                     </div>
                   </div>
 
-                  {/* Assigned to */}
+                  {/* Assigned */}
                   <div className="text-[0.75rem] text-neutral-300">
                     <WorkOrderAssignedSummary workOrderId={r.id} />
                   </div>
@@ -602,7 +678,16 @@ export default function WorkOrdersView(): JSX.Element {
                       Open
                     </Link>
 
-                    {/* ✅ Invoice review button (AI) */}
+                    {canPickStatus && (
+                      <button
+                        onClick={() => openStatusPicker(r)}
+                        className="rounded-full border border-purple-500/60 bg-purple-500/10 px-2.5 py-1 text-xs text-purple-100 transition hover:bg-purple-500/20"
+                        title="Change work order status"
+                      >
+                        Status
+                      </button>
+                    )}
+
                     {isReadyToInvoice && (
                       <button
                         onClick={() => void runInvoiceReview(r.id)}
@@ -626,7 +711,6 @@ export default function WorkOrdersView(): JSX.Element {
                       </button>
                     )}
 
-                    {/* ✅ Invoice (page) */}
                     {isReadyToInvoice && (
                       <button
                         onClick={() => openInvoicePage(r.id)}
@@ -702,6 +786,21 @@ export default function WorkOrdersView(): JSX.Element {
             })}
           </div>
         </section>
+      )}
+
+      {/* ✅ Status Picker Modal */}
+      {statusPickerOpen && statusPickerWoId && (
+        <StatusPickerModal
+          isOpen={statusPickerOpen}
+          onClose={() => setStatusPickerOpen(false)}
+          current={statusPickerCurrent}
+          onChange={async (pick) => {
+            const woId = statusPickerWoId;
+            const next = pick.replace("status:", "") as WorkOrderStatus;
+            await applyWorkOrderStatus(woId, next);
+            await load();
+          }}
+        />
       )}
     </div>
   );
