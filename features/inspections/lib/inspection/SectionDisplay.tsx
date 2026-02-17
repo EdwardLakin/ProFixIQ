@@ -294,30 +294,33 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   "grid gap-2 p-2",
                   "lg:grid-cols-2 lg:gap-[2px] lg:bg-white/10 lg:p-[2px]",
 
-                  // ✅ NEW: make each item wrapper a “glass card” (kills grey box vibe)
+                  // ✅ CLEAN PREMIUM: crisp cards, minimal glow, higher contrast
                   "[&>*]:rounded-lg",
-                  "[&>*]:border [&>*]:border-white/10",
-                  "[&>*]:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),rgba(0,0,0,0.72))]",
-                  "[&>*]:shadow-[0_12px_28px_rgba(0,0,0,0.60)]",
-                  "[&>*]:backdrop-blur-md",
+                  "[&>*]:border [&>*]:border-white/12",
+                  "[&>*]:bg-black/55",
+                  "[&>*]:shadow-[0_10px_22px_rgba(0,0,0,0.55)]",
+                  "[&>*]:backdrop-blur-sm",
                   "[&>*]:relative [&>*]:overflow-hidden",
 
-                  // copper “lip” highlight
-                  "[&>*]:before:absolute [&>*]:before:inset-x-0 [&>*]:before:top-0 [&>*]:before:h-[2px] [&>*]:before:content-['']",
-                  "[&>*]:before:bg-[linear-gradient(90deg,transparent,rgba(197,122,74,0.85),transparent)]",
+                  // subtle top highlight (not glowy)
+                  "before:absolute before:left-0 before:top-0 before:h-full before:w-[2px] before:content-['']",
+                  "[&>*]:before:bg-white/10",
 
-                  // hover pop
+                  // hover: crisp lift + border tighten
                   "[&>*]:transition [&>*]:duration-150",
                   "[&>*]:hover:-translate-y-[1px]",
-                  "[&>*]:hover:border-[rgba(197,122,74,0.45)]",
-                  "[&>*]:hover:shadow-[0_18px_38px_rgba(0,0,0,0.70)]",
-                  "[&>*]:hover:bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.14),rgba(0,0,0,0.74))]",
+                  "[&>*]:hover:border-white/20",
+                  "[&>*]:hover:bg-black/62",
+                  "[&>*]:hover:shadow-[0_14px_28px_rgba(0,0,0,0.65)]",
 
-                  // keep zebra, but subtle (brightness instead of grey blocks)
-                  "[&>*:nth-child(odd)]:brightness-[1.02]",
-                  "[&>*:nth-child(even)]:brightness-[0.98]",
-                  "lg:[&>*:nth-child(4n+1)]:brightness-[1.02] lg:[&>*:nth-child(4n+2)]:brightness-[1.02]",
-                  "lg:[&>*:nth-child(4n+3)]:brightness-[0.98] lg:[&>*:nth-child(4n+4)]:brightness-[0.98]",
+                  // ✅ NEW: make each item wrapper a “glass card” (kills grey box vibe)
+                  "[&>*]:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),rgba(0,0,0,0.74))]",
+
+                  // premium zebra (very subtle)
+                  "[&>*:nth-child(odd)]:bg-black/58",
+                  "[&>*:nth-child(even)]:bg-black/52",
+                  "lg:[&>*:nth-child(4n+1)]:bg-black/58 lg:[&>*:nth-child(4n+2)]:bg-black/58",
+                  "lg:[&>*:nth-child(4n+3)]:bg-black/52 lg:[&>*:nth-child(4n+4)]:bg-black/52",
                 ].join(" ")}
               >
                 {items.map((item, itemIndex) => {

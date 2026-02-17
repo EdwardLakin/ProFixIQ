@@ -1,5 +1,4 @@
-//features/inspections/lib/inspection/StatusButtons.tsx
-
+// features/inspections/lib/inspection/StatusButtons.tsx
 "use client";
 
 import type React from "react";
@@ -29,18 +28,15 @@ type StatusButtonsProps = {
 };
 
 /**
- * Glassy, metallic status pills with clear status colors:
- * - OK        → green
+ * Clean premium status pills:
+ * - OK        → emerald
  * - FAIL      → red
  * - RECOMMEND → amber
- * - N/A       → blue
+ * - N/A       → sky
  *
- * Updated to reduce height/scroll:
- * - Buttons are smaller by default (still readable)
- * - Uses gap instead of mr/mb (cleaner wrapping)
- * - Supports compact mode
+ * No `any`. Uses stronger contrast + crisp borders (less “grey blob”).
  */
-export default function StatusButtons(_props: any) {
+export default function StatusButtons(props: StatusButtonsProps) {
   const {
     item,
     sectionIndex,
@@ -49,68 +45,77 @@ export default function StatusButtons(_props: any) {
     onStatusChange,
     compact = false,
     wrap = true,
-  } = _props as StatusButtonsProps;
+  } = props;
 
-  const selected = item.status;
+  const selected = (String(item.status ?? "").toLowerCase() ||
+    "") as InspectionItemStatus;
 
-  const size = compact
-    ? "h-7 px-2.5 text-[10px]"
-    : "h-8 px-3 text-[11px]";
+  const size = compact ? "h-7 px-2.5 text-[10px]" : "h-8 px-3 text-[11px]";
 
   const container = wrap
     ? "mt-1 flex flex-wrap items-center gap-2"
     : "mt-1 flex items-center gap-2 overflow-x-auto";
 
+  // “premium”: darker base, clearer border, subtle highlight line, crisp hover lift
   const base =
-    "inline-flex items-center justify-center rounded-md " +
+    "group relative inline-flex items-center justify-center rounded-md " +
     size +
-    " " +
-    "select-none " +
-    "font-semibold uppercase tracking-[0.16em] " +
-    "border border-white/15 bg-black/30 text-neutral-200 " +
-    "backdrop-blur-sm transition-colors duration-150 " +
-    "focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.55)] " + // copper focus ring
-    "focus:ring-offset-2 focus:ring-offset-black";
+    " select-none font-semibold uppercase tracking-[0.16em] " +
+    "border border-white/14 bg-black/55 text-neutral-200 " +
+    "shadow-[0_8px_16px_rgba(0,0,0,0.55)] " +
+    "transition duration-150 " +
+    "focus:outline-none focus:ring-2 focus:ring-[rgba(197,122,74,0.55)] " +
+    "focus:ring-offset-2 focus:ring-offset-black " +
+    "before:absolute before:inset-x-0 before:top-0 before:h-px before:content-[''] before:bg-white/10 " +
+    "hover:-translate-y-[1px] hover:border-white/22 hover:bg-black/62 hover:shadow-[0_12px_22px_rgba(0,0,0,0.65)]";
 
   const cls = (key: InspectionItemStatus) => {
     const isSel = selected === key;
 
+    const selBase =
+      " ring-1 ring-inset ring-white/10 " +
+      "shadow-[0_12px_22px_rgba(0,0,0,0.70)]";
+
     switch (key) {
       case "ok": {
-        const selectedClasses =
-          " border-emerald-400/90 text-emerald-50 " +
-          "bg-emerald-900/40 shadow-[0_0_0_1px_rgba(52,211,153,0.7)]";
+        const sel =
+          selBase +
+          " border-emerald-400/80 text-emerald-50 " +
+          "bg-emerald-950/40 ring-emerald-400/35";
         const hover =
-          " hover:border-emerald-400/80 hover:text-emerald-100 hover:bg-emerald-900/30";
-        return base + hover + (isSel ? " " + selectedClasses : "");
+          " hover:border-emerald-400/55 hover:text-emerald-100 hover:bg-emerald-950/35";
+        return base + hover + (isSel ? " " + sel : "");
       }
 
       case "fail": {
-        const selectedClasses =
-          " border-red-500/90 text-red-50 " +
-          "bg-red-950/50 shadow-[0_0_0_1px_rgba(248,113,113,0.8)]";
+        const sel =
+          selBase +
+          " border-red-500/80 text-red-50 " +
+          "bg-red-950/45 ring-red-500/35";
         const hover =
-          " hover:border-red-500/80 hover:text-red-100 hover:bg-red-950/40";
-        return base + hover + (isSel ? " " + selectedClasses : "");
+          " hover:border-red-500/55 hover:text-red-100 hover:bg-red-950/40";
+        return base + hover + (isSel ? " " + sel : "");
       }
 
       case "recommend": {
-        const selectedClasses =
-          " border-amber-400/90 text-amber-50 " +
-          "bg-amber-950/40 shadow-[0_0_0_1px_rgba(251,191,36,0.85)]";
+        const sel =
+          selBase +
+          " border-amber-400/80 text-amber-50 " +
+          "bg-amber-950/40 ring-amber-400/35";
         const hover =
-          " hover:border-amber-400/80 hover:text-amber-100 hover:bg-amber-950/30";
-        return base + hover + (isSel ? " " + selectedClasses : "");
+          " hover:border-amber-400/55 hover:text-amber-100 hover:bg-amber-950/35";
+        return base + hover + (isSel ? " " + sel : "");
       }
 
       case "na":
       default: {
-        const selectedClasses =
-          " border-sky-400/90 text-sky-50 " +
-          "bg-sky-950/40 shadow-[0_0_0_1px_rgba(56,189,248,0.8)]";
+        const sel =
+          selBase +
+          " border-sky-400/80 text-sky-50 " +
+          "bg-sky-950/40 ring-sky-400/35";
         const hover =
-          " hover:border-sky-400/80 hover:text-sky-100 hover:bg-sky-950/30";
-        return base + hover + (isSel ? " " + selectedClasses : "");
+          " hover:border-sky-400/55 hover:text-sky-100 hover:bg-sky-950/35";
+        return base + hover + (isSel ? " " + sel : "");
       }
     }
   };
