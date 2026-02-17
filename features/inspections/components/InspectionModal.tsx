@@ -1,7 +1,6 @@
-// features/inspections/components/InspectionModal.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Dialog } from "@headlessui/react";
 import InspectionHost from "@/features/inspections/components/inspectionHost";
 
@@ -9,7 +8,8 @@ type Props = {
   open: boolean;
   src: string | null;
   title?: string;
-  onClose?: () => void;
+  // ✅ make it required so the modal can actually close
+  onClose: () => void;
 };
 
 function paramsToObject(sp: URLSearchParams) {
@@ -34,18 +34,15 @@ function deriveScreenTemplateFromUrl(url: URL): string | null {
     return url.searchParams.get("template") || null;
   }
 
-  // fallback to your previous logic
   const idx = parts.findIndex((p) => p === "inspection" || p === "inspections");
   if (idx >= 0 && parts[idx + 1] && parts[idx + 1] !== "fill") {
     return parts[idx + 1];
   }
 
-  // last resort
   return last || null;
 }
 
 function deriveDisplayTemplateFromUrl(url: URL): string | null {
-  // Prefer explicit name/id when present (work-order embed flow)
   const name =
     url.searchParams.get("templateName") ||
     url.searchParams.get("template_name") ||
@@ -56,7 +53,6 @@ function deriveDisplayTemplateFromUrl(url: URL): string | null {
     url.searchParams.get("template_id") ||
     null;
 
-  // If we have a name, show it; else show an id; else fall back to screen template
   return name || id || deriveScreenTemplateFromUrl(url);
 }
 
@@ -88,8 +84,7 @@ export default function InspectionModal({
       const displayTemplate = deriveDisplayTemplateFromUrl(url);
       const params = paramsToObject(url.searchParams);
 
-      // ✅ Force embed mode in the modal so the inspection UI renders its embedded
-      // layout (and voice controls in the embedded header area).
+      // ✅ Force embed mode in the modal
       params.embed = params.embed || "1";
       params.compact = params.compact || "1";
 
@@ -115,7 +110,6 @@ export default function InspectionModal({
         params.lineId = lineId;
       }
 
-      // Also normalize template identity keys (for screens that read params)
       const tName =
         url.searchParams.get("templateName") ||
         url.searchParams.get("template_name") ||
@@ -165,12 +159,28 @@ export default function InspectionModal({
     }
   }, [src]);
 
-  const close = () => {
-    onClose?.();
+  const close = useCallback(() => {
+    onClose();
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("inspection:close"));
     }
-  };
+  }, [onClose]);
+
+  // ✅ Close when inspection finishes (FinishInspectionButton dispatches completed + close)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onCloseEvt = () => close();
+    const onCompletedEvt = () => close();
+
+    window.addEventListener("inspection:close", onCloseEvt);
+    window.addEventListener("inspection:completed", onCompletedEvt);
+
+    return () => {
+      window.removeEventListener("inspection:close", onCloseEvt);
+      window.removeEventListener("inspection:completed", onCompletedEvt);
+    };
+  }, [close]);
 
   useEffect(() => {
     if (!open) return;
@@ -220,7 +230,6 @@ export default function InspectionModal({
   const panelWidth = compact ? "max-w-4xl" : "max-w-6xl";
   const bodyHeight = compact ? "max-h-[80vh]" : "max-h-[92vh]";
 
-  // 🎨 Shared with WorkOrderIdClient
   const cardBase =
     "rounded-2xl border border-slate-700/70 " +
     "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] " +
@@ -231,10 +240,11 @@ export default function InspectionModal({
   return (
     <Dialog
       open={open}
+      // ✅ Backdrop click + Esc will call close()
       onClose={close}
       className="fixed inset-0 z-[300] flex items-center justify-center px-2 py-6 sm:px-4"
     >
-      {/* dimmed backdrop, keep it consistent with app */}
+      {/* clickable dimmed backdrop */}
       <div className="fixed inset-0 z-[290] bg-black/70 backdrop-blur-sm" aria-hidden />
 
       <Dialog.Panel
@@ -300,12 +310,7 @@ export default function InspectionModal({
             </div>
           ) : (
             <div className="mx-auto w-full max-w-5xl">
-              {/* Voice buttons are rendered by the inspection screen itself now (desktop + mobile). */}
-              <InspectionHost
-                template={derived.screenTemplate}
-                embed
-                params={derived.params}
-              />
+              <InspectionHost template={derived.screenTemplate} embed params={derived.params} />
             </div>
           )}
 

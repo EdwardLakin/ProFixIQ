@@ -688,6 +688,22 @@ export default function WorkOrderIdClient(): JSX.Element {
     };
   }, []);
 
+  // ---------- close inspection modal ----------
+useEffect(() => {
+  const close = () => {
+    setInspectionOpen(false);
+    setInspectionSrc(null);
+  };
+
+  window.addEventListener("inspection:close", close);
+  window.addEventListener("inspection:completed", close);
+
+  return () => {
+    window.removeEventListener("inspection:close", close);
+    window.removeEventListener("inspection:completed", close);
+  };
+}, []);
+
   // 🔁 refresh this page when a parts request is submitted from the focused modal
   useEffect(() => {
     const handler = () => {
@@ -1649,7 +1665,10 @@ const openInspectionForLine = useCallback(
           open={inspectionOpen}
           src={inspectionSrc}
           title="Inspection"
-          onClose={() => setInspectionOpen(false)}
+          onClose={() => {
+            setInspectionOpen(false);
+            setInspectionSrc(null);
+          }}
         />
       )}
 

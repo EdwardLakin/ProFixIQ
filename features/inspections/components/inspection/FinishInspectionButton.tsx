@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/Button";
-import type { InspectionSession, InspectionItemStatus } from "@inspections/lib/inspection/types";
+import type {
+  InspectionSession,
+  InspectionItemStatus,
+} from "@inspections/lib/inspection/types";
 
 type Props = {
   session: InspectionSession;
@@ -37,7 +40,9 @@ function summarizeFromSections(session: InspectionSession): {
   failed: string[];
   recommended: string[];
 } {
-  const sections: SectionLike[] = Array.isArray((session as unknown as { sections?: unknown }).sections)
+  const sections: SectionLike[] = Array.isArray(
+    (session as unknown as { sections?: unknown }).sections,
+  )
     ? ((session as unknown as { sections: SectionLike[] }).sections ?? [])
     : [];
 
@@ -66,14 +71,13 @@ function summarizeFromSections(session: InspectionSession): {
 }
 
 function buildCauseCorrection(session: InspectionSession): Corr {
-  const fromSections = summarizeFromSections(session);
-  const failed = fromSections.failed;
-  const recommended = fromSections.recommended;
+  const { failed, recommended } = summarizeFromSections(session);
 
   if (failed.length === 0 && recommended.length === 0) {
     return {
       cause: "Inspection completed.",
-      correction: "Inspection completed. No failed or recommended items were recorded.",
+      correction:
+        "Inspection completed. No failed or recommended items were recorded.",
     };
   }
 
@@ -88,7 +92,8 @@ function buildCauseCorrection(session: InspectionSession): Corr {
 
   if (recommended.length) {
     const slice = recommended.slice(0, limit);
-    const more = recommended.length > limit ? ` (+${recommended.length - limit} more)` : "";
+    const more =
+      recommended.length > limit ? ` (+${recommended.length - limit} more)` : "";
     parts.push(`Recommended: ${slice.join("; ")}${more}.`);
   }
 
@@ -121,9 +126,6 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) throw new Error(json?.error || "Failed to finish inspection");
 
-      // NOTE: finalize/pdf is separate (DB + storage). You can call it after finish.
-      // (We keep finish route focused on completing the WO line.)
-
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("inspection:completed", {
@@ -134,6 +136,9 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
             },
           }),
         );
+
+        // ✅ close the modal immediately after finishing
+        window.dispatchEvent(new CustomEvent("inspection:close"));
       }
 
       toast.success("Inspection finished.");
@@ -149,10 +154,17 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
     <Button
       onClick={handleFinish}
       disabled={busy}
-      variant="copper"
-      size="sm"
       type="button"
-      className="font-semibold tracking-[0.18em] uppercase text-[11px]"
+      size="sm"
+      // ✅ force visible styling regardless of how Button variants behave in embed mode
+      className={[
+        "font-semibold tracking-[0.18em] uppercase text-[11px]",
+        "border border-[var(--accent-copper-light)]",
+        "bg-[var(--accent-copper)] text-black",
+        "hover:bg-[var(--accent-copper)]/90",
+        "shadow-[0_0_18px_rgba(0,0,0,0.9)]",
+        "disabled:opacity-60",
+      ].join(" ")}
       isLoading={busy}
     >
       {busy ? "Finishing…" : "Finish inspection"}
