@@ -94,6 +94,30 @@ export async function POST(req: NextRequest) {
   const { inspectionId, role, signedName, signatureImagePath, signatureHash } =
     bodyUnknown;
 
+  // ✅ FIX: Ensure the parent inspection row exists before signing.
+  // The UI can generate an inspection UUID and autosave locally; signing can happen
+  // before the inspection is persisted to `public.inspections`, which triggers the FK:
+  // inspection_signatures_inspection_id_fkey
+  const { data: parent, error: parentErr } = await supabase
+    .from("inspections")
+    .select("id")
+    .eq("id", inspectionId)
+    .maybeSingle();
+
+  if (parentErr) {
+    return NextResponse.json({ error: parentErr.message }, { status: 400 });
+  }
+
+  if (!parent) {
+    return NextResponse.json(
+      {
+        error:
+          "Inspection not found in database. Click “Save Progress” first, then sign.",
+      },
+      { status: 409 },
+    );
+  }
+
   const rpcArgs: SignInspectionArgs = {
     p_inspection_id: inspectionId,
     p_role: role,
