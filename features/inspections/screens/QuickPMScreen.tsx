@@ -669,40 +669,38 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
                 <CornerGrid sectionIndex={sectionIndex} items={section.items} />
               ) : (
                 <SectionDisplay
-                  title=""
-                  section={section}
-                  sectionIndex={sectionIndex}
-                  showNotes
-                  showPhotos
-                  onUpdateStatus={(
-                    secIdx: number,
-                    itemIdx: number,
-                    status: InspectionItemStatus,
-                  ): void => {
-                    updateItem(secIdx, itemIdx, { status });
-                  }}
-                  onUpdateNote={(
-                    secIdx: number,
-                    itemIdx: number,
-                    note: string,
-                  ): void => {
-                    updateItem(secIdx, itemIdx, { notes: note });
-                  }}
-                  onUpload={(
-                    photoUrl: string,
-                    secIdx: number,
-                    itemIdx: number,
-                  ): void => {
-                    const prev =
-                      session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                    updateItem(secIdx, itemIdx, {
-                      photoUrls: [...prev, photoUrl],
-                    });
-                  }}
-                  requireNoteForAI
-                  onSubmitAI={(secIdx, itemIdx) => void submitAIForItem(secIdx, itemIdx)}
-                  isSubmittingAI={isSubmittingAI}
-                />
+                    title=""
+                    section={section}
+                    sectionIndex={sectionIndex}
+                    showNotes
+                    showPhotos
+                    onUpdateStatus={(
+                      secIdx: number,
+                      itemIdx: number,
+                      status: InspectionItemStatus
+                    ): void => {
+                      updateItem(secIdx, itemIdx, { status });
+                    } }
+                    onUpdateNote={(
+                      secIdx: number,
+                      itemIdx: number,
+                      note: string
+                    ): void => {
+                      updateItem(secIdx, itemIdx, { notes: note });
+                    } }
+                    onUpload={(
+                      photoUrl: string,
+                      secIdx: number,
+                      itemIdx: number
+                    ): void => {
+                      const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                      updateItem(secIdx, itemIdx, {
+                        photoUrls: [...prev, photoUrl],
+                      });
+                    } }
+                    requireNoteForAI
+                    onSubmitAI={(secIdx, itemIdx) => void submitAIForItem(secIdx, itemIdx)}
+                    isSubmittingAI={isSubmittingAI} inspectionId={""}                />
               )}
             </div>
           </div>
