@@ -141,7 +141,7 @@ export default function ShopDefaultsStep2Page() {
           </p>
         </div>
       </header>
-
+212 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <form onSubmit={onSubmit} className="space-y-6">
           <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">

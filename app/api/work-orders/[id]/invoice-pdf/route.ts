@@ -1,15 +1,4 @@
 // app/api/work-orders/[id]/invoice-pdf/route.ts ✅ FULL FILE REPLACEMENT
-//
-// ✅ Fixes
-// - Next.js 15 route handler ctx.params typing (Promise)
-// - Multi-page pagination (no cut-off)
-// - Derives totals if invoices table is missing/incorrect (prevents Labor: $1.50, Total: $0.00)
-// - Adds Inspection summary (latest inspection for this work order)
-// - Content-Disposition: inline by default; attachment when ?download=1
-//
-// Notes
-// - Uses pdf-lib only.
-// - Supabase .select() must be a SINGLE LINE STRING.
 
 export const runtime = "nodejs";
 

@@ -1,7 +1,7 @@
-// app/api/invoice/send/route.ts  ✅ FULL FILE REPLACEMENT
+// app/api/invoices/send/route.ts  ✅ FULL FILE REPLACEMENT
 // - Sets work_orders.status = "invoiced" after successful SendGrid send
+// - Attaches latest inspection PDF (if present) from inspections.pdf_storage_path
 // - Keeps strict typing (no `any`)
-// - Leaves everything else unchanged
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -90,6 +90,7 @@ type RequestBody = {
   shopName?: string;
   lines?: InvoiceLinePayload[];
   vehicleInfo?: VehicleInfo;
+  signatureImage?: string;
 };
 
 type SendInvoiceResponse = { ok?: boolean; error?: string };
@@ -210,6 +211,10 @@ function parseRequestBody(raw: unknown): ParsedBody {
   const shopName = asString(raw.shopName)?.trim();
   const vehicleInfo = sanitizeVehicleInfo(raw.vehicleInfo);
   const lines = sanitizeLines(raw.lines);
+  const signatureImage =
+    typeof raw.signatureImage === "string" && raw.signatureImage.trim().length
+      ? raw.signatureImage.trim()
+      : undefined;
 
   return {
     ok: true,
@@ -221,14 +226,12 @@ function parseRequestBody(raw: unknown): ParsedBody {
       shopName,
       vehicleInfo,
       lines,
+      signatureImage,
     },
   };
 }
 
-function joinName(
-  first?: string | null,
-  last?: string | null,
-): string | undefined {
+function joinName(first?: string | null, last?: string | null): string | undefined {
   const f = (first ?? "").trim();
   const l = (last ?? "").trim();
   const s = [f, l].filter(Boolean).join(" ").trim();
@@ -268,9 +271,7 @@ async function loadLatestInspectionPdfAttachment(
   // Pick the latest finalized/locked PDF for the WO
   const { data: insp, error: inspErr } = await supabaseAdmin
     .from("inspections")
-    .select(
-      "id, pdf_storage_path, finalized_at, created_at, locked, completed, is_draft",
-    )
+    .select("id, pdf_storage_path, finalized_at, created_at, locked, completed, is_draft")
     .eq("work_order_id", workOrderId)
     .not("pdf_storage_path", "is", null)
     .order("finalized_at", { ascending: false })
@@ -290,10 +291,7 @@ async function loadLatestInspectionPdfAttachment(
     >();
 
   if (inspErr) {
-    console.warn(
-      "[invoices/send] inspections lookup failed:",
-      inspErr.message,
-    );
+    console.warn("[invoices/send] inspections lookup failed:", inspErr.message);
     return null;
   }
 
@@ -337,6 +335,7 @@ export async function POST(req: Request) {
       shopName,
       lines,
       vehicleInfo,
+      signatureImage,
     } = parsed.body;
 
     if (!SENDGRID_API_KEY || !SENDGRID_TEMPLATE_ID) {
@@ -432,7 +431,7 @@ export async function POST(req: Request) {
     let portalUserId: string | null = null;
     let portalCustomerId: string | null = null;
 
-    let customerInfo: CustomerInfo | undefined = undefined;
+    let resolvedCustomerInfo: CustomerInfo | undefined = undefined;
 
     if (wo.customer_id) {
       const { data: customer, error: customerErr } = await supabaseAdmin
@@ -471,7 +470,7 @@ export async function POST(req: Request) {
           (wo.customer_name ?? "").trim() ||
           undefined;
 
-        customerInfo = {
+        resolvedCustomerInfo = {
           name: resolvedCustomerName,
           phone: pickCustomerPhone(customer),
           email: (customer.email ?? "").trim() || undefined,
@@ -513,8 +512,7 @@ export async function POST(req: Request) {
 
       if (!vErr && v) {
         resolvedVehicleInfo = {
-          year:
-            v.year !== null && v.year !== undefined ? String(v.year) : undefined,
+          year: v.year !== null && v.year !== undefined ? String(v.year) : undefined,
           make: (v.make ?? "").trim() || undefined,
           model: (v.model ?? "").trim() || undefined,
           vin: (v.vin ?? "").trim() || undefined,
@@ -564,14 +562,14 @@ export async function POST(req: Request) {
           dynamic_template_data: {
             workOrderId,
             customerName:
-              (customerInfo?.name ?? (customerName ?? "").trim()) || null,
+              (resolvedCustomerInfo?.name ?? (customerName ?? "").trim()) || null,
             shopName: resolvedShopName,
 
             laborTotal,
             partsTotal,
             invoiceTotal: computedInvoiceTotal,
 
-            customerInfo: customerInfo ?? null,
+            customerInfo: resolvedCustomerInfo ?? null,
             vehicleInfo: resolvedVehicleInfo ?? null,
             shopInfo,
 
@@ -580,6 +578,7 @@ export async function POST(req: Request) {
 
             // optional for template display/debug
             inspectionPdfPath: inspectionPdf?.storagePath ?? null,
+            signatureImage: signatureImage ?? null,
           },
         },
       ],

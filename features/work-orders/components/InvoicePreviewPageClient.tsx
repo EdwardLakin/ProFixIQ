@@ -1,4 +1,3 @@
-// features/work-orders/components/InvoicePreviewPageClient.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -74,6 +73,7 @@ type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
+type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 
 type InvoiceLinePayload = {
   complaint?: string | null;
@@ -110,10 +110,7 @@ function getLineIdFromRepairLine(line: RepairLine): string | undefined {
   return undefined;
 }
 
-function joinName(
-  first?: string | null,
-  last?: string | null,
-): string | undefined {
+function joinName(first?: string | null, last?: string | null): string | undefined {
   const f = (first ?? "").trim();
   const l = (last ?? "").trim();
   const s = [f, l].filter(Boolean).join(" ").trim();
@@ -196,6 +193,14 @@ type WorkOrderPartWithLine = Pick<
   work_order_line_id?: string | null;
 };
 
+type InspectionPdfInfo = {
+  inspectionId: string;
+  pdfUrl?: string | null;
+  storagePath?: string | null;
+  finalizedAt?: string | null;
+  createdAt?: string | null;
+};
+
 export default function InvoicePreviewPageClient({
   workOrderId,
   vehicleInfo,
@@ -249,6 +254,10 @@ export default function InvoicePreviewPageClient({
   const [fSummary, setFSummary] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
 
+  // ✅ inspection PDF (works even when no invoice exists yet)
+  const [inspectionPdfLoading, setInspectionPdfLoading] = useState(false);
+  const [inspectionPdf, setInspectionPdf] = useState<InspectionPdfInfo | null>(null);
+
   const effectiveVehicleInfo = vehicleInfo ?? fVehicleInfo;
   const effectiveCustomerInfo = customerInfo ?? fCustomerInfo;
 
@@ -267,6 +276,43 @@ export default function InvoicePreviewPageClient({
     const n = (shopInfo?.name ?? "").trim();
     return n.length ? n : undefined;
   }, [shopInfo?.name]);
+
+  const refreshInspectionPdf = useCallback(async (): Promise<void> => {
+    if (!workOrderId) return;
+
+    setInspectionPdfLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("inspections")
+        .select("id, pdf_url, pdf_storage_path, finalized_at, created_at")
+        .eq("work_order_id", workOrderId)
+        .not("pdf_storage_path", "is", null)
+        .order("finalized_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<
+          Pick<
+            InspectionRow,
+            "id" | "pdf_url" | "pdf_storage_path" | "finalized_at" | "created_at"
+          >
+        >();
+
+      if (error || !data?.id) {
+        setInspectionPdf(null);
+        return;
+      }
+
+      setInspectionPdf({
+        inspectionId: data.id,
+        pdfUrl: data.pdf_url ?? null,
+        storagePath: data.pdf_storage_path ?? null,
+        finalizedAt: data.finalized_at ?? null,
+        createdAt: data.created_at ?? null,
+      });
+    } finally {
+      setInspectionPdfLoading(false);
+    }
+  }, [supabase, workOrderId]);
 
   // -------------------------------------------------------------------
   // Load shop/stripe + WO + optional customer/vehicle/lines (when not provided)
@@ -432,9 +478,7 @@ export default function InvoicePreviewPageClient({
 
         setFVehicleInfo({
           year:
-            v?.year !== null && v?.year !== undefined
-              ? String(v.year)
-              : undefined,
+            v?.year !== null && v?.year !== undefined ? String(v.year) : undefined,
           make: trimOrUndef(v?.make),
           model: trimOrUndef(v?.model),
           vin: trimOrUndef(v?.vin),
@@ -452,9 +496,7 @@ export default function InvoicePreviewPageClient({
         // 1) load lines
         const { data: wol, error: wolErr } = await supabase
           .from("work_order_lines")
-          .select(
-            "id, line_no, description, complaint, cause, correction, labor_time",
-          )
+          .select("id, line_no, description, complaint, cause, correction, labor_time")
           .eq("work_order_id", workOrderId)
           .order("line_no", { ascending: true });
 
@@ -464,12 +506,9 @@ export default function InvoicePreviewPageClient({
           setFLines([]);
         } else {
           // 2) load parts for this work order
-          // ✅ use real columns: quantity/total_price + optional work_order_line_id
           const { data: wopRaw } = await supabase
             .from("work_order_parts")
-            .select(
-              "id, work_order_line_id, part_id, quantity, unit_price, total_price",
-            )
+            .select("id, work_order_line_id, part_id, quantity, unit_price, total_price")
             .eq("work_order_id", workOrderId);
 
           const wop = (Array.isArray(wopRaw) ? wopRaw : []) as WorkOrderPartWithLine[];
@@ -479,17 +518,11 @@ export default function InvoicePreviewPageClient({
             new Set(
               wop
                 .map((p) => p.part_id)
-                .filter(
-                  (id): id is string =>
-                    typeof id === "string" && id.trim().length > 0,
-                ),
+                .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
             ),
           );
 
-          let partsById = new Map<
-            string,
-            Pick<PartRow, "id" | "name" | "part_number">
-          >();
+          let partsById = new Map<string, Pick<PartRow, "id" | "name" | "part_number">>();
 
           if (partIds.length > 0) {
             const { data: parts } = await supabase
@@ -517,22 +550,16 @@ export default function InvoicePreviewPageClient({
 
           for (const p of wop) {
             const lidRaw = p.work_order_line_id;
-            const lid =
-              typeof lidRaw === "string" && lidRaw.trim().length > 0
-                ? lidRaw.trim()
-                : "";
+            const lid = typeof lidRaw === "string" && lidRaw.trim().length > 0 ? lidRaw.trim() : "";
             if (!lid) continue;
 
             const qty = Number(p.quantity ?? 1);
             const unit = safeMoney(p.unit_price);
             const totalFromRow = safeMoney(p.total_price);
             const total =
-              totalFromRow > 0
-                ? totalFromRow
-                : Math.max(0, (Number.isFinite(qty) ? qty : 0) * unit);
+              totalFromRow > 0 ? totalFromRow : Math.max(0, (Number.isFinite(qty) ? qty : 0) * unit);
 
-            const partMeta =
-              typeof p.part_id === "string" ? partsById.get(p.part_id) : undefined;
+            const partMeta = typeof p.part_id === "string" ? partsById.get(p.part_id) : undefined;
 
             const baseName = (partMeta?.name ?? "").trim() || "Part";
             const pretty =
@@ -550,24 +577,15 @@ export default function InvoicePreviewPageClient({
             perLine.set(lid, arr);
           }
 
-          const mapped: Array<
-            RepairLine & { lineId?: string; parts?: PdfLinePart[] }
-          > = wol.map(
+          const mapped: Array<RepairLine & { lineId?: string; parts?: PdfLinePart[] }> = wol.map(
             (
               l: Pick<
                 WorkOrderLineRow,
-                | "id"
-                | "line_no"
-                | "description"
-                | "complaint"
-                | "cause"
-                | "correction"
-                | "labor_time"
+                "id" | "line_no" | "description" | "complaint" | "cause" | "correction" | "labor_time"
               >,
             ) => {
               const complaint = (l.description ?? l.complaint ?? "") || "";
-              const id =
-                typeof l.id === "string" && l.id.length > 0 ? l.id : undefined;
+              const id = typeof l.id === "string" && l.id.length > 0 ? l.id : undefined;
 
               return {
                 complaint,
@@ -595,6 +613,13 @@ export default function InvoicePreviewPageClient({
   }, [workOrderId, supabase, customerInfo, vehicleInfo, lines, summary]);
 
   // -------------------------------------------------------------------
+  // Load inspection PDF for this work order (works even if no invoice exists yet)
+  // -------------------------------------------------------------------
+  useEffect(() => {
+    void refreshInspectionPdf();
+  }, [refreshInspectionPdf]);
+
+  // -------------------------------------------------------------------
   // Invoice review gate (runs on mount / id change)
   // -------------------------------------------------------------------
   useEffect(() => {
@@ -620,9 +645,7 @@ export default function InvoicePreviewPageClient({
 
         if (!res.ok || !json) {
           setReviewOk(false);
-          setReviewIssues([
-            { kind: "error", message: "Invoice review failed (bad response)" },
-          ]);
+          setReviewIssues([{ kind: "error", message: "Invoice review failed (bad response)" }]);
           return;
         }
 
@@ -662,6 +685,12 @@ export default function InvoicePreviewPageClient({
     router.back();
   }, [router]);
 
+  const openInspectionPdf = useCallback((): void => {
+    const url = (inspectionPdf?.pdfUrl ?? "").trim();
+    if (!url) return;
+    if (typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer");
+  }, [inspectionPdf?.pdfUrl]);
+
   const sendInvoiceEmail = useCallback(async () => {
     if (sending) return;
     if (!reviewOk) return;
@@ -670,10 +699,7 @@ export default function InvoicePreviewPageClient({
     if (!email) {
       setReviewOk(false);
       setReviewIssues([
-        {
-          kind: "missing_email",
-          message: "No customer email on file for this work order.",
-        },
+        { kind: "missing_email", message: "No customer email on file for this work order." },
       ]);
       return;
     }
@@ -681,9 +707,7 @@ export default function InvoicePreviewPageClient({
     const laborTotal = Number(wo?.labor_total ?? 0);
     const partsTotal = Number(wo?.parts_total ?? 0);
     const invoiceTotal =
-      Number(wo?.invoice_total ?? 0) > 0
-        ? Number(wo?.invoice_total ?? 0)
-        : laborTotal + partsTotal;
+      Number(wo?.invoice_total ?? 0) > 0 ? Number(wo?.invoice_total ?? 0) : laborTotal + partsTotal;
 
     const payloadLines: InvoiceLinePayload[] = (effectiveLines ?? []).map((l) => {
       const lineId = getLineIdFromRepairLine(l);
@@ -691,8 +715,7 @@ export default function InvoicePreviewPageClient({
       return {
         complaint: typeof r["complaint"] === "string" ? (r["complaint"] as string) : null,
         cause: typeof r["cause"] === "string" ? (r["cause"] as string) : null,
-        correction:
-          typeof r["correction"] === "string" ? (r["correction"] as string) : null,
+        correction: typeof r["correction"] === "string" ? (r["correction"] as string) : null,
         labor_time:
           typeof r["labor_time"] === "number"
             ? (r["labor_time"] as number)
@@ -793,9 +816,7 @@ export default function InvoicePreviewPageClient({
             ) : reviewOk ? (
               <span className="text-[0.7rem] text-emerald-300">Invoice ready</span>
             ) : (
-              <span className="text-[0.7rem] text-amber-300">
-                Missing required info
-              </span>
+              <span className="text-[0.7rem] text-amber-300">Missing required info</span>
             )}
           </div>
 
@@ -810,11 +831,7 @@ export default function InvoicePreviewPageClient({
                   ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black hover:brightness-110"
                   : "border border-amber-500/40 bg-amber-500/10 text-amber-200 opacity-60")
               }
-              title={
-                reviewOk
-                  ? "Email invoice (SendGrid)"
-                  : "Blocked until required info is complete"
-              }
+              title={reviewOk ? "Email invoice (SendGrid)" : "Blocked until required info is complete"}
             >
               {sending ? "Sending…" : "Send invoice"}
             </button>
@@ -843,9 +860,7 @@ export default function InvoicePreviewPageClient({
             </div>
 
             {reviewError ? (
-              <div className="mt-2 text-[0.75rem] text-red-200">
-                {reviewError}
-              </div>
+              <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div>
             ) : null}
 
             <ul className="mt-2 space-y-1 text-[0.8rem] text-neutral-200">
@@ -871,8 +886,7 @@ export default function InvoicePreviewPageClient({
                       const list = issuesByLineId.get(id as string) ?? [];
                       const r = l as unknown as Record<string, unknown>;
                       const label =
-                        typeof r["complaint"] === "string" &&
-                        (r["complaint"] as string).trim().length > 0
+                        typeof r["complaint"] === "string" && (r["complaint"] as string).trim().length > 0
                           ? (r["complaint"] as string)
                           : `Line ${String(id).slice(0, 6)}…`;
 
@@ -899,6 +913,58 @@ export default function InvoicePreviewPageClient({
           </div>
         ) : null}
 
+        {/* Inspection PDF Panel (works even when invoice doesn't exist yet) */}
+        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+                Inspection PDF
+              </div>
+              <div className="mt-1 text-sm text-neutral-200">
+                Download the finalized inspection report (if available).
+              </div>
+              {inspectionPdf?.storagePath ? (
+                <div className="mt-1 text-[0.75rem] text-neutral-500">
+                  Stored: <span className="text-neutral-400">{inspectionPdf.storagePath}</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void refreshInspectionPdf()}
+                className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5 active:scale-95"
+                disabled={inspectionPdfLoading}
+                title="Reload inspection PDF status"
+              >
+                {inspectionPdfLoading ? "Refreshing…" : "Refresh"}
+              </button>
+
+              <button
+                type="button"
+                onClick={openInspectionPdf}
+                disabled={!inspectionPdf?.pdfUrl}
+                className={
+                  "rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] " +
+                  (inspectionPdf?.pdfUrl
+                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black hover:brightness-110"
+                    : "border border-white/10 bg-black/40 text-neutral-400 opacity-60")
+                }
+                title={inspectionPdf?.pdfUrl ? "Open inspection PDF" : "No inspection PDF found yet"}
+              >
+                Open PDF
+              </button>
+            </div>
+          </div>
+
+          {!inspectionPdf?.pdfUrl ? (
+            <div className="mt-3 text-[0.75rem] text-neutral-400">
+              No inspection PDF is attached to this work order yet. Finish/finalize an inspection to generate it.
+            </div>
+          ) : null}
+        </div>
+
         {/* PDF Download Panel */}
         <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/30 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -914,7 +980,6 @@ export default function InvoicePreviewPageClient({
             <div className={reviewOk ? "" : "opacity-60 pointer-events-none"}>
               <WorkOrderInvoiceDownloadButton
                 workOrderId={workOrderId}
-                // ✅ pass rich data so your PDF template can render parts-per-line (if it uses it)
                 lines={effectiveLines}
                 summary={effectiveSummary}
                 vehicleInfo={effectiveVehicleInfo}
@@ -926,8 +991,7 @@ export default function InvoicePreviewPageClient({
 
           {!reviewOk ? (
             <div className="mt-3 text-[0.75rem] text-amber-200">
-              PDF download is shown, but invoice is still blocked until required
-              info is complete.
+              PDF download is shown, but invoice is still blocked until required info is complete.
             </div>
           ) : null}
         </div>
