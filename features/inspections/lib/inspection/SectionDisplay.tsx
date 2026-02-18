@@ -1,6 +1,6 @@
-// /features/inspections/lib/inspection/SectionDisplay.tsx
 "use client";
 
+import type React from "react";
 import { useState } from "react";
 import type {
   InspectionSection,
@@ -15,6 +15,10 @@ interface SectionDisplayProps {
   sectionIndex: number;
   showNotes: boolean;
   showPhotos: boolean;
+
+  /** ✅ required for photo uploads (InspectionItemCard + /api/inspections/photos/upload) */
+  inspectionId: string;
+
   onUpdateStatus: (
     sectionIndex: number,
     itemIndex: number,
@@ -105,6 +109,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     sectionIndex,
     showNotes = false,
     showPhotos = true,
+    inspectionId,
     onUpdateStatus,
     onUpdateNote,
     onUpload,
@@ -293,27 +298,19 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                 className={[
                   "grid gap-2 p-2",
                   "lg:grid-cols-2 lg:gap-[2px] lg:bg-white/10 lg:p-[2px]",
-
-                  // ✅ NEW: make each item wrapper a “glass card” (kills grey box vibe)
                   "[&>*]:rounded-lg",
                   "[&>*]:border [&>*]:border-white/10",
                   "[&>*]:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),rgba(0,0,0,0.72))]",
                   "[&>*]:shadow-[0_12px_28px_rgba(0,0,0,0.60)]",
                   "[&>*]:backdrop-blur-md",
                   "[&>*]:relative [&>*]:overflow-hidden",
-
-                  // copper “lip” highlight
                   "[&>*]:before:absolute [&>*]:before:inset-x-0 [&>*]:before:top-0 [&>*]:before:h-[2px] [&>*]:before:content-['']",
                   "[&>*]:before:bg-[linear-gradient(90deg,transparent,rgba(197,122,74,0.85),transparent)]",
-
-                  // hover pop
                   "[&>*]:transition [&>*]:duration-150",
                   "[&>*]:hover:-translate-y-[1px]",
                   "[&>*]:hover:border-[rgba(197,122,74,0.45)]",
                   "[&>*]:hover:shadow-[0_18px_38px_rgba(0,0,0,0.70)]",
                   "[&>*]:hover:bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.14),rgba(0,0,0,0.74))]",
-
-                  // keep zebra, but subtle (brightness instead of grey blocks)
                   "[&>*:nth-child(odd)]:brightness-[1.02]",
                   "[&>*:nth-child(even)]:brightness-[0.98]",
                   "lg:[&>*:nth-child(4n+1)]:brightness-[1.02] lg:[&>*:nth-child(4n+2)]:brightness-[1.02]",
@@ -377,6 +374,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         itemIndex={itemIndex}
                         showNotes={showNotes && isFailOrRec}
                         showPhotos={showPhotos}
+                        inspectionId={inspectionId}
                         onUpdateStatus={onUpdateStatus}
                         onUpdateNote={onUpdateNote}
                         onUpload={onUpload}

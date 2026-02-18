@@ -1,6 +1,7 @@
 // GenericInspectionScreen.tsx (FULL FILE REPLACEMENT)
 "use client";
 
+import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
@@ -424,9 +425,7 @@ function localFallbackCommands(text: string): ParsedCommand[] {
       type: "measurement",
       section: "__auto__",
       item: `${corner} ${
-        inner ? "Tread Depth (Inner)" :
-        outer ? "Tread Depth (Outer)" :
-        "Tread Depth"
+        inner ? "Tread Depth (Inner)" : outer ? "Tread Depth (Outer)" : "Tread Depth"
       }`,
       value: num,
       unit: /\b(inch|inches)\b/.test(n) ? "in" : "mm",
@@ -504,14 +503,12 @@ function parseFollowUpPayload(raw: string): {
   const wantsConfirm = /\b(confirm|submit|yes)\b/.test(n);
   const wantsCancel = /\b(cancel|nevermind|never mind|clear)\b/.test(n);
 
-  // hours: 1, 1.0, 1.25 with optional "hr/hours"
   const hrMatch =
     n.match(/\b(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours)\b/) ??
     n.match(/\b(\d+(?:\.\d+)?)\s*h\b/);
 
   const laborHours = hrMatch && hrMatch[1] ? Number(hrMatch[1]) : null;
 
-  // remove the hours token so remainder becomes parts text
   let remainder = raw;
   if (hrMatch && hrMatch[0]) {
     const idx = remainder.toLowerCase().indexOf(hrMatch[0]);
@@ -524,16 +521,11 @@ function parseFollowUpPayload(raw: string): {
     }
   }
 
-  // remove "confirm/submit/cancel" words from remainder
   remainder = remainder
-    .replace(
-      /\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi,
-      " ",
-    )
+    .replace(/\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  // parts: comma/and separated
   const partsText = remainder
     .replace(/\b(parts?|labor)\b/gi, " ")
     .replace(/\s+/g, " ")
@@ -806,10 +798,9 @@ export default function GenericInspectionScreen(
   >({});
 
   const [wakeActive, setWakeActive] = useState(false);
-// ✅ Use ref for logic to avoid React state race between transcripts
-const wakeActiveRef = useRef<boolean>(false);
-
-const wakeTimeoutRef = useRef<number | null>(null);
+  // ✅ Use ref for logic to avoid React state race between transcripts
+  const wakeActiveRef = useRef<boolean>(false);
+  const wakeTimeoutRef = useRef<number | null>(null);
 
   const [voiceState, setVoiceState] = useState<
     "idle" | "connecting" | "listening" | "error"
@@ -1179,33 +1170,33 @@ const wakeTimeoutRef = useRef<number | null>(null);
     const applied: VoiceCommandApplyResult[] = [];
 
     try {
-  commands = await interpretCommand(mainText, ctx);
+      commands = await interpretCommand(mainText, ctx);
 
-  // ✅ FALLBACK: if AI returns nothing, try local parsing
-  if (!commands.length) {
-    const fallback = localFallbackCommands(mainText);
+      // ✅ FALLBACK: if AI returns nothing, try local parsing
+      if (!commands.length) {
+        const fallback = localFallbackCommands(mainText);
 
-    // IMPORTANT: clear "__auto__" so handleTranscript resolver can do its job
-    for (const c of fallback) {
-      const rec = c as unknown as Record<string, unknown>;
-      if (rec.section === "__auto__") delete rec.section;
-    }
+        // IMPORTANT: clear "__auto__" so handleTranscript resolver can do its job
+        for (const c of fallback) {
+          const rec = c as unknown as Record<string, unknown>;
+          if (rec.section === "__auto__") delete rec.section;
+        }
 
-    commands = fallback;
-  }
+        commands = fallback;
+      }
 
-  // If STILL nothing, log + stop
-  if (!commands.length) {
-    appendVoiceTrace({
-      rawFinal: text,
-      wakeCommand: text,
-      parsed: [],
-      applied: [
-        { command: "interpret", ok: false, reason: "No commands returned" },
-      ],
-    });
-    return;
-  }
+      // If STILL nothing, log + stop
+      if (!commands.length) {
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [
+            { command: "interpret", ok: false, reason: "No commands returned" },
+          ],
+        });
+        return;
+      }
 
       let sawFailOrRec = false;
       let sawNote = false;
@@ -1226,7 +1217,9 @@ const wakeTimeoutRef = useRef<number | null>(null);
               : "";
 
         if (cmdType === "status" || cmdType === "update_status") {
-          const st = String((anyC as { status?: unknown }).status ?? "").toLowerCase();
+          const st = String(
+            (anyC as { status?: unknown }).status ?? "",
+          ).toLowerCase();
           if (st === "fail" || st === "recommend") sawFailOrRec = true;
         }
         if (cmdType === "add" || cmdType === "add_note") {
@@ -1262,22 +1255,21 @@ const wakeTimeoutRef = useRef<number | null>(null);
             rawSpeech: mainText,
           });
 
-
           // ✅ capture resolver-selected target (preferred)
           const r = result as unknown as {
             appliedTarget?: { sectionIndex: number; itemIndex: number };
           };
 
-            if (r?.appliedTarget) {
-              lastAppliedTarget = r.appliedTarget;
-              applied.push({ command: commandLabel(command), ok: true });
-            } else {
-              applied.push({
-               command: commandLabel(command),
-               ok: false,
-               reason: "No target resolved",
-              });
-            }
+          if (r?.appliedTarget) {
+            lastAppliedTarget = r.appliedTarget;
+            applied.push({ command: commandLabel(command), ok: true });
+          } else {
+            applied.push({
+              command: commandLabel(command),
+              ok: false,
+              reason: "No target resolved",
+            });
+          }
         } catch (err: unknown) {
           // eslint-disable-next-line no-console
           console.error("[voice] apply failed", err);
@@ -1344,7 +1336,6 @@ const wakeTimeoutRef = useRef<number | null>(null);
         }
       } else {
         // ✅ Arm follow-up prompt when FAIL/REC + note occurs
-        //    Target the resolver-selected item if available; otherwise leave followup off (no manual focus)
         if (sawFailOrRec && sawNote && lastAppliedTarget) {
           setFollowUp({
             kind: "parts_labor",
@@ -1382,101 +1373,97 @@ const wakeTimeoutRef = useRef<number | null>(null);
   };
 
   function maybeHandleWakeWord(raw: string): string | null {
-  const normalized = raw
-    .toLowerCase()
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+    const normalized = raw
+      .toLowerCase()
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
-  // Include common STT variations
-  const WAKE_PREFIXES = [
-    "hey profix",
-    "hey pro fix",
-    "hey buster",
-  ] as const;
+    // Include common STT variations
+    const WAKE_PREFIXES = ["hey profix", "hey pro fix", "hey buster"] as const;
 
-  const matchPrefixFrom = (
-    input: string,
-  ): { prefix: string; remainder: string } | null => {
-    for (const prefix of WAKE_PREFIXES) {
-      if (input === prefix) return { prefix, remainder: "" };
-      if (input.startsWith(prefix + " ")) {
-        return { prefix, remainder: input.slice(prefix.length).trimStart() };
+    const matchPrefixFrom = (
+      input: string,
+    ): { prefix: string; remainder: string } | null => {
+      for (const prefix of WAKE_PREFIXES) {
+        if (input === prefix) return { prefix, remainder: "" };
+        if (input.startsWith(prefix + " ")) {
+          return { prefix, remainder: input.slice(prefix.length).trimStart() };
+        }
       }
+      return null;
+    };
+
+    const setWake = (on: boolean) => {
+      wakeActiveRef.current = on; // logic gate
+      setWakeActive(on); // UI badge
+    };
+
+    const bumpTimeout = () => {
+      if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
+      wakeTimeoutRef.current = window.setTimeout(() => setWake(false), 8000);
+    };
+
+    const beep = () => {
+      try {
+        type WebkitAudioWindow = Window & {
+          webkitAudioContext?: typeof AudioContext;
+        };
+        const AudioCtxCtor =
+          window.AudioContext ||
+          (window as WebkitAudioWindow).webkitAudioContext;
+
+        if (!AudioCtxCtor) return;
+
+        const ctx = new AudioCtxCtor();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.value = 880;
+        g.gain.value = 0.05;
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start();
+        window.setTimeout(() => {
+          o.stop();
+          void ctx.close();
+        }, 120);
+      } catch {
+        // ignore
+      }
+    };
+
+    const awake = wakeActiveRef.current;
+
+    if (!awake) {
+      const match = matchPrefixFrom(normalized);
+      if (!match) return null;
+
+      setWake(true);
+      bumpTimeout();
+
+      toast.success("READY", { duration: 1200 });
+      beep();
+
+      // Wake-only? arm but do NOT forward empty transcript
+      if (!match.remainder) return null;
+
+      return match.remainder;
     }
-    return null;
-  };
 
-  const setWake = (on: boolean) => {
-    wakeActiveRef.current = on; // logic gate
-    setWakeActive(on); // UI badge
-  };
-
-  const bumpTimeout = () => {
-    if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
-    wakeTimeoutRef.current = window.setTimeout(() => setWake(false), 8000);
-  };
-
-  const beep = () => {
-    try {
-      type WebkitAudioWindow = Window & {
-        webkitAudioContext?: typeof AudioContext;
-      };
-      const AudioCtxCtor =
-        window.AudioContext || (window as WebkitAudioWindow).webkitAudioContext;
-
-      if (!AudioCtxCtor) return;
-
-      const ctx = new AudioCtxCtor();
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.value = 880;
-      g.gain.value = 0.05;
-      o.connect(g);
-      g.connect(ctx.destination);
-      o.start();
-      window.setTimeout(() => {
-        o.stop();
-        void ctx.close();
-      }, 120);
-    } catch {
-      // ignore
-    }
-  };
-
-  const awake = wakeActiveRef.current;
-
-  if (!awake) {
-    const match = matchPrefixFrom(normalized);
-    if (!match) return null;
-
-    setWake(true);
+    // already awake: extend timeout and strip prefix if repeated
     bumpTimeout();
 
-    toast.success("READY", { duration: 1200 });
-    beep();
+    const repeated = matchPrefixFrom(normalized);
+    if (repeated) {
+      // Wake-only while already awake => keep armed, no command to process
+      if (!repeated.remainder) return null;
+      return repeated.remainder;
+    }
 
-    // Wake-only? arm but do NOT forward empty transcript
-    if (!match.remainder) return null;
-
-    return match.remainder;
+    // No repeated wake word; treat full phrase as the command
+    return normalized;
   }
-
-  // already awake: extend timeout and strip prefix if repeated
-  bumpTimeout();
-
-  const repeated = matchPrefixFrom(normalized);
-  if (repeated) {
-    // Wake-only while already awake => keep armed, no command to process
-    if (!repeated.remainder) return null;
-    return repeated.remainder;
-  }
-
-  // No repeated wake word; treat full phrase as the command
-  return normalized;
-}
-
 
   const voice = useRealtimeVoice(
     async (text: string) => {
@@ -2120,19 +2107,21 @@ const wakeTimeoutRef = useRef<number | null>(null);
   // Bottom bar: ONLY Save progress + Finish inspection
   const actions = (
     <>
-      <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
+      <SaveInspectionButton
+        session={session}
+        workOrderLineId={workOrderLineId}
+      />
 
       {workOrderLineId && (
-        <FinishInspectionButton
-          session={session}
-          workOrderLineId={workOrderLineId}
-        />
+        <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
       )}
     </>
   );
 
   if (!session || (session.sections?.length ?? 0) === 0) {
-    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
+    return (
+      <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
+    );
   }
 
   const body = (
@@ -2171,7 +2160,10 @@ const wakeTimeoutRef = useRef<number | null>(null);
 
         <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {!isLocked && (
-            <StartListeningButton isListening={isListening} onStart={startListening} />
+            <StartListeningButton
+              isListening={isListening}
+              onStart={startListening}
+            />
           )}
 
           {!isLocked && (isListening || isPaused) && (
@@ -2647,11 +2639,12 @@ const wakeTimeoutRef = useRef<number | null>(null);
                       ) : (
                         <>
                           <SectionDisplay
-                            title={section.title} // ✅ let SectionDisplay show the title (no duplicate header)
+                            title={section.title}
                             section={{ ...section, items: itemsWithHints }}
                             sectionIndex={sectionIndex}
                             showNotes
                             showPhotos
+                            inspectionId={inspectionId} /* ✅ REQUIRED FOR PHOTO UPLOADS */
                             onUpdateStatus={(
                               secIdx: number,
                               itemIdx: number,
@@ -2774,20 +2767,18 @@ const wakeTimeoutRef = useRef<number | null>(null);
           <InspectionSignaturePanel
             inspectionId={inspectionId}
             role="technician"
-            // Prefer tech name (if you have it in session); otherwise the panel can auto-fill from /api/profile
-            defaultName={
-          (() => {
-            const techName =
-            typeof (session as unknown as { technicianName?: unknown }).technicianName === "string"
-            ? (session as unknown as { technicianName: string }).technicianName
-            : "";
-        return techName.trim().length ? techName.trim() : undefined;
-      })()
-    }
-    techSettingsHref="/settings/tech"
-    onSigned={handleSigned}
-  />
-</div>
+            defaultName={(() => {
+              const techName =
+                typeof (session as unknown as { technicianName?: unknown })
+                  .technicianName === "string"
+                  ? (session as unknown as { technicianName: string }).technicianName
+                  : "";
+              return techName.trim().length ? techName.trim() : undefined;
+            })()}
+            techSettingsHref="/settings/tech"
+            onSigned={handleSigned}
+          />
+        </div>
 
         {!isEmbed && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
