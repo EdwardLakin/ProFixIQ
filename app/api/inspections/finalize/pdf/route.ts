@@ -1,5 +1,4 @@
 // app/api/inspections/finalize/pdf/route.ts ✅ FULL FILE REPLACEMENT
-
 import "server-only";
 
 export const runtime = "nodejs";
@@ -38,10 +37,7 @@ export async function POST(req: NextRequest) {
 
   const workOrderLineId = asString((raw as Body).workOrderLineId);
   if (!workOrderLineId) {
-    return NextResponse.json(
-      { error: "Missing workOrderLineId" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Missing workOrderLineId" }, { status: 400 });
   }
 
   // 2) Auth
@@ -68,25 +64,28 @@ export async function POST(req: NextRequest) {
   if (lineErr) {
     // eslint-disable-next-line no-console
     console.error("[inspections/finalize/pdf] line lookup failed", lineErr);
-    return NextResponse.json(
-      { error: "Failed to look up work order line" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to look up work order line" }, { status: 500 });
   }
 
   const workOrderId = asString(line?.work_order_id);
   const shopId = asString(line?.work_orders?.shop_id);
 
   if (!workOrderId) {
-    return NextResponse.json(
-      { error: "Work order line missing work_order_id" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Work order line missing work_order_id" }, { status: 400 });
   }
   if (!shopId) {
+    return NextResponse.json({ error: "Work order line missing shop_id" }, { status: 400 });
+  }
+
+  // ✅ Ensure Storage policy can evaluate current_shop_id()
+  // If your policy uses current_shop_id(), this MUST be set server-side.
+  const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
+  if (ctxErr) {
+    // eslint-disable-next-line no-console
+    console.error("[inspections/finalize/pdf] set_current_shop_id failed", ctxErr);
     return NextResponse.json(
-      { error: "Work order line missing shop_id" },
-      { status: 400 },
+      { error: ctxErr.message || "Failed to set shop context" },
+      { status: 500 },
     );
   }
 
@@ -111,10 +110,7 @@ export async function POST(req: NextRequest) {
   if (inspErr) {
     // eslint-disable-next-line no-console
     console.error("[inspections/finalize/pdf] inspections lookup failed", inspErr);
-    return NextResponse.json(
-      { error: "Failed to load inspection" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to load inspection" }, { status: 500 });
   }
 
   let summary = (insp?.summary ?? null) as unknown as InspectionSession | null;
@@ -129,20 +125,14 @@ export async function POST(req: NextRequest) {
     if (sessErr) {
       // eslint-disable-next-line no-console
       console.error("[inspections/finalize/pdf] session lookup failed", sessErr);
-      return NextResponse.json(
-        { error: "Inspection session missing" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Inspection session missing" }, { status: 404 });
     }
 
     summary = (sess?.state ?? null) as unknown as InspectionSession | null;
   }
 
   if (!summary || typeof summary !== "object") {
-    return NextResponse.json(
-      { error: "Inspection summary missing/invalid" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Inspection summary missing/invalid" }, { status: 400 });
   }
 
   // ✅ Ensure inspections row exists (UPSERT by work_order_line_id)
@@ -182,25 +172,42 @@ export async function POST(req: NextRequest) {
   // 5) Generate PDF
   const pdfBytes = await generateInspectionPDF(summary);
 
-  // 6) Upload to storage
+  // 6) Upload to storage (Policy-based: path includes shop id)
   const bucket = "inspection_pdfs";
+  const shopPart = safeFilePart(shopId);
   const woPart = safeFilePart(workOrderId);
   const inspPart = safeFilePart(String(inspectionId));
   const linePart = safeFilePart(workOrderLineId);
 
-  const path = `work_orders/${woPart}/inspections/${inspPart}/line_${linePart}.pdf`;
+  const path = `shops/${shopPart}/work_orders/${woPart}/inspections/${inspPart}/line_${linePart}.pdf`;
 
   const { error: uploadErr } = await supabase.storage
     .from(bucket)
-    .upload(path, Buffer.from(pdfBytes), {
-      contentType: "application/pdf",
-      upsert: true,
-    });
+    .upload(path, Buffer.from(pdfBytes), { contentType: "application/pdf", upsert: true });
 
   if (uploadErr) {
     // eslint-disable-next-line no-console
-    console.error("[inspections/finalize/pdf] upload failed", uploadErr);
-    return NextResponse.json({ error: uploadErr.message }, { status: 500 });
+    console.error("[inspections/finalize/pdf] upload failed", {
+      message: uploadErr.message,
+      name: uploadErr.name,
+      cause: (uploadErr as unknown as { cause?: unknown })?.cause,
+      path,
+      bucket,
+      shopId,
+      workOrderId,
+      workOrderLineId,
+    });
+    return NextResponse.json(
+      {
+        error: uploadErr.message,
+        detail: {
+          bucket,
+          path,
+          hint: "Storage RLS likely blocked upload. Confirm policy matches shops/<shop_id>/... and current_shop_id() is set.",
+        },
+      },
+      { status: 500 },
+    );
   }
 
   // Optional: signed URL for quick-open in UI
