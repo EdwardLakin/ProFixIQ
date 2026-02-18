@@ -9236,6 +9236,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_wol_inspection_session"
+            columns: ["inspection_session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "work_order_lines_assigned_tech_id_fkey"
             columns: ["assigned_tech_id"]
             isOneToOne: false
@@ -10378,6 +10385,13 @@ export type Database = {
           work_order_vehicle_id: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_wol_inspection_session"
+            columns: ["inspection_session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_order_lines_assigned_tech_id_fkey"
             columns: ["assigned_tech_id"]
