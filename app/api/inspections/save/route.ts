@@ -2,10 +2,12 @@
 
 import "server-only";
 
+export const runtime = "nodejs";
+
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import type { Database, Json } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 
 type DB = Database;
@@ -14,17 +16,8 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
 }
 
-/**
- * Convert unknown to Supabase Json type safely.
- * - Uses JSON round-trip to guarantee only JSON-serializable structures.
- * - Falls back to null if conversion fails (should be rare).
- */
-function toJson<T>(value: unknown): T {
-  try {
-    return JSON.parse(JSON.stringify(value)) as T;
-  } catch {
-    return null as T;
-  }
+function asString(x: unknown): string | null {
+  return typeof x === "string" && x.trim().length ? x.trim() : null;
 }
 
 export async function POST(req: NextRequest) {
@@ -36,9 +29,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const workOrderLineId =
-    typeof raw.workOrderLineId === "string" ? raw.workOrderLineId : "";
-  const session = raw.session as InspectionSession | undefined;
+  const workOrderLineId = asString(raw.workOrderLineId);
+  const session = (raw.session ?? null) as InspectionSession | null;
 
   if (!workOrderLineId || !session) {
     return NextResponse.json(
@@ -69,7 +61,6 @@ export async function POST(req: NextRequest) {
     }>();
 
   if (lineErr) {
-    // eslint-disable-next-line no-console
     console.error("[inspections/save] line lookup failed", lineErr);
     return NextResponse.json(
       { error: "Failed to look up work order line" },
@@ -77,13 +68,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const workOrderId =
-    typeof line?.work_order_id === "string" ? line.work_order_id : null;
-
-  const shopId =
-    typeof line?.work_orders?.shop_id === "string"
-      ? line.work_orders.shop_id
-      : null;
+  const workOrderId = asString(line?.work_order_id);
+  const shopId = asString(line?.work_orders?.shop_id);
 
   if (!workOrderId) {
     return NextResponse.json(
@@ -91,21 +77,24 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  if (!shopId) {
+    return NextResponse.json(
+      { error: "Work order line is missing shop_id (via work order)" },
+      { status: 400 },
+    );
+  }
 
   const nowIso = new Date().toISOString();
 
-  // ---------------------------------------------------------------------------
-  // 4) upsert inspection_sessions (this is your “progress save”)
-  // ---------------------------------------------------------------------------
-  type SessionStateJson = DB["public"]["Tables"]["inspection_sessions"]["Insert"]["state"];
+  // NOTE: Supabase Json type wants a JSON-compatible value.
+  const sessionJson = session as unknown as Json;
 
-  const sessionStateJson = toJson<SessionStateJson>(session);
-
+  // 4) upsert inspection_sessions (progress save)
   const sessionPayload = {
     work_order_id: workOrderId,
     work_order_line_id: workOrderLineId,
     user_id: user.id,
-    state: sessionStateJson,
+    state: sessionJson,
     updated_at: nowIso,
   } satisfies DB["public"]["Tables"]["inspection_sessions"]["Insert"];
 
@@ -114,26 +103,18 @@ export async function POST(req: NextRequest) {
     .upsert(sessionPayload, { onConflict: "work_order_line_id" });
 
   if (upSessionErr) {
-    // eslint-disable-next-line no-console
     console.error("[inspections/save] session upsert failed", upSessionErr);
     return NextResponse.json({ error: upSessionErr.message }, { status: 500 });
   }
 
-  // ---------------------------------------------------------------------------
-  // 5) ALSO upsert a draft inspections row for the SAME WO + line
-  //    This is what /finalize/pdf reads (inspections.summary).
-  // ---------------------------------------------------------------------------
-  type SummaryJson = DB["public"]["Tables"]["inspections"]["Insert"]["summary"];
-
-  const summaryJson = toJson<SummaryJson>(session);
-
+  // 5) ALSO upsert a draft inspections row for SAME WO + line
+  //    This is what finalize/pdf reads: inspections.summary
   const inspectionPayload = {
     work_order_id: workOrderId,
     work_order_line_id: workOrderLineId,
-    // if shop_id is nullable in your schema, keep null; otherwise you can omit it
     shop_id: shopId,
     user_id: user.id,
-    summary: summaryJson,
+    summary: sessionJson,
     is_draft: true,
     completed: false,
     locked: false,
@@ -146,7 +127,6 @@ export async function POST(req: NextRequest) {
     .upsert(inspectionPayload, { onConflict: "work_order_line_id" });
 
   if (upInspectionErr) {
-    // eslint-disable-next-line no-console
     console.error("[inspections/save] inspections upsert failed", upInspectionErr);
     // don’t fail progress-save if draft inspection row fails — but tell the client
     return NextResponse.json(
