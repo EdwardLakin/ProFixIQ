@@ -48,11 +48,17 @@ function toNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function isCompleteItem(it: Pick<PartRequestItem, "part_id" | "qty" | "quoted_price" | "description">): boolean {
+function isCompleteItem(
+  it: Pick<
+    PartRequestItem,
+    "part_id" | "qty" | "quoted_price" | "description"
+  >,
+): boolean {
   const hasPart = typeof it.part_id === "string" && it.part_id.length > 0;
   const qty = toNum(it.qty);
   const hasQty = qty > 0;
-  const hasPrice = it.quoted_price != null && Number.isFinite(Number(it.quoted_price));
+  const hasPrice =
+    it.quoted_price != null && Number.isFinite(Number(it.quoted_price));
   // description is helpful, but not required for “complete”
   return hasPart && hasQty && hasPrice;
 }
@@ -67,6 +73,7 @@ export default function PartsRequestsPage(): JSX.Element {
   >("all");
 
   const [buckets, setBuckets] = useState<WoBucket[]>([]);
+  const [deletingWoId, setDeletingWoId] = useState<string | null>(null);
 
   // ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
   const COPPER_BORDER = "border-[#8b5a2b]/60";
@@ -84,6 +91,7 @@ export default function PartsRequestsPage(): JSX.Element {
     "inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-60";
   const BTN_GHOST = `${BTN_BASE} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
   const BTN_COPPER = `${BTN_BASE} ${COPPER_BORDER} ${COPPER_TEXT} bg-neutral-950/20 ${COPPER_HOVER_BG}`;
+  const BTN_DANGER = `${BTN_BASE} border-red-500/30 bg-red-950/25 text-red-200 hover:bg-red-950/40`;
 
   const PILL_BASE =
     "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold";
@@ -178,7 +186,10 @@ export default function PartsRequestsPage(): JSX.Element {
 
       if (itemsErr) {
         // eslint-disable-next-line no-console
-        console.error("[parts/requests] load part_request_items failed:", itemsErr);
+        console.error(
+          "[parts/requests] load part_request_items failed:",
+          itemsErr,
+        );
       } else {
         (items ?? []).forEach((it) => {
           const row = it as Pick<
@@ -262,7 +273,10 @@ export default function PartsRequestsPage(): JSX.Element {
       const createdAt = r.created_at ? String(r.created_at) : null;
       if (createdAt) {
         if (!byWo[workOrderId].latestAt) byWo[workOrderId].latestAt = createdAt;
-        else if (new Date(createdAt).getTime() > new Date(byWo[workOrderId].latestAt!).getTime()) {
+        else if (
+          new Date(createdAt).getTime() >
+          new Date(byWo[workOrderId].latestAt!).getTime()
+        ) {
           byWo[workOrderId].latestAt = createdAt;
         }
       }
@@ -277,7 +291,9 @@ export default function PartsRequestsPage(): JSX.Element {
       b.completionPct = Math.max(0, Math.min(100, pct));
 
       const reqIdsBlob = b.requests.map((r) => r.id).join(" ");
-      const descBlob = b.requests.flatMap((r) => descByRequest[r.id] ?? []).join(" ");
+      const descBlob = b.requests
+        .flatMap((r) => descByRequest[r.id] ?? [])
+        .join(" ");
       const woBlob = `${b.customId ?? ""} ${b.workOrderId}`;
       b.searchBlob = `${woBlob} ${reqIdsBlob} ${descBlob}`.toLowerCase();
     });
@@ -290,6 +306,70 @@ export default function PartsRequestsPage(): JSX.Element {
 
     setBuckets(list);
     setLoading(false);
+  };
+
+  const deleteBucket = async (b: WoBucket): Promise<void> => {
+    const woLabel =
+      b.customId ||
+      (looksLikeUuid(b.workOrderId)
+        ? `#${b.workOrderId.slice(0, 8)}`
+        : b.workOrderId);
+
+    const requestIds = b.requests
+      .map((r) => r.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+    if (requestIds.length === 0) {
+      toast.error("Nothing to delete for this work order");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Delete ${requestIds.length} parts request${
+        requestIds.length === 1 ? "" : "s"
+      } for Work Order ${woLabel}?\n\nThis will delete the requests and their line items.`,
+    );
+    if (!ok) return;
+
+    setDeletingWoId(b.workOrderId);
+    const t = toast.loading("Deleting requests…");
+
+    try {
+      // 1) delete request items first (FK safe)
+      const { error: itemsErr } = await supabase
+        .from("part_request_items")
+        .delete()
+        .in("request_id", requestIds);
+
+      if (itemsErr) {
+        // eslint-disable-next-line no-console
+        console.error("[parts/requests] delete items failed:", itemsErr);
+        toast.error("Failed to delete request items", { id: t });
+        return;
+      }
+
+      // 2) delete requests
+      const { error: reqErr } = await supabase
+        .from("part_requests")
+        .delete()
+        .in("id", requestIds);
+
+      if (reqErr) {
+        // eslint-disable-next-line no-console
+        console.error("[parts/requests] delete requests failed:", reqErr);
+        toast.error("Failed to delete requests", { id: t });
+        return;
+      }
+
+      toast.success("Deleted", { id: t });
+      await reload();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[parts/requests] deleteBucket exception:", e);
+      toast.error("Delete failed", { id: t });
+    } finally {
+      setDeletingWoId(null);
+    }
   };
 
   useEffect(() => {
@@ -332,7 +412,8 @@ export default function PartsRequestsPage(): JSX.Element {
             Requests
           </h1>
           <p className="mt-1 text-sm text-neutral-400">
-            One card per Work Order. Completion % is based on items with part + qty + price.
+            One card per Work Order. Completion % is based on items with part + qty
+            + price.
           </p>
         </div>
 
@@ -349,7 +430,7 @@ export default function PartsRequestsPage(): JSX.Element {
       <div className={`${CARD_PAD} mb-4 space-y-3`}>
         <div className="grid gap-3 md:grid-cols-12 md:items-center">
           <div className="md:col-span-5">
-            <div className="text-xs text-neutral-400 mb-1">
+            <div className="mb-1 text-xs text-neutral-400">
               Search (WO#, request id, part description)
             </div>
             <input
@@ -361,14 +442,12 @@ export default function PartsRequestsPage(): JSX.Element {
           </div>
 
           <div className="md:col-span-4">
-            <div className="text-xs text-neutral-400 mb-1">Status</div>
+            <div className="mb-1 text-xs text-neutral-400">Status</div>
             <select
               className={SELECT}
               value={statusFilter}
               onChange={(e) =>
-                setStatusFilter(
-                  (e.target.value as typeof statusFilter) ?? "all",
-                )
+                setStatusFilter((e.target.value as typeof statusFilter) ?? "all")
               }
             >
               <option value="all">All</option>
@@ -380,7 +459,7 @@ export default function PartsRequestsPage(): JSX.Element {
           </div>
 
           <div className="md:col-span-3">
-            <div className="text-xs text-neutral-400 mb-1">Showing</div>
+            <div className="mb-1 text-xs text-neutral-400">Showing</div>
             <div className="rounded-lg border border-white/10 bg-neutral-950/20 px-3 py-2 text-sm text-neutral-200">
               <span className="font-semibold text-white">{filtered.length}</span>{" "}
               work order{filtered.length === 1 ? "" : "s"}
@@ -410,6 +489,8 @@ export default function PartsRequestsPage(): JSX.Element {
             const href = `/parts/requests/${encodeURIComponent(
               b.customId || b.workOrderId,
             )}`;
+
+            const isDeleting = deletingWoId === b.workOrderId;
 
             return (
               <div key={b.workOrderId} className={`${CARD_PAD}`}>
@@ -448,7 +529,17 @@ export default function PartsRequestsPage(): JSX.Element {
                   </div>
                 </div>
 
-                <div className="mt-4 flex justify-end">
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    className={BTN_DANGER}
+                    onClick={() => void deleteBucket(b)}
+                    disabled={isDeleting}
+                    title="Delete all requests under this work order"
+                  >
+                    {isDeleting ? "Deleting…" : "Delete"}
+                  </button>
+
                   <Link href={href} className={BTN_COPPER}>
                     Open requests →
                   </Link>
