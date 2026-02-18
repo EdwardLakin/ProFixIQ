@@ -2773,14 +2773,21 @@ const wakeTimeoutRef = useRef<number | null>(null);
         <div className="mt-2">
           <InspectionSignaturePanel
             inspectionId={inspectionId}
-            role="customer"
+            role="technician"
+            // Prefer tech name (if you have it in session); otherwise the panel can auto-fill from /api/profile
             defaultName={
-              [customer.first_name, customer.last_name].filter(Boolean).join(" ") ||
-              undefined
-            }
-            onSigned={handleSigned}
-          />
-        </div>
+          (() => {
+            const techName =
+            typeof (session as unknown as { technicianName?: unknown }).technicianName === "string"
+            ? (session as unknown as { technicianName: string }).technicianName
+            : "";
+        return techName.trim().length ? techName.trim() : undefined;
+      })()
+    }
+    techSettingsHref="/settings/tech"
+    onSigned={handleSigned}
+  />
+</div>
 
         {!isEmbed && (
           <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
