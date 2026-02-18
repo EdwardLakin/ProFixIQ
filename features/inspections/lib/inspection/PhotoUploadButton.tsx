@@ -1,4 +1,7 @@
-// features/inspections/lib/inspection/PhotoUploadButton.tsx ✅ FULL FILE REPLACEMENT (NO any)
+// /features/inspections/lib/inspection/PhotoUploadButton.tsx ✅ FULL FILE REPLACEMENT (NO any)
+// Fixes Vercel build: makes inspectionId optional (callers may omit it)
+// Upload is blocked until inspectionId is present.
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -8,7 +11,15 @@ import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 type PhotoUploadButtonProps = {
   photoUrls: string[];
   onChange: (urls: string[]) => void;
-  inspectionId: string;
+
+  /**
+   * ✅ Optional so older callers (InspectionMenuClient / InspectionItemCard)
+   * don't hard-fail TypeScript builds.
+   *
+   * Upload is disabled if missing.
+   */
+  inspectionId?: string;
+
   itemName?: string | null;
 };
 
@@ -33,11 +44,21 @@ export default function PhotoUploadButton({
     setUrls(photoUrls ?? []);
   }, [photoUrls]);
 
+  const canUpload =
+    typeof inspectionId === "string" && inspectionId.trim().length > 0;
+
   async function uploadOne(file: File): Promise<string | null> {
+    if (!canUpload) {
+      toast.error("Missing inspectionId — photo upload is disabled.");
+      return null;
+    }
+
     const fd = new FormData();
-    fd.set("inspectionId", inspectionId);
+    fd.set("inspectionId", inspectionId!.trim());
+
     const safeItem = getString(itemName);
     if (safeItem) fd.set("itemName", safeItem);
+
     fd.set("file", file);
 
     const res = await fetch("/api/inspections/photos/upload", {
@@ -55,15 +76,19 @@ export default function PhotoUploadButton({
       throw new Error(msg);
     }
 
-    const url =
-      isRecord(json) && typeof json.url === "string" ? json.url : null;
-
+    const url = isRecord(json) && typeof json.url === "string" ? json.url : null;
     return url;
   }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
+
+    if (!canUpload) {
+      toast.error("This screen didn't provide an inspectionId yet.");
+      e.target.value = "";
+      return;
+    }
 
     setUploading(true);
     try {
@@ -81,7 +106,7 @@ export default function PhotoUploadButton({
       toast.success(
         `Uploaded ${uploaded.length} photo${uploaded.length === 1 ? "" : "s"}`,
       );
-    } catch (err) {
+    } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Photo upload failed";
       toast.error(msg);
     } finally {
@@ -104,11 +129,7 @@ export default function PhotoUploadButton({
 
       <div className="flex flex-wrap">
         {urls.map((url, i) => (
-          <PhotoThumbnail
-            key={url + i}
-            url={url}
-            onRemove={() => handleRemove(i)}
-          />
+          <PhotoThumbnail key={url + i} url={url} onRemove={() => handleRemove(i)} />
         ))}
       </div>
 
@@ -117,11 +138,17 @@ export default function PhotoUploadButton({
         multiple
         accept="image/*"
         onChange={handleFileChange}
-        disabled={uploading || !inspectionId}
+        disabled={uploading || !canUpload}
         className="mt-2 block text-sm text-gray-300 file:rounded-full file:border-0
         file:bg-orange-700 file:text-sm file:font-semibold file:text-white
         hover:file:bg-orange-600 disabled:opacity-60"
       />
+
+      {!canUpload && (
+        <div className="mt-1 text-[11px] text-amber-200/80">
+          Photo upload disabled (missing inspectionId).
+        </div>
+      )}
     </div>
   );
 }

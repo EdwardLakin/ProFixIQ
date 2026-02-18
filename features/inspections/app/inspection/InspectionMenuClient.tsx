@@ -1,4 +1,5 @@
-// /features/inspections/lib/inspection/InspectionItemCard.tsx
+// /features/inspections/lib/inspection/InspecionMenuClient.tsx 
+
 "use client";
 
 import type React from "react";
@@ -16,6 +17,7 @@ interface InspectionItemCardProps {
   itemIndex: number;
   showNotes: boolean;
   showPhotos: boolean;
+
   onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
   onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
   onUpdateStatus: (
@@ -23,23 +25,29 @@ interface InspectionItemCardProps {
     itemIndex: number,
     status: InspectionItemStatus,
   ) => void;
+
   onUpdateValue?: (
     sectionIndex: number,
     itemIndex: number,
     value: string,
   ) => void;
-  onUpdateUnit?: (sectionIndex: number, itemIndex: number, unit: string) => void;
+  onUpdateUnit?: (
+    sectionIndex: number,
+    itemIndex: number,
+    unit: string,
+  ) => void;
 
   /** UI only: render as compact row */
   variant?: "card" | "row";
+
+  /**
+   * Optional: if the parent has it, pass it down so uploads work here too.
+   * Not required for build (we guard rendering when missing).
+   */
+  inspectionId?: string;
 }
 
-/**
- * NOTE: Accept `any` at the export boundary to avoid Next.js
- * “props must be serializable” warnings for Client Components that receive
- * function props. We cast to `InspectionItemCardProps` immediately for safety.
- */
-export default function InspectionItemCard(_props: any) {
+export default function InspectionItemCard(props: InspectionItemCardProps) {
   const {
     item,
     sectionIndex,
@@ -52,9 +60,10 @@ export default function InspectionItemCard(_props: any) {
     onUpdateValue,
     onUpdateUnit,
     variant = "card",
-  } = _props as InspectionItemCardProps;
+    inspectionId,
+  } = props;
 
-  const name = (item.item ?? item.name ?? "").toLowerCase();
+  const name = String(item.item ?? item.name ?? "").toLowerCase();
 
   // Measurement items: show numeric value + unit inputs.
   // NOTE: include "hours" + "labor" to bring labor-hours box back where applicable.
@@ -73,6 +82,30 @@ export default function InspectionItemCard(_props: any) {
     : isRec
       ? "shadow-[0_0_0_1px_rgba(245,158,11,0.15)]"
       : "";
+
+  const itemLabel = String(item.item ?? item.name ?? "").trim() || "Item";
+
+  const canUpload = typeof inspectionId === "string" && inspectionId.length > 0;
+
+  const UploadControl = (
+    <div className="flex items-center gap-2">
+      {canUpload ? (
+        <PhotoUploadButton
+          inspectionId={inspectionId}
+          itemName={itemLabel}
+          photoUrls={item.photoUrls ?? []}
+          onChange={(urls: string[]) => {
+            const newUrl = urls[urls.length - 1];
+            if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
+          }}
+        />
+      ) : (
+        <div className="text-[11px] text-neutral-500">
+          Save/start inspection to enable photo uploads
+        </div>
+      )}
+    </div>
+  );
 
   if (variant === "row") {
     return (
@@ -159,13 +192,7 @@ export default function InspectionItemCard(_props: any) {
                 <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                   Photos
                 </div>
-                <PhotoUploadButton
-                  photoUrls={item.photoUrls ?? []}
-                  onChange={(urls: string[]) => {
-                    const newUrl = urls[urls.length - 1];
-                    if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
-                  }}
-                />
+                {UploadControl}
               </div>
 
               {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
@@ -182,7 +209,7 @@ export default function InspectionItemCard(_props: any) {
     );
   }
 
-  // Card variant (kept as-is)
+  // Card variant
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">
@@ -258,13 +285,7 @@ export default function InspectionItemCard(_props: any) {
               <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                 Photos
               </div>
-              <PhotoUploadButton
-                photoUrls={item.photoUrls ?? []}
-                onChange={(urls: string[]) => {
-                  const newUrl = urls[urls.length - 1];
-                  if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
-                }}
-              />
+              {UploadControl}
             </div>
 
             {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
