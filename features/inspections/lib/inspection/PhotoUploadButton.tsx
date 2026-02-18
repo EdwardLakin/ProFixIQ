@@ -1,33 +1,93 @@
-// features/inspections/lib/inspection/PhotoUploadButton.tsx
+// features/inspections/lib/inspection/PhotoUploadButton.tsx ✅ FULL FILE REPLACEMENT (NO any)
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 
-// NOTE: Using `any` on the exported component props avoids Next's TS(71007)
-// "Props must be serializable" check for function props starting with `on*`.
-// We immediately cast inside for full type safety.
-export default function PhotoUploadButton(props: any) {
-  const { photoUrls, onChange } = props as {
-    photoUrls: string[];
-    onChange: (urls: string[]) => void;
-  };
+type PhotoUploadButtonProps = {
+  photoUrls: string[];
+  onChange: (urls: string[]) => void;
+  inspectionId: string;
+  itemName?: string | null;
+};
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function getString(v: unknown): string | null {
+  return typeof v === "string" && v.trim().length ? v.trim() : null;
+}
+
+export default function PhotoUploadButton({
+  photoUrls,
+  onChange,
+  inspectionId,
+  itemName,
+}: PhotoUploadButtonProps) {
   const [urls, setUrls] = useState<string[]>(photoUrls ?? []);
+  const [uploading, setUploading] = useState(false);
 
-  // 🔄 keep local state in sync if parent changes photoUrls (e.g. rehydrate)
   useEffect(() => {
     setUrls(photoUrls ?? []);
   }, [photoUrls]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  async function uploadOne(file: File): Promise<string | null> {
+    const fd = new FormData();
+    fd.set("inspectionId", inspectionId);
+    const safeItem = getString(itemName);
+    if (safeItem) fd.set("itemName", safeItem);
+    fd.set("file", file);
+
+    const res = await fetch("/api/inspections/photos/upload", {
+      method: "POST",
+      body: fd,
+    });
+
+    const json = (await res.json().catch(() => null)) as unknown;
+
+    if (!res.ok) {
+      const msg =
+        isRecord(json) && typeof json.error === "string"
+          ? json.error
+          : "Upload failed";
+      throw new Error(msg);
+    }
+
+    const url =
+      isRecord(json) && typeof json.url === "string" ? json.url : null;
+
+    return url;
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
 
-    const newUrls = files.map((f) => URL.createObjectURL(f)); // swap with real upload later
-    const updated = [...urls, ...newUrls];
-    setUrls(updated);
-    onChange(updated);
+    setUploading(true);
+    try {
+      const uploaded: string[] = [];
+
+      for (const f of files) {
+        const url = await uploadOne(f);
+        if (url) uploaded.push(url);
+      }
+
+      const updated = [...urls, ...uploaded];
+      setUrls(updated);
+      onChange(updated);
+
+      toast.success(
+        `Uploaded ${uploaded.length} photo${uploaded.length === 1 ? "" : "s"}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Photo upload failed";
+      toast.error(msg);
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
   };
 
   const handleRemove = (index: number) => {
@@ -57,9 +117,10 @@ export default function PhotoUploadButton(props: any) {
         multiple
         accept="image/*"
         onChange={handleFileChange}
+        disabled={uploading || !inspectionId}
         className="mt-2 block text-sm text-gray-300 file:rounded-full file:border-0
         file:bg-orange-700 file:text-sm file:font-semibold file:text-white
-        hover:file:bg-orange-600"
+        hover:file:bg-orange-600 disabled:opacity-60"
       />
     </div>
   );

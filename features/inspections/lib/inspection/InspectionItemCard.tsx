@@ -1,12 +1,9 @@
-// /features/inspections/lib/inspection/InspectionItemCard.tsx
+/// features/inspections/lib/inspection/InspectionItemCard.tsx ✅ FULL FILE REPLACEMENT (NO any)
 "use client";
 
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import type {
-  InspectionItem,
-  InspectionItemStatus,
-} from "@inspections/lib/inspection/types";
+import type { InspectionItem, InspectionItemStatus } from "@inspections/lib/inspection/types";
 import StatusButtons from "./StatusButtons";
 import PhotoUploadButton from "./PhotoUploadButton";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
@@ -17,6 +14,10 @@ interface InspectionItemCardProps {
   itemIndex: number;
   showNotes: boolean;
   showPhotos: boolean;
+
+  /** ✅ required for uploading photos */
+  inspectionId: string;
+
   onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
   onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
   onUpdateStatus: (
@@ -24,11 +25,7 @@ interface InspectionItemCardProps {
     itemIndex: number,
     status: InspectionItemStatus,
   ) => void;
-  onUpdateValue?: (
-    sectionIndex: number,
-    itemIndex: number,
-    value: string,
-  ) => void;
+  onUpdateValue?: (sectionIndex: number, itemIndex: number, value: string) => void;
   onUpdateUnit?: (sectionIndex: number, itemIndex: number, unit: string) => void;
 
   /** UI only: render as compact row */
@@ -44,9 +41,7 @@ function getItemLabel(raw: InspectionItem): string {
     title?: unknown;
   };
 
-  return String(
-    it.item ?? it.name ?? it.label ?? it.description ?? it.title ?? "",
-  ).trim();
+  return String(it.item ?? it.name ?? it.label ?? it.description ?? it.title ?? "").trim();
 }
 
 /** ✅ unify legacy note vs notes */
@@ -67,6 +62,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     itemIndex,
     showNotes,
     showPhotos,
+    inspectionId,
     onUpdateNote,
     onUpload,
     onUpdateStatus,
@@ -114,10 +110,8 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
 
     compute();
 
-    // keep it correct on orientation changes / resizes (iPad)
     const onResize = () => compute();
     window.addEventListener("resize", onResize);
-
     return () => window.removeEventListener("resize", onResize);
   }, [label]);
 
@@ -138,28 +132,16 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     clearHold();
   };
 
-  const onMouseEnter = () => {
-    // desktop hover
-    openTip();
-  };
-
-  const onMouseLeave = () => {
-    closeTip();
-  };
+  const onMouseEnter = () => openTip();
+  const onMouseLeave = () => closeTip();
 
   const onTouchStart = () => {
-    // iPad “long press” (~450ms)
     if (!tipEnabled) return;
     clearHold();
-    holdTimerRef.current = window.setTimeout(() => {
-      setShowTip(true);
-    }, 450);
+    holdTimerRef.current = window.setTimeout(() => setShowTip(true), 450);
   };
 
-  const onTouchEnd = () => {
-    // release closes
-    closeTip();
-  };
+  const onTouchEnd = () => closeTip();
 
   if (variant === "row") {
     return (
@@ -224,11 +206,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 item={item}
                 sectionIndex={sectionIndex}
                 itemIndex={itemIndex}
-                updateItem={(
-                  secIdx: number,
-                  itmIdx: number,
-                  updates: Partial<InspectionItem>,
-                ) => {
+                updateItem={(secIdx: number, itmIdx: number, updates: Partial<InspectionItem>) => {
                   if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
                 }}
                 onStatusChange={(s: InspectionItemStatus) =>
@@ -266,7 +244,10 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                   Photos
                 </div>
+
                 <PhotoUploadButton
+                  inspectionId={inspectionId}
+                  itemName={label || null}
                   photoUrls={item.photoUrls ?? []}
                   onChange={(urls: string[]) => {
                     const newUrl = urls[urls.length - 1];
@@ -289,7 +270,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     );
   }
 
-  // Card variant (unchanged except notes unification)
+  // Card variant
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">
@@ -325,11 +306,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
               item={item}
               sectionIndex={sectionIndex}
               itemIndex={itemIndex}
-              updateItem={(
-                secIdx: number,
-                itmIdx: number,
-                updates: Partial<InspectionItem>,
-              ) => {
+              updateItem={(secIdx: number, itmIdx: number, updates: Partial<InspectionItem>) => {
                 if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
               }}
               onStatusChange={(s: InspectionItemStatus) =>
@@ -366,6 +343,8 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 Photos
               </div>
               <PhotoUploadButton
+                inspectionId={inspectionId}
+                itemName={label || null}
                 photoUrls={item.photoUrls ?? []}
                 onChange={(urls: string[]) => {
                   const newUrl = urls[urls.length - 1];

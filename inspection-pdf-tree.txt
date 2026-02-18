@@ -1,0 +1,1284 @@
+# === INSPECTION PDF FLOW SNAPSHOT ===
+# Generated on: $(date)
+# Repo: ProFixIQ
+
+
+===============================
+FILE: app/api/inspections/complete/route.ts
+===============================
+│ // app/api/inspections/complete/route.ts ✅ FULL FILE REPLACEMENT (NO any)
+│ import "server-only";
+│ 
+│ export const runtime = "nodejs";
+│ 
+│ import { NextResponse, type NextRequest } from "next/server";
+│ import { cookies } from "next/headers";
+│ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+│ import type { Database, TablesInsert } from "@shared/types/types/supabase";
+│ 
+│ import type { InspectionItem } from "@/features/inspections/lib/inspection/types";
+│ import { generateQuoteFromInspection } from "@quotes/lib/quote/generateQuoteFromInspection";
+│ import { normalizeQuoteLine } from "@quotes/lib/quote/normalizeQuoteLine";
+│ 
+│ type DB = Database;
+│ type QuoteLinesInsert = TablesInsert<"quote_lines">;
+│ 
+│ /* ----------------------------- Type guards ----------------------------- */
+│ function isRecord(v: unknown): v is Record<string, unknown> {
+│   return typeof v === "object" && v !== null;
+│ }
+│ 
+│ function isInspectionItem(value: unknown): value is InspectionItem {
+│   // lightweight structural check — your InspectionItem is very flexible
+│   return isRecord(value);
+│ }
+│ 
+│ function isInspectionItemArray(value: unknown): value is InspectionItem[] {
+│   return Array.isArray(value) && value.every(isInspectionItem);
+│ }
+│ 
+│ /* -------------------------------- Types -------------------------------- */
+│ type CompleteRequest = {
+│   workOrderId: string;
+│   workOrderLineId: string;
+│   results: InspectionItem[];
+│   templateName?: string | null;
+│ };
+│ 
+│ /* --------------------------------- Route -------------------------------- */
+│ export async function POST(req: NextRequest) {
+│   const supabase = createRouteHandlerClient<DB>({ cookies });
+│ 
+│   try {
+│     // 1) Parse & validate
+│     const body = (await req.json().catch(() => null)) as unknown;
+│ 
+│     if (!isRecord(body)) {
+│       return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+│     }
+│ 
+│     const workOrderId = String(body.workOrderId ?? "").trim();
+│     const workOrderLineId = String(body.workOrderLineId ?? "").trim();
+│     const results = (body as Partial<CompleteRequest>).results;
+│ 
+│     if (!workOrderId || !workOrderLineId) {
+│       return NextResponse.json(
+│         { error: "Missing workOrderId or workOrderLineId." },
+│         { status: 400 },
+│       );
+│     }
+│ 
+│     if (!isInspectionItemArray(results)) {
+│       return NextResponse.json(
+│         { error: "results must be an array of InspectionItem." },
+│         { status: 400 },
+│       );
+│     }
+│ 
+│     // current user (for quote_lines.user_id)
+│     const {
+│       data: { user },
+│       error: userErr,
+│     } = await supabase.auth.getUser();
+│ 
+│     if (userErr) {
+│       return NextResponse.json({ error: userErr.message }, { status: 500 });
+│     }
+│ 
+│     const userId = user?.id ?? null;
+│ 
+│     // 2) Verify the WO line exists
+│     const { data: line, error: lineErr } = await supabase
+│       .from("work_order_lines")
+│       .select("id, work_order_id")
+│       .eq("id", workOrderLineId)
+│       .maybeSingle();
+│ 
+│     if (lineErr) {
+│       return NextResponse.json(
+│         { error: `Failed to load work order line: ${lineErr.message}` },
+│         { status: 500 },
+│       );
+│     }
+│     if (!line) {
+│       return NextResponse.json({ error: "Work order line not found." }, { status: 404 });
+│     }
+│ 
+│     // Optional safety: ensure line belongs to the same WO passed
+│     if (typeof line.work_order_id === "string" && line.work_order_id !== workOrderId) {
+│       return NextResponse.json(
+│         { error: "workOrderId does not match the line's work_order_id." },
+│         { status: 400 },
+│       );
+│     }
+│ 
+│     // 3) Generate AI summary and quote lines from inspection results
+│     const { summary, quote } = await generateQuoteFromInspection(results);
+│     const normalized = await Promise.all(quote.map((q) => normalizeQuoteLine(q)));
+│ 
+│     // 4) Insert quote_lines (match your schema exactly)
+│     const nowIso = new Date().toISOString();
+│ 
+│     const quoteRows: QuoteLinesInsert[] = normalized.map((n): QuoteLinesInsert => ({
+│       work_order_id: workOrderId,
+│ 
+│       // text columns used by your UI
+│       description: n.description,
+│       item: n.item ?? n.name ?? n.description,
+│       name: n.name ?? n.description,
+│       title: n.description,
+│ 
+│       // pricing / labor
+│       quantity: 1,
+│       labor_time: typeof n.laborHours === "number" ? n.laborHours : null,
+│       price: typeof n.price === "number" ? n.price : null,
+│       total: typeof n.price === "number" ? n.price : null,
+│ 
+│       // parts info
+│       part_name: n.part?.name ?? n.partName ?? null,
+│       part_price:
+│         typeof n.part?.price === "number" ? n.part.price : n.partPrice ?? null,
+│ 
+│       // misc columns
+│       photo_urls: Array.isArray(n.photoUrls) ? n.photoUrls : null,
+│       status: "draft",
+│       user_id: userId,
+│       updated_at: nowIso,
+│     }));
+│ 
+│     if (quoteRows.length > 0) {
+│       const { error: insErr } = await supabase.from("quote_lines").insert(quoteRows);
+│       if (insErr) {
+│         return NextResponse.json(
+│           { error: `Failed to insert quote lines: ${insErr.message}` },
+│           { status: 500 },
+│         );
+│       }
+│     }
+│ 
+│     // 5) Mark the inspection line complete & store AI summary in correction
+│     // ⚠️ DO NOT write columns that don't exist (e.g. completed_by)
+│     const updatePayload: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
+│       status: "completed",
+│       correction: summary ?? null,
+│       updated_at: nowIso,
+│       punched_out_at: nowIso,
+│     };
+│ 
+│     const { error: updErr } = await supabase
+│       .from("work_order_lines")
+│       .update(updatePayload)
+│       .eq("id", workOrderLineId);
+│ 
+│     if (updErr) {
+│       return NextResponse.json(
+│         { error: `Failed to update work order line: ${updErr.message}` },
+│         { status: 500 },
+│       );
+│     }
+│ 
+│     // 6) Done
+│     return NextResponse.json({
+│       ok: true,
+│       workOrderId,
+│       workOrderLineId,
+│       summary,
+│       inserted: quoteRows.length,
+│     });
+│   } catch (err) {
+│     const message =
+│       err instanceof Error ? err.message : "Unexpected error handling inspection completion.";
+│     return NextResponse.json({ error: message }, { status: 500 });
+│   }
+│ }
+
+===============================
+FILE: app/api/inspections/photos/upload/route.ts
+===============================
+│ import "server-only";
+│ 
+│ export const runtime = "nodejs";
+│ 
+│ import { NextResponse, type NextRequest } from "next/server";
+│ import { cookies } from "next/headers";
+│ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+│ import type { Database } from "@shared/types/types/supabase";
+│ import crypto from "crypto";
+│ 
+│ type DB = Database;
+│ 
+│ function asString(v: FormDataEntryValue | null): string | null {
+│   if (typeof v !== "string") return null;
+│   const t = v.trim();
+│   return t.length ? t : null;
+│ }
+│ 
+│ function safeFilePart(x: string): string {
+│   return x.replace(/[^a-zA-Z0-9._-]/g, "_");
+│ }
+│ 
+│ function extFromMime(mime: string | null): "jpg" | "png" {
+│   const m = (mime ?? "").toLowerCase();
+│   if (m.includes("png")) return "png";
+│   return "jpg";
+│ }
+│ 
+│ export async function POST(req: NextRequest) {
+│   const supabase = createRouteHandlerClient<DB>({ cookies });
+│ 
+│   // auth
+│   const {
+│     data: { user },
+│     error: userErr,
+│   } = await supabase.auth.getUser();
+│ 
+│   if (userErr || !user) {
+│     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+│   }
+│ 
+│   // parse multipart
+│   const form = await req.formData().catch(() => null);
+│   if (!form) {
+│     return NextResponse.json({ error: "Expected multipart/form-data" }, { status: 400 });
+│   }
+│ 
+│   const inspectionId = asString(form.get("inspectionId"));
+│   const itemName = asString(form.get("itemName"));
+│   const notes = asString(form.get("notes"));
+│   const file = form.get("file");
+│ 
+│   if (!inspectionId) {
+│     return NextResponse.json({ error: "Missing inspectionId" }, { status: 400 });
+│   }
+│   if (!(file instanceof File)) {
+│     return NextResponse.json({ error: "Missing file" }, { status: 400 });
+│   }
+│ 
+│   // resolve shop_id for policy + path
+│   const { data: insp, error: inspErr } = await supabase
+│     .from("inspections")
+│     .select("id, shop_id")
+│     .eq("id", inspectionId)
+│     .maybeSingle<{ id: string; shop_id: string | null }>();
+│ 
+│   if (inspErr) {
+│     // eslint-disable-next-line no-console
+│     console.error("[inspections/photos/upload] inspections lookup failed", inspErr);
+│     return NextResponse.json({ error: "Failed to load inspection" }, { status: 500 });
+│   }
+│ 
+│   const shopId = insp?.shop_id ?? null;
+│   if (!shopId) {
+│     return NextResponse.json({ error: "Inspection missing shop_id" }, { status: 400 });
+│   }
+│ 
+│   // ensure storage policy that depends on current_shop_id() can evaluate
+│   const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
+│   if (ctxErr) {
+│     // eslint-disable-next-line no-console
+│     console.error("[inspections/photos/upload] set_current_shop_id failed", ctxErr);
+│     return NextResponse.json({ error: "Failed to set shop context" }, { status: 500 });
+│   }
+│ 
+│   // build storage path
+│   const bucket = "inspection_photos";
+│   const shopPart = safeFilePart(shopId);
+│   const inspPart = safeFilePart(inspectionId);
+│   const idPart = crypto.randomUUID();
+│   const ext = extFromMime(file.type);
+│ 
+│   const path = `shops/${shopPart}/inspections/${inspPart}/${idPart}.${ext}`;
+│ 
+│   const bytes = Buffer.from(await file.arrayBuffer());
+│ 
+│   const { error: upErr } = await supabase.storage
+│     .from(bucket)
+│     .upload(path, bytes, { contentType: file.type || (ext === "png" ? "image/png" : "image/jpeg"), upsert: false });
+│ 
+│   if (upErr) {
+│     // eslint-disable-next-line no-console
+│     console.error("[inspections/photos/upload] storage upload failed", upErr);
+│     return NextResponse.json({ error: upErr.message }, { status: 500 });
+│   }
+│ 
+│   // signed url for UI/PDF (30 days)
+│   const { data: signed, error: signErr } = await supabase.storage
+│     .from(bucket)
+│     .createSignedUrl(path, 60 * 60 * 24 * 30);
+│ 
+│   if (signErr || !signed?.signedUrl) {
+│     // eslint-disable-next-line no-console
+│     console.warn("[inspections/photos/upload] createSignedUrl failed", signErr);
+│   }
+│ 
+│   const imageUrl = signed?.signedUrl ?? null;
+│ 
+│   // insert row in inspection_photos (you currently only have image_url column)
+│   const { data: row, error: insErr } = await supabase
+│     .from("inspection_photos")
+│     .insert({
+│       inspection_id: inspectionId,
+│       item_name: itemName,
+│       image_url: imageUrl ?? path, // fallback: store path if signed url missing
+│       notes: notes ?? null,
+│       user_id: user.id,
+│     })
+│     .select("id, image_url, item_name")
+│     .single();
+│ 
+│   if (insErr) {
+│     // eslint-disable-next-line no-console
+│     console.error("[inspections/photos/upload] inspection_photos insert failed", insErr);
+│     return NextResponse.json({ error: insErr.message }, { status: 500 });
+│   }
+│ 
+│   return NextResponse.json({
+│     ok: true,
+│     bucket,
+│     path,
+│     inspectionId,
+│     itemName,
+│     url: row?.image_url ?? imageUrl,
+│     photo: row,
+│   });
+│ }
+
+===============================
+FILE: features/inspections/lib/inspection/pdf.ts
+===============================
+│ // features/inspections/lib/inspection/pdf.ts ✅ FULL FILE REPLACEMENT (NO any)
+│ import { PDFDocument, rgb, StandardFonts, type PDFImage } from "pdf-lib";
+│ import type {
+│   InspectionSession,
+│   InspectionItem,
+│   InspectionItemStatus,
+│   InspectionSection,
+│ } from "./types";
+│ 
+│ function safeStr(v: unknown): string {
+│   return typeof v === "string" ? v : v == null ? "" : String(v);
+│ }
+│ 
+│ function wrapText(text: string, maxChars: number): string[] {
+│   const t = safeStr(text).trim();
+│   if (!t) return ["—"];
+│   const words = t.split(/\s+/);
+│   const lines: string[] = [];
+│   let cur = "";
+│ 
+│   for (const w of words) {
+│     if (!cur) {
+│       cur = w;
+│       continue;
+│     }
+│     if ((cur + " " + w).length <= maxChars) cur = cur + " " + w;
+│     else {
+│       lines.push(cur);
+│       cur = w;
+│     }
+│   }
+│   if (cur) lines.push(cur);
+│   return lines.length ? lines : ["—"];
+│ }
+│ 
+│ function statusLabel(s: InspectionItemStatus | undefined): string {
+│   if (!s) return "—";
+│   return s.toUpperCase();
+│ }
+│ 
+│ function getItemLabel(it: InspectionItem): string {
+│   return safeStr(it.item ?? it.name).trim() || "Item";
+│ }
+│ 
+│ function isStringArray(v: unknown): v is string[] {
+│   return Array.isArray(v) && v.every((x) => typeof x === "string");
+│ }
+│ 
+│ async function tryEmbedImage(pdfDoc: PDFDocument, url: string): Promise<PDFImage> {
+│   // Node runtime supports fetch in Next (nodejs runtime).
+│   const res = await fetch(url);
+│   if (!res.ok) throw new Error(`fetch ${res.status}`);
+│   const buf = new Uint8Array(await res.arrayBuffer());
+│ 
+│   // try jpg then png
+│   try {
+│     return await pdfDoc.embedJpg(buf);
+│   } catch {
+│     return await pdfDoc.embedPng(buf);
+│   }
+│ }
+│ 
+│ export async function generateInspectionPDF(
+│   session: InspectionSession,
+│ ): Promise<Uint8Array> {
+│   const pdfDoc = await PDFDocument.create();
+│ 
+│   const PAGE_W = 595.28; // A4
+│   const PAGE_H = 841.89;
+│ 
+│   const margin = 48;
+│   const fontSize = 11;
+│   const lineHeight = fontSize + 7;
+│ 
+│   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+│   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+│ 
+│   const C_TEXT = rgb(0.05, 0.05, 0.05);
+│   const C_MUTED = rgb(0.35, 0.35, 0.35);
+│   const C_RULE = rgb(0.85, 0.85, 0.85);
+│ 
+│   let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+│   let y = PAGE_H - margin;
+│ 
+│   const newPage = () => {
+│     page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+│     y = PAGE_H - margin;
+│   };
+│ 
+│   const ensureSpace = (needed: number) => {
+│     if (y - needed < margin) newPage();
+│   };
+│ 
+│   const hr = () => {
+│     ensureSpace(16);
+│     page.drawLine({
+│       start: { x: margin, y: y - 6 },
+│       end: { x: PAGE_W - margin, y: y - 6 },
+│       thickness: 1,
+│       color: C_RULE,
+│     });
+│     y -= 16;
+│   };
+│ 
+│   const drawLine = (
+│     text: string,
+│     opts?: { bold?: boolean; color?: ReturnType<typeof rgb> },
+│   ) => {
+│     ensureSpace(lineHeight);
+│     page.drawText(text, {
+│       x: margin,
+│       y,
+│       size: fontSize,
+│       font: opts?.bold ? bold : font,
+│       color: opts?.color ?? C_TEXT,
+│     });
+│     y -= lineHeight;
+│   };
+│ 
+│   const drawWrapped = (label: string, value: unknown, maxChars = 92, indent = "") => {
+│     const v = safeStr(value).trim();
+│     const out = v.length ? v : "—";
+│     const lines = wrapText(out, maxChars);
+│     drawLine(`${indent}${label}: ${lines[0]}`, { color: C_MUTED });
+│     for (const extra of lines.slice(1)) {
+│       drawLine(`${indent}   ${extra}`, { color: C_MUTED });
+│     }
+│   };
+│ 
+│   // ---- Header ---------------------------------------------------------------
+│   drawLine("Inspection Report", { bold: true });
+│   drawLine(`Template: ${safeStr(session.templateName).trim() || "—"}`, {
+│     color: C_MUTED,
+│   });
+│   drawLine(
+│     `Status: ${safeStr(session.status).trim() || "unknown"} • Completed: ${
+│       session.completed ? "Yes" : "No"
+│     }`,
+│     { color: C_MUTED },
+│   );
+│   hr();
+│ 
+│   // ---- Customer Info --------------------------------------------------------
+│   drawLine("Customer", { bold: true });
+│   const firstName = safeStr(session.customer?.first_name).trim();
+│   const lastName = safeStr(session.customer?.last_name).trim();
+│   const fullName =
+│     `${firstName} ${lastName}`.trim() ||
+│     safeStr(session.customer?.name).trim() ||
+│     "—";
+│   drawLine(`Name: ${fullName}`, { color: C_MUTED });
+│   drawLine(`Phone: ${safeStr(session.customer?.phone).trim() || "—"}`, {
+│     color: C_MUTED,
+│   });
+│   drawLine(`Email: ${safeStr(session.customer?.email).trim() || "—"}`, {
+│     color: C_MUTED,
+│   });
+│   hr();
+│ 
+│   // ---- Vehicle Info ---------------------------------------------------------
+│   drawLine("Vehicle", { bold: true });
+│   const year = safeStr(session.vehicle?.year).trim();
+│   const make = safeStr(session.vehicle?.make).trim();
+│   const model = safeStr(session.vehicle?.model).trim();
+│   drawLine(
+│     `Year/Make/Model: ${[year, make, model].filter(Boolean).join(" ") || "—"}`,
+│     { color: C_MUTED },
+│   );
+│   drawLine(`VIN: ${safeStr(session.vehicle?.vin).trim() || "—"}`, { color: C_MUTED });
+│   drawLine(
+│     `License Plate: ${safeStr(session.vehicle?.license_plate).trim() || "—"}`,
+│     { color: C_MUTED },
+│   );
+│   drawLine(`Mileage: ${safeStr(session.vehicle?.mileage).trim() || "—"}`, {
+│     color: C_MUTED,
+│   });
+│   drawLine(`Color: ${safeStr(session.vehicle?.color).trim() || "—"}`, { color: C_MUTED });
+│   hr();
+│ 
+│   // ---- Summary --------------------------------------------------------------
+│   const sections: InspectionSection[] = Array.isArray(session.sections)
+│     ? session.sections
+│     : [];
+│ 
+│   let ok = 0;
+│   let fail = 0;
+│   let rec = 0;
+│   let na = 0;
+│ 
+│   for (const s of sections) {
+│     const items = Array.isArray(s.items) ? s.items : [];
+│     for (const it of items) {
+│       const st = it.status;
+│       if (st === "ok") ok++;
+│       else if (st === "fail") fail++;
+│       else if (st === "recommend") rec++;
+│       else if (st === "na") na++;
+│     }
+│   }
+│ 
+│   drawLine("Summary", { bold: true });
+│   drawLine(`OK: ${ok}   FAIL: ${fail}   RECOMMEND: ${rec}   NA: ${na}`, {
+│     color: C_MUTED,
+│   });
+│ 
+│   const transcript = safeStr(session.transcript).trim();
+│   if (transcript.length) drawWrapped("Transcript", transcript, 92);
+│   hr();
+│ 
+│   // ---- Sections / Items -----------------------------------------------------
+│   for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+│     const section = sections[sIdx];
+│     const title = safeStr(section.title).trim() || `Section ${sIdx + 1}`;
+│ 
+│     drawLine(title, { bold: true });
+│ 
+│     const items = Array.isArray(section.items) ? section.items : [];
+│     if (!items.length) {
+│       drawLine("— No items —", { color: C_MUTED });
+│       drawLine("");
+│       continue;
+│     }
+│ 
+│     for (const it of items) {
+│       const itemName = getItemLabel(it);
+│       const status = it.status;
+│ 
+│       drawLine(`• ${itemName}`, { bold: true });
+│       drawLine(`  Status: ${statusLabel(status)}`, { color: C_MUTED });
+│ 
+│       const value = it.value;
+│       if (value !== undefined && value !== null && safeStr(value).trim().length) {
+│         drawLine(`  Value: ${safeStr(value).trim()}`, { color: C_MUTED });
+│       }
+│ 
+│       const unit = safeStr(it.unit).trim();
+│       if (unit.length) drawLine(`  Unit: ${unit}`, { color: C_MUTED });
+│ 
+│       const notes = safeStr(it.notes ?? it.note).trim();
+│       if (notes.length) drawWrapped("  Notes", notes, 88, "");
+│ 
+│       const recommend = it.recommend;
+│       if (Array.isArray(recommend) && recommend.length > 0) {
+│         drawWrapped("  Recommend", recommend.join(", "), 88, "");
+│       }
+│ 
+│       const photoUrls = it.photoUrls;
+│       if (isStringArray(photoUrls) && photoUrls.length > 0) {
+│         // Embed up to 2 thumbnails if possible; fallback to listing urls.
+│         const toTry = photoUrls.slice(0, 2);
+│         let embeddedAny = false;
+│ 
+│         for (const u of toTry) {
+│           try {
+│             const img = await tryEmbedImage(pdfDoc, u);
+│             const maxW = 160;
+│             const maxH = 120;
+│             const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+│             const w = img.width * scale;
+│             const h = img.height * scale;
+│ 
+│             ensureSpace(h + 22);
+│             page.drawText("  Photo:", { x: margin, y, size: 10, font, color: C_MUTED });
+│             y -= 14;
+│ 
+│             page.drawImage(img, {
+│               x: margin + 18,
+│               y: y - h,
+│               width: w,
+│               height: h,
+│             });
+│             y -= h + 8;
+│             embeddedAny = true;
+│           } catch {
+│             // continue trying next, but don't throw
+│           }
+│         }
+│ 
+│         if (!embeddedAny) {
+│           drawWrapped("  Photos", photoUrls.slice(0, 6).join(", "), 88, "");
+│           if (photoUrls.length > 6) {
+│             drawLine(`  …and ${photoUrls.length - 6} more`, { color: C_MUTED });
+│           }
+│         }
+│       }
+│ 
+│       drawLine("");
+│     }
+│ 
+│     hr();
+│   }
+│ 
+│   return pdfDoc.save();
+│ }
+
+===============================
+FILE: features/inspections/lib/inspection/InspectionItemCard.tsx
+===============================
+│ /// features/inspections/lib/inspection/InspectionItemCard.tsx ✅ FULL FILE REPLACEMENT (NO any)
+│ "use client";
+│ 
+│ import type React from "react";
+│ import { useEffect, useRef, useState } from "react";
+│ import type { InspectionItem, InspectionItemStatus } from "@inspections/lib/inspection/types";
+│ import StatusButtons from "./StatusButtons";
+│ import PhotoUploadButton from "./PhotoUploadButton";
+│ import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
+│ 
+│ interface InspectionItemCardProps {
+│   item: InspectionItem;
+│   sectionIndex: number;
+│   itemIndex: number;
+│   showNotes: boolean;
+│   showPhotos: boolean;
+│ 
+│   /** ✅ required for uploading photos */
+│   inspectionId: string;
+│ 
+│   onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
+│   onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
+│   onUpdateStatus: (
+│     sectionIndex: number,
+│     itemIndex: number,
+│     status: InspectionItemStatus,
+│   ) => void;
+│   onUpdateValue?: (sectionIndex: number, itemIndex: number, value: string) => void;
+│   onUpdateUnit?: (sectionIndex: number, itemIndex: number, unit: string) => void;
+│ 
+│   /** UI only: render as compact row */
+│   variant?: "card" | "row";
+│ }
+│ 
+│ function getItemLabel(raw: InspectionItem): string {
+│   const it = raw as unknown as {
+│     item?: unknown;
+│     name?: unknown;
+│     label?: unknown;
+│     description?: unknown;
+│     title?: unknown;
+│   };
+│ 
+│   return String(it.item ?? it.name ?? it.label ?? it.description ?? it.title ?? "").trim();
+│ }
+│ 
+│ /** ✅ unify legacy note vs notes */
+│ function getNotesValue(raw: InspectionItem): string {
+│   const it = raw as unknown as { notes?: unknown; note?: unknown };
+│   const v = it.notes ?? it.note ?? "";
+│   return typeof v === "string" ? v : String(v ?? "");
+│ }
+│ 
+│ function isTruncated(el: HTMLElement): boolean {
+│   return el.scrollWidth > el.clientWidth + 1;
+│ }
+│ 
+│ export default function InspectionItemCard(props: InspectionItemCardProps) {
+│   const {
+│     item,
+│     sectionIndex,
+│     itemIndex,
+│     showNotes,
+│     showPhotos,
+│     inspectionId,
+│     onUpdateNote,
+│     onUpload,
+│     onUpdateStatus,
+│     onUpdateValue,
+│     onUpdateUnit,
+│     variant = "card",
+│   } = props;
+│ 
+│   const label = getItemLabel(item);
+│   const nameLower = label.toLowerCase();
+│ 
+│   const isMeasurementItem =
+│     nameLower.includes("wheel torque") ||
+│     nameLower.includes("park lining") ||
+│     nameLower.includes("labor hours") ||
+│     nameLower.includes("hours");
+│ 
+│   const status = String(item.status ?? "").toLowerCase();
+│   const isFail = status === "fail";
+│   const isRec = status === "recommend";
+│ 
+│   const rowGlow = isFail
+│     ? "shadow-[0_0_0_1px_rgba(239,68,68,0.15)]"
+│     : isRec
+│       ? "shadow-[0_0_0_1px_rgba(245,158,11,0.15)]"
+│       : "";
+│ 
+│   // ✅ tooltip only when truncated
+│   const labelRef = useRef<HTMLSpanElement | null>(null);
+│   const [showTip, setShowTip] = useState(false);
+│   const [tipEnabled, setTipEnabled] = useState(false);
+│   const holdTimerRef = useRef<number | null>(null);
+│ 
+│   useEffect(() => {
+│     const el = labelRef.current;
+│     if (!el) {
+│       setTipEnabled(false);
+│       return;
+│     }
+│ 
+│     const compute = () => {
+│       const truncated = isTruncated(el);
+│       setTipEnabled(truncated && label.trim().length > 0);
+│     };
+│ 
+│     compute();
+│ 
+│     const onResize = () => compute();
+│     window.addEventListener("resize", onResize);
+│     return () => window.removeEventListener("resize", onResize);
+│   }, [label]);
+│ 
+│   const clearHold = () => {
+│     if (holdTimerRef.current) {
+│       window.clearTimeout(holdTimerRef.current);
+│       holdTimerRef.current = null;
+│     }
+│   };
+│ 
+│   const openTip = () => {
+│     if (!tipEnabled) return;
+│     setShowTip(true);
+│   };
+│ 
+│   const closeTip = () => {
+│     setShowTip(false);
+│     clearHold();
+│   };
+│ 
+│   const onMouseEnter = () => openTip();
+│   const onMouseLeave = () => closeTip();
+│ 
+│   const onTouchStart = () => {
+│     if (!tipEnabled) return;
+│     clearHold();
+│     holdTimerRef.current = window.setTimeout(() => setShowTip(true), 450);
+│   };
+│ 
+│   const onTouchEnd = () => closeTip();
+│ 
+│   if (variant === "row") {
+│     return (
+│       <div className={["grid gap-2", rowGlow].join(" ")}>
+│         <div className="grid items-start gap-2 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-3">
+│           {/* Item */}
+│           <div className="min-w-0">
+│             <div className="relative text-[15px] font-semibold text-white">
+│               <span
+│                 ref={labelRef}
+│                 className="block line-clamp-2 lg:truncate"
+│                 onMouseEnter={onMouseEnter}
+│                 onMouseLeave={onMouseLeave}
+│                 onTouchStart={onTouchStart}
+│                 onTouchEnd={onTouchEnd}
+│                 onTouchCancel={onTouchEnd}
+│               >
+│                 {label || "—"}
+│               </span>
+│ 
+│               {showTip && tipEnabled && (
+│                 <div
+│                   className={[
+│                     "pointer-events-none absolute left-0 top-full z-30 mt-2",
+│                     "max-w-[min(520px,90vw)] rounded-lg border border-white/10",
+│                     "bg-black/85 px-3 py-2 text-[12px] font-normal text-neutral-100 shadow-[0_18px_45px_rgba(0,0,0,0.75)]",
+│                     "backdrop-blur-md",
+│                   ].join(" ")}
+│                 >
+│                   {label}
+│                 </div>
+│               )}
+│             </div>
+│           </div>
+│ 
+│           {/* Checkboxes / Measurement */}
+│           <div className="min-w-0">
+│             {isMeasurementItem ? (
+│               <div className="flex flex-wrap items-center gap-2">
+│                 <input
+│                   type="number"
+│                   inputMode="decimal"
+│                   value={item.value ?? ""}
+│                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+│                     onUpdateValue?.(sectionIndex, itemIndex, e.target.value)
+│                   }
+│                   placeholder="Value"
+│                   className="h-9 w-24 rounded-md border border-white/10 bg-black/50 px-2 py-1 text-[12px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+│                 />
+│                 <input
+│                   type="text"
+│                   value={item.unit ?? ""}
+│                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+│                     onUpdateUnit?.(sectionIndex, itemIndex, e.target.value)
+│                   }
+│                   placeholder="Unit"
+│                   className="h-9 w-20 rounded-md border border-white/10 bg-black/50 px-2 py-1 text-[12px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+│                 />
+│               </div>
+│             ) : (
+│               <StatusButtons
+│                 item={item}
+│                 sectionIndex={sectionIndex}
+│                 itemIndex={itemIndex}
+│                 updateItem={(secIdx: number, itmIdx: number, updates: Partial<InspectionItem>) => {
+│                   if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
+│                 }}
+│                 onStatusChange={(s: InspectionItemStatus) =>
+│                   onUpdateStatus(sectionIndex, itemIndex, s)
+│                 }
+│                 compact
+│                 wrap
+│               />
+│             )}
+│           </div>
+│         </div>
+│ 
+│         {showNotes ? (
+│           <div className="min-w-0">
+│             <textarea
+│               rows={1}
+│               className={[
+│                 "h-9 w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2",
+│                 "text-[12px] text-white outline-none placeholder:text-neutral-500",
+│                 "focus:border-accent focus:ring-2 focus:ring-accent/60",
+│               ].join(" ")}
+│               placeholder="Notes…"
+│               value={getNotesValue(item)}
+│               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+│                 onUpdateNote(sectionIndex, itemIndex, e.target.value)
+│               }
+│             />
+│           </div>
+│         ) : null}
+│ 
+│         {showPhotos && (item.status === "fail" || item.status === "recommend") && (
+│           <div className="mt-1">
+│             <div className="rounded-lg border border-white/10 bg-black/25 p-2.5">
+│               <div className="flex flex-wrap items-center justify-between gap-2">
+│                 <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+│                   Photos
+│                 </div>
+│ 
+│                 <PhotoUploadButton
+│                   inspectionId={inspectionId}
+│                   itemName={label || null}
+│                   photoUrls={item.photoUrls ?? []}
+│                   onChange={(urls: string[]) => {
+│                     const newUrl = urls[urls.length - 1];
+│                     if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
+│                   }}
+│                 />
+│               </div>
+│ 
+│               {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
+│                 <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+│                   {item.photoUrls.map((url, i) => (
+│                     <PhotoThumbnail key={url + i} url={url} />
+│                   ))}
+│                 </div>
+│               )}
+│             </div>
+│           </div>
+│         )}
+│       </div>
+│     );
+│   }
+│ 
+│   // Card variant
+│   return (
+│     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+│       <div className="min-w-0">
+│         <h3 className="truncate text-[15px] font-semibold text-white">
+│           {label || "—"}
+│         </h3>
+│ 
+│         {isMeasurementItem ? (
+│           <div className="mt-2 flex flex-wrap items-center gap-2">
+│             <input
+│               type="number"
+│               inputMode="decimal"
+│               value={item.value ?? ""}
+│               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+│                 onUpdateValue?.(sectionIndex, itemIndex, e.target.value)
+│               }
+│               placeholder="Value"
+│               className="w-24 rounded-md border border-white/10 bg-black/50 px-2 py-1 text-[12px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+│             />
+│             <input
+│               type="text"
+│               value={item.unit ?? ""}
+│               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+│                 onUpdateUnit?.(sectionIndex, itemIndex, e.target.value)
+│               }
+│               placeholder="Unit"
+│               className="w-20 rounded-md border border-white/10 bg-black/50 px-2 py-1 text-[12px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+│             />
+│           </div>
+│         ) : (
+│           <div className="mt-2">
+│             <StatusButtons
+│               item={item}
+│               sectionIndex={sectionIndex}
+│               itemIndex={itemIndex}
+│               updateItem={(secIdx: number, itmIdx: number, updates: Partial<InspectionItem>) => {
+│                 if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
+│               }}
+│               onStatusChange={(s: InspectionItemStatus) =>
+│                 onUpdateStatus(sectionIndex, itemIndex, s)
+│               }
+│             />
+│           </div>
+│         )}
+│       </div>
+│ 
+│       {showNotes && (
+│         <div className="mt-2">
+│           <textarea
+│             className={[
+│               "w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2",
+│               "text-[12px] text-white outline-none placeholder:text-neutral-500",
+│               "focus:border-accent focus:ring-2 focus:ring-accent/60",
+│               "h-[44px]",
+│             ].join(" ")}
+│             placeholder="Enter notes..."
+│             value={getNotesValue(item)}
+│             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+│               onUpdateNote(sectionIndex, itemIndex, e.target.value)
+│             }
+│           />
+│         </div>
+│       )}
+│ 
+│       {showPhotos && (item.status === "fail" || item.status === "recommend") && (
+│         <div className="mt-2">
+│           <div className="rounded-lg border border-white/10 bg-black/25 p-2.5">
+│             <div className="flex flex-wrap items-center justify-between gap-2">
+│               <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+│                 Photos
+│               </div>
+│               <PhotoUploadButton
+│                 inspectionId={inspectionId}
+│                 itemName={label || null}
+│                 photoUrls={item.photoUrls ?? []}
+│                 onChange={(urls: string[]) => {
+│                   const newUrl = urls[urls.length - 1];
+│                   if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
+│                 }}
+│               />
+│             </div>
+│ 
+│             {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
+│               <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+│                 {item.photoUrls.map((url, i) => (
+│                   <PhotoThumbnail key={url + i} url={url} />
+│                 ))}
+│               </div>
+│             )}
+│           </div>
+│         </div>
+│       )}
+│     </div>
+│   );
+│ }
+
+===============================
+FILE: features/inspections/lib/inspection/PhotoUploadButton.tsx
+===============================
+│ // features/inspections/lib/inspection/PhotoUploadButton.tsx ✅ FULL FILE REPLACEMENT (NO any)
+│ "use client";
+│ 
+│ import { useEffect, useState } from "react";
+│ import { toast } from "sonner";
+│ import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
+│ 
+│ type PhotoUploadButtonProps = {
+│   photoUrls: string[];
+│   onChange: (urls: string[]) => void;
+│   inspectionId: string;
+│   itemName?: string | null;
+│ };
+│ 
+│ function isRecord(v: unknown): v is Record<string, unknown> {
+│   return typeof v === "object" && v !== null;
+│ }
+│ 
+│ function getString(v: unknown): string | null {
+│   return typeof v === "string" && v.trim().length ? v.trim() : null;
+│ }
+│ 
+│ export default function PhotoUploadButton({
+│   photoUrls,
+│   onChange,
+│   inspectionId,
+│   itemName,
+│ }: PhotoUploadButtonProps) {
+│   const [urls, setUrls] = useState<string[]>(photoUrls ?? []);
+│   const [uploading, setUploading] = useState(false);
+│ 
+│   useEffect(() => {
+│     setUrls(photoUrls ?? []);
+│   }, [photoUrls]);
+│ 
+│   async function uploadOne(file: File): Promise<string | null> {
+│     const fd = new FormData();
+│     fd.set("inspectionId", inspectionId);
+│     const safeItem = getString(itemName);
+│     if (safeItem) fd.set("itemName", safeItem);
+│     fd.set("file", file);
+│ 
+│     const res = await fetch("/api/inspections/photos/upload", {
+│       method: "POST",
+│       body: fd,
+│     });
+│ 
+│     const json = (await res.json().catch(() => null)) as unknown;
+│ 
+│     if (!res.ok) {
+│       const msg =
+│         isRecord(json) && typeof json.error === "string"
+│           ? json.error
+│           : "Upload failed";
+│       throw new Error(msg);
+│     }
+│ 
+│     const url =
+│       isRecord(json) && typeof json.url === "string" ? json.url : null;
+│ 
+│     return url;
+│   }
+│ 
+│   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+│     const files = Array.from(e.target.files ?? []);
+│     if (!files.length) return;
+│ 
+│     setUploading(true);
+│     try {
+│       const uploaded: string[] = [];
+│ 
+│       for (const f of files) {
+│         const url = await uploadOne(f);
+│         if (url) uploaded.push(url);
+│       }
+│ 
+│       const updated = [...urls, ...uploaded];
+│       setUrls(updated);
+│       onChange(updated);
+│ 
+│       toast.success(
+│         `Uploaded ${uploaded.length} photo${uploaded.length === 1 ? "" : "s"}`,
+│       );
+│     } catch (err) {
+│       const msg = err instanceof Error ? err.message : "Photo upload failed";
+│       toast.error(msg);
+│     } finally {
+│       setUploading(false);
+│       e.target.value = "";
+│     }
+│   };
+│ 
+│   const handleRemove = (index: number) => {
+│     const updated = urls.filter((_, i) => i !== index);
+│     setUrls(updated);
+│     onChange(updated);
+│   };
+│ 
+│   return (
+│     <div className="mt-2">
+│       <label className="mb-1 block text-xs font-bold text-white">
+│         Upload Photos
+│       </label>
+│ 
+│       <div className="flex flex-wrap">
+│         {urls.map((url, i) => (
+│           <PhotoThumbnail
+│             key={url + i}
+│             url={url}
+│             onRemove={() => handleRemove(i)}
+│           />
+│         ))}
+│       </div>
+│ 
+│       <input
+│         type="file"
+│         multiple
+│         accept="image/*"
+│         onChange={handleFileChange}
+│         disabled={uploading || !inspectionId}
+│         className="mt-2 block text-sm text-gray-300 file:rounded-full file:border-0
+│         file:bg-orange-700 file:text-sm file:font-semibold file:text-white
+│         hover:file:bg-orange-600 disabled:opacity-60"
+│       />
+│     </div>
+│   );
+│ }
+
+===============================
+FILE: features/shared/components/PhotoCapture.tsx
+===============================
+│ // features/shared/components/PhotoCapture.tsx
+│ "use client";
+│ 
+│ import { useRef, useState } from "react";
+│ import Image from "next/image";
+│ 
+│ type Props = {
+│   onImageSelect: (file: File) => void;
+│ };
+│ 
+│ export default function PhotoCapture({ onImageSelect }: Props) {
+│   const captureInputRef = useRef<HTMLInputElement>(null);
+│   const uploadInputRef = useRef<HTMLInputElement>(null);
+│   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+│ 
+│   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+│     const file = e.target.files?.[0];
+│     if (!file) return;
+│ 
+│     const url = URL.createObjectURL(file);
+│     setPreviewUrl(url);
+│     onImageSelect(file);
+│   };
+│ 
+│   return (
+│     <div className="space-y-4">
+│       <div className="flex justify-center gap-4">
+│         <button
+│           type="button"
+│           onClick={() => captureInputRef.current?.click()}
+│           className="rounded bg-blue-600 px-4 py-2 font-bold font-header text-white shadow-card hover:bg-blue-700"
+│         >
+│           📷 Capture Photo
+│         </button>
+│         <button
+│           type="button"
+│           onClick={() => uploadInputRef.current?.click()}
+│           className="rounded bg-gray-700 px-4 py-2 font-bold font-header text-white shadow-card hover:bg-gray-800"
+│         >
+│           📁 Upload Photo
+│         </button>
+│       </div>
+│ 
+│       {/* Hidden Inputs */}
+│       <input
+│         ref={captureInputRef}
+│         type="file"
+│         accept="image/*"
+│         capture="environment"
+│         onChange={handleFileChange}
+│         className="hidden"
+│       />
+│       <input
+│         ref={uploadInputRef}
+│         type="file"
+│         accept="image/*"
+│         onChange={handleFileChange}
+│         className="hidden"
+│       />
+│ 
+│       {previewUrl && (
+│         <div className="mt-4 flex justify-center">
+│           <div className="relative h-64 w-full max-w-md">
+│             <Image
+│               src={previewUrl}
+│               alt="Preview"
+│               fill
+│               className="rounded border object-contain shadow-card"
+│               unoptimized
+│             />
+│           </div>
+│         </div>
+│       )}
+│     </div>
+│   );
+│ }
+
+===============================
+FILE: features/work-orders/components/workorders/extras/PhotoCaptureModal.tsx
+===============================
+│ // features/work-orders/components/workorders/extras/PhotoCaptureModal.tsx ✅ FULL FILE REPLACEMENT (NO any)
+│ "use client";
+│ 
+│ import { useRef, useState } from "react";
+│ import ModalShell from "@/features/shared/components/ModalShell";
+│ 
+│ interface Props {
+│   isOpen: boolean;
+│   onClose: () => void;
+│   onCapture: (file: File) => void | Promise<void>;
+│ }
+│ 
+│ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
+│   const [file, setFile] = useState<File | null>(null);
+│   const inputRef = useRef<HTMLInputElement | null>(null);
+│ 
+│   const submit = async () => {
+│     if (!file) {
+│       onClose();
+│       return;
+│     }
+│     await onCapture(file);
+│     onClose();
+│     setFile(null);
+│     if (inputRef.current) inputRef.current.value = "";
+│   };
+│ 
+│   return (
+│     <ModalShell
+│       isOpen={isOpen}
+│       onClose={onClose}
+│       onSubmit={submit}
+│       title="Attach Photo"
+│       submitText="Upload"
+│       size="sm"
+│     >
+│       <div className="space-y-2">
+│         <label className="block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+│           Job photo
+│         </label>
+│         <input
+│           ref={inputRef}
+│           type="file"
+│           accept="image/*"
+│           capture="environment"
+│           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+│           className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white file:mr-3 file:rounded-md file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-neutral-100 hover:file:bg-neutral-700 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+│         />
+│         <p className="mt-1 text-[11px] text-neutral-500">
+│           On mobile, this will open the camera. On desktop, you can pick an existing image file.
+│         </p>
+│       </div>
+│     </ModalShell>
+│   );
+│ }

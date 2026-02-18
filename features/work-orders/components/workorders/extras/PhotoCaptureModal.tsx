@@ -1,3 +1,4 @@
+// features/work-orders/components/workorders/extras/PhotoCaptureModal.tsx ✅ FULL FILE REPLACEMENT (NO any)
 "use client";
 
 import { useRef, useState } from "react";
@@ -9,13 +10,15 @@ interface Props {
   onCapture: (file: File) => void | Promise<void>;
 }
 
-export default function PhotoCaptureModal(props: any) {
-  const { isOpen, onClose, onCapture } = props as Props;
+export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const submit = async () => {
-    if (!file) return onClose();
+    if (!file) {
+      onClose();
+      return;
+    }
     await onCapture(file);
     onClose();
     setFile(null);
@@ -44,8 +47,7 @@ export default function PhotoCaptureModal(props: any) {
           className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white file:mr-3 file:rounded-md file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-neutral-100 hover:file:bg-neutral-700 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
         />
         <p className="mt-1 text-[11px] text-neutral-500">
-          On mobile, this will open the camera. On desktop, you can pick an
-          existing image file.
+          On mobile, this will open the camera. On desktop, you can pick an existing image file.
         </p>
       </div>
     </ModalShell>
