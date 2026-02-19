@@ -90,6 +90,12 @@ function safeNumber(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// ✅ treat 0 as “missing” for invoice money fields
+function positiveOrNull(v: unknown): number | null {
+  const n = safeNumberOrNull(v);
+  return n != null && n > 0 ? n : null;
+}
+
 function normalizeInvoiceCurrency(v: unknown): "CAD" | "USD" {
   const c = String(v ?? "").trim().toUpperCase();
   return c === "CAD" ? "CAD" : "USD";
@@ -150,7 +156,7 @@ export default async function PortalInvoicePage({
   let lines: PortalLine[] = [];
   let parts: PartDisplayRow[] = [];
 
-  // ✅ declare outside try so it’s usable later (fixes your TS errors)
+  // ✅ declare outside try so it’s usable later
   let partsTotalFromAlloc = 0;
 
   try {
@@ -194,7 +200,6 @@ export default async function PortalInvoicePage({
         "id, invoice_number, status, currency, subtotal, parts_cost, labor_cost, discount_total, tax_total, total, issued_at, created_at, notes",
       )
       .eq("work_order_id", workOrderId)
-      // Prefer issued invoices if issued_at is present; otherwise fallback to created_at
       .order("issued_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(1)
@@ -307,7 +312,7 @@ export default async function PortalInvoicePage({
       };
     });
 
-    // ✅ computed from allocations (matches the “line pricing” you see)
+    // ✅ computed from allocations (matches your confirmed 261.90 case)
     partsTotalFromAlloc = parts.reduce((acc, p) => acc + safeNumber(p.totalPrice), 0);
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -319,47 +324,43 @@ export default async function PortalInvoicePage({
 
   const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
 
-  const woInvoiceTotal = safeNumberOrNull(workOrder.invoice_total);
-  const woLabor = safeNumberOrNull(workOrder.labor_total);
-  const woParts = safeNumberOrNull(workOrder.parts_total);
+  const woInvoiceTotal = positiveOrNull(workOrder.invoice_total);
+  const woLabor = positiveOrNull(workOrder.labor_total);
+  const woParts = positiveOrNull(workOrder.parts_total);
 
-  // Invoice components (may be zero even when line items show pricing)
-  const invSubtotal = safeNumberOrNull(invoice?.subtotal);
-  const invLabor = safeNumberOrNull(invoice?.labor_cost);
-  const invParts = safeNumberOrNull(invoice?.parts_cost);
+  // ✅ invoice money fields: treat 0 as missing (key fix)
+  const invSubtotal = positiveOrNull(invoice?.subtotal);
+  const invLabor = positiveOrNull(invoice?.labor_cost);
+  const invParts = positiveOrNull(invoice?.parts_cost);
+  const invTotalRaw = positiveOrNull(invoice?.total);
+
+  // tax/discount can be legitimately 0 — keep as numeric (but normalize NaN -> 0)
   const invTax = safeNumberOrNull(invoice?.tax_total) ?? 0;
   const invDiscount = safeNumberOrNull(invoice?.discount_total) ?? 0;
 
-  // ✅ derive from invoice components if total is missing/zero but components exist
+  // ✅ derive subtotal/total from invoice components only if they’re actually present (>0)
   const derivedInvoiceSubtotal =
-    invSubtotal != null
-      ? invSubtotal
-      : (invLabor ?? 0) + (invParts ?? 0);
+    invSubtotal != null ? invSubtotal : (invLabor ?? 0) + (invParts ?? 0);
 
-  const derivedInvoiceTotalCandidate =
-    derivedInvoiceSubtotal + invTax - invDiscount;
-
-  const invTotalRaw = safeNumberOrNull(invoice?.total);
+  const derivedInvoiceTotalCandidate = derivedInvoiceSubtotal + invTax - invDiscount;
 
   const shouldUseDerivedInvoiceTotal =
-    (invTotalRaw == null || invTotalRaw <= 0) &&
+    invTotalRaw == null &&
     Number.isFinite(derivedInvoiceTotalCandidate) &&
     derivedInvoiceTotalCandidate > 0;
 
   const invoiceTotalFromInvoiceRow =
-    invTotalRaw != null && invTotalRaw > 0
-      ? invTotalRaw
-      : shouldUseDerivedInvoiceTotal
-        ? derivedInvoiceTotalCandidate
-        : null;
+    invTotalRaw != null ? invTotalRaw : shouldUseDerivedInvoiceTotal ? derivedInvoiceTotalCandidate : null;
 
-  // ✅ fallback like PDF: allocations parts + work order labor_total (if present)
-  const partsCostFallback =
+  // ✅ allocations parts fallback (your priced allocations)
+  const partsCostFromAlloc =
     Number.isFinite(partsTotalFromAlloc) && partsTotalFromAlloc > 0 ? partsTotalFromAlloc : null;
 
+  // ✅ PDF-like fallback: allocations parts + WO labor (if present)
   const computedFallbackTotal =
-    (woLabor ?? 0) + (partsCostFallback ?? (woParts ?? 0));
+    (woLabor ?? 0) + (partsCostFromAlloc ?? (woParts ?? 0));
 
+  // ✅ last-resort fallback: WO invoice_total OR WO labor+parts
   const invoiceTotalFallback =
     woInvoiceTotal != null
       ? woInvoiceTotal
@@ -367,38 +368,32 @@ export default async function PortalInvoicePage({
         ? (woLabor ?? 0) + (woParts ?? 0)
         : null;
 
+  // ✅ total selection: invoice-first (if real), then WO invoice_total, then computed, then fallback
   const total =
-    invoiceTotalFromInvoiceRow != null
-      ? invoiceTotalFromInvoiceRow
-      : woInvoiceTotal != null
-        ? woInvoiceTotal
-        : Number.isFinite(computedFallbackTotal) && computedFallbackTotal > 0
-          ? computedFallbackTotal
-          : invoiceTotalFallback;
+    invoiceTotalFromInvoiceRow ??
+    woInvoiceTotal ??
+    (Number.isFinite(computedFallbackTotal) && computedFallbackTotal > 0 ? computedFallbackTotal : null) ??
+    invoiceTotalFallback;
 
   const payAmountCents = dollarsToCents(total);
 
-  // ✅ show “Totals” breakdown even when invoice row is incomplete
-  const subtotal =
-    invSubtotal != null && invSubtotal > 0
-      ? invSubtotal
-      : (invLabor ?? 0) + (invParts ?? 0) > 0
-        ? (invLabor ?? 0) + (invParts ?? 0)
-        : total != null
-          ? Math.max(0, total - invTax + invDiscount)
-          : null;
-
-  const laborCost =
-    invLabor != null && invLabor > 0 ? invLabor : woLabor != null ? woLabor : null;
+  // ✅ show breakdown even when invoice row is incomplete
+  const laborCost = invLabor ?? woLabor ?? null;
 
   const partsCost =
-    invParts != null && invParts > 0
-      ? invParts
-      : partsCostFallback != null
-        ? partsCostFallback
-        : woParts != null
-          ? woParts
-          : null;
+    invParts ??
+    partsCostFromAlloc ??
+    woParts ??
+    null;
+
+  // Subtotal preference:
+  // 1) invoice subtotal if present
+  // 2) (labor+parts) if either present
+  // 3) derive from total (subtract tax, add discount)
+  const subtotal =
+    invSubtotal ??
+    ((laborCost ?? 0) + (partsCost ?? 0) > 0 ? (laborCost ?? 0) + (partsCost ?? 0) : null) ??
+    (total != null ? Math.max(0, total - invTax + invDiscount) : null);
 
   const discountTotal = invDiscount > 0 ? invDiscount : null;
   const taxTotal = invTax > 0 ? invTax : null;
@@ -467,34 +462,24 @@ export default async function PortalInvoicePage({
             >
               {titleLabel}
             </h1>
-            <p className="text-xs text-neutral-400 sm:text-sm">
-              View your invoice details and history for this work order.
-            </p>
+            <p className="text-xs text-neutral-400 sm:text-sm">View your invoice details and history for this work order.</p>
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                Invoice Total
-              </div>
-              <div className="mt-1 text-lg font-semibold text-white">
-                {formatCurrency(total ?? null, currency)}
-              </div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Invoice Total</div>
+              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(total ?? null, currency)}</div>
               <div className="mt-0.5 text-[11px] text-neutral-500">Currency: {currency}</div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                Status
-              </div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Status</div>
               <div className="mt-1 text-sm font-semibold text-neutral-100">{statusLabel}</div>
               <div className="mt-0.5 text-[11px] text-neutral-500">Issued: {issuedAt}</div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                Invoice Sent
-              </div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Invoice Sent</div>
               <div className="mt-1 text-sm font-semibold text-neutral-100">{formatDate(sentAt)}</div>
               <div className="mt-0.5 text-[11px] text-neutral-500">To: {sentTo || "—"}</div>
             </div>
@@ -527,9 +512,7 @@ export default async function PortalInvoicePage({
 
           <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                Totals
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Totals</div>
               <div className="text-[11px] text-neutral-500">
                 {invoice?.id ? "Invoice record (with safe fallbacks)" : "Estimate (allocations + work order)"}
               </div>
@@ -537,56 +520,34 @@ export default async function PortalInvoicePage({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                  Subtotal
-                </div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
-                  {formatCurrency(subtotal ?? null, currency)}
-                </div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Subtotal</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(subtotal ?? null, currency)}</div>
               </div>
 
               <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                  Labor
-                </div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
-                  {formatCurrency(laborCost ?? null, currency)}
-                </div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Labor</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(laborCost ?? null, currency)}</div>
               </div>
 
               <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                  Parts
-                </div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
-                  {formatCurrency(partsCost ?? null, currency)}
-                </div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Parts</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(partsCost ?? null, currency)}</div>
               </div>
 
               <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                  Tax
-                </div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
-                  {formatCurrency(taxTotal ?? null, currency)}
-                </div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Tax</div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(taxTotal ?? null, currency)}</div>
               </div>
 
               {discountTotal != null && discountTotal > 0 ? (
                 <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2 sm:col-span-2">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                    Discount
-                  </div>
-                  <div className="mt-1 text-sm font-semibold text-neutral-100">
-                    -{formatCurrency(discountTotal, currency)}
-                  </div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Discount</div>
+                  <div className="mt-1 text-sm font-semibold text-neutral-100">-{formatCurrency(discountTotal, currency)}</div>
                 </div>
               ) : null}
 
               <div className="rounded-xl border border-white/10 bg-black/55 px-3 py-2 sm:col-span-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                  Total
-                </div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Total</div>
                 <div className="mt-1 text-lg font-semibold" style={{ color: COPPER }}>
                   {formatCurrency(total ?? null, currency)}
                 </div>
@@ -596,39 +557,27 @@ export default async function PortalInvoicePage({
 
           {notes.length ? (
             <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                Notes
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Notes</div>
               <div className="mt-2 whitespace-pre-wrap text-sm text-neutral-200">{notes}</div>
             </div>
           ) : null}
 
           <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                Line Items
-              </div>
-              <div className="text-[11px] text-neutral-500">
-                {lines.length === 0 ? "No line items recorded yet" : `${lines.length} items`}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Line Items</div>
+              <div className="text-[11px] text-neutral-500">{lines.length === 0 ? "No line items recorded yet" : `${lines.length} items`}</div>
             </div>
 
             {lines.length > 0 ? (
               <div className="space-y-2">
                 {lines.map((line) => {
-                  const label =
-                    (line.description ?? "").trim() ||
-                    (line.complaint ?? "").trim() ||
-                    "Line item";
+                  const label = (line.description ?? "").trim() || (line.complaint ?? "").trim() || "Line item";
 
                   const lp = partsByLine.get(line.id) ?? [];
                   const linePartsTotal = lp.reduce((acc, p) => acc + safeNumber(p.totalPrice), 0);
 
                   return (
-                    <div
-                      key={line.id}
-                      className="rounded-xl border border-white/5 bg-black/40 px-3 py-3"
-                    >
+                    <div key={line.id} className="rounded-xl border border-white/5 bg-black/40 px-3 py-3">
                       <div className="flex items-baseline justify-between gap-2">
                         <div className="min-w-0">
                           <div className="text-sm font-medium text-neutral-100">{label}</div>
@@ -659,25 +608,15 @@ export default async function PortalInvoicePage({
 
                       {lp.length > 0 ? (
                         <div className="mt-3 rounded-lg border border-white/5 bg-black/35 px-3 py-2">
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                            Parts
-                          </div>
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Parts</div>
                           <div className="mt-2 space-y-1">
                             {lp.map((p) => (
-                              <div
-                                key={p.id}
-                                className="flex items-baseline justify-between gap-2 text-sm"
-                              >
+                              <div key={p.id} className="flex items-baseline justify-between gap-2 text-sm">
                                 <div className="min-w-0 text-neutral-200">
-                                  <span className="text-neutral-500">x{p.qty}</span>{" "}
-                                  {p.name}
-                                  {p.partNumber ? (
-                                    <span className="text-neutral-500"> ({p.partNumber})</span>
-                                  ) : null}
+                                  <span className="text-neutral-500">x{p.qty}</span> {p.name}
+                                  {p.partNumber ? <span className="text-neutral-500"> ({p.partNumber})</span> : null}
                                 </div>
-                                <div className="whitespace-nowrap font-semibold text-neutral-100">
-                                  {formatCurrency(p.totalPrice, currency)}
-                                </div>
+                                <div className="whitespace-nowrap font-semibold text-neutral-100">{formatCurrency(p.totalPrice, currency)}</div>
                               </div>
                             ))}
                           </div>
@@ -688,20 +627,14 @@ export default async function PortalInvoicePage({
                 })}
               </div>
             ) : (
-              <div className="text-xs text-neutral-400">
-                Once the shop finalizes the invoice, you&apos;ll see line items here.
-              </div>
+              <div className="text-xs text-neutral-400">Once the shop finalizes the invoice, you&apos;ll see line items here.</div>
             )}
           </div>
 
           <div className="mt-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                Parts
-              </div>
-              <div className="text-[11px] text-neutral-500">
-                {parts.length === 0 ? "No parts recorded" : `${parts.length} parts • Qty ${partCount}`}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Parts</div>
+              <div className="text-[11px] text-neutral-500">{parts.length === 0 ? "No parts recorded" : `${parts.length} parts • Qty ${partCount}`}</div>
             </div>
 
             {parts.length > 0 ? (
@@ -733,9 +666,7 @@ export default async function PortalInvoicePage({
                       </div>
 
                       <div className="text-right text-xs text-neutral-300">
-                        <div className="text-[11px] text-neutral-500">
-                          Unit: {formatCurrency(p.unitPrice, currency)}
-                        </div>
+                        <div className="text-[11px] text-neutral-500">Unit: {formatCurrency(p.unitPrice, currency)}</div>
                         <div className="text-sm font-semibold">{formatCurrency(p.totalPrice, currency)}</div>
                       </div>
                     </div>

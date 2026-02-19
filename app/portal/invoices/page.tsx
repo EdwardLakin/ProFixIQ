@@ -268,9 +268,7 @@ export default async function PortalInvoicesIndexPage() {
             <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
               Invoices
             </h1>
-            <p className="mt-1 text-sm text-neutral-400">
-              View and download invoices for completed work orders.
-            </p>
+            <p className="mt-1 text-sm text-neutral-400">View and download invoices for completed work orders.</p>
           </div>
 
           <Link
@@ -286,12 +284,8 @@ export default async function PortalInvoicesIndexPage() {
 
         <div className="rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card ring-1 ring-inset ring-white/5">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-              Your invoices
-            </div>
-            <div className="text-[11px] text-neutral-500">
-              {items.length === 0 ? "No invoices yet" : `${items.length} invoice(s)`}
-            </div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Your invoices</div>
+            <div className="text-[11px] text-neutral-500">{items.length === 0 ? "No invoices yet" : `${items.length} invoice(s)`}</div>
           </div>
 
           {items.length === 0 ? (
