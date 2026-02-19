@@ -384,4 +384,12 @@ export const TILES: Tile[] = [
     scopes: ["settings", "work_orders", "all"],
     section: "Billing",
   },
+  {
+  title: "Reviews",
+  href: "/dashboard/reviews",
+  section: "Settings",
+  scopes: ["settings", "all"],
+  roles: ["owner", "admin", "manager", "advisor", "mechanic", "parts", "fleet_manager"],
+  cta: "Feedback",
+  },
 ];

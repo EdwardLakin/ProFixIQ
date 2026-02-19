@@ -15,6 +15,7 @@ import PricingSection from "@shared/components/ui/PricingSection";
 import Footer from "@shared/components/ui/Footer";
 import Container from "@shared/components/ui/Container";
 import LandingChatbot from "@/features/landing/LandingChatbot";
+import LandingReviews from "@shared/components/ui/LandingReviews";
 
 type Interval = "monthly" | "yearly";
 
@@ -203,6 +204,11 @@ export default function ProFixIQLanding() {
         <Container>
           <WhySection />
         </Container>
+      </section>
+
+      {/* REVIEWS */}
+      <section id="reviews" className="relative py-16 md:py-20">
+          <LandingReviews />  
       </section>
 
       {/* PRICING */}

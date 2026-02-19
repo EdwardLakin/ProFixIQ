@@ -1,4 +1,3 @@
-// features/shared/components/ui/LandingShopBoost.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -32,18 +31,59 @@ function SignalDot() {
   );
 }
 
+type StepCard = {
+  num: "01" | "02" | "03";
+  kicker: string;
+  title: string;
+  badge: string;
+  body: string;
+};
+
+const STEPS: StepCard[] = [
+  {
+    num: "01",
+    kicker: "Profile",
+    title: "Answer 5–10 quick questions.",
+    badge: "Tailored",
+    body: "Tell us what you run (fleet, mixed, diesel, automotive), how many bays/techs, and what data you have. We tailor the system to your workflow — not generic templates.",
+  },
+  {
+    num: "02",
+    kicker: "Upload",
+    title: "Drag in customers, units, parts, history.",
+    badge: "Import-ready",
+    body: "Import CSVs or exports from your old system. ProFixIQ normalizes customers, vehicles, repair orders, and inventory into one clean record — ready for inspections and work orders.",
+  },
+  {
+    num: "03",
+    kicker: "Blueprint",
+    title: "AI builds your shop operating plan.",
+    badge: "Shop-ready",
+    body: "ProFixIQ surfaces your top repairs, pre-builds starter menus and inspections, and highlights missed packages — so you can start writing smarter work orders on day one.",
+  },
+];
+
 export default function LandingShopBoost() {
   const chips = useMemo(() => INCLUDED_MODULES, []);
-  const [activeIdx, setActiveIdx] = useState(0);
+  const [activeChipIdx, setActiveChipIdx] = useState(0);
+  const [activeStepIdx, setActiveStepIdx] = useState(0);
 
-  // Capabilities rail animation: step highlight hops across chips
+  // Capabilities rail animation: hop across chips
   useEffect(() => {
     if (chips.length <= 1) return;
     const t = window.setInterval(() => {
-      setActiveIdx((i) => (i + 1) % chips.length);
+      setActiveChipIdx((i) => (i + 1) % chips.length);
     }, 1100);
     return () => window.clearInterval(t);
   }, [chips.length]);
+
+  // Step pulse animation: 01 -> 02 -> 03
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      setActiveStepIdx((i) => (i + 1) % 3);
+    }, 1200);
+    return () => window.clearInterval(t);
+  }, []);
 
   return (
     <section className="relative mx-auto mt-8 max-w-[1400px] px-4 pb-20 sm:pb-28">
@@ -83,6 +123,18 @@ export default function LandingShopBoost() {
           }
         }
 
+        @keyframes pfqStepPulse {
+          0% {
+            transform: translateY(0px) scale(1);
+          }
+          50% {
+            transform: translateY(-1px) scale(1.03);
+          }
+          100% {
+            transform: translateY(0px) scale(1);
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .pfq-cap-sweep {
             animation: none !important;
@@ -91,158 +143,165 @@ export default function LandingShopBoost() {
           .pfq-breathe {
             animation: none !important;
           }
+          .pfq-step-pulse {
+            animation: none !important;
+          }
         }
       `}</style>
+
+      {/* Backplate depth layer */}
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(circle_at_18%_10%, rgba(197,122,74,0.12), transparent 52%)," +
+              "radial-gradient(circle_at_85%_20%, rgba(15,23,42,0.45), transparent 55%)," +
+              "radial-gradient(circle_at_70%_85%, rgba(2,6,23,0.95), rgba(2,6,23,0.65) 55%, transparent 75%)",
+          }}
+        />
+        <div
+          className="absolute inset-0 opacity-[0.12]"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(135deg, rgba(255,255,255,0.07) 0px, rgba(255,255,255,0.00) 3px, rgba(0,0,0,0.45) 9px)",
+          }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            boxShadow:
+              "0 0 0 1px rgba(255,255,255,0.04) inset, 0 50px 120px rgba(0,0,0,0.55)",
+          }}
+        />
+      </div>
 
       {/* steel divider */}
       <div className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-px max-w-5xl bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-      {/* Header line */}
-      <div className="pt-10">
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
+      {/* Centered header line */}
+      <div className="pt-10 text-center">
+        <div className="mx-auto inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
           <SignalDot />
           <span style={{ color: COPPER_LIGHT }}>Shop Boost Setup</span>
           <span className="text-white/10">•</span>
           <span className="text-neutral-400">Day-one ready</span>
         </div>
 
-        <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+        <h2 className="mx-auto mt-4 max-w-4xl text-3xl font-semibold text-white sm:text-4xl">
           From blank system to shop-ready in{" "}
-          <span style={{ color: COPPER_LIGHT }}>three steps</span>.
+          <span style={{ color: COPPER_LIGHT }}>Just, Three, Steps</span>.
         </h2>
 
-        <p className="mt-4 max-w-4xl text-sm leading-relaxed text-neutral-300 sm:text-base">
+        <p className="mx-auto mt-4 max-w-4xl text-sm leading-relaxed text-neutral-300 sm:text-base">
           Don’t spend weeks configuring software. ProFixIQ reads how your shop
           already works and builds around it — inspections, menus, automation,
           and portals that match fleet reality.
         </p>
       </div>
 
-      {/* TOP ROW: 3 step cards (matches your preferred screenshot layout) */}
+      {/* TOP ROW: 3 step cards */}
       <div className="mt-10 grid gap-4 lg:grid-cols-3">
-        {/* Step 1 */}
-        <div className="rounded-2xl border border-white/10 bg-black/15 px-5 py-4 backdrop-blur">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <span
-                className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold"
-                style={{
-                  backgroundColor: "rgba(197,122,74,0.14)",
-                  color: COPPER_LIGHT,
-                  border: "1px solid rgba(197,122,74,0.35)",
-                  boxShadow: "0 0 18px rgba(197,122,74,0.10)",
-                }}
-              >
-                01
-              </span>
+        {STEPS.map((s, idx) => {
+          const active = idx === activeStepIdx;
 
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                  Profile
+          return (
+            <div
+              key={s.num}
+              className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/15 px-5 py-4 backdrop-blur"
+              style={{
+                boxShadow:
+                  "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px rgba(0,0,0,0.38)",
+              }}
+            >
+              {/* subtle corner wash for depth */}
+              <div
+                className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full blur-3xl"
+                style={{ background: "rgba(197,122,74,0.10)" }}
+              />
+              <div
+                className="pointer-events-none absolute -left-24 -bottom-24 h-64 w-64 rounded-full blur-3xl"
+                style={{ background: "rgba(15,23,42,0.35)" }}
+              />
+
+              <div className="relative flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span
+                    className={[
+                      "mt-0.5 flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold",
+                      active ? "pfq-step-pulse" : "",
+                    ].join(" ")}
+                    style={{
+                      backgroundColor: active
+                        ? "rgba(197,122,74,0.18)"
+                        : "rgba(197,122,74,0.12)",
+                      color: COPPER_LIGHT,
+                      border: active
+                        ? "1px solid rgba(197,122,74,0.55)"
+                        : "1px solid rgba(197,122,74,0.30)",
+                      boxShadow: active
+                        ? "0 0 26px rgba(197,122,74,0.22), 0 0 0 1px rgba(197,122,74,0.12) inset"
+                        : "0 0 18px rgba(197,122,74,0.10)",
+                      animation: active
+                        ? "pfqStepPulse 1.05s ease-in-out infinite"
+                        : undefined,
+                    }}
+                    aria-label={`Step ${s.num}`}
+                  >
+                    {s.num}
+                  </span>
+
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                      {s.kicker}
+                    </div>
+                    <div className="mt-0.5 text-base font-extrabold text-white">
+                      {s.title}
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-0.5 text-base font-extrabold text-white">
-                  Answer 5–10 quick questions.
-                </div>
-              </div>
-            </div>
 
-            <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-400">
-              <SignalDot />
-              Tailored
-            </div>
-          </div>
-
-          <p className="mt-3 text-sm leading-relaxed text-neutral-300">
-            Tell us what you run (fleet, mixed, diesel, automotive), how many
-            bays/techs, and what data you have. We tailor the system to your
-            workflow — not generic templates.
-          </p>
-        </div>
-
-        {/* Step 2 */}
-        <div className="rounded-2xl border border-white/10 bg-black/15 px-5 py-4 backdrop-blur">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <span
-                className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold"
-                style={{
-                  backgroundColor: "rgba(197,122,74,0.14)",
-                  color: COPPER_LIGHT,
-                  border: "1px solid rgba(197,122,74,0.35)",
-                  boxShadow: "0 0 18px rgba(197,122,74,0.10)",
-                }}
-              >
-                02
-              </span>
-
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                  Upload
-                </div>
-                <div className="mt-0.5 text-base font-extrabold text-white">
-                  Drag in customers, units, parts, history.
-                </div>
-              </div>
-            </div>
-
-            <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-400">
-              <SignalDot />
-              Import-ready
-            </div>
-          </div>
-
-          <p className="mt-3 text-sm leading-relaxed text-neutral-300">
-            Import CSVs or exports from your old system. ProFixIQ normalizes
-            customers, vehicles, repair orders, and inventory into one clean
-            record — ready for inspections and work orders.
-          </p>
-        </div>
-
-        {/* Step 3 */}
-        <div className="rounded-2xl border border-white/10 bg-black/15 px-5 py-4 backdrop-blur">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <span
-                className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold"
-                style={{
-                  backgroundColor: "rgba(197,122,74,0.14)",
-                  color: COPPER_LIGHT,
-                  border: "1px solid rgba(197,122,74,0.35)",
-                  boxShadow: "0 0 18px rgba(197,122,74,0.10)",
-                }}
-              >
-                03
-              </span>
-
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                  Blueprint
-                </div>
-                <div className="mt-0.5 text-base font-extrabold text-white">
-                  AI builds your shop operating plan.
+                <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-400">
+                  <SignalDot />
+                  {s.badge}
                 </div>
               </div>
-            </div>
 
-            <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-400">
-              <SignalDot />
-              Shop-ready
-            </div>
-          </div>
+              <p className="relative mt-3 text-sm leading-relaxed text-neutral-300">
+                {s.body}
+              </p>
 
-          <p className="mt-3 text-sm leading-relaxed text-neutral-300">
-            ProFixIQ surfaces your top repairs, pre-builds starter menus and
-            inspections, and highlights missed packages — so you can start
-            writing smarter work orders on day one.
-          </p>
-        </div>
+              {/* thin copper accent line */}
+              <div className="relative mt-5 h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+              <div
+                className="relative mt-2 h-[2px] w-16 rounded-full"
+                style={{
+                  background:
+                    "linear-gradient(90deg, rgba(197,122,74,0.0) 0%, rgba(197,122,74,0.85) 45%, rgba(197,122,74,0.0) 100%)",
+                  filter: "drop-shadow(0 0 14px rgba(197,122,74,0.25))",
+                }}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {/* BOTTOM ROW: 2 wide cards */}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         {/* Owner snapshot */}
-        <div className="rounded-2xl border border-white/10 bg-black/15 p-6 backdrop-blur">
-          <div className="flex items-start justify-between gap-3">
+        <div
+          className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/15 p-6 backdrop-blur"
+          style={{
+            boxShadow:
+              "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px rgba(0,0,0,0.38)",
+          }}
+        >
+          <div
+            className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
+            style={{ background: "rgba(197,122,74,0.10)" }}
+          />
+
+          <div className="relative flex items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
                 What you get immediately
@@ -264,7 +323,7 @@ export default function LandingShopBoost() {
             </span>
           </div>
 
-          <p className="mt-3 text-sm leading-relaxed text-neutral-300">
+          <p className="relative mt-3 text-sm leading-relaxed text-neutral-300">
             As soon as imports finish, you get a Shop Health Snapshot: top
             repairs, comeback risks, average RO, and fleet downtime signals —
             less like “new software”, more like a diagnostic scan for your
@@ -273,8 +332,19 @@ export default function LandingShopBoost() {
         </div>
 
         {/* Included capabilities rail */}
-        <div className="rounded-2xl border border-white/10 bg-black/15 p-6 backdrop-blur">
-          <div className="flex items-start justify-between gap-3">
+        <div
+          className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/15 p-6 backdrop-blur"
+          style={{
+            boxShadow:
+              "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px rgba(0,0,0,0.38)",
+          }}
+        >
+          <div
+            className="pointer-events-none absolute -left-24 -bottom-24 h-72 w-72 rounded-full blur-3xl"
+            style={{ background: "rgba(15,23,42,0.42)" }}
+          />
+
+          <div className="relative flex items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
                 Included capabilities (day one)
@@ -291,7 +361,7 @@ export default function LandingShopBoost() {
           </div>
 
           {/* Rail container */}
-          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+          <div className="relative mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
             <div className="relative">
               {/* steel base line */}
               <div className="absolute left-3 right-3 top-[18px] h-px bg-white/10" />
@@ -312,7 +382,8 @@ export default function LandingShopBoost() {
               {/* chips */}
               <div className="flex flex-wrap items-center justify-center gap-2">
                 {chips.map((c, idx) => {
-                  const active = idx === activeIdx;
+                  const active = idx === activeChipIdx;
+
                   return (
                     <span
                       key={c.label}
@@ -324,7 +395,9 @@ export default function LandingShopBoost() {
                         backgroundColor: active
                           ? "rgba(197,122,74,0.10)"
                           : "rgba(0,0,0,0.30)",
-                        color: active ? "rgba(255,255,255,0.92)" : "rgba(226,232,240,0.88)",
+                        color: active
+                          ? "rgba(255,255,255,0.92)"
+                          : "rgba(226,232,240,0.88)",
                         boxShadow: active
                           ? "0 0 26px rgba(197,122,74,0.22), 0 0 0 1px rgba(197,122,74,0.14) inset"
                           : "0 0 22px rgba(15,23,42,0.55)",
@@ -332,16 +405,26 @@ export default function LandingShopBoost() {
                       }}
                     >
                       <span
-                        className={active ? "pfq-breathe inline-flex items-center gap-2" : "inline-flex items-center gap-2"}
+                        className={
+                          active
+                            ? "pfq-breathe inline-flex items-center gap-2"
+                            : "inline-flex items-center gap-2"
+                        }
                         style={{
-                          animation: active ? "pfqBreathe 1.15s ease-in-out infinite" : undefined,
+                          animation: active
+                            ? "pfqBreathe 1.15s ease-in-out infinite"
+                            : undefined,
                         }}
                       >
                         <span
                           className="h-2 w-2 rounded-full"
                           style={{
-                            backgroundColor: active ? "rgba(197,122,74,0.95)" : "rgba(148,163,184,0.45)",
-                            boxShadow: active ? "0 0 18px rgba(197,122,74,0.55)" : "none",
+                            backgroundColor: active
+                              ? "rgba(197,122,74,0.95)"
+                              : "rgba(148,163,184,0.45)",
+                            boxShadow: active
+                              ? "0 0 18px rgba(197,122,74,0.55)"
+                              : "none",
                           }}
                         />
                         {c.label}
@@ -368,16 +451,6 @@ export default function LandingShopBoost() {
           </div>
         </div>
       </div>
-
-      {/* copper + steel wash */}
-      <div
-        className="pointer-events-none absolute -right-24 top-10 h-80 w-80 rounded-full blur-3xl"
-        style={{ background: "rgba(197,122,74,0.12)" }}
-      />
-      <div
-        className="pointer-events-none absolute -left-24 bottom-10 h-80 w-80 rounded-full blur-3xl"
-        style={{ background: "rgba(15,23,42,0.35)" }}
-      />
 
       {/* divider into next section */}
       <div className="mt-10 h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />

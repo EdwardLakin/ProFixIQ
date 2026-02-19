@@ -6657,6 +6657,8 @@ export type Database = {
           created_at: string
           customer_id: string | null
           id: string
+          is_public: boolean
+          public_name: string | null
           rating: number
           replied_at: string | null
           reviewer_user_id: string
@@ -6669,6 +6671,8 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           id?: string
+          is_public?: boolean
+          public_name?: string | null
           rating: number
           replied_at?: string | null
           reviewer_user_id: string
@@ -6681,6 +6685,8 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           id?: string
+          is_public?: boolean
+          public_name?: string | null
           rating?: number
           replied_at?: string | null
           reviewer_user_id?: string

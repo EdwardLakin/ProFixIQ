@@ -82,7 +82,6 @@ function SignalDot() {
 function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
   return (
     <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/10">
-      {/* subtle inset groove instead of “card shadow” */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -91,7 +90,6 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
         }}
       />
 
-      {/* copper signal wash (alternating corners) */}
       <div
         className="pointer-events-none absolute h-72 w-72 rounded-full blur-3xl opacity-60"
         style={{
@@ -102,7 +100,6 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
         }}
       />
 
-      {/* brushed steel hint */}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.12]"
         style={{
@@ -141,7 +138,6 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
           {p.description}
         </p>
 
-        {/* capabilities matrix */}
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           {p.includes.map((x) => (
             <div
@@ -173,7 +169,6 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
 export default function FeaturesSection({ showHeading = false }: FeaturesSectionProps) {
   return (
     <div className="relative">
-      {/* SECTION BACKPLATE: dark steel + copper signal */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div
           className="absolute inset-0"
@@ -190,7 +185,6 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
               "repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.00) 3px, rgba(0,0,0,0.45) 8px)",
           }}
         />
-        {/* copper “signal rail” */}
         <div
           className="absolute left-4 top-0 h-full w-px opacity-60 sm:left-6"
           style={{
@@ -208,7 +202,7 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
               className="text-xs font-semibold uppercase tracking-[0.22em]"
               style={{ color: COPPER_LIGHT }}
             >
-              Everything included
+              Included
             </div>
 
             <h2
@@ -218,12 +212,12 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
                 textShadow: "0 0 48px rgba(0,0,0,0.75)",
               }}
             >
-              One workflow. Built for fleet reality.
+              Everything included.{" "}
+              <span style={{ color: COPPER }}>One&nbsp;workflow</span>.
             </h2>
 
             <p className="mx-auto mt-4 max-w-2xl text-sm text-neutral-300 sm:text-base">
-              Heavy-duty and fleet first — works great for automotive too. Reduce retyping, speed approvals,
-              and keep evidence attached from inspection to invoice.
+              Fleet-first tools that also work great for automotive — built to reduce screen time and keep work moving.
             </p>
           </div>
         ) : null}
@@ -234,7 +228,6 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
           ))}
         </div>
 
-        {/* system promise band (bolder) */}
         <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/10 p-6 backdrop-blur-xl">
           <div
             className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
