@@ -1,13 +1,10 @@
-// /app/portal/invoices/page.tsx
+// app/portal/invoices/page.tsx (FULL FILE REPLACEMENT)
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
-import {
-  requireAuthedUser,
-  requirePortalCustomer,
-} from "@/features/portal/server/portalAuth";
+import { requireAuthedUser, requirePortalCustomer } from "@/features/portal/server/portalAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -82,10 +79,7 @@ function normalizeCurrency(v: unknown): "CAD" | "USD" {
   return c === "CAD" ? "CAD" : "USD";
 }
 
-function formatCurrency(
-  value: number | null | undefined,
-  currency: "CAD" | "USD",
-): string {
+function formatCurrency(value: number | null | undefined, currency: "CAD" | "USD"): string {
   if (value == null || Number.isNaN(value)) return "—";
   return new Intl.NumberFormat(currency === "CAD" ? "en-CA" : "en-US", {
     style: "currency",
@@ -108,7 +102,7 @@ function getWorkOrderLabel(wo: WorkOrderLite): string {
 
 function workOrderFallbackTotal(wo: WorkOrderLite): number | null {
   const invoiceTotal = safeNumber(wo.invoice_total);
-  if (invoiceTotal != null) return invoiceTotal;
+  if (invoiceTotal != null && invoiceTotal > 0) return invoiceTotal;
 
   const labor = safeNumber(wo.labor_total) ?? 0;
   const parts = safeNumber(wo.parts_total) ?? 0;
@@ -121,11 +115,15 @@ function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0;
 }
 
+// ✅ only trust invoice.total if it’s a real positive number
+function invoiceTotalOrNull(invTotal: unknown): number | null {
+  const n = safeNumber(invTotal);
+  return n != null && n > 0 ? n : null;
+}
+
 export default async function PortalInvoicesIndexPage() {
   const cookieStore = cookies();
-  const supabase = createServerComponentClient<DB>({
-    cookies: () => cookieStore,
-  });
+  const supabase = createServerComponentClient<DB>({ cookies: () => cookieStore });
 
   try {
     const { id: userId } = await requireAuthedUser(supabase);
@@ -152,9 +150,7 @@ export default async function PortalInvoicesIndexPage() {
     if (workOrderIds.length > 0) {
       const { data: invRows, error: invErr } = await supabase
         .from("invoices")
-        .select(
-          "id, work_order_id, invoice_number, status, currency, total, issued_at, created_at",
-        )
+        .select("id, work_order_id, invoice_number, status, currency, total, issued_at, created_at")
         .in("work_order_id", workOrderIds)
         .order("issued_at", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
@@ -171,16 +167,14 @@ export default async function PortalInvoicesIndexPage() {
         .from("work_order_part_allocations")
         .select("work_order_id, qty, unit_cost")
         .in("work_order_id", workOrderIds)
-        .returns<
-          Array<Pick<AllocationRow, "work_order_id" | "qty" | "unit_cost">>
-        >();
+        .returns<Array<Pick<AllocationRow, "work_order_id" | "qty" | "unit_cost">>>();
 
       if (allocErr) {
         // eslint-disable-next-line no-console
         console.warn("[portal invoices] allocations query failed:", allocErr.message);
       } else {
         for (const a of Array.isArray(allocRows) ? allocRows : []) {
-          const woId = (a.work_order_id ?? "").toString().trim();
+          const woId = String(a.work_order_id ?? "").trim();
           if (!woId) continue;
 
           const qtyRaw = safeNumber0(a.qty);
@@ -196,14 +190,10 @@ export default async function PortalInvoicesIndexPage() {
     }
 
     const invoiceRowsWithWO = invoiceRows.filter(
-      (inv): inv is InvoiceLite & { work_order_id: string } =>
-        isNonEmptyString(inv.work_order_id),
+      (inv): inv is InvoiceLite & { work_order_id: string } => isNonEmptyString(inv.work_order_id),
     );
 
-    const latestInvoiceByWO = new Map<
-      string,
-      InvoiceLite & { work_order_id: string }
-    >();
+    const latestInvoiceByWO = new Map<string, InvoiceLite & { work_order_id: string }>();
 
     // invoiceRows already sorted by issued_at then created_at (desc),
     // so first one we encounter per WO is the best/latest
@@ -228,10 +218,8 @@ export default async function PortalInvoicesIndexPage() {
 
         const currency = inv?.currency ? normalizeCurrency(inv.currency) : "CAD";
 
-        // Prefer invoice.total if present.
-        // Else prefer work_orders invoice_total / labor+parts.
-        // Else compute from allocations (parts only) + labor_total as best-effort.
-        const invTotal = inv?.total != null ? safeNumber(inv.total) : null;
+        // ✅ If inv.total is 0, treat it as missing and fall back
+        const invTotal = inv ? invoiceTotalOrNull(inv.total) : null;
         const woFallback = workOrderFallbackTotal(wo);
 
         const allocParts = allocTotals.get(wo.id);
@@ -241,11 +229,13 @@ export default async function PortalInvoicesIndexPage() {
             ? Math.max(0, labor + allocParts)
             : null;
 
+        // Prefer:
+        // 1) invoice.total (only if > 0)
+        // 2) work_orders.invoice_total OR (labor_total + parts_total)
+        // 3) allocations parts + labor_total
         const total = invTotal ?? woFallback ?? allocFallback;
 
-        const issuedAt = (inv?.issued_at ?? inv?.created_at ?? null) as
-          | string
-          | null;
+        const issuedAt = (inv?.issued_at ?? inv?.created_at ?? null) as string | null;
 
         return {
           workOrderId: wo.id,
@@ -300,16 +290,13 @@ export default async function PortalInvoicesIndexPage() {
               Your invoices
             </div>
             <div className="text-[11px] text-neutral-500">
-              {items.length === 0
-                ? "No invoices yet"
-                : `${items.length} invoice(s)`}
+              {items.length === 0 ? "No invoices yet" : `${items.length} invoice(s)`}
             </div>
           </div>
 
           {items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-neutral-400">
-              No invoices have been issued yet. Once a work order is finalized,
-              the invoice will show up here.
+              No invoices have been issued yet. Once a work order is finalized, the invoice will show up here.
             </div>
           ) : (
             <div className="space-y-2">
@@ -323,34 +310,21 @@ export default async function PortalInvoicesIndexPage() {
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-neutral-100">
-                        {it.label}
-                      </div>
+                      <div className="truncate text-sm font-semibold text-neutral-100">{it.label}</div>
 
                       <div className="mt-0.5 text-[11px] text-neutral-500">
-                        Status:{" "}
-                        <span className="text-neutral-300">
-                          {it.workOrderStatus ?? "—"}
-                        </span>
+                        Status: <span className="text-neutral-300">{it.workOrderStatus ?? "—"}</span>
                         {" • "}
-                        Issued:{" "}
-                        <span className="text-neutral-300">
-                          {formatDate(it.issuedAt)}
-                        </span>
+                        Issued: <span className="text-neutral-300">{formatDate(it.issuedAt)}</span>
                       </div>
 
                       {it.invoiceNumber ? (
                         <div className="mt-0.5 text-[11px] text-neutral-500">
-                          Invoice:{" "}
-                          <span className="text-neutral-300">
-                            #{it.invoiceNumber}
-                          </span>
+                          Invoice: <span className="text-neutral-300">#{it.invoiceNumber}</span>
                           {it.invoiceStatus ? (
                             <>
                               {" • "}
-                              <span className="text-neutral-300">
-                                {it.invoiceStatus}
-                              </span>
+                              <span className="text-neutral-300">{it.invoiceStatus}</span>
                             </>
                           ) : null}
                         </div>
@@ -358,20 +332,11 @@ export default async function PortalInvoicesIndexPage() {
                     </div>
 
                     <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-center">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                        Total
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Total</div>
+                      <div className="text-base font-semibold" style={{ color: COPPER }}>
+                        {it.total == null ? "—" : formatCurrency(it.total, it.currency)}
                       </div>
-                      <div
-                        className="text-base font-semibold"
-                        style={{ color: COPPER }}
-                      >
-                        {it.total == null
-                          ? "—"
-                          : formatCurrency(it.total, it.currency)}
-                      </div>
-                      <div className="text-[11px] text-neutral-500">
-                        {it.currency}
-                      </div>
+                      <div className="text-[11px] text-neutral-500">{it.currency}</div>
                     </div>
                   </div>
 
@@ -407,9 +372,7 @@ export default async function PortalInvoicesIndexPage() {
           <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
             Invoices
           </h1>
-          <p className="mt-1 text-sm text-neutral-400">
-            View and download invoices for completed work orders.
-          </p>
+          <p className="mt-1 text-sm text-neutral-400">View and download invoices for completed work orders.</p>
         </div>
 
         <div className={errorCardClass()}>
