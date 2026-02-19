@@ -17,6 +17,7 @@ type DB = Database;
 
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
+type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 
 type WorkOrderLite = Pick<
   WorkOrderRow,
@@ -69,6 +70,11 @@ function safeNumber(v: unknown): number | null {
   if (v == null) return null;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function safeNumber0(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function normalizeCurrency(v: unknown): "CAD" | "USD" {
@@ -139,6 +145,9 @@ export default async function PortalInvoicesIndexPage() {
     const workOrders = Array.isArray(woRows) ? woRows : [];
     const workOrderIds = workOrders.map((w) => w.id);
 
+    // ------------------------------------------------------------
+    // Pull latest invoice rows (optional) + allocation-based totals
+    // ------------------------------------------------------------
     let invoiceRows: InvoiceLite[] = [];
     if (workOrderIds.length > 0) {
       const { data: invRows, error: invErr } = await supabase
@@ -147,10 +156,43 @@ export default async function PortalInvoicesIndexPage() {
           "id, work_order_id, invoice_number, status, currency, total, issued_at, created_at",
         )
         .in("work_order_id", workOrderIds)
+        .order("issued_at", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
         .returns<InvoiceLite[]>();
 
       if (!invErr) invoiceRows = Array.isArray(invRows) ? invRows : [];
+    }
+
+    // Compute parts totals from allocations (qty * unit_cost), per work order
+    const allocTotals = new Map<string, number>();
+
+    if (workOrderIds.length > 0) {
+      const { data: allocRows, error: allocErr } = await supabase
+        .from("work_order_part_allocations")
+        .select("work_order_id, qty, unit_cost")
+        .in("work_order_id", workOrderIds)
+        .returns<
+          Array<Pick<AllocationRow, "work_order_id" | "qty" | "unit_cost">>
+        >();
+
+      if (allocErr) {
+        // eslint-disable-next-line no-console
+        console.warn("[portal invoices] allocations query failed:", allocErr.message);
+      } else {
+        for (const a of Array.isArray(allocRows) ? allocRows : []) {
+          const woId = (a.work_order_id ?? "").toString().trim();
+          if (!woId) continue;
+
+          const qtyRaw = safeNumber0(a.qty);
+          const qty = qtyRaw > 0 ? qtyRaw : 1;
+
+          const unit = safeNumber0(a.unit_cost);
+          const ext = Math.max(0, qty * unit);
+
+          const prev = allocTotals.get(woId) ?? 0;
+          allocTotals.set(woId, prev + ext);
+        }
+      }
     }
 
     const invoiceRowsWithWO = invoiceRows.filter(
@@ -163,6 +205,8 @@ export default async function PortalInvoicesIndexPage() {
       InvoiceLite & { work_order_id: string }
     >();
 
+    // invoiceRows already sorted by issued_at then created_at (desc),
+    // so first one we encounter per WO is the best/latest
     for (const inv of invoiceRowsWithWO) {
       if (!latestInvoiceByWO.has(inv.work_order_id)) {
         latestInvoiceByWO.set(inv.work_order_id, inv);
@@ -183,8 +227,21 @@ export default async function PortalInvoicesIndexPage() {
         if (!hasInvoiceRow && !hasPortalMarkers) return null;
 
         const currency = inv?.currency ? normalizeCurrency(inv.currency) : "CAD";
-        const total =
-          inv?.total != null ? safeNumber(inv.total) : workOrderFallbackTotal(wo);
+
+        // Prefer invoice.total if present.
+        // Else prefer work_orders invoice_total / labor+parts.
+        // Else compute from allocations (parts only) + labor_total as best-effort.
+        const invTotal = inv?.total != null ? safeNumber(inv.total) : null;
+        const woFallback = workOrderFallbackTotal(wo);
+
+        const allocParts = allocTotals.get(wo.id);
+        const labor = safeNumber0(wo.labor_total);
+        const allocFallback =
+          allocParts != null && Number.isFinite(allocParts) && allocParts > 0
+            ? Math.max(0, labor + allocParts)
+            : null;
+
+        const total = invTotal ?? woFallback ?? allocFallback;
 
         const issuedAt = (inv?.issued_at ?? inv?.created_at ?? null) as
           | string

@@ -150,6 +150,8 @@ export default async function PortalInvoicePage({
   let lines: PortalLine[] = [];
   let parts: PartDisplayRow[] = [];
 
+  let partsTotalFromAlloc = 0;
+
   try {
     const { id: userId } = await requireAuthedUser(supabase);
     const customer = await requirePortalCustomer(supabase, userId);
@@ -299,6 +301,9 @@ export default async function PortalInvoicePage({
         unit,
       };
     });
+
+    partsTotalFromAlloc = parts.reduce((acc, p) => acc + safeNumber(p.totalPrice), 0);
+
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[portal invoice] failed:", err);
@@ -320,7 +325,20 @@ export default async function PortalInvoicePage({
         ? (woLabor ?? 0) + (woParts ?? 0)
         : null;
 
-  const total = invoice?.total != null ? safeNumberOrNull(invoice.total) : invoiceTotalFallback;
+  const partsCostFallback =
+    Number.isFinite(partsTotalFromAlloc) && partsTotalFromAlloc > 0 ? partsTotalFromAlloc : null;
+
+  const computedFallbackTotal =
+    (woLabor ?? 0) + (partsCostFallback ?? (woParts ?? 0));
+
+  const total =
+    invoice?.total != null
+      ? safeNumberOrNull(invoice.total)
+      : woInvoiceTotal != null
+        ? woInvoiceTotal
+        : Number.isFinite(computedFallbackTotal) && computedFallbackTotal > 0
+          ? computedFallbackTotal
+          : invoiceTotalFallback;
 
   const payAmountCents = dollarsToCents(total);
 
