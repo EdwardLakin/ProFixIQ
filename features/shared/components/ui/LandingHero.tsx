@@ -36,6 +36,85 @@ function SignalDot() {
 export default function LandingHero() {
   return (
     <section className="relative">
+      <style jsx>{`
+        /* Copper “signal sweep” across the rail line */
+        @keyframes pfqSweep {
+          0% {
+            transform: translateX(-30%);
+            opacity: 0;
+          }
+          12% {
+            opacity: 0.65;
+          }
+          50% {
+            opacity: 0.95;
+          }
+          88% {
+            opacity: 0.65;
+          }
+          100% {
+            transform: translateX(130%);
+            opacity: 0;
+          }
+        }
+
+        /* Active-node hop across 6 steps (discrete, not sliding) */
+        @keyframes pfqHop6 {
+          0% {
+            transform: translateX(0%);
+          }
+          16.66% {
+            transform: translateX(0%);
+          }
+          16.67% {
+            transform: translateX(100%);
+          }
+          33.33% {
+            transform: translateX(100%);
+          }
+          33.34% {
+            transform: translateX(200%);
+          }
+          50% {
+            transform: translateX(200%);
+          }
+          50.01% {
+            transform: translateX(300%);
+          }
+          66.66% {
+            transform: translateX(300%);
+          }
+          66.67% {
+            transform: translateX(400%);
+          }
+          83.33% {
+            transform: translateX(400%);
+          }
+          83.34% {
+            transform: translateX(500%);
+          }
+          100% {
+            transform: translateX(500%);
+          }
+        }
+
+        /* Subtle “breathing” glow on the active dot */
+        @keyframes pfqBreathe {
+          0% {
+            transform: scale(1);
+            opacity: 0.95;
+          }
+          50% {
+            transform: scale(1.08);
+            opacity: 1;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 0.95;
+          }
+        }
+      `}</style>
+
       {/* Full-bleed hero area */}
       <div className="mx-auto w-full max-w-[1400px] px-4 pb-10 pt-14 sm:pt-16 md:pt-20">
         <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
@@ -161,7 +240,7 @@ export default function LandingHero() {
                 fleets and customers see the same truth your bay sees.
               </p>
 
-              {/* Workflow rail */}
+              {/* Workflow rail (ANIMATED) */}
               <div className="mt-5">
                 <div className="flex items-center justify-between text-[11px] text-neutral-400">
                   <span className="font-semibold uppercase tracking-[0.18em]">
@@ -172,19 +251,65 @@ export default function LandingHero() {
 
                 <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-4">
                   <div className="relative">
+                    {/* base steel line */}
                     <div className="absolute left-2 right-2 top-[13px] h-px bg-white/10" />
+
+                    {/* copper sweep line */}
+                    <div className="pointer-events-none absolute left-2 right-2 top-[12px] h-[3px] overflow-hidden">
+                      <div
+                        className="h-full w-[30%] rounded-full"
+                        style={{
+                          background:
+                            "linear-gradient(90deg, rgba(197,122,74,0) 0%, rgba(197,122,74,0.95) 45%, rgba(197,122,74,0) 100%)",
+                          filter: "drop-shadow(0 0 18px rgba(197,122,74,0.55))",
+                          animation: "pfqSweep 6s linear infinite",
+                        }}
+                      />
+                    </div>
+
+                    {/* active node glow hops across the 6 nodes */}
+                    <div className="pointer-events-none absolute left-0 right-0 top-[2px]">
+                      <div
+                        className="grid grid-cols-6 gap-2"
+                        style={{ animation: "pfqHop6 6s steps(1) infinite" }}
+                      >
+                        {/* Only the first col renders content; animation shifts this container */}
+                        <div className="col-span-1 flex justify-center">
+                          <div
+                            className="mt-[2px] flex h-7 w-7 items-center justify-center rounded-full"
+                            style={{
+                              boxShadow: "0 0 0 1px rgba(197,122,74,0.25) inset, 0 0 26px rgba(197,122,74,0.22)",
+                            }}
+                          >
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{
+                                backgroundColor: "rgba(197,122,74,0.98)",
+                                boxShadow: "0 0 22px rgba(197,122,74,0.60)",
+                                animation: "pfqBreathe 1.2s ease-in-out infinite",
+                              }}
+                            />
+                          </div>
+                        </div>
+                        {/* empty placeholders so the grid keeps 6 columns */}
+                        <div />
+                        <div />
+                        <div />
+                        <div />
+                        <div />
+                      </div>
+                    </div>
+
+                    {/* rail nodes */}
                     <div className="grid grid-cols-6 gap-2">
-                      {RAIL.map((s, idx) => (
+                      {RAIL.map((s) => (
                         <div key={s.key} className="text-center">
                           <div className="mx-auto flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/40">
                             <span
-                              className="h-2.5 w-2.5 rounded-full animate-pulse"
+                              className="h-2.5 w-2.5 rounded-full"
                               style={{
-                                backgroundColor: COPPER,
-                                boxShadow:
-                                  idx === 0
-                                    ? "0 0 22px rgba(197,122,74,0.55)"
-                                    : "0 0 14px rgba(197,122,74,0.28)",
+                                backgroundColor: "rgba(197,122,74,0.45)",
+                                boxShadow: "0 0 10px rgba(197,122,74,0.14)",
                               }}
                             />
                           </div>
