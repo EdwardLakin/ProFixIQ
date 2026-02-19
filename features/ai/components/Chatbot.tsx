@@ -1,4 +1,3 @@
-// features/ai/components/Chatbot.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -24,6 +23,14 @@ Help with diagnostics, inspections, work orders, quotes, parts, and navigation.
 Never access or invent private data; answer in general terms.
 When it helps, suggest the next action the user could take in ProFixIQ.
 Keep answers mechanic-friendly and concise.`;
+}
+
+async function safeReadJson(res: Response): Promise<unknown | null> {
+  try {
+    return await res.json();
+  } catch {
+    return null; // could be HTML error page from Next/Vercel
+  }
 }
 
 export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
@@ -94,14 +101,24 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
         body: JSON.stringify({ messages: updated, variant }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = (await safeReadJson(res)) as
+        | { reply?: unknown; error?: unknown }
+        | null;
 
-      if (!res.ok || !data?.reply) {
+      const reply =
+        data && typeof data.reply === "string" ? data.reply.trim() : null;
+
+      if (!res.ok || !reply) {
+        // Prefer server error string, otherwise show something accurate.
+        const serverError =
+          data && typeof data.error === "string" ? data.error : null;
+
         const msg =
-          data?.error ||
-          (variant === "marketing"
+          serverError ??
+          (res.status === 403
             ? "TechBot is only available on the public landing page right now."
-            : "Sorry, I couldn't answer that just now.");
+            : "Sorry, something went wrong while answering. Please try again in a moment.");
+
         setErrorText(msg);
 
         setMessages([
@@ -109,17 +126,14 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
           {
             role: "assistant",
             content:
-              data?.reply ||
+              reply ??
               "Sorry, something went wrong while answering. Please try again in a moment.",
           },
         ]);
         return;
       }
 
-      setMessages([
-        ...updated,
-        { role: "assistant", content: String(data.reply) },
-      ]);
+      setMessages([...updated, { role: "assistant", content: reply }]);
     } catch {
       setErrorText("Connection error. Please try again.");
       setMessages([
@@ -316,11 +330,7 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
                 outline-none
                 focus:border-[color:var(--accent-copper,#f97316)]
               "
-              placeholder={
-                variant === "marketing"
-                  ? "Ask about ProFixIQ…"
-                  : "Ask TechBot…"
-              }
+              placeholder={variant === "marketing" ? "Ask about ProFixIQ…" : "Ask TechBot…"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={loading}
