@@ -98,7 +98,8 @@ export default function PortalShell({
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  const hideNav = isPortalAuth(pathname);
+  const hideNav =
+    isPortalAuth(pathname) || pathname.startsWith("/portal/shop/");
 
   const activeHref = useMemo(() => {
     const exact = NAV.find((x) => x.href === pathname);

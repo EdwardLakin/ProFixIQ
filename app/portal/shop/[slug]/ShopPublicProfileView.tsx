@@ -1,9 +1,13 @@
+// app/portal/shop/[slug]/ShopPublicProfileView.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import Link from "next/link";
+
+import ReviewsList from "@shared/components/reviews/ReviewsList";
+import ReviewForm from "@shared/components/reviews/ReviewForm";
 
 type DB = Database;
 type ShopsRow = DB["public"]["Tables"]["shops"]["Row"];
@@ -12,6 +16,7 @@ type Props = { slug: string };
 
 type PublicFields = Pick<
   ShopsRow,
+  | "id"
   | "name"
   | "phone_number"
   | "email"
@@ -28,6 +33,7 @@ type PublicFields = Pick<
 };
 
 const emptyPublic: PublicFields = {
+  id: "",
   name: "",
   phone_number: null,
   email: null,
@@ -42,8 +48,23 @@ const emptyPublic: PublicFields = {
   website: null,
 };
 
+const COPPER = "var(--pfq-copper)";
+
+function SignalDot() {
+  return (
+    <span
+      className="inline-block h-2 w-2 rounded-full"
+      style={{
+        background: "rgba(197,122,74,0.95)",
+        boxShadow: "0 0 18px rgba(197,122,74,0.55)",
+      }}
+      aria-hidden
+    />
+  );
+}
+
 export default function PublicProfileClient({ slug }: Props) {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [data, setData] = useState<PublicFields>(emptyPublic);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -51,13 +72,14 @@ export default function PublicProfileClient({ slug }: Props) {
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       setLoading(true);
 
       const { data: row, error } = await supabase
         .from("shops")
         .select(
           [
+            "id",
             "name",
             "phone_number",
             "email",
@@ -68,7 +90,6 @@ export default function PublicProfileClient({ slug }: Props) {
             "images",
             "geo_lat",
             "geo_lng",
-            // Uncomment if these exist in your DB:
             // "description",
             // "website",
           ].join(","),
@@ -84,7 +105,8 @@ export default function PublicProfileClient({ slug }: Props) {
         return;
       }
 
-      const next: PublicFields = {
+      setData({
+        id: row.id,
         name: row.name ?? "",
         phone_number: row.phone_number ?? null,
         email: row.email ?? null,
@@ -95,11 +117,10 @@ export default function PublicProfileClient({ slug }: Props) {
         images: row.images ?? null,
         geo_lat: row.geo_lat ?? null,
         geo_lng: row.geo_lng ?? null,
-        // description: row.description ?? null, // if column exists
-        // website: row.website ?? null,         // if column exists
-      };
+        // description: (row as any).description ?? null,
+        // website: (row as any).website ?? null,
+      });
 
-      setData(next);
       setLoading(false);
     })();
 
@@ -108,12 +129,14 @@ export default function PublicProfileClient({ slug }: Props) {
     };
   }, [slug, supabase]);
 
-  // Defensive: ensure we always have an array
   const images: string[] = Array.isArray(data.images)
     ? (data.images as string[])
     : [];
   const hero = images[0] ?? null;
   const gallery = images.slice(1);
+
+  const Card =
+    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
 
   if (loading) {
     return (
@@ -126,7 +149,7 @@ export default function PublicProfileClient({ slug }: Props) {
   if (notFound) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8 space-y-2">
-        <h1 className="text-2xl font-blackops text-orange-400">
+        <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
           Shop not found
         </h1>
         <p className="text-sm text-neutral-400">
@@ -140,8 +163,8 @@ export default function PublicProfileClient({ slug }: Props) {
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
       {/* Hero */}
-      {hero && (
-        <div className="overflow-hidden rounded-2xl border border-neutral-800">
+      {hero ? (
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={hero}
@@ -149,21 +172,27 @@ export default function PublicProfileClient({ slug }: Props) {
             className="h-64 w-full object-cover"
           />
         </div>
-      )}
+      ) : null}
 
       {/* Header */}
-      <header className="space-y-1">
-        <h1 className="text-3xl font-blackops text-orange-400">
+      <header className="space-y-2">
+        <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+          <SignalDot />
+          Public shop profile
+        </div>
+
+        <h1 className="text-3xl font-blackops" style={{ color: COPPER }}>
           {data.name}
         </h1>
+
         {data.description ? (
           <p className="text-sm text-neutral-300">{data.description}</p>
         ) : null}
       </header>
 
-      {/* Contact / Basics */}
+      {/* Contact / Location */}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4">
+        <div className={Card}>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
             Contact
           </h2>
@@ -177,7 +206,8 @@ export default function PublicProfileClient({ slug }: Props) {
                   href={data.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-orange-400 underline underline-offset-2"
+                  className="underline underline-offset-2"
+                  style={{ color: COPPER }}
                 >
                   {data.website}
                 </a>
@@ -186,7 +216,7 @@ export default function PublicProfileClient({ slug }: Props) {
           </ul>
         </div>
 
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 md:col-span-2">
+        <div className={Card + " md:col-span-2"}>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
             Location
           </h2>
@@ -199,7 +229,8 @@ export default function PublicProfileClient({ slug }: Props) {
           {data.geo_lat !== null && data.geo_lng !== null ? (
             <p className="mt-2 text-sm">
               <a
-                className="text-orange-400 underline underline-offset-2"
+                className="underline underline-offset-2"
+                style={{ color: COPPER }}
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
                   `${data.geo_lat},${data.geo_lng}`,
                 )}`}
@@ -214,7 +245,7 @@ export default function PublicProfileClient({ slug }: Props) {
       </section>
 
       {/* Gallery */}
-      {gallery.length > 0 && (
+      {gallery.length > 0 ? (
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-neutral-50">Gallery</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -224,22 +255,51 @@ export default function PublicProfileClient({ slug }: Props) {
                 key={url}
                 src={url}
                 alt="Shop photo"
-                className="h-40 w-full rounded-lg border border-neutral-800 object-cover"
+                className="h-40 w-full rounded-2xl border border-white/10 object-cover bg-black/25"
               />
             ))}
           </div>
         </section>
-      )}
+      ) : null}
 
       {/* Primary CTA to book */}
       <div className="pt-2">
         <Link
           href={`/portal/booking?shop=${encodeURIComponent(slug)}`}
-          className="inline-flex items-center rounded-lg border border-orange-600 px-4 py-2 text-sm font-semibold text-orange-400 transition hover:bg-orange-600 hover:text-black"
+          className="inline-flex items-center rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-100 backdrop-blur transition hover:bg-white/5"
+          style={{
+            boxShadow: "0 0 26px rgba(197,122,74,0.18)",
+          }}
         >
+          <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
           Book an appointment
         </Link>
       </div>
+
+      {/* Reviews */}
+      {data.id ? (
+        <section className="space-y-4 pt-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <SignalDot />
+              <h2 className="text-lg font-semibold text-neutral-50">
+                Customer reviews
+              </h2>
+            </div>
+            <span className="text-xs text-neutral-500">
+              Evidence-first feedback
+            </span>
+          </div>
+
+          <div className={Card}>
+            <ReviewsList shopId={data.id} />
+          </div>
+
+          <div className={Card}>
+            <ReviewForm shopId={data.id} />
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

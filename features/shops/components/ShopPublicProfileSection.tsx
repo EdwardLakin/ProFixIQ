@@ -167,7 +167,7 @@ export default function ShopPublicProfileSection({ shopId, isUnlocked }: Props) 
 
   /** UI */
   return (
-    <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+    <section className="space-y-3 rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Public Profile</h2>
         <Button onClick={onSave} disabled={!isUnlocked || saving}>

@@ -1,7 +1,7 @@
 // app/portal/shop/[slug]/PageClient.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -15,23 +15,51 @@ type Props = {
   shopId?: string;
 };
 
+const COPPER = "var(--pfq-copper)";
+
+function SignalDot() {
+  return (
+    <span
+      className="inline-block h-2 w-2 rounded-full"
+      style={{
+        background: "rgba(197,122,74,0.95)",
+        boxShadow: "0 0 18px rgba(197,122,74,0.55)",
+      }}
+      aria-hidden
+    />
+  );
+}
+
 export default function ShopSharePage({ slug, shopId: shopIdProp }: Props) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = useMemo(
+    () => createClientComponentClient<Database>(),
+    [],
+  );
+
   const [shopId, setShopId] = useState<string>(shopIdProp ?? "");
   const [loadingShopId, setLoadingShopId] = useState(!shopIdProp);
 
   useEffect(() => {
     if (shopIdProp) return; // already provided by server
-    (async () => {
+    let alive = true;
+
+    void (async () => {
       setLoadingShopId(true);
       const { data } = await supabase
         .from("shops")
         .select("id")
         .eq("slug", slug)
         .maybeSingle();
+
+      if (!alive) return;
+
       if (data?.id) setShopId(data.id);
       setLoadingShopId(false);
     })();
+
+    return () => {
+      alive = false;
+    };
   }, [slug, shopIdProp, supabase]);
 
   /** Build a base URL that works in all environments */
@@ -39,32 +67,51 @@ export default function ShopSharePage({ slug, shopId: shopIdProp }: Props) {
     typeof process !== "undefined" && process.env.NEXT_PUBLIC_BASE_URL
       ? process.env.NEXT_PUBLIC_BASE_URL
       : typeof window !== "undefined" && window.location?.origin
-      ? window.location.origin
-      : "https://example.com";
+        ? window.location.origin
+        : "https://example.com";
 
   const bookingUrl = `${base}/portal/booking?shop=${encodeURIComponent(slug)}`;
   const qrSrc = `/api/portal/qr?shop=${encodeURIComponent(slug)}`;
 
+  const Card =
+    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
+
   return (
     <div className="mx-auto max-w-3xl space-y-8 py-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-blackops text-orange-400">
+      <header className="space-y-2">
+        <div
+          className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400"
+        >
+          <SignalDot />
+          Shop tools
+        </div>
+
+        <h1
+          className="text-2xl font-blackops"
+          style={{ color: COPPER }}
+        >
           Share your booking link
         </h1>
+
         <p className="text-sm text-neutral-400">
-          Copy your booking link, download a QR code, and manage reviews for this
-          shop.
+          Copy your booking link, download a QR code, and manage reviews for this shop.
         </p>
       </header>
 
-      <ShareBox slug={slug} bookingUrl={bookingUrl} qrSrc={qrSrc} />
+      <div className={Card}>
+        <ShareBox slug={slug} bookingUrl={bookingUrl} qrSrc={qrSrc} />
+      </div>
 
       {/* Reviews */}
       <section className="space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold text-neutral-50">
-            Customer reviews
-          </h2>
+          <div className="flex items-center gap-2">
+            <SignalDot />
+            <h2 className="text-lg font-semibold text-neutral-50">
+              Customer reviews
+            </h2>
+          </div>
+
           {loadingShopId && (
             <span className="text-xs text-neutral-500">Loading shop…</span>
           )}
@@ -72,17 +119,16 @@ export default function ShopSharePage({ slug, shopId: shopIdProp }: Props) {
 
         {shopId ? (
           <>
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 p-4">
+            <div className={Card}>
               <ReviewsList shopId={shopId} />
             </div>
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 p-4">
+            <div className={Card}>
               <ReviewForm shopId={shopId} />
             </div>
           </>
         ) : !loadingShopId ? (
-          <div className="rounded-xl border border-red-700/40 bg-red-900/30 p-3 text-sm text-red-100">
-            We couldn’t resolve this shop. Check that the share link uses a valid
-            slug.
+          <div className="rounded-3xl border border-red-500/30 bg-red-950/25 p-4 text-sm text-red-100 backdrop-blur">
+            We couldn’t resolve this shop. Check that the share link uses a valid slug.
           </div>
         ) : null}
       </section>

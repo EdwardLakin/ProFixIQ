@@ -12,11 +12,14 @@ type ReviewRow = Database["public"]["Tables"]["shop_reviews"]["Row"];
 
 type PublicReview = Pick<
   ReviewRow,
-  "id" | "rating" | "comment" | "created_at" | "shop_owner_reply" | "replied_at"
-> & {
-  public_name?: string | null;
-  is_public?: boolean | null;
-};
+  | "id"
+  | "shop_id"
+  | "rating"
+  | "comment"
+  | "created_at"
+  | "shop_owner_reply"
+  | "replied_at"
+>;
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -39,7 +42,10 @@ function Stars({ value }: { value: number }) {
   const half = v - full >= 0.5;
 
   return (
-    <div className="flex items-center gap-1" aria-label={`${v.toFixed(1)} out of 5 stars`}>
+    <div
+      className="flex items-center gap-1"
+      aria-label={`${v.toFixed(1)} out of 5 stars`}
+    >
       {Array.from({ length: 5 }).map((_, i) => {
         const idx = i + 1;
         const filled = idx <= full;
@@ -61,9 +67,7 @@ function Stars({ value }: { value: number }) {
                     : "rgba(148,163,184,0.22)",
                 clipPath:
                   "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)",
-                boxShadow: filled
-                  ? "0 0 18px rgba(197,122,74,0.35)"
-                  : "none",
+                boxShadow: filled ? "0 0 18px rgba(197,122,74,0.35)" : "none",
               }}
             />
           </span>
@@ -108,17 +112,24 @@ export default function LandingReviews() {
     void (async () => {
       setLoading(true);
 
-      // NOTE:
-      // Requires RLS policy allowing public SELECT where is_public = true
-      // and a column "public_name" (optional).
-      const { data } = await supabase
+      // IMPORTANT:
+      // For landing page visibility, you likely want an explicit public-read policy.
+      // Until you add an "is_public" flag + policy, this may return 0 rows under RLS.
+      const { data, error } = await supabase
         .from("shop_reviews")
-        .select("id,rating,comment,created_at,shop_owner_reply,replied_at,is_public,public_name")
-        .eq("is_public", true as unknown as never) // keeps TS happy across generated types
+        .select("id,shop_id,rating,comment,created_at,shop_owner_reply,replied_at")
         .order("created_at", { ascending: false })
         .limit(8);
 
       if (!alive) return;
+
+      if (error) {
+        // fail closed (don’t leak anything, don’t hard-crash)
+        setReviews([]);
+        setLoading(false);
+        return;
+      }
+
       setReviews((data as PublicReview[]) ?? []);
       setLoading(false);
     })();
@@ -136,7 +147,6 @@ export default function LandingReviews() {
     const count = list.length;
     const avg = count ? list.reduce((a, b) => a + b, 0) / count : 0;
 
-    // distribution
     const buckets: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     for (const n of list) {
       const k = clamp(Math.round(n), 1, 5);
@@ -207,7 +217,6 @@ export default function LandingReviews() {
         <div className="grid gap-0 lg:grid-cols-[420px_1fr]">
           {/* left: stats */}
           <div className="relative border-b border-white/10 p-6 lg:border-b-0 lg:border-r">
-            {/* copper wash */}
             <div
               className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
               style={{ background: "rgba(197,122,74,0.14)" }}
@@ -230,7 +239,9 @@ export default function LandingReviews() {
                 </div>
 
                 <div className="mt-3 text-sm text-neutral-300">
-                  {stats.count ? `${stats.count} review${stats.count === 1 ? "" : "s"}` : "No public reviews yet"}
+                  {stats.count
+                    ? `${stats.count} review${stats.count === 1 ? "" : "s"}`
+                    : "No public reviews yet"}
                 </div>
               </div>
 
@@ -240,7 +251,6 @@ export default function LandingReviews() {
               </div>
             </div>
 
-            {/* distribution */}
             <div className="mt-6 space-y-2">
               {distribution.map((d) => (
                 <div key={d.stars} className="flex items-center gap-3">
@@ -265,7 +275,6 @@ export default function LandingReviews() {
               ))}
             </div>
 
-            {/* spicy line */}
             <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-neutral-200">
               <span className="font-semibold" style={{ color: COPPER_LIGHT }}>
                 If you’re still reading,
@@ -284,16 +293,12 @@ export default function LandingReviews() {
               <div className="grid gap-4 md:grid-cols-2">
                 {reviews.map((r) => {
                   const rating = Number(r.rating);
-                  const name =
-                    (typeof r.public_name === "string" && r.public_name.trim()) ||
-                    "Verified shop user";
 
                   return (
                     <div
                       key={r.id}
                       className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/15 p-5"
                     >
-                      {/* subtle inset groove */}
                       <div
                         className="pointer-events-none absolute inset-0"
                         style={{
@@ -302,7 +307,6 @@ export default function LandingReviews() {
                         }}
                       />
 
-                      {/* brushed steel hint */}
                       <div
                         className="pointer-events-none absolute inset-0 opacity-[0.10]"
                         style={{
@@ -315,7 +319,7 @@ export default function LandingReviews() {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="text-sm font-extrabold text-white">
-                              {name}
+                              Verified shop user
                             </div>
                             <div className="mt-1 flex items-center gap-2">
                               <Stars value={Number.isFinite(rating) ? rating : 0} />
@@ -365,10 +369,12 @@ export default function LandingReviews() {
               </div>
             )}
 
-            {/* footer hint */}
             <div className="mt-6 flex flex-wrap items-center gap-2 text-xs text-neutral-400">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
-              Public reviews are curated by shop owners
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: COPPER }}
+              />
+              Reviews shown here depend on public visibility policies
               <span className="text-white/10">•</span>
               Evidence-first workflow
               <span className="text-white/10">•</span>
@@ -378,7 +384,6 @@ export default function LandingReviews() {
         </div>
       </div>
 
-      {/* divider into next section */}
       <div className="mt-10 h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
     </section>
   );
