@@ -1,170 +1,200 @@
-// features/shared/components/ui/LandingShopBoost.tsx
 "use client";
 
 const COPPER = "var(--pfq-copper)";
 
+type Step = {
+  n: string;
+  title: string;
+  headline: string;
+  body: string;
+};
+
+const STEPS: Step[] = [
+  {
+    n: "01",
+    title: "Profile",
+    headline: "Answer 5–10 quick questions.",
+    body: "Tell ProFixIQ what you run (fleet, mixed, diesel, automotive), how many bays/techs, and what data you have. We tailor the system to your real workflow — not generic templates.",
+  },
+  {
+    n: "02",
+    title: "Upload",
+    headline: "Drag in customers, units, parts, history.",
+    body: "Import CSVs or exports from your old system. We normalize customers, vehicles, repair orders, and inventory into one clean record that’s ready for inspections and work orders.",
+  },
+  {
+    n: "03",
+    title: "Blueprint",
+    headline: "AI builds your shop operating plan.",
+    body: "ProFixIQ surfaces your top repairs, builds starter menus and inspections, and highlights missed packages — so you can start writing smarter work orders on day one.",
+  },
+];
+
 export default function LandingShopBoost() {
   return (
-    <section className="relative mx-auto mt-4 max-w-5xl px-4 pb-20 sm:pb-28">
-      {/* background hint line */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-px max-w-3xl bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+    <section className="relative mx-auto max-w-7xl px-4 pb-20 pt-6 sm:pb-28 sm:pt-10">
+      {/* subtle “steel rail” */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-px max-w-5xl bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-      <div
-        className="
-          relative mx-auto max-w-4xl
-          overflow-hidden rounded-3xl
-          border border-[color:var(--metal-border-soft,#1f2937)]
-          bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.96),#020617_85%)]
-          px-6 py-8 sm:px-10 sm:py-10
-          shadow-[0_24px_60px_rgba(0,0,0,0.9)]
-          backdrop-blur-2xl
-        "
-      >
-        {/* inner glow */}
-        <div className="pointer-events-none absolute inset-0 rounded-3xl border border-white/5" />
-
-        <div className="relative z-10 space-y-8">
-          {/* Header */}
-          <div className="text-center space-y-3">
-            <p
-              className="inline-flex items-center rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-neutral-300"
-              style={{ fontFamily: "var(--font-blackops)" }}
-            >
-              Shop Boost Setup
-            </p>
-
-            <h2 className="text-2xl font-semibold text-neutral-50 sm:text-3xl">
-              From blank system to shop-ready in three steps.
-            </h2>
-
-            <p className="mx-auto max-w-2xl text-sm leading-relaxed text-neutral-300 sm:text-base">
-              Instead of spending weeks configuring software, ProFixIQ reads the
-              way your shop already works and builds around it. Answer a few
-              questions, upload your data, and let the AI return a working shop
-              and fleet OS.
-            </p>
+      <div className="relative">
+        {/* Header */}
+        <div className="mx-auto max-w-4xl text-center">
+          <div
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-neutral-300"
+            style={{ fontFamily: "var(--font-blackops)" }}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: COPPER }}
+            />
+            Shop Boost Setup
           </div>
 
-          {/* 3-step grid */}
+          <h2
+            className="mt-4 text-3xl text-neutral-50 sm:text-4xl"
+            style={{ fontFamily: "var(--font-blackops)" }}
+          >
+            From blank system to shop-ready in three moves.
+          </h2>
+
+          <p className="mx-auto mt-4 max-w-3xl text-sm leading-relaxed text-neutral-300 sm:text-base">
+            Don’t spend weeks configuring software. ProFixIQ reads how your shop
+            already works and builds around it — inspections, menus, automation,
+            and portals that match fleet reality.
+          </p>
+        </div>
+
+        {/* Timeline rail */}
+        <div className="relative mx-auto mt-10 max-w-6xl">
+          <div className="pointer-events-none absolute left-0 right-0 top-6 hidden h-px bg-white/10 sm:block" />
+
           <div className="grid gap-4 sm:grid-cols-3">
-            {/* Step 1 */}
-            <div className="flex flex-col gap-2 rounded-2xl bg-black/40 p-4 text-left">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
-                <span
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold"
-                  style={{
-                    backgroundColor: "rgba(248,113,22,0.16)",
-                    color: COPPER,
-                    border: "1px solid rgba(248,113,22,0.5)",
-                  }}
-                >
-                  1
-                </span>
-                Quick profile
-              </div>
-              <h3 className="text-sm font-semibold text-neutral-50">
-                Answer 5–10 yes/no questions.
-              </h3>
-              <p className="text-xs leading-relaxed text-neutral-300">
-                Tell us if you have customers, repair history, parts inventory,
-                fleets, and how many bays and techs you run. We use this to
-                tailor the experience to a diesel shop, mixed fleet, or busy
-                general repair.
-              </p>
-            </div>
+            {STEPS.map((s) => (
+              <div
+                key={s.n}
+                className={[
+                  "relative overflow-hidden rounded-3xl border border-white/10",
+                  "bg-black/25 backdrop-blur-xl",
+                  "shadow-[0_28px_90px_rgba(0,0,0,0.70)]",
+                ].join(" ")}
+              >
+                {/* copper signal */}
+                <div
+                  className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full blur-3xl opacity-60"
+                  style={{ backgroundColor: "rgba(197,122,74,0.22)" }}
+                />
 
-            {/* Step 2 */}
-            <div className="flex flex-col gap-2 rounded-2xl bg-black/40 p-4 text-left">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
-                <span
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold"
-                  style={{
-                    backgroundColor: "rgba(248,113,22,0.16)",
-                    color: COPPER,
-                    border: "1px solid rgba(248,113,22,0.5)",
-                  }}
-                >
-                  2
-                </span>
-                Upload your world
-              </div>
-              <h3 className="text-sm font-semibold text-neutral-50">
-                Drag in customers, vehicles & parts.
-              </h3>
-              <p className="text-xs leading-relaxed text-neutral-300">
-                Import CSVs or exports from your old system. ProFixIQ parses
-                customers, vehicles, repair orders, and inventory and queues
-                them into a clean, unified record ready for inspections and work
-                orders.
-              </p>
-            </div>
+                <div className="relative p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="grid h-11 w-11 place-items-center rounded-2xl border"
+                        style={{
+                          borderColor: "rgba(255,255,255,0.12)",
+                          background:
+                            "linear-gradient(145deg, rgba(197,122,74,0.18), rgba(0,0,0,0.25))",
+                          boxShadow:
+                            "0 0 0 1px rgba(255,255,255,0.04) inset, 0 0 26px rgba(197,122,74,0.18)",
+                        }}
+                      >
+                        <span
+                          className="text-sm font-extrabold"
+                          style={{ color: "var(--accent-copper-light)" }}
+                        >
+                          {s.n}
+                        </span>
+                      </div>
 
-            {/* Step 3 */}
-            <div className="flex flex-col gap-2 rounded-2xl bg-black/40 p-4 text-left">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
-                <span
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold"
-                  style={{
-                    backgroundColor: "rgba(248,113,22,0.16)",
-                    color: COPPER,
-                    border: "1px solid rgba(248,113,22,0.5)",
-                  }}
-                >
-                  3
-                </span>
-                AI builds your blueprint
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                          {s.title}
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-neutral-50">
+                          {s.headline}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* timeline node */}
+                    <div className="hidden sm:flex items-center gap-2">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: COPPER }}
+                      />
+                      <span className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">
+                        armed
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="mt-4 text-sm leading-relaxed text-neutral-300">
+                    {s.body}
+                  </p>
+
+                  <div className="mt-5 flex items-center gap-2">
+                    <div
+                      className="h-[2px] w-10 rounded-full"
+                      style={{ backgroundColor: COPPER }}
+                    />
+                    <div className="h-px flex-1 bg-white/5" />
+                  </div>
+                </div>
               </div>
-              <h3 className="text-sm font-semibold text-neutral-50">
-                Get a live shop and fleet playbook.
-              </h3>
-              <p className="text-xs leading-relaxed text-neutral-300">
-                ProFixIQ surfaces your most common repairs, pre-builds service
-                menus and inspections, and highlights missed opportunities so
-                you can start writing smarter work orders on day one.
-              </p>
-            </div>
+            ))}
           </div>
 
-          {/* AI report + add-ons row */}
-          <div className="flex flex-col gap-4 border-t border-white/10 pt-6 sm:flex-row sm:items-start sm:justify-between">
-            {/* AI report summary */}
-            <div className="max-w-md text-left text-xs text-neutral-300 sm:text-sm">
-              <h4 className="mb-1 text-sm font-semibold text-neutral-50">
-                Instant “Holy Sh*t” moment for owners.
-              </h4>
-              <p className="leading-relaxed">
-                As soon as imports finish, you get a Shop Health snapshot:
-                top repairs, comeback risks, average RO, and fleet downtime
-                indicators. It feels less like new software and more like a
-                diagnostic scan for your business.
+          {/* Owner “holy sh*t” block + add-ons */}
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-3xl border border-white/10 bg-black/20 p-6 backdrop-blur-xl shadow-[0_28px_90px_rgba(0,0,0,0.60)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                What you get immediately
+              </div>
+              <h3 className="mt-2 text-lg font-semibold text-neutral-50">
+                Instant owner snapshot (the “holy sh*t” moment).
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-neutral-300">
+                As soon as imports finish, you get a Shop Health Snapshot:
+                top repairs, comeback risks, average RO, and fleet downtime signals —
+                less like “new software”, more like a diagnostic scan for your business.
               </p>
             </div>
 
-            {/* Add-ons mini grid */}
-            <div className="grid w-full max-w-sm gap-2 text-[11px] text-neutral-300 sm:text-xs">
-              <p className="mb-1 text-right text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
-                Power add-ons you can toggle on later
-              </p>
-              <div className="flex flex-wrap justify-end gap-1.5">
+            <div className="rounded-3xl border border-white/10 bg-black/20 p-6 backdrop-blur-xl shadow-[0_28px_90px_rgba(0,0,0,0.60)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                  Power add-ons (toggle later)
+                </div>
                 <span
-                  className="rounded-full border border-white/12 bg-black/40 px-3 py-1"
-                  style={{ boxShadow: "0 0 18px rgba(15,23,42,0.85)" }}
+                  className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-neutral-300"
+                  style={{ fontFamily: "var(--font-blackops)" }}
                 >
-                  AI voice & dictation
-                </span>
-                <span className="rounded-full border border-white/12 bg-black/40 px-3 py-1">
-                  Fleet portal & pre-trips
-                </span>
-                <span className="rounded-full border border-white/12 bg-black/40 px-3 py-1">
-                  Parts & inventory sync
-                </span>
-                <span className="rounded-full border border-white/12 bg-black/40 px-3 py-1">
-                  Accounting & payments
-                </span>
-                <span className="rounded-full border border-white/12 bg-black/40 px-3 py-1">
-                  AI smart suggestions
+                  Optional
                 </span>
               </div>
+
+              <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-neutral-200">
+                {[
+                  "AI voice & dictation",
+                  "Fleet portal & pre-trips",
+                  "Parts & inventory sync",
+                  "Accounting & payments",
+                  "AI smart suggestions",
+                ].map((x) => (
+                  <span
+                    key={x}
+                    className="rounded-full border border-white/12 bg-black/35 px-3 py-1"
+                    style={{
+                      boxShadow: "0 0 18px rgba(15,23,42,0.75)",
+                    }}
+                  >
+                    {x}
+                  </span>
+                ))}
+              </div>
+
+              <p className="mt-4 text-xs text-neutral-400">
+                Everything core ships in the workflow. Add-ons expand capability, not complexity.
+              </p>
             </div>
           </div>
         </div>

@@ -50,17 +50,32 @@ export default function ProFixIQLanding() {
   };
 
   return (
-    <div
-      className="
-        relative min-h-screen text-foreground text-white
-        bg-background
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
-      "
-    >
+    <div className="relative min-h-screen text-white">
       <Toaster position="top-center" />
 
-            {/* Top bar */}
-      <div className="relative w-full border-b border-white/10 bg-black/35 backdrop-blur-xl">
+      {/* Dark steel + copper signal background */}
+      <div
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          backgroundImage: [
+            // base steel falloff
+            "radial-gradient(1200px 700px at 20% -10%, rgba(148,163,184,0.18), transparent 55%)",
+            "radial-gradient(1000px 650px at 85% 0%, rgba(30,41,59,0.55), transparent 60%)",
+            "radial-gradient(900px 700px at 50% 110%, rgba(2,6,23,0.95), rgba(2,6,23,1) 55%)",
+            // copper “signal” sources
+            "radial-gradient(550px 250px at 18% 18%, rgba(197,122,74,0.22), transparent 65%)",
+            "radial-gradient(500px 240px at 80% 65%, rgba(197,122,74,0.14), transparent 70%)",
+            // steel scanlines / texture
+            "repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.00) 1px, rgba(0,0,0,0.10) 3px)",
+            // subtle diagonal steel grain
+            "repeating-linear-gradient(135deg, rgba(148,163,184,0.05) 0px, rgba(148,163,184,0.00) 6px, rgba(2,6,23,0.00) 14px)",
+          ].join(", "),
+          backgroundColor: "#020617",
+        }}
+      />
+
+      {/* Top bar (ops header) */}
+      <div className="sticky top-0 z-30 w-full border-b border-white/10 bg-black/35 backdrop-blur-xl">
         <Container>
           <div className="flex items-center justify-between gap-3 py-3">
             <Link href="/" className="flex items-center gap-3">
@@ -81,22 +96,32 @@ export default function ProFixIQLanding() {
 
               <div className="leading-tight">
                 <div className="text-sm font-semibold text-white">ProFixIQ</div>
-                <div className="text-[11px] text-neutral-500">
-                  Heavy-Duty &amp; Fleet Shop OS
+                <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+                  <span>Heavy-Duty &amp; Fleet Shop OS</span>
+                  <span className="text-white/10">•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: "rgba(197,122,74,0.9)" }}
+                    />
+                    <span className="text-neutral-500">Signal</span>
+                  </span>
                 </div>
               </div>
             </Link>
 
             <div className="flex items-center gap-2">
-              {/* Keep portal sign-in always visible */}
+              {/* Always visible portal entry */}
               <Link
                 href="/portal"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-1.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-1.5 text-sm font-extrabold text-neutral-100 transition hover:bg-neutral-900/40"
+                style={{
+                  boxShadow: "0 0 0 1px rgba(197,122,74,0.08) inset",
+                }}
               >
                 Portal Sign In
               </Link>
 
-              {/* Optional: fleet portal button (hide on small screens) */}
               <Link
                 href="/portal/fleet"
                 className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-1.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
@@ -115,7 +140,7 @@ export default function ProFixIQLanding() {
 
                   <button
                     onClick={handleSignOut}
-                    className="inline-flex rounded-xl px-3 py-1.5 text-sm font-semibold text-black transition"
+                    className="inline-flex rounded-xl px-3 py-1.5 text-sm font-extrabold text-black transition"
                     style={{
                       background: "var(--pfq-copper)",
                       border: "1px solid rgba(255,255,255,0.10)",
@@ -127,7 +152,7 @@ export default function ProFixIQLanding() {
               ) : (
                 <Link
                   href="/sign-in"
-                  className="inline-flex rounded-xl border border-white/10 bg-black/25 px-3 py-1.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
+                  className="inline-flex rounded-xl border border-white/10 bg-black/15 px-3 py-1.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
                 >
                   Sign In
                 </Link>
@@ -137,17 +162,15 @@ export default function ProFixIQLanding() {
         </Container>
       </div>
 
-      {/* 1) HERO */}
-      <div className="relative">
-        <LandingHero />
-      </div>
+      {/* HERO (full-bleed) */}
+      <LandingHero />
 
-      {/* 1B) SHOP BOOST SETUP */}
-      <div className="relative" id="shop-boost">
+      {/* SHOP BOOST */}
+      <div id="shop-boost">
         <LandingShopBoost />
       </div>
 
-      {/* 2) FEATURES */}
+      {/* FEATURES */}
       <section id="features" className="relative py-16 md:py-20">
         <Container>
           <div className="mx-auto max-w-3xl text-center">
@@ -155,67 +178,34 @@ export default function ProFixIQLanding() {
               className="text-xs font-semibold uppercase tracking-[0.22em]"
               style={{ color: "var(--pfq-copper)" }}
             >
-              Platform
+              Included
             </div>
             <h2
-              className="mt-2 text-3xl text-neutral-100 md:text-4xl"
+              className="mt-2 text-3xl text-neutral-100 md:text-5xl"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
-              Powerful features, one workflow
+              Everything included. One workflow.
             </h2>
-            <p className="mt-3 text-sm text-neutral-400">
-              Real tools that run the shop — inspections, work orders, messaging,
-              portal, and AI planning.
+            <p className="mt-3 text-sm text-neutral-300 md:text-base">
+              Fleet-first tools that also work great for automotive — built to
+              reduce screen time and keep work moving.
             </p>
           </div>
 
-          <div className="mt-10 rounded-3xl border border-white/10 bg-black/35 p-4 md:p-6 backdrop-blur-xl">
-            <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <p className="text-sm text-neutral-400">
-                Have questions? Open the chatbot and ask anything about ProFixIQ.
-              </p>
-              <div
-                className="text-xs font-semibold"
-                style={{ color: "var(--pfq-copper)" }}
-              >
-                Built to feel premium • Built to move fast
-              </div>
-            </div>
-
+          <div className="mt-12">
             <FeaturesSection showHeading={false} />
           </div>
         </Container>
       </section>
 
-      {/* 3) WHY */}
+      {/* WHY */}
       <section id="why" className="relative py-16 md:py-20">
         <Container>
-          <div className="mx-auto max-w-3xl text-center">
-            <div
-              className="text-xs font-semibold uppercase tracking-[0.22em]"
-              style={{ color: "var(--pfq-copper)" }}
-            >
-              Why it wins
-            </div>
-            <h2
-              className="mt-2 text-3xl text-neutral-100 md:text-4xl"
-              style={{ fontFamily: "var(--font-blackops)" }}
-            >
-              Clarity for techs. Control for advisors.
-            </h2>
-            <p className="mt-3 text-sm text-neutral-400">
-              Consistency on the floor, clean communication, and fewer misses —
-              without adding admin work.
-            </p>
-          </div>
-
-          <div className="mt-10 rounded-3xl border border-white/10 bg-neutral-950/55 p-4 md:p-6 backdrop-blur-xl">
-            <WhySection />
-          </div>
+          <WhySection />
         </Container>
       </section>
 
-      {/* 4) PRICING */}
+      {/* PRICING */}
       <section id="plans" className="relative py-16 md:py-20">
         <Container>
           <div className="mx-auto max-w-3xl text-center">
@@ -226,17 +216,18 @@ export default function ProFixIQLanding() {
               Plans
             </div>
             <h2
-              className="mt-2 text-3xl text-neutral-100 md:text-4xl"
+              className="mt-2 text-3xl text-neutral-100 md:text-5xl"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
-              Pricing that scales with the shop
+              Pricing that scales with your operation
             </h2>
-            <p className="mt-3 text-sm text-neutral-400">
-              Start lean, upgrade when you’re ready — no messy migration later.
+            <p className="mt-3 text-sm text-neutral-300 md:text-base">
+              Start with a free trial. Upgrade when you’re ready — no migration
+              mess later.
             </p>
           </div>
 
-          <div className="mt-10 rounded-3xl border border-white/10 bg-black/35 p-4 md:p-6 backdrop-blur-xl">
+          <div className="mt-10">
             <PricingSection
               onCheckout={async ({
                 priceId,
@@ -277,13 +268,13 @@ export default function ProFixIQLanding() {
           </div>
 
           {/* CTA band */}
-          <div className="mt-8 rounded-3xl border border-white/10 bg-black/25 p-5 md:p-6 backdrop-blur-xl">
+          <div className="mt-10 rounded-2xl border border-white/10 bg-black/20 px-6 py-6 backdrop-blur">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="text-lg font-semibold text-white">
+                <div className="text-lg font-extrabold text-white">
                   Ready to see it in motion?
                 </div>
-                <div className="mt-1 text-sm text-neutral-400">
+                <div className="mt-1 text-sm text-neutral-300">
                   Create a work order, run an inspection, or let AI scan your shop&apos;s history.
                 </div>
               </div>
@@ -291,10 +282,11 @@ export default function ProFixIQLanding() {
               <div className="flex flex-wrap gap-3">
                 <Link
                   href="/work-orders/create"
-                  className="rounded-xl px-4 py-2 text-sm font-semibold text-black"
+                  className="rounded-xl px-4 py-2 text-sm font-extrabold text-black"
                   style={{
                     background: "var(--pfq-copper)",
                     border: "1px solid rgba(255,255,255,0.10)",
+                    boxShadow: "0 0 26px rgba(197,122,74,0.25)",
                   }}
                 >
                   Start a work order
@@ -311,12 +303,12 @@ export default function ProFixIQLanding() {
         </Container>
       </section>
 
-      {/* 5) Chatbot */}
+      {/* Chatbot */}
       <div className="relative">
         <LandingChatbot />
       </div>
 
-      {/* 6) Footer */}
+      {/* Footer */}
       <div className="relative">
         <Footer />
       </div>

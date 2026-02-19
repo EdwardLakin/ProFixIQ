@@ -1,135 +1,174 @@
 "use client";
 
-import FeatureCard from "@shared/components/ui/FeatureCard";
+const COPPER = "var(--pfq-copper)";
+
+type Pillar = {
+  kicker: string;
+  title: string;
+  description: string;
+  includes: string[];
+};
+
+const PILLARS: Pillar[] = [
+  {
+    kicker: "INSPECTIONS + EVIDENCE",
+    title: "Measured inspections that flow into approvals.",
+    description:
+      "Corner grids, photos, notes, and voice — captured once, carried through to quotes and invoices.",
+    includes: [
+      "HD inspections + corner grids",
+      "Custom inspection builder (truck / trailer / bus / automotive)",
+      "Voice-controlled inspections (less typing, faster flow)",
+      "Evidence trail (photos, videos, measurements) attached to the job",
+    ],
+  },
+  {
+    kicker: "WORK ORDERS + AUTOMATION",
+    title: "No retyping the same job three times.",
+    description:
+      "Turn findings into clean lines, estimates, and approvals — with automation that matches how fleets decide.",
+    includes: [
+      "Work order + quote automation",
+      "Menu item creation (packages from real shop history)",
+      "Approval workflows (customer + fleet)",
+      "Follow-ups and reminders that keep work moving",
+    ],
+  },
+  {
+    kicker: "PARTS + PURCHASING",
+    title: "Parts move with the job — not a separate system.",
+    description:
+      "Requests, receiving, allocations, and PO automation built into the workflow so techs stay working.",
+    includes: [
+      "Parts request system (tech → parts visibility)",
+      "Receiving + allocations + status tracking",
+      "Quote & PO automation",
+      "Inventory-aware workflows (where it makes sense)",
+    ],
+  },
+  {
+    kicker: "PORTALS + MOBILE + AI",
+    title: "Fleet transparency, tech speed, admin leverage.",
+    description:
+      "Purpose-built portals and a mobile companion, plus an AI assistant that reduces admin overhead.",
+    includes: [
+      "Fleet portal (status, approvals, evidence, history)",
+      "Customer portal (clean approvals + documentation)",
+      "Mobile companion for techs + advisors",
+      "AI assistant for admin tasks + AI-assisted diagnosis",
+      "Internal agent for live requests (bugs + feature requests in-app)",
+    ],
+  },
+];
 
 type FeaturesSectionProps = {
   showHeading?: boolean;
 };
 
+function PillarBlock({ p }: { p: Pillar }) {
+  return (
+    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/20 p-6 backdrop-blur-xl shadow-[0_28px_90px_rgba(0,0,0,0.65)]">
+      {/* copper signal */}
+      <div
+        className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full blur-3xl opacity-50"
+        style={{ backgroundColor: "rgba(197,122,74,0.20)" }}
+      />
+
+      <div className="relative">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-neutral-400">
+          {p.kicker}
+        </div>
+
+        <h3
+          className="mt-2 text-2xl text-neutral-50 sm:text-3xl"
+          style={{ fontFamily: "var(--font-blackops)" }}
+        >
+          {p.title}
+        </h3>
+
+        <p className="mt-3 text-sm leading-relaxed text-neutral-300">
+          {p.description}
+        </p>
+
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          {p.includes.map((x) => (
+            <div key={x} className="flex items-start gap-3">
+              <span
+                className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: COPPER, boxShadow: "0 0 18px rgba(197,122,74,0.35)" }}
+              />
+              <span className="text-sm text-neutral-200">{x}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 flex items-center gap-2">
+          <div className="h-px flex-1 bg-white/5" />
+          <div
+            className="h-[2px] w-12 rounded-full"
+            style={{ backgroundColor: COPPER }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FeaturesSection({ showHeading = false }: FeaturesSectionProps) {
   return (
-    <div className="space-y-8">
-      {showHeading && (
-        <div className="mb-4 text-center">
+    <div className="space-y-10">
+      {showHeading ? (
+        <div className="mx-auto max-w-3xl text-center">
           <div
             className="text-xs font-semibold uppercase tracking-[0.22em]"
-            style={{ color: "var(--pfq-copper)" }}
+            style={{ color: COPPER }}
           >
-            Feature set
+            Everything included
           </div>
           <h2
             className="mt-2 text-3xl text-neutral-50 md:text-4xl"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
-            Everything included. One workflow.
+            One workflow. Built for fleet reality.
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-sm text-neutral-300">
-            Built for heavy-duty and fleet work first — but works great for automotive too.
-            Less re-typing, faster approvals, and a clean evidence trail from inspection to invoice.
+            Heavy-duty and fleet first — works great for automotive too. Reduce
+            retyping, speed approvals, and keep evidence attached from inspection
+            to invoice.
           </p>
         </div>
-      )}
+      ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {/* Onboarding + Intelligence */}
-        <FeatureCard
-          title="Seamless onboarding (Upload → Ready)"
-          description="Drop in your exports once. ProFixIQ builds menus, templates, and a Shop Health Snapshot so you’re productive on day one."
-          available
-        />
-        <FeatureCard
-          title="Instant Shop Analysis (Demo)"
-          description="AI summarizes top repairs, missed packages, comebacks, and fleet opportunities you can act on immediately."
-          available
-        />
-        <FeatureCard
-          title="This system gets smarter over time"
-          description="Suggestions and automation improve as your shop runs inspections, quotes, and work orders. Less admin every week."
-          available
-        />
+      <div className="grid gap-4 lg:grid-cols-2">
+        {PILLARS.map((p) => (
+          <PillarBlock key={p.kicker} p={p} />
+        ))}
+      </div>
 
-        {/* Inspections */}
-        <FeatureCard
-          title="HD Inspections & Corner Grids"
-          description="Consistent tire, brake, and measurement grids across units. Photos, notes, and evidence stay attached."
-          available
-        />
-        <FeatureCard
-          title="Custom Inspection Builder"
-          description="Build your own templates for trucks, trailers, buses, and automotive. Match how your shop actually inspects."
-          available
-        />
-        <FeatureCard
-          title="Voice-controlled inspections"
-          description="Capture findings faster with voice and reduce typing. Keep techs working and limit screen time."
-          available
-        />
+      {/* small “system promise” band */}
+      <div className="rounded-3xl border border-white/10 bg-black/15 p-6 backdrop-blur-xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-neutral-50">
+              This system gets smarter the more you use it.
+            </div>
+            <div className="mt-1 text-sm text-neutral-300">
+              Automation and suggestions improve as your inspections, quotes, and work orders grow.
+            </div>
+          </div>
 
-        {/* Work orders + automation */}
-        <FeatureCard
-          title="Work orders + quote automation"
-          description="Turn inspection findings into clean lines and estimates without retyping the job multiple times."
-          available
-        />
-        <FeatureCard
-          title="Menu item creation"
-          description="Build service menus and packages that match your shop’s real history and common repairs."
-          available
-        />
-        <FeatureCard
-          title="Quote & PO automation"
-          description="Automate follow-ups, approvals, and purchasing workflows so parts and billing move without chasing."
-          available
-        />
-
-        {/* Parts + communication */}
-        <FeatureCard
-          title="Parts system"
-          description="Requests, receiving, allocations, and status visibility built into the workflow — not a separate tool."
-          available
-        />
-        <FeatureCard
-          title="Internal messaging"
-          description="Keep techs, advisors, and parts on the same page with clean, in-context communication."
-          available
-        />
-        <FeatureCard
-          title="Role-based dashboards"
-          description="Tech, advisor, parts, manager, owner — purpose-built views that reduce noise and speed decisions."
-          available
-        />
-
-        {/* AI + portals + mobile */}
-        <FeatureCard
-          title="AI-assisted diagnosis & suggestions"
-          description="Suggest next steps, common fixes, labor guidance, and inspection coverage tuned to your shop’s patterns."
-          available
-        />
-        <FeatureCard
-          title="Fleet portal"
-          description="Approve work, view evidence, track status, and see history — without extra admin work for advisors."
-          available
-        />
-        <FeatureCard
-          title="Customer portal"
-          description="Clean approvals, status, and documentation for non-fleet customers — the same evidence trail, simplified."
-          available
-        />
-        <FeatureCard
-          title="Mobile companion (Tech + Advisor)"
-          description="Purpose-built mobile flow for bay work and quick approvals. Faster throughput, fewer interruptions."
-          available
-        />
-        <FeatureCard
-          title="AI assistant for admin tasks"
-          description="Find work orders, chase approvals, answer questions, and surface what matters without digging through screens."
-          available
-        />
-        <FeatureCard
-          title="Internal agent for live requests"
-          description="Submit feature requests and bug reports inside the app so fixes ship faster and stay organized."
-          available
-        />
+          <div className="flex items-center gap-2 text-xs text-neutral-400">
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: COPPER }}
+            />
+            Less screen time
+            <span className="text-white/10">•</span>
+            Faster approvals
+            <span className="text-white/10">•</span>
+            Cleaner billing
+          </div>
+        </div>
       </div>
     </div>
   );

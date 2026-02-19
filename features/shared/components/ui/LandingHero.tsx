@@ -1,143 +1,276 @@
-// features/shared/components/ui/LandingHero.tsx
 "use client";
 
 import Link from "next/link";
 
 const COPPER = "var(--pfq-copper)";
+const COPPER_LIGHT = "var(--accent-copper-light)";
+
+type RailStep = {
+  key: string;
+  label: string;
+  hint: string;
+};
+
+const RAIL: RailStep[] = [
+  { key: "inspect", label: "Inspect", hint: "Evidence + measurements" },
+  { key: "quote", label: "Quote", hint: "Lines built automatically" },
+  { key: "approve", label: "Approve", hint: "Fleet/customer portals" },
+  { key: "parts", label: "Parts", hint: "Requests → receiving" },
+  { key: "invoice", label: "Invoice", hint: "Clean billing trail" },
+  { key: "portal", label: "Portal", hint: "Live status + history" },
+];
+
+function SignalDot() {
+  return (
+    <span
+      className="inline-block h-2 w-2 rounded-full"
+      style={{
+        background: COPPER,
+        boxShadow: "0 0 18px rgba(197,122,74,0.55)",
+      }}
+      aria-hidden
+    />
+  );
+}
 
 export default function LandingHero() {
   return (
-    <section className="relative mx-auto max-w-5xl px-4 py-20 sm:py-24">
-      {/* Glass hero card */}
-      <div
-        className="
-          relative mx-auto max-w-4xl
-          overflow-hidden rounded-[32px]
-          border border-[color:var(--metal-border-soft,#1f2937)]
-          bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.20),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_85%)]
-          px-6 py-8 sm:px-10 sm:py-12
-          shadow-[0_32px_80px_rgba(0,0,0,0.95)]
-          backdrop-blur-2xl
-        "
-      >
-        <div className="pointer-events-none absolute inset-0 rounded-[32px] border border-white/5" />
+    <section className="relative">
+      {/* Full-bleed hero area */}
+      <div className="mx-auto w-full max-w-[1400px] px-4 pb-10 pt-14 sm:pt-16 md:pt-20">
+        <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
+          {/* LEFT: editorial / outcome */}
+          <div className="relative">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
+              <SignalDot />
+              <span style={{ color: COPPER_LIGHT }}>
+                Heavy-Duty &amp; Fleet Software
+              </span>
+              <span className="text-white/10">•</span>
+              <span className="text-neutral-400">Built like an operating system</span>
+            </div>
 
-        <div className="relative z-10 flex flex-col items-center text-center">
-          {/* New: Category line above brand */}
-          <div
-            className="text-[11px] font-semibold uppercase tracking-[0.28em]"
-            style={{ color: "var(--accent-copper-light)" }}
-          >
-            Heavy-Duty &amp; Fleet Shop OS
-          </div>
-
-          {/* Brand */}
-          <div className="mt-3 space-y-2">
             <h1
-              className="text-4xl leading-tight sm:text-5xl md:text-6xl"
+              className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
               style={{
                 fontFamily: "var(--font-blackops)",
-                color: COPPER,
-                textShadow:
-                  "0 0 26px rgba(197,122,74,0.75), 0 0 60px rgba(0,0,0,0.85)",
+                textShadow: "0 0 46px rgba(0,0,0,0.85)",
               }}
             >
-              ProFixIQ
+              Run your shop like a{" "}
+              <span
+                style={{
+                  color: COPPER_LIGHT,
+                  textShadow: "0 0 26px rgba(197,122,74,0.45)",
+                }}
+              >
+                fleet operation
+              </span>
+              .
             </h1>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-300">
-              Inspections • Work Orders • Automation • Portals • AI
+
+            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
+              Inspections, quotes, parts, approvals, portals, invoicing, and AI — one workflow
+              that reduces screen time, speeds approvals, and builds a defensible evidence trail.
             </p>
-          </div>
 
-          {/* New: Outcome-driven headline */}
-          <h2 className="mt-6 text-xl font-semibold text-neutral-50 sm:text-2xl md:text-3xl">
-            Run your heavy-duty shop like a fleet operation.
-          </h2>
+            {/* CTAs */}
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link
+                href="/demo/instant-shop-analysis"
+                className="rounded-xl px-5 py-3 text-sm font-extrabold text-black transition hover:brightness-110 active:scale-[0.99]"
+                style={{
+                  background:
+                    "linear-gradient(to right, var(--accent-copper-soft), var(--accent-copper))",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  boxShadow: "0 0 34px rgba(197,122,74,0.26)",
+                }}
+              >
+                Run Instant Shop Analysis
+              </Link>
 
-          {/* New: Subcopy that sells your unfair advantage */}
-          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-neutral-300 sm:text-base">
-            Upload your history once and ProFixIQ builds your shop from day one —
-            inspections, service menus, workflow automation, and portals. Less screen
-            time for techs. Faster approvals. Cleaner evidence and billing.
-          </p>
-
-          {/* CTAs: simplify to primary + one secondary */}
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link
-              href="/demo/instant-shop-analysis"
-              className="
-                rounded-full px-5 py-2.5 text-sm font-semibold text-black
-                shadow-[0_0_26px_rgba(212,118,49,0.9)]
-                hover:brightness-110
-              "
-              style={{
-                background:
-                  "linear-gradient(to right,var(--accent-copper-soft),var(--accent-copper))",
-              }}
-            >
-              Run Instant Shop Analysis
-            </Link>
-
-            <Link
-              href="#features"
-              className="
-                rounded-full border border-white/12 bg-black/45
-                px-5 py-2.5 text-sm font-semibold text-neutral-100
-                backdrop-blur-lg transition
-                hover:bg-black/70
-              "
-            >
-              See what’s included
-            </Link>
-          </div>
-
-          {/* Portal links: de-emphasized (still visible) */}
-          <div className="mt-4 flex flex-wrap justify-center gap-3 text-xs text-neutral-400">
-            <Link href="/portal" className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200">
-              Customer portal
-            </Link>
-            <span className="text-white/10">•</span>
-            <Link href="/portal/fleet" className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200">
-              Fleet portal
-            </Link>
-            <span className="text-white/10">•</span>
-            <Link href="/sign-in" className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200">
-              Sign in
-            </Link>
-          </div>
-
-          {/* Built-for strip (quick trust) */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-2 text-[11px] text-neutral-400">
-            <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 backdrop-blur">
-              Fleet maintenance
-            </span>
-            <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 backdrop-blur">
-              Heavy-duty bays
-            </span>
-            <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 backdrop-blur">
-              Mixed shops
-            </span>
-            <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 backdrop-blur">
-              Multi-location
-            </span>
-          </div>
-
-          {/* Mini feature strip (keep, but align to your real pitch) */}
-          <div className="mt-8 grid w-full gap-3 text-[11px] text-neutral-400 sm:grid-cols-3">
-            <div className="flex items-center justify-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: COPPER }} />
-              Seamless onboarding from uploads
+              <Link
+                href="#features"
+                className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-neutral-100 transition hover:bg-black/30"
+              >
+                See what’s included
+              </Link>
             </div>
-            <div className="flex items-center justify-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: COPPER }} />
-              Voice + corner grids for tech speed
+
+            {/* Proof bullets */}
+            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
+                <SignalDot />
+                <div>
+                  <div className="text-sm font-extrabold text-white">Less screen time</div>
+                  <div className="mt-0.5 text-xs text-neutral-300">
+                    Voice + automation keep techs working.
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
+                <SignalDot />
+                <div>
+                  <div className="text-sm font-extrabold text-white">Faster approvals</div>
+                  <div className="mt-0.5 text-xs text-neutral-300">
+                    Portals + evidence streamline decisions.
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
+                <SignalDot />
+                <div>
+                  <div className="text-sm font-extrabold text-white">Clean evidence trail</div>
+                  <div className="mt-0.5 text-xs text-neutral-300">
+                    From inspection to invoice, attached.
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center justify-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: COPPER }} />
-              Quotes, approvals, portal, invoices
+          </div>
+
+          {/* RIGHT: “system snapshot” block */}
+          <div className="relative">
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-5 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                    System Snapshot
+                  </div>
+                  <div className="mt-1 text-lg font-extrabold text-white">
+                    One workflow, end-to-end
+                  </div>
+                </div>
+
+                <div
+                  className="rounded-full border px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.18em]"
+                  style={{
+                    borderColor: "rgba(255,255,255,0.14)",
+                    backgroundColor: "rgba(197,122,74,0.10)",
+                    color: COPPER_LIGHT,
+                  }}
+                >
+                  Live ops feel
+                </div>
+              </div>
+
+              <p className="mt-3 text-sm text-neutral-300">
+                ProFixIQ ties together inspections, quotes, parts, approvals, and portals — so
+                fleets and customers see the same truth your bay sees.
+              </p>
+
+              {/* Workflow rail */}
+              <div className="mt-5">
+                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                  <span className="font-semibold uppercase tracking-[0.18em]">
+                    Workflow rail
+                  </span>
+                  <span className="text-neutral-500">Inspect → Portal</span>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-4">
+                  <div className="relative">
+                    <div className="absolute left-2 right-2 top-[13px] h-px bg-white/10" />
+                    <div className="grid grid-cols-6 gap-2">
+                      {RAIL.map((s, idx) => (
+                        <div key={s.key} className="text-center">
+                          <div className="mx-auto flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/40">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full animate-pulse"
+                              style={{
+                                backgroundColor: COPPER,
+                                boxShadow:
+                                  idx === 0
+                                    ? "0 0 22px rgba(197,122,74,0.55)"
+                                    : "0 0 14px rgba(197,122,74,0.28)",
+                              }}
+                            />
+                          </div>
+                          <div className="mt-2 text-[11px] font-extrabold text-white">
+                            {s.label}
+                          </div>
+                          <div className="mt-1 text-[10px] leading-snug text-neutral-400">
+                            {s.hint}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Included highlights */}
+              <div className="mt-5 grid gap-2">
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
+                    <SignalDot />
+                    Seamless onboarding from uploads
+                  </div>
+                  <span className="text-[11px] text-neutral-400">Day-one ready</span>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
+                    <SignalDot />
+                    Voice + corner grids for tech speed
+                  </div>
+                  <span className="text-[11px] text-neutral-400">Less typing</span>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
+                    <SignalDot />
+                    Quotes, approvals, portal, invoices
+                  </div>
+                  <span className="text-[11px] text-neutral-400">One truth</span>
+                </div>
+              </div>
+
+              {/* Tiny portal links (still accessible) */}
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4 text-xs text-neutral-400">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                    Entry
+                  </span>
+                  <span className="text-white/10">•</span>
+                  <Link
+                    href="/portal"
+                    className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200"
+                  >
+                    Customer portal
+                  </Link>
+                  <span className="text-white/10">•</span>
+                  <Link
+                    href="/portal/fleet"
+                    className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200"
+                  >
+                    Fleet portal
+                  </Link>
+                </div>
+
+                <Link
+                  href="/sign-in"
+                  className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200"
+                >
+                  Sign in
+                </Link>
+              </div>
             </div>
+
+            {/* copper signal wash */}
+            <div
+              className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full blur-3xl"
+              style={{ background: "rgba(197,122,74,0.16)" }}
+            />
           </div>
         </div>
+      </div>
+
+      {/* thin rail divider into next section */}
+      <div className="mx-auto max-w-[1400px] px-4 pb-2">
+        <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       </div>
     </section>
   );
