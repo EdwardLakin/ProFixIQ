@@ -85,8 +85,6 @@ export function MobileTechHome({
   const assignedJobs = stats?.assignedJobs ?? 0;
   const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
 
-  const billedTodayText = `${today.billedHours.toFixed(1)}h`;
-
   const isOnShift = shiftStatus !== "none" && shiftStatus !== "ended";
 
   /* ---------------------------------------------------------------------- */
@@ -411,13 +409,6 @@ export function MobileTechHome({
       </section>
 
       {/* stat chips – keep ONLY billed today (eff is already in the summary cards) */}
-      <section className="grid grid-cols-3 gap-3">
-        <div className="col-span-2" />
-        <StatCard
-          label="Billed today"
-          value={loadingStats ? "…" : billedTodayText}
-        />
-      </section>
 
       {/* today jobs */}
       {jobs.length > 0 && (

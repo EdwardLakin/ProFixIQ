@@ -22,20 +22,13 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/mobile/settings", label: "Me" },
 ];
 
-const PORTAL_ITEMS: NavItem[] = [
-  { href: "/portal", label: "Portal Home" },
-  { href: "/portal/fleet", label: "Fleet Portal" },
-  { href: "/portal/fleet/service-requests", label: "Fleet Service" },
-  { href: "/portal/fleet/pretrip-history", label: "Pre-trip History" },
-];
-
 type Props = {
   open: boolean;
   onClose: () => void;
 };
 
 function isActivePath(pathname: string, href: string) {
-  const isRoot = href === "/mobile" || href === "/portal";
+  const isRoot = href === "/mobile";
   if (isRoot) return pathname === href;
   return pathname.startsWith(href);
 }
@@ -159,15 +152,6 @@ export function MobileBottomNav({ open, onClose }: Props) {
           <NavSection
             title="Mobile"
             items={NAV_ITEMS}
-            pathname={pathname}
-            onClose={onClose}
-          />
-
-          <div className="my-3 border-t border-[var(--metal-border-soft)] opacity-70" />
-
-          <NavSection
-            title="Portal"
-            items={PORTAL_ITEMS}
             pathname={pathname}
             onClose={onClose}
           />
