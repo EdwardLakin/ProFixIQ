@@ -3,11 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
+
+type WorkOrderPick = Pick<
+  DB["public"]["Tables"]["work_orders"]["Row"],
+  "id" | "custom_id" | "vehicle_id"
+>;
+
+type VehiclePick = Pick<
+  DB["public"]["Tables"]["vehicles"]["Row"],
+  "id" | "year" | "make" | "model" | "license_plate"
+>;
 
 type RollupStatus = "awaiting" | "in_progress" | "on_hold" | "completed";
 
@@ -18,16 +27,15 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
   completed: "Completed",
 };
 
-// summary chip styles (unchanged)
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    "border-slate-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
+    "border-slate-600/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.16),rgba(15,23,42,0.98))] hover:border-slate-300/70",
   in_progress:
-    "border-amber-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
+    "border-[color:var(--accent-copper-soft,#fdba74)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.28),rgba(15,23,42,0.98))] hover:border-[color:var(--accent-copper-soft,#fdba74)]/90",
   on_hold:
-    "border-purple-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
+    "border-amber-400/80 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.24),rgba(15,23,42,0.97))] hover:border-amber-300/80",
   completed:
-    "border-emerald-700 bg-neutral-950/90 hover:border-orange-400 data-[active=true]:border-emerald-500 data-[active=true]:bg-emerald-500/15",
+    "border-emerald-500/60 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.20),rgba(15,23,42,0.98))] hover:border-emerald-400/70",
 };
 
 function toBucket(status: string | null | undefined): RollupStatus {
@@ -46,13 +54,42 @@ const STATUS_RANK: Record<RollupStatus, number> = {
   completed: 3,
 };
 
+function cleanText(v: string | null | undefined): string {
+  return String(v ?? "").trim().replace(/\s+/g, " ");
+}
+
+function formatVehicle(v: VehiclePick | null | undefined): string | null {
+  if (!v) return null;
+
+  const y = v.year ? String(v.year) : "";
+  const make = cleanText(v.make);
+  const model = cleanText(v.model);
+  const base = [y, make, model].filter(Boolean).join(" ").trim();
+
+  const plate = cleanText(v.license_plate);
+  if (base && plate) return `${base} • ${plate}`;
+  if (base) return base;
+  if (plate) return plate;
+
+  return null;
+}
+
 export default function MobileTechQueuePage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
 
   const [lines, setLines] = useState<Line[]>([]);
+
   const [workOrderMap, setWorkOrderMap] = useState<
-    Record<string, { id: string; custom_id: string | null }>
+    Record<
+      string,
+      {
+        id: string;
+        custom_id: string | null;
+        vehicle_id: string | null;
+        vehicleLabel: string | null;
+      }
+    >
   >({});
 
   // line.id -> 1-based “client view” line number
@@ -110,7 +147,7 @@ export default function MobileTechQueuePage() {
         return;
       }
 
-      const assignedLines = techLines ?? [];
+      const assignedLines = (techLines ?? []) as Line[];
       setLines(assignedLines);
 
       // 4) fetch WOs + all lines for those WOs, to compute “client” line numbers
@@ -126,21 +163,53 @@ export default function MobileTechQueuePage() {
         const [wosRes, allLinesRes] = await Promise.all([
           supabase
             .from("work_orders")
-            .select("id, custom_id")
+            .select("id, custom_id, vehicle_id")
             .in("id", woIds),
           supabase
             .from("work_order_lines")
-            .select(
-              "id, work_order_id, created_at, job_type, approval_state",
-            )
+            .select("id, work_order_id, created_at, job_type, approval_state")
             .in("work_order_id", woIds),
         ]);
 
-        const mapWO: Record<string, { id: string; custom_id: string | null }> =
-          {};
-        (wosRes.data ?? []).forEach((wo) => {
-          mapWO[wo.id] = { id: wo.id, custom_id: wo.custom_id };
+        const wos = (wosRes.data ?? []) as WorkOrderPick[];
+
+        // vehicles lookup (batch)
+        const vehicleIds = Array.from(
+          new Set(
+            wos.map((w) => w.vehicle_id).filter((id): id is string => Boolean(id)),
+          ),
+        );
+
+        let vehicleMap: Record<string, VehiclePick> = {};
+        if (vehicleIds.length > 0) {
+          const { data: vehs } = await supabase
+            .from("vehicles")
+            .select("id, year, make, model, license_plate")
+            .in("id", vehicleIds);
+
+          vehicleMap = {};
+          (vehs ?? []).forEach((v) => {
+            const row = v as VehiclePick;
+            vehicleMap[row.id] = row;
+          });
+        }
+
+        // workOrderMap with vehicleLabel baked in
+        const mapWO: Record<
+          string,
+          { id: string; custom_id: string | null; vehicle_id: string | null; vehicleLabel: string | null }
+        > = {};
+
+        wos.forEach((wo) => {
+          const veh = wo.vehicle_id ? vehicleMap[wo.vehicle_id] : undefined;
+          mapWO[wo.id] = {
+            id: wo.id,
+            custom_id: wo.custom_id ?? null,
+            vehicle_id: wo.vehicle_id ?? null,
+            vehicleLabel: formatVehicle(veh),
+          };
         });
+
         setWorkOrderMap(mapWO);
 
         // Build lineNumberMap using the SAME sort as MobileWorkOrderClient
@@ -174,10 +243,8 @@ export default function MobileTechQueuePage() {
 
         Object.values(grouped).forEach((arr) => {
           arr.sort((a, b) => {
-            const pa =
-              jobTypePriority[String(a.job_type ?? "repair")] ?? 999;
-            const pb =
-              jobTypePriority[String(b.job_type ?? "repair")] ?? 999;
+            const pa = jobTypePriority[String(a.job_type ?? "repair")] ?? 999;
+            const pb = jobTypePriority[String(b.job_type ?? "repair")] ?? 999;
             if (pa !== pb) return pa - pb;
 
             const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -265,128 +332,168 @@ export default function MobileTechQueuePage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-4">
-        {/* Header / summary */}
-        <section className="rounded-2xl border border-white/10 bg-gradient-to-br from-black via-neutral-950 to-black px-4 py-4 shadow-card">
+        {/* HERO (match MobileTechHome vibe) */}
+        <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
           <div className="space-y-1">
             <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
               ProFixIQ • Tech
             </div>
-            <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-orange-400">
+            <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-[var(--accent-copper)]">
               My jobs
             </h1>
             <p className="text-[0.75rem] text-neutral-300">
-              Jobs currently assigned to you. Tap a job to open the work order
-              in tech mode.
+              Tap a line to open the work order in tech mode.
             </p>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-3 text-[0.7rem] text-neutral-300">
-            <div>
-              <div className="uppercase tracking-[0.13em] text-neutral-500">
-                Total lines
-              </div>
-              <div className="text-base font-semibold text-white">
-                {lines.length}
-              </div>
-            </div>
-            <div>
-              <div className="uppercase tracking-[0.13em] text-neutral-500">
-                In progress
-              </div>
-              <div className="text-base font-semibold text-emerald-200">
-                {counts.in_progress}
-              </div>
-            </div>
-            <div>
-              <div className="uppercase tracking-[0.13em] text-neutral-500">
-                On hold
-              </div>
-              <div className="text-base font-semibold text-amber-200">
-                {counts.on_hold}
-              </div>
-            </div>
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <MiniStat label="Total lines" value={lines.length} />
+            <MiniStat label="In progress" value={counts.in_progress} accent />
+            <MiniStat label="On hold" value={counts.on_hold} />
           </div>
         </section>
 
-        {/* Filter chips */}
+        {/* FILTER CARDS (vibes like your desktop file) */}
         <section className="grid grid-cols-2 gap-3 text-xs">
           {(
             ["awaiting", "in_progress", "on_hold", "completed"] as RollupStatus[]
           ).map((s) => {
             const isActive = activeFilter === s;
+
             return (
               <button
                 key={s}
                 type="button"
                 onClick={() => setActiveFilter(isActive ? null : s)}
-                className={`rounded-2xl border px-3 py-2 text-left transition ${STATUS_STYLES[s]}`}
-                data-active={isActive ? "true" : "false"}
+                className={[
+                  "rounded-2xl border p-3 text-left transition",
+                  STATUS_STYLES[s],
+                  isActive
+                    ? "ring-2 ring-[color:var(--accent-copper-soft,#fdba74)]/80 shadow-[0_0_28px_rgba(249,115,22,0.45)]"
+                    : "shadow-[0_16px_32px_rgba(0,0,0,0.65)]",
+                ].join(" ")}
               >
-                <div className="text-[0.6rem] uppercase tracking-[0.16em] text-neutral-400">
+                <div className="text-[0.6rem] uppercase tracking-[0.16em] text-neutral-300">
                   {STATUS_LABELS[s]}
                 </div>
-                <div className="mt-1 text-lg font-semibold">
+                <div className="mt-1 text-lg font-semibold text-white">
                   {counts[s]}
                 </div>
-                {isActive && (
-                  <div className="mt-1 text-[0.6rem] text-orange-200">
+                {isActive ? (
+                  <div className="mt-1 text-[0.6rem] text-[var(--accent-copper-soft)]">
                     Showing only {STATUS_LABELS[s].toLowerCase()}
                   </div>
-                )}
+                ) : null}
               </button>
             );
           })}
         </section>
 
-        {/* Jobs list */}
+        {/* JOB LIST (now includes vehicle + job label) */}
         <section className="space-y-2">
           {filteredLines.map((line) => {
             const bucket = toBucket(line.status);
-            const wo = line.work_order_id
-              ? workOrderMap[line.work_order_id]
-              : null;
-            const slug = wo?.custom_id ?? wo?.id ?? line.work_order_id ?? "";
+
+            const wo = line.work_order_id ? workOrderMap[line.work_order_id] : null;
+
+            const woLabel = wo?.custom_id
+              ? wo.custom_id
+              : line.work_order_id
+                ? `WO ${line.work_order_id.slice(0, 8)}`
+                : "Work order";
 
             const lineNumber = lineNumberMap[line.id];
+
+            const jobLabel = cleanText(
+              line.description || line.complaint || line.job_type || "Job",
+            );
+
+            const vehicleLabel = wo?.vehicleLabel ?? null;
+
+            // always use UUID id route on mobile
+            const woId = wo?.id ?? line.work_order_id ?? "";
+            const href = woId ? `/mobile/work-orders/${woId}?mode=tech` : "";
 
             return (
               <button
                 key={line.id}
                 type="button"
                 onClick={() => {
-                  if (!slug) return;
-                  router.push(`/mobile/work-orders/${slug}?mode=tech`);
+                  if (!href) return;
+                  router.push(href);
                 }}
-                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99]"
+                className={[
+                  "metal-card w-full rounded-2xl border px-3 py-3 text-left shadow-[0_18px_40px_rgba(0,0,0,0.75)] active:scale-[0.99]",
+                  bucket === "in_progress"
+                    ? "border-[var(--accent-copper-soft)]/80"
+                    : bucket === "on_hold"
+                      ? "border-amber-400/50"
+                      : bucket === "completed"
+                        ? "border-emerald-500/35"
+                        : "border-[var(--metal-border-soft)]",
+                ].join(" ")}
               >
-                <div className="min-w-0">
-                  <div className="truncate text-[0.85rem] font-medium text-neutral-50">
-                    {wo?.custom_id
-                      ? wo.custom_id
-                      : line.work_order_id
-                      ? `WO #${line.work_order_id.slice(0, 8)}`
-                      : "Work order line"}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+                      {woLabel}
+                      {lineNumber ? (
+                        <span className="ml-2 text-neutral-500">
+                          • Line #{lineNumber}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-1 truncate text-[0.95rem] font-semibold text-white">
+                      {jobLabel}
+                    </div>
+
+                    <div className="mt-1 truncate text-[0.75rem] text-neutral-400">
+                      {vehicleLabel ? vehicleLabel : "—"}
+                    </div>
                   </div>
-                  <div className="mt-0.5 text-[0.7rem] text-neutral-400">
-                    {lineNumber
-                      ? `Line #${lineNumber}`
-                      : `Line id ${line.id.slice(0, 8)}`}
-                  </div>
+
+                  <span className="accent-chip shrink-0 rounded-full px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
+                    {STATUS_LABELS[bucket]}
+                  </span>
                 </div>
-                <span className="shrink-0 rounded-full border border-neutral-700 px-2 py-0.5 text-[0.7rem] text-neutral-200">
-                  {STATUS_LABELS[bucket]}
-                </span>
               </button>
             );
           })}
 
           {filteredLines.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-neutral-700 bg-neutral-950/80 px-3 py-4 text-sm text-neutral-400">
+            <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-4 text-sm text-neutral-400">
               No jobs in this bucket.
             </div>
           )}
         </section>
       </div>
     </main>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "metal-card rounded-2xl border px-3 py-3 text-center shadow-[0_16px_32px_rgba(0,0,0,0.65)]",
+        accent
+          ? "border border-[var(--accent-copper-soft)]/75 shadow-[0_16px_32px_rgba(0,0,0,0.65),0_0_20px_rgba(212,118,49,0.45)]"
+          : "border border-[var(--metal-border-soft)]",
+      ].join(" ")}
+    >
+      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold text-white">{value}</div>
+    </div>
   );
 }
