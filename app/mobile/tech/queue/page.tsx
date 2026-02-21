@@ -1,3 +1,10 @@
+// /app/mobile/tech/queue/page.tsx (FULL FILE REPLACEMENT)
+// Mobile Tech Queue — themed to match MobileTechHome
+// - Hero uses metal-panel vibe
+// - Filter cards styled like desktop TechQueue “vibes”
+// - Job list shows: WO label + Line # + ACTUAL job title (description/complaint) + vehicle label
+// - Uses UUID WO route: /mobile/work-orders/{workOrder.id}?mode=tech
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -74,23 +81,22 @@ function formatVehicle(v: VehiclePick | null | undefined): string | null {
   return null;
 }
 
+type WorkOrderMapRow = {
+  id: string;
+  custom_id: string | null;
+  vehicle_id: string | null;
+  vehicleLabel: string | null;
+};
+
 export default function MobileTechQueuePage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
 
   const [lines, setLines] = useState<Line[]>([]);
 
-  const [workOrderMap, setWorkOrderMap] = useState<
-    Record<
-      string,
-      {
-        id: string;
-        custom_id: string | null;
-        vehicle_id: string | null;
-        vehicleLabel: string | null;
-      }
-    >
-  >({});
+  const [workOrderMap, setWorkOrderMap] = useState<Record<string, WorkOrderMapRow>>(
+    {},
+  );
 
   // line.id -> 1-based “client view” line number
   const [lineNumberMap, setLineNumberMap] = useState<Record<string, number>>(
@@ -176,7 +182,9 @@ export default function MobileTechQueuePage() {
         // vehicles lookup (batch)
         const vehicleIds = Array.from(
           new Set(
-            wos.map((w) => w.vehicle_id).filter((id): id is string => Boolean(id)),
+            wos
+              .map((w) => w.vehicle_id)
+              .filter((id): id is string => Boolean(id)),
           ),
         );
 
@@ -195,11 +203,7 @@ export default function MobileTechQueuePage() {
         }
 
         // workOrderMap with vehicleLabel baked in
-        const mapWO: Record<
-          string,
-          { id: string; custom_id: string | null; vehicle_id: string | null; vehicleLabel: string | null }
-        > = {};
-
+        const mapWO: Record<string, WorkOrderMapRow> = {};
         wos.forEach((wo) => {
           const veh = wo.vehicle_id ? vehicleMap[wo.vehicle_id] : undefined;
           mapWO[wo.id] = {
@@ -209,7 +213,6 @@ export default function MobileTechQueuePage() {
             vehicleLabel: formatVehicle(veh),
           };
         });
-
         setWorkOrderMap(mapWO);
 
         // Build lineNumberMap using the SAME sort as MobileWorkOrderClient
@@ -275,9 +278,7 @@ export default function MobileTechQueuePage() {
       on_hold: 0,
       completed: 0,
     };
-    for (const line of lines) {
-      base[toBucket(line.status)] += 1;
-    }
+    for (const line of lines) base[toBucket(line.status)] += 1;
     return base;
   }, [lines]);
 
@@ -353,7 +354,7 @@ export default function MobileTechQueuePage() {
           </div>
         </section>
 
-        {/* FILTER CARDS (vibes like your desktop file) */}
+        {/* FILTER CARDS (desktop-style vibes) */}
         <section className="grid grid-cols-2 gap-3 text-xs">
           {(
             ["awaiting", "in_progress", "on_hold", "completed"] as RollupStatus[]
@@ -389,7 +390,7 @@ export default function MobileTechQueuePage() {
           })}
         </section>
 
-        {/* JOB LIST (now includes vehicle + job label) */}
+        {/* JOB LIST (WO + line# + real title + vehicle) */}
         <section className="space-y-2">
           {filteredLines.map((line) => {
             const bucket = toBucket(line.status);
@@ -398,19 +399,22 @@ export default function MobileTechQueuePage() {
 
             const woLabel = wo?.custom_id
               ? wo.custom_id
-              : line.work_order_id
-                ? `WO ${line.work_order_id.slice(0, 8)}`
-                : "Work order";
+              : wo?.id
+                ? `WO ${wo.id.slice(0, 8)}`
+                : line.work_order_id
+                  ? `WO ${line.work_order_id.slice(0, 8)}`
+                  : "Work order";
 
             const lineNumber = lineNumberMap[line.id];
 
+            // ✅ app-like title logic
             const jobLabel = cleanText(
-              line.description || line.complaint || line.job_type || "Job",
+              line.description || line.complaint || "Untitled job",
             );
 
             const vehicleLabel = wo?.vehicleLabel ?? null;
 
-            // always use UUID id route on mobile
+            // ✅ always use UUID route (mobile expects UUID)
             const woId = wo?.id ?? line.work_order_id ?? "";
             const href = woId ? `/mobile/work-orders/${woId}?mode=tech` : "";
 
