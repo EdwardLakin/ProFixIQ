@@ -1,5 +1,3 @@
-// features/inspections/lib/inspection/aiQuote.ts
-
 export type AISuggestion = {
   parts: { name: string; qty?: number; cost?: number; notes?: string }[];
   laborHours: number;
@@ -18,7 +16,9 @@ export async function requestQuoteSuggestion(args: {
   status: string;
   value?: string;
   unit?: string;
-  vehicle?: Record<string, any>;
+
+  // ✅ accept any serializable object (SessionVehicle is fine)
+  vehicle?: unknown;
 }): Promise<AISuggestion | null> {
   try {
     const res = await fetch("/api/ai/quote-suggest", {
@@ -26,10 +26,15 @@ export async function requestQuoteSuggestion(args: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(args),
     });
+
     if (!res.ok) return null;
-    const data = await res.json();
-    return (data?.suggestion ?? null) as AISuggestion | null;
+
+    const data = (await res.json()) as unknown;
+    const rec = data as { suggestion?: unknown } | null;
+
+    return (rec?.suggestion ?? null) as AISuggestion | null;
   } catch (e) {
+    // eslint-disable-next-line no-console
     console.error("requestQuoteSuggestion error:", e);
     return null;
   }

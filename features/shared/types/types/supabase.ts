@@ -6963,6 +6963,7 @@ export type Database = {
           country: string | null
           created_at: string | null
           created_by: string | null
+          default_stock_location_id: string | null
           diagnostic_fee: number | null
           email: string | null
           email_on_complete: boolean | null
@@ -7023,6 +7024,7 @@ export type Database = {
           country?: string | null
           created_at?: string | null
           created_by?: string | null
+          default_stock_location_id?: string | null
           diagnostic_fee?: number | null
           email?: string | null
           email_on_complete?: boolean | null
@@ -7083,6 +7085,7 @@ export type Database = {
           country?: string | null
           created_at?: string | null
           created_by?: string | null
+          default_stock_location_id?: string | null
           diagnostic_fee?: number | null
           email?: string | null
           email_on_complete?: boolean | null
@@ -7133,6 +7136,13 @@ export type Database = {
           user_limit?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "shops_default_stock_location_id_fkey"
+            columns: ["default_stock_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "shops_organization_id_fkey"
             columns: ["organization_id"]
@@ -10271,6 +10281,16 @@ export type Database = {
           },
         ]
       }
+      v_parts_reconciliation: {
+        Row: {
+          alloc_total: number | null
+          diff: number | null
+          status: string | null
+          wop_total: number | null
+          work_order_id: string | null
+        }
+        Relationships: []
+      }
       v_portal_invoices: {
         Row: {
           approval_state: string | null
@@ -10916,6 +10936,14 @@ export type Database = {
       }
       check_plan_limit: { Args: { _feature: string }; Returns: boolean }
       clear_auth: { Args: never; Returns: undefined }
+      compute_labor_cost_for_work_order: {
+        Args: { p_work_order_id: string }
+        Returns: number
+      }
+      compute_parts_cost_for_work_order: {
+        Args: { p_work_order_id: string }
+        Returns: number
+      }
       consume_part_request_item_on_picked: {
         Args: { p_request_item_id: string }
         Returns: undefined
@@ -11023,6 +11051,10 @@ export type Database = {
         Args: { p_shop_id: string }
         Returns: string
       }
+      get_live_invoice_id: {
+        Args: { p_work_order_id: string }
+        Returns: string
+      }
       get_work_order_assignments: {
         Args: { p_work_order_id: string }
         Returns: {
@@ -11036,6 +11068,10 @@ export type Database = {
       increment_user_limit: {
         Args: { increment_by?: number; input_shop_id: string }
         Returns: undefined
+      }
+      invoice_is_locked: {
+        Args: { issued_at: string; s: string }
+        Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
       is_agent_developer: { Args: never; Returns: boolean }
@@ -11087,6 +11123,10 @@ export type Database = {
           p_qty: number
         }
         Returns: Json
+      }
+      recompute_live_invoice_costs: {
+        Args: { p_work_order_id: string }
+        Returns: undefined
       }
       recompute_work_order_status: {
         Args: { p_wo: string }
