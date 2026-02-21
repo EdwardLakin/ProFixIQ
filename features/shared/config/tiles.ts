@@ -340,7 +340,7 @@ export const TILES: Tile[] = [
   href: "/tech/performance",
   title: "My Performance",
   subtitle: "Hours, billed & efficiency",
-  roles: ["mechanic", "manager", "owner", "admin"],
+  roles: [ "mechanic",],
   scopes: ["tech", "all"],
   section: "Tech",
   },

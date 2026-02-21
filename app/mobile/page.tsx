@@ -1,7 +1,8 @@
+// app/mobile/page.tsx
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -66,8 +67,13 @@ function calcEfficiencyPct(worked: number, billed: number): number | null {
   return (billed / worked) * 100;
 }
 
+function isTechRole(role: string | null): boolean {
+  const r = (role ?? "").trim().toLowerCase();
+  return r === "mechanic" || r === "tech" || r === "technician";
+}
+
 export default function MobileHome() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
@@ -79,11 +85,16 @@ export default function MobileHome() {
 
   // Load profile + shop
   useEffect(() => {
+    let alive = true;
+
     (async () => {
       try {
         const { data: sessionData } = await supabase.auth.getUser();
+        if (!alive) return;
+
         if (!sessionData?.user) {
-          setLoading(false);
+          setProfile(null);
+          setShop(null);
           return;
         }
 
@@ -95,6 +106,8 @@ export default function MobileHome() {
           .eq("id", uid)
           .maybeSingle();
 
+        if (!alive) return;
+
         setProfile(profileRow ?? null);
 
         if (profileRow?.shop_id) {
@@ -104,18 +117,26 @@ export default function MobileHome() {
             .eq("id", profileRow.shop_id)
             .maybeSingle();
 
+          if (!alive) return;
           setShop(shopRow ?? null);
+        } else {
+          setShop(null);
         }
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
+
+    return () => {
+      alive = false;
+    };
   }, [supabase]);
 
-  // Load mechanic stats + today's jobs (used by MobileTechHome)
+  // Load tech stats + today's jobs (used by MobileTechHome)
   useEffect(() => {
     const loadStats = async () => {
-      if (!profile?.id || profile.role !== "mechanic") return;
+      if (!profile?.id) return;
+      if (!isTechRole(profile.role)) return;
 
       setStatsLoading(true);
       try {
@@ -230,8 +251,8 @@ export default function MobileHome() {
               typeof raw === "number"
                 ? raw
                 : raw != null
-                ? Number(raw)
-                : 0;
+                  ? Number(raw)
+                  : 0;
             if (!Number.isFinite(n)) return acc;
             return acc + n;
           }, 0);
@@ -255,9 +276,8 @@ export default function MobileHome() {
         const active = (activeLines as WorkOrderLine[] | null) ?? [];
         const openJobs = active.length;
         const assignedJobs =
-          active.filter(
-            (l) => (l.status ?? "").toLowerCase() === "assigned",
-          ).length || openJobs;
+          active.filter((l) => (l.status ?? "").toLowerCase() === "assigned")
+            .length || openJobs;
 
         const jobsList: MobileTechJob[] =
           (todayJobsRaw as WorkOrderLine[] | null)?.slice(0, 6).map((l) => {
@@ -306,17 +326,34 @@ export default function MobileHome() {
   const shopName = shop?.name ?? null;
 
   /* ------------------------------------------------------------------ */
+  /* ✅ IMPORTANT: prevent “Shop Console” flash while loading            */
+  /* ------------------------------------------------------------------ */
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black text-white">
+        <div className="mx-auto flex max-w-md flex-col items-center justify-center px-4 py-16 text-center">
+          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+            ProFixIQ • Mobile
+          </div>
+          <div className="mt-3 h-10 w-56 animate-pulse rounded-lg bg-neutral-900/70" />
+          <div className="mt-4 h-3 w-40 animate-pulse rounded bg-neutral-900/60" />
+        </div>
+      </main>
+    );
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Role-specific mobile home pages                                    */
   /* ------------------------------------------------------------------ */
 
-  if (!loading && profile && role === "mechanic") {
-    // Tech dashboard (bench-side)
+  if (profile && isTechRole(role)) {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
           <MobileTechHome
             techName={profile.full_name || "Tech"}
-            role="mechanic"
+            role={(role ?? "mechanic") as MobileRole}
             stats={stats}
             jobs={jobs}
             loadingStats={statsLoading}
@@ -326,7 +363,7 @@ export default function MobileHome() {
     );
   }
 
-  if (!loading && profile && role === "advisor") {
+  if (profile && role === "advisor") {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
@@ -339,7 +376,10 @@ export default function MobileHome() {
     );
   }
 
-  if (!loading && profile && (role === "manager" || role === "owner" || role === "admin")) {
+  if (
+    profile &&
+    (role === "manager" || role === "owner" || role === "admin")
+  ) {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
@@ -353,7 +393,7 @@ export default function MobileHome() {
   }
 
   // optional: if you’re using a separate "lead hand" MobileRole mapped from profiles
-  if (!loading && profile && (role as string) === "lead_hand") {
+  if (profile && (role as string) === "lead_hand") {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
@@ -367,7 +407,7 @@ export default function MobileHome() {
   }
 
   /* ------------------------------------------------------------------ */
-  /* Fallback companion home (parts, unknown roles, loading)            */
+  /* Fallback companion home (unknown roles / not authed)               */
   /* ------------------------------------------------------------------ */
 
   return (
@@ -383,19 +423,12 @@ export default function MobileHome() {
             Shop Console
           </h1>
 
-          {loading ? (
-            <p className="text-[0.8rem] text-neutral-400">Loading…</p>
-          ) : userName ? (
+          {userName ? (
             <p className="text-[0.8rem] text-neutral-400">
-              Hi{" "}
-              <span className="font-medium text-neutral-100">
-                {userName}
-              </span>
-              {shopName && (
-                <span className="ml-1 text-neutral-300">
-                  ({shopName})
-                </span>
-              )}
+              Hi <span className="font-medium text-neutral-100">{userName}</span>
+              {shopName ? (
+                <span className="ml-1 text-neutral-300">({shopName})</span>
+              ) : null}
               .
             </p>
           ) : (
@@ -407,7 +440,6 @@ export default function MobileHome() {
 
         {/* App tiles */}
         <section className="grid grid-cols-2 gap-3">
-          {/* Jobs / Work Orders */}
           <Link
             href="/mobile/work-orders"
             className="flex h-28 flex-col justify-between rounded-2xl border border-orange-500/70 bg-gradient-to-br from-orange-500/20 via-black/40 to-black/80 p-3 shadow-lg shadow-orange-500/30"
@@ -416,16 +448,13 @@ export default function MobileHome() {
               Jobs
             </div>
             <div>
-              <div className="text-sm font-semibold text-white">
-                Work Orders
-              </div>
+              <div className="text-sm font-semibold text-white">Work Orders</div>
               <div className="mt-1 text-[0.75rem] text-orange-100/90">
                 View &amp; update live jobs.
               </div>
             </div>
           </Link>
 
-          {/* New work order */}
           <Link
             href="/mobile/work-orders/create"
             className="flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
@@ -443,7 +472,6 @@ export default function MobileHome() {
             </div>
           </Link>
 
-          {/* Inspections */}
           <Link
             href="/mobile/inspections"
             className="flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
@@ -461,7 +489,6 @@ export default function MobileHome() {
             </div>
           </Link>
 
-          {/* AI & Messages */}
           <Link
             href="/mobile/messages"
             className="flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
@@ -479,7 +506,6 @@ export default function MobileHome() {
             </div>
           </Link>
 
-          {/* Planner */}
           <Link
             href="/mobile/planner"
             className="col-span-2 flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"

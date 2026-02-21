@@ -1,12 +1,7 @@
-// features/mobile/dashboard/MobileTechHome.tsx
+// /features/mobile/dashboard/MobileTechHome.tsx
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-  useCallback,
-} from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -68,18 +63,19 @@ export function MobileTechHome({
   const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
   const [currentJobWorkOrder, setCurrentJobWorkOrder] =
     useState<WorkOrder | null>(null);
-  const [currentJobVehicle, setCurrentJobVehicle] =
-    useState<Vehicle | null>(null);
+  const [currentJobVehicle, setCurrentJobVehicle] = useState<Vehicle | null>(
+    null,
+  );
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
 
   const firstName = techName?.split(" ")[0] ?? techName ?? "Tech";
 
-  const today = stats?.today ?? {
+  const today: PeriodStats = stats?.today ?? {
     workedHours: 0,
     billedHours: 0,
     efficiencyPct: null,
   };
-  const week = stats?.week ?? {
+  const week: PeriodStats = stats?.week ?? {
     workedHours: 0,
     billedHours: 0,
     efficiencyPct: null,
@@ -89,14 +85,9 @@ export function MobileTechHome({
   const assignedJobs = stats?.assignedJobs ?? 0;
   const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
 
-  // derived pill labels for efficiency / billed hours
-  const todayEffText =
-    today.efficiencyPct === null
-      ? "–"
-      : `${today.efficiencyPct.toFixed(0)}%`;
-  const weekEffText =
-    week.efficiencyPct === null ? "–" : `${week.efficiencyPct.toFixed(0)}%`;
   const billedTodayText = `${today.billedHours.toFixed(1)}h`;
+
+  const isOnShift = shiftStatus !== "none" && shiftStatus !== "ended";
 
   /* ---------------------------------------------------------------------- */
   /* Load / refresh shift state (aligned with MobileShiftTracker)           */
@@ -213,16 +204,16 @@ export function MobileTechHome({
       setLoadingCurrentJob(true);
       try {
         const { data, error } = await supabase
-  .from("work_order_lines")
-  .select(
-    "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_to",
-  )
-  .eq("assigned_to", uid)
-  .not("punched_in_at", "is", null)
-  .is("punched_out_at", null)
-  .order("punched_in_at", { ascending: false })
-  .limit(1)
-  .maybeSingle();
+          .from("work_order_lines")
+          .select(
+            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_to",
+          )
+          .eq("assigned_to", uid)
+          .not("punched_in_at", "is", null)
+          .is("punched_out_at", null)
+          .order("punched_in_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
         if (error) {
           // eslint-disable-next-line no-console
@@ -337,6 +328,23 @@ export function MobileTechHome({
     }
   }
 
+  // Hints for “0” data that’s confusing to techs
+  const todayHint = !loadingStats
+    ? isOnShift && today.workedHours <= 0
+      ? "Clock in to track worked hours."
+      : jobsCompletedToday > 0 && today.billedHours <= 0
+        ? "No billed labor recorded yet today."
+        : today.workedHours > 0 && today.billedHours <= 0
+          ? "No billed labor recorded yet today."
+          : null
+    : null;
+
+  const weekHint = !loadingStats
+    ? week.workedHours > 0 && week.billedHours <= 0
+      ? "No billed labor recorded yet this week."
+      : null
+    : null;
+
   return (
     <div className="space-y-6 px-4 py-4">
       {/* hero – brushed metal panel */}
@@ -363,7 +371,7 @@ export function MobileTechHome({
       </section>
 
       {/* current job pill – only while on shift */}
-      {shiftStatus !== "none" && shiftStatus !== "ended" && (
+      {isOnShift && (
         <CurrentJobPill
           loading={loadingCurrentJob}
           job={currentJob}
@@ -374,8 +382,18 @@ export function MobileTechHome({
 
       {/* summary cards – worked vs billed */}
       <section className="space-y-3">
-        <SummaryCard label="Today" stats={today} loading={loadingStats} />
-        <SummaryCard label="This week" stats={week} loading={loadingStats} />
+        <SummaryCard
+          label="Today"
+          stats={today}
+          loading={loadingStats}
+          hint={todayHint}
+        />
+        <SummaryCard
+          label="This week"
+          stats={week}
+          loading={loadingStats}
+          hint={weekHint}
+        />
       </section>
 
       {/* stat chips – jobs overview */}
@@ -392,16 +410,9 @@ export function MobileTechHome({
         />
       </section>
 
-      {/* stat chips – efficiency + billed hours */}
+      {/* stat chips – keep ONLY billed today (eff is already in the summary cards) */}
       <section className="grid grid-cols-3 gap-3">
-        <StatCard
-          label="Today eff."
-          value={loadingStats ? "…" : todayEffText}
-        />
-        <StatCard
-          label="Week eff."
-          value={loadingStats ? "…" : weekEffText}
-        />
+        <div className="col-span-2" />
         <StatCard
           label="Billed today"
           value={loadingStats ? "…" : billedTodayText}
@@ -512,9 +523,7 @@ function CurrentJobPill({
   }
 
   const jobLabel =
-    job.description ||
-    job.complaint ||
-    String(job.job_type ?? "Job in progress");
+    job.description || job.complaint || String(job.job_type ?? "Job in progress");
 
   const vehicleLabel = vehicle
     ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
@@ -536,9 +545,7 @@ function CurrentJobPill({
         <span className="text-[0.65rem] uppercase tracking-[0.18em] text-[var(--accent-copper-soft)]">
           Current job
         </span>
-        <span className="mt-0.5 truncate text-sm font-medium">
-          {jobLabel}
-        </span>
+        <span className="mt-0.5 truncate text-sm font-medium">{jobLabel}</span>
         <span className="mt-0.5 text-[0.7rem] text-neutral-300">
           WO {woLabel}
           {vehicleLabel ? ` • ${vehicleLabel}` : ""}
@@ -580,14 +587,23 @@ function StatCard({
   );
 }
 
+function clampEfficiencyText(efficiencyPct: number): string {
+  if (!Number.isFinite(efficiencyPct)) return "–";
+  if (efficiencyPct > 250) return "250%+";
+  if (efficiencyPct < 0) return "0%";
+  return `${efficiencyPct.toFixed(0)}%`;
+}
+
 function SummaryCard({
   label,
   stats,
   loading,
+  hint,
 }: {
   label: string;
   stats: PeriodStats;
   loading?: boolean;
+  hint?: string | null;
 }) {
   const worked = stats.workedHours;
   const billed = stats.billedHours;
@@ -595,7 +611,9 @@ function SummaryCard({
 
   const workedText = loading ? "…" : `${worked.toFixed(1)} h`;
   const billedText = loading ? "…" : `${billed.toFixed(1)} h`;
-  const effText = loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
+
+  const effText =
+    loading || eff === null ? "–" : clampEfficiencyText(Number(eff));
 
   return (
     <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
@@ -620,6 +638,12 @@ function SummaryCard({
           {effText}
         </span>
       </div>
+
+      {hint ? (
+        <div className="mt-2 text-center text-[0.7rem] text-neutral-500">
+          {hint}
+        </div>
+      ) : null}
     </div>
   );
 }

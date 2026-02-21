@@ -2,9 +2,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import type React from "react";
 import Link from "next/link";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
+import type { Database } from "@shared/types/types/supabase";
 
 import ShopBoostWidget from "@/features/shared/components/ui/ShopBoostWidget";
 
@@ -27,15 +29,22 @@ type CountState = {
 };
 
 const CLOSED_PART_STATUSES = ["fulfilled", "rejected", "cancelled"] as const;
+const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
+
+function sqlTextIn(values: readonly string[]): string {
+  // PostgREST expects: ('a','b','c') for text columns
+  return `(${values.map((v) => `'${v}'`).join(",")})`;
+}
 
 function isTechRole(role: string | null): boolean {
   const r = (role ?? "").toLowerCase();
   return r === "tech" || r === "mechanic" || r === "technician";
 }
 
+// ✅ Only owners/admin/managers can view Shop Health / owner reports
 function canViewShopHealth(role: string | null): boolean {
   const r = (role ?? "").toLowerCase();
-  return r === "owner" || r === "admin" || r === "advisor" || r === "manager";
+  return r === "owner" || r === "admin" || r === "manager";
 }
 
 function fmtHours(n: number): string {
@@ -82,6 +91,7 @@ export default function DashboardPage() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
       const uid = session?.user?.id ?? null;
       setUserId(uid);
 
@@ -126,12 +136,12 @@ export default function DashboardPage() {
             .from("work_order_lines")
             .select("id", { count: "exact", head: true })
             .eq("assigned_to", userId)
-            .not("status", "in", "(completed,ready_to_invoice,invoiced)"),
+            .not("status", "in", sqlTextIn(CLOSED_LINE_STATUSES)),
           supabase
             .from("part_requests")
             .select("id", { count: "exact", head: true })
             .eq("shop_id", shopId)
-            .not("status", "in", `(${CLOSED_PART_STATUSES.join(",")})`)
+            .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES))
             .or(`requested_by.eq.${userId},assigned_to.eq.${userId}`),
         ]);
 
@@ -158,7 +168,7 @@ export default function DashboardPage() {
           .from("part_requests")
           .select("id", { count: "exact", head: true })
           .eq("shop_id", shopId)
-          .not("status", "in", `(${CLOSED_PART_STATUSES.join(",")})`),
+          .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES)),
       ]);
 
       setCounts({
@@ -204,6 +214,7 @@ export default function DashboardPage() {
           },
         );
       } catch (e) {
+        // eslint-disable-next-line no-console
         console.error("[Dashboard] performance snapshot load failed", e);
         setPerfRow(null);
       } finally {
@@ -240,6 +251,7 @@ export default function DashboardPage() {
           .maybeSingle();
 
         if (error) {
+          // eslint-disable-next-line no-console
           console.error("[Dashboard] current job load error:", error);
           setCurrentJob(null);
           setCurrentJobWorkOrder(null);
@@ -264,6 +276,7 @@ export default function DashboardPage() {
           .maybeSingle<WorkOrder>();
 
         if (woErr) {
+          // eslint-disable-next-line no-console
           console.error("[Dashboard] current job WO load error:", woErr);
           setCurrentJobWorkOrder(null);
           setCurrentJobVehicle(null);
@@ -281,6 +294,7 @@ export default function DashboardPage() {
             .maybeSingle<Vehicle>();
 
           if (vehErr) {
+            // eslint-disable-next-line no-console
             console.error("[Dashboard] current job vehicle load error:", vehErr);
             setCurrentJobVehicle(null);
           } else {
@@ -332,7 +346,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Shop Boost / Health Snapshot (owner/admin/advisor/manager) */}
+      {/* Shop Boost / Health Snapshot (owner/admin/manager only) */}
       <ShopBoostWidget shopId={shopId} canViewShopHealth={showShopHealth} />
 
       {/* active job pill – only for tech/mechanic roles */}
@@ -476,9 +490,7 @@ function ActiveJobCard({
   }
 
   const jobLabel =
-    job.description ||
-    job.complaint ||
-    String(job.job_type ?? "Job in progress");
+    job.description || job.complaint || String(job.job_type ?? "Job in progress");
 
   const vehicleLabel = vehicle
     ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
