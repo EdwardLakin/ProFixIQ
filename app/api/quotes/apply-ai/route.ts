@@ -1,6 +1,5 @@
 // app/api/quotes/apply-ai/route.ts (FULL FILE REPLACEMENT)
-// Fix: work_order_part_allocations Insert requires shop_id (per your generated DB types)
-// Also keeps: no `any`, strict typing, same behavior.
+
 
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";

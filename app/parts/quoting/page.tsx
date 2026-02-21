@@ -10,7 +10,6 @@ import dynamic from "next/dynamic";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
-import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 
 const PartsDrawer = dynamic(() => import("@/features/parts/components/PartsDrawer"), {
@@ -562,7 +561,7 @@ export default function QuotingQueuePage(): JSX.Element {
         />
       )}
 
-      <VoiceButton />
+      
     </div>
   );
 }
