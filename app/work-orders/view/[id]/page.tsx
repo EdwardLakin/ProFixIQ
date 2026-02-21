@@ -1,4 +1,4 @@
-// /app/work-orders/view/[id]/page.tsx
+// /app/work-orders/view/[id]/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -72,12 +72,15 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
 
         const { data: wol, error: wolErr } = await supabase
           .from("work_order_lines")
-          .select("id, line_no, description, complaint, cause, correction, status, labor_time")
+          .select(
+            "id, line_no, description, complaint, cause, correction, status, labor_time",
+          )
           .eq("work_order_id", woRow.id)
           .order("line_no", { ascending: true });
 
         if (wolErr) throw wolErr;
-        if (!cancelled) setLines((Array.isArray(wol) ? wol : []) as WorkOrderLine[]);
+        if (!cancelled)
+          setLines((Array.isArray(wol) ? wol : []) as WorkOrderLine[]);
 
         if (woRow.vehicle_id) {
           const { data: v, error: ve } = await supabase
@@ -103,7 +106,8 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
           setCustomer(null);
         }
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to load work order.";
+        const msg =
+          e instanceof Error ? e.message : "Failed to load work order.";
         if (!cancelled) setErr(msg);
       } finally {
         if (!cancelled) setLoading(false);
@@ -128,7 +132,10 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
     : "Vehicle";
 
   const custLabel = customer
-    ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() || "Customer"
+    ? [customer.first_name ?? "", customer.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || "Customer"
     : "Customer";
 
   const updatedAt = wo?.updated_at ? format(new Date(wo.updated_at), "PPpp") : "—";
@@ -148,7 +155,9 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
             onClick={goBack}
             className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-neutral-200 hover:bg-black/70"
           >
-            <span aria-hidden className="text-base leading-none">←</span>
+            <span aria-hidden className="text-base leading-none">
+              ←
+            </span>
             Back
           </button>
 
@@ -164,7 +173,8 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
             <div className="space-y-2">
               <div className="text-sm text-red-200">{err}</div>
               <div className="text-[11px] text-neutral-500">
-                If this is a permissions issue, confirm your RLS / shop scope is set for staff.
+                If this is a permissions issue, confirm your RLS / shop scope is
+                set for staff.
               </div>
             </div>
           ) : !wo ? (
@@ -203,8 +213,9 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
               </div>
 
               <div className="mt-5 rounded-2xl border border-white/10 bg-black/35 p-4">
+                {/* ✅ Changed: heading + removed the "Complaint • Cause • Correction" strip */}
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
-                  Complaint • Cause • Correction
+                  Line Details
                 </div>
 
                 {lines.length === 0 ? (
@@ -218,37 +229,44 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                         (l.line_no != null ? `Line ${l.line_no}` : "") ||
                         "Line item";
 
-                      const complaint = safeTrim(l.complaint);
                       const cause = safeTrim(l.cause);
                       const correction = safeTrim(l.correction);
 
                       return (
-                        <div key={l.id} className="rounded-xl border border-white/10 bg-black/40 p-3">
+                        <div
+                          key={l.id}
+                          className="rounded-xl border border-white/10 bg-black/40 p-3"
+                        >
                           <div className="flex items-baseline justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="text-sm font-medium text-neutral-100">{label}</div>
+                              <div className="text-sm font-medium text-neutral-100">
+                                {label}
+                              </div>
                               <div className="mt-0.5 text-[11px] text-neutral-500">
                                 Line #{l.line_no ?? "—"}
-                                {typeof l.labor_time === "number" ? ` • ${l.labor_time} hr` : ""}
+                                {typeof l.labor_time === "number"
+                                  ? ` • ${l.labor_time} hr`
+                                  : ""}
                               </div>
                             </div>
                             <div className="text-[11px] text-neutral-500">
-                              {safeTrim(l.status) ? `Status: ${String(l.status).replaceAll("_", " ")}` : ""}
+                              {safeTrim(l.status)
+                                ? `Status: ${String(l.status).replaceAll("_", " ")}`
+                                : ""}
                             </div>
                           </div>
 
+                          {/* ✅ Removed: Complaint row (since label is the complaint/title) */}
                           <div className="mt-2 space-y-1 text-[12px] text-neutral-300">
-                            <div>
-                              <span className="text-neutral-500">Complaint:</span>{" "}
-                              <span className="text-neutral-200">{complaint || "—"}</span>
-                            </div>
                             <div>
                               <span className="text-neutral-500">Cause:</span>{" "}
                               <span className="text-neutral-200">{cause || "—"}</span>
                             </div>
                             <div>
                               <span className="text-neutral-500">Correction:</span>{" "}
-                              <span className="text-neutral-200">{correction || "—"}</span>
+                              <span className="text-neutral-200">
+                                {correction || "—"}
+                              </span>
                             </div>
                           </div>
                         </div>
