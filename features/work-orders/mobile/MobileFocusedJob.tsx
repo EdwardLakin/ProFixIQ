@@ -53,8 +53,7 @@ const panel =
 const card =
   "metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 backdrop-blur";
 
-const fieldLabel =
-  "text-[11px] uppercase tracking-[0.18em] text-neutral-400";
+const fieldLabel = "text-[11px] uppercase tracking-[0.18em] text-neutral-400";
 
 const btnBase =
   "rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors shadow-[0_10px_28px_rgba(0,0,0,0.55)]";
@@ -104,7 +103,6 @@ function safeISO(d: Date): string {
 function canPunch(line: WorkOrderLine | null): boolean {
   if (!line) return false;
 
-  // Respect approval gating (matches app behavior: do not allow punching while awaiting/declined/not-approved)
   if (line.status === "awaiting_approval") return false;
   if (line.status === "declined") return false;
 
@@ -241,7 +239,6 @@ export default function MobileFocusedJob(props: {
 
       setLine(l ?? null);
 
-      // ✅ align with app logic: keep notes in sync unless user is actively editing
       if (!notesDirty) {
         setTechNotes(l?.notes ?? "");
       }
@@ -282,7 +279,6 @@ export default function MobileFocusedJob(props: {
     }
   }, [workOrderLineId, loadLine, onChanged, loadAllocations]);
 
-  // initial load (page behavior)
   useEffect(() => {
     if (!workOrderLineId) return;
     (async () => {
@@ -299,7 +295,6 @@ export default function MobileFocusedJob(props: {
     })();
   }, [workOrderLineId, loadLine, loadAllocations]);
 
-  // realtime: line
   useEffect(() => {
     if (!workOrderLineId) return;
 
@@ -319,10 +314,8 @@ export default function MobileFocusedJob(props: {
             const nextLine = next as WorkOrderLine;
             setLine(nextLine);
 
-            // ✅ keep notes synced unless user is editing
             if (!notesDirty) setTechNotes(nextLine.notes ?? "");
 
-            // ✅ if WO pointer changes, reload related entities
             const nextWoId = nextLine.work_order_id ?? null;
             const currentWoId = line?.work_order_id ?? null;
             if (nextWoId !== currentWoId) {
@@ -339,7 +332,6 @@ export default function MobileFocusedJob(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workOrderLineId, supabase, notesDirty, loadWorkOrder]);
 
-  // realtime: work order (keeps vehicle/customer/status aligned like app)
   useEffect(() => {
     const woId = line?.work_order_id ?? null;
     if (!woId) return;
@@ -360,7 +352,6 @@ export default function MobileFocusedJob(props: {
             const wo = next as WorkOrder;
             setWorkOrder(wo);
 
-            // If vehicle/customer pointers change, reload them
             void loadVehicle(wo.vehicle_id ?? null);
             void loadCustomer(wo.customer_id ?? null);
           }
@@ -373,7 +364,6 @@ export default function MobileFocusedJob(props: {
     };
   }, [supabase, line?.work_order_id, loadVehicle, loadCustomer]);
 
-  // allocations
   useEffect(() => {
     void loadAllocations();
   }, [loadAllocations]);
@@ -404,14 +394,12 @@ export default function MobileFocusedJob(props: {
     };
   }, [workOrderLineId, supabase, loadAllocations]);
 
-  // cross-component refresh event (matches app pattern)
   useEffect(() => {
     const handler = () => void refresh();
     window.addEventListener("wol:refresh", handler);
     return () => window.removeEventListener("wol:refresh", handler);
   }, [refresh]);
 
-  // parts request events
   useEffect(() => {
     const handleClose = () => setOpenParts(false);
     const handleSubmitted = async () => {
@@ -427,7 +415,6 @@ export default function MobileFocusedJob(props: {
     };
   }, [refresh]);
 
-  // inspection done → open complete (mobile page still listens like app modal)
   useEffect(() => {
     const onInspectionDone = (evt: Event) => {
       const e = evt as CustomEvent<{
@@ -446,8 +433,7 @@ export default function MobileFocusedJob(props: {
     };
 
     window.addEventListener("inspection:completed", onInspectionDone);
-    return () =>
-      window.removeEventListener("inspection:completed", onInspectionDone);
+    return () => window.removeEventListener("inspection:completed", onInspectionDone);
   }, [workOrderLineId]);
 
   const applyHold = async (reason: string, notes?: string) => {
@@ -459,11 +445,9 @@ export default function MobileFocusedJob(props: {
       const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
         hold_reason: reason || "On hold",
         status: "on_hold",
-        // keep any existing notes unless overridden
         notes: notes ?? line.notes ?? null,
       };
 
-      // If job is actively running, punch off when holding (matches app behavior)
       if (line.punched_in_at && !line.punched_out_at) {
         update.punched_out_at = safeISO(new Date());
       }
@@ -490,7 +474,6 @@ export default function MobileFocusedJob(props: {
         .from("work_order_lines")
         .update({
           hold_reason: null,
-          // app behavior: return to awaiting (unless you later add a status_before_hold column)
           status: "awaiting",
         } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId);
@@ -515,8 +498,6 @@ export default function MobileFocusedJob(props: {
 
     if (error) return showErr("Photo upload failed", error);
     toast.success("Photo attached");
-
-    // optional: trigger a refresh event for other listeners
     window.dispatchEvent(new CustomEvent("wol:refresh"));
   };
 
@@ -524,7 +505,6 @@ export default function MobileFocusedJob(props: {
     if (!workOrderLineId) return;
     if (savingNotes) return;
 
-    // avoid spam writes if unchanged
     const serverNotes = line?.notes ?? "";
     if (!notesDirty && techNotes === serverNotes) return;
 
@@ -561,13 +541,17 @@ export default function MobileFocusedJob(props: {
   const punchDisabled =
     busy ||
     !canPunch(line) ||
-    // keep your existing additional guard
     (!!line?.approval_state && line.approval_state !== "approved");
+
+  const lineLabel =
+    (line?.complaint ?? "").trim() ||
+    (line?.description ?? "").trim() ||
+    (line?.line_no ? `Line #${line.line_no}` : "") ||
+    "Job";
 
   return (
     <>
       <div className="app-shell flex min-h-screen flex-col text-foreground">
-        {/* Header */}
         <header className="metal-bar sticky top-0 z-40 flex items-center justify-between gap-2 px-3 py-2">
           <button
             type="button"
@@ -582,11 +566,7 @@ export default function MobileFocusedJob(props: {
           </button>
 
           <div className="flex-1 truncate px-2 text-center text-[11px] font-medium">
-            {line ? (
-              <span className={chip(line.status ?? null)}>{titleText}</span>
-            ) : (
-              "Job"
-            )}
+            {line ? <span className={chip(line.status ?? null)}>{titleText}</span> : "Job"}
           </div>
 
           {workOrder?.id ? (
@@ -606,7 +586,6 @@ export default function MobileFocusedJob(props: {
           )}
         </header>
 
-        {/* Body */}
         <main className="mobile-body-gradient flex-1 overflow-y-auto px-3 py-3">
           <div className="mx-auto max-w-xl space-y-4">
             {busy && !line ? (
@@ -615,12 +594,9 @@ export default function MobileFocusedJob(props: {
                 <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
               </div>
             ) : !line ? (
-              <div className={`${panel} px-4 py-4 text-sm text-neutral-300`}>
-                No job found.
-              </div>
+              <div className={`${panel} px-4 py-4 text-sm text-neutral-300`}>No job found.</div>
             ) : (
               <>
-                {/* meta info */}
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className={`${card} p-3`}>
                     <div className={fieldLabel}>Status</div>
@@ -641,13 +617,10 @@ export default function MobileFocusedJob(props: {
 
                   <div className={`${card} p-3`}>
                     <div className={fieldLabel}>Hold Reason</div>
-                    <div className="mt-1 text-sm text-neutral-100">
-                      {line.hold_reason ?? "—"}
-                    </div>
+                    <div className="mt-1 text-sm text-neutral-100">{line.hold_reason ?? "—"}</div>
                   </div>
                 </div>
 
-                {/* vehicle & customer */}
                 <div className={`${panel} px-4 py-4 text-sm`}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
@@ -680,7 +653,6 @@ export default function MobileFocusedJob(props: {
                   </div>
                 </div>
 
-                {/* punch — hide once completed */}
                 {mode === "tech" && line && line.status !== "completed" && (
                   <div className={`${panel} px-4 py-4`}>
                     <JobPunchButton
@@ -712,7 +684,6 @@ export default function MobileFocusedJob(props: {
                   </div>
                 )}
 
-                {/* controls */}
                 <div className="grid gap-2 sm:grid-cols-2">
                   {mode === "tech" ? (
                     <>
@@ -788,7 +759,6 @@ export default function MobileFocusedJob(props: {
                         AI Assist
                       </button>
 
-                      {/* ✅ Vehicle History */}
                       <button
                         type="button"
                         className={btnNeutral}
@@ -827,7 +797,6 @@ export default function MobileFocusedJob(props: {
                         AI Assist
                       </button>
 
-                      {/* ✅ Vehicle History */}
                       <button
                         type="button"
                         className={btnNeutral}
@@ -846,11 +815,8 @@ export default function MobileFocusedJob(props: {
                   )}
                 </div>
 
-                {/* parts used */}
                 <div className={`${panel} px-4 py-4`}>
-                  <div className="mb-2 text-sm font-medium text-neutral-100">
-                    Parts used
-                  </div>
+                  <div className="mb-2 text-sm font-medium text-neutral-100">Parts used</div>
 
                   {allocsLoading ? (
                     <div className="text-sm text-neutral-300">Loading…</div>
@@ -865,17 +831,12 @@ export default function MobileFocusedJob(props: {
                       </div>
                       <ul className="max-h-56 overflow-auto divide-y divide-white/5">
                         {allocs.map((a) => (
-                          <li
-                            key={a.id}
-                            className="grid grid-cols-12 items-center px-3 py-2 text-sm"
-                          >
+                          <li key={a.id} className="grid grid-cols-12 items-center px-3 py-2 text-sm">
                             <div className="col-span-7 truncate text-neutral-100">
                               {a.parts?.name ?? "Part"}
                             </div>
                             <div className="col-span-3 truncate text-neutral-400">
-                              {a.location_id
-                                ? `loc ${String(a.location_id).slice(0, 6)}…`
-                                : "—"}
+                              {a.location_id ? `loc ${String(a.location_id).slice(0, 6)}…` : "—"}
                             </div>
                             <div className="col-span-2 text-right font-semibold text-neutral-100">
                               {a.qty}
@@ -887,11 +848,8 @@ export default function MobileFocusedJob(props: {
                   )}
                 </div>
 
-                {/* tech notes */}
                 <div className={`${panel} px-4 py-4`}>
-                  <label className="mb-1 block text-sm font-medium text-neutral-100">
-                    Tech Notes
-                  </label>
+                  <label className="mb-1 block text-sm font-medium text-neutral-100">Tech Notes</label>
                   <textarea
                     rows={4}
                     value={techNotes}
@@ -911,11 +869,8 @@ export default function MobileFocusedJob(props: {
                   )}
                 </div>
 
-                {/* AI suggestions */}
                 <div className={`${panel} px-4 py-4`}>
-                  <h3 className="mb-2 text-sm font-medium text-neutral-100">
-                    AI Suggested Repairs
-                  </h3>
+                  <h3 className="mb-2 text-sm font-medium text-neutral-100">AI Suggested Repairs</h3>
                   {line && workOrder ? (
                     <SuggestedQuickAdd
                       jobId={line.id}
@@ -927,17 +882,13 @@ export default function MobileFocusedJob(props: {
                       }}
                     />
                   ) : (
-                    <div className="text-sm text-neutral-300">
-                      Vehicle/work order details required.
-                    </div>
+                    <div className="text-sm text-neutral-300">Vehicle/work order details required.</div>
                   )}
                 </div>
 
                 <div className="pb-16 text-[11px] text-neutral-400">
                   Job ID: {line.id}
-                  {typeof line.labor_time === "number"
-                    ? ` • Labor: ${line.labor_time.toFixed(1)}h`
-                    : ""}
+                  {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
                   {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
                   {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
                 </div>
@@ -947,7 +898,6 @@ export default function MobileFocusedJob(props: {
         </main>
       </div>
 
-      {/* ✅ Vehicle history modal */}
       {openVehicleHistory && vehicle?.id ? (
         <VehicleHistoryModal
           isOpen={openVehicleHistory}
@@ -957,12 +907,12 @@ export default function MobileFocusedJob(props: {
         />
       ) : null}
 
-      {/* sub-modals */}
       {openComplete && line && (
         <CauseCorrectionModal
           isOpen={openComplete}
           onClose={() => setOpenComplete(false)}
           jobId={line.id}
+          lineLabel={lineLabel}
           initialCause={prefillCause}
           initialCorrection={prefillCorrection}
           onSubmit={async (cause: string, correction: string) => {
@@ -982,7 +932,6 @@ export default function MobileFocusedJob(props: {
             setOpenComplete(false);
             await refresh();
 
-            // Let other listeners update (app parity)
             window.dispatchEvent(
               new CustomEvent("work-order-line:completed", {
                 detail: { workOrderLineId: line.id },
@@ -1055,8 +1004,7 @@ export default function MobileFocusedJob(props: {
           workOrderId={workOrder.id}
           vehicleId={vehicle?.id ?? null}
           techId={
-            (line as unknown as { assigned_tech_id?: string | null })
-              ?.assigned_tech_id ?? "system"
+            (line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ?? "system"
           }
           shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {

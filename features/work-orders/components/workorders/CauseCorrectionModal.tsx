@@ -1,14 +1,24 @@
+// /features/work-orders/components/workorders/CauseCorrectionModal.tsx (FULL FILE REPLACEMENT)
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ModalShell from "@/features/shared/components/ModalShell";
 
 interface CauseCorrectionModalProps {
   isOpen: boolean;
   onClose: () => void;
+
+  /** still required for submits + parent logic */
   jobId: string;
+
+  /** ✅ NEW: shown in header instead of jobId (use line complaint/description) */
+  lineLabel: string;
+
   onSubmit: (cause: string, correction: string) => Promise<void>;
+
+  /** ✅ Draft save (cause/correction can be partial) */
   onSaveDraft?: (cause: string, correction: string) => Promise<void>;
+
   initialCause?: string;
   initialCorrection?: string;
 }
@@ -17,6 +27,7 @@ export default function CauseCorrectionModal({
   isOpen,
   onClose,
   jobId,
+  lineLabel,
   onSubmit,
   onSaveDraft,
   initialCause = "",
@@ -27,6 +38,8 @@ export default function CauseCorrectionModal({
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
   const causeRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -34,25 +47,34 @@ export default function CauseCorrectionModal({
       setCause(initialCause);
       setCorrection(initialCorrection);
       setError(null);
+      setOk(null);
       setTimeout(() => causeRef.current?.focus(), 50);
     }
   }, [isOpen, initialCause, initialCorrection]);
 
   const trimmedCause = useMemo(() => cause.trim(), [cause]);
   const trimmedCorrection = useMemo(() => correction.trim(), [correction]);
+
   const canComplete = trimmedCause.length > 0 && trimmedCorrection.length > 0;
+
+  // ✅ allow draft save if user typed anything at all
+  const canSaveDraft =
+    Boolean(onSaveDraft) &&
+    (trimmedCause.length > 0 || trimmedCorrection.length > 0);
 
   const handleSubmit = async () => {
     if (submitting || savingDraft) return;
 
-    // ✅ hard gate: must have both
+    // hard gate: must have both
     if (!canComplete) {
       setError("Cause and correction are required to complete this job.");
+      setOk(null);
       return;
     }
 
     setSubmitting(true);
     setError(null);
+    setOk(null);
     try {
       await onSubmit(trimmedCause, trimmedCorrection);
       onClose();
@@ -65,18 +87,25 @@ export default function CauseCorrectionModal({
 
   const handleSaveDraft = async () => {
     if (!onSaveDraft || submitting || savingDraft) return;
+    if (!canSaveDraft) return;
+
     setSavingDraft(true);
     setError(null);
+    setOk(null);
     try {
       await onSaveDraft(trimmedCause, trimmedCorrection);
+      setOk("Saved.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save draft.");
+      setError(e instanceof Error ? e.message : "Failed to save.");
     } finally {
       setSavingDraft(false);
     }
   };
 
   const busy = submitting || savingDraft;
+
+  const headerLabel =
+    (lineLabel ?? "").trim().length > 0 ? lineLabel.trim() : jobId;
 
   return (
     <ModalShell
@@ -91,15 +120,20 @@ export default function CauseCorrectionModal({
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         <div className="flex items-center justify-between text-[0.7rem] text-neutral-400">
-          <div className="flex flex-col gap-0.5">
+          <div className="flex min-w-0 flex-col gap-0.5">
             <span className="font-semibold uppercase tracking-[0.18em]">
-              Job ID
+              Complaint
             </span>
-            <span className="font-mono text-[0.7rem] text-neutral-200">
+            <span className="truncate text-[0.8rem] font-medium text-neutral-100">
+              {headerLabel}
+            </span>
+            {/* keep id around but de-emphasized (helps debugging) */}
+            <span className="font-mono text-[0.65rem] text-neutral-500">
               {jobId}
             </span>
           </div>
-          <span className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
+
+          <span className="shrink-0 rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
             Cause / Correction
           </span>
         </div>
@@ -110,11 +144,18 @@ export default function CauseCorrectionModal({
           </div>
         )}
 
+        {ok && !error && (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/25 px-3 py-2 text-xs text-emerald-100">
+            {ok}
+          </div>
+        )}
+
         {!canComplete && (
           <div className="rounded-lg border border-amber-500/35 bg-black/35 px-3 py-2 text-[0.75rem] text-amber-200">
             <span className="font-semibold">Required:</span> enter both a{" "}
             <span className="font-semibold">cause</span> and{" "}
-            <span className="font-semibold">correction</span> to complete the job.
+            <span className="font-semibold">correction</span> to complete the
+            job.
           </div>
         )}
 
@@ -130,6 +171,7 @@ export default function CauseCorrectionModal({
             onChange={(e) => {
               setCause(e.target.value);
               if (error) setError(null);
+              if (ok) setOk(null);
             }}
             placeholder="What caused the issue?"
           />
@@ -146,6 +188,7 @@ export default function CauseCorrectionModal({
             onChange={(e) => {
               setCorrection(e.target.value);
               if (error) setError(null);
+              if (ok) setOk(null);
             }}
             placeholder="Describe what was done to correct the issue…"
             onKeyDown={(e) => {
@@ -172,6 +215,7 @@ export default function CauseCorrectionModal({
           </p>
         </div>
 
+        {/* footer */}
         <div className="mt-2 flex flex-col gap-2 border-t border-[var(--metal-border-soft)] pt-3 sm:flex-row sm:items-center sm:justify-between">
           <button
             type="button"
@@ -183,14 +227,25 @@ export default function CauseCorrectionModal({
           </button>
 
           <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:justify-end">
+            {/* ✅ NEW: bottom “Save” button (arrow area) */}
             {onSaveDraft && (
               <button
                 type="button"
                 onClick={() => void handleSaveDraft()}
-                disabled={busy}
-                className="inline-flex flex-1 items-center justify-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-black/50 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper-soft)] shadow-[0_0_12px_rgba(212,118,49,0.35)] hover:bg-[var(--accent-copper-faint)] disabled:opacity-60 sm:flex-none sm:px-5"
+                disabled={busy || !canSaveDraft}
+                className={[
+                  "inline-flex flex-1 items-center justify-center rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] sm:flex-none sm:px-5",
+                  canSaveDraft
+                    ? "border border-[var(--metal-border-soft)] bg-black/50 text-neutral-200 hover:bg-white/5"
+                    : "border border-white/10 bg-black/30 text-neutral-500 opacity-70",
+                ].join(" ")}
+                title={
+                  canSaveDraft
+                    ? "Save cause/correction without completing"
+                    : "Type a cause or correction to enable saving"
+                }
               >
-                {savingDraft ? "Saving…" : "Save story only"}
+                {savingDraft ? "Saving…" : "Save"}
               </button>
             )}
 

@@ -1,18 +1,26 @@
-//features/work-orders/components/workorders/PartsRequestModal.tsx
-
+// /features/work-orders/components/workorders/PartsRequestModal.tsx (FULL FILE REPLACEMENT)
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import ModalShell from "@/features/shared/components/ModalShell";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
-type Item = { id: string; description: string; qty: number };
+type DB = Database;
+
+type Item = { id: string; description: string; qty: string };
 
 type Props = {
   isOpen: boolean;
+
+  /** IDs used for API payload + lookups */
   workOrderId: string;
   jobId: string;
+
+  /** optional prefilled note */
   requestNote?: string | null;
+
   closeEventName?: string;
   submittedEventName?: string;
 };
@@ -23,6 +31,16 @@ type SubmittedDetail = {
   jobId: string;
 };
 
+type WorkOrderLite = Pick<
+  DB["public"]["Tables"]["work_orders"]["Row"],
+  "id" | "custom_id"
+>;
+
+type WorkOrderLineLite = Pick<
+  DB["public"]["Tables"]["work_order_lines"]["Row"],
+  "id" | "complaint" | "description"
+>;
+
 export default function PartsRequestModal({
   isOpen,
   workOrderId,
@@ -31,20 +49,61 @@ export default function PartsRequestModal({
   closeEventName = "parts-request:close",
   submittedEventName = "parts-request:submitted",
 }: Props) {
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [headerNotes, setHeaderNotes] = useState(requestNote ?? "");
   const [rows, setRows] = useState<Item[]>([
-    { id: crypto.randomUUID(), description: "", qty: 1 },
+    { id: crypto.randomUUID(), description: "", qty: "1" },
   ]);
   const [submitting, setSubmitting] = useState(false);
 
+  // ✅ header labels
+  const [woLabel, setWoLabel] = useState<string>("");
+  const [jobLabel, setJobLabel] = useState<string>("");
+
   useEffect(() => {
     if (!isOpen) return;
+
     setHeaderNotes(requestNote ?? "");
-    setRows([{ id: crypto.randomUUID(), description: "", qty: 1 }]);
-  }, [isOpen, requestNote]);
+    setRows([{ id: crypto.randomUUID(), description: "", qty: "1" }]);
+
+    setWoLabel("");
+    setJobLabel("");
+
+    (async () => {
+      // Work order custom id
+      if (workOrderId) {
+        const { data } = await supabase
+          .from("work_orders")
+          .select("id, custom_id")
+          .eq("id", workOrderId)
+          .maybeSingle();
+
+        const wo = data as WorkOrderLite | null;
+        setWoLabel(wo?.custom_id ?? workOrderId);
+      }
+
+      // Job line complaint/description
+      if (jobId) {
+        const { data } = await supabase
+          .from("work_order_lines")
+          .select("id, complaint, description")
+          .eq("id", jobId)
+          .maybeSingle();
+
+        const line = data as WorkOrderLineLite | null;
+        const label =
+          (line?.complaint ?? "").trim() ||
+          (line?.description ?? "").trim() ||
+          jobId;
+
+        setJobLabel(label);
+      }
+    })();
+  }, [isOpen, requestNote, supabase, workOrderId, jobId]);
 
   const addRow = () =>
-    setRows((r) => [...r, { id: crypto.randomUUID(), description: "", qty: 1 }]);
+    setRows((r) => [...r, { id: crypto.randomUUID(), description: "", qty: "1" }]);
 
   const removeRow = (id: string) =>
     setRows((r) => (r.length > 1 ? r.filter((x) => x.id !== id) : r));
@@ -52,16 +111,21 @@ export default function PartsRequestModal({
   const setCell = (id: string, patch: Partial<Item>) =>
     setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
+  // ✅ parse qty safely (allows empty while editing)
   const validItems = rows
-    .map((r) => ({
-      description: r.description.trim(),
-      qty: Number(r.qty) || 1,
-    }))
+    .map((r) => {
+      const description = r.description.trim();
+      const n = Number.parseInt(r.qty, 10);
+      const qty = Number.isFinite(n) ? n : 0;
+      return { description, qty };
+    })
     .filter((i) => i.description && i.qty > 0);
 
   const emit = (name: string, detail?: unknown) => {
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent(name, detail ? { detail } : undefined));
+      window.dispatchEvent(
+        new CustomEvent(name, detail ? { detail } : undefined),
+      );
     }
   };
 
@@ -74,7 +138,7 @@ export default function PartsRequestModal({
     }
 
     if (validItems.length === 0) {
-      toast.error("Add at least one line.");
+      toast.error("Add at least one line (description + qty).");
       return;
     }
 
@@ -95,7 +159,9 @@ export default function PartsRequestModal({
       const raw = await res.text();
       let json: { requestId?: string; error?: string } | null = null;
       try {
-        json = raw ? (JSON.parse(raw) as { requestId?: string; error?: string }) : null;
+        json = raw
+          ? (JSON.parse(raw) as { requestId?: string; error?: string })
+          : null;
       } catch {
         /* ignore */
       }
@@ -125,6 +191,9 @@ export default function PartsRequestModal({
 
   if (!isOpen) return null;
 
+  const woDisplay = woLabel || workOrderId;
+  const jobDisplay = jobLabel || jobId;
+
   return (
     <ModalShell
       isOpen={isOpen}
@@ -136,21 +205,28 @@ export default function PartsRequestModal({
     >
       <div className="space-y-4">
         {/* Header meta */}
-        <div className="flex flex-col gap-1 text-[0.7rem] text-neutral-400 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 text-[0.7rem] text-neutral-400 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="font-semibold uppercase tracking-[0.18em] text-neutral-300">
               Work order
             </span>
-            <span className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 font-mono text-[0.7rem] text-neutral-100">
-              {workOrderId}
+            <span
+              className="max-w-[60vw] truncate rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 font-mono text-[0.7rem] text-neutral-100 sm:max-w-[340px]"
+              title={woDisplay}
+            >
+              {woDisplay}
             </span>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="font-semibold uppercase tracking-[0.18em] text-neutral-300">
               Job
             </span>
-            <span className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 font-mono text-[0.7rem] text-neutral-100">
-              {jobId}
+            <span
+              className="max-w-[60vw] truncate rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[0.75rem] font-medium text-neutral-100 sm:max-w-[420px]"
+              title={jobDisplay}
+            >
+              {jobDisplay}
             </span>
           </div>
         </div>
@@ -191,16 +267,27 @@ export default function PartsRequestModal({
                   onChange={(e) => setCell(r.id, { description: e.target.value })}
                   placeholder="e.g. rear pads, serp belt…"
                 />
+
+                {/* ✅ FIX: allow clearing without snapping back to 1 */}
                 <input
-                  type="number"
-                  min={1}
-                  step={1}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   className="col-span-3 rounded-md border border-[var(--metal-border-soft)] bg-black/80 px-2 py-1 text-right text-sm text-neutral-100 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
                   value={r.qty}
-                  onChange={(e) =>
-                    setCell(r.id, { qty: Math.max(1, Number(e.target.value) || 1) })
-                  }
+                  onChange={(e) => {
+                    // keep only digits, allow empty while editing
+                    const next = e.target.value.replace(/[^\d]/g, "");
+                    setCell(r.id, { qty: next });
+                  }}
+                  onBlur={() => {
+                    // normalize on blur
+                    const n = Number.parseInt(r.qty, 10);
+                    const normalized = Number.isFinite(n) && n > 0 ? String(n) : "1";
+                    setCell(r.id, { qty: normalized });
+                  }}
+                  aria-label="Quantity"
                 />
+
                 <div className="col-span-1 flex items-center justify-center">
                   <button
                     className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-black/70 text-[0.7rem] text-neutral-300 transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-40 disabled:hover:bg-black/70 disabled:hover:text-neutral-300"
