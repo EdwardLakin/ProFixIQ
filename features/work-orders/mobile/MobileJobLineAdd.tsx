@@ -1,4 +1,7 @@
-// features/work-orders/mobile/MobileJobLineAdd.tsx
+// features/work-orders/mobile/MobileJobLineAdd.tsx (FULL FILE REPLACEMENT)
+// ✅ Theme alignment only (glass-card / metal vibe)
+// ❗ No logic changes
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -22,7 +25,7 @@ export function MobileJobLineAdd({
   vehicleId,
   defaultJobType = "diagnosis",
   onCreated,
-}: Props) {
+}: Props): JSX.Element | null {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [shopId, setShopId] = useState<string | null>(null);
 
@@ -41,22 +44,34 @@ export function MobileJobLineAdd({
     })();
   }, [supabase, workOrderId]);
 
-  if (!workOrderId) {
-    return null;
-  }
+  if (!workOrderId) return null;
 
   return (
-    <div className="space-y-2">
-      <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
-        Add job line
+    <section className="glass-card rounded-2xl border border-white/12 bg-black/40 px-3 py-3 shadow-card">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          Add job line
+        </div>
+        {shopId ? (
+          <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 font-mono text-[10px] text-neutral-300">
+            shop {String(shopId).slice(0, 8)}…
+          </span>
+        ) : (
+          <span className="text-[10px] text-neutral-500">—</span>
+        )}
       </div>
-      <NewWorkOrderLineForm
-        workOrderId={workOrderId}
-        vehicleId={vehicleId}
-        defaultJobType={defaultJobType}
-        shopId={shopId}
-        onCreated={onCreated}
-      />
-    </div>
+
+      <div className="h-px w-full bg-white/10" />
+
+      <div className="pt-3">
+        <NewWorkOrderLineForm
+          workOrderId={workOrderId}
+          vehicleId={vehicleId}
+          defaultJobType={defaultJobType}
+          shopId={shopId}
+          onCreated={onCreated}
+        />
+      </div>
+    </section>
   );
 }

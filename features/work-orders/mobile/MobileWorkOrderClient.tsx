@@ -1,4 +1,7 @@
-//features/work-orders/mobile/MobileWorkOrderClient.tsx
+// features/work-orders/mobile/MobileWorkOrderClient.tsx (FULL FILE REPLACEMENT)
+// ✅ Theme aligned to MobileTechHome (metal-panel / metal-card)
+// ✅ Adds ?focus=<workOrderLineId> handling so MobileTechHome links open focused job automatically
+// ❗ Leaves all behavior + logic the same otherwise
 
 "use client";
 
@@ -6,11 +9,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type JSX,
 } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -136,25 +140,24 @@ const LINE_STATUS_LABELS: Record<LineRollupStatus, string> = {
 };
 
 const LINE_CARD_STYLES: Record<LineRollupStatus, string> = {
-  awaiting:
-    "border-slate-700 bg-neutral-950/80 hover:border-orange-400/70",
+  awaiting: "border-[var(--metal-border-soft)] bg-black/30",
   in_progress:
-    "border-emerald-500 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),rgba(15,23,42,0.96))] shadow-[0_0_26px_rgba(16,185,129,0.70)]",
+    "border-[var(--accent-copper-soft)] bg-[radial-gradient(circle_at_top,_rgba(212,118,49,0.18),rgba(15,23,42,0.96))] shadow-[0_0_26px_rgba(212,118,49,0.55)]",
   on_hold:
-    "border-amber-500 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.16),rgba(15,23,42,0.98))]",
+    "border-amber-500/70 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.14),rgba(15,23,42,0.98))]",
   completed:
-    "border-sky-500 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),rgba(15,23,42,0.97))]",
+    "border-emerald-500/60 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(15,23,42,0.97))]",
 };
 
 const LINE_PILL_STYLES: Record<LineRollupStatus, string> = {
   awaiting:
-    "border-slate-500 bg-slate-900/80 text-slate-200",
+    "border-slate-500/70 bg-slate-900/60 text-slate-200",
   in_progress:
-    "border-emerald-400 bg-emerald-500/20 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.9)]",
+    "border-[var(--accent-copper-soft)] bg-[rgba(212,118,49,0.16)] text-[var(--accent-copper-light)] shadow-[0_0_20px_rgba(212,118,49,0.55)]",
   on_hold:
-    "border-amber-400 bg-amber-500/15 text-amber-100",
+    "border-amber-400/70 bg-amber-500/12 text-amber-100",
   completed:
-    "border-sky-400 bg-sky-500/15 text-sky-100",
+    "border-emerald-400/70 bg-emerald-500/12 text-emerald-100",
 };
 
 function toLineBucket(status: string | null | undefined): LineRollupStatus {
@@ -186,6 +189,11 @@ export default function MobileWorkOrderClient({
   routeId: string;
 }): JSX.Element {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ✅ handle ?focus=<workOrderLineId>
+  const focusParam = searchParams?.get("focus") ?? null;
+  const handledFocusRef = useRef<string | null>(null);
 
   // 🔥 IMPORTANT: scope tab-state keys by routeId so different work orders don’t bleed state
   const keyBase = useMemo(() => `m:wo:${routeId}`, [routeId]);
@@ -819,6 +827,21 @@ export default function MobileWorkOrderClient({
     [router, wo?.id],
   );
 
+  /* ----------------------- ✅ focus param handling ----------------------- */
+
+  useEffect(() => {
+    // open focused job from URL once per unique focus value
+    if (!focusParam) return;
+    if (handledFocusRef.current === focusParam) return;
+
+    // only attempt once we have loaded at least once
+    if (loading) return;
+
+    handledFocusRef.current = focusParam;
+    setFocusedJobId(focusParam);
+    setFocusedOpen(true);
+  }, [focusParam, loading]);
+
   /* ----------------------- mobile focused job view ----------------------- */
 
   if (focusedOpen && focusedJobId) {
@@ -838,12 +861,12 @@ export default function MobileWorkOrderClient({
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div
-      className={`animate-pulse rounded-2xl bg-neutral-900/70 backdrop-blur-md ${className}`}
+      className={`metal-card animate-pulse rounded-2xl border border-[var(--metal-border-soft)] bg-black/40 backdrop-blur ${className}`}
     />
   );
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
+    <div className="space-y-6 px-4 py-4 text-white">
       <VoiceContextSetter
         currentView="work_order_page_mobile"
         workOrderId={wo?.id}
@@ -853,10 +876,10 @@ export default function MobileWorkOrderClient({
       />
 
       {/* header bar */}
-      <div className="mb-4 flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2">
         <PreviousPageButton />
         {wo?.custom_id && (
-          <span className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[11px] text-neutral-300 backdrop-blur">
+          <span className="rounded-full border border-[var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[11px] text-neutral-300 backdrop-blur">
             Internal ID:{" "}
             <span className="font-mono text-neutral-100">
               {wo.id.slice(0, 8)}
@@ -866,7 +889,7 @@ export default function MobileWorkOrderClient({
       </div>
 
       {!currentUserId && (
-        <div className="mb-4 rounded-2xl border border-amber-500/40 bg-amber-950/40 px-3 py-3 text-xs text-amber-100 backdrop-blur">
+        <div className="metal-panel metal-panel--card rounded-2xl border border-amber-500/40 px-3 py-3 text-xs text-amber-100 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
           You appear signed out on this tab. If actions fail, open{" "}
           <Link
             href="/sign-in"
@@ -879,23 +902,23 @@ export default function MobileWorkOrderClient({
       )}
 
       {viewError && (
-        <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/50 bg-red-950/70 px-3 py-3 text-xs text-red-100 backdrop-blur">
+        <div className="metal-panel metal-panel--card whitespace-pre-wrap rounded-2xl border border-red-500/50 px-3 py-3 text-xs text-red-100 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
           {viewError}
         </div>
       )}
 
       {loading ? (
-        <div className="mt-4 grid gap-4">
+        <div className="grid gap-4">
           <Skeleton className="h-20" />
           <Skeleton className="h-32" />
           <Skeleton className="h-40" />
         </div>
       ) : !wo ? (
-        <div className="mt-4 text-sm text-red-300">Work order not found.</div>
+        <div className="text-sm text-red-300">Work order not found.</div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-6">
           {/* Header card */}
-          <div className="rounded-2xl border border-white/10 bg-black/40 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-md">
+          <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)]">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -913,12 +936,12 @@ export default function MobileWorkOrderClient({
                       className="
                         ml-auto
                         inline-flex items-center whitespace-nowrap
-                        rounded-full border border-red-500
+                        rounded-full border border-red-500/80
                         bg-red-500/10
                         px-4 py-1.5
                         text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
                         text-red-200
-                        shadow-[0_0_18px_rgba(248,113,113,0.9)]
+                        shadow-[0_0_18px_rgba(239,68,68,0.55)]
                       "
                     >
                       Waiter
@@ -962,7 +985,7 @@ export default function MobileWorkOrderClient({
           </div>
 
           {/* Vehicle & Customer */}
-          <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.80)] backdrop-blur-md">
+          <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_14px_36px_rgba(0,0,0,0.80)]">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold sm:text-base">
                 Vehicle &amp; Customer
@@ -979,13 +1002,13 @@ export default function MobileWorkOrderClient({
 
             {showDetails && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-white/10 bg-black/40 p-3 backdrop-blur">
+                <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-3">
                   <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
                     Vehicle
                   </h3>
                   {vehicle ? (
                     <>
-                      <p className="text-sm font-medium text.white">
+                      <p className="text-sm font-medium text-white">
                         {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
                         {vehicle.model ?? ""}
                       </p>
@@ -1013,7 +1036,7 @@ export default function MobileWorkOrderClient({
                   )}
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/40 p-3 backdrop-blur">
+                <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-3">
                   <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
                     Customer
                   </h3>
@@ -1057,15 +1080,15 @@ export default function MobileWorkOrderClient({
           </div>
 
           {/* Awaiting Customer Approval */}
-          <div className="rounded-2xl border border-slate-600/60 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.20),rgba(15,23,42,0.98)),radial-gradient(circle_at_bottom,_rgba(15,23,42,1),#020617_85%)] p-4 shadow-[0_22px_55px_rgba(0,0,0,0.95)]">
+          <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_22px_55px_rgba(0,0,0,0.95)]">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-sky-100 sm:text-base">
+              <h2 className="text-sm font-semibold text-neutral-100 sm:text-base">
                 Awaiting customer approval
               </h2>
               {approvalPending.length > 1 && (
                 <button
                   type="button"
-                  className="rounded-full bg-sky-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 shadow-[0_0_18px_rgba(56,189,248,0.65)] hover:bg-sky-400"
+                  className="rounded-full bg-[var(--accent-copper-soft)] px-3 py-1.5 text-[11px] font-semibold text-black shadow-[0_0_18px_rgba(212,118,49,0.55)] hover:bg-[var(--accent-copper-light)]"
                   onClick={sendAllPendingToParts}
                   title="Queue all lines for parts quoting"
                 >
@@ -1075,7 +1098,7 @@ export default function MobileWorkOrderClient({
             </div>
 
             {!hasAnyPending ? (
-              <p className="text-xs text-slate-200/75">
+              <p className="text-xs text-neutral-400">
                 No lines waiting for approval.
               </p>
             ) : (
@@ -1083,7 +1106,7 @@ export default function MobileWorkOrderClient({
                 {/* Job lines needing approval */}
                 {approvalPending.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200/90">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
                       Jobs awaiting approval
                     </div>
                     {approvalPending.map((ln, idx) => {
@@ -1106,7 +1129,7 @@ export default function MobileWorkOrderClient({
                       return (
                         <div
                           key={ln.id}
-                          className="rounded-xl border border-white/10 bg-slate-950/70 p-3 backdrop-blur"
+                          className="metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-3"
                         >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">
@@ -1116,7 +1139,7 @@ export default function MobileWorkOrderClient({
                                   ln.complaint ||
                                   "Untitled job"}
                               </div>
-                              <div className="mt-0.5 text-[11px] text-slate-300">
+                              <div className="mt-0.5 text-[11px] text-neutral-300">
                                 {String(ln.job_type ?? "job").replaceAll(
                                   "_",
                                   " ",
@@ -1138,13 +1161,13 @@ export default function MobileWorkOrderClient({
                               </div>
 
                               {isAwaitingPartsBase && (
-                                <div className="mt-1 inline-flex items-center rounded-full border border-sky-400/70 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-100">
+                                <div className="mt-1 inline-flex items-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-[rgba(212,118,49,0.10)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-copper-light)]">
                                   {partsLabel}
                                 </div>
                               )}
 
                               {ln.notes && (
-                                <div className="mt-1 text-[11px] text-slate-300">
+                                <div className="mt-1 text-[11px] text-neutral-300">
                                   Notes: {ln.notes}
                                 </div>
                               )}
@@ -1174,14 +1197,14 @@ export default function MobileWorkOrderClient({
                                 <button
                                   type="button"
                                   disabled
-                                  className="cursor-not-allowed rounded-md border border-slate-500/70 px-2.5 py-1 text-[11px] text-slate-300"
+                                  className="cursor-not-allowed rounded-md border border-neutral-600/70 px-2.5 py-1 text-[11px] text-neutral-400"
                                 >
                                   Sent to parts
                                 </button>
                               ) : (
                                 <button
                                   type="button"
-                                  className="rounded-md border border-sky-400/80 px-2.5 py-1 text-[11px] font-medium text-sky-100 hover:bg-sky-500/15"
+                                  className="rounded-md border border-[var(--accent-copper-soft)]/80 px-2.5 py-1 text-[11px] font-medium text-[var(--accent-copper-light)] hover:bg-[rgba(212,118,49,0.12)]"
                                   onClick={() => sendToParts(ln.id)}
                                   title="Send to parts for quoting"
                                 >
@@ -1199,20 +1222,20 @@ export default function MobileWorkOrderClient({
                 {/* Quote lines created from AI suggestions etc. */}
                 {quotePending.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper-light)]/90">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
                       Quote lines / AI suggestions
                     </div>
                     {quotePending.map((q, idx) => (
                       <div
                         key={q.id}
-                        className="rounded-xl border border-white/10 bg-slate-950/75 p-3 backdrop-blur"
+                        className="metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 p-3"
                       >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
                             <div className="truncate text-sm font-medium text-white">
                               {idx + 1}. {q.description}
                             </div>
-                            <div className="mt-0.5 text-[11px] text-slate-300">
+                            <div className="mt-0.5 text-[11px] text-neutral-300">
                               {String(q.job_type ?? "job").replaceAll(
                                 "_",
                                 " ",
@@ -1228,7 +1251,7 @@ export default function MobileWorkOrderClient({
                               )}
                             </div>
                             {q.notes && (
-                              <div className="mt-1 text-[11px] text-slate-300">
+                              <div className="mt-1 text-[11px] text-neutral-300">
                                 Notes: {q.notes}
                               </div>
                             )}
@@ -1262,7 +1285,7 @@ export default function MobileWorkOrderClient({
           </div>
 
           {/* Jobs list */}
-          <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[0_16px_40px_rgba(0,0,0,0.88)] backdrop-blur-md">
+          <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_16px_40px_rgba(0,0,0,0.88)]">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold sm:text-base">
@@ -1279,8 +1302,7 @@ export default function MobileWorkOrderClient({
             ) : (
               <div className="space-y-2">
                 {sortedLines.map((ln, idx) => {
-                  const punchedIn =
-                    !!ln.punched_in_at && !ln.punched_out_at;
+                  const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
                   const openFocused = () => {
                     setFocusedJobId(ln.id);
@@ -1300,11 +1322,9 @@ export default function MobileWorkOrderClient({
                     <div
                       key={ln.id}
                       className={[
-                        "space-y-1 rounded-xl border p-2 transition-shadow",
+                        "space-y-1 rounded-2xl border p-2 transition-shadow",
                         cardColor,
-                        punchedIn
-                          ? "ring-2 ring-emerald-500/80"
-                          : "ring-0",
+                        punchedIn ? "ring-2 ring-emerald-500/80" : "ring-0",
                       ].join(" ")}
                     >
                       {/* header row with status pill on the right */}
@@ -1326,7 +1346,7 @@ export default function MobileWorkOrderClient({
                         </span>
                       </div>
 
-                      <div className="rounded-lg border border-white/10 bg-black/40">
+                      <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35">
                         <JobCard
                           index={idx}
                           line={ln}
@@ -1354,12 +1374,12 @@ export default function MobileWorkOrderClient({
               </div>
             )}
           </div>
+
+          <div className="flex justify-center pb-1 pt-2">
+            <VoiceButton />
+          </div>
         </div>
       )}
-
-      <div className="mt-4 flex justify-center pb-1">
-        <VoiceButton />
-      </div>
     </div>
   );
 }

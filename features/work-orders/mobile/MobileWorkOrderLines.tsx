@@ -1,3 +1,7 @@
+// features/work-orders/mobile/MobileWorkOrderLines.tsx (FULL FILE REPLACEMENT)
+// ✅ Theme alignment only (cards/pills closer to MobileTechHome)
+// ❗ No logic changes
+
 "use client";
 
 import { useState } from "react";
@@ -16,7 +20,8 @@ type Props = {
 };
 
 const statusTextColor: Record<string, string> = {
-  in_progress: "text-emerald-300 border-emerald-400/40 bg-emerald-500/10",
+  in_progress:
+    "text-[var(--accent-copper-light)] border-[var(--accent-copper-soft)] bg-[rgba(212,118,49,0.14)] shadow-[0_0_16px_rgba(212,118,49,0.35)]",
   awaiting: "text-slate-200 border-slate-300/30 bg-slate-500/10",
   queued: "text-indigo-200 border-indigo-400/40 bg-indigo-500/10",
   on_hold: "text-amber-200 border-amber-400/50 bg-amber-500/10",
@@ -45,7 +50,7 @@ export function MobileWorkOrderLines({
   workOrderId,
   onDelete,
   isWaiter = false,
-}: Props) {
+}: Props): JSX.Element | null {
   const [assignLineId, setAssignLineId] = useState<string | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
 
@@ -88,7 +93,7 @@ export function MobileWorkOrderLines({
             return (
               <li
                 key={line.id}
-                className="group flex items-stretch justify-between gap-2 rounded-2xl border border-white/12 bg-gradient-to-br from-neutral-950/95 via-neutral-900/90 to-black/90 px-3 py-2 text-xs shadow-[0_0_0_1px_rgba(15,23,42,0.9)]"
+                className="group flex items-stretch justify-between gap-2 rounded-2xl border border-white/12 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.08),rgba(0,0,0,0.65))] px-3 py-2 text-xs shadow-[0_18px_45px_rgba(0,0,0,0.65)]"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 text-[0.7rem] text-neutral-500">
@@ -97,14 +102,12 @@ export function MobileWorkOrderLines({
                     </span>
 
                     {line.job_type && (
-                      <span className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-neutral-300">
+                      <span className="rounded-full border border-white/10 bg-black/40 px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-neutral-300">
                         {String(line.job_type).replaceAll("_", " ")}
                       </span>
                     )}
 
-                    {isWaiter && (
-                      <span className={waiterPillClasses}>Waiting</span>
-                    )}
+                    {isWaiter && <span className={waiterPillClasses}>Waiting</span>}
                   </div>
 
                   <div className="mt-0.5 truncate text-[0.8rem] font-medium text-neutral-50">
@@ -153,12 +156,10 @@ export function MobileWorkOrderLines({
                         setAssignLineId(line.id);
                         setAssignOpen(true);
                       }}
-                      className="shrink-0 rounded-full border border-sky-500/70 px-2 py-0.5 text-[0.7rem] text-sky-100 hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="shrink-0 rounded-full border border-sky-500/70 bg-black/35 px-2 py-0.5 text-[0.7rem] text-sky-100 hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={!canAssign}
                       title={
-                        canAssign
-                          ? "Assign technician"
-                          : "Open a work order first"
+                        canAssign ? "Assign technician" : "Open a work order first"
                       }
                     >
                       Assign
@@ -167,7 +168,7 @@ export function MobileWorkOrderLines({
                     <button
                       type="button"
                       onClick={() => onDelete(line.id)}
-                      className="shrink-0 rounded-full border border-red-500/70 px-2 py-0.5 text-[0.7rem] text-red-100 hover:bg-red-500/15"
+                      className="shrink-0 rounded-full border border-red-500/70 bg-black/35 px-2 py-0.5 text-[0.7rem] text-red-100 hover:bg-red-500/15"
                     >
                       Delete
                     </button>
@@ -184,8 +185,6 @@ export function MobileWorkOrderLines({
           isOpen={assignOpen}
           onClose={() => setAssignOpen(false)}
           workOrderLineId={assignLineId}
-          // let the modal fetch its own mechanics; you can wire onAssigned
-          // if you want to re-fetch this work order after assignment.
         />
       )}
     </>

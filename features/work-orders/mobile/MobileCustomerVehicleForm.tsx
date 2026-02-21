@@ -1,4 +1,7 @@
-// features/work-orders/mobile/MobileCustomerVehicleForm.tsx
+// features/work-orders/mobile/MobileCustomerVehicleForm.tsx (FULL FILE REPLACEMENT)
+// ✅ Theme alignment only (remove dependency on glass-chip class, match other inputs/cards)
+// ❗ No logic changes
+
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
@@ -24,7 +27,7 @@ export function MobileCustomerVehicleForm({
   vehicle,
   onCustomerChange,
   onVehicleChange,
-}: Props) {
+}: Props): JSX.Element {
   const woLabel = wo?.custom_id ?? (wo ? wo.id.slice(0, 8) : null);
 
   const inputBase =
@@ -41,7 +44,7 @@ export function MobileCustomerVehicleForm({
     "text-[11px] uppercase tracking-[0.16em] text-neutral-400";
 
   return (
-    <div className="glass-card rounded-2xl border border-white/12 bg-black/40 p-4 space-y-6">
+    <div className="glass-card rounded-2xl border border-white/12 bg-black/40 p-4 space-y-6 shadow-card">
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div>
@@ -52,8 +55,9 @@ export function MobileCustomerVehicleForm({
             Full customer and unit details for this work order.
           </p>
         </div>
+
         {woLabel && (
-          <span className="glass-chip font-mono text-[10px]">
+          <span className="rounded-full border border-white/10 bg-black/40 px-2 py-1 font-mono text-[10px] text-neutral-300">
             WO&nbsp;{woLabel}
           </span>
         )}
@@ -62,6 +66,7 @@ export function MobileCustomerVehicleForm({
       {/* Customer */}
       <div className="space-y-3">
         <h3 className={labelClass}>Customer</h3>
+
         <div className="grid grid-cols-1 gap-3">
           <div className="flex gap-2">
             <div className="flex-1 space-y-1">
@@ -78,6 +83,7 @@ export function MobileCustomerVehicleForm({
                 placeholder="First"
               />
             </div>
+
             <div className="flex-1 space-y-1">
               <label className={labelClass}>Last name</label>
               <input
@@ -130,6 +136,7 @@ export function MobileCustomerVehicleForm({
       {/* Vehicle */}
       <div className="space-y-3">
         <h3 className={labelClass}>Vehicle</h3>
+
         <div className="grid grid-cols-1 gap-3">
           <div className="flex gap-2">
             <div className="w-20 space-y-1">
@@ -147,6 +154,7 @@ export function MobileCustomerVehicleForm({
                 placeholder="YYYY"
               />
             </div>
+
             <div className="flex-1 space-y-1">
               <label className={labelClass}>Make</label>
               <input
@@ -161,6 +169,7 @@ export function MobileCustomerVehicleForm({
                 placeholder="Ford, Kenworth…"
               />
             </div>
+
             <div className="flex-1 space-y-1">
               <label className={labelClass}>Model</label>
               <input

@@ -7,6 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
@@ -23,7 +24,6 @@ type StatusKey =
   | "in_progress"
   | "on_hold"
   | "planned"
-  | "new"
   | "completed"
   | "ready_to_invoice"
   | "invoiced";
@@ -34,7 +34,6 @@ const NORMAL_FLOW_STATUSES: StatusKey[] = [
   "in_progress",
   "on_hold",
   "planned",
-  "new",
 ];
 
 const STATUS_LABEL: Record<StatusKey, string> = {
@@ -44,7 +43,6 @@ const STATUS_LABEL: Record<StatusKey, string> = {
   in_progress: "In progress",
   on_hold: "On hold",
   planned: "Planned",
-  new: "New",
   completed: "Completed",
   ready_to_invoice: "Ready to invoice",
   invoiced: "Invoiced",
@@ -52,43 +50,75 @@ const STATUS_LABEL: Record<StatusKey, string> = {
 
 const STATUS_CHIP: Record<StatusKey, string> = {
   awaiting_approval:
-    "bg-blue-500/10 text-blue-200 border border-blue-400/60",
+    "border-blue-400/60 text-blue-200 bg-blue-900/20",
   awaiting:
-    "bg-sky-500/10 text-sky-200 border border-sky-400/60",
+    "border-sky-400/60 text-sky-200 bg-sky-900/20",
   queued:
-    "bg-indigo-500/10 text-indigo-200 border border-indigo-400/60",
+    "border-indigo-400/60 text-indigo-200 bg-indigo-900/20",
   in_progress:
-    "bg-orange-500/10 text-orange-200 border border-orange-400/70",
+    "border-[var(--accent-copper-soft)]/70 text-[var(--accent-copper-soft)] bg-[rgba(212,118,49,0.12)]",
   on_hold:
-    "bg-amber-500/10 text-amber-200 border border-amber-400/70",
+    "border-amber-400/70 text-amber-200 bg-amber-900/20",
   planned:
-    "bg-purple-500/10 text-purple-200 border border-purple-400/70",
-  new:
-    "bg-neutral-800 text-neutral-100 border border-neutral-600",
+    "border-purple-400/70 text-purple-200 bg-purple-900/20",
   completed:
-    "bg-green-500/10 text-green-200 border border-green-400/70",
+    "border-emerald-400/70 text-emerald-200 bg-emerald-900/20",
   ready_to_invoice:
-    "bg-emerald-500/10 text-emerald-200 border border-emerald-400/70",
+    "border-emerald-400/70 text-emerald-200 bg-emerald-900/20",
   invoiced:
-    "bg-teal-500/10 text-teal-200 border border-teal-400/70",
+    "border-teal-400/70 text-teal-200 bg-teal-900/20",
 };
 
-const INPUT_DARK =
-  "w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-50 placeholder:text-neutral-500 " +
-  "focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-500/60 [color-scheme:dark]";
-
-const SELECT_DARK =
-  "w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-50 " +
-  "focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-500/60 [color-scheme:dark]";
-
 function statusKey(raw: string | null | undefined): StatusKey {
-  const key = (raw ?? "awaiting").toLowerCase().replaceAll(" ", "_") as StatusKey;
+  const key = (raw ?? "awaiting")
+    .toLowerCase()
+    .replaceAll(" ", "_") as StatusKey;
   if (key in STATUS_LABEL) return key;
   return "awaiting";
 }
 
+function cleanText(v: string | null | undefined): string {
+  return String(v ?? "").trim().replace(/\s+/g, " ");
+}
+
+function formatVehicle(v: Row["vehicles"]): { label: string; plate?: string } {
+  const year = v?.year ? String(v.year) : "";
+  const make = cleanText(v?.make ?? "");
+  const model = cleanText(v?.model ?? "");
+  const label = [year, make, model].filter(Boolean).join(" ").trim();
+  const plate = cleanText(v?.license_plate ?? "");
+  return { label, plate: plate || undefined };
+}
+
+function MiniStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "metal-card rounded-2xl border px-3 py-3 text-center shadow-[0_16px_32px_rgba(0,0,0,0.65)]",
+        accent
+          ? "border border-[var(--accent-copper-soft)]/75 shadow-[0_16px_32px_rgba(0,0,0,0.65),0_0_20px_rgba(212,118,49,0.45)]"
+          : "border border-[var(--metal-border-soft)]",
+      ].join(" ")}
+    >
+      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
 export default function MobileWorkOrdersListPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -103,10 +133,10 @@ export default function MobileWorkOrdersListPage() {
       .from("work_orders")
       .select(
         `
-        *,
-        customers:customers(first_name,last_name,phone),
-        vehicles:vehicles(year,make,model,license_plate)
-      `
+          *,
+          customers:customers(first_name,last_name,phone),
+          vehicles:vehicles(year,make,model,license_plate)
+        `,
       )
       .order("created_at", { ascending: false })
       .limit(100);
@@ -133,15 +163,25 @@ export default function MobileWorkOrdersListPage() {
       qlc.length === 0
         ? list
         : list.filter((r) => {
-            const name = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
+            const name = [
+              r.customers?.first_name ?? "",
+              r.customers?.last_name ?? "",
+            ]
               .filter(Boolean)
               .join(" ")
               .toLowerCase();
-            const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
-            const ymm = [r.vehicles?.year ?? "", r.vehicles?.make ?? "", r.vehicles?.model ?? ""]
+
+            const plate = (r.vehicles?.license_plate ?? "").toLowerCase();
+            const ymm = [
+              r.vehicles?.year ?? "",
+              r.vehicles?.make ?? "",
+              r.vehicles?.model ?? "",
+            ]
               .join(" ")
               .toLowerCase();
+
             const cid = (r.custom_id ?? "").toLowerCase();
+
             return (
               r.id.toLowerCase().includes(qlc) ||
               cid.includes(qlc) ||
@@ -167,7 +207,7 @@ export default function MobileWorkOrdersListPage() {
         { event: "*", schema: "public", table: "work_orders" },
         () => {
           setTimeout(() => void load(), 80);
-        }
+        },
       )
       .subscribe();
 
@@ -181,115 +221,121 @@ export default function MobileWorkOrdersListPage() {
   }, [supabase, load]);
 
   const total = rows.length;
-  const activeCount = useMemo(
-    () =>
-      rows.filter((r) =>
-        NORMAL_FLOW_STATUSES.includes(
-          statusKey(r.status ?? "awaiting")
-        )
-      ).length,
-    [rows]
-  );
+
+  const activeCount = useMemo(() => {
+    return rows.filter((r) => {
+      const k = statusKey(r.status ?? "awaiting");
+      return NORMAL_FLOW_STATUSES.includes(k);
+    }).length;
+  }, [rows]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col bg-gradient-to-b from-black to-neutral-950 px-3 pb-6 pt-4 text-neutral-50">
-      {/* Header */}
-      <header className="mb-4 flex flex-col gap-1">
-        <h1 className="text-base font-blackops uppercase tracking-[0.18em] text-neutral-100">
-          Jobs
-        </h1>
-        <p className="text-[11px] text-neutral-400">
-          Work orders for this shop. Tap a card to open details.
-        </p>
-      </header>
-
-      {/* Filters */}
-      <section className="mb-3 space-y-2 rounded-2xl border border-white/10 bg-black/60 p-3 shadow-lg shadow-black/40 backdrop-blur-md">
-        <div className="space-y-2">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void load()}
-            placeholder="Search id, customer, plate, YMM…"
-            className={INPUT_DARK + " text-xs"}
-          />
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className={SELECT_DARK + " text-xs"}
-            >
-              <option value="">Active (normal flow)</option>
-              <option value="awaiting_approval">Awaiting approval</option>
-              <option value="awaiting">Awaiting</option>
-              <option value="queued">Queued</option>
-              <option value="in_progress">In progress</option>
-              <option value="on_hold">On hold</option>
-              <option value="planned">Planned</option>
-              <option value="new">New</option>
-              <option value="completed">Completed</option>
-              <option value="ready_to_invoice">Ready to invoice</option>
-              <option value="invoiced">Invoiced</option>
-            </select>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="mt-1 inline-flex items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-[11px] font-medium text-neutral-100 hover:bg-neutral-900"
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-1 flex items-center justify-between text-[10px] text-neutral-300">
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col">
-              <span className="uppercase tracking-[0.14em] text-neutral-500">
-                Total
-              </span>
-              <span className="text-sm font-semibold text-white">
-                {total}
-              </span>
+    <main className="min-h-screen bg-black text-white">
+      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-4">
+        {/* HERO (MobileTechHome vibe) */}
+        <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+          <div className="space-y-1">
+            <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+              ProFixIQ • Tech
             </div>
-            <div className="h-7 w-px bg-neutral-700/70" />
-            <div className="flex flex-col">
-              <span className="uppercase tracking-[0.14em] text-neutral-500">
-                Active
-              </span>
-              <span className="text-sm font-semibold text-sky-200">
-                {activeCount}
-              </span>
-            </div>
+            <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-[var(--accent-copper)]">
+              Jobs
+            </h1>
+            <p className="text-[0.75rem] text-neutral-300">
+              Work orders for this shop. Tap a card to open details.
+            </p>
           </div>
-          <Link
-            href="/work-orders/create"
-            className="inline-flex items-center rounded-full border border-orange-500/70 bg-orange-500 px-3 py-1 text-[11px] font-semibold text-black shadow-sm hover:bg-orange-400"
-          >
-            <span className="mr-1 text-base leading-none">＋</span>
-            New
-          </Link>
-        </div>
-      </section>
 
-      {err && (
-        <div className="mb-3 rounded-xl border border-red-500/60 bg-red-950/50 px-3 py-2 text-[11px] text-red-100">
-          {err}
-        </div>
-      )}
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <MiniStat label="Total" value={total} />
+            <MiniStat label="Active" value={activeCount} accent />
+          </div>
+        </section>
 
-      {/* List */}
-      <section className="flex-1 space-y-2">
-        {loading ? (
-          <div className="rounded-2xl border border-white/10 bg-black/60 p-4 text-sm text-neutral-300">
-            Loading work orders…
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/20 bg-black/50 p-5 text-sm text-neutral-400">
-            No work orders match your filters.
-          </div>
-        ) : (
+        {/* Filters (metal-card) */}
+        <section className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
           <div className="space-y-2">
-            {rows.map((wo) => {
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void load()}
+              placeholder="Search id, customer, plate, YMM…"
+              className={[
+                "w-full rounded-xl border px-3 py-2 text-xs text-neutral-100 outline-none [color-scheme:dark]",
+                "border-[var(--metal-border-soft)] bg-black/35 placeholder:text-neutral-500",
+                "focus:border-[var(--accent-copper-soft)]/70 focus:ring-1 focus:ring-[rgba(212,118,49,0.35)]",
+              ].join(" ")}
+            />
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className={[
+                  "w-full rounded-xl border px-3 py-2 text-xs text-neutral-100 outline-none [color-scheme:dark]",
+                  "border-[var(--metal-border-soft)] bg-black/35",
+                  "focus:border-[var(--accent-copper-soft)]/70 focus:ring-1 focus:ring-[rgba(212,118,49,0.35)]",
+                ].join(" ")}
+              >
+                <option value="">Active (normal flow)</option>
+                <option value="awaiting_approval">Awaiting approval</option>
+                <option value="awaiting">Awaiting</option>
+                <option value="queued">Queued</option>
+                <option value="in_progress">In progress</option>
+                <option value="on_hold">On hold</option>
+                <option value="planned">Planned</option>
+                <option value="new">New</option>
+                <option value="completed">Completed</option>
+                <option value="ready_to_invoice">Ready to invoice</option>
+                <option value="invoiced">Invoiced</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-4 py-2 text-xs font-semibold text-neutral-100 hover:border-[var(--accent-copper-soft)]/70 hover:bg-white/5"
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <div className="text-[0.7rem] text-neutral-400">
+                Showing{" "}
+                <span className="font-semibold text-white">{rows.length}</span>
+              </div>
+
+              {/* If you actually have a mobile create route, change this.
+                  Leaving as your original desktop-ish path would be wrong on mobile. */}
+              <Link
+                href="/work-orders/create"
+                className="inline-flex items-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-[rgba(212,118,49,0.18)] px-3 py-1 text-[0.7rem] font-semibold text-[var(--accent-copper-soft)] hover:bg-[rgba(212,118,49,0.26)]"
+              >
+                <span className="mr-1 text-base leading-none">＋</span>
+                New
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {err ? (
+          <div className="metal-card rounded-2xl border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-100">
+            {err}
+          </div>
+        ) : null}
+
+        {/* List */}
+        <section className="space-y-2">
+          {loading ? (
+            <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-sm text-neutral-300">
+              Loading work orders…
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-sm text-neutral-400">
+              No work orders match your filters.
+            </div>
+          ) : (
+            rows.map((wo) => {
               const key = statusKey(wo.status);
               const customerName = wo.customers
                 ? [wo.customers.first_name ?? "", wo.customers.last_name ?? ""]
@@ -297,68 +343,61 @@ export default function MobileWorkOrdersListPage() {
                     .join(" ")
                 : "No customer";
 
-              const vehicleLabel = wo.vehicles
-                ? `${wo.vehicles.year ?? ""} ${wo.vehicles.make ?? ""} ${
-                    wo.vehicles.model ?? ""
-                  }`.trim()
-                : "";
-
-              const plate = wo.vehicles?.license_plate ?? "";
+              const veh = formatVehicle(wo.vehicles);
               const idLabel = wo.custom_id || `#${wo.id.slice(0, 8)}`;
 
               return (
                 <Link
                   key={wo.id}
                   href={`/mobile/work-orders/${wo.id}`}
-                  className="block rounded-2xl border border-white/10 bg-black/70 px-3.5 py-3 shadow-md shadow-black/50 active:scale-[0.99]"
+                  className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.75)] active:scale-[0.99]"
                 >
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <div className="flex flex-col">
-                      <span className="text-[11px] text-neutral-400">
-                        {wo.created_at
-                          ? format(new Date(wo.created_at), "PP")
-                          : "—"}
-                      </span>
-                      <span className="text-sm font-semibold text-neutral-50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+                        {wo.created_at ? format(new Date(wo.created_at), "PP") : "—"}
+                      </div>
+
+                      <div className="mt-0.5 truncate text-[0.95rem] font-semibold text-white">
                         {idLabel}
-                      </span>
+                      </div>
+
+                      <div className="mt-1 flex flex-col gap-1 text-[0.75rem] text-neutral-300">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate">{customerName}</span>
+                          {wo.customers?.phone ? (
+                            <span className="shrink-0 font-mono text-neutral-500">
+                              {wo.customers.phone}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="truncate text-[0.7rem] text-neutral-400">
+                          {veh.label || "No vehicle"}
+                          {veh.plate ? (
+                            <span className="ml-1 text-neutral-500">
+                              ({veh.plate})
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
+
                     <span
-                      className={
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] " +
-                        STATUS_CHIP[key]
-                      }
+                      className={[
+                        "accent-chip shrink-0 rounded-full border px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.12em]",
+                        STATUS_CHIP[key],
+                      ].join(" ")}
                     >
                       {STATUS_LABEL[key]}
                     </span>
                   </div>
-
-                  <div className="mt-1 space-y-1 text-[11px] text-neutral-300">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="line-clamp-1">
-                        {customerName || "No customer"}
-                      </span>
-                      {wo.customers?.phone && (
-                        <span className="font-mono text-neutral-400">
-                          {wo.customers.phone}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] text-neutral-400">
-                      {vehicleLabel || "No vehicle"}
-                      {plate ? (
-                        <span className="ml-1 text-neutral-500">
-                          ({plate})
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
                 </Link>
               );
-            })}
-          </div>
-        )}
-      </section>
+            })
+          )}
+        </section>
+      </div>
     </main>
   );
 }

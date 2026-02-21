@@ -1,4 +1,7 @@
-// features/work-orders/mobile/MobileFocusedJob.tsx
+// features/work-orders/mobile/MobileFocusedJob.tsx (FULL FILE REPLACEMENT)
+// ✅ UI/theme only: align to MobileTechHome (metal-panel / metal-card)
+// ❗ NO logic/behavior changes
+
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, type JSX } from "react";
@@ -42,18 +45,31 @@ const chip = (s: string | null) =>
   statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
   "text-neutral-200";
 
+/* ---------------------------- UI (theme-only) ---------------------------- */
+
+const panel =
+  "metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 backdrop-blur shadow-[0_18px_45px_rgba(0,0,0,0.85)]";
+
+const card =
+  "metal-card rounded-2xl border border-[var(--metal-border-soft)] bg-black/35 backdrop-blur";
+
+const fieldLabel =
+  "text-[11px] uppercase tracking-[0.18em] text-neutral-400";
+
 const btnBase =
-  "rounded-md border text-sm px-3 py-2 transition-colors text-left";
+  "rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors shadow-[0_10px_28px_rgba(0,0,0,0.55)]";
 const btnNeutral =
   btnBase +
-  " border-white/15 bg-black/40 text-neutral-100 hover:bg-white/5";
+  " border-[var(--metal-border-soft)] bg-black/40 text-neutral-100 hover:bg-white/5";
 const btnWarn =
   btnBase +
-  " border-amber-400/80 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
+  " border-amber-400/70 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
 const btnDanger =
-  btnBase + " border-red-500/80 bg-red-500/10 text-red-100 hover:bg-red-500/20";
+  btnBase +
+  " border-red-500/70 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnInfo =
-  btnBase + " border-sky-500/80 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
+  btnBase +
+  " border-sky-500/70 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
 const btnAccent =
   btnBase +
   " border-[var(--accent-copper-light)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]";
@@ -559,7 +575,7 @@ export default function MobileFocusedJob(props: {
               closeAllSubModals();
               onBack();
             }}
-            className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[11px] text-neutral-100 hover:bg-black/70"
+            className="inline-flex items-center gap-1 rounded-full border border-[var(--metal-border-soft)] bg-black/45 px-3 py-1 text-[11px] text-neutral-100 hover:bg-black/70"
           >
             <span>←</span>
             <span className="uppercase tracking-[0.16em]">Back</span>
@@ -599,48 +615,32 @@ export default function MobileFocusedJob(props: {
                 <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
               </div>
             ) : !line ? (
-              <div className="glass-card text-sm text-neutral-300">
+              <div className={`${panel} px-4 py-4 text-sm text-neutral-300`}>
                 No job found.
               </div>
             ) : (
               <>
                 {/* meta info */}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="glass-card p-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Status
-                    </div>
-                    <div
-                      className={`mt-1 text-sm font-semibold ${chip(
-                        line.status ?? null,
-                      )}`}
-                    >
+                  <div className={`${card} p-3`}>
+                    <div className={fieldLabel}>Status</div>
+                    <div className={`mt-1 text-sm font-semibold ${chip(line.status ?? null)}`}>
                       {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
 
-                  <div className="glass-card p-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Start
-                    </div>
-                    <div className="mt-1 text-sm text-neutral-100">
-                      {createdStart}
-                    </div>
+                  <div className={`${card} p-3`}>
+                    <div className={fieldLabel}>Start</div>
+                    <div className="mt-1 text-sm text-neutral-100">{createdStart}</div>
                   </div>
 
-                  <div className="glass-card p-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Finish
-                    </div>
-                    <div className="mt-1 text-sm text-neutral-100">
-                      {createdFinish}
-                    </div>
+                  <div className={`${card} p-3`}>
+                    <div className={fieldLabel}>Finish</div>
+                    <div className="mt-1 text-sm text-neutral-100">{createdFinish}</div>
                   </div>
 
-                  <div className="glass-card p-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Hold Reason
-                    </div>
+                  <div className={`${card} p-3`}>
+                    <div className={fieldLabel}>Hold Reason</div>
                     <div className="mt-1 text-sm text-neutral-100">
                       {line.hold_reason ?? "—"}
                     </div>
@@ -648,31 +648,24 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* vehicle & customer */}
-                <div className="glass-card p-3 text-sm">
+                <div className={`${panel} px-4 py-4 text-sm`}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                        Vehicle
-                      </div>
+                      <div className={fieldLabel}>Vehicle</div>
                       <div className="mt-1 truncate text-neutral-100">
                         {vehicle
-                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
-                              vehicle.model ?? ""
-                            }`
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
                               .trim()
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-neutral-400">
-                        VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
-                        {vehicle?.license_plate ?? "—"}
+                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
 
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                        Customer
-                      </div>
+                      <div className={fieldLabel}>Customer</div>
                       <div className="mt-1 truncate text-neutral-100">
                         {customer
                           ? [customer.first_name ?? "", customer.last_name ?? ""]
@@ -681,8 +674,7 @@ export default function MobileFocusedJob(props: {
                           : "—"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-neutral-400">
-                        {customer?.phone ?? "—"}{" "}
-                        {customer?.email ? `• ${customer.email}` : ""}
+                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
                       </div>
                     </div>
                   </div>
@@ -690,7 +682,7 @@ export default function MobileFocusedJob(props: {
 
                 {/* punch — hide once completed */}
                 {mode === "tech" && line && line.status !== "completed" && (
-                  <div className="glass-card p-3">
+                  <div className={`${panel} px-4 py-4`}>
                     <JobPunchButton
                       lineId={line.id}
                       punchedInAt={line.punched_in_at}
@@ -707,8 +699,7 @@ export default function MobileFocusedJob(props: {
                     />
 
                     {(line.status === "awaiting_approval" ||
-                      (line.approval_state &&
-                        line.approval_state !== "approved") ||
+                      (line.approval_state && line.approval_state !== "approved") ||
                       line.status === "declined") && (
                       <div className="mt-2 text-[11px] text-amber-300">
                         {line.status === "awaiting_approval"
@@ -797,7 +788,7 @@ export default function MobileFocusedJob(props: {
                         AI Assist
                       </button>
 
-                      {/* ✅ NEW: Vehicle History */}
+                      {/* ✅ Vehicle History */}
                       <button
                         type="button"
                         className={btnNeutral}
@@ -836,7 +827,7 @@ export default function MobileFocusedJob(props: {
                         AI Assist
                       </button>
 
-                      {/* ✅ NEW: Vehicle History */}
+                      {/* ✅ Vehicle History */}
                       <button
                         type="button"
                         className={btnNeutral}
@@ -856,7 +847,7 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* parts used */}
-                <div className="glass-card p-3">
+                <div className={`${panel} px-4 py-4`}>
                   <div className="mb-2 text-sm font-medium text-neutral-100">
                     Parts used
                   </div>
@@ -864,11 +855,9 @@ export default function MobileFocusedJob(props: {
                   {allocsLoading ? (
                     <div className="text-sm text-neutral-300">Loading…</div>
                   ) : allocs.length === 0 ? (
-                    <div className="text-sm text-neutral-300">
-                      No parts used yet.
-                    </div>
+                    <div className="text-sm text-neutral-300">No parts used yet.</div>
                   ) : (
-                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+                    <div className="overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-black/40">
                       <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                         <div className="col-span-7">Part</div>
                         <div className="col-span-3">Location</div>
@@ -899,7 +888,7 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* tech notes */}
-                <div className="glass-card p-3">
+                <div className={`${panel} px-4 py-4`}>
                   <label className="mb-1 block text-sm font-medium text-neutral-100">
                     Tech Notes
                   </label>
@@ -912,7 +901,7 @@ export default function MobileFocusedJob(props: {
                     }}
                     onBlur={saveNotes}
                     disabled={savingNotes}
-                    className="w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]"
+                    className="w-full rounded-xl border border-[var(--metal-border-soft)] bg-black/45 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]"
                     placeholder="Add notes for this job…"
                   />
                   {notesDirty && (
@@ -923,7 +912,7 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* AI suggestions */}
-                <div className="glass-card p-3">
+                <div className={`${panel} px-4 py-4`}>
                   <h3 className="mb-2 text-sm font-medium text-neutral-100">
                     AI Suggested Repairs
                   </h3>
@@ -950,9 +939,7 @@ export default function MobileFocusedJob(props: {
                     ? ` • Labor: ${line.labor_time.toFixed(1)}h`
                     : ""}
                   {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-                  {line.approval_state
-                    ? ` • Approval: ${line.approval_state}`
-                    : ""}
+                  {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
                 </div>
               </>
             )}
