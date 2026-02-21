@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx
+// app/dashboard/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -7,6 +7,13 @@ import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
 
 import ShopBoostWidget from "@/features/shared/components/ui/ShopBoostWidget";
+
+// ✅ Pull tech performance using your existing stats helper
+import type { TimeRange } from "@shared/lib/stats/getShopStats";
+import {
+  getTechLeaderboard,
+  type TechLeaderboardRow,
+} from "@shared/lib/stats/getTechLeaderboard";
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -31,6 +38,16 @@ function canViewShopHealth(role: string | null): boolean {
   return r === "owner" || r === "admin" || r === "advisor" || r === "manager";
 }
 
+function fmtHours(n: number): string {
+  if (!Number.isFinite(n)) return "0.0h";
+  return `${n.toFixed(1)}h`;
+}
+
+function fmtPct(n: number): string {
+  if (!Number.isFinite(n)) return "0%";
+  return `${n.toFixed(0)}%`;
+}
+
 export default function DashboardPage() {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
@@ -44,6 +61,11 @@ export default function DashboardPage() {
     workOrders: null,
     partsRequests: null,
   });
+
+  // ✅ Tech performance snapshot for dashboard tiles
+  const [perfRange] = useState<TimeRange>("weekly");
+  const [perfLoading, setPerfLoading] = useState(false);
+  const [perfRow, setPerfRow] = useState<TechLeaderboardRow | null>(null);
 
   // current punched-in job for this user
   const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
@@ -148,6 +170,49 @@ export default function DashboardPage() {
   }, [supabase, userId, shopId, role]);
 
   /* ---------------------------------------------------------------------- */
+  /* Tech performance snapshot (for the circled tiles)                       */
+  /* ---------------------------------------------------------------------- */
+
+  useEffect(() => {
+    if (!userId) return;
+    if (!shopId) return;
+    if (!isTechRole(role)) {
+      setPerfRow(null);
+      return;
+    }
+
+    (async () => {
+      setPerfLoading(true);
+      try {
+        const result = await getTechLeaderboard(shopId, perfRange);
+        const rows = result.rows ?? [];
+        const my = rows.find((r) => r.techId === userId) ?? null;
+
+        setPerfRow(
+          my ?? {
+            techId: userId,
+            name: name ?? "Tech",
+            role: role ?? null,
+            jobs: 0,
+            revenue: 0,
+            laborCost: 0,
+            profit: 0,
+            billedHours: 0,
+            clockedHours: 0,
+            revenuePerHour: 0,
+            efficiencyPct: 0,
+          },
+        );
+      } catch (e) {
+        console.error("[Dashboard] performance snapshot load failed", e);
+        setPerfRow(null);
+      } finally {
+        setPerfLoading(false);
+      }
+    })();
+  }, [userId, shopId, role, perfRange, name]);
+
+  /* ---------------------------------------------------------------------- */
   /* Current job – job this user is actively punched in on                  */
   /* ---------------------------------------------------------------------- */
 
@@ -240,6 +305,13 @@ export default function DashboardPage() {
   const tech = isTechRole(role);
   const showShopHealth = canViewShopHealth(role);
 
+  const workedText =
+    perfLoading || !perfRow ? "…" : fmtHours(perfRow.clockedHours);
+  const billedText =
+    perfLoading || !perfRow ? "…" : fmtHours(perfRow.billedHours);
+  const effText =
+    perfLoading || !perfRow ? "…" : fmtPct(perfRow.efficiencyPct);
+
   return (
     <div className="relative space-y-8 fade-in">
       {/* soft gradient background for this page (extra metal wash) */}
@@ -284,15 +356,23 @@ export default function DashboardPage() {
               value={counts.workOrders === null ? "…" : String(counts.workOrders)}
               href="/tech/queue"
             />
+
+            {/* ✅ Performance tiles */}
             <OverviewCard
-              title="My parts requests"
-              value={
-                counts.partsRequests === null ? "…" : String(counts.partsRequests)
-              }
-              href="/parts/requests?mine=1"
+              title="Hours worked"
+              value={workedText}
+              href="/tech/performance"
             />
-            <OverviewCard title="Team chat" value="Open" href="/chat" />
-            <OverviewCard title="AI assistant" value="Open" href="/ai/assistant" />
+            <OverviewCard
+              title="Billed hours"
+              value={billedText}
+              href="/tech/performance"
+            />
+            <OverviewCard
+              title="Efficiency"
+              value={effText}
+              href="/tech/performance"
+            />
           </>
         ) : (
           <>
@@ -396,7 +476,9 @@ function ActiveJobCard({
   }
 
   const jobLabel =
-    job.description || job.complaint || String(job.job_type ?? "Job in progress");
+    job.description ||
+    job.complaint ||
+    String(job.job_type ?? "Job in progress");
 
   const vehicleLabel = vehicle
     ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`

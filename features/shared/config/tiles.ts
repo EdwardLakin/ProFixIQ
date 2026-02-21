@@ -336,6 +336,14 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
     section: "Tools",
   },
+  {
+  href: "/tech/performance",
+  title: "My Performance",
+  subtitle: "Hours, billed & efficiency",
+  roles: ["mechanic", "manager", "owner", "admin"],
+  scopes: ["tech", "all"],
+  section: "Tech",
+  },
 
   /* ---------------------------------------------------------------------- */
   /* ADMIN                                                                   */
