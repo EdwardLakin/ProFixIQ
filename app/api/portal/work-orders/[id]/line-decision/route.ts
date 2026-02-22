@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+// app/api/portal/work-orders/[id]/line-decision/route.ts
+import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -16,10 +17,16 @@ function safeString(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-export async function POST(req: Request, ctx: { params: { id: string } }) {
+// ✅ Next 15 expects params to be async-compatible in the handler context
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
+
+export async function POST(req: NextRequest, ctx: RouteContext) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const workOrderId = safeString(ctx?.params?.id);
+  const { id } = await ctx.params;
+  const workOrderId = safeString(id);
 
   let body: Body | null = null;
   try {
@@ -31,8 +38,15 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
   const lineId = safeString(body?.lineId);
   const decision = body?.decision;
 
-  if (!workOrderId || !lineId || (decision !== "approve" && decision !== "decline" && decision !== "defer")) {
-    return NextResponse.json({ ok: false, error: "Missing workOrderId, lineId, or decision" }, { status: 400 });
+  if (
+    !workOrderId ||
+    !lineId ||
+    (decision !== "approve" && decision !== "decline" && decision !== "defer")
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "Missing workOrderId, lineId, or decision" },
+      { status: 400 },
+    );
   }
 
   // 1) Authed user
@@ -80,9 +94,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     return NextResponse.json({ ok: false, error: "Line item not found" }, { status: 404 });
   }
 
-  // 5) Apply decision using your allowed values:
-  // approval_state: pending | approved | declined | NULL
-  // status: awaiting_approval / queued / declined / etc
+  // 5) Apply decision
   const patch =
     decision === "approve"
       ? { approval_state: "approved" as const, status: "queued" as const }
