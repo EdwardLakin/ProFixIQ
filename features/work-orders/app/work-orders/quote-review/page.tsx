@@ -1,6 +1,6 @@
 // app/work-orders/quote-review/page.tsx (FULL FILE REPLACEMENT)
 // Advisor-facing: list of WOs needing approval.
-// Opens the editable detail view at: /work-orders/quote-review/[id]
+// Opens the editable detail view at: /quote-review/[id]
 
 "use client";
 
@@ -191,7 +191,7 @@ function ApprovalsList(): JSX.Element {
 
       <div className="divide-y divide-border">
         {rows.map((w) => {
-          const quoteHref = `/work-orders/quote-review/${w.id}`;
+          const quoteHref = `/quote-review/${w.id}`;
           const woHref = `/work-orders/${w.id}`;
 
           return (
@@ -258,7 +258,7 @@ export default function QuoteReviewIndexPage(): JSX.Element {
 
   // Back-compat: if old links still send ?woId=..., route to the new detail page.
   useEffect(() => {
-    if (woId) router.replace(`/work-orders/quote-review/${woId}`);
+    if (woId) router.replace(`/quote-review/${woId}`);
   }, [woId, router]);
 
   return (
