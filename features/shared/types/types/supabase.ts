@@ -4360,6 +4360,7 @@ export type Database = {
           created_at: string
           description: string
           id: string
+          location_id: string | null
           markup_pct: number | null
           menu_item_id: string | null
           part_id: string | null
@@ -4388,6 +4389,7 @@ export type Database = {
           created_at?: string
           description: string
           id?: string
+          location_id?: string | null
           markup_pct?: number | null
           menu_item_id?: string | null
           part_id?: string | null
@@ -4416,6 +4418,7 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          location_id?: string | null
           markup_pct?: number | null
           menu_item_id?: string | null
           part_id?: string | null
@@ -4440,6 +4443,13 @@ export type Database = {
           work_order_line_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "part_request_items_location_fk"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "part_request_items_po_id_fkey"
             columns: ["po_id"]
@@ -10944,10 +10954,12 @@ export type Database = {
         Args: { p_work_order_id: string }
         Returns: number
       }
-      consume_part_request_item_on_picked: {
-        Args: { p_request_item_id: string }
-        Returns: undefined
-      }
+      consume_part_request_item_on_picked:
+        | { Args: { p_request_item_id: string }; Returns: undefined }
+        | {
+            Args: { p_location_id: string; p_request_item_id: string }
+            Returns: undefined
+          }
       create_fleet_form_upload: {
         Args: { _filename: string; _path: string }
         Returns: string
@@ -11132,18 +11144,29 @@ export type Database = {
         Args: { p_wo: string }
         Returns: undefined
       }
-      reserve_part_request_items_for_line: {
-        Args: { p_work_order_line_id: string }
-        Returns: undefined
-      }
+      reserve_part_request_items_for_line:
+        | { Args: { p_work_order_line_id: string }; Returns: undefined }
+        | {
+            Args: { p_location_id: string; p_work_order_line_id: string }
+            Returns: undefined
+          }
       resolve_fleet_id_from_vehicle: {
         Args: { p_vehicle_id: string }
         Returns: string
       }
-      restock_consumed_part_request_item: {
-        Args: { p_qty?: number; p_request_item_id: string }
-        Returns: undefined
-      }
+      restock_consumed_part_request_item:
+        | {
+            Args: { p_qty?: number; p_request_item_id: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_location_id?: string
+              p_qty?: number
+              p_request_item_id: string
+            }
+            Returns: undefined
+          }
       seed_default_hours: { Args: { shop_id: string }; Returns: undefined }
       send_for_approval: {
         Args: { _line_ids: string[]; _set_wo_status?: boolean; _wo: string }
@@ -11183,10 +11206,19 @@ export type Database = {
         Args: { p_work_order_id: string }
         Returns: undefined
       }
-      unreserve_part_request_item: {
-        Args: { p_qty?: number; p_request_item_id: string }
-        Returns: undefined
-      }
+      unreserve_part_request_item:
+        | {
+            Args: { p_qty?: number; p_request_item_id: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_location_id?: string
+              p_qty?: number
+              p_request_item_id: string
+            }
+            Returns: undefined
+          }
       update_part_quote: {
         Args: {
           p_item: string
