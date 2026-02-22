@@ -321,7 +321,6 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
           section: session.sections[secIdx].title,
           status: status as "fail" | "recommend",
           suggestion,
-          source: "inspection",
           jobType: "inspection",
         });
         toast.success("Added to work order (awaiting approval)", { id: tId });
