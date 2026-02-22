@@ -77,6 +77,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // ✅ Quote review must bypass onboarding + redirects
+if (pathname.startsWith("/work-orders/quote-review")) {
+  return NextResponse.next();
+}
+
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
