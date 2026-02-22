@@ -1,4 +1,14 @@
 // /features/inspections/lib/inspection/interpretCommand.ts (FULL FILE REPLACEMENT)
+// ✅ NO MANUAL FOCUS:
+// - This file does NOT assume “current section” or “current item”.
+// - If you pass ctx.items, it should be the GLOBAL item list (all sections) so voice can target anything anytime.
+// - sectionTitle/sectionTitles are OPTIONAL hints only (never used to “focus”/restrict on the client).
+//
+// ✅ FIX: Local fallback parser (no server needed) for "plain talk" commands:
+// - "brake fluid level okay" => status OK on best-matching item
+// - "left front tread depth 8mm" => measurement on best-matching item
+// - still uses /api/ai/interpret when local parse can't confidently resolve
+//
 // No `any`.
 
 "use client";
@@ -204,10 +214,7 @@ function detectStatus(raw: string): LocalStatus | null {
 
 function stripStatusWords(raw: string): string {
   return raw
-    .replace(
-      /\b(ok|okay|pass|passed|good|fine|fail|failed|na|n\/a|not applicable|rec|recommend|recommended)\b/gi,
-      " ",
-    )
+    .replace(/\b(ok|okay|pass|passed|good|fine|fail|failed|na|n\/a|not applicable|rec|recommend|recommended)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -215,10 +222,7 @@ function stripStatusWords(raw: string): string {
 function stripNumberAndUnitWords(raw: string): string {
   return raw
     .replace(/-?\d+(?:\.\d+)?/g, " ")
-    .replace(
-      /\b(mm|millimet(er|re)s?|psi|kpa|inch|inches|\bin\b|ft\s*lb|ftlb|ft-lb|cca|volts?\b|\bv\b|mil|mils)\b/gi,
-      " ",
-    )
+    .replace(/\b(mm|millimet(er|re)s?|psi|kpa|inch|inches|\bin\b|ft\s*lb|ftlb|ft-lb|cca|volts?\b|\bv\b|mil|mils)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -230,9 +234,8 @@ function localParseUtterance(raw: string): LocalParse | null {
   const t = norm(text);
 
   // SECTION status phrasing
-  const secMatch = t.match(
-    /\b(.+?)\s+(section|sections)\s+(ok|okay|pass|fail|failed|na|n\/a|recommend|rec)\b/,
-  );
+  // e.g. "mark brake section ok", "brake section ok", "tires section na"
+  const secMatch = t.match(/\b(.+?)\s+(section|sections)\s+(ok|okay|pass|fail|failed|na|n\/a|recommend|rec)\b/);
   if (secMatch) {
     const sectionHint = String(secMatch[1] ?? "").trim();
     const st = detectStatus(secMatch[0] ?? "");
@@ -243,6 +246,7 @@ function localParseUtterance(raw: string): LocalParse | null {
   const num = extractFirstNumber(text);
   const unit = inferUnit(text);
 
+  // If there's a number, assume measurement intent (this matches your desired "left front tread depth 8mm")
   if (num) {
     const itemHint = stripNumberAndUnitWords(text);
     if (itemHint.length >= 2) {
@@ -271,28 +275,26 @@ function scoreItemLabel(label: string, hint: string): number {
 
   let score = 0;
   for (const tok of ht) {
+    // strong corner tokens
     if (tok === "lf" || tok === "rf" || tok === "lr" || tok === "rr") {
       if (labelSet.has(tok) || norm(label).includes(tok)) score += 90;
       continue;
     }
 
+    // axle-ish tokens
     if (tok === "steer" || tok === "drive" || tok === "tag" || tok === "trailer") {
       if (norm(label).includes(tok)) score += 45;
       continue;
     }
 
+    // side tokens
     if (tok === "left" || tok === "right" || tok === "front" || tok === "rear") {
       if (labelSet.has(tok) || norm(label).includes(tok)) score += 22;
       continue;
     }
 
-    if (
-      tok === "tread" ||
-      tok === "pressure" ||
-      tok === "pad" ||
-      tok === "lining" ||
-      tok === "shoe"
-    ) {
+    // key metric tokens
+    if (tok === "tread" || tok === "pressure" || tok === "pad" || tok === "lining" || tok === "shoe") {
       if (norm(label).includes(tok)) score += 22;
       continue;
     }
@@ -300,10 +302,10 @@ function scoreItemLabel(label: string, hint: string): number {
     if (tok.length >= 3 && norm(label).includes(tok)) score += 4;
   }
 
+  // bonus: if hint says tread depth, prioritize labels containing both tread + depth
   const h = norm(hint);
   const l = norm(label);
-  if (h.includes("tread") && h.includes("depth") && l.includes("tread") && l.includes("depth"))
-    score += 20;
+  if (h.includes("tread") && h.includes("depth") && l.includes("tread") && l.includes("depth")) score += 20;
 
   return score;
 }
@@ -317,6 +319,7 @@ function resolveBestItem(items: string[], hint: string): { item: string; score: 
     if (!best || s > best.score) best = { item: it, score: s };
   }
 
+  // Confidence floor to avoid random writes
   if (!best || best.score < 24) return null;
   return best;
 }
@@ -331,6 +334,7 @@ function resolveBestSection(sectionTitles: string[], hint: string): string | nul
     const t = norm(title);
     if (!t) continue;
 
+    // simple token overlap
     const tt = new Set(tokens(t));
     let score = 0;
     for (const tok of tokens(h)) {
@@ -359,6 +363,8 @@ function buildParsedFromLocal(
     const section = resolveBestSection(context.sectionTitles, parsed.sectionHint);
     if (!section) return [];
 
+    // Name-based command shape expected by handleTranscriptFn:
+    // { type: "section_status", section: "...", status: "ok" }
     const cmd = {
       type: "section_status",
       section,
@@ -380,6 +386,7 @@ function buildParsedFromLocal(
     return [cmd];
   }
 
+  // measurement
   const cmd = {
     type: "measurement",
     item: best.item,
@@ -394,6 +401,16 @@ function buildParsedFromLocal(
  * Main
  * ------------------------------------------------------------------------------------------------- */
 
+/**
+ * Interpret a voice command into ParsedCommand[].
+ * ✅ Supports multi-command utterances by splitting the transcript.
+ * ✅ NO MANUAL FOCUS: this function never “locks” to the current section/item.
+ *
+ * IMPORTANT:
+ * - If you pass ctx.items, make it GLOBAL (all items across all sections) to keep it hands-free.
+ * - We still send `mode: "strict_context"` when items exist so the server can constrain *to the global template*,
+ *   which improves accuracy without “focusing” on any one item.
+ */
 export async function interpretCommand(
   transcript: string,
   ctx?: InterpretContext,
@@ -408,7 +425,7 @@ export async function interpretCommand(
     const p = normalizeString(part);
     if (!p) return [];
 
-    // ✅ 1) Local fallback first
+    // ✅ 1) Local fallback first (handles "brake fluid level okay", "left front tread depth 8mm")
     const lp = localParseUtterance(p);
     if (lp && context) {
       const localCmds = buildParsedFromLocal(lp, {

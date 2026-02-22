@@ -141,11 +141,6 @@ type NormalizedItem = {
   estimateLastUpdatedAt?: string | null;
   estimateWorkOrderLineId?: string | null;
   estimateQuoteLineId?: string | null;
-
-  // ✅ menu match (optional)
-  estimateMenuItemId?: string | null;
-  estimateMenuItemName?: string | null;
-  estimateMenuMatchScore?: number | null;
 };
 
 function normalizeSections(input: unknown): InspectionSection[] {
@@ -430,11 +425,7 @@ function localFallbackCommands(text: string): ParsedCommand[] {
       type: "measurement",
       section: "__auto__",
       item: `${corner} ${
-        inner
-          ? "Tread Depth (Inner)"
-          : outer
-            ? "Tread Depth (Outer)"
-            : "Tread Depth"
+        inner ? "Tread Depth (Inner)" : outer ? "Tread Depth (Outer)" : "Tread Depth"
       }`,
       value: num,
       unit: /\b(inch|inches)\b/.test(n) ? "in" : "mm",
@@ -531,10 +522,7 @@ function parseFollowUpPayload(raw: string): {
   }
 
   remainder = remainder
-    .replace(
-      /\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi,
-      " ",
-    )
+    .replace(/\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -1298,26 +1286,16 @@ export default function GenericInspectionScreen(
         const parsedFU = parseFollowUpPayload(followTail);
 
         if (parsedFU.wantsCancel) {
-          // clear any pending follow-up
-          updateInspection({
-            voiceMeta: {
-              ...(sess.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } satisfies VoiceMeta)),
-              followUp: null,
-            } satisfies VoiceMeta,
-          });
+          clearFollowUp();
           applied.push({ command: "follow_up_cancel", ok: true });
         } else {
           const nextParts = parsedFU.parts;
           const nextLabor = parsedFU.laborHours;
 
-          updateItem(
-            lastAppliedTarget.sectionIndex,
-            lastAppliedTarget.itemIndex,
-            {
-              parts: nextParts,
-              laborHours: nextLabor,
-            } as ItemPatch,
-          );
+          updateItem(lastAppliedTarget.sectionIndex, lastAppliedTarget.itemIndex, {
+            parts: nextParts,
+            laborHours: nextLabor,
+          } as ItemPatch);
 
           const it =
             sess.sections[lastAppliedTarget.sectionIndex]?.items?.[
@@ -1331,12 +1309,7 @@ export default function GenericInspectionScreen(
           const laborSummary = nextLabor != null ? `${nextLabor} hr` : "no labor";
 
           if (parsedFU.wantsConfirm) {
-            updateInspection({
-              voiceMeta: {
-                ...(sess.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } satisfies VoiceMeta)),
-                followUp: null,
-              } satisfies VoiceMeta,
-            });
+            clearFollowUp();
             speakLocal("Confirmed. Submitting.");
             void submitAIForItem(
               lastAppliedTarget.sectionIndex,
@@ -1347,17 +1320,12 @@ export default function GenericInspectionScreen(
               `Submitting: ${label} • ${laborSummary} • ${partsSummary}`,
             );
           } else {
-            updateInspection({
-              voiceMeta: {
-                ...(sess.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } satisfies VoiceMeta)),
-                followUp: {
-                  kind: "parts_labor",
-                  sectionIndex: lastAppliedTarget.sectionIndex,
-                  itemIndex: lastAppliedTarget.itemIndex,
-                  stage: "await_confirm",
-                  draft: { laborHours: nextLabor, parts: nextParts },
-                },
-              } satisfies VoiceMeta,
+            setFollowUp({
+              kind: "parts_labor",
+              sectionIndex: lastAppliedTarget.sectionIndex,
+              itemIndex: lastAppliedTarget.itemIndex,
+              stage: "await_confirm",
+              draft: { laborHours: nextLabor, parts: nextParts },
             });
             applied.push({ command: "follow_up_capture", ok: true });
             toast.success(
@@ -1369,16 +1337,11 @@ export default function GenericInspectionScreen(
       } else {
         // ✅ Arm follow-up prompt when FAIL/REC + note occurs
         if (sawFailOrRec && sawNote && lastAppliedTarget) {
-          updateInspection({
-            voiceMeta: {
-              ...(sess.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } satisfies VoiceMeta)),
-              followUp: {
-                kind: "parts_labor",
-                sectionIndex: lastAppliedTarget.sectionIndex,
-                itemIndex: lastAppliedTarget.itemIndex,
-                stage: "await_followup",
-              },
-            } satisfies VoiceMeta,
+          setFollowUp({
+            kind: "parts_labor",
+            sectionIndex: lastAppliedTarget.sectionIndex,
+            itemIndex: lastAppliedTarget.itemIndex,
+            stage: "await_followup",
           });
           speakLocal("Would you like to add parts and labor? Say follow up.");
         }
@@ -1553,107 +1516,6 @@ export default function GenericInspectionScreen(
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  /* ----------------------- MENU MATCH HELPERS (safe fallback) ----------------------- */
-
-  type MenuMatchResult = {
-    menuItemId: string;
-    menuItemName: string | null;
-    score: number | null;
-  };
-
-  type MenuMatchApiResponse = {
-    ok: boolean;
-    match: {
-      id: string;
-      name?: string | null;
-      score?: number | null;
-    } | null;
-  };
-
-  async function tryMenuMatch(args: {
-    workOrderId: string;
-    description: string;
-    notes: string;
-    sectionTitle: string;
-    vehicle?: SessionVehicle | null;
-  }): Promise<MenuMatchResult | null> {
-    try {
-      const res = await fetch("/api/menu/match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workOrderId: args.workOrderId,
-          description: args.description,
-          notes: args.notes,
-          section: args.sectionTitle,
-          vehicle: args.vehicle ?? null,
-          source: "inspection",
-        }),
-      });
-
-      if (!res.ok) return null;
-
-      const body = (await res.json().catch(() => null)) as unknown;
-      const parsed = body as Partial<MenuMatchApiResponse>;
-
-      if (!parsed || parsed.ok !== true) return null;
-      if (!parsed.match || typeof parsed.match.id !== "string") return null;
-
-      return {
-        menuItemId: parsed.match.id,
-        menuItemName:
-          typeof parsed.match.name === "string" ? parsed.match.name : null,
-        score:
-          typeof parsed.match.score === "number" ? parsed.match.score : null,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  type AddFromMenuResponse = { ok: boolean; workOrderLineId?: string | null };
-
-  async function tryAddWorkOrderLineFromMenu(args: {
-    workOrderId: string;
-    menuItemId: string;
-    notes: string | null;
-    laborHours: number;
-    parts: Array<{ description: string; qty: number }>;
-    status: "fail" | "recommend";
-    source: "inspection";
-  }): Promise<string | null> {
-    try {
-      const res = await fetch("/api/work-orders/lines/add-from-menu", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workOrderId: args.workOrderId,
-          menuItemId: args.menuItemId,
-          notes: args.notes,
-          laborHours: args.laborHours,
-          parts: args.parts,
-          status: args.status,
-          source: args.source,
-        }),
-      });
-
-      if (!res.ok) return null;
-
-      const body = (await res.json().catch(() => null)) as unknown;
-      const parsed = body as Partial<AddFromMenuResponse>;
-      if (parsed?.ok !== true) return null;
-
-      const id =
-        typeof parsed.workOrderLineId === "string" && parsed.workOrderLineId
-          ? parsed.workOrderLineId
-          : null;
-
-      return id;
-    } catch {
-      return null;
-    }
-  }
-
   const submitAIForItem = async (
     secIdx: number,
     itemIdx: number,
@@ -1694,11 +1556,6 @@ export default function GenericInspectionScreen(
       // ✅ links so we UPDATE instead of creating new
       estimateWorkOrderLineId?: string | null;
       estimateQuoteLineId?: string | null;
-
-      // ✅ menu match memory
-      estimateMenuItemId?: string | null;
-      estimateMenuItemName?: string | null;
-      estimateMenuMatchScore?: number | null;
     };
 
     const manualParts: { description: string; qty: number }[] = Array.isArray(
@@ -1882,98 +1739,22 @@ export default function GenericInspectionScreen(
         }
 
         // ✅ CREATE new estimate/job (first submit)
-        const sectionTitle = String(session.sections[secIdx]?.title ?? "");
-
-        // --- MENU MATCH CHANGE (safe): try match → try create from menu → fallback to AI suggestion add ---
-        let menuMatch: MenuMatchResult | null = null;
-
-        // reuse prior match if the item already remembers it
-        if (
-          typeof itExt.estimateMenuItemId === "string" &&
-          itExt.estimateMenuItemId.trim().length > 0
-        ) {
-          menuMatch = {
-            menuItemId: itExt.estimateMenuItemId.trim(),
-            menuItemName:
-              typeof itExt.estimateMenuItemName === "string"
-                ? itExt.estimateMenuItemName
-                : null,
-            score:
-              typeof itExt.estimateMenuMatchScore === "number"
-                ? itExt.estimateMenuMatchScore
-                : null,
-          };
-        } else {
-          menuMatch = await tryMenuMatch({
-            workOrderId,
-            description: desc,
-            notes: String(it.notes ?? ""),
-            sectionTitle,
-            vehicle: session.vehicle ?? null,
-          });
-        }
-
-        let createdJobId: string | null = null;
-
-        if (menuMatch) {
-          const fromMenuId = await tryAddWorkOrderLineFromMenu({
-            workOrderId,
-            menuItemId: menuMatch.menuItemId,
-            notes: String(it.notes ?? "") || null,
-            laborHours: laborTime,
-            parts: cleanParts,
-            status: status as "fail" | "recommend",
-            source: "inspection",
-          });
-
-          if (fromMenuId) {
-            createdJobId = fromMenuId;
-
-            updateInspection({
-              voiceMeta: {
-                linesAddedToWorkOrder:
-                  (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
-              } satisfies VoiceMeta,
-            });
-
-            updateItem(secIdx, itemIdx, {
-              estimateSubmitted: true,
-              estimateSubmittedAt: nowIso,
-              estimateLastUpdatedAt: nowIso,
-              estimateWorkOrderLineId: createdJobId,
-              estimateQuoteLineId: quoteId,
-              estimateMenuItemId: menuMatch.menuItemId,
-              estimateMenuItemName: menuMatch.menuItemName,
-              estimateMenuMatchScore: menuMatch.score,
-            } as ItemPatch);
-
-            toast.success(
-              menuMatch.menuItemName
-                ? `Added from menu: ${menuMatch.menuItemName}`
-                : "Added from menu item",
-              { id: toastId },
-            );
-
-            return;
-          }
-        }
-
-        // Fallback to your existing AI-driven add
         const created = await addWorkOrderLineFromSuggestion({
           workOrderId,
           description: desc,
-          section: sectionTitle,
+          section: String(session.sections[secIdx]?.title ?? ""),
           status: status as "fail" | "recommend",
           suggestion: {
             ...suggestion,
             parts: mergedParts,
             laborHours: laborTime,
           },
+          source: "inspection",
           jobType: "repair",
         });
 
         const createdId = (created as unknown as { id?: unknown })?.id;
-        createdJobId =
+        const createdJobId =
           (createdId ? String(createdId) : null) || workOrderLineId || null;
 
         // ✅ keep your counter for “lines added and sent for quote”
@@ -2027,9 +1808,6 @@ export default function GenericInspectionScreen(
             estimateLastUpdatedAt: nowIso,
             estimateWorkOrderLineId: createdJobId,
             estimateQuoteLineId: quoteId,
-            estimateMenuItemId: menuMatch?.menuItemId ?? null,
-            estimateMenuItemName: menuMatch?.menuItemName ?? null,
-            estimateMenuMatchScore: menuMatch?.score ?? null,
           } as ItemPatch);
         }
       } else {
@@ -2335,10 +2113,7 @@ export default function GenericInspectionScreen(
       />
 
       {workOrderLineId && (
-        <FinishInspectionButton
-          session={session}
-          workOrderLineId={workOrderLineId}
-        />
+        <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
       )}
     </>
   );
@@ -2752,8 +2527,8 @@ export default function GenericInspectionScreen(
 
                 {collapsed ? (
                   <p className="mt-2 text-center text-[11px] text-neutral-400">
-                    Section collapsed. Tap{" "}
-                    <span className="font-semibold">Expand</span> to reopen.
+                    Section collapsed. Tap <span className="font-semibold">Expand</span>{" "}
+                    to reopen.
                   </p>
                 ) : (
                   <>

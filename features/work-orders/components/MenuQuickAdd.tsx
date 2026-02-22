@@ -124,16 +124,6 @@ function isGlobalMenuItem(mi: MenuItemRow): boolean {
   return !has;
 }
 
-/**
- * ✅ IMPORTANT:
- * These "saved from line / upsert from line" routes populate menu_items.work_order_line_id.
- * Those should NOT show in Menu Quick Add (they are WO-derived repair snapshots, not reusable menu items).
- */
-function isWorkOrderDerivedMenuItem(mi: MenuItemRow): boolean {
-  const v = (mi as unknown as { work_order_line_id?: unknown }).work_order_line_id;
-  return typeof v === "string" && v.trim().length > 0;
-}
-
 function scoreMenuItemFit(args: { mi: MenuItemRow; vehicle: VehicleLite | null }): number {
   const { mi, vehicle } = args;
   if (!vehicle) return isGlobalMenuItem(mi) ? 5 : 0;
@@ -555,11 +545,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
           inspection_template_id: params.template.id,
         };
 
-        const { data, error } = await supabase
-          .from("work_order_lines")
-          .insert(line)
-          .select("id")
-          .single();
+        const { data, error } = await supabase.from("work_order_lines").insert(line).select("id").single();
         if (error) throw new Error(error.message);
 
         window.dispatchEvent(new CustomEvent("wo:line-added"));
@@ -590,11 +576,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         template_id: params.inspectionTemplateId ?? null,
       };
 
-      const { data, error } = await supabase
-        .from("work_order_lines")
-        .insert(line)
-        .select("id")
-        .single();
+      const { data, error } = await supabase.from("work_order_lines").insert(line).select("id").single();
       if (error) throw new Error(error.message);
 
       window.dispatchEvent(new CustomEvent("wo:line-added"));
@@ -656,10 +638,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
   const menuItemsDisplay = useMemo(() => {
     const q = menuQuery.trim();
-
     const scored = menuItemsAll
-      // ✅ hide WO-derived "saved from line" snapshots
-      .filter((mi) => !isWorkOrderDerivedMenuItem(mi))
       .filter((mi) => menuSearchHit(mi, q))
       .map((mi) => ({
         mi,
@@ -704,13 +683,10 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
             {vehicleLabel ? (
               <p className="text-[11px] text-neutral-400">
-                Vehicle:&nbsp;
-                <span className="font-medium text-neutral-200">{vehicleLabel}</span>
+                Vehicle:&nbsp;<span className="font-medium text-neutral-200">{vehicleLabel}</span>
               </p>
             ) : (
-              <p className="text-[11px] text-neutral-500">
-                Add lines now — you can update vehicle details later.
-              </p>
+              <p className="text-[11px] text-neutral-500">Add lines now — you can update vehicle details later.</p>
             )}
           </div>
 
@@ -769,18 +745,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       {/* templates */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
-            Inspection Templates
-          </h4>
-          <p className="text-[10px] text-neutral-500">
-            Saved/standard inspections you can attach as jobs.
-          </p>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Inspection Templates</h4>
+          <p className="text-[10px] text-neutral-500">Saved/standard inspections you can attach as jobs.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {templatesLoading ? (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
-              Loading templates…
-            </div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">Loading templates…</div>
           ) : templates.length ? (
             templates.slice(0, 9).map((t) => (
               <button
@@ -791,19 +761,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
                 title={t.description ?? undefined}
               >
-                <span className="font-medium text-neutral-50">
-                  {t.template_name ?? "Inspection"}
-                </span>
+                <span className="font-medium text-neutral-50">{t.template_name ?? "Inspection"}</span>
                 <div className="mt-1 text-xs text-neutral-400">
-                  inspection •{" "}
-                  {typeof t.labor_hours === "number" ? `${t.labor_hours.toFixed(1)}h` : "Labor TBD"}
+                  inspection • {typeof t.labor_hours === "number" ? `${t.labor_hours.toFixed(1)}h` : "Labor TBD"}
                 </div>
               </button>
             ))
           ) : (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
-              No templates yet.
-            </div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">No templates yet.</div>
           )}
         </div>
       </div>
@@ -812,12 +777,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
-              From My Menu
-            </h4>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">From My Menu</h4>
             <p className="text-[10px] text-neutral-500">
-              Matches for this vehicle are shown first. Totals use shop labor + tax rules (province
-              engine for CA).
+              Matches for this vehicle are shown first. Totals use shop labor + tax rules (province engine for CA).
             </p>
           </div>
 
@@ -842,9 +804,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {menuLoading ? (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
-              Loading menu items…
-            </div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">Loading menu items…</div>
           ) : menuItemsDisplay.length ? (
             menuItemsDisplay.slice(0, 12).map((mi) => {
               const p = calcMenuTotals({ mi, shop: shopDefaults });
@@ -867,8 +827,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   <span className="font-medium text-neutral-50">{mi.name}</span>
 
                   <div className="mt-1 text-xs text-neutral-400">
-                    {laborLabel} • {partsLabel} •{" "}
-                    <span className="text-neutral-100">{totalLabel}</span>
+                    {laborLabel} • {partsLabel} • <span className="text-neutral-100">{totalLabel}</span>
                     {taxLabel ? <span className="ml-1 text-neutral-500">• {taxLabel}</span> : null}
 
                     {isGlobalMenuItem(mi) ? (
