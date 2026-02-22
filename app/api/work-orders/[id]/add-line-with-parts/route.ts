@@ -86,11 +86,16 @@ function clampNonNeg(n: number): number {
   return n < 0 ? 0 : n;
 }
 
-export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
+// ✅ Next.js 15 route handlers treat params as async
+type RouteCtx = { params: Promise<{ id: string }> };
+
+export async function POST(req: NextRequest, ctx: RouteCtx) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
   try {
-    const workOrderId = ctx?.params?.id ?? "";
+    const { id } = await ctx.params;
+    const workOrderId = id ?? "";
+
     if (!isUuid(workOrderId)) {
       return NextResponse.json(
         { ok: false, error: "bad_request", detail: "Invalid work order id" },
@@ -118,7 +123,11 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
     if (userErr || !user) {
       return NextResponse.json(
-        { ok: false, error: "auth_error", detail: userErr?.message ?? "Unauthorized" },
+        {
+          ok: false,
+          error: "auth_error",
+          detail: userErr?.message ?? "Unauthorized",
+        },
         { status: 401 },
       );
     }
@@ -140,7 +149,11 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const shopId = wo?.shop_id ?? null;
     if (!shopId) {
       return NextResponse.json(
-        { ok: false, error: "missing_shop", detail: "work order missing shop_id" },
+        {
+          ok: false,
+          error: "missing_shop",
+          detail: "work order missing shop_id",
+        },
         { status: 400 },
       );
     }
@@ -223,7 +236,11 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
     if (!resolvedLocationId) {
       return NextResponse.json(
-        { ok: false, error: "missing_location", detail: "Could not resolve locationId" },
+        {
+          ok: false,
+          error: "missing_location",
+          detail: "Could not resolve locationId",
+        },
         { status: 400 },
       );
     }
@@ -278,7 +295,11 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
     if (insErr || !createdLine?.id) {
       return NextResponse.json(
-        { ok: false, error: "line_insert_failed", detail: insErr?.message ?? "Insert failed" },
+        {
+          ok: false,
+          error: "line_insert_failed",
+          detail: insErr?.message ?? "Insert failed",
+        },
         { status: 500 },
       );
     }
@@ -330,7 +351,12 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     }
 
     return NextResponse.json(
-      { ok: true, id: lineId, allocations_ok: true, allocations_count: allocs.length },
+      {
+        ok: true,
+        id: lineId,
+        allocations_ok: true,
+        allocations_count: allocs.length,
+      },
       { status: 200 },
     );
   } catch (e: unknown) {

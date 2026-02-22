@@ -1,6 +1,7 @@
 // features/work-orders/mobile/MobileWorkOrderClient.tsx (FULL FILE REPLACEMENT)
 // ✅ Theme aligned to MobileTechHome (metal-panel / metal-card)
 // ✅ Adds ?focus=<workOrderLineId> handling so MobileTechHome links open focused job automatically
+// ✅ Adds templateName + template_id params when opening inspections (best-effort lookup)
 // ❗ Leaves all behavior + logic the same otherwise
 
 "use client";
@@ -149,14 +150,11 @@ const LINE_CARD_STYLES: Record<LineRollupStatus, string> = {
 };
 
 const LINE_PILL_STYLES: Record<LineRollupStatus, string> = {
-  awaiting:
-    "border-slate-500/70 bg-slate-900/60 text-slate-200",
+  awaiting: "border-slate-500/70 bg-slate-900/60 text-slate-200",
   in_progress:
     "border-[var(--accent-copper-soft)] bg-[rgba(212,118,49,0.16)] text-[var(--accent-copper-light)] shadow-[0_0_20px_rgba(212,118,49,0.55)]",
-  on_hold:
-    "border-amber-400/70 bg-amber-500/12 text-amber-100",
-  completed:
-    "border-emerald-400/70 bg-emerald-500/12 text-emerald-100",
+  on_hold: "border-amber-400/70 bg-amber-500/12 text-amber-100",
+  completed: "border-emerald-400/70 bg-emerald-500/12 text-emerald-100",
 };
 
 function toLineBucket(status: string | null | undefined): LineRollupStatus {
@@ -474,9 +472,7 @@ export default function MobileWorkOrderClient({
         }
 
         if (quotesRes.error) throw quotesRes.error;
-        setQuoteLines(
-          (quotesRes.data as WorkOrderQuoteLine[] | null) ?? [],
-        );
+        setQuoteLines((quotesRes.data as WorkOrderQuoteLine[] | null) ?? []);
 
         if (vehRes?.error) throw vehRes.error;
         setVehicle((vehRes?.data as Vehicle | null) ?? null);
@@ -802,7 +798,7 @@ export default function MobileWorkOrderClient({
 
   // 🔹 Open mobile inspection page for a given line
   const openInspection = useCallback(
-    (ln: WorkOrderLine) => {
+    async (ln: WorkOrderLine) => {
       if (!ln?.id || !wo?.id) return;
 
       const anyLine = ln as WorkOrderLineWithInspectionMeta;
@@ -815,10 +811,33 @@ export default function MobileWorkOrderClient({
         return;
       }
 
+      // ✅ NEW: best-effort lookup for template_name so mobile can display it
+      let templateName: string | null = null;
+      try {
+        const { data } = await supabase
+          .from("inspection_templates")
+          .select("template_name")
+          .eq("id", templateId)
+          .maybeSingle();
+        templateName =
+          (data as { template_name?: string | null } | null)?.template_name ??
+          null;
+      } catch {
+        // ignore (we can still open with templateId)
+      }
+
       const sp = new URLSearchParams();
       sp.set("workOrderId", wo.id);
       sp.set("workOrderLineId", ln.id);
+
       sp.set("templateId", templateId);
+      sp.set("template_id", templateId);
+
+      if (templateName) {
+        sp.set("templateName", templateName);
+        sp.set("template_name", templateName);
+      }
+
       sp.set("view", "mobile");
 
       router.push(`/mobile/inspections/${ln.id}?${sp.toString()}`);
@@ -1013,9 +1032,7 @@ export default function MobileWorkOrderClient({
                       </p>
                       <p className="mt-1 text-[11px] text-neutral-400">
                         VIN:{" "}
-                        <span className="font-mono">
-                          {vehicle.vin ?? "—"}
-                        </span>
+                        <span className="font-mono">{vehicle.vin ?? "—"}</span>
                         <br />
                         Plate:{" "}
                         {vehicle.license_plate ?? (
@@ -1042,10 +1059,7 @@ export default function MobileWorkOrderClient({
                   {customer ? (
                     <>
                       <p className="text-sm font-medium text-white">
-                        {[
-                          customer.first_name ?? "",
-                          customer.last_name ?? "",
-                        ]
+                        {[customer.first_name ?? "", customer.last_name ?? ""]
                           .filter(Boolean)
                           .join(" ") || "—"}
                       </p>
@@ -1355,7 +1369,7 @@ export default function MobileWorkOrderClient({
                           isPunchedIn={punchedIn}
                           onOpen={openFocused}
                           onAssign={undefined}
-                          onOpenInspection={() => openInspection(ln)}
+                          onOpenInspection={() => void openInspection(ln)}
                           onAddPart={undefined}
                         />
                       </div>
@@ -1373,8 +1387,6 @@ export default function MobileWorkOrderClient({
               </div>
             )}
           </div>
-
-          
         </div>
       )}
     </div>
