@@ -1,9 +1,10 @@
 // app/work-orders/quote-review/page.tsx (FULL FILE REPLACEMENT)
 // Advisor-facing: list of WOs needing approval.
-// Opens the new editable detail view at: /work-orders/quote-review/[id]
+// Opens the editable detail view at: /work-orders/quote-review/[id]
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -119,9 +120,7 @@ function ApprovalsList(): JSX.Element {
     const list = (wo ?? []) as unknown as WorkOrderWithMeta[];
 
     const PENDING_LINE_STATUSES = new Set<string>(["waiting_for_approval", "awaiting_approval"]);
-    const isPendingLine = (
-      l: NonNullable<WorkOrderWithMeta["work_order_lines"]>[number],
-    ): boolean => {
+    const isPendingLine = (l: NonNullable<WorkOrderWithMeta["work_order_lines"]>[number]): boolean => {
       const st = safeTrim(l?.status).toLowerCase();
       const ap = safeTrim(l?.approval_state).toLowerCase();
       return PENDING_LINE_STATUSES.has(st) || ap === "pending";
@@ -191,51 +190,62 @@ function ApprovalsList(): JSX.Element {
       <div className="border-b border-border px-4 py-2 font-semibold">Awaiting Approval</div>
 
       <div className="divide-y divide-border">
-        {rows.map((w) => (
-          <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="truncate font-medium">
-                  {w.custom_id ? `#${w.custom_id}` : `#${w.id.slice(0, 8)}`}
+        {rows.map((w) => {
+          const quoteHref = `/work-orders/quote-review/${w.id}`;
+          const woHref = `/work-orders/${w.id}`;
+
+          return (
+            <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="truncate font-medium">
+                    {w.custom_id ? `#${w.custom_id}` : `#${w.id.slice(0, 8)}`}
+                  </div>
+
+                  {w.waiting_for_parts ? (
+                    <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
+                      Waiting for parts
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
+                      Quotes ready
+                    </span>
+                  )}
                 </div>
 
-                {w.waiting_for_parts ? (
-                  <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
-                    Waiting for parts
-                  </span>
-                ) : (
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
-                    Quotes ready
-                  </span>
-                )}
+                <div className="text-xs text-muted-foreground">
+                  {w.shops?.name ? `${w.shops.name} • ` : ""}
+                  {statusLabel(w.status)}
+                  {typeof w.labor_hours === "number" ? ` • ${w.labor_hours.toFixed(1)}h` : ""}
+                </div>
               </div>
 
-              <div className="text-xs text-muted-foreground">
-                {w.shops?.name ? `${w.shops.name} • ` : ""}
-                {statusLabel(w.status)}
-                {typeof w.labor_hours === "number" ? ` • ${w.labor_hours.toFixed(1)}h` : ""}
+              <div className="flex shrink-0 gap-2">
+                <Link href={quoteHref} prefetch={false}>
+                  <button
+                    type="button"
+                    onClickCapture={(e) => e.stopPropagation()}
+                    className="rounded border border-orange-500 px-3 py-1 text-sm text-orange-500 hover:bg-orange-500/10"
+                    title={quoteHref}
+                  >
+                    Review (Advisor)
+                  </button>
+                </Link>
+
+                <Link href={woHref} prefetch={false}>
+                  <button
+                    type="button"
+                    onClickCapture={(e) => e.stopPropagation()}
+                    className="rounded border border-border px-3 py-1 text-sm hover:bg-muted"
+                    title={woHref}
+                  >
+                    Open WO
+                  </button>
+                </Link>
               </div>
             </div>
-
-            <div className="flex shrink-0 gap-2">
-              <a
-                href={`/work-orders/quote-review/${w.id}`}
-                className="rounded border border-orange-500 px-3 py-1 text-sm text-orange-500 hover:bg-orange-500/10"
-                title="Open advisor quote editor"
-              >
-                Review (Advisor)
-              </a>
-
-              <a
-                href={`/work-orders/${w.id}`}
-                className="rounded border border-border px-3 py-1 text-sm hover:bg-muted"
-                title="Open this work order"
-              >
-                Open WO
-              </a>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
