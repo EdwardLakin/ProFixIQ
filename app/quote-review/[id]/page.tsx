@@ -1,10 +1,5 @@
-// app/quote-review/[id]/page.tsx (FULL FILE REPLACEMENT)
+// /app/quote-review/[id]/page.tsx (FULL FILE REPLACEMENT)
 // Advisor-facing: fully itemized + editable quote editor for a single WO.
-// UI updates:
-// - thinner borders/dividers
-// - darker inputs with visible text
-// - metal-card styling + copper accents
-// Adds: "Send Quote" button (email + portal notification via API route)
 
 "use client";
 
@@ -25,11 +20,12 @@ type DB = Database;
 
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Shop = DB["public"]["Tables"]["shops"]["Row"];
+type Customer = DB["public"]["Tables"]["customers"]["Row"];
+
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type LineUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
 
-type Allocation =
-  DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type Allocation = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 type AllocationUpdate =
   DB["public"]["Tables"]["work_order_part_allocations"]["Update"];
 
@@ -66,6 +62,24 @@ function fmt(n: number): string {
   }
 }
 
+function customerDisplayName(c: Customer | null): string {
+  if (!c) return "—";
+  const full = safeTrim((c as unknown as { full_name?: unknown }).full_name);
+  const first = safeTrim(c.first_name);
+  const last = safeTrim(c.last_name);
+  return full || [first, last].filter(Boolean).join(" ") || "—";
+}
+
+function normalizePhoneForTel(raw: string): string | null {
+  const s = safeTrim(raw);
+  if (!s) return null;
+  // Keep + and digits only
+  const cleaned = s.replace(/[^\d+]/g, "");
+  // If it has no digits, ignore
+  if (!/\d/.test(cleaned)) return null;
+  return cleaned;
+}
+
 type EditableLine = Line & { _dirty?: boolean };
 type EditableAlloc = AllocationWithPart & { _dirty?: boolean };
 
@@ -88,6 +102,7 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
 
   const [lines, setLines] = useState<EditableLine[]>([]);
   const [allocs, setAllocs] = useState<EditableAlloc[]>([]);
@@ -109,6 +124,8 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
     if (woErr) {
       toast.error(woErr.message);
       setWo(null);
+      setShop(null);
+      setCustomer(null);
       setLines([]);
       setAllocs([]);
       setLoading(false);
@@ -117,6 +134,7 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
 
     setWo(woRow ?? null);
 
+    // shop
     if (woRow?.shop_id) {
       const { data: shopRow, error: shopErr } = await supabase
         .from("shops")
@@ -129,6 +147,24 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
       setShop(null);
     }
 
+    // customer (for header contact block)
+    if (woRow?.customer_id) {
+      const { data: custRow, error: custErr } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", woRow.customer_id)
+        .maybeSingle();
+      if (custErr) {
+        toast.error(custErr.message);
+        setCustomer(null);
+      } else {
+        setCustomer((custRow as Customer | null) ?? null);
+      }
+    } else {
+      setCustomer(null);
+    }
+
+    // lines
     const { data: lineRows, error: lineErr } = await supabase
       .from("work_order_lines")
       .select("*")
@@ -142,6 +178,7 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
       setLines((lineRows ?? []).map((l) => ({ ...l, _dirty: false })));
     }
 
+    // allocations
     const { data: aRows, error: aErr } = await supabase
       .from("work_order_part_allocations")
       .select("*, parts(name, sku)")
@@ -334,7 +371,6 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
       const res = await fetch(`/api/work-orders/${woId}/send-quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // you can add optional fields later (message, pdfUrl override, etc.)
         body: JSON.stringify({}),
       });
 
@@ -356,6 +392,10 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
   if (!woId) return <div className="p-6 text-red-300">Missing work order id.</div>;
   if (loading) return <div className="p-6 text-neutral-300">Loading…</div>;
   if (!wo) return <div className="p-6 text-red-300">Work order not found.</div>;
+
+  const phoneRaw = safeTrim(customer?.phone ?? "");
+  const emailRaw = safeTrim(customer?.email ?? "");
+  const tel = normalizePhoneForTel(phoneRaw);
 
   return (
     <div
@@ -418,7 +458,8 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
 
         {/* header card */}
         <div className={`${card} px-5 py-4`}>
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            {/* left */}
             <div className="min-w-0">
               <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
                 Quote Review
@@ -435,6 +476,62 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
               </div>
             </div>
 
+            {/* middle (your yellow square area) */}
+            <div
+              className="
+                w-full max-w-xl rounded-2xl border border-white/10 bg-black/35
+                px-4 py-3
+              "
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+                Customer contact
+              </div>
+
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] text-neutral-500">Name</div>
+                  <div className="truncate text-sm font-semibold text-white">
+                    {customerDisplayName(customer)}
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-[11px] text-neutral-500">Phone</div>
+                  {tel ? (
+                    <a
+                      href={`tel:${tel}`}
+                      className="truncate text-sm font-semibold text-[color:var(--copper)] hover:underline"
+                      title="Call customer"
+                    >
+                      {phoneRaw}
+                    </a>
+                  ) : (
+                    <div className="truncate text-sm font-semibold text-white/70">
+                      —
+                    </div>
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-[11px] text-neutral-500">Email</div>
+                  {emailRaw ? (
+                    <a
+                      href={`mailto:${emailRaw}`}
+                      className="truncate text-sm font-semibold text-[color:var(--copper)] hover:underline"
+                      title="Email customer"
+                    >
+                      {emailRaw}
+                    </a>
+                  ) : (
+                    <div className="truncate text-sm font-semibold text-white/70">
+                      —
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* right */}
             <div className="text-right">
               <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
                 Labor rate
@@ -808,7 +905,8 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                   </button>
                 </div>
                 <div className="mt-3 text-xs text-neutral-500">
-                  Portal link will be: <span className="text-neutral-300">/portal/quotes/{woId}</span>
+                  Portal link will be:{" "}
+                  <span className="text-neutral-300">/portal/quotes/{woId}</span>
                 </div>
               </div>
             </div>
