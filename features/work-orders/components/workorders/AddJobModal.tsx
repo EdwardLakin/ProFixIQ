@@ -1,7 +1,7 @@
-// features/work-orders/components/AddJobModal.tsx
+// features/work-orders/components/AddJobModal.tsx (FULL FILE REPLACEMENT)
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
@@ -31,6 +31,62 @@ function errorMessage(e: unknown): string {
   return "Unknown error";
 }
 
+function safeTrim(x: unknown): string {
+  return typeof x === "string" ? x.trim() : "";
+}
+
+type PartItemRow = {
+  id: string;
+  description: string;
+  qty: string; // keep as string for controlled input, convert on submit
+};
+
+type PartRequestCreateBodyItem = {
+  description: string;
+  qty: number;
+};
+
+type PartRequestCreateBody = {
+  workOrderId: string;
+  jobId?: string | null;
+  items: PartRequestCreateBodyItem[];
+  notes?: string | null;
+};
+
+function parsePartsText(raw: string): PartRequestCreateBodyItem[] {
+  const s = safeTrim(raw);
+  if (!s) return [];
+
+  const tokens = s
+    .split(/[\n,]+/g)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const items: PartRequestCreateBodyItem[] = [];
+
+  for (const t of tokens) {
+    // "2x oil filter", "2 x oil filter", "2 oil filter"
+    const m = /^(\d+(?:\.\d+)?)\s*(?:x|×)?\s+(.*)$/i.exec(t);
+    if (m) {
+      const qtyNum = Number(m[1]);
+      const desc = (m[2] ?? "").trim();
+      const qty = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 1;
+      if (desc) items.push({ description: desc, qty });
+      continue;
+    }
+    items.push({ description: t, qty: 1 });
+  }
+
+  return items;
+}
+
+function normalizeQty(q: string): number {
+  const n = Number(q);
+  if (!Number.isFinite(n)) return 1;
+  if (n <= 0) return 1;
+  return n;
+}
+
 export default function AddJobModal(props: Props) {
   const { isOpen, onClose, workOrderId, vehicleId, techId, onJobAdded, shopId } =
     props;
@@ -41,10 +97,27 @@ export default function AddJobModal(props: Props) {
   const [jobName, setJobName] = useState("");
   const [notes, setNotes] = useState("");
   const [labor, setLabor] = useState("");
-  const [parts, setParts] = useState("");
   const [urgency, setUrgency] = useState<Urgency>("medium");
+
+  // structured parts list
+  const [partsRows, setPartsRows] = useState<PartItemRow[]>([]);
+  const [partsPaste, setPartsPaste] = useState("");
+
+  const [createPartsRequest, setCreatePartsRequest] = useState(false);
+  const [holdForParts, setHoldForParts] = useState(true);
+
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const validItemsCount = useMemo(() => {
+    return partsRows.filter((r) => safeTrim(r.description).length > 0).length;
+  }, [partsRows]);
+
+  // Auto-enable request if user has at least one item
+  useEffect(() => {
+    if (validItemsCount > 0) setCreatePartsRequest(true);
+    if (validItemsCount === 0) setCreatePartsRequest(false);
+  }, [validItemsCount]);
 
   async function ensureShopContext(id: string | null) {
     if (!id) return;
@@ -56,6 +129,68 @@ export default function AddJobModal(props: Props) {
     if (error) throw error;
 
     lastSetShopId.current = id;
+  }
+
+  function addRow(seed?: Partial<PartItemRow>) {
+    setPartsRows((prev) => [
+      ...prev,
+      {
+        id: uuidv4(),
+        description: seed?.description ?? "",
+        qty: seed?.qty ?? "1",
+      },
+    ]);
+  }
+
+  function removeRow(id: string) {
+    setPartsRows((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  function updateRow(id: string, patch: Partial<PartItemRow>) {
+    setPartsRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
+  async function createRequest(args: PartRequestCreateBody): Promise<string> {
+    const res = await fetch("/api/parts/requests/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+
+    const json = (await res.json().catch(() => null)) as
+      | { requestId?: string; error?: string }
+      | null;
+
+    if (!res.ok || !json?.requestId) {
+      const msg =
+        json?.error ??
+        `Failed to create parts request (status ${res.status}).`;
+      throw new Error(msg);
+    }
+
+    return json.requestId;
+  }
+
+  function applyPasteToRows() {
+    const parsed = parsePartsText(partsPaste);
+    if (parsed.length === 0) {
+      setErr("Nothing to import. Paste something like: 2x oil filter, serpentine belt");
+      return;
+    }
+
+    setErr(null);
+    setPartsRows((prev) => {
+      const next = [...prev];
+      for (const p of parsed) {
+        next.push({
+          id: uuidv4(),
+          description: p.description,
+          qty: String(p.qty),
+        });
+      }
+      return next;
+    });
+    setPartsPaste("");
   }
 
   const handleSubmit = async () => {
@@ -80,8 +215,8 @@ export default function AddJobModal(props: Props) {
 
         if (woErr) throw woErr;
 
-        // typed access (WorkOrderRow)
-        useShopId = (wo as Pick<WorkOrderRow, "shop_id"> | null)?.shop_id ?? null;
+        useShopId =
+          (wo as Pick<WorkOrderRow, "shop_id"> | null)?.shop_id ?? null;
       }
 
       if (!useShopId) {
@@ -99,19 +234,34 @@ export default function AddJobModal(props: Props) {
           ? Number(labor)
           : null;
 
+      const items: PartRequestCreateBodyItem[] = partsRows
+        .map((r) => ({
+          description: safeTrim(r.description),
+          qty: normalizeQty(r.qty),
+        }))
+        .filter((it) => it.description.length > 0);
+
+      const wantsPartsRequest = createPartsRequest && items.length > 0;
+
+      const newLineId = uuidv4();
+
+      const initialStatus: WorkOrderLineInsert["status"] = wantsPartsRequest
+        ? (holdForParts ? "on_hold" : "awaiting_approval")
+        : "awaiting_approval";
+
       const payload: WorkOrderLineInsert = {
-        id: uuidv4(),
+        id: newLineId,
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
         complaint: jobName.trim(),
         cause: null,
         correction: notes.trim() || null,
         labor_time: laborNum,
-        parts: parts.trim() || null,
 
-        // ✅ IMPORTANT: new job should land in "awaiting approval"
-        status: "awaiting_approval",
+        // keep legacy text field populated too (nice for quick scanning)
+        parts: items.length > 0 ? items.map((i) => `${i.qty}x ${i.description}`).join(", ") : null,
 
+        status: initialStatus,
         job_type: "repair",
         shop_id: useShopId,
 
@@ -120,10 +270,13 @@ export default function AddJobModal(props: Props) {
         ...(urgency ? { urgency } : {}),
       };
 
-      const { error } = await supabase.from("work_order_lines").insert(payload);
+      // 1) Create job line
+      const { error: insErr } = await supabase
+        .from("work_order_lines")
+        .insert(payload);
 
-      if (error) {
-        const msg = error.message || "Failed to add job.";
+      if (insErr) {
+        const msg = insErr.message || "Failed to add job.";
         if (/row-level security/i.test(msg)) {
           setErr(
             "Access denied (RLS). Check that your session is scoped to this shop.",
@@ -139,14 +292,27 @@ export default function AddJobModal(props: Props) {
         return;
       }
 
+      // 2) Create parts request (optional)
+      if (wantsPartsRequest) {
+        const requestNotes = safeTrim(notes) || null;
+
+        await createRequest({
+          workOrderId,
+          jobId: newLineId,
+          items,
+          notes: requestNotes,
+        });
+      }
+
       onJobAdded?.();
       onClose();
 
       setJobName("");
       setNotes("");
       setLabor("");
-      setParts("");
       setUrgency("medium");
+      setPartsRows([]);
+      setPartsPaste("");
       setErr(null);
     } catch (e: unknown) {
       setErr(errorMessage(e) || "Failed to add job.");
@@ -223,17 +389,138 @@ export default function AddJobModal(props: Props) {
           </div>
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
-            Parts required
-          </label>
-          <textarea
-            rows={2}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
-            placeholder="Comma-separated list or short notes..."
-            value={parts}
-            onChange={(e) => setParts(e.target.value)}
-          />
+        {/* Structured parts list */}
+        <div className="rounded-md border border-white/10 bg-black/30 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+                Parts required
+              </div>
+              <div className="text-xs text-neutral-500">
+                Add parts as rows (Qty + Description).
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => addRow()}
+              className="rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black/55"
+            >
+              + Add part
+            </button>
+          </div>
+
+          {partsRows.length === 0 ? (
+            <div className="text-sm text-neutral-400">
+              No parts added yet.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {partsRows.map((r) => (
+                <div key={r.id} className="flex items-center gap-2">
+                  <input
+                    inputMode="decimal"
+                    className="w-20 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-white focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+                    value={r.qty}
+                    onChange={(e) => updateRow(r.id, { qty: e.target.value })}
+                    placeholder="Qty"
+                  />
+                  <input
+                    className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+                    value={r.description}
+                    onChange={(e) => updateRow(r.id, { description: e.target.value })}
+                    placeholder="Part description (e.g. Tie rod end RH)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeRow(r.id)}
+                    className="rounded-md border border-white/10 bg-black/40 px-2 py-2 text-xs font-semibold text-neutral-200 hover:bg-black/55"
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Quick paste importer */}
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+              Quick paste (optional)
+            </label>
+            <textarea
+              rows={2}
+              className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+              placeholder="Paste: 2x oil filter, serpentine belt"
+              value={partsPaste}
+              onChange={(e) => setPartsPaste(e.target.value)}
+            />
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={applyPasteToRows}
+                className="rounded-md border border-[var(--accent-copper-light)]/40 bg-[var(--accent-copper-light)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-light)]/15"
+              >
+                Import to parts list
+              </button>
+              <button
+                type="button"
+                onClick={() => setPartsPaste("")}
+                className="rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/55"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* parts request options */}
+        <div className="rounded-md border border-white/10 bg-black/30 px-3 py-3">
+          <div className="flex items-start gap-2">
+            <input
+              id="pr-create"
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-[var(--accent-copper-light)]"
+              checked={createPartsRequest}
+              onChange={(e) => setCreatePartsRequest(e.target.checked)}
+              disabled={validItemsCount === 0}
+            />
+            <label htmlFor="pr-create" className="min-w-0">
+              <div className="text-sm font-semibold text-white">
+                Create parts request
+              </div>
+              <div className="text-xs text-neutral-400">
+                Creates a request (and items) linked to this new job line.
+              </div>
+            </label>
+          </div>
+
+          <div className="mt-3 flex items-start gap-2">
+            <input
+              id="pr-hold"
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-[var(--accent-copper-light)]"
+              checked={holdForParts}
+              onChange={(e) => setHoldForParts(e.target.checked)}
+              disabled={!createPartsRequest || validItemsCount === 0}
+            />
+            <label htmlFor="pr-hold" className="min-w-0">
+              <div className="text-sm font-semibold text-white">
+                Put job on hold for parts
+              </div>
+              <div className="text-xs text-neutral-400">
+                Sets the new line status to <span className="text-neutral-200">on_hold</span>{" "}
+                when the parts request is created.
+              </div>
+            </label>
+          </div>
+
+          {validItemsCount === 0 ? (
+            <div className="mt-2 text-xs text-neutral-500">
+              Add at least one part to enable parts request.
+            </div>
+          ) : null}
         </div>
 
         {err && (

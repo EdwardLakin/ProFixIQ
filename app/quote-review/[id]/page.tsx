@@ -8,6 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
+import AddJobModal from "@/features/work-orders/components/workorders/AddJobModal";
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 import {
   calculateTax,
@@ -110,6 +111,9 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
 
+  const [addJobOpen, setAddJobOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>("system");
+
   const reload = useCallback(async () => {
     if (!woId) return;
 
@@ -199,6 +203,28 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+  let alive = true;
+
+  async function loadUser() {
+    const { data, error } = await supabase.auth.getUser();
+    if (!alive) return;
+
+    if (error) {
+      setCurrentUserId("system");
+      return;
+    }
+
+    setCurrentUserId(data.user?.id ?? "system");
+  }
+
+  void loadUser();
+
+  return () => {
+    alive = false;
+  };
+}, [supabase]);
 
   const laborRate = useMemo(() => {
     const candidate = (shop as unknown as { labor_rate?: unknown } | null)
@@ -831,6 +857,27 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
           {/* totals */}
           <div className="space-y-4">
             <div className={card}>
+  <div className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}>
+    Quick add job
+  </div>
+  <div className="px-5 py-4 text-sm text-neutral-400">
+    Add missing lines while reviewing the quote (ex: Alignment after tie rod ends).
+    <div className="mt-3">
+      <button
+        type="button"
+        onClick={() => setAddJobOpen(true)}
+        className="
+          w-full rounded-xl border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10
+          px-4 py-2 text-sm font-semibold text-[color:var(--copper)]
+          hover:bg-[color:var(--copper)]/15
+        "
+      >
+        + Add job line
+      </button>
+    </div>
+  </div>
+</div>
+            <div className={card}>
               <div className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}>
                 Totals
               </div>
@@ -916,6 +963,17 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
         <div className="mt-6 text-xs text-neutral-500">
           Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}
         </div>
+        <AddJobModal
+  isOpen={addJobOpen}
+  onClose={() => setAddJobOpen(false)}
+  workOrderId={wo.id}
+  vehicleId={(wo as unknown as { vehicle_id?: string | null }).vehicle_id ?? null}
+  techId={currentUserId}
+  shopId={wo.shop_id ?? null}
+  onJobAdded={async () => {
+    await reload();
+  }}
+/>
       </div>
     </div>
   );
