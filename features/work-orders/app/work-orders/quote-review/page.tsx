@@ -1,6 +1,7 @@
 // app/work-orders/quote-review/page.tsx (FULL FILE REPLACEMENT)
 // Advisor-facing: list of WOs needing approval.
 // Opens the editable detail view at: /quote-review/[id]
+// Theme: metal card, thin borders/dividers, copper accents
 
 "use client";
 
@@ -20,11 +21,19 @@ type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type WorkOrderWithMeta = WorkOrder & {
   shops?: Pick<Shop, "name"> | null;
-  work_order_lines?: Array<Pick<Line, "id" | "status" | "approval_state" | "labor_time">>;
+  work_order_lines?: Array<
+    Pick<Line, "id" | "status" | "approval_state" | "labor_time">
+  >;
   work_order_quote_lines?: Array<Pick<QuoteLine, "id" | "stage">>;
   labor_hours?: number | null;
   waiting_for_parts?: boolean;
 };
+
+const COPPER = "#C57A4A";
+
+const card =
+  "rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_70px_rgba(0,0,0,0.65)]";
+const divider = "border-white/10";
 
 function safeTrim(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
@@ -119,8 +128,14 @@ function ApprovalsList(): JSX.Element {
 
     const list = (wo ?? []) as unknown as WorkOrderWithMeta[];
 
-    const PENDING_LINE_STATUSES = new Set<string>(["waiting_for_approval", "awaiting_approval"]);
-    const isPendingLine = (l: NonNullable<WorkOrderWithMeta["work_order_lines"]>[number]): boolean => {
+    const PENDING_LINE_STATUSES = new Set<string>([
+      "waiting_for_approval",
+      "awaiting_approval",
+    ]);
+
+    const isPendingLine = (
+      l: NonNullable<WorkOrderWithMeta["work_order_lines"]>[number],
+    ): boolean => {
       const st = safeTrim(l?.status).toLowerCase();
       const ap = safeTrim(l?.approval_state).toLowerCase();
       return PENDING_LINE_STATUSES.has(st) || ap === "pending";
@@ -141,7 +156,9 @@ function ApprovalsList(): JSX.Element {
         0,
       );
 
-      const qlines = Array.isArray(w.work_order_quote_lines) ? w.work_order_quote_lines : [];
+      const qlines = Array.isArray(w.work_order_quote_lines)
+        ? w.work_order_quote_lines
+        : [];
       const hasQuotes = qlines.length > 0;
       const waitingForParts = !hasQuotes;
 
@@ -163,9 +180,21 @@ function ApprovalsList(): JSX.Element {
 
     const ch = supabase
       .channel("qr:approvals")
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_order_lines" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_order_quote_lines" }, () => void load())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_orders" },
+        () => void load(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_lines" },
+        () => void load(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_quote_lines" },
+        () => void load(),
+      )
       .subscribe();
 
     return () => {
@@ -178,45 +207,71 @@ function ApprovalsList(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, shopId]);
 
-  if (loading) return <div className="mt-6 text-muted-foreground">Loading…</div>;
-  if (err) return <div className="mt-6 text-destructive">{err}</div>;
+  if (loading) {
+    return (
+      <div className="mt-6 text-sm text-neutral-300">
+        Loading…
+      </div>
+    );
+  }
+
+  if (err) {
+    return (
+      <div className="mt-6 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        {err}
+      </div>
+    );
+  }
 
   if (rows.length === 0) {
-    return <div className="mt-6 text-muted-foreground">No work orders waiting for approval.</div>;
+    return (
+      <div className="mt-6 text-sm text-neutral-400">
+        No work orders waiting for approval.
+      </div>
+    );
   }
 
   return (
-    <div className="mt-4 rounded-lg border border-border bg-card">
-      <div className="border-b border-border px-4 py-2 font-semibold">Awaiting Approval</div>
+    <div className={`${card} mt-4`}>
+      <div className={`border-b ${divider} px-5 py-3`}>
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+          Awaiting Approval
+        </div>
+        <div className="mt-1 text-xs text-neutral-500">
+          {rows.length} work orders
+        </div>
+      </div>
 
-      <div className="divide-y divide-border">
+      <div className="divide-y divide-white/10">
         {rows.map((w) => {
           const quoteHref = `/quote-review/${w.id}`;
           const woHref = `/work-orders/${w.id}`;
 
+          const pill = w.waiting_for_parts
+            ? "border-sky-400/25 bg-sky-400/10 text-sky-200"
+            : "border-emerald-400/25 bg-emerald-400/10 text-emerald-200";
+
           return (
-            <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-3">
+            <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="truncate font-medium">
+                  <div className="truncate text-sm font-semibold text-white">
                     {w.custom_id ? `#${w.custom_id}` : `#${w.id.slice(0, 8)}`}
                   </div>
 
-                  {w.waiting_for_parts ? (
-                    <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
-                      Waiting for parts
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
-                      Quotes ready
-                    </span>
-                  )}
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${pill}`}
+                  >
+                    {w.waiting_for_parts ? "Waiting for parts" : "Quotes ready"}
+                  </span>
                 </div>
 
-                <div className="text-xs text-muted-foreground">
+                <div className="mt-1 text-xs text-neutral-500">
                   {w.shops?.name ? `${w.shops.name} • ` : ""}
                   {statusLabel(w.status)}
-                  {typeof w.labor_hours === "number" ? ` • ${w.labor_hours.toFixed(1)}h` : ""}
+                  {typeof w.labor_hours === "number"
+                    ? ` • ${w.labor_hours.toFixed(1)}h`
+                    : ""}
                 </div>
               </div>
 
@@ -225,10 +280,15 @@ function ApprovalsList(): JSX.Element {
                   <button
                     type="button"
                     onClickCapture={(e) => e.stopPropagation()}
-                    className="rounded border border-orange-500 px-3 py-1 text-sm text-orange-500 hover:bg-orange-500/10"
+                    className="
+                      rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10
+                      px-4 py-2 text-sm font-semibold text-[color:var(--copper)]
+                      hover:bg-[color:var(--copper)]/15
+                    "
+                    style={{ ["--copper" as never]: COPPER }}
                     title={quoteHref}
                   >
-                    Review (Advisor)
+                    Review
                   </button>
                 </Link>
 
@@ -236,7 +296,11 @@ function ApprovalsList(): JSX.Element {
                   <button
                     type="button"
                     onClickCapture={(e) => e.stopPropagation()}
-                    className="rounded border border-border px-3 py-1 text-sm hover:bg-muted"
+                    className="
+                      rounded-full border border-white/10 bg-black/50
+                      px-4 py-2 text-sm font-semibold text-neutral-200
+                      hover:bg-black/65
+                    "
                     title={woHref}
                   >
                     Open WO
@@ -256,22 +320,37 @@ export default function QuoteReviewIndexPage(): JSX.Element {
   const params = useSearchParams();
   const woId = params.get("woId");
 
-  // Back-compat: if old links still send ?woId=..., route to the new detail page.
   useEffect(() => {
     if (woId) router.replace(`/quote-review/${woId}`);
   }, [woId, router]);
 
   return (
-    <div className="min-h-screen bg-background px-4 py-6 text-foreground">
+    <div
+      className="
+        min-h-screen px-4 py-6 text-foreground
+        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+      "
+      style={{ ["--copper" as never]: COPPER }}
+    >
       <div className="mx-auto max-w-5xl">
         <div className="mb-4">
-          <button onClick={() => router.back()} className="text-sm text-orange-500 hover:underline">
+          <button
+            onClick={() => router.back()}
+            className="text-sm text-[color:var(--copper)] hover:underline"
+          >
             ← Back
           </button>
         </div>
 
-        <h1 className="text-2xl font-semibold">Quote Review</h1>
-        <p className="mt-1 text-muted-foreground">Work orders waiting for advisor + customer approval</p>
+        <div className={`${card} px-5 py-4`}>
+          <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
+            Quote Review
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold text-white">Approvals</h1>
+          <p className="mt-1 text-sm text-neutral-400">
+            Work orders waiting for advisor + customer approval
+          </p>
+        </div>
 
         <ApprovalsList />
       </div>

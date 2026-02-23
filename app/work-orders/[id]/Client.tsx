@@ -220,11 +220,14 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [viewError, setViewError] = useState<string | null>(null);
 
   const [currentUserId, setCurrentUserId] = useTabState<string | null>(
-    "wo:id:uid",
-    null,
-  );
-  const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
-  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  "wo:id:uid",
+  null,
+);
+const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
+const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+
+// ✅ prevents “logged out” banner flashing / sticking
+const [authChecked, setAuthChecked] = useState<boolean>(false);
 
   const [showDetails, setShowDetails] = useTabState<boolean>(
     "wo:showDetails",
@@ -320,6 +323,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       const uid = user?.id ?? null;
       setCurrentUserId(uid);
       setUserId(uid);
+      setAuthChecked(true);
 
       if (uid) {
         const { data: prof } = await supabase
@@ -352,6 +356,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       else {
         setCurrentUserId(null);
         setUserId(null);
+        setAuthChecked(true);
         setLoading(false);
       }
     });
@@ -566,9 +571,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   useEffect(() => {
-    if (!routeId || !currentUserId) return;
+    if (!routeId) return;
     void fetchAll();
-  }, [fetchAll, routeId, currentUserId]);
+  }, [fetchAll, routeId]);
 
   /* ---------------------- REALTIME ---------------------- */
   useEffect(() => {
@@ -1145,7 +1150,7 @@ const openInspectionForLine = useCallback(
         <PreviousPageButton />
       </div>
 
-      {!currentUserId && (
+      {authChecked && !currentUserId && (
         <div className="mb-4 rounded-2xl border border-[rgba(184,115,51,0.30)] bg-black/45 p-3 text-sm text-amber-100 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
           You appear signed out on this tab. If actions fail, open{" "}
           <Link href="/sign-in" className="underline hover:text-white">
