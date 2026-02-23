@@ -207,3 +207,79 @@ Capabilities
 ⸻
 
 📁 Folder Structure (High-Level)
+
+=============================================================
+
+## Self-learning fitment dataset (backend only)
+
+ProFixIQ maintains a backend-only “fitment evidence” dataset that grows automatically as the shop uses the system.
+
+**Goal:** The system gets smarter over time by learning which parts are actually used on which vehicle configurations.
+
+---
+
+### Core tables
+
+#### `public.vehicle_signatures`
+- Per-shop vehicle signatures anchored by **(shop_id, vehicle_id)**.
+- Stores normalized vehicle configuration captured from `vehicles`:
+  - make, model, year
+  - trim / submodel
+  - engine, drivetrain, transmission, fuel_type
+- Acts as the **source of truth** for vehicle_year / vehicle_trim used in fitment events.
+- Can later be re-keyed to a full configuration hash if needed.
+
+#### `public.part_fitment_events`
+- Append-only log of real-world evidence:
+  > “Part X was used on vehicle signature Y”
+- Automatically populated by DB triggers.
+- Enforces idempotency via **UNIQUE(allocation_id)**.
+- Stores:
+  - vehicle_year, vehicle_trim
+  - snapshotted part metadata (brand, part_number, supplier)
+  - confidence_source / confidence_score
+  - event_type (allocation vs confirmed consumption)
+
+---
+
+### Automatic logging flow
+
+When a `work_order_part_allocations` row is inserted:
+1. Resolve work order + vehicle context (`shop_id`, `work_order_id`, `vehicle_id`)
+2. Get or create the per-shop `vehicle_signature`
+3. Insert a `part_fitment_event` with:
+   - year / trim from the signature
+   - default `confidence_source = 'manual'`
+   - default `confidence_score = 1`
+   - `event_type = 'allocated'`
+   - `ON CONFLICT (allocation_id) DO NOTHING`
+
+When a stock move is recorded with `stock_move_reason = 'consume'`:
+- A **confirmed consumption** fitment event is recorded for the same part + vehicle signature.
+
+---
+
+### Derived data
+
+#### `public.fitment_stats` (materialized view)
+- Pre-aggregated stats per:
+  - shop_id
+  - vehicle_signature_id
+  - part_id
+- Includes:
+  - allocation count
+  - confirmed consumption count
+  - first_seen_at / last_seen_at
+- Used for fast fitment-aware queries and AI ranking.
+
+---
+
+### Future capabilities enabled
+
+- Fitment-aware part suggestions
+- Higher-accuracy AI quoting
+- Shop-specific learned parts matching
+- Confidence-weighted recommendations
+- Optional global aggregation (opt-in, anonymized)
+
+> No UI depends on this yet. This system is intentionally backend-only until enough data exists.

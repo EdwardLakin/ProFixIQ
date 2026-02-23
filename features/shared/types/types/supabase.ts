@@ -4302,6 +4302,160 @@ export type Database = {
           },
         ]
       }
+      part_fitment_events: {
+        Row: {
+          allocation_id: string | null
+          confidence_score: number | null
+          confidence_source: string | null
+          created_at: string
+          event_type: Database["public"]["Enums"]["fitment_event_type"]
+          id: string
+          part_brand: string | null
+          part_id: string
+          part_number: string | null
+          part_supplier: string | null
+          qty: number
+          shop_id: string
+          source: string
+          unit_cost: number | null
+          vehicle_id: string | null
+          vehicle_signature_id: string | null
+          vehicle_trim: string | null
+          vehicle_year: number | null
+          work_order_id: string | null
+          work_order_line_id: string | null
+        }
+        Insert: {
+          allocation_id?: string | null
+          confidence_score?: number | null
+          confidence_source?: string | null
+          created_at?: string
+          event_type?: Database["public"]["Enums"]["fitment_event_type"]
+          id?: string
+          part_brand?: string | null
+          part_id: string
+          part_number?: string | null
+          part_supplier?: string | null
+          qty?: number
+          shop_id: string
+          source?: string
+          unit_cost?: number | null
+          vehicle_id?: string | null
+          vehicle_signature_id?: string | null
+          vehicle_trim?: string | null
+          vehicle_year?: number | null
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Update: {
+          allocation_id?: string | null
+          confidence_score?: number | null
+          confidence_source?: string | null
+          created_at?: string
+          event_type?: Database["public"]["Enums"]["fitment_event_type"]
+          id?: string
+          part_brand?: string | null
+          part_id?: string
+          part_number?: string | null
+          part_supplier?: string | null
+          qty?: number
+          shop_id?: string
+          source?: string
+          unit_cost?: number | null
+          vehicle_id?: string | null
+          vehicle_signature_id?: string | null
+          vehicle_trim?: string | null
+          vehicle_year?: number | null
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_fitment_events_allocation_id_fkey"
+            columns: ["allocation_id"]
+            isOneToOne: true
+            referencedRelation: "work_order_part_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_vehicle_signature_id_fkey"
+            columns: ["vehicle_signature_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_signatures"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_purchases: {
         Row: {
           id: string
@@ -8346,6 +8500,76 @@ export type Database = {
           },
         ]
       }
+      vehicle_signatures: {
+        Row: {
+          created_at: string
+          drivetrain: string | null
+          engine: string | null
+          fuel_type: string | null
+          id: string
+          make: string | null
+          model: string | null
+          shop_id: string
+          transmission: string | null
+          trim: string | null
+          updated_at: string
+          vehicle_id: string | null
+          year: number | null
+        }
+        Insert: {
+          created_at?: string
+          drivetrain?: string | null
+          engine?: string | null
+          fuel_type?: string | null
+          id?: string
+          make?: string | null
+          model?: string | null
+          shop_id: string
+          transmission?: string | null
+          trim?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          year?: number | null
+        }
+        Update: {
+          created_at?: string
+          drivetrain?: string | null
+          engine?: string | null
+          fuel_type?: string | null
+          id?: string
+          make?: string | null
+          model?: string | null
+          shop_id?: string
+          transmission?: string | null
+          trim?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_signatures_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_signatures_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_signatures_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicles: {
         Row: {
           color: string | null
@@ -9784,11 +10008,21 @@ export type Database = {
           updated_at: string | null
           user_id: string | null
           vehicle_color: string | null
+          vehicle_drivetrain: string | null
+          vehicle_engine: string | null
           vehicle_engine_hours: number | null
+          vehicle_fuel_type: string | null
           vehicle_id: string | null
           vehicle_info: string | null
+          vehicle_make: string | null
           vehicle_mileage: number | null
+          vehicle_model: string | null
+          vehicle_plate_number: string | null
+          vehicle_submodel: string | null
+          vehicle_transmission: string | null
           vehicle_unit_number: string | null
+          vehicle_vin: string | null
+          vehicle_year: number | null
         }
         Insert: {
           approval_state?: string | null
@@ -9832,11 +10066,21 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
           vehicle_color?: string | null
+          vehicle_drivetrain?: string | null
+          vehicle_engine?: string | null
           vehicle_engine_hours?: number | null
+          vehicle_fuel_type?: string | null
           vehicle_id?: string | null
           vehicle_info?: string | null
+          vehicle_make?: string | null
           vehicle_mileage?: number | null
+          vehicle_model?: string | null
+          vehicle_plate_number?: string | null
+          vehicle_submodel?: string | null
+          vehicle_transmission?: string | null
           vehicle_unit_number?: string | null
+          vehicle_vin?: string | null
+          vehicle_year?: number | null
         }
         Update: {
           approval_state?: string | null
@@ -9880,11 +10124,21 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
           vehicle_color?: string | null
+          vehicle_drivetrain?: string | null
+          vehicle_engine?: string | null
           vehicle_engine_hours?: number | null
+          vehicle_fuel_type?: string | null
           vehicle_id?: string | null
           vehicle_info?: string | null
+          vehicle_make?: string | null
           vehicle_mileage?: number | null
+          vehicle_model?: string | null
+          vehicle_plate_number?: string | null
+          vehicle_submodel?: string | null
+          vehicle_transmission?: string | null
           vehicle_unit_number?: string | null
+          vehicle_vin?: string | null
+          vehicle_year?: number | null
         }
         Relationships: [
           {
@@ -9933,6 +10187,54 @@ export type Database = {
       }
     }
     Views: {
+      fitment_stats: {
+        Row: {
+          allocations: number | null
+          consumptions: number | null
+          first_seen_at: string | null
+          last_seen_at: string | null
+          part_id: string | null
+          shop_id: string | null
+          vehicle_signature_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_fitment_events_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_fitment_events_vehicle_signature_id_fkey"
+            columns: ["vehicle_signature_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_signatures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_stock_summary: {
         Row: {
           category: string | null
@@ -11028,11 +11330,21 @@ export type Database = {
           updated_at: string | null
           user_id: string | null
           vehicle_color: string | null
+          vehicle_drivetrain: string | null
+          vehicle_engine: string | null
           vehicle_engine_hours: number | null
+          vehicle_fuel_type: string | null
           vehicle_id: string | null
           vehicle_info: string | null
+          vehicle_make: string | null
           vehicle_mileage: number | null
+          vehicle_model: string | null
+          vehicle_plate_number: string | null
+          vehicle_submodel: string | null
+          vehicle_transmission: string | null
           vehicle_unit_number: string | null
+          vehicle_vin: string | null
+          vehicle_year: number | null
         }
         SetofOptions: {
           from: "*"
@@ -11067,6 +11379,23 @@ export type Database = {
         Args: { p_work_order_id: string }
         Returns: string
       }
+      get_or_create_vehicle_signature:
+        | { Args: { p_shop_id: string; p_vehicle_id: string }; Returns: string }
+        | {
+            Args: {
+              p_drivetrain: string
+              p_engine: string
+              p_fuel_type: string
+              p_make: string
+              p_model: string
+              p_shop_id: string
+              p_transmission: string
+              p_trim: string
+              p_vehicle_id: string
+              p_year: number
+            }
+            Returns: string
+          }
       get_work_order_assignments: {
         Args: { p_work_order_id: string }
         Returns: {
@@ -11291,6 +11620,7 @@ export type Database = {
         | "work_order"
         | "customer"
         | "vehicle"
+      fitment_event_type: "allocated" | "consumed"
       fleet_program_cadence:
         | "monthly"
         | "quarterly"
@@ -11533,6 +11863,7 @@ export const Constants = {
         "customer",
         "vehicle",
       ],
+      fitment_event_type: ["allocated", "consumed"],
       fleet_program_cadence: [
         "monthly",
         "quarterly",
