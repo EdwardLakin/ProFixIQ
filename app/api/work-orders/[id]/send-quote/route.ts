@@ -2,7 +2,7 @@
 // Wrapper route so legacy UI calls keep working.
 // Forwards request to /api/quotes/send with workOrderId = params.id.
 
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -25,12 +25,14 @@ type ForwardBody = {
   pdfUrl?: string | null;
 };
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params;
-  const trace = `wo-send-quote:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+type RouteContext = { params: Promise<{ id: string }> };
+
+export async function POST(req: NextRequest, ctx: RouteContext) {
+  const { id } = await ctx.params;
+
+  const trace = `wo-send-quote:${Date.now()}:${Math.random()
+    .toString(16)
+    .slice(2)}`;
 
   console.log(`[send-quote wrapper] HIT trace=${trace} id=${id}`);
 
@@ -57,7 +59,7 @@ export async function POST(
 
   const forwardBody: ForwardBody = {
     ...body,
-    workOrderId: id, // ✅ FORCE UUID from URL (prevents custom_id mistakes)
+    workOrderId: id, // ✅ FORCE UUID from URL
   };
 
   // Forward to /api/quotes/send (same deployment)
@@ -79,7 +81,10 @@ export async function POST(
 
   const text = await res.text();
   console.log(
-    `[send-quote wrapper] RESULT trace=${trace} status=${res.status} body=${text.slice(0, 500)}`,
+    `[send-quote wrapper] RESULT trace=${trace} status=${res.status} body=${text.slice(
+      0,
+      500,
+    )}`,
   );
 
   return new NextResponse(text, {
