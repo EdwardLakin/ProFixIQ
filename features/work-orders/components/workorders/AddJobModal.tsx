@@ -1,9 +1,11 @@
 // features/work-orders/components/AddJobModal.tsx (FULL FILE REPLACEMENT)
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import type { PostgrestError } from "@supabase/supabase-js";
+import { toast } from "sonner";
+
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
 import type { Database } from "@shared/types/types/supabase";
@@ -35,56 +37,76 @@ function safeTrim(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
 }
 
-type PartItemRow = {
+function asNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+type PartRow = {
   id: string;
-  description: string;
-  qty: string; // keep as string for controlled input, convert on submit
+  name: string;
+  qty: string; // keep as string for controlled input
 };
 
-type PartRequestCreateBodyItem = {
-  description: string;
-  qty: number;
+type ApplyAiSuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate: number;
+  summary: string;
+  confidence: "low" | "medium" | "high";
+  price?: number;
+  notes?: string;
+  title?: string;
 };
+
+type ApplyAiBody = {
+  workOrderLineId: string;
+  suggestion: ApplyAiSuggestion;
+};
+
+type ApplyAiResponse =
+  | { ok: true; unmatched: { name: string; qty: number }[] }
+  | { error: string; detail?: string; code?: string };
 
 type PartRequestCreateBody = {
   workOrderId: string;
   jobId?: string | null;
-  items: PartRequestCreateBodyItem[];
+  items: { description: string; qty: number }[];
   notes?: string | null;
 };
 
-function parsePartsText(raw: string): PartRequestCreateBodyItem[] {
+function normalizeQty(q: string): number {
+  const n = Number(q);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return n;
+}
+
+function parsePartsPaste(raw: string): { name: string; qty: number }[] {
   const s = safeTrim(raw);
   if (!s) return [];
-
   const tokens = s
     .split(/[\n,]+/g)
     .map((t) => t.trim())
     .filter(Boolean);
 
-  const items: PartRequestCreateBodyItem[] = [];
-
+  const out: { name: string; qty: number }[] = [];
   for (const t of tokens) {
-    // "2x oil filter", "2 x oil filter", "2 oil filter"
+    // supports: "2x oil filter", "2 x oil filter", "2 oil filter"
     const m = /^(\d+(?:\.\d+)?)\s*(?:x|×)?\s+(.*)$/i.exec(t);
     if (m) {
       const qtyNum = Number(m[1]);
-      const desc = (m[2] ?? "").trim();
-      const qty = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 1;
-      if (desc) items.push({ description: desc, qty });
-      continue;
+      const name = (m[2] ?? "").trim();
+      if (!name) continue;
+      out.push({ name, qty: Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 1 });
+    } else {
+      out.push({ name: t, qty: 1 });
     }
-    items.push({ description: t, qty: 1 });
   }
-
-  return items;
-}
-
-function normalizeQty(q: string): number {
-  const n = Number(q);
-  if (!Number.isFinite(n)) return 1;
-  if (n <= 0) return 1;
-  return n;
+  return out;
 }
 
 export default function AddJobModal(props: Props) {
@@ -99,25 +121,11 @@ export default function AddJobModal(props: Props) {
   const [labor, setLabor] = useState("");
   const [urgency, setUrgency] = useState<Urgency>("medium");
 
-  // structured parts list
-  const [partsRows, setPartsRows] = useState<PartItemRow[]>([]);
+  const [partsRows, setPartsRows] = useState<PartRow[]>([]);
   const [partsPaste, setPartsPaste] = useState("");
-
-  const [createPartsRequest, setCreatePartsRequest] = useState(false);
-  const [holdForParts, setHoldForParts] = useState(true);
 
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  const validItemsCount = useMemo(() => {
-    return partsRows.filter((r) => safeTrim(r.description).length > 0).length;
-  }, [partsRows]);
-
-  // Auto-enable request if user has at least one item
-  useEffect(() => {
-    if (validItemsCount > 0) setCreatePartsRequest(true);
-    if (validItemsCount === 0) setCreatePartsRequest(false);
-  }, [validItemsCount]);
 
   async function ensureShopContext(id: string | null) {
     if (!id) return;
@@ -131,30 +139,74 @@ export default function AddJobModal(props: Props) {
     lastSetShopId.current = id;
   }
 
-  function addRow(seed?: Partial<PartItemRow>) {
+  function addPartRow(seed?: Partial<PartRow>) {
     setPartsRows((prev) => [
       ...prev,
-      {
-        id: uuidv4(),
-        description: seed?.description ?? "",
-        qty: seed?.qty ?? "1",
-      },
+      { id: uuidv4(), name: seed?.name ?? "", qty: seed?.qty ?? "1" },
     ]);
   }
 
-  function removeRow(id: string) {
+  function removePartRow(id: string) {
     setPartsRows((prev) => prev.filter((r) => r.id !== id));
   }
 
-  function updateRow(id: string, patch: Partial<PartItemRow>) {
+  function updatePartRow(id: string, patch: Partial<PartRow>) {
     setPartsRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
-  async function createRequest(args: PartRequestCreateBody): Promise<string> {
+  function importPaste() {
+    const parsed = parsePartsPaste(partsPaste);
+    if (parsed.length === 0) {
+      setErr("Nothing to import. Paste like: 2x oil filter, serpentine belt");
+      return;
+    }
+    setErr(null);
+    setPartsRows((prev) => [
+      ...prev,
+      ...parsed.map((p) => ({
+        id: uuidv4(),
+        name: p.name,
+        qty: String(p.qty),
+      })),
+    ]);
+    setPartsPaste("");
+  }
+
+  function resetForm() {
+    setJobName("");
+    setNotes("");
+    setLabor("");
+    setUrgency("medium");
+    setPartsRows([]);
+    setPartsPaste("");
+    setErr(null);
+  }
+
+  async function callApplyAi(workOrderLineId: string, suggestion: ApplyAiSuggestion) {
+    const res = await fetch("/api/quotes/apply-ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workOrderLineId, suggestion } satisfies ApplyAiBody),
+    });
+
+    const json = (await res.json().catch(() => null)) as ApplyAiResponse | null;
+
+    if (!res.ok || !json || "error" in json) {
+      const msg =
+        (json && "error" in json ? json.error : null) ??
+        `Failed applying parts (status ${res.status}).`;
+      const detail = json && "error" in json ? json.detail : undefined;
+      throw new Error(detail ? `${msg}: ${detail}` : msg);
+    }
+
+    return json.unmatched ?? [];
+  }
+
+  async function createPartsRequest(body: PartRequestCreateBody): Promise<string> {
     const res = await fetch("/api/parts/requests/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(args),
+      body: JSON.stringify(body),
     });
 
     const json = (await res.json().catch(() => null)) as
@@ -169,28 +221,6 @@ export default function AddJobModal(props: Props) {
     }
 
     return json.requestId;
-  }
-
-  function applyPasteToRows() {
-    const parsed = parsePartsText(partsPaste);
-    if (parsed.length === 0) {
-      setErr("Nothing to import. Paste something like: 2x oil filter, serpentine belt");
-      return;
-    }
-
-    setErr(null);
-    setPartsRows((prev) => {
-      const next = [...prev];
-      for (const p of parsed) {
-        next.push({
-          id: uuidv4(),
-          description: p.description,
-          qty: String(p.qty),
-        });
-      }
-      return next;
-    });
-    setPartsPaste("");
   }
 
   const handleSubmit = async () => {
@@ -219,9 +249,7 @@ export default function AddJobModal(props: Props) {
           (wo as Pick<WorkOrderRow, "shop_id"> | null)?.shop_id ?? null;
       }
 
-      if (!useShopId) {
-        throw new Error("Couldn’t resolve shop for this work order");
-      }
+      if (!useShopId) throw new Error("Couldn’t resolve shop for this work order");
 
       await ensureShopContext(useShopId);
 
@@ -229,25 +257,24 @@ export default function AddJobModal(props: Props) {
         data: { user },
       } = await supabase.auth.getUser();
 
-      const laborNum =
-        labor.trim().length > 0 && !Number.isNaN(Number(labor))
-          ? Number(labor)
-          : null;
+      const laborNum = asNumber(labor);
+      const laborHours = laborNum ?? 0;
 
-      const items: PartRequestCreateBodyItem[] = partsRows
+      const parts = partsRows
         .map((r) => ({
-          description: safeTrim(r.description),
+          name: safeTrim(r.name),
           qty: normalizeQty(r.qty),
         }))
-        .filter((it) => it.description.length > 0);
+        .filter((p) => p.name.length > 0);
 
-      const wantsPartsRequest = createPartsRequest && items.length > 0;
+      const hasParts = parts.length > 0;
+
+      // If parts were entered, we default the line to on_hold (your "waiting for parts")
+      const initialStatus: WorkOrderLineInsert["status"] = hasParts
+        ? "on_hold"
+        : "awaiting_approval";
 
       const newLineId = uuidv4();
-
-      const initialStatus: WorkOrderLineInsert["status"] = wantsPartsRequest
-        ? (holdForParts ? "on_hold" : "awaiting_approval")
-        : "awaiting_approval";
 
       const payload: WorkOrderLineInsert = {
         id: newLineId,
@@ -256,10 +283,10 @@ export default function AddJobModal(props: Props) {
         complaint: jobName.trim(),
         cause: null,
         correction: notes.trim() || null,
-        labor_time: laborNum,
+        labor_time: laborHours > 0 ? laborHours : null,
 
-        // keep legacy text field populated too (nice for quick scanning)
-        parts: items.length > 0 ? items.map((i) => `${i.qty}x ${i.description}`).join(", ") : null,
+        // keep legacy text column filled for now
+        parts: hasParts ? parts.map((p) => `${p.qty}x ${p.name}`).join(", ") : null,
 
         status: initialStatus,
         job_type: "repair",
@@ -270,7 +297,7 @@ export default function AddJobModal(props: Props) {
         ...(urgency ? { urgency } : {}),
       };
 
-      // 1) Create job line
+      // 1) Create the line
       const { error: insErr } = await supabase
         .from("work_order_lines")
         .insert(payload);
@@ -278,9 +305,7 @@ export default function AddJobModal(props: Props) {
       if (insErr) {
         const msg = insErr.message || "Failed to add job.";
         if (/row-level security/i.test(msg)) {
-          setErr(
-            "Access denied (RLS). Check that your session is scoped to this shop.",
-          );
+          setErr("Access denied (RLS). Check that your session is scoped to this shop.");
           lastSetShopId.current = null;
         } else if (/status.*check/i.test(msg)) {
           setErr("This status isn’t allowed by the database.");
@@ -292,28 +317,67 @@ export default function AddJobModal(props: Props) {
         return;
       }
 
-      // 2) Create parts request (optional)
-      if (wantsPartsRequest) {
-        const requestNotes = safeTrim(notes) || null;
+      // 2) Auto-apply parts allocations via apply-ai (if parts were entered)
+      let unmatched: { name: string; qty: number }[] = [];
+      if (hasParts) {
+        const suggestion: ApplyAiSuggestion = {
+          parts: parts.map((p) => ({ name: p.name, qty: p.qty })),
+          laborHours,
+          laborRate: 0,
+          summary: safeTrim(notes) || jobName.trim(),
+          confidence: "high",
+          title: jobName.trim(),
+          notes: safeTrim(notes) || undefined,
+        };
 
-        await createRequest({
-          workOrderId,
-          jobId: newLineId,
-          items,
-          notes: requestNotes,
-        });
+        try {
+          unmatched = await callApplyAi(newLineId, suggestion);
+        } catch (e: unknown) {
+          // If apply-ai fails, we still keep the line created.
+          // We can optionally create a parts request from the entered parts as fallback,
+          // but that may be noisy if the failure is config-related.
+          toast.error(e instanceof Error ? e.message : "Failed allocating parts.");
+        }
+      }
+
+      // 3) If unmatched parts exist, auto-create a parts request for just the unmatched
+      if (unmatched.length > 0) {
+        try {
+          await createPartsRequest({
+            workOrderId,
+            jobId: newLineId,
+            items: unmatched.map((u) => ({
+              description: u.name,
+              qty: u.qty,
+            })),
+            notes: safeTrim(notes) || null,
+          });
+          toast.message(
+            `Parts request created for ${unmatched.length} unmatched item(s).`,
+          );
+        } catch (e: unknown) {
+          toast.error(
+            e instanceof Error ? e.message : "Failed creating parts request.",
+          );
+        }
+      }
+
+      // Success toast
+      if (hasParts) {
+        if (unmatched.length > 0) {
+          toast.success(
+            `Job added. Allocated what we could; ${unmatched.length} item(s) went to parts request.`,
+          );
+        } else {
+          toast.success("Job added + parts allocated.");
+        }
+      } else {
+        toast.success("Job added.");
       }
 
       onJobAdded?.();
       onClose();
-
-      setJobName("");
-      setNotes("");
-      setLabor("");
-      setUrgency("medium");
-      setPartsRows([]);
-      setPartsPaste("");
-      setErr(null);
+      resetForm();
     } catch (e: unknown) {
       setErr(errorMessage(e) || "Failed to add job.");
       lastSetShopId.current = null;
@@ -325,7 +389,10 @@ export default function AddJobModal(props: Props) {
   return (
     <ModalShell
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={() => {
+        onClose();
+        setErr(null);
+      }}
       title="Add New Job Line"
       onSubmit={handleSubmit}
       submitText={submitting ? "Adding…" : "Add Job"}
@@ -339,7 +406,7 @@ export default function AddJobModal(props: Props) {
           <input
             type="text"
             className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
-            placeholder="e.g. Replace serpentine belt"
+            placeholder="e.g. Replace tie rod end RH"
             value={jobName}
             onChange={(e) => setJobName(e.target.value)}
           />
@@ -389,21 +456,21 @@ export default function AddJobModal(props: Props) {
           </div>
         </div>
 
-        {/* Structured parts list */}
+        {/* Parts (auto allocation + auto parts request for unmatched) */}
         <div className="rounded-md border border-white/10 bg-black/30 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div>
               <div className="text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
-                Parts required
+                Parts
               </div>
               <div className="text-xs text-neutral-500">
-                Add parts as rows (Qty + Description).
+                If you add parts, we’ll auto-allocate matches and auto-create a parts request for unmatched items.
               </div>
             </div>
 
             <button
               type="button"
-              onClick={() => addRow()}
+              onClick={() => addPartRow()}
               className="rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black/55"
             >
               + Add part
@@ -411,9 +478,7 @@ export default function AddJobModal(props: Props) {
           </div>
 
           {partsRows.length === 0 ? (
-            <div className="text-sm text-neutral-400">
-              No parts added yet.
-            </div>
+            <div className="text-sm text-neutral-400">No parts added.</div>
           ) : (
             <div className="space-y-2">
               {partsRows.map((r) => (
@@ -422,18 +487,18 @@ export default function AddJobModal(props: Props) {
                     inputMode="decimal"
                     className="w-20 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-white focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
                     value={r.qty}
-                    onChange={(e) => updateRow(r.id, { qty: e.target.value })}
+                    onChange={(e) => updatePartRow(r.id, { qty: e.target.value })}
                     placeholder="Qty"
                   />
                   <input
                     className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
-                    value={r.description}
-                    onChange={(e) => updateRow(r.id, { description: e.target.value })}
-                    placeholder="Part description (e.g. Tie rod end RH)"
+                    value={r.name}
+                    onChange={(e) => updatePartRow(r.id, { name: e.target.value })}
+                    placeholder="Part name (matches inventory parts by name)"
                   />
                   <button
                     type="button"
-                    onClick={() => removeRow(r.id)}
+                    onClick={() => removePartRow(r.id)}
                     className="rounded-md border border-white/10 bg-black/40 px-2 py-2 text-xs font-semibold text-neutral-200 hover:bg-black/55"
                     title="Remove"
                   >
@@ -444,25 +509,24 @@ export default function AddJobModal(props: Props) {
             </div>
           )}
 
-          {/* Quick paste importer */}
           <div className="mt-3 border-t border-white/10 pt-3">
             <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
-              Quick paste (optional)
+              Quick paste
             </label>
             <textarea
               rows={2}
               className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
-              placeholder="Paste: 2x oil filter, serpentine belt"
+              placeholder="Paste: 2x tie rod end RH, cotter pin"
               value={partsPaste}
               onChange={(e) => setPartsPaste(e.target.value)}
             />
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
-                onClick={applyPasteToRows}
+                onClick={importPaste}
                 className="rounded-md border border-[var(--accent-copper-light)]/40 bg-[var(--accent-copper-light)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-light)]/15"
               >
-                Import to parts list
+                Import
               </button>
               <button
                 type="button"
@@ -473,54 +537,6 @@ export default function AddJobModal(props: Props) {
               </button>
             </div>
           </div>
-        </div>
-
-        {/* parts request options */}
-        <div className="rounded-md border border-white/10 bg-black/30 px-3 py-3">
-          <div className="flex items-start gap-2">
-            <input
-              id="pr-create"
-              type="checkbox"
-              className="mt-1 h-4 w-4 accent-[var(--accent-copper-light)]"
-              checked={createPartsRequest}
-              onChange={(e) => setCreatePartsRequest(e.target.checked)}
-              disabled={validItemsCount === 0}
-            />
-            <label htmlFor="pr-create" className="min-w-0">
-              <div className="text-sm font-semibold text-white">
-                Create parts request
-              </div>
-              <div className="text-xs text-neutral-400">
-                Creates a request (and items) linked to this new job line.
-              </div>
-            </label>
-          </div>
-
-          <div className="mt-3 flex items-start gap-2">
-            <input
-              id="pr-hold"
-              type="checkbox"
-              className="mt-1 h-4 w-4 accent-[var(--accent-copper-light)]"
-              checked={holdForParts}
-              onChange={(e) => setHoldForParts(e.target.checked)}
-              disabled={!createPartsRequest || validItemsCount === 0}
-            />
-            <label htmlFor="pr-hold" className="min-w-0">
-              <div className="text-sm font-semibold text-white">
-                Put job on hold for parts
-              </div>
-              <div className="text-xs text-neutral-400">
-                Sets the new line status to <span className="text-neutral-200">on_hold</span>{" "}
-                when the parts request is created.
-              </div>
-            </label>
-          </div>
-
-          {validItemsCount === 0 ? (
-            <div className="mt-2 text-xs text-neutral-500">
-              Add at least one part to enable parts request.
-            </div>
-          ) : null}
         </div>
 
         {err && (
