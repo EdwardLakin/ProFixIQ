@@ -27,9 +27,9 @@ type ForwardBody = {
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const id = params.id;
+  const { id } = await params;
   const trace = `wo-send-quote:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
   console.log(`[send-quote wrapper] HIT trace=${trace} id=${id}`);
