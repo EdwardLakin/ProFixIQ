@@ -1,4 +1,4 @@
-// features/work-orders/components/AddJobModal.tsx (FULL FILE REPLACEMENT)
+// /features/work-orders/components/AddJobModal.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -26,6 +26,8 @@ type Props = {
 
 type Urgency = "low" | "medium" | "high";
 
+/* ----------------------------- helpers ----------------------------- */
+
 function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   const pe = e as Partial<PostgrestError> | null;
@@ -46,31 +48,7 @@ function asNumber(v: unknown): number | null {
   return null;
 }
 
-type PartRow = {
-  id: string;
-  name: string;
-  qty: string; // keep as string for controlled input
-};
-
-type ApplyAiSuggestion = {
-  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
-  laborHours: number;
-  laborRate: number;
-  summary: string;
-  confidence: "low" | "medium" | "high";
-  price?: number;
-  notes?: string;
-  title?: string;
-};
-
-type ApplyAiBody = {
-  workOrderLineId: string;
-  suggestion: ApplyAiSuggestion;
-};
-
-type ApplyAiResponse =
-  | { ok: true; unmatched: { name: string; qty: number }[] }
-  | { error: string; detail?: string; code?: string };
+type ItemRow = { id: string; description: string; qty: string };
 
 type PartRequestCreateBody = {
   workOrderId: string;
@@ -79,13 +57,7 @@ type PartRequestCreateBody = {
   notes?: string | null;
 };
 
-function normalizeQty(q: string): number {
-  const n = Number(q);
-  if (!Number.isFinite(n) || n <= 0) return 1;
-  return n;
-}
-
-function parsePartsPaste(raw: string): { name: string; qty: number }[] {
+function parsePartsPaste(raw: string): { description: string; qty: number }[] {
   const s = safeTrim(raw);
   if (!s) return [];
   const tokens = s
@@ -93,17 +65,20 @@ function parsePartsPaste(raw: string): { name: string; qty: number }[] {
     .map((t) => t.trim())
     .filter(Boolean);
 
-  const out: { name: string; qty: number }[] = [];
+  const out: { description: string; qty: number }[] = [];
   for (const t of tokens) {
     // supports: "2x oil filter", "2 x oil filter", "2 oil filter"
     const m = /^(\d+(?:\.\d+)?)\s*(?:x|×)?\s+(.*)$/i.exec(t);
     if (m) {
       const qtyNum = Number(m[1]);
-      const name = (m[2] ?? "").trim();
-      if (!name) continue;
-      out.push({ name, qty: Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 1 });
+      const desc = (m[2] ?? "").trim();
+      if (!desc) continue;
+      out.push({
+        description: desc,
+        qty: Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 1,
+      });
     } else {
-      out.push({ name: t, qty: 1 });
+      out.push({ description: t, qty: 1 });
     }
   }
   return out;
@@ -121,7 +96,13 @@ export default function AddJobModal(props: Props) {
   const [labor, setLabor] = useState("");
   const [urgency, setUrgency] = useState<Urgency>("medium");
 
-  const [partsRows, setPartsRows] = useState<PartRow[]>([]);
+  // ✅ parts request style rows
+  const [rows, setRows] = useState<ItemRow[]>([
+    { id: uuidv4(), description: "", qty: "1" },
+  ]);
+  const [headerNotes, setHeaderNotes] = useState("");
+
+  // quick paste
   const [partsPaste, setPartsPaste] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
@@ -139,20 +120,23 @@ export default function AddJobModal(props: Props) {
     lastSetShopId.current = id;
   }
 
-  function addPartRow(seed?: Partial<PartRow>) {
-    setPartsRows((prev) => [
-      ...prev,
-      { id: uuidv4(), name: seed?.name ?? "", qty: seed?.qty ?? "1" },
-    ]);
-  }
+  const addRow = () =>
+    setRows((r) => [...r, { id: uuidv4(), description: "", qty: "1" }]);
 
-  function removePartRow(id: string) {
-    setPartsRows((prev) => prev.filter((r) => r.id !== id));
-  }
+  const removeRow = (id: string) =>
+    setRows((r) => (r.length > 1 ? r.filter((x) => x.id !== id) : r));
 
-  function updatePartRow(id: string, patch: Partial<PartRow>) {
-    setPartsRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  }
+  const setCell = (id: string, patch: Partial<ItemRow>) =>
+    setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+
+  const validItems = rows
+    .map((r) => {
+      const description = r.description.trim();
+      const n = Number.parseInt(r.qty, 10);
+      const qty = Number.isFinite(n) ? n : 0;
+      return { description, qty };
+    })
+    .filter((i) => i.description && i.qty > 0);
 
   function importPaste() {
     const parsed = parsePartsPaste(partsPaste);
@@ -160,13 +144,14 @@ export default function AddJobModal(props: Props) {
       setErr("Nothing to import. Paste like: 2x oil filter, serpentine belt");
       return;
     }
+
     setErr(null);
-    setPartsRows((prev) => [
+    setRows((prev) => [
       ...prev,
       ...parsed.map((p) => ({
         id: uuidv4(),
-        name: p.name,
-        qty: String(p.qty),
+        description: p.description,
+        qty: String(Math.max(1, Math.floor(p.qty))),
       })),
     ]);
     setPartsPaste("");
@@ -177,29 +162,10 @@ export default function AddJobModal(props: Props) {
     setNotes("");
     setLabor("");
     setUrgency("medium");
-    setPartsRows([]);
+    setHeaderNotes("");
+    setRows([{ id: uuidv4(), description: "", qty: "1" }]);
     setPartsPaste("");
     setErr(null);
-  }
-
-  async function callApplyAi(workOrderLineId: string, suggestion: ApplyAiSuggestion) {
-    const res = await fetch("/api/quotes/apply-ai", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workOrderLineId, suggestion } satisfies ApplyAiBody),
-    });
-
-    const json = (await res.json().catch(() => null)) as ApplyAiResponse | null;
-
-    if (!res.ok || !json || "error" in json) {
-      const msg =
-        (json && "error" in json ? json.error : null) ??
-        `Failed applying parts (status ${res.status}).`;
-      const detail = json && "error" in json ? json.detail : undefined;
-      throw new Error(detail ? `${msg}: ${detail}` : msg);
-    }
-
-    return json.unmatched ?? [];
   }
 
   async function createPartsRequest(body: PartRequestCreateBody): Promise<string> {
@@ -209,14 +175,16 @@ export default function AddJobModal(props: Props) {
       body: JSON.stringify(body),
     });
 
-    const json = (await res.json().catch(() => null)) as
-      | { requestId?: string; error?: string }
-      | null;
+    const raw = await res.text();
+    let json: { requestId?: string; error?: string } | null = null;
+    try {
+      json = raw ? (JSON.parse(raw) as { requestId?: string; error?: string }) : null;
+    } catch {
+      /* ignore */
+    }
 
     if (!res.ok || !json?.requestId) {
-      const msg =
-        json?.error ??
-        `Failed to create parts request (status ${res.status}).`;
+      const msg = json?.error || raw || `Request failed with status ${res.status}`;
       throw new Error(msg);
     }
 
@@ -245,8 +213,7 @@ export default function AddJobModal(props: Props) {
 
         if (woErr) throw woErr;
 
-        useShopId =
-          (wo as Pick<WorkOrderRow, "shop_id"> | null)?.shop_id ?? null;
+        useShopId = (wo as Pick<WorkOrderRow, "shop_id"> | null)?.shop_id ?? null;
       }
 
       if (!useShopId) throw new Error("Couldn’t resolve shop for this work order");
@@ -260,16 +227,12 @@ export default function AddJobModal(props: Props) {
       const laborNum = asNumber(labor);
       const laborHours = laborNum ?? 0;
 
-      const parts = partsRows
-        .map((r) => ({
-          name: safeTrim(r.name),
-          qty: normalizeQty(r.qty),
-        }))
-        .filter((p) => p.name.length > 0);
+      const hasParts = validItems.length > 0;
 
-      const hasParts = parts.length > 0;
-
-      // If parts were entered, we default the line to on_hold (your "waiting for parts")
+      // ✅ Your rule:
+      // - if parts need quoting => on_hold "waiting for parts"
+      // For this modal we assume "parts need quoting" when ANY parts exist.
+      // (If later you add a toggle for “priced”, we can route to approval instead.)
       const initialStatus: WorkOrderLineInsert["status"] = hasParts
         ? "on_hold"
         : "awaiting_approval";
@@ -285,8 +248,10 @@ export default function AddJobModal(props: Props) {
         correction: notes.trim() || null,
         labor_time: laborHours > 0 ? laborHours : null,
 
-        // keep legacy text column filled for now
-        parts: hasParts ? parts.map((p) => `${p.qty}x ${p.name}`).join(", ") : null,
+        // keep legacy text column filled for now (useful for quick scanning)
+        parts: hasParts
+          ? validItems.map((p) => `${p.qty}x ${p.description}`).join(", ")
+          : null,
 
         status: initialStatus,
         job_type: "repair",
@@ -298,14 +263,14 @@ export default function AddJobModal(props: Props) {
       };
 
       // 1) Create the line
-      const { error: insErr } = await supabase
-        .from("work_order_lines")
-        .insert(payload);
+      const { error: insErr } = await supabase.from("work_order_lines").insert(payload);
 
       if (insErr) {
         const msg = insErr.message || "Failed to add job.";
         if (/row-level security/i.test(msg)) {
-          setErr("Access denied (RLS). Check that your session is scoped to this shop.");
+          setErr(
+            "Access denied (RLS). Check that your session is scoped to this shop.",
+          );
           lastSetShopId.current = null;
         } else if (/status.*check/i.test(msg)) {
           setErr("This status isn’t allowed by the database.");
@@ -317,59 +282,23 @@ export default function AddJobModal(props: Props) {
         return;
       }
 
-      // 2) Auto-apply parts allocations via apply-ai (if parts were entered)
-      let unmatched: { name: string; qty: number }[] = [];
+      // 2) Create parts request (keep this behavior)
       if (hasParts) {
-        const suggestion: ApplyAiSuggestion = {
-          parts: parts.map((p) => ({ name: p.name, qty: p.qty })),
-          laborHours,
-          laborRate: 0,
-          summary: safeTrim(notes) || jobName.trim(),
-          confidence: "high",
-          title: jobName.trim(),
-          notes: safeTrim(notes) || undefined,
-        };
-
-        try {
-          unmatched = await callApplyAi(newLineId, suggestion);
-        } catch (e: unknown) {
-          // If apply-ai fails, we still keep the line created.
-          // We can optionally create a parts request from the entered parts as fallback,
-          // but that may be noisy if the failure is config-related.
-          toast.error(e instanceof Error ? e.message : "Failed allocating parts.");
-        }
-      }
-
-      // 3) If unmatched parts exist, auto-create a parts request for just the unmatched
-      if (unmatched.length > 0) {
         try {
           await createPartsRequest({
             workOrderId,
             jobId: newLineId,
-            items: unmatched.map((u) => ({
-              description: u.name,
-              qty: u.qty,
-            })),
-            notes: safeTrim(notes) || null,
+            items: validItems,
+            notes: safeTrim(headerNotes) || safeTrim(notes) || null,
           });
-          toast.message(
-            `Parts request created for ${unmatched.length} unmatched item(s).`,
-          );
+
+          toast.success("Job added + parts request sent.");
         } catch (e: unknown) {
           toast.error(
-            e instanceof Error ? e.message : "Failed creating parts request.",
+            `Job added, but parts request failed: ${
+              e instanceof Error ? e.message : "Unknown error"
+            }`,
           );
-        }
-      }
-
-      // Success toast
-      if (hasParts) {
-        if (unmatched.length > 0) {
-          toast.success(
-            `Job added. Allocated what we could; ${unmatched.length} item(s) went to parts request.`,
-          );
-        } else {
-          toast.success("Job added + parts allocated.");
         }
       } else {
         toast.success("Job added.");
@@ -386,6 +315,8 @@ export default function AddJobModal(props: Props) {
     }
   };
 
+  if (!isOpen) return null;
+
   return (
     <ModalShell
       isOpen={isOpen}
@@ -396,9 +327,10 @@ export default function AddJobModal(props: Props) {
       title="Add New Job Line"
       onSubmit={handleSubmit}
       submitText={submitting ? "Adding…" : "Add Job"}
-      size="sm"
+      size="lg"
     >
       <div className="space-y-4">
+        {/* Job fields */}
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
             Job name
@@ -456,87 +388,119 @@ export default function AddJobModal(props: Props) {
           </div>
         </div>
 
-        {/* Parts (auto allocation + auto parts request for unmatched) */}
-        <div className="rounded-md border border-white/10 bg-black/30 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div>
-              <div className="text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
-                Parts
-              </div>
-              <div className="text-xs text-neutral-500">
-                If you add parts, we’ll auto-allocate matches and auto-create a parts request for unmatched items.
-              </div>
-            </div>
+        {/* Note to parts */}
+        <div className="space-y-1">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            Note to parts (optional)
+          </label>
+          <textarea
+            rows={2}
+            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/75 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            value={headerNotes}
+            onChange={(e) => setHeaderNotes(e.target.value)}
+            placeholder="Anything they should know before filling this request…"
+          />
+        </div>
 
-            <button
-              type="button"
-              onClick={() => addPartRow()}
-              className="rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black/55"
-            >
-              + Add part
-            </button>
+        {/* Items grid (copied style/behavior from PartsRequestModal) */}
+        <div className="overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-black/60 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+          <div className="grid grid-cols-12 bg-gradient-to-r from-slate-900/90 via-slate-950 to-black px-3 py-2 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
+            <div className="col-span-8">Parts description</div>
+            <div className="col-span-3 text-right">Qty</div>
+            <div className="col-span-1 text-center"> </div>
           </div>
 
-          {partsRows.length === 0 ? (
-            <div className="text-sm text-neutral-400">No parts added.</div>
-          ) : (
-            <div className="space-y-2">
-              {partsRows.map((r) => (
-                <div key={r.id} className="flex items-center gap-2">
-                  <input
-                    inputMode="decimal"
-                    className="w-20 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-white focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
-                    value={r.qty}
-                    onChange={(e) => updatePartRow(r.id, { qty: e.target.value })}
-                    placeholder="Qty"
-                  />
-                  <input
-                    className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
-                    value={r.name}
-                    onChange={(e) => updatePartRow(r.id, { name: e.target.value })}
-                    placeholder="Part name (matches inventory parts by name)"
-                  />
+          <div className="max-h-64 overflow-auto bg-black/70">
+            {rows.map((r) => (
+              <div
+                key={r.id}
+                className="grid grid-cols-12 gap-2 border-t border-white/5 px-3 py-2"
+              >
+                <input
+                  className="col-span-8 rounded-md border border-[var(--metal-border-soft)] bg-black/80 px-2 py-1 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
+                  value={r.description}
+                  onChange={(e) => setCell(r.id, { description: e.target.value })}
+                  placeholder="e.g. rear pads, serp belt…"
+                />
+
+                <input
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  className="col-span-3 rounded-md border border-[var(--metal-border-soft)] bg-black/80 px-2 py-1 text-right text-sm text-neutral-100 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
+                  value={r.qty}
+                  onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d]/g, "");
+                    setCell(r.id, { qty: next });
+                  }}
+                  onBlur={() => {
+                    const n = Number.parseInt(r.qty, 10);
+                    const normalized = Number.isFinite(n) && n > 0 ? String(n) : "1";
+                    setCell(r.id, { qty: normalized });
+                  }}
+                  aria-label="Quantity"
+                />
+
+                <div className="col-span-1 flex items-center justify-center">
                   <button
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-black/70 text-[0.7rem] text-neutral-300 transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-40 disabled:hover:bg-black/70 disabled:hover:text-neutral-300"
+                    onClick={() => removeRow(r.id)}
+                    disabled={rows.length <= 1}
+                    title={
+                      rows.length <= 1 ? "At least one row is required" : "Remove row"
+                    }
                     type="button"
-                    onClick={() => removePartRow(r.id)}
-                    className="rounded-md border border-white/10 bg-black/40 px-2 py-2 text-xs font-semibold text-neutral-200 hover:bg-black/55"
-                    title="Remove"
                   >
                     ✕
                   </button>
                 </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-3 border-t border-white/10 pt-3">
-            <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
-              Quick paste
-            </label>
-            <textarea
-              rows={2}
-              className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
-              placeholder="Paste: 2x tie rod end RH, cotter pin"
-              value={partsPaste}
-              onChange={(e) => setPartsPaste(e.target.value)}
-            />
-            <div className="mt-2 flex gap-2">
-              <button
-                type="button"
-                onClick={importPaste}
-                className="rounded-md border border-[var(--accent-copper-light)]/40 bg-[var(--accent-copper-light)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-light)]/15"
-              >
-                Import
-              </button>
-              <button
-                type="button"
-                onClick={() => setPartsPaste("")}
-                className="rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/55"
-              >
-                Clear
-              </button>
-            </div>
+              </div>
+            ))}
           </div>
+
+          <div className="border-t border-white/5 bg-black/80 px-3 py-2">
+            <button
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.16em] text-neutral-100 transition hover:border-[var(--accent-copper-soft)] hover:bg-[var(--accent-copper-faint)] hover:text-[var(--accent-copper-soft)]"
+              onClick={addRow}
+              type="button"
+            >
+              <span>+</span>
+              <span>Add item</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick paste */}
+        <div className="rounded-md border border-white/10 bg-black/30 p-3">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+            Quick paste
+          </label>
+          <textarea
+            rows={2}
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+            placeholder="Paste: 2x tie rod end RH, cotter pin"
+            value={partsPaste}
+            onChange={(e) => setPartsPaste(e.target.value)}
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={importPaste}
+              className="rounded-md border border-[var(--accent-copper-light)]/40 bg-[var(--accent-copper-light)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-light)]/15"
+            >
+              Import
+            </button>
+            <button
+              type="button"
+              onClick={() => setPartsPaste("")}
+              className="rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/55"
+            >
+              Clear
+            </button>
+          </div>
+
+          <p className="mt-2 text-[0.7rem] text-neutral-500">
+            Only lines with a description and quantity &gt; 0 will be sent.
+          </p>
         </div>
 
         {err && (
