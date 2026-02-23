@@ -17,18 +17,21 @@ type ForwardBody = {
   customerName?: string;
   shopName?: string;
   lines?: Array<{ description: string; amount: number }>;
-  vehicleInfo?: { year?: string | number | null; make?: string | null; model?: string | null };
+  vehicleInfo?: {
+    year?: string | number | null;
+    make?: string | null;
+    model?: string | null;
+  };
   pdfUrl?: string | null;
 };
 
 export async function POST(
   req: Request,
-  ctx: { params: { id?: string } },
+  { params }: { params: { id: string } },
 ) {
-  const id = ctx.params?.id ?? "";
+  const id = params.id;
   const trace = `wo-send-quote:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
-  // 🔥 If you don’t see this in Vercel logs, you are NOT running this route.
   console.log(`[send-quote wrapper] HIT trace=${trace} id=${id}`);
 
   if (!id || !isUuid(id)) {
@@ -68,7 +71,6 @@ export async function POST(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      // helpful to see in logs downstream (if you log it there too)
       "x-profix-trace": trace,
     },
     body: JSON.stringify(forwardBody),
@@ -77,13 +79,9 @@ export async function POST(
 
   const text = await res.text();
   console.log(
-    `[send-quote wrapper] RESULT trace=${trace} status=${res.status} body=${text.slice(
-      0,
-      500,
-    )}`,
+    `[send-quote wrapper] RESULT trace=${trace} status=${res.status} body=${text.slice(0, 500)}`,
   );
 
-  // Pass-through response but add trace so client can show it
   return new NextResponse(text, {
     status: res.status,
     headers: {
