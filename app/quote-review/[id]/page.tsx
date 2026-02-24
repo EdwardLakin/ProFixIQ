@@ -9,6 +9,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import AddJobModal from "@/features/work-orders/components/workorders/AddJobModal";
+import DeleteOrVoidLineModal from "@/features/work-orders/components/workorders/DeleteOrVoidLineModal";
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 import {
   calculateTax,
@@ -111,6 +112,9 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
 
+  const [delOpen, setDelOpen] = useState(false);
+  const [delLineId, setDelLineId] = useState<string | null>(null);
+
   const [addJobOpen, setAddJobOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("system");
 
@@ -125,6 +129,17 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
       sessionStorage.setItem("addJobModal:prefill", JSON.stringify(prefill));
     }
     setAddJobOpen(true);
+  }
+
+  function openDeleteForLine(lineId: string) {
+    setDelLineId(lineId);
+    setDelOpen(true);
+  }
+
+  function onDeleteDone() {
+    setDelOpen(false);
+    setDelLineId(null);
+    void reload();
   }
 
   const reload = useCallback(async () => {
@@ -267,6 +282,19 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
     }
     return map;
   }, [allocs]);
+
+  const delLine = useMemo(() => {
+    if (!delLineId) return null;
+    return lines.find((l) => l.id === delLineId) ?? null;
+  }, [delLineId, lines]);
+
+  const delAllocs = useMemo<Allocation[]>(() => {
+    if (!delLineId) return [];
+    // EditableAlloc includes `parts`; strip it for the modal prop type
+    return allocs
+      .filter((a) => String(a.work_order_line_id ?? "") === delLineId)
+      .map(({ parts: _parts, ...rest }) => rest as Allocation);
+  }, [allocs, delLineId]);
 
   const totals = useMemo(() => {
     const laborTotal = lines.reduce((sum, l) => {
@@ -605,7 +633,8 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                     const laborAmt = laborHours * laborRate;
 
                     const partsAmt = la.reduce((sum, a) => {
-                      const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
+                      const qty =
+                        typeof a.qty === "number" ? a.qty : Number(a.qty);
                       const unit =
                         typeof a.unit_cost === "number"
                           ? a.unit_cost
@@ -661,7 +690,9 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                                 <input
                                   value={l.description ?? ""}
                                   onChange={(e) =>
-                                    setLineField(l.id, { description: e.target.value })
+                                    setLineField(l.id, {
+                                      description: e.target.value,
+                                    })
                                   }
                                   className={inputCls}
                                   placeholder="Describe the work..."
@@ -673,7 +704,9 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                                 <input
                                   value={l.complaint ?? ""}
                                   onChange={(e) =>
-                                    setLineField(l.id, { complaint: e.target.value })
+                                    setLineField(l.id, {
+                                      complaint: e.target.value,
+                                    })
                                   }
                                   className={inputCls}
                                   placeholder="Customer complaint..."
@@ -697,7 +730,9 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                                 <input
                                   value={l.correction ?? ""}
                                   onChange={(e) =>
-                                    setLineField(l.id, { correction: e.target.value })
+                                    setLineField(l.id, {
+                                      correction: e.target.value,
+                                    })
                                   }
                                   className={inputCls}
                                   placeholder="Correction performed..."
@@ -739,7 +774,9 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                                 px-4 py-2 text-sm font-semibold text-emerald-200
                                 hover:bg-emerald-400/15
                               "
-                              disabled={safeTrim(l.status).toLowerCase() === "declined"}
+                              disabled={
+                                safeTrim(l.status).toLowerCase() === "declined"
+                              }
                             >
                               Approve
                             </button>
@@ -763,6 +800,19 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                               "
                             >
                               Defer
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openDeleteForLine(l.id)}
+                              className="
+                                rounded-lg border border-white/15 bg-black/50
+                                px-4 py-2 text-sm font-semibold text-neutral-200
+                                hover:bg-black/65 hover:text-white
+                              "
+                              title="Delete or void this line"
+                            >
+                              Delete / Void
                             </button>
                           </div>
                         </div>
@@ -838,7 +888,9 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                                           value={String(u)}
                                           onChange={(e) => {
                                             const n = asNumber(e.target.value);
-                                            setAllocField(a.id, { unit_cost: n ?? 0 });
+                                            setAllocField(a.id, {
+                                              unit_cost: n ?? 0,
+                                            });
                                           }}
                                           className={`${inputBase} ${inputFocus} ml-2 w-28`}
                                         />
@@ -1016,6 +1068,19 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
             await reload();
           }}
         />
+
+        {delLine && (
+          <DeleteOrVoidLineModal
+            open={delOpen}
+            onClose={() => {
+              setDelOpen(false);
+              setDelLineId(null);
+            }}
+            line={delLine}
+            allocations={delAllocs}
+            onDone={onDeleteDone}
+          />
+        )}
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+// /features/parts/actions.ts
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -7,7 +8,9 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-/** Keep this in sync with your Postgres enum stock_move_reason */
+type StockMoveRow = DB["public"]["Tables"]["stock_moves"]["Row"];
+
+/** Keep this in sync with your Postgres enum public.stock_move_reason */
 export type StockMoveReason =
   | "receive"
   | "adjust"
@@ -16,6 +19,12 @@ export type StockMoveReason =
   | "waste"
   | "return_in"
   | "return_out";
+
+function extractStockMoveId(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const maybe = data as Partial<StockMoveRow>;
+  return typeof maybe.id === "string" && maybe.id.length > 0 ? maybe.id : null;
+}
 
 export async function createPart(input: {
   shop_id: string;
@@ -29,30 +38,25 @@ export async function createPart(input: {
   low_stock_threshold?: number;
 }) {
   const supabase = createServerActionClient<DB>({ cookies });
+
   const { data, error } = await supabase
     .from("parts")
     .insert(input)
     .select("id")
     .single();
+
   if (error) throw error;
 
   revalidatePath("/parts");
   return data.id as string;
 }
 
-/** RPC payload for apply_stock_move */
-type ApplyStockMoveArgs = {
-  p_part: string;
-  p_loc: string;
-  p_qty: number;
-  p_reason: StockMoveReason | string; // Supabase RPC arg is `string`
-  p_ref_kind: string;                 // must be string, not undefined/null
-  p_ref_id: string;                   // must be string, not undefined/null
-};
-
 /**
  * Adjust on-hand stock for a part at a location.
- * Matches SQL: apply_stock_move(p_part, p_loc, p_qty, p_reason, p_ref_kind, p_ref_id) RETURNS uuid
+ *
+ * SQL:
+ *   apply_stock_move(p_part uuid, p_loc uuid, p_qty numeric, p_reason text, p_ref_kind text, p_ref_id uuid)
+ *   RETURNS stock_moves
  */
 export async function adjustStock(input: {
   part_id: string;
@@ -60,29 +64,31 @@ export async function adjustStock(input: {
   qty_change: number;
   reason: StockMoveReason;
   reference_kind?: string | null;
-  reference_id?: string | null;
+  reference_id?: string | null; // UUID or null
 }) {
   const supabase = createServerActionClient<DB>({ cookies });
 
-  const rpcArgs: ApplyStockMoveArgs = {
+  // Build args using a Record to allow nulls for uuid/text fields safely
+  const rpcArgs: Record<string, unknown> = {
     p_part: input.part_id,
     p_loc: input.location_id,
     p_qty: input.qty_change,
-    // The generated type for RPC often expects `string`; our union is compatible.
     p_reason: input.reason,
-    // IMPORTANT: RPC arg types are `string`, so pass "" when omitted.
-    p_ref_kind: input.reference_kind ?? "",
-    p_ref_id: input.reference_id ?? "",
+    p_ref_kind: input.reference_kind ?? null,
+    p_ref_id: input.reference_id ?? null,
   };
 
-  const { data, error } = await supabase.rpc("apply_stock_move", rpcArgs);
+  const { data, error } = await supabase.rpc(
+    "apply_stock_move",
+    rpcArgs as DB["public"]["Functions"]["apply_stock_move"]["Args"],
+  );
+
   if (error) throw error;
 
-  // Supabase returns the function result directly; for RETURNS uuid it's a string.
-  const moveId =
-    typeof data === "string"
-      ? data
-      : (data as unknown as string); // retain type safety without `any`
+  const moveId = extractStockMoveId(data);
+  if (!moveId) {
+    throw new Error("apply_stock_move returned no id");
+  }
 
   revalidatePath(`/parts/${input.part_id}`);
   return moveId;
