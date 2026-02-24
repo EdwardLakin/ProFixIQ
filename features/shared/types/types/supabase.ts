@@ -10014,10 +10014,10 @@ export type Database = {
           vehicle_fuel_type: string | null
           vehicle_id: string | null
           vehicle_info: string | null
+          vehicle_license_plate: string | null
           vehicle_make: string | null
           vehicle_mileage: number | null
           vehicle_model: string | null
-          vehicle_plate_number: string | null
           vehicle_submodel: string | null
           vehicle_transmission: string | null
           vehicle_unit_number: string | null
@@ -10072,10 +10072,10 @@ export type Database = {
           vehicle_fuel_type?: string | null
           vehicle_id?: string | null
           vehicle_info?: string | null
+          vehicle_license_plate?: string | null
           vehicle_make?: string | null
           vehicle_mileage?: number | null
           vehicle_model?: string | null
-          vehicle_plate_number?: string | null
           vehicle_submodel?: string | null
           vehicle_transmission?: string | null
           vehicle_unit_number?: string | null
@@ -10130,10 +10130,10 @@ export type Database = {
           vehicle_fuel_type?: string | null
           vehicle_id?: string | null
           vehicle_info?: string | null
+          vehicle_license_plate?: string | null
           vehicle_make?: string | null
           vehicle_mileage?: number | null
           vehicle_model?: string | null
-          vehicle_plate_number?: string | null
           vehicle_submodel?: string | null
           vehicle_transmission?: string | null
           vehicle_unit_number?: string | null
@@ -11336,10 +11336,10 @@ export type Database = {
           vehicle_fuel_type: string | null
           vehicle_id: string | null
           vehicle_info: string | null
+          vehicle_license_plate: string | null
           vehicle_make: string | null
           vehicle_mileage: number | null
           vehicle_model: string | null
-          vehicle_plate_number: string | null
           vehicle_submodel: string | null
           vehicle_transmission: string | null
           vehicle_unit_number: string | null
