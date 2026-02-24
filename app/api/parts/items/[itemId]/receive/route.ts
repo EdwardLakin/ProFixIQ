@@ -13,7 +13,6 @@ type Body = {
 };
 
 function isUuid(v: string): boolean {
-  // Simple UUID v4-ish check (good enough for guarding obvious bad input)
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     v,
   );
@@ -21,12 +20,13 @@ function isUuid(v: string): boolean {
 
 export async function POST(
   req: Request,
-  ctx: { params: { itemId: string } },
+  ctx: { params: Promise<{ itemId: string }> }, // ✅ Next 15 expects params as Promise
 ) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    const itemId = ctx?.params?.itemId;
+    const { itemId: rawItemId } = await ctx.params; // ✅ await params
+    const itemId = typeof rawItemId === "string" ? rawItemId : "";
 
     const body = (await req.json().catch(() => null)) as Body | null;
 
@@ -67,7 +67,8 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    type RpcArgs = DB["public"]["Functions"]["receive_part_request_item"]["Args"];
+    type RpcArgs =
+      DB["public"]["Functions"]["receive_part_request_item"]["Args"];
 
     const args: RpcArgs = {
       p_item_id: itemId,
@@ -76,13 +77,15 @@ export async function POST(
       ...(body.po_id ? { p_po_id: body.po_id } : {}),
     };
 
-    const { data, error } = await supabase.rpc("receive_part_request_item", args);
+    const { data, error } = await supabase.rpc(
+      "receive_part_request_item",
+      args,
+    );
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Supabase can return a row or an array depending on RPC return shape/client behavior
     const row = Array.isArray(data) ? data[0] : data;
 
     return NextResponse.json({ ok: true, result: row });
