@@ -114,6 +114,19 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
   const [addJobOpen, setAddJobOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("system");
 
+  function openAddJobWithPrefill(prefill: {
+    jobName?: string | null;
+    notes?: string | null;
+    laborHours?: number | null;
+    partsPaste?: string | null;
+    parts?: Array<{ name: string; qty?: number | null }> | null;
+  }) {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("addJobModal:prefill", JSON.stringify(prefill));
+    }
+    setAddJobOpen(true);
+  }
+
   const reload = useCallback(async () => {
     if (!woId) return;
 
@@ -205,26 +218,26 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
   }, [reload]);
 
   useEffect(() => {
-  let alive = true;
+    let alive = true;
 
-  async function loadUser() {
-    const { data, error } = await supabase.auth.getUser();
-    if (!alive) return;
+    async function loadUser() {
+      const { data, error } = await supabase.auth.getUser();
+      if (!alive) return;
 
-    if (error) {
-      setCurrentUserId("system");
-      return;
+      if (error) {
+        setCurrentUserId("system");
+        return;
+      }
+
+      setCurrentUserId(data.user?.id ?? "system");
     }
 
-    setCurrentUserId(data.user?.id ?? "system");
-  }
+    void loadUser();
 
-  void loadUser();
-
-  return () => {
-    alive = false;
-  };
-}, [supabase]);
+    return () => {
+      alive = false;
+    };
+  }, [supabase]);
 
   const laborRate = useMemo(() => {
     const candidate = (shop as unknown as { labor_rate?: unknown } | null)
@@ -502,7 +515,7 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
               </div>
             </div>
 
-            {/* middle (your yellow square area) */}
+            {/* middle */}
             <div
               className="
                 w-full max-w-xl rounded-2xl border border-white/10 bg-black/35
@@ -854,48 +867,71 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
             </div>
           </div>
 
-          {/* totals */}
+          {/* right column */}
           <div className="space-y-4">
+            {/* ✅ FIXED QUICK ADD CARD */}
             <div className={card}>
-  <div className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}>
-    Quick add job
-  </div>
-  <div className="px-5 py-4 text-sm text-neutral-400">
-    Add missing lines while reviewing the quote (ex: Alignment after tie rod ends).
-    <div className="mt-3">
-      <button
-        type="button"
-        onClick={() => setAddJobOpen(true)}
-        className="
-          w-full rounded-xl border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10
-          px-4 py-2 text-sm font-semibold text-[color:var(--copper)]
-          hover:bg-[color:var(--copper)]/15
-        "
-      >
-        + Add job line
-      </button>
-    </div>
-  </div>
-</div>
+              <div
+                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
+              >
+                Quick add job
+              </div>
+              <div className="px-5 py-4 text-sm text-neutral-400">
+                Add missing lines while reviewing the quote (ex: Alignment after tie rod
+                ends).
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openAddJobWithPrefill({
+                        jobName: "",
+                        notes: "",
+                        laborHours: null,
+                        partsPaste: "",
+                        parts: null,
+                      })
+                    }
+                    className="
+                      w-full rounded-xl border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10
+                      px-4 py-2 text-sm font-semibold text-[color:var(--copper)]
+                      hover:bg-[color:var(--copper)]/15
+                    "
+                  >
+                    + Add job line
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className={card}>
-              <div className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Totals
               </div>
 
               <div className="px-5 py-4 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-400">Labor</span>
-                  <span className="font-medium text-white">{fmt(totals.laborTotal)}</span>
+                  <span className="font-medium text-white">
+                    {fmt(totals.laborTotal)}
+                  </span>
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-neutral-400">Parts</span>
-                  <span className="font-medium text-white">{fmt(totals.partsTotal)}</span>
+                  <span className="font-medium text-white">
+                    {fmt(totals.partsTotal)}
+                  </span>
                 </div>
 
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}>
+                <div
+                  className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}
+                >
                   <span className="text-neutral-300">Subtotal</span>
-                  <span className="font-semibold text-white">{fmt(totals.subtotal)}</span>
+                  <span className="font-semibold text-white">
+                    {fmt(totals.subtotal)}
+                  </span>
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
@@ -905,7 +941,9 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                   <span className="font-medium text-white">{fmt(totals.tax)}</span>
                 </div>
 
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}>
+                <div
+                  className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}
+                >
                   <span className="font-semibold text-white">Grand total</span>
                   <span className="text-lg font-bold" style={{ color: COPPER }}>
                     {fmt(totals.total)}
@@ -913,7 +951,8 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
                 </div>
 
                 <div className="mt-4 text-xs text-neutral-500">
-                  Tip: set shop province to enable CA tax, and shop labor rate to match pricing.
+                  Tip: set shop province to enable CA tax, and shop labor rate to match
+                  pricing.
                 </div>
 
                 <div className="mt-4 flex gap-2">
@@ -933,7 +972,9 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
             </div>
 
             <div className={card}>
-              <div className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Send to customer
               </div>
               <div className="px-5 py-4 text-sm text-neutral-400">
@@ -963,17 +1004,18 @@ export default function AdvisorQuoteReviewDetailPage(): JSX.Element {
         <div className="mt-6 text-xs text-neutral-500">
           Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}
         </div>
+
         <AddJobModal
-  isOpen={addJobOpen}
-  onClose={() => setAddJobOpen(false)}
-  workOrderId={wo.id}
-  vehicleId={(wo as unknown as { vehicle_id?: string | null }).vehicle_id ?? null}
-  techId={currentUserId}
-  shopId={wo.shop_id ?? null}
-  onJobAdded={async () => {
-    await reload();
-  }}
-/>
+          isOpen={addJobOpen}
+          onClose={() => setAddJobOpen(false)}
+          workOrderId={wo.id}
+          vehicleId={(wo as unknown as { vehicle_id?: string | null }).vehicle_id ?? null}
+          techId={currentUserId}
+          shopId={wo.shop_id ?? null}
+          onJobAdded={async () => {
+            await reload();
+          }}
+        />
       </div>
     </div>
   );
