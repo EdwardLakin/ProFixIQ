@@ -1,4 +1,4 @@
-//app/work-orders/[id]/client.tsx
+// /app/work-orders/[id]/client.tsx (FULL FILE REPLACEMENT)
 
 "use client";
 
@@ -16,6 +16,7 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
+import DeleteOrVoidLineModal from "@/features/work-orders/components/workorders/DeleteOrVoidLineModal";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
@@ -35,8 +36,7 @@ const InspectionModal = dynamic(
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type WorkOrderQuoteLine =
-  DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
+type WorkOrderQuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
 };
@@ -47,8 +47,7 @@ type AllocationRow =
   DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
     parts?: { name: string | null } | null;
   };
-type LineTechRow =
-  DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
+type LineTechRow = DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   // real DB column
@@ -78,9 +77,7 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
 }
 
 /** Normalize “where is the inspection template id stored for this line?” */
-function extractInspectionTemplateId(
-  ln: WorkOrderLineWithInspectionMeta,
-): string | null {
+function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): string | null {
   return (
     ln.inspection_template_id ??
     ln.inspection_template ??
@@ -130,9 +127,7 @@ const BADGE: Record<KnownStatus, string> = {
 };
 
 const chip = (s: string | null | undefined): string => {
-  const key = (s ?? "awaiting")
-    .toLowerCase()
-    .replaceAll(" ", "_") as KnownStatus;
+  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as KnownStatus;
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
@@ -149,6 +144,9 @@ const APPROVAL_ROLES = new Set([
   "lead",
   "leadhand",
 ]);
+
+// roles allowed to delete/void lines
+const LINE_DELETE_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 /* ----------------------- AI review icon support ----------------------- */
 
@@ -183,9 +181,7 @@ function toReviewIssues(raw: unknown): ReviewIssue[] {
   }
   return out;
 }
-function groupIssuesByLine(
-  issues: ReviewIssue[],
-): Record<string, ReviewIssue[]> {
+function groupIssuesByLine(issues: ReviewIssue[]): Record<string, ReviewIssue[]> {
   const m: Record<string, ReviewIssue[]> = {};
   for (const it of issues) {
     if (!it.lineId) continue;
@@ -208,31 +204,20 @@ export default function WorkOrderIdClient(): JSX.Element {
     [],
   );
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
-  const [customer, setCustomer] = useTabState<Customer | null>(
-    "wo:id:cust",
-    null,
-  );
+  const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
 
-  const [allocsByLine, setAllocsByLine] = useState<
-    Record<string, AllocationRow[]>
-  >({});
+  const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
   const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  const [currentUserId, setCurrentUserId] = useTabState<string | null>(
-  "wo:id:uid",
-  null,
-);
-const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
-const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
+  const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
-// ✅ prevents “logged out” banner flashing / sticking
-const [authChecked, setAuthChecked] = useState<boolean>(false);
+  // ✅ prevents “logged out” banner flashing / sticking
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
 
-  const [showDetails, setShowDetails] = useTabState<boolean>(
-    "wo:showDetails",
-    true,
-  );
+  const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [warnedMissing, setWarnedMissing] = useState(false);
@@ -249,21 +234,24 @@ const [authChecked, setAuthChecked] = useState<boolean>(false);
   // assign mechanic
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignLineId, setAssignLineId] = useState<string | null>(null);
+
+  // delete/void line modal
+  const [delOpen, setDelOpen] = useState(false);
+  const [delLineId, setDelLineId] = useState<string | null>(null);
+
   const [assignables, setAssignables] = useState<
     Array<Pick<Profile, "id" | "full_name" | "role">>
   >([]);
 
   // per-line technicians
-  const [lineTechsByLine, setLineTechsByLine] = useState<
-    Record<string, string[]>
-  >({});
+  const [lineTechsByLine, setLineTechsByLine] = useState<Record<string, string[]>>({});
 
   // ✅ AI review state for status icons
   const [, setReviewChecked] = useState<boolean>(false);
   const [reviewOk, setReviewOk] = useState<boolean | undefined>(undefined);
-  const [reviewIssuesByLine, setReviewIssuesByLine] = useState<
-    Record<string, ReviewIssue[]>
-  >({});
+  const [reviewIssuesByLine, setReviewIssuesByLine] = useState<Record<string, ReviewIssue[]>>(
+    {},
+  );
 
   const fetchLatestReview = useCallback(async (workOrderId: string) => {
     if (!workOrderId) return;
@@ -284,9 +272,7 @@ const [authChecked, setAuthChecked] = useState<boolean>(false);
         return;
       }
 
-      const issues = toReviewIssues(
-        (data as unknown as { issues?: unknown }).issues,
-      );
+      const issues = toReviewIssues((data as unknown as { issues?: unknown }).issues);
       setReviewChecked(true);
       setReviewOk(Boolean((data as unknown as { ok?: unknown }).ok));
       setReviewIssuesByLine(groupIssuesByLine(issues));
@@ -389,11 +375,7 @@ const [authChecked, setAuthChecked] = useState<boolean>(false);
 
         // by custom_id
         if (!woRow) {
-          const eqRes = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("custom_id", routeId)
-            .maybeSingle();
+          const eqRes = await supabase.from("work_orders").select("*").eq("custom_id", routeId).maybeSingle();
           woRow = (eqRes.data as WorkOrder | null) ?? null;
 
           if (!woRow) {
@@ -474,18 +456,10 @@ const [authChecked, setAuthChecked] = useState<boolean>(false);
             .eq("work_order_id", woRow.id)
             .order("created_at", { ascending: true }),
           woRow.vehicle_id
-            ? supabase
-                .from("vehicles")
-                .select("*")
-                .eq("id", woRow.vehicle_id)
-                .maybeSingle()
+            ? supabase.from("vehicles").select("*").eq("id", woRow.vehicle_id).maybeSingle()
             : Promise.resolve({ data: null, error: null } as const),
           woRow.customer_id
-            ? supabase
-                .from("customers")
-                .select("*")
-                .eq("id", woRow.customer_id)
-                .maybeSingle()
+            ? supabase.from("customers").select("*").eq("id", woRow.customer_id).maybeSingle()
             : Promise.resolve({ data: null, error: null } as const),
         ]);
 
@@ -549,8 +523,7 @@ const [authChecked, setAuthChecked] = useState<boolean>(false);
         // ✅ load latest AI invoice review (drives status icons in JobCard)
         void fetchLatestReview(woRow.id);
       } catch (e: unknown) {
-        const msg =
-          e instanceof Error ? e.message : "Failed to load work order.";
+        const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
         // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
@@ -686,28 +659,25 @@ const [authChecked, setAuthChecked] = useState<boolean>(false);
 
     window.addEventListener("inspection:completed", handler as EventListener);
     return () => {
-      window.removeEventListener(
-        "inspection:completed",
-        handler as EventListener,
-      );
+      window.removeEventListener("inspection:completed", handler as EventListener);
     };
   }, []);
 
   // ---------- close inspection modal ----------
-useEffect(() => {
-  const close = () => {
-    setInspectionOpen(false);
-    setInspectionSrc(null);
-  };
+  useEffect(() => {
+    const close = () => {
+      setInspectionOpen(false);
+      setInspectionSrc(null);
+    };
 
-  window.addEventListener("inspection:close", close);
-  window.addEventListener("inspection:completed", close);
+    window.addEventListener("inspection:close", close);
+    window.addEventListener("inspection:completed", close);
 
-  return () => {
-    window.removeEventListener("inspection:close", close);
-    window.removeEventListener("inspection:completed", close);
-  };
-}, []);
+    return () => {
+      window.removeEventListener("inspection:close", close);
+      window.removeEventListener("inspection:completed", close);
+    };
+  }, []);
 
   // 🔁 refresh this page when a parts request is submitted from the focused modal
   useEffect(() => {
@@ -715,8 +685,7 @@ useEffect(() => {
       void fetchAll();
     };
     window.addEventListener("parts-request:submitted", handler);
-    return () =>
-      window.removeEventListener("parts-request:submitted", handler);
+    return () => window.removeEventListener("parts-request:submitted", handler);
   }, [fetchAll]);
 
   /* ----------------------- Derived data ----------------------- */
@@ -739,16 +708,12 @@ useEffect(() => {
   }, [quoteLines]);
 
   const isPendingApprovalLine = (l: WorkOrderLine) => {
-  const a = (l.approval_state ?? "").toLowerCase();
-  const s = (l.status ?? "").toLowerCase();
-  return (
-    a === "pending" ||
-    s === "waiting_for_approval" ||
-    s === "awaiting_approval"
-  );
-};
+    const a = (l.approval_state ?? "").toLowerCase();
+    const s = (l.status ?? "").toLowerCase();
+    return a === "pending" || s === "waiting_for_approval" || s === "awaiting_approval";
+  };
 
-const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [lines]);
+  const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [lines]);
 
   const linesNeedingQuote = useMemo(
     () =>
@@ -756,27 +721,16 @@ const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [line
         const approval = l.approval_state ?? null;
         const status = l.status ?? "awaiting";
 
-        if (
-          approval === "pending" ||
-          approval === "approved" ||
-          approval === "declined"
-        ) {
+        if (approval === "pending" || approval === "approved" || approval === "declined") {
           return false;
         }
 
-        if (
-          status === "completed" ||
-          status === "ready_to_invoice" ||
-          status === "invoiced"
-        ) {
+        if (status === "completed" || status === "ready_to_invoice" || status === "invoiced") {
           return false;
         }
 
         const hold = (l.hold_reason ?? "").toLowerCase();
-        if (
-          status === "on_hold" &&
-          (hold.includes("part") || hold.includes("quote"))
-        ) {
+        if (status === "on_hold" && (hold.includes("part") || hold.includes("quote"))) {
           return false;
         }
 
@@ -799,8 +753,7 @@ const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [line
     [quoteLines],
   );
 
-  const hasAnyApprovalItems =
-    approvalPending.length > 0 || approvalPendingQuotes.length > 0;
+  const hasAnyApprovalItems = approvalPending.length > 0 || approvalPendingQuotes.length > 0;
 
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = {
@@ -821,23 +774,30 @@ const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [line
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
-    createdAt && !Number.isNaN(createdAt.getTime())
-      ? format(createdAt, "PPpp")
-      : "—";
+    createdAt && !Number.isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
 
   const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
-  const canApprove = currentUserRole
-    ? APPROVAL_ROLES.has(currentUserRole)
-    : false;
+  const canApprove = currentUserRole ? APPROVAL_ROLES.has(currentUserRole) : false;
+
+  const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
 
   const assignablesById = useMemo(() => {
-    const m: Record<string, { full_name: string | null; role: string | null }> =
-      {};
+    const m: Record<string, { full_name: string | null; role: string | null }> = {};
     assignables.forEach((a) => {
       m[a.id] = { full_name: a.full_name, role: a.role };
     });
     return m;
   }, [assignables]);
+
+  const selectedDelLine = useMemo(() => {
+    if (!delLineId) return null;
+    return lines.find((l) => l.id === delLineId) ?? null;
+  }, [delLineId, lines]);
+
+  const selectedDelAllocs = useMemo(() => {
+    if (!delLineId) return [];
+    return allocsByLine[delLineId] ?? [];
+  }, [delLineId, allocsByLine]);
 
   type WorkOrderWaiterFlags = {
     is_waiter?: boolean | null;
@@ -849,13 +809,32 @@ const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [line
     ? (wo as WorkOrder & WorkOrderWaiterFlags)
     : null;
 
-  const isWaiter =
-    !!(
-      waiterFlagSource &&
-      (waiterFlagSource.is_waiter ||
-        waiterFlagSource.waiter ||
-        waiterFlagSource.customer_waiting)
-    );
+  const isWaiter = !!(
+    waiterFlagSource &&
+    (waiterFlagSource.is_waiter || waiterFlagSource.waiter || waiterFlagSource.customer_waiting)
+  );
+
+  const openDeleteForLine = useCallback(
+    (lineId: string) => {
+      if (!canDeleteLine) {
+        toast.error("You don’t have permission to delete/void job lines.");
+        return;
+      }
+      setDelLineId(lineId);
+      setDelOpen(true);
+    },
+    [canDeleteLine],
+  );
+
+  const closeDeleteModal = useCallback(() => {
+    setDelOpen(false);
+    setDelLineId(null);
+  }, []);
+
+  const onDeleteDone = useCallback(async () => {
+    closeDeleteModal();
+    await fetchAll();
+  }, [closeDeleteModal, fetchAll]);
 
   /* ----------------------- line actions ----------------------- */
 
@@ -891,16 +870,12 @@ const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [line
       }
 
       const workOrderId =
-        (data as Pick<WorkOrderLine, "work_order_id"> | null)?.work_order_id ??
-        wo?.id ??
-        null;
+        (data as Pick<WorkOrderLine, "work_order_id"> | null)?.work_order_id ?? wo?.id ?? null;
 
       if (workOrderId) {
         const { error: woErr } = await supabase
           .from("work_orders")
-          .update(
-            { status: "queued" } as DB["public"]["Tables"]["work_orders"]["Update"],
-          )
+          .update({ status: "queued" } as DB["public"]["Tables"]["work_orders"]["Update"])
           .eq("id", workOrderId);
 
         if (woErr) {
@@ -939,9 +914,7 @@ const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [line
         const res = await fetch(`/api/work-orders/quotes/${quoteId}/authorize`, {
           method: "POST",
         });
-        const j = (await res.json().catch(() => null)) as
-          | { ok?: boolean; error?: string }
-          | null;
+        const j = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
 
         if (!res.ok || j?.error) {
           throw new Error(j?.error || "Failed to authorize quote");
@@ -950,8 +923,7 @@ const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [line
         toast.success("Quote authorized");
         void fetchAll();
       } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Failed to authorize quote";
+        const msg = e instanceof Error ? e.message : "Failed to authorize quote";
         toast.error(msg);
       }
     },
@@ -975,129 +947,124 @@ const approvalPending = useMemo(() => lines.filter(isPendingApprovalLine), [line
     [fetchAll],
   );
 
-  // ✅ UPDATED openInspectionForLine (WorkOrderIdClient)
-// - Keeps your existing fill + sessionStorage staging
-// - Adds templateId + templateName into BOTH sessionStorage params + URL params
-// - The modal will now show Template: <template_name> instead of "generic"
+  const openInspectionForLine = useCallback(
+    async (ln: WorkOrderLine) => {
+      if (!ln?.id) return;
 
-const openInspectionForLine = useCallback(
-  async (ln: WorkOrderLine) => {
-    if (!ln?.id) return;
+      const anyLine = ln as WorkOrderLineWithInspectionMeta;
+      const templateId = extractInspectionTemplateId(anyLine);
 
-    const anyLine = ln as WorkOrderLineWithInspectionMeta;
-    const templateId = extractInspectionTemplateId(anyLine);
+      if (!templateId) {
+        toast.error(
+          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+        );
+        return;
+      }
 
-    if (!templateId) {
-      toast.error(
-        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
-      );
-      return;
-    }
+      const { data, error } = await supabase
+        .from("inspection_templates")
+        .select("template_name, sections, vehicle_type")
+        .eq("id", templateId)
+        .maybeSingle();
 
-    const { data, error } = await supabase
-      .from("inspection_templates")
-      .select("template_name, sections, vehicle_type")
-      .eq("id", templateId)
-      .maybeSingle();
+      if (error || !data) {
+        toast.error("Unable to load inspection template.");
+        return;
+      }
 
-    if (error || !data) {
-      toast.error("Unable to load inspection template.");
-      return;
-    }
+      const rawSections = (data.sections ?? []) as TemplateSection[];
+      const vehicleType = String(data.vehicle_type ?? "");
+      const sections = prepareSectionsWithCornerGrid(rawSections, vehicleType, null);
 
-    const rawSections = (data.sections ?? []) as TemplateSection[];
-    const vehicleType = String(data.vehicle_type ?? "");
-    const sections = prepareSectionsWithCornerGrid(rawSections, vehicleType, null);
+      const templateName = data.template_name ?? null;
+      const title = templateName ?? "Inspection";
 
-    const templateName = data.template_name ?? null;
-    const title = templateName ?? "Inspection";
+      if (typeof window !== "undefined") {
+        const paramsObj: Record<string, string> = {};
 
-    if (typeof window !== "undefined") {
-      const paramsObj: Record<string, string> = {};
+        if (wo?.id) {
+          paramsObj.workOrderId = wo.id;
+          paramsObj.work_order_id = wo.id;
+        }
+
+        paramsObj.workOrderLineId = ln.id;
+        paramsObj.work_order_line_id = ln.id;
+        paramsObj.lineId = ln.id;
+
+        paramsObj.embed = "1";
+
+        // ✅ NEW: template identity for modal + downstream
+        paramsObj.templateId = templateId;
+        paramsObj.template_id = templateId;
+        if (templateName) {
+          paramsObj.templateName = templateName;
+          paramsObj.template_name = templateName;
+        }
+
+        if (ln.description) paramsObj.seed = String(ln.description);
+
+        if (customer) {
+          if (customer.first_name) paramsObj.first_name = customer.first_name;
+          if (customer.last_name) paramsObj.last_name = customer.last_name;
+          if (customer.phone) paramsObj.phone = customer.phone;
+          if (customer.email) paramsObj.email = customer.email;
+          if (customer.address) paramsObj.address = customer.address;
+          if (customer.city) paramsObj.city = customer.city;
+          if (customer.province) paramsObj.province = customer.province;
+          if (customer.postal_code) paramsObj.postal_code = customer.postal_code;
+        }
+
+        if (vehicle) {
+          if (vehicle.year != null) paramsObj.year = String(vehicle.year as string | number);
+          if (vehicle.make) paramsObj.make = vehicle.make;
+          if (vehicle.model) paramsObj.model = vehicle.model;
+          if (vehicle.vin) paramsObj.vin = vehicle.vin;
+          if (vehicle.license_plate) paramsObj.license_plate = vehicle.license_plate;
+          if (vehicle.mileage != null) paramsObj.mileage = String(vehicle.mileage);
+          if (vehicle.color) paramsObj.color = vehicle.color;
+          if (vehicle.unit_number) paramsObj.unit_number = vehicle.unit_number;
+          if (vehicle.engine_hours != null) paramsObj.engine_hours = String(vehicle.engine_hours);
+        }
+
+        sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
+        sessionStorage.setItem("inspection:title", title);
+        sessionStorage.setItem("inspection:vehicleType", vehicleType);
+        sessionStorage.setItem("inspection:template", "generic");
+        sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
+      }
+
+      const sp = new URLSearchParams();
+      sp.set("template", "generic");
 
       if (wo?.id) {
-        paramsObj.workOrderId = wo.id;
-        paramsObj.work_order_id = wo.id;
+        sp.set("workOrderId", wo.id);
+        sp.set("work_order_id", wo.id);
       }
 
-      paramsObj.workOrderLineId = ln.id;
-      paramsObj.work_order_line_id = ln.id;
-      paramsObj.lineId = ln.id;
+      sp.set("workOrderLineId", ln.id);
+      sp.set("work_order_line_id", ln.id);
+      sp.set("lineId", ln.id);
 
-      paramsObj.embed = "1";
-
-      // ✅ NEW: template identity for modal + downstream
-      paramsObj.templateId = templateId;
-      paramsObj.template_id = templateId;
+      // ✅ NEW: template identity also in URL (modal derives displayTemplate from URL too)
+      sp.set("templateId", templateId);
+      sp.set("template_id", templateId);
       if (templateName) {
-        paramsObj.templateName = templateName;
-        paramsObj.template_name = templateName;
+        sp.set("templateName", templateName);
+        sp.set("template_name", templateName);
       }
 
-      if (ln.description) paramsObj.seed = String(ln.description);
+      sp.set("embed", "1");
 
-      if (customer) {
-        if (customer.first_name) paramsObj.first_name = customer.first_name;
-        if (customer.last_name) paramsObj.last_name = customer.last_name;
-        if (customer.phone) paramsObj.phone = customer.phone;
-        if (customer.email) paramsObj.email = customer.email;
-        if (customer.address) paramsObj.address = customer.address;
-        if (customer.city) paramsObj.city = customer.city;
-        if (customer.province) paramsObj.province = customer.province;
-        if (customer.postal_code) paramsObj.postal_code = customer.postal_code;
-      }
+      if (ln.description) sp.set("seed", String(ln.description));
 
-      if (vehicle) {
-        if (vehicle.year != null) paramsObj.year = String(vehicle.year as string | number);
-        if (vehicle.make) paramsObj.make = vehicle.make;
-        if (vehicle.model) paramsObj.model = vehicle.model;
-        if (vehicle.vin) paramsObj.vin = vehicle.vin;
-        if (vehicle.license_plate) paramsObj.license_plate = vehicle.license_plate;
-        if (vehicle.mileage != null) paramsObj.mileage = String(vehicle.mileage);
-        if (vehicle.color) paramsObj.color = vehicle.color;
-        if (vehicle.unit_number) paramsObj.unit_number = vehicle.unit_number;
-        if (vehicle.engine_hours != null) paramsObj.engine_hours = String(vehicle.engine_hours);
-      }
+      const url = `/inspections/fill?${sp.toString()}`;
 
-      sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
-      sessionStorage.setItem("inspection:title", title);
-      sessionStorage.setItem("inspection:vehicleType", vehicleType);
-      sessionStorage.setItem("inspection:template", "generic");
-      sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
-    }
-
-    const sp = new URLSearchParams();
-    sp.set("template", "generic");
-
-    if (wo?.id) {
-      sp.set("workOrderId", wo.id);
-      sp.set("work_order_id", wo.id);
-    }
-
-    sp.set("workOrderLineId", ln.id);
-    sp.set("work_order_line_id", ln.id);
-    sp.set("lineId", ln.id);
-
-    // ✅ NEW: template identity also in URL (modal derives displayTemplate from URL too)
-    sp.set("templateId", templateId);
-    sp.set("template_id", templateId);
-    if (templateName) {
-      sp.set("templateName", templateName);
-      sp.set("template_name", templateName);
-    }
-
-    sp.set("embed", "1");
-
-    if (ln.description) sp.set("seed", String(ln.description));
-
-    const url = `/inspections/fill?${sp.toString()}`;
-
-    setInspectionSrc(url);
-    setInspectionOpen(true);
-    toast.success("Inspection opened");
-  },
-  [wo?.id, customer, vehicle,],
-);
+      setInspectionSrc(url);
+      setInspectionOpen(true);
+      toast.success("Inspection opened");
+    },
+    [wo?.id, customer, vehicle],
+  );
 
   useEffect(() => {
     if (!partsLineId) return;
@@ -1120,13 +1087,11 @@ const openInspectionForLine = useCallback(
     };
 
     window.addEventListener(evtName, handler as EventListener);
-    return () =>
-      window.removeEventListener(evtName, handler as EventListener);
+    return () => window.removeEventListener(evtName, handler as EventListener);
   }, [partsLineId, bulkActive, bulkQueue, fetchAll]);
 
   /* -------------------------- UI -------------------------- */
-  if (!routeId)
-    return <div className="p-6 text-red-500">Missing work order id.</div>;
+  if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
@@ -1186,9 +1151,7 @@ const openInspectionForLine = useCallback(
                     {wo.custom_id || `#${wo.id.slice(0, 8)}`}
                   </span>
                 </h1>
-                <p className="text-xs text-muted-foreground">
-                  Created {createdAtText}
-                </p>
+                <p className="text-xs text-muted-foreground">Created {createdAtText}</p>
               </div>
 
               <div className="flex items-center gap-3">
@@ -1240,30 +1203,20 @@ const openInspectionForLine = useCallback(
                   {vehicle ? (
                     <>
                       <p className="text-sm font-medium text-foreground">
-                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
-                        {vehicle.model ?? ""}
+                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""} {vehicle.model ?? ""}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        VIN:{" "}
-                        <span className="font-mono">{vehicle.vin ?? "—"}</span>
+                        VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
                         <br />
                         Plate:{" "}
-                        {vehicle.license_plate ?? (
-                          <span className="text-muted-foreground">—</span>
-                        )}
+                        {vehicle.license_plate ?? <span className="text-muted-foreground">—</span>}
                         <br />
                         Mileage:{" "}
-                        {vehicle.mileage
-                          ? vehicle.mileage
-                          : wo?.odometer_km != null
-                            ? `${wo.odometer_km} km`
-                            : "—"}
+                        {vehicle.mileage ? vehicle.mileage : wo?.odometer_km != null ? `${wo.odometer_km} km` : "—"}
                       </p>
                     </>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No vehicle linked yet.
-                    </p>
+                    <p className="text-sm text-muted-foreground">No vehicle linked yet.</p>
                   )}
                 </div>
 
@@ -1275,9 +1228,7 @@ const openInspectionForLine = useCallback(
                   {customer ? (
                     <>
                       <p className="text-sm font-medium text-foreground">
-                        {[customer.first_name ?? "", customer.last_name ?? ""]
-                          .filter(Boolean)
-                          .join(" ") || "—"}
+                        {[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {customer.phone ?? "—"}{" "}
@@ -1299,9 +1250,7 @@ const openInspectionForLine = useCallback(
                       )}
                     </>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No customer linked yet.
-                    </p>
+                    <p className="text-sm text-muted-foreground">No customer linked yet.</p>
                   )}
                 </div>
               </div>
@@ -1317,9 +1266,7 @@ const openInspectionForLine = useCallback(
             </div>
 
             {!hasAnyApprovalItems ? (
-              <p className="text-xs text-muted-foreground">
-                No lines waiting for approval.
-              </p>
+              <p className="text-xs text-muted-foreground">No lines waiting for approval.</p>
             ) : (
               <>
                 {approvalPending.length > 0 && (
@@ -1330,8 +1277,7 @@ const openInspectionForLine = useCallback(
                           (ln.hold_reason ?? "").toLowerCase().includes("part")) ||
                         (ln.hold_reason ?? "").toLowerCase().includes("quote");
 
-                      const hasQuotedParts =
-                        (activeQuotesByLine[ln.id] ?? []).length > 0;
+                      const hasQuotedParts = (activeQuotesByLine[ln.id] ?? []).length > 0;
 
                       const partsLabel = hasQuotedParts
                         ? "Quoted, awaiting approval"
@@ -1342,19 +1288,13 @@ const openInspectionForLine = useCallback(
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-foreground">
-                                {idx + 1}.{" "}
-                                {ln.description || ln.complaint || "Untitled job"}
+                                {idx + 1}. {ln.description || ln.complaint || "Untitled job"}
                               </div>
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                {String(ln.job_type ?? "job").replaceAll("_", " ")}{" "}
-                                •{" "}
-                                {typeof ln.labor_time === "number"
-                                  ? `${ln.labor_time}h`
-                                  : "—"}{" "}
-                                • Status:{" "}
-                                {(ln.status ?? "awaiting").replaceAll("_", " ")}{" "}
-                                • Approval:{" "}
-                                {(ln.approval_state ?? "pending").replaceAll("_", " ")}
+                                {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                                {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •
+                                Status: {(ln.status ?? "awaiting").replaceAll("_", " ")} •
+                                Approval: {(ln.approval_state ?? "pending").replaceAll("_", " ")}
                               </div>
 
                               {isAwaitingPartsBase && (
@@ -1396,11 +1336,7 @@ const openInspectionForLine = useCallback(
                 )}
 
                 {approvalPendingQuotes.length > 0 && (
-                  <div
-                    className={
-                      approvalPending.length > 0 ? "mt-4 space-y-2" : "space-y-2"
-                    }
-                  >
+                  <div className={approvalPending.length > 0 ? "mt-4 space-y-2" : "space-y-2"}>
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-300">
                       Quote suggestions
                     </div>
@@ -1412,13 +1348,9 @@ const openInspectionForLine = useCallback(
                               {idx + 1}. {q.description || "Quoted item"}
                             </div>
                             <div className="mt-0.5 text-[11px] text-muted-foreground">
-                              {String(q.job_type ?? "job").replaceAll("_", " ")}{" "}
-                              •{" "}
-                              {typeof q.est_labor_hours === "number"
-                                ? `${q.est_labor_hours}h`
-                                : "—"}{" "}
-                              • Status:{" "}
-                              {(q.status ?? "pending_parts").replaceAll("_", " ")}
+                              {String(q.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                              {typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"} •
+                              Status: {(q.status ?? "pending_parts").replaceAll("_", " ")}
                             </div>
                             {q.notes && (
                               <div className="mt-1 text-[11px] text-muted-foreground">
@@ -1462,8 +1394,7 @@ const openInspectionForLine = useCallback(
                   Jobs in this work order
                 </h2>
                 <p className="text-[11px] text-muted-foreground">
-                  Click any card to open the focused panel with full controls, punch
-                  and inspections.
+                  Click any card to open the focused panel with full controls, punch and inspections.
                 </p>
               </div>
 
@@ -1486,11 +1417,7 @@ const openInspectionForLine = useCallback(
                   const total = sortedLines.length;
                   const done = sortedLines.filter((ln) => {
                     const s = (ln.status ?? "").toLowerCase();
-                    return (
-                      s === "completed" ||
-                      s === "ready_to_invoice" ||
-                      s === "invoiced"
-                    );
+                    return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
                   }).length;
                   const pct = total ? Math.round((done / total) * 100) : 0;
 
@@ -1498,14 +1425,9 @@ const openInspectionForLine = useCallback(
                     <>
                       <div className="flex items-center justify-between gap-2 text-[11px] text-neutral-300">
                         <span className="font-medium">
-                          Job progress:{" "}
-                          <span className="text-white">
-                            {done}/{total} done
-                          </span>
+                          Job progress: <span className="text-white">{done}/{total} done</span>
                         </span>
-                        <span className="text-[10px] text-neutral-400">
-                          {pct}% complete
-                        </span>
+                        <span className="text-[10px] text-neutral-400">{pct}% complete</span>
                       </div>
                       <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-neutral-900">
                         <div
@@ -1522,9 +1444,7 @@ const openInspectionForLine = useCallback(
             {sortedLines.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No jobs added yet. Use the{" "}
-                <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">
-                  Add job
-                </span>{" "}
+                <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">Add job</span>{" "}
                 actions in the focused panel to start building this work order.
               </p>
             ) : (
@@ -1536,12 +1456,8 @@ const openInspectionForLine = useCallback(
 
                   const lineTechIds = lineTechsByLine[ln.id] ?? [];
                   const primaryId =
-                    typeof (
-                      ln as unknown as { assigned_tech_id?: string | null }
-                    ).assigned_tech_id === "string"
-                      ? (
-                          ln as unknown as { assigned_tech_id?: string | null }
-                        ).assigned_tech_id
+                    typeof (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
+                      ? (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id
                       : null;
 
                   const orderedTechIds: string[] = [];
@@ -1560,35 +1476,39 @@ const openInspectionForLine = useCallback(
                   });
 
                   return (
-                    <JobCard
-                      key={ln.id}
-                      index={idx}
-                      line={ln}
-                      parts={partsForLine}
-                      technicians={technicians}
-                      canAssign={canAssign}
-                      isPunchedIn={punchedIn}
-                      onOpen={() => {
-                        setFocusedJobId(ln.id);
-                        setFocusedOpen(true);
-                      }}
-                      onAssign={
-                        canAssign
-                          ? () => {
-                              setAssignLineId(ln.id);
-                              setAssignOpen(true);
-                            }
-                          : undefined
-                      }
-                      onOpenInspection={
-                        ln.job_type === "inspection"
-                          ? () => void openInspectionForLine(ln)
-                          : undefined
-                      }
-                      onAddPart={() => setPartsLineId(ln.id)}
-                      reviewOk={reviewOk}
-                      reviewIssues={reviewIssuesByLine[ln.id] ?? []}
-                    />
+                    <div key={ln.id} className="relative">
+                      <JobCard
+                        index={idx}
+                        line={ln}
+                        parts={partsForLine}
+                        technicians={technicians}
+                        canAssign={canAssign}
+                        isPunchedIn={punchedIn}
+                        onOpen={() => {
+                          setFocusedJobId(ln.id);
+                          setFocusedOpen(true);
+                        }}
+                        onAssign={
+                          canAssign
+                            ? () => {
+                                setAssignLineId(ln.id);
+                                setAssignOpen(true);
+                              }
+                            : undefined
+                        }
+                        onOpenInspection={
+                          ln.job_type === "inspection"
+                            ? () => void openInspectionForLine(ln)
+                            : undefined
+                        }
+                        onAddPart={() => setPartsLineId(ln.id)}
+                        reviewOk={reviewOk}
+                        reviewIssues={reviewIssuesByLine[ln.id] ?? []}
+                        // ✅ NEW: delete/void button lives inside JobCard now
+                        canDelete={canDeleteLine}
+                        onDelete={() => openDeleteForLine(ln.id)}
+                      />
+                    </div>
                   );
                 })}
               </div>
@@ -1606,8 +1526,7 @@ const openInspectionForLine = useCallback(
 
           <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
             <p>
-              Select a job card above to open the focused job panel with full editing,
-              punch and inspection controls.
+              Select a job card above to open the focused job panel with full editing, punch and inspection controls.
             </p>
           </div>
         </div>
@@ -1616,14 +1535,9 @@ const openInspectionForLine = useCallback(
       {/* Vehicle photos */}
       {vehicle?.id && (
         <div className="mt-8 space-y-4">
-          <h2 className="text-lg font-semibold text-foreground sm:text-xl">
-            Vehicle photos
-          </h2>
+          <h2 className="text-lg font-semibold text-foreground sm:text-xl">Vehicle photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery
-            vehicleId={vehicle.id}
-            currentUserId={currentUserId || "anon"}
-          />
+          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId || "anon"} />
         </div>
       )}
 
@@ -1647,8 +1561,7 @@ const openInspectionForLine = useCallback(
           vehicleSummary={
             vehicle
               ? {
-                  year:
-                    (vehicle.year as string | number | null)?.toString() ?? null,
+                  year: (vehicle.year as string | number | null)?.toString() ?? null,
                   make: vehicle.make ?? null,
                   model: vehicle.model ?? null,
                 }
@@ -1690,6 +1603,16 @@ const openInspectionForLine = useCallback(
         />
       )}
 
+      {/* Delete / Void line modal */}
+      {delOpen && selectedDelLine && (
+        <DeleteOrVoidLineModal
+          open={delOpen}
+          onClose={closeDeleteModal}
+          line={selectedDelLine}
+          allocations={selectedDelAllocs}
+          onDone={() => void onDeleteDone()}
+        />
+      )}
     </div>
   );
 }

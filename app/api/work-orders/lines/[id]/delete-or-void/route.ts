@@ -1,4 +1,4 @@
-// /app/api/work-orders/lines/[lineId]/delete-or-void/route.ts
+// /app/api/work-orders/lines/[id]/delete-or-void/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -27,13 +27,13 @@ function asNumber(v: unknown): number {
 
 export async function POST(
   req: Request,
-  ctx: { params: Promise<{ lineId: string }> },
+  ctx: { params: Promise<{ id: string }> }, // ✅ folder is [id]
 ) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    const { lineId } = await ctx.params;
-    const id = safeTrim(lineId);
+    const { id: rawId } = await ctx.params; // ✅ params key is "id"
+    const id = safeTrim(rawId);
 
     const body = (await req.json().catch(() => null)) as Body | null;
 
@@ -43,7 +43,7 @@ export async function POST(
     const note = body?.note ?? null;
 
     if (!id) {
-      return NextResponse.json({ error: "Missing lineId" }, { status: 400 });
+      return NextResponse.json({ error: "Missing id" }, { status: 400 });
     }
     if (mode !== "delete" && mode !== "void") {
       return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
@@ -152,11 +152,6 @@ export async function POST(
       }
     }
 
-    // Decide whether we allow a hard delete:
-    // Only allowed when:
-    // - mode=delete
-    // - no allocations
-    // - line is not completed/ready_to_invoice/etc
     const hardDeleteAllowed =
       mode === "delete" &&
       !hasAllocs &&
@@ -175,10 +170,7 @@ export async function POST(
       return NextResponse.json({ ok: true, mode: "deleted" });
     }
 
-    // Otherwise: we VOID (soft delete)
-    // Inventory handling:
-    // - return_to_stock => apply_stock_move(+qty, reason=return_in), then delete allocations
-    // - keep_consumed/scrap => just delete allocations (inventory unchanged)
+    // Otherwise: VOID (soft delete)
     if (hasAllocs) {
       if (disposition === "return_to_stock") {
         for (const a of allocations) {
@@ -191,7 +183,7 @@ export async function POST(
           const { error: mvErr } = await supabase.rpc("apply_stock_move", {
             p_part: partId,
             p_loc: locId,
-            p_qty: qty, // returning stock back in
+            p_qty: qty,
             p_reason: "return_in",
             p_ref_kind: "work_order_line_void",
             p_ref_id: id,
@@ -203,7 +195,6 @@ export async function POST(
         }
       }
 
-      // Remove allocations so this voided line stops affecting quote/invoice totals
       const { error: daErr } = await supabase
         .from("work_order_part_allocations")
         .delete()
@@ -214,7 +205,6 @@ export async function POST(
       }
     }
 
-    // Mark the line voided (requires the SQL migration columns)
     const { error: vErr } = await supabase
       .from("work_order_lines")
       .update({

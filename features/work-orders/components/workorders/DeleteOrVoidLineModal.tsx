@@ -1,7 +1,7 @@
 // /features/work-orders/components/workorders/DeleteOrVoidLineModal.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -18,7 +18,6 @@ type Props = {
   onClose: () => void;
   line: WorkOrderLine;
   allocations: Allocation[];
-  /** optional: call to refresh the parent view */
   onDone?: () => void;
 };
 
@@ -33,18 +32,10 @@ export default function DeleteOrVoidLineModal({
   allocations,
   onDone,
 }: Props): JSX.Element | null {
-  const [mode, setMode] = useState<Mode>("void");
-  const [disposition, setDisposition] = useState<Disposition>("keep_consumed");
-  const [reason, setReason] = useState<string>("Customer declined");
-  const [note, setNote] = useState<string>("");
-  const [busy, setBusy] = useState(false);
-
+  const hasAllocs = allocations.length > 0;
   const lineStatus = safeTrim(line.status).toLowerCase();
 
-  const hasAllocs = allocations.length > 0;
-
   const hardDeleteAllowed = useMemo(() => {
-    // We only allow hard delete if it's clearly a “draft-ish” line and no parts exist.
     if (hasAllocs) return false;
     if (["completed", "ready_to_invoice", "invoiced"].includes(lineStatus)) {
       return false;
@@ -52,11 +43,49 @@ export default function DeleteOrVoidLineModal({
     return true;
   }, [hasAllocs, lineStatus]);
 
-  const title = hasAllocs ? "Delete / Void Line (Parts exist)" : "Delete / Void Line";
+  const [mode, setMode] = useState<Mode>("void");
+  const [disposition, setDisposition] = useState<Disposition>("keep_consumed");
+  const [reason, setReason] = useState<string>("Customer declined");
+  const [note, setNote] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+
+  // ✅ Reset modal state when opening or switching lines
+  useEffect(() => {
+    if (!open) return;
+    setBusy(false);
+    setNote("");
+    setReason("Customer declined");
+
+    // If parts exist, default to VOID (delete will be disabled anyway)
+    if (hasAllocs) {
+      setMode("void");
+      setDisposition("keep_consumed");
+      return;
+    }
+
+    // No parts: default to VOID, but keep delete available if allowed
+    setMode("void");
+  }, [open, line.id, hasAllocs]);
+
+  // ✅ If user somehow has "delete" selected but it becomes invalid, force back to void
+  useEffect(() => {
+    if (!open) return;
+    if (mode === "delete" && !hardDeleteAllowed) setMode("void");
+    if (hasAllocs && mode === "delete") setMode("void");
+  }, [open, mode, hardDeleteAllowed, hasAllocs]);
+
+  const title = hasAllocs
+    ? "Delete / Void Line (Parts exist)"
+    : "Delete / Void Line";
 
   if (!open) return null;
 
-  const submit = async () => {
+  const closeSafely = (): void => {
+    if (busy) return;
+    onClose();
+  };
+
+  const submit = async (): Promise<void> => {
     if (busy) return;
 
     const r = reason.trim();
@@ -83,7 +112,7 @@ export default function DeleteOrVoidLineModal({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            mode,
+            mode: hasAllocs ? "void" : mode, // ✅ safety: parts => void only
             disposition: hasAllocs ? disposition : undefined,
             reason: r,
             note: note.trim() ? note.trim() : null,
@@ -99,10 +128,7 @@ export default function DeleteOrVoidLineModal({
         throw new Error(json?.error || "Failed.");
       }
 
-      toast.success(
-        json.mode === "deleted" ? "Line deleted." : "Line voided.",
-      );
-
+      toast.success(json.mode === "deleted" ? "Line deleted." : "Line voided.");
       onClose();
       onDone?.();
     } catch (e: unknown) {
@@ -113,10 +139,12 @@ export default function DeleteOrVoidLineModal({
     }
   };
 
+  const jobLabel = line.description || line.complaint || "Untitled job";
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
-      onClick={onClose}
+      onClick={closeSafely}
       role="dialog"
       aria-modal="true"
     >
@@ -128,8 +156,7 @@ export default function DeleteOrVoidLineModal({
 
         <div className="text-[11px] text-neutral-300">
           <div className="truncate">
-            <span className="text-neutral-400">Line:</span>{" "}
-            {line.description || line.complaint || "Untitled job"}
+            <span className="text-neutral-400">Line:</span> {jobLabel}
           </div>
           <div className="mt-1">
             <span className="text-neutral-400">Status:</span>{" "}
@@ -139,6 +166,13 @@ export default function DeleteOrVoidLineModal({
             <span className="text-neutral-400">Parts on line:</span>{" "}
             {allocations.length}
           </div>
+
+          {hasAllocs && (
+            <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100">
+              Parts exist on this line, so ProFixIQ will <b>Void</b> the line (audit
+              trail) and handle allocations safely.
+            </div>
+          )}
         </div>
 
         <div className="mt-4 space-y-3">
@@ -155,6 +189,7 @@ export default function DeleteOrVoidLineModal({
                   name="mode"
                   checked={mode === "void"}
                   onChange={() => setMode("void")}
+                  disabled={busy}
                 />
                 <span>
                   <span className="font-semibold text-white">Void / Cancel</span>
@@ -180,7 +215,7 @@ export default function DeleteOrVoidLineModal({
                   name="mode"
                   checked={mode === "delete"}
                   onChange={() => setMode("delete")}
-                  disabled={!hardDeleteAllowed}
+                  disabled={!hardDeleteAllowed || busy}
                 />
                 <span>
                   <span className="font-semibold text-white">Hard delete</span>
@@ -206,6 +241,7 @@ export default function DeleteOrVoidLineModal({
                     name="disp"
                     checked={disposition === "return_to_stock"}
                     onChange={() => setDisposition("return_to_stock")}
+                    disabled={busy}
                   />
                   <span>
                     <span className="font-semibold text-white">
@@ -223,13 +259,14 @@ export default function DeleteOrVoidLineModal({
                     name="disp"
                     checked={disposition === "keep_consumed"}
                     onChange={() => setDisposition("keep_consumed")}
+                    disabled={busy}
                   />
                   <span>
                     <span className="font-semibold text-white">
                       Parts were used / keep consumed
                     </span>
                     <div className="text-[11px] text-neutral-400">
-                      Leaves inventory as-is; removes allocations so customer isn’t charged.
+                      Inventory unchanged; removes allocations so customer isn’t charged.
                     </div>
                   </span>
                 </label>
@@ -240,6 +277,7 @@ export default function DeleteOrVoidLineModal({
                     name="disp"
                     checked={disposition === "scrap"}
                     onChange={() => setDisposition("scrap")}
+                    disabled={busy}
                   />
                   <span>
                     <span className="font-semibold text-white">Scrap</span>
@@ -261,6 +299,7 @@ export default function DeleteOrVoidLineModal({
             <select
               value={reason}
               onChange={(e) => setReason(e.target.value)}
+              disabled={busy}
               className="mt-2 w-full rounded-lg border border-white/10 bg-black/60 px-2.5 py-2 text-sm text-white outline-none focus:border-[color:var(--accent-copper,#f97316)]/60"
             >
               <option>Customer declined</option>
@@ -273,6 +312,7 @@ export default function DeleteOrVoidLineModal({
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              disabled={busy}
               className="mt-2 min-h-[90px] w-full rounded-lg border border-white/10 bg-black/60 px-2.5 py-2 text-sm text-white outline-none focus:border-[color:var(--accent-copper,#f97316)]/60"
               placeholder="Optional note…"
             />
@@ -282,7 +322,7 @@ export default function DeleteOrVoidLineModal({
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeSafely}
             disabled={busy}
             className="rounded-xl border border-white/15 bg-black/40 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/60 disabled:opacity-60"
           >
@@ -295,7 +335,7 @@ export default function DeleteOrVoidLineModal({
             disabled={busy}
             className="rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/15 disabled:opacity-60"
           >
-            {busy ? "Working…" : mode === "delete" ? "Delete line" : "Void line"}
+            {busy ? "Working…" : mode === "delete" && !hasAllocs ? "Delete line" : "Void line"}
           </button>
         </div>
       </div>

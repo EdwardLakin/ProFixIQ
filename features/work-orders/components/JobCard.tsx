@@ -1,4 +1,3 @@
-// features/work-orders/components/JobCard.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -42,6 +41,11 @@ export type JobCardProps = {
   onAssign?: () => void;
   onOpenInspection?: () => void;
   onAddPart?: () => void;
+
+  /** ✅ NEW: delete/void button inside card */
+  canDelete?: boolean;
+  onDelete?: () => void;
+
   /** Optional pricing info – we’ll wire this from the page later */
   pricing?: JobCardPricing;
 
@@ -73,18 +77,23 @@ type KnownStatus =
 const BASE_BADGE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide";
 
+/**
+ * ✅ Make in_progress pop more:
+ * - higher bg opacity
+ * - brighter text
+ * - glow shadow
+ */
 const BADGE: Record<KnownStatus, string> = {
   awaiting_approval: "bg-blue-900/30 border-blue-400/50 text-blue-100",
   awaiting: "bg-slate-900/40 border-slate-400/60 text-slate-100",
   queued: "bg-indigo-900/35 border-indigo-400/55 text-indigo-100",
   in_progress:
-    "bg-[color:var(--accent-copper,#f97316)]/10 border-[color:var(--accent-copper-soft,#fdba74)] text-[color:var(--accent-copper-light,#fed7aa)]",
+    "bg-[color:var(--accent-copper,#f97316)]/25 border-[color:var(--accent-copper-soft,#fdba74)]/90 text-white shadow-[0_0_16px_rgba(249,115,22,0.55)]",
   on_hold: "bg-amber-900/30 border-amber-400/55 text-amber-100",
   planned: "bg-purple-900/30 border-purple-400/55 text-purple-100",
   new: "bg-neutral-950/70 border-neutral-600/60 text-neutral-100",
   completed: "bg-emerald-900/25 border-emerald-400/60 text-emerald-100",
-  ready_to_invoice:
-    "bg-emerald-900/30 border-emerald-400/60 text-emerald-100",
+  ready_to_invoice: "bg-emerald-900/30 border-emerald-400/60 text-emerald-100",
   invoiced: "bg-teal-900/30 border-teal-400/60 text-teal-100",
 };
 
@@ -137,10 +146,10 @@ const CARD_SURFACE: Record<
   in_progress: {
     border: "border-[color:var(--accent-copper-soft,#fdba74)]",
     surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.28),rgba(15,23,42,0.98))]",
-    ring: "ring-[color:var(--accent-copper-soft,#fdba74)]/80",
+      "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.34),rgba(15,23,42,0.98))]",
+    ring: "ring-[color:var(--accent-copper-soft,#fdba74)]/90",
     rail:
-      "from-[color:var(--accent-copper,#f97316)] via-[color:var(--accent-copper-soft,#fdba74)]/60 to-transparent",
+      "from-[color:var(--accent-copper,#f97316)] via-[color:var(--accent-copper-soft,#fdba74)]/70 to-transparent",
   },
   on_hold: {
     border: "border-amber-400/80",
@@ -285,6 +294,8 @@ export function JobCard({
   onAssign,
   onOpenInspection,
   onAddPart,
+  canDelete,
+  onDelete,
   pricing,
   reviewIssues,
   reviewOk,
@@ -428,6 +439,28 @@ export function JobCard({
             </div>
 
             <div className="ml-auto flex items-center gap-2">
+              {/* ✅ NEW: delete/void inside card */}
+              {canDelete && onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="
+                    hidden items-center gap-1 rounded-full
+                    border border-red-500/45 bg-red-950/30
+                    px-2.5 py-1 text-[11px] font-semibold text-red-100
+                    shadow-[0_0_14px_rgba(239,68,68,0.35)]
+                    hover:border-red-400/65 hover:bg-red-950/45
+                    sm:inline-flex
+                  "
+                  title="Delete or void this line"
+                >
+                  🗑 <span className="hidden md:inline">Delete</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={toggleCollapsed}
