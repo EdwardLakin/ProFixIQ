@@ -48,7 +48,6 @@ type WorkOrderLineSlim = {
   work_order_id: string | null;
   labor_time: number | null;
   assigned_tech_id: string | null;
-  assigned_tech_id: string | null;
   punchable: boolean | null;
 };
 
