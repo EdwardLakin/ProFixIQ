@@ -1,4 +1,3 @@
-// features/shared/components/PunchController.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -45,6 +44,34 @@ export default function PunchController(): JSX.Element {
     return () => document.body.classList.remove("on-shift");
   }, [activeShift]);
 
+  async function loadShopIdForUser(uid: string): Promise<string | null> {
+    // ✅ New schema: profiles.user_id
+    const byUserId = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("user_id", uid)
+      .maybeSingle();
+
+    if (byUserId.data?.shop_id) return byUserId.data.shop_id as string;
+
+    // legacy fallback: profiles.id == auth.uid()
+    const byId = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", uid)
+      .maybeSingle();
+
+    return (byId.data?.shop_id as string | null) ?? null;
+  }
+
+  async function ensureShopScope(sid: string | null): Promise<void> {
+    if (!sid) return;
+    const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: sid });
+    if (error) {
+      console.warn("[PunchController] set_current_shop_id failed:", error);
+    }
+  }
+
   // bootstrap: auth + shop + current open shift
   useEffect(() => {
     (async () => {
@@ -57,28 +84,10 @@ export default function PunchController(): JSX.Element {
 
       setUserId(user.id);
 
-      const { data: profile, error: profErr } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profErr) {
-        console.error("[PunchController] profile load error:", profErr);
-      }
-
-      const sid = (profile?.shop_id as string | null) ?? null;
+      const sid = await loadShopIdForUser(user.id);
       setShopId(sid);
 
-      if (sid) {
-        const { error: scopeErr } = await supabase.rpc("set_current_shop_id", {
-          p_shop_id: sid,
-        });
-        if (scopeErr) {
-          console.warn("[PunchController] set_current_shop_id failed:", scopeErr);
-        }
-      }
-
+      await ensureShopScope(sid);
       await refreshShift(user.id);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,20 +131,37 @@ export default function PunchController(): JSX.Element {
   async function punchOutOfActiveJobsForTech(uid: string): Promise<void> {
     const nowIso = new Date().toISOString();
 
-    const update: WorkOrderLineUpdate = {
-      punched_out_at: nowIso,
-    };
-
-    const { error } = await supabase
+    // Find active jobs first so we can log the count (and diagnose RLS)
+    const { data: activeLines, error: listErr } = await supabase
       .from("work_order_lines")
-      .update(update)
+      .select("id")
       .eq("assigned_to", uid)
       .not("punched_in_at", "is", null)
       .is("punched_out_at", null);
 
-    if (error) {
-      console.error("[PunchController] failed to punch out active jobs:", error);
+    if (listErr) {
+      console.error("[PunchController] failed to list active jobs:", listErr);
+      return;
     }
+
+    const ids = (activeLines ?? []).map((r) => String((r as { id: unknown }).id)).filter(Boolean);
+    if (ids.length === 0) return;
+
+    const update: WorkOrderLineUpdate = {
+      punched_out_at: nowIso,
+    };
+
+    const { error: updErr } = await supabase
+      .from("work_order_lines")
+      .update(update)
+      .in("id", ids);
+
+    if (updErr) {
+      console.error("[PunchController] failed to punch out active jobs:", updErr);
+      return;
+    }
+
+    console.info(`[PunchController] punched out of ${ids.length} active job(s).`);
   }
 
   async function insertPunch(
@@ -185,14 +211,7 @@ export default function PunchController(): JSX.Element {
       const nowIso = new Date().toISOString();
 
       // If your RLS depends on shop scope, do it every time.
-      if (shopId) {
-        const { error: scopeErr } = await supabase.rpc("set_current_shop_id", {
-          p_shop_id: shopId,
-        });
-        if (scopeErr) {
-          console.warn("[PunchController] set_current_shop_id failed:", scopeErr);
-        }
-      }
+      await ensureShopScope(shopId);
 
       // ✅ tech_shifts DB CHECK: status in ('open','closed'), type in ('shift','break','lunch')
       const base: TechShiftInsert = {
@@ -237,17 +256,12 @@ export default function PunchController(): JSX.Element {
     try {
       const nowIso = new Date().toISOString();
 
-      if (shopId) {
-        const { error: scopeErr } = await supabase.rpc("set_current_shop_id", {
-          p_shop_id: shopId,
-        });
-        if (scopeErr) {
-          console.warn("[PunchController] set_current_shop_id failed:", scopeErr);
-        }
-      }
+      await ensureShopScope(shopId);
 
+      // ✅ punch out of ALL active jobs first
       await punchOutOfActiveJobsForTech(userId);
 
+      // ✅ then close the shift
       const update: TechShiftUpdate = {
         end_time: nowIso,
         status: "closed" as TechShiftUpdate["status"],
@@ -262,6 +276,9 @@ export default function PunchController(): JSX.Element {
 
       await insertPunch(activeShift.id, "end_shift", nowIso);
       await refreshShift(userId);
+
+      // Let job UIs refresh too
+      window.dispatchEvent(new CustomEvent("wol:refresh"));
     } catch (e) {
       console.error("[PunchController] onPunchOut:", safeMsg(e, "Failed to punch out."));
     } finally {

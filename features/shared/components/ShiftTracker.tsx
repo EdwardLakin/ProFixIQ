@@ -18,9 +18,23 @@ type PunchEventType =
   | "lunch_start"
   | "lunch_end";
 
+type PgErrorLike = { code?: string | null; message?: string | null };
+
 function toShiftType(input: unknown, fallback: ShiftType): ShiftType {
   const v = String(input ?? "").toLowerCase().trim();
   if (v === "shift" || v === "break" || v === "lunch") return v;
+  return fallback;
+}
+
+function formatPgErr(e: unknown, fallback: string): string {
+  if (e && typeof e === "object") {
+    const pe = e as PgErrorLike;
+    const code = pe.code ? `${pe.code}: ` : "";
+    const msg = pe.message ?? null;
+    if (msg) return `${code}${msg}`;
+  }
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
   return fallback;
 }
 
@@ -30,7 +44,7 @@ export default function ShiftTracker({
 }: {
   userId: string;
   defaultShiftType?: ShiftType;
-}) {
+}): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [shiftId, setShiftId] = useState<string | null>(null);
@@ -46,11 +60,10 @@ export default function ShiftTracker({
 
   const insertPunch = useCallback(
     async (sid: string, event: PunchEventType) => {
-      // IMPORTANT for your RLS SELECT policy: user_id must equal auth.uid()
       const { error } = await supabase.from("punch_events").insert({
         shift_id: sid,
         user_id: userId,
-        profile_id: userId, // ok if you use it; nullable anyway
+        profile_id: userId,
         event_type: event,
         timestamp: new Date().toISOString(),
       });
@@ -67,7 +80,6 @@ export default function ShiftTracker({
     if (!userId) return;
     setErr(null);
 
-    // Primary: status='open' (DB truth)
     const { data: shift, error: sErr } = await supabase
       .from("tech_shifts")
       .select("id, start_time, type, status, end_time")
@@ -87,7 +99,6 @@ export default function ShiftTracker({
 
     let open = shift ?? null;
 
-    // Fallback: end_time IS NULL (legacy drift)
     if (!open) {
       const { data: fb, error: fbErr } = await supabase
         .from("tech_shifts")
@@ -118,7 +129,6 @@ export default function ShiftTracker({
     setShiftId(open.id);
     setStartTime(open.start_time ?? null);
 
-    // Derive break/lunch from latest punch event (most reliable)
     const { data: lastPunch, error: pErr } = await supabase
       .from("punch_events")
       .select("event_type")
@@ -128,7 +138,6 @@ export default function ShiftTracker({
       .maybeSingle();
 
     if (pErr) {
-      // If punches can’t be read for any reason, fallback to shift.type
       setMode(toShiftType(open.type, "shift"));
       return;
     }
@@ -155,7 +164,6 @@ export default function ShiftTracker({
     setErr(null);
 
     try {
-      // hydrate if already open
       const { data: existing, error: exErr } = await supabase
         .from("tech_shifts")
         .select("id, start_time, type")
@@ -195,9 +203,8 @@ export default function ShiftTracker({
       setMode("shift");
 
       await insertPunch(data.id, "start_shift");
-    } catch (e: any) {
-      const msg = `${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to start shift"}`;
-      setErr(msg);
+    } catch (e: unknown) {
+      setErr(formatPgErr(e, "Failed to start shift"));
     } finally {
       setBusy(false);
     }
@@ -223,8 +230,8 @@ export default function ShiftTracker({
       setShiftId(null);
       setStartTime(null);
       setMode("ended");
-    } catch (e: any) {
-      setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to end shift"}`);
+    } catch (e: unknown) {
+      setErr(formatPgErr(e, "Failed to end shift"));
     } finally {
       setBusy(false);
     }
@@ -248,8 +255,8 @@ export default function ShiftTracker({
 
       await insertPunch(shiftId, isEnding ? "break_end" : "break_start");
       setMode(nextType);
-    } catch (e: any) {
-      setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle break"}`);
+    } catch (e: unknown) {
+      setErr(formatPgErr(e, "Failed to toggle break"));
     } finally {
       setBusy(false);
     }
@@ -273,8 +280,8 @@ export default function ShiftTracker({
 
       await insertPunch(shiftId, isEnding ? "lunch_end" : "lunch_start");
       setMode(nextType);
-    } catch (e: any) {
-      setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle lunch"}`);
+    } catch (e: unknown) {
+      setErr(formatPgErr(e, "Failed to toggle lunch"));
     } finally {
       setBusy(false);
     }
@@ -288,8 +295,7 @@ export default function ShiftTracker({
     red: `${btnBase} border-red-500`,
   };
 
-  const niceStatus =
-    mode === "none" ? "Off shift" : mode === "ended" ? "Shift ended" : mode;
+  const niceStatus = mode === "none" ? "Off shift" : mode === "ended" ? "Shift ended" : mode;
 
   return (
     <div className="text-sm mt-4 space-y-2">
@@ -314,7 +320,7 @@ export default function ShiftTracker({
       {mode === "none" && (
         <button
           className={`${btnOutline.yellow} w-full py-3 text-base`}
-          onClick={startShift}
+          onClick={() => void startShift()}
           disabled={busy}
         >
           {busy ? "Starting…" : "Start Shift"}
@@ -326,7 +332,7 @@ export default function ShiftTracker({
           <div className="flex gap-3">
             <button
               className={`${btnOutline.yellow} flex-1 py-3 text-base`}
-              onClick={toggleBreak}
+              onClick={() => void toggleBreak()}
               disabled={busy}
             >
               {mode === "break" ? "End Break" : "Break"}
@@ -334,7 +340,7 @@ export default function ShiftTracker({
 
             <button
               className={`${btnOutline.orange} flex-1 py-3 text-base`}
-              onClick={toggleLunch}
+              onClick={() => void toggleLunch()}
               disabled={busy}
             >
               {mode === "lunch" ? "End Lunch" : "Lunch"}
@@ -343,7 +349,7 @@ export default function ShiftTracker({
 
           <button
             className={`${btnOutline.red} w-full py-3 text-base`}
-            onClick={endShift}
+            onClick={() => void endShift()}
             disabled={busy}
           >
             End Shift

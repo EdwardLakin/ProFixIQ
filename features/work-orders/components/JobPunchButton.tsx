@@ -20,6 +20,18 @@ type DB = Database;
 
 type RpcErrorLike = { message?: string | null; code?: string | null };
 
+// Minimal “rpc-like” typing without using `Function` or `any`
+type RpcResponseLike = { error?: RpcErrorLike | null };
+type RpcCaller = {
+  rpc: (fn: string, args: Record<string, unknown>) => Promise<RpcResponseLike>;
+};
+
+function safeErrMsg(e: unknown, fallback: string): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  return fallback;
+}
+
 export default function JobPunchButton({
   lineId,
   punchedInAt,
@@ -28,7 +40,7 @@ export default function JobPunchButton({
   onUpdated,
   onFinishRequested,
   disabled = false,
-}: Props) {
+}: Props): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<"started" | "finished" | null>(null);
@@ -48,10 +60,7 @@ export default function JobPunchButton({
     const msg = String(err.message ?? "");
     const msgLc = msg.toLowerCase();
 
-    if (
-      msgLc.includes("schema cache") ||
-      msgLc.includes("could not find the function")
-    ) {
+    if (msgLc.includes("schema cache") || msgLc.includes("could not find the function")) {
       toast.error("System updated. Refresh the page and try again.");
       return true;
     }
@@ -65,11 +74,7 @@ export default function JobPunchButton({
       return true;
     }
 
-    if (
-      err.code === "23505" ||
-      msgLc.includes("another active job") ||
-      msgLc.includes("active job")
-    ) {
+    if (err.code === "23505" || msgLc.includes("another active job") || msgLc.includes("active job")) {
       toast.error("You already have another active job. Finish it first.");
       return true;
     }
@@ -77,19 +82,14 @@ export default function JobPunchButton({
     return false;
   };
 
-  async function rpcAnyArgs(
-    fn: string,
-    args: Record<string, unknown>,
-  ): Promise<{ error?: RpcErrorLike | null }> {
-    // typed call first
-    const res = await (supabase as unknown as { rpc: Function }).rpc(fn, args);
+  async function rpcAnyArgs(fn: string, args: Record<string, unknown>): Promise<RpcResponseLike> {
+    // We intentionally keep this loose because you’re handling schema drift
+    const rpcClient = supabase as unknown as RpcCaller;
+    const res = await rpcClient.rpc(fn, args);
     return res ?? { error: { message: "RPC call failed" } };
   }
 
-  async function punchInRpc(): Promise<
-    { ok: true } | { ok: false; error: RpcErrorLike }
-  > {
-    // Try common arg names in order (handles schema drift)
+  async function punchInRpc(): Promise<{ ok: true } | { ok: false; error: RpcErrorLike }> {
     const tries: Record<string, unknown>[] = [
       { p_line_id: lineId },
       { line_id: lineId },
@@ -101,11 +101,11 @@ export default function JobPunchButton({
 
     for (const args of tries) {
       const res = await rpcAnyArgs("punch_in", args);
+
       if (!res.error) return { ok: true };
 
       lastErr = res.error ?? lastErr;
 
-      // If it’s a “hard” error (permission/constraint), don’t keep retrying
       const msgLc = String(lastErr.message ?? "").toLowerCase();
       const hard =
         msgLc.includes("not allowed") ||
@@ -119,7 +119,7 @@ export default function JobPunchButton({
     return { ok: false, error: lastErr };
   }
 
-  const start = async () => {
+  const start = async (): Promise<void> => {
     if (busy || effectiveDisabled) return;
     if (!lineId) {
       toast.error("Missing job line id.");
@@ -161,14 +161,14 @@ export default function JobPunchButton({
 
       window.dispatchEvent(new CustomEvent("wol:refresh"));
       await onUpdated?.();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Start failed");
+    } catch (e: unknown) {
+      toast.error(safeErrMsg(e, "Start failed"));
     } finally {
       setBusy(false);
     }
   };
 
-  const handlePrimary = () => {
+  const handlePrimary = (): void => {
     if (busy || effectiveDisabled) return;
 
     if (isStarted) {
