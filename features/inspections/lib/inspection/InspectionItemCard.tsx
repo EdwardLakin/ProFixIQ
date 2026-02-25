@@ -1,9 +1,12 @@
-/// features/inspections/lib/inspection/InspectionItemCard.tsx ✅ FULL FILE REPLACEMENT (NO any)
+// features/inspections/lib/inspection/InspectionItemCard.tsx ✅ FULL FILE REPLACEMENT (NO any)
 "use client";
 
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import type { InspectionItem, InspectionItemStatus } from "@inspections/lib/inspection/types";
+import type {
+  InspectionItem,
+  InspectionItemStatus,
+} from "@inspections/lib/inspection/types";
 import StatusButtons from "./StatusButtons";
 import PhotoUploadButton from "./PhotoUploadButton";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
@@ -41,7 +44,9 @@ function getItemLabel(raw: InspectionItem): string {
     title?: unknown;
   };
 
-  return String(it.item ?? it.name ?? it.label ?? it.description ?? it.title ?? "").trim();
+  return String(
+    it.item ?? it.name ?? it.label ?? it.description ?? it.title ?? "",
+  ).trim();
 }
 
 /** ✅ unify legacy note vs notes */
@@ -90,22 +95,24 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
       ? "shadow-[0_0_0_1px_rgba(245,158,11,0.15)]"
       : "";
 
-  // ✅ tooltip only when truncated
+  // ✅ expand-in-place only when truncated
   const labelRef = useRef<HTMLSpanElement | null>(null);
-  const [showTip, setShowTip] = useState(false);
-  const [tipEnabled, setTipEnabled] = useState(false);
+  const [expandEnabled, setExpandEnabled] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const holdTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const el = labelRef.current;
     if (!el) {
-      setTipEnabled(false);
+      setExpandEnabled(false);
       return;
     }
 
     const compute = () => {
       const truncated = isTruncated(el);
-      setTipEnabled(truncated && label.trim().length > 0);
+      setExpandEnabled(truncated && label.trim().length > 0);
+      // if it becomes not-truncated, collapse
+      if (!truncated) setExpanded(false);
     };
 
     compute();
@@ -122,26 +129,26 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     }
   };
 
-  const openTip = () => {
-    if (!tipEnabled) return;
-    setShowTip(true);
+  const openExpanded = () => {
+    if (!expandEnabled) return;
+    setExpanded(true);
   };
 
-  const closeTip = () => {
-    setShowTip(false);
+  const closeExpanded = () => {
+    setExpanded(false);
     clearHold();
   };
 
-  const onMouseEnter = () => openTip();
-  const onMouseLeave = () => closeTip();
+  const onMouseEnter = () => openExpanded();
+  const onMouseLeave = () => closeExpanded();
 
   const onTouchStart = () => {
-    if (!tipEnabled) return;
+    if (!expandEnabled) return;
     clearHold();
-    holdTimerRef.current = window.setTimeout(() => setShowTip(true), 450);
+    holdTimerRef.current = window.setTimeout(() => setExpanded(true), 450);
   };
 
-  const onTouchEnd = () => closeTip();
+  const onTouchEnd = () => closeExpanded();
 
   if (variant === "row") {
     return (
@@ -149,31 +156,27 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
         <div className="grid items-start gap-2 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-3">
           {/* Item */}
           <div className="min-w-0">
-            <div className="relative text-[15px] font-semibold text-white">
+            <div className="text-[15px] font-semibold text-white">
               <span
                 ref={labelRef}
-                className="block line-clamp-2 lg:truncate"
+                className={[
+                  "block min-w-0",
+                  // default: compact (your current layout)
+                  expanded
+                    ? "whitespace-normal break-words"
+                    : "line-clamp-2 lg:truncate",
+                  // small visual hint when it can expand
+                  expandEnabled && !expanded ? "cursor-help" : "",
+                ].join(" ")}
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
                 onTouchCancel={onTouchEnd}
+                title={expandEnabled ? label : undefined} // fallback for desktop
               >
                 {label || "—"}
               </span>
-
-              {showTip && tipEnabled && (
-                <div
-                  className={[
-                    "pointer-events-none absolute left-0 top-full z-30 mt-2",
-                    "max-w-[min(520px,90vw)] rounded-lg border border-white/10",
-                    "bg-black/85 px-3 py-2 text-[12px] font-normal text-neutral-100 shadow-[0_18px_45px_rgba(0,0,0,0.75)]",
-                    "backdrop-blur-md",
-                  ].join(" ")}
-                >
-                  {label}
-                </div>
-              )}
             </div>
           </div>
 
@@ -206,8 +209,13 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 item={item}
                 sectionIndex={sectionIndex}
                 itemIndex={itemIndex}
-                updateItem={(secIdx: number, itmIdx: number, updates: Partial<InspectionItem>) => {
-                  if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
+                updateItem={(
+                  secIdx: number,
+                  itmIdx: number,
+                  updates: Partial<InspectionItem>,
+                ) => {
+                  if (updates.status)
+                    onUpdateStatus(secIdx, itmIdx, updates.status);
                 }}
                 onStatusChange={(s: InspectionItemStatus) =>
                   onUpdateStatus(sectionIndex, itemIndex, s)
@@ -270,11 +278,11 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     );
   }
 
-  // Card variant
+  // Card variant (optional: keep simple truncate; uses browser title on hover)
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">
-        <h3 className="truncate text-[15px] font-semibold text-white">
+        <h3 className="truncate text-[15px] font-semibold text-white" title={label}>
           {label || "—"}
         </h3>
 
@@ -306,7 +314,11 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
               item={item}
               sectionIndex={sectionIndex}
               itemIndex={itemIndex}
-              updateItem={(secIdx: number, itmIdx: number, updates: Partial<InspectionItem>) => {
+              updateItem={(
+                secIdx: number,
+                itmIdx: number,
+                updates: Partial<InspectionItem>,
+              ) => {
                 if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
               }}
               onStatusChange={(s: InspectionItemStatus) =>
