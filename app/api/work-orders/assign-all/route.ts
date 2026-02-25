@@ -109,7 +109,7 @@ export async function POST(req: Request) {
     // assigned_tech_id is used by punch_in/out functions in DB
     let query = supabase
       .from("work_order_lines")
-      .update({ assigned_tech_id: tech_id, assigned_tech_id: tech_id })
+      .update({ assigned_tech_id: tech_id })
       .eq("work_order_id", work_order_id);
 
     if (only_unassigned) {
