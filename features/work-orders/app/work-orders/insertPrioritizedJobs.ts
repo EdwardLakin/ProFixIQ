@@ -45,7 +45,6 @@ export async function insertPrioritizedJobs(
     punched_out_at: null,
     hold_reason: null,
     assigned_tech_id: null,
-    assigned_tech_id: null,
   }));
 
   const { error } = await supabase.from("work_order_lines").insert(jobLines);
