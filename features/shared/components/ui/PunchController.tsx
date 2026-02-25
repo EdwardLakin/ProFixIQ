@@ -135,7 +135,7 @@ export default function PunchController(): JSX.Element {
     const { data: activeLines, error: listErr } = await supabase
       .from("work_order_lines")
       .select("id")
-      .eq("assigned_to", uid)
+      .eq("assigned_tech_id", uid)
       .not("punched_in_at", "is", null)
       .is("punched_out_at", null);
 

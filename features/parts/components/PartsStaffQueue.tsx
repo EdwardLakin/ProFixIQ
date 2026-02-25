@@ -70,7 +70,7 @@ export default function PartsStaffQueue() {
               shop_id,
               work_order_id,
               requested_by,
-              assigned_to,
+              assigned_tech_id,
               status,
               notes,
               created_at,

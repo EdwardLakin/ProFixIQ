@@ -190,8 +190,8 @@ export default function TechQueuePage() {
         .order("created_at", { ascending: false });
 
       const { data: techLines, error: linesErr } = prefs.showUnassigned
-        ? await baseQuery.or(`assigned_to.eq.${user.id},assigned_to.is.null`)
-        : await baseQuery.eq("assigned_to", user.id);
+        ? await baseQuery.or(`assigned_tech_id.eq.${user.id},assigned_tech_id.is.null`)
+        : await baseQuery.eq("assigned_tech_id", user.id);
 
       if (linesErr) {
         setErr(linesErr.message);
@@ -245,11 +245,11 @@ export default function TechQueuePage() {
       const { data: prs, error: prErr } = await supabase
         .from("part_requests")
         .select(
-          "id, shop_id, work_order_id, job_id, requested_by, assigned_to, status",
+          "id, shop_id, work_order_id, job_id, requested_by, assigned_tech_id, status",
         )
         .eq("shop_id", prof.shop_id)
         .not("status", "in", `(${CLOSED_PART_STATUSES.join(",")})`)
-        .or(`requested_by.eq.${user.id},assigned_to.eq.${user.id}`);
+        .or(`requested_by.eq.${user.id},assigned_tech_id.eq.${user.id}`);
 
       if (prErr) {
         console.error("[TechQueue] part_requests load error:", prErr);

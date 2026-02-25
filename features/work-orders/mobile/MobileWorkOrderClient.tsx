@@ -445,11 +445,11 @@ export default function MobileWorkOrderClient({
         const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
         setLines(lineRows);
 
-        // 🔹 populate tech names from assigned_to
+        // 🔹 populate tech names from assigned_tech_id
         const techIds = Array.from(
           new Set(
             lineRows
-              .map((ln) => ln.assigned_to)
+              .map((ln) => ln.assigned_tech_id)
               .filter((id): id is string => Boolean(id)),
           ),
         );
@@ -1308,8 +1308,8 @@ export default function MobileWorkOrderClient({
                     setFocusedOpen(true);
                   };
 
-                  const assignedTechName = ln.assigned_to
-                    ? techNamesById[ln.assigned_to] ?? "Assigned tech"
+                  const assignedTechName = ln.assigned_tech_id
+                    ? techNamesById[ln.assigned_tech_id] ?? "Assigned tech"
                     : null;
 
                   const bucket = toLineBucket(ln.status);

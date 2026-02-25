@@ -646,13 +646,13 @@ export default function SchedulingClient(): JSX.Element {
       // Billable minutes (work_order_lines)
       let woQ = supabase
         .from("work_order_lines")
-        .select("labor_time, user_id, assigned_to, created_at, shop_id")
+        .select("labor_time, user_id, assigned_tech_id, created_at, shop_id")
         .eq("shop_id", currentShopId)
         .gte("created_at", fromISO)
         .lte("created_at", toEndISO);
 
       if (userId) {
-        woQ = woQ.or(`user_id.eq.${userId},assigned_to.eq.${userId}`);
+        woQ = woQ.or(`user_id.eq.${userId},assigned_tech_id.eq.${userId}`);
       }
 
       const { data: lineRows, error: lineErr } = await woQ;

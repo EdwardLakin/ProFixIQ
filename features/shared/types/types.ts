@@ -20,7 +20,7 @@ type JobLine = {
   hold_reason: string | null;
   created_at: string;
   vehicle?: { year: number | null; make: string | null; model: string | null };
-  assigned_to?: { full_name: string | null };
+  assigned_tech_id?: { full_name: string | null };
 };
 
 // Reusable select with the two joins we need
@@ -33,7 +33,7 @@ const SELECT_WITH_JOINS = `
   hold_reason,
   created_at,
   vehicles:vehicle_id ( year, make, model ),
-  profiles:assigned_to ( full_name )
+  profiles:assigned_tech_id ( full_name )
 `;
 
 export async function fetchAllJobLines(): Promise<JobLine[]> {
@@ -62,6 +62,6 @@ export async function fetchAllJobLines(): Promise<JobLine[]> {
     vehicle: row.vehicles
       ? { year: row.vehicles.year ?? null, make: row.vehicles.make ?? null, model: row.vehicles.model ?? null }
       : undefined,
-    assigned_to: row.profiles ? { full_name: row.profiles.full_name ?? null } : undefined,
+    assigned_tech_id: row.profiles ? { full_name: row.profiles.full_name ?? null } : undefined,
   }));
 }

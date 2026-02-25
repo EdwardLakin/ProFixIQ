@@ -258,7 +258,7 @@ export default function AddJobModal(props: Props) {
         shop_id: useShopId,
 
         ...(user?.id ? { user_id: user.id } : {}),
-        ...(techId && techId !== "system" ? { assigned_to: techId } : {}),
+        ...(techId && techId !== "system" ? { assigned_tech_id: techId } : {}),
         ...(urgency ? { urgency } : {}),
       };
 

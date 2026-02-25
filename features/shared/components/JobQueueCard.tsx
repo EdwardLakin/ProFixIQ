@@ -73,14 +73,14 @@ function JobQueueCard({
     complaint,
     description,
     created_at,
-    assigned_to,
+    assigned_tech_id,
     id,
     status,
     hold_reason,
   } = job;
 
   const [selectedTech, setSelectedTech] = useState<string | null>(
-    assigned_to ?? null,
+    assigned_tech_id ?? null,
   );
 
   const assignedLabel = useMemo(() => {

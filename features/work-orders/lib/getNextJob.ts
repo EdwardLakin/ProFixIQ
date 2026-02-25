@@ -40,7 +40,7 @@ export async function getNextAvailableLine(
     const { data: resume } = await supabase
       .from("work_order_lines")
       .select("id, work_order_id, created_at, status, priority")
-      .eq("assigned_to", technicianId)
+      .eq("assigned_tech_id", technicianId)
       .in("status", ["in_progress", "paused", "awaiting"])
       .order("priority", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
@@ -77,7 +77,7 @@ export async function getNextAvailableLine(
       `
       )
       .eq("status", "queued")
-      .is("assigned_to", null)
+      .is("assigned_tech_id", null)
       .order("priority", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
       .limit(1);
@@ -113,9 +113,9 @@ export async function getNextAvailableLine(
   // 4) claim it conditionally (race-safe)
   const { data: claimed, error: claimErr } = await supabase
     .from("work_order_lines")
-    .update({ assigned_to: technicianId, status: "awaiting" })
+    .update({ assigned_tech_id: technicianId, status: "awaiting" })
     .eq("id", candidate.id)
-    .is("assigned_to", null)
+    .is("assigned_tech_id", null)
     .select("id, work_order_id, created_at, status, priority")
     .single();
 

@@ -182,7 +182,7 @@ export default function QueuePage() {
 
       const visibleWos: WO[] = isTech
         ? wos.filter((wo) =>
-            (map[wo.id] ?? []).some((l) => l.assigned_to === user.id),
+            (map[wo.id] ?? []).some((l) => l.assigned_tech_id === user.id),
           )
         : wos;
 
@@ -232,7 +232,7 @@ export default function QueuePage() {
 
     if (showMineOnly && userId) {
       pool = pool.filter((wo) =>
-        (linesByWo[wo.id] ?? []).some((l) => l.assigned_to === userId),
+        (linesByWo[wo.id] ?? []).some((l) => l.assigned_tech_id === userId),
       );
     }
 

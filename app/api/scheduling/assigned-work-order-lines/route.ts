@@ -5,7 +5,7 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 
-const ADMIN_ROLES = new Set<string>(["owner", "admin"]);
+const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
 
 type Caller = {
   id: string;

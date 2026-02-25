@@ -145,7 +145,7 @@ export default function MobileTechQueuePage() {
       const { data: techLines, error: linesErr } = await supabase
         .from("work_order_lines")
         .select("*")
-        .eq("assigned_to", user.id);
+        .eq("assigned_tech_id", user.id);
 
       if (linesErr) {
         setErr(linesErr.message);

@@ -204,9 +204,9 @@ export function MobileTechHome({
         const { data, error } = await supabase
           .from("work_order_lines")
           .select(
-            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_to",
+            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_tech_id",
           )
-          .eq("assigned_to", uid)
+          .eq("assigned_tech_id", uid)
           .not("punched_in_at", "is", null)
           .is("punched_out_at", null)
           .order("punched_in_at", { ascending: false })

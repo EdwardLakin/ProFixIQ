@@ -106,7 +106,7 @@ export default function TechPerformanceTiles({
           const { count } = await supabase
             .from("work_order_lines")
             .select("id", { count: "exact", head: true })
-            .eq("assigned_to", user.id)
+            .eq("assigned_tech_id", user.id)
             .is("punched_out_at", null);
 
           setAssignedFallback(count ?? 0);

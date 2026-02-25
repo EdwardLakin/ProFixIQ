@@ -130,19 +130,19 @@ export default function DashboardPage() {
       if (tech) {
         // TECH DASHBOARD COUNTS
         // - workOrders: count of non-completed assigned lines
-        // - partsRequests: count of open part requests involving me (requested_by OR assigned_to)
+        // - partsRequests: count of open part requests involving me (requested_by OR assigned_tech_id)
         const [myJobs, myParts] = await Promise.all([
           supabase
             .from("work_order_lines")
             .select("id", { count: "exact", head: true })
-            .eq("assigned_to", userId)
+            .eq("assigned_tech_id", userId)
             .not("status", "in", sqlTextIn(CLOSED_LINE_STATUSES)),
           supabase
             .from("part_requests")
             .select("id", { count: "exact", head: true })
             .eq("shop_id", shopId)
             .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES))
-            .or(`requested_by.eq.${userId},assigned_to.eq.${userId}`),
+            .or(`requested_by.eq.${userId},assigned_tech_id.eq.${userId}`),
         ]);
 
         setCounts({
@@ -241,9 +241,9 @@ export default function DashboardPage() {
         const { data, error } = await supabase
           .from("work_order_lines")
           .select(
-            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_to, status",
+            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, assigned_tech_id, status",
           )
-          .eq("assigned_to", uid)
+          .eq("assigned_tech_id", uid)
           .not("punched_in_at", "is", null)
           .is("punched_out_at", null)
           .order("punched_in_at", { ascending: false })

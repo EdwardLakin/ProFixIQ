@@ -41,7 +41,7 @@ type WorkOrderLine = {
   work_order_id?: string | null;
   status?: string | null;
   job_type?: string | null;
-  assigned_to?: string | null;
+  assigned_tech_id?: string | null;
   created_at?: string | null;
   hold_reason?: string | null;
   punched_in_at?: string | null;
@@ -186,9 +186,9 @@ export default function AdminQuickPanel() {
 
         supabase
           .from("work_order_lines")
-          .select("id,work_order_id,status,job_type,assigned_to,created_at")
+          .select("id,work_order_id,status,job_type,assigned_tech_id,created_at")
           .in("status", ["awaiting", "in_progress"])
-          .is("assigned_to", null)
+          .is("assigned_tech_id", null)
           .order("created_at", { ascending: false })
           .limit(10),
 

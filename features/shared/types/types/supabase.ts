@@ -4693,7 +4693,7 @@ export type Database = {
       }
       part_requests: {
         Row: {
-          assigned_to: string | null
+          assigned_tech_id: string | null
           created_at: string
           id: string
           job_id: string | null
@@ -4704,7 +4704,7 @@ export type Database = {
           work_order_id: string | null
         }
         Insert: {
-          assigned_to?: string | null
+          assigned_tech_id?: string | null
           created_at?: string
           id?: string
           job_id?: string | null
@@ -4715,7 +4715,7 @@ export type Database = {
           work_order_id?: string | null
         }
         Update: {
-          assigned_to?: string | null
+          assigned_tech_id?: string | null
           created_at?: string
           id?: string
           job_id?: string | null
@@ -9340,7 +9340,7 @@ export type Database = {
           approval_note: string | null
           approval_state: string | null
           assigned_tech_id: string | null
-          assigned_to: string | null
+          assigned_tech_id: string | null
           cause: string | null
           complaint: string | null
           correction: string | null
@@ -9390,7 +9390,7 @@ export type Database = {
           approval_note?: string | null
           approval_state?: string | null
           assigned_tech_id?: string | null
-          assigned_to?: string | null
+          assigned_tech_id?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
@@ -9440,7 +9440,7 @@ export type Database = {
           approval_note?: string | null
           approval_state?: string | null
           assigned_tech_id?: string | null
-          assigned_to?: string | null
+          assigned_tech_id?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
@@ -10142,6 +10142,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "work_orders_assigned_tech_fkey"
+            columns: ["assigned_tech"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "work_orders_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
@@ -10687,7 +10694,7 @@ export type Database = {
           approval_note: string | null
           approval_state: string | null
           assigned_tech_id: string | null
-          assigned_to: string | null
+          assigned_tech_id: string | null
           cause: string | null
           complaint: string | null
           correction: string | null

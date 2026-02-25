@@ -12,7 +12,7 @@ type DB = Database;
 type Body = {
   work_order_id: string;
   tech_id: string;
-  // optional, defaults to true → only update rows where assigned_to is null
+  // optional, defaults to true → only update rows where assigned_tech_id is null
   only_unassigned?: boolean;
 };
 
@@ -105,15 +105,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Tech is not in the same shop." }, { status: 403 });
     }
 
-    // Update work_order_lines (set BOTH assigned_to and assigned_tech_id)
+    // Update work_order_lines (set BOTH assigned_tech_id and assigned_tech_id)
     // assigned_tech_id is used by punch_in/out functions in DB
     let query = supabase
       .from("work_order_lines")
-      .update({ assigned_to: tech_id, assigned_tech_id: tech_id })
+      .update({ assigned_tech_id: tech_id, assigned_tech_id: tech_id })
       .eq("work_order_id", work_order_id);
 
     if (only_unassigned) {
-      query = query.is("assigned_to", null);
+      query = query.is("assigned_tech_id", null);
     }
 
     const { data: updatedRows, error: updErr } = await query.select("id");

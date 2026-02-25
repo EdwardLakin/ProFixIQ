@@ -10,7 +10,7 @@ type WorkOrderLine = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
     make?: string | null;
     model?: string | null;
   } | null;
-  assigned_to?: {
+  assigned_tech_id?: {
     full_name?: string | null;
   } | null;
 };
@@ -34,7 +34,7 @@ export default function WorkOrderCard({ job }: WorkOrderCardProps) {
     status,
     created_at,
     vehicle,
-    assigned_to,
+    assigned_tech_id,
     complaint,
     work_order_id,
   } = job;
@@ -70,7 +70,7 @@ export default function WorkOrderCard({ job }: WorkOrderCardProps) {
             Complaint: {complaint ?? "N/A"}
           </p>
           <p className="text-sm text-gray-700 dark:text-gray-300">
-            Assigned: {assigned_to?.full_name ?? "Unassigned"}
+            Assigned: {assigned_tech_id?.full_name ?? "Unassigned"}
           </p>
         </div>
       </div>

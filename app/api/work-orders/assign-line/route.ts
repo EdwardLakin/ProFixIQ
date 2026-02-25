@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     // 1) keep the simple column up to date
     const { error: lineErr } = await supabase
       .from("work_order_lines")
-      .update({ assigned_to: techId })
+      .update({ assigned_tech_id: techId })
       .eq("id", lineId);
 
     if (lineErr) {

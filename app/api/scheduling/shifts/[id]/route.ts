@@ -7,7 +7,7 @@ import {
 
 type DB = Database;
 
-const ADMIN_ROLES = new Set<string>(["owner", "admin"]);
+const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
 
 type Caller = {
   id: string;
@@ -66,7 +66,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
   const a = await authz();
   if (!a.ok) return a.res;
-  if (!a.isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!a.isAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const body = (await req.json().catch(() => null)) as Partial<ShiftUpdate> | null;
   if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
@@ -110,7 +112,9 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
 
   const a = await authz();
   if (!a.ok) return a.res;
-  if (!a.isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!a.isAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const admin = createAdminSupabase();
 

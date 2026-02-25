@@ -90,7 +90,7 @@ export default function AssignTechModal({
       });
 
       if (!res.ok) {
-        // ✅ Correct DB column (NOT assigned_to)
+        // ✅ Correct DB column (NOT assigned_tech_id)
         const { error } = await supabase
           .from("work_order_lines")
           .update(

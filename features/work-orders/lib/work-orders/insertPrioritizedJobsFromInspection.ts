@@ -90,7 +90,7 @@ export async function insertPrioritizedJobsFromInspection(
         punched_in_at: null,
         punched_out_at: null,
         hold_reason: null,
-        assigned_to: null,
+        assigned_tech_id: null,
         assigned_tech_id: null,
         labor_time: laborTime ?? null,
       };

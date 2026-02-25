@@ -7,7 +7,7 @@ import {
 
 type DB = Database;
 
-const ADMIN_ROLES = new Set<string>(["owner", "admin"]);
+const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
 
 type Caller = {
   id: string;
@@ -82,7 +82,9 @@ export async function GET(req: NextRequest) {
       .eq("shop_id", a.me.shop_id)
       .eq("role", role);
 
-    if (staffErr) return NextResponse.json({ error: staffErr.message }, { status: 500 });
+    if (staffErr) {
+      return NextResponse.json({ error: staffErr.message }, { status: 500 });
+    }
 
     staffIds = (staff ?? []).map((r) => r.id);
     if (staffIds.length === 0) {
@@ -120,19 +122,19 @@ export async function GET(req: NextRequest) {
     punches = (pRows ?? []) as typeof punches;
   }
 
-  // Billable minutes (same as your client fallback)
+  // Billable minutes (work_order_lines)
   let woQ = admin
     .from("work_order_lines")
-    .select("labor_time, user_id, assigned_to, created_at, shop_id")
+    .select("labor_time, user_id, assigned_tech_id, created_at, shop_id")
     .eq("shop_id", a.me.shop_id)
     .gte("created_at", from)
     .lte("created_at", to);
 
   if (userId) {
-    woQ = woQ.or(`user_id.eq.${userId},assigned_to.eq.${userId}`);
+    woQ = woQ.or(`user_id.eq.${userId},assigned_tech_id.eq.${userId}`);
   } else if (staffIds) {
     woQ = woQ.or(
-      `user_id.in.(${staffIds.join(",")}),assigned_to.in.(${staffIds.join(",")})`,
+      `user_id.in.(${staffIds.join(",")}),assigned_tech_id.in.(${staffIds.join(",")})`,
     );
   }
 
@@ -158,7 +160,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const a = await authz();
   if (!a.ok) return a.res;
-  if (!a.isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!a.isAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const body = (await req.json().catch(() => null)) as
     | Partial<DB["public"]["Tables"]["tech_shifts"]["Insert"]>
@@ -167,17 +171,22 @@ export async function POST(req: NextRequest) {
   if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
 
   if (!body.user_id || !body.start_time) {
-    return NextResponse.json({ error: "Missing user_id or start_time" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing user_id or start_time" },
+      { status: 400 },
+    );
   }
 
   const admin = createAdminSupabase();
 
-  // Force shop scope to caller shop
+  // Force shop scope + ensure required columns are satisfied
   const insert: DB["public"]["Tables"]["tech_shifts"]["Insert"] = {
     user_id: body.user_id,
     shop_id: a.me.shop_id,
     start_time: body.start_time,
     end_time: body.end_time ?? null,
+    type: (body.type ?? "shift") as DB["public"]["Tables"]["tech_shifts"]["Insert"]["type"],
+    status: (body.status ?? "open") as DB["public"]["Tables"]["tech_shifts"]["Insert"]["status"],
   };
 
   const { error } = await admin.from("tech_shifts").insert(insert);

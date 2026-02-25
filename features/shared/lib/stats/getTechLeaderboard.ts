@@ -47,7 +47,7 @@ type WorkOrderLineSlim = {
   shop_id: string | null;
   work_order_id: string | null;
   labor_time: number | null;
-  assigned_to: string | null;
+  assigned_tech_id: string | null;
   assigned_tech_id: string | null;
   punchable: boolean | null;
 };
@@ -257,7 +257,7 @@ export async function getTechLeaderboard(
     for (const ids of chunks) {
       const { data, error } = await supabase
         .from("work_order_lines")
-        .select("id, shop_id, work_order_id, labor_time, assigned_to, assigned_tech_id, punchable")
+        .select("id, shop_id, work_order_id, labor_time, assigned_tech_id, assigned_tech_id, punchable")
         .eq("shop_id", shopId)
         .in("work_order_id", ids);
 
@@ -292,7 +292,7 @@ export async function getTechLeaderboard(
 
         // Primary: lines assigned to this tech (either field)
         const mine = candidateLines.filter(
-          (l) => l.assigned_to === techId || l.assigned_tech_id === techId,
+          (l) => l.assigned_tech_id === techId || l.assigned_tech_id === techId,
         );
         const mineSum = mine.reduce((acc, l) => acc + safeNum(l.labor_time), 0);
 

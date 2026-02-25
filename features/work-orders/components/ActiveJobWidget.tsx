@@ -51,7 +51,7 @@ export function ActiveJobWidget(): JSX.Element {
       const { data: line, error: lineErr } = await supabase
         .from("work_order_lines")
         .select("*")
-        .eq("assigned_to", user.id)
+        .eq("assigned_tech_id", user.id)
         .not("punched_in_at", "is", null)
         .is("punched_out_at", null)
         .order("punched_in_at", { ascending: false })

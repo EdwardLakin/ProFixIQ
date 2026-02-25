@@ -5,7 +5,7 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 
-const ADMIN_ROLES = new Set<string>(["owner", "admin"]);
+const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager", "advisor"]);
 
 type Caller = {
   id: string;
@@ -81,7 +81,6 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(200);
 
-  // If your work_orders.status is different, remove this filter
   if (status && status !== "all") q = q.eq("status", status);
 
   const { data, error } = await q;

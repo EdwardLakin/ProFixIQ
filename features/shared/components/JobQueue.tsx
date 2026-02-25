@@ -33,7 +33,7 @@ export default function JobQueue({
   title = "Technician Job Queue",
 }: JobQueueProps) {
   const filteredJobs = (filterTechId
-    ? jobs.filter((job) => (job.assigned_to ?? null) === filterTechId)
+    ? jobs.filter((job) => (job.assigned_tech_id ?? null) === filterTechId)
     : jobs
   ).slice(); // shallow copy before sort
 

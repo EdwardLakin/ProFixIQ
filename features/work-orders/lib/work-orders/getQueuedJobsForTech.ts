@@ -33,7 +33,7 @@ export async function getQueuedJobsForTech(techId?: string): Promise<JobLine[]> 
 
   if (techId) {
     // show jobs assigned to this tech OR unassigned
-    query = query.or(`assigned_to.eq.${techId},assigned_to.is.null`);
+    query = query.or(`assigned_tech_id.eq.${techId},assigned_tech_id.is.null`);
   }
 
   const { data, error } = await query;

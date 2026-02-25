@@ -183,7 +183,7 @@ export default function MobileHome() {
             .from("work_order_lines")
             .select("id,labor_time,punched_out_at,status")
             .or(
-              `assigned_tech_id.eq.${uid},assigned_to.eq.${uid},user_id.eq.${uid}`,
+              `assigned_tech_id.eq.${uid},assigned_tech_id.eq.${uid},user_id.eq.${uid}`,
             )
             .eq("status", "completed")
             .gte("punched_out_at", dayStartIso)
@@ -194,7 +194,7 @@ export default function MobileHome() {
             .from("work_order_lines")
             .select("id,labor_time,punched_out_at,status")
             .or(
-              `assigned_tech_id.eq.${uid},assigned_to.eq.${uid},user_id.eq.${uid}`,
+              `assigned_tech_id.eq.${uid},assigned_tech_id.eq.${uid},user_id.eq.${uid}`,
             )
             .eq("status", "completed")
             .gte("punched_out_at", weekStartIso)
@@ -205,7 +205,7 @@ export default function MobileHome() {
             .from("work_order_lines")
             .select("id,status,description,job_type")
             .or(
-              `assigned_tech_id.eq.${uid},assigned_to.eq.${uid},user_id.eq.${uid}`,
+              `assigned_tech_id.eq.${uid},assigned_tech_id.eq.${uid},user_id.eq.${uid}`,
             )
             .in("status", [
               "awaiting",
@@ -221,7 +221,7 @@ export default function MobileHome() {
             .from("work_order_lines")
             .select("id,status,description,job_type,created_at,complaint")
             .or(
-              `assigned_tech_id.eq.${uid},assigned_to.eq.${uid},user_id.eq.${uid}`,
+              `assigned_tech_id.eq.${uid},assigned_tech_id.eq.${uid},user_id.eq.${uid}`,
             )
             .gte("created_at", dayStartIso)
             .lte("created_at", dayEndIso)

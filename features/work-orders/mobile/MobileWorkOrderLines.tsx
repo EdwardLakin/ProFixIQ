@@ -129,7 +129,7 @@ export function MobileWorkOrderLines({
                       {statusLabel}
                     </span>
 
-                    {line.assigned_to ? (
+                    {line.assigned_tech_id ? (
                       <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-sky-100">
                         Assigned
                       </span>
