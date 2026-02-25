@@ -9340,7 +9340,6 @@ export type Database = {
           approval_note: string | null
           approval_state: string | null
           assigned_tech_id: string | null
-          assigned_tech_id: string | null
           cause: string | null
           complaint: string | null
           correction: string | null
@@ -9390,7 +9389,6 @@ export type Database = {
           approval_note?: string | null
           approval_state?: string | null
           assigned_tech_id?: string | null
-          assigned_tech_id?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
@@ -9439,7 +9437,6 @@ export type Database = {
           approval_by?: string | null
           approval_note?: string | null
           approval_state?: string | null
-          assigned_tech_id?: string | null
           assigned_tech_id?: string | null
           cause?: string | null
           complaint?: string | null
@@ -10693,7 +10690,6 @@ export type Database = {
           approval_by: string | null
           approval_note: string | null
           approval_state: string | null
-          assigned_tech_id: string | null
           assigned_tech_id: string | null
           cause: string | null
           complaint: string | null
