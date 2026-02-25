@@ -1085,15 +1085,6 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      handleClearForm();
-
-      // Also clear in-session workorder+lines draft
-      setWo(null);
-      setLines([]);
-      setNotes("");
-      setPriority(3);
-      setType("maintenance");
-
       router.push(`/work-orders/${latest.id}/approve`);
     } catch (ex) {
       const message =
