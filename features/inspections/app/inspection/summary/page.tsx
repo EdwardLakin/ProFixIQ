@@ -174,7 +174,7 @@ export default function SummaryPage() {
         return;
       }
 
-      const response = await fetch("/api/work-orders/from-inspection", {
+      const response = await fetch("/api/work-orders/import-from-inspection", {
         method: "POST",
         body: JSON.stringify({
           inspectionId,

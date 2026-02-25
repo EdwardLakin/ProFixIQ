@@ -3,28 +3,34 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import "server-only";
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
+import {
+  insertPrioritizedJobsFromInspection,
+} from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
+
+type DB = Database;
 
 type ImportBody = {
   workOrderId: string;
   inspectionId: string;
   vehicleId: string;
+  autoGenerateParts?: boolean;
 };
 
 export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
   try {
     const body = (await req.json()) as Partial<ImportBody>;
-    const { workOrderId, inspectionId, vehicleId } = body;
+    const { workOrderId, inspectionId, vehicleId, autoGenerateParts } = body;
 
     if (!workOrderId || !inspectionId || !vehicleId) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
-
-    const supabase = createRouteHandlerClient<Database>({ cookies });
 
     const {
       data: { user },
@@ -36,7 +42,6 @@ export async function POST(req: Request) {
     }
 
     // Ensure requester can see the WO (RLS enforced).
-    // Explicitly fetch minimal WO fields to prevent blind imports.
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
       .select("id, shop_id")
@@ -50,19 +55,30 @@ export async function POST(req: Request) {
       );
     }
     if (!wo) {
-      return NextResponse.json({ error: "Work order not found." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Work order not found." },
+        { status: 404 },
+      );
     }
 
-    // The library function should do its own RLS-safe inserts.
-    // We pass only the authenticated user id.
-    await insertPrioritizedJobsFromInspection(
-      workOrderId,
+    const res = await insertPrioritizedJobsFromInspection({
+      supabase,
       inspectionId,
-      user.id,
+      workOrderId,
       vehicleId,
-    );
+      userId: user.id,
+      autoGenerateParts: autoGenerateParts ?? true,
+    });
 
-    return NextResponse.json({ ok: true });
+    if (!res.ok) {
+      return NextResponse.json({ error: res.error }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      insertedCount: res.insertedCount,
+      partsRequestsCount: res.partsRequestsCount,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("import-from-inspection error:", message);
