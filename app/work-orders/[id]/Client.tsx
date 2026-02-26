@@ -310,6 +310,10 @@ export default function WorkOrderIdClient(): JSX.Element {
     [prefersPanel, router, routeId],
   );
 
+    const openQuoteReview = useCallback(() => {
+    router.push(`/work-orders/${routeId}/quote-review`);
+  }, [router, routeId]);
+
   /* ---------------------- AUTH + assignables ---------------------- */
   useEffect(() => {
     let mounted = true;
@@ -1305,13 +1309,24 @@ export default function WorkOrderIdClient(): JSX.Element {
             )}
           </div>
 
-          {/* Awaiting Customer Approval */}
-          <div className={`${cardBase} p-4`}>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-blue-200 sm:text-base">
-                Awaiting customer approval
-              </h2>
-            </div>
+                    {/* Awaiting Customer Approval */}
+          <div
+            className={`${cardBase} p-4 ${hasAnyApprovalItems ? "cursor-pointer hover:border-blue-400/30" : ""}`}
+            onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
+            role={hasAnyApprovalItems ? "button" : undefined}
+            tabIndex={hasAnyApprovalItems ? 0 : undefined}
+            onKeyDown={
+              hasAnyApprovalItems
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openQuoteReview();
+                    }
+                  }
+                : undefined
+            }
+            aria-label={hasAnyApprovalItems ? "Open quote review" : undefined}
+          >
 
             {!hasAnyApprovalItems ? (
               <p className="text-xs text-muted-foreground">No lines waiting for approval.</p>
@@ -1363,14 +1378,20 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 <button
                                   type="button"
                                   className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
-                                  onClick={() => approveLine(ln.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void approveLine(ln.id);
+              }}
                                 >
                                   Approve
                                 </button>
                                 <button
                                   type="button"
                                   className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
-                                  onClick={() => declineLine(ln.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void declineLine(ln.id);
+                                  }}
                                 >
                                   Decline
                                 </button>
@@ -1412,14 +1433,20 @@ export default function WorkOrderIdClient(): JSX.Element {
                               <button
                                 type="button"
                                 className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
-                                onClick={() => approveQuoteLine(q.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void approveQuoteLine(q.id);
+                                }}
                               >
                                 Approve
                               </button>
                               <button
                                 type="button"
                                 className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
-                                onClick={() => declineQuoteLine(q.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void declineQuoteLine(q.id);
+                                }}
                               >
                                 Decline
                               </button>
