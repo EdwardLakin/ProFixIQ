@@ -229,17 +229,15 @@ export default function AddJobModal(props: Props) {
 
       const hasParts = validItems.length > 0;
 
-      // ✅ Your rule:
-      // - if parts need quoting => on_hold "waiting for parts"
-      // For this modal we assume "parts need quoting" when ANY parts exist.
-      // (If later you add a toggle for “priced”, we can route to approval instead.)
-      const initialStatus: WorkOrderLineInsert["status"] = hasParts
-        ? "on_hold"
-        : "awaiting_approval";
+      // ✅ IMPORTANT CHANGE:
+      // This modal creates advisor/tech-added jobs that require customer authorization.
+      // Parts requests do NOT imply "on hold" (that's operational hold like waiting for parts delivery).
+      // So always start in the approval bucket.
+      const initialStatus: WorkOrderLineInsert["status"] = "awaiting_approval";
 
       const newLineId = uuidv4();
 
-      const payload: WorkOrderLineInsert = {
+      const payloadBase: WorkOrderLineInsert = {
         id: newLineId,
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
@@ -262,15 +260,24 @@ export default function AddJobModal(props: Props) {
         ...(urgency ? { urgency } : {}),
       };
 
+      // If your DB has approval columns, we want them consistent with the UI bucket.
+      // We apply them in a TS-safe way (won't break compile if not present in generated types).
+      const payload = {
+        ...payloadBase,
+        ...( {
+          approval_state: "pending",
+          approval_decision: "pending",
+          approval_requested_at: new Date().toISOString(),
+        } as unknown as Partial<WorkOrderLineInsert>),
+      } satisfies WorkOrderLineInsert;
+
       // 1) Create the line
       const { error: insErr } = await supabase.from("work_order_lines").insert(payload);
 
       if (insErr) {
         const msg = insErr.message || "Failed to add job.";
         if (/row-level security/i.test(msg)) {
-          setErr(
-            "Access denied (RLS). Check that your session is scoped to this shop.",
-          );
+          setErr("Access denied (RLS). Check that your session is scoped to this shop.");
           lastSetShopId.current = null;
         } else if (/status.*check/i.test(msg)) {
           setErr("This status isn’t allowed by the database.");
@@ -402,7 +409,7 @@ export default function AddJobModal(props: Props) {
           />
         </div>
 
-        {/* Items grid (copied style/behavior from PartsRequestModal) */}
+        {/* Items grid */}
         <div className="overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-black/60 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
           <div className="grid grid-cols-12 bg-gradient-to-r from-slate-900/90 via-slate-950 to-black px-3 py-2 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
             <div className="col-span-8">Parts description</div>

@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
@@ -195,6 +195,7 @@ function groupIssuesByLine(issues: ReviewIssue[]): Record<string, ReviewIssue[]>
 
 export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
+  const router = useRouter();
   const routeId = (params?.id as string) || "";
 
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
@@ -218,6 +219,8 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [authChecked, setAuthChecked] = useState<boolean>(false);
 
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
+
+  // ✅ focused job: support BOTH modal and new panel route
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [warnedMissing, setWarnedMissing] = useState(false);
@@ -282,6 +285,30 @@ export default function WorkOrderIdClient(): JSX.Element {
       setReviewIssuesByLine({});
     }
   }, []);
+
+  // ✅ Decide whether to use the new panel route (desktop/tablet) or modal (mobile)
+  const prefersPanel = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    // Tailwind lg breakpoint ~1024px
+    return window.matchMedia("(min-width: 1024px)").matches;
+  }, []);
+
+  const openFocusedJob = useCallback(
+    (lineId: string) => {
+      if (!lineId) return;
+
+      if (prefersPanel) {
+        // New route: /work-orders/[id]/focused-job/[lineId]
+        router.push(`/work-orders/${routeId}/focused-job/${lineId}`);
+        return;
+      }
+
+      // Fallback: modal (mobile / smaller screens)
+      setFocusedJobId(lineId);
+      setFocusedOpen(true);
+    },
+    [prefersPanel, router, routeId],
+  );
 
   /* ---------------------- AUTH + assignables ---------------------- */
   useEffect(() => {
@@ -375,7 +402,11 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         // by custom_id
         if (!woRow) {
-          const eqRes = await supabase.from("work_orders").select("*").eq("custom_id", routeId).maybeSingle();
+          const eqRes = await supabase
+            .from("work_orders")
+            .select("*")
+            .eq("custom_id", routeId)
+            .maybeSingle();
           woRow = (eqRes.data as WorkOrder | null) ?? null;
 
           if (!woRow) {
@@ -456,10 +487,18 @@ export default function WorkOrderIdClient(): JSX.Element {
             .eq("work_order_id", woRow.id)
             .order("created_at", { ascending: true }),
           woRow.vehicle_id
-            ? supabase.from("vehicles").select("*").eq("id", woRow.vehicle_id).maybeSingle()
+            ? supabase
+                .from("vehicles")
+                .select("*")
+                .eq("id", woRow.vehicle_id)
+                .maybeSingle()
             : Promise.resolve({ data: null, error: null } as const),
           woRow.customer_id
-            ? supabase.from("customers").select("*").eq("id", woRow.customer_id).maybeSingle()
+            ? supabase
+                .from("customers")
+                .select("*")
+                .eq("id", woRow.customer_id)
+                .maybeSingle()
             : Promise.resolve({ data: null, error: null } as const),
         ]);
 
@@ -643,8 +682,8 @@ export default function WorkOrderIdClient(): JSX.Element {
       const lineId = d.workOrderLineId || d.work_order_line_id || d.lineId;
       if (!lineId) return;
 
-      setFocusedJobId(lineId);
-      setFocusedOpen(true);
+      // ✅ open focused job (panel on desktop, modal on mobile)
+      openFocusedJob(lineId);
 
       window.dispatchEvent(
         new CustomEvent("wo:prefill-cause-correction", {
@@ -661,7 +700,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     return () => {
       window.removeEventListener("inspection:completed", handler as EventListener);
     };
-  }, []);
+  }, [openFocusedJob]);
 
   // ---------- close inspection modal ----------
   useEffect(() => {
@@ -1203,16 +1242,23 @@ export default function WorkOrderIdClient(): JSX.Element {
                   {vehicle ? (
                     <>
                       <p className="text-sm font-medium text-foreground">
-                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""} {vehicle.model ?? ""}
+                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
+                        {vehicle.model ?? ""}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
                         <br />
                         Plate:{" "}
-                        {vehicle.license_plate ?? <span className="text-muted-foreground">—</span>}
+                        {vehicle.license_plate ?? (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                         <br />
                         Mileage:{" "}
-                        {vehicle.mileage ? vehicle.mileage : wo?.odometer_km != null ? `${wo.odometer_km} km` : "—"}
+                        {vehicle.mileage
+                          ? vehicle.mileage
+                          : wo?.odometer_km != null
+                            ? `${wo.odometer_km} km`
+                            : "—"}
                       </p>
                     </>
                   ) : (
@@ -1228,7 +1274,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                   {customer ? (
                     <>
                       <p className="text-sm font-medium text-foreground">
-                        {[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}
+                        {[customer.first_name ?? "", customer.last_name ?? ""]
+                          .filter(Boolean)
+                          .join(" ") || "—"}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {customer.phone ?? "—"}{" "}
@@ -1484,10 +1532,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         technicians={technicians}
                         canAssign={canAssign}
                         isPunchedIn={punchedIn}
-                        onOpen={() => {
-                          setFocusedJobId(ln.id);
-                          setFocusedOpen(true);
-                        }}
+                        onOpen={() => openFocusedJob(ln.id)}
                         onAssign={
                           canAssign
                             ? () => {
@@ -1504,7 +1549,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         onAddPart={() => setPartsLineId(ln.id)}
                         reviewOk={reviewOk}
                         reviewIssues={reviewIssuesByLine[ln.id] ?? []}
-                        // ✅ NEW: delete/void button lives inside JobCard now
+                        // ✅ delete/void button lives inside JobCard now
                         canDelete={canDeleteLine}
                         onDelete={() => openDeleteForLine(ln.id)}
                       />
@@ -1541,7 +1586,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         </div>
       )}
 
-      {/* Focused job modal */}
+      {/* Focused job modal (mobile/small screens fallback) */}
       {focusedOpen && focusedJobId && (
         <FocusedJobModal
           isOpen={focusedOpen}

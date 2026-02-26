@@ -1,6 +1,8 @@
 // features/work-orders/components/workorders/FocusedJobModal.tsx (FULL FILE REPLACEMENT)
+// ✅ Adds `variant?: "modal" | "panel"` so we can reuse the same UI for:
+//    - modal overlay (mobile)
+//    - right-side in-page panel (desktop split route)
 // ✅ Fix build error: pass required `lineLabel` prop to CauseCorrectionModal
-// ✅ Uses complaint/description fallback for lineLabel
 
 "use client";
 
@@ -30,6 +32,7 @@ import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 type Mode = "tech" | "view";
+type Variant = "modal" | "panel";
 
 const statusTextColor: Record<string, string> = {
   in_progress: "text-sky-200",
@@ -90,8 +93,16 @@ export default function FocusedJobModal(props: {
   workOrderLineId: string;
   onChanged?: () => void | Promise<void>;
   mode?: Mode;
+  variant?: Variant; // ✅ NEW
 }): JSX.Element {
-  const { isOpen, onClose, workOrderLineId, onChanged, mode = "tech" } = props;
+  const {
+    isOpen,
+    onClose,
+    workOrderLineId,
+    onChanged,
+    mode = "tech",
+    variant = "modal",
+  } = props;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const lastSetShopId = useRef<string | null>(null);
@@ -115,14 +126,11 @@ export default function FocusedJobModal(props: {
   const [openAi, setOpenAi] = useState(false);
   const [_openDtc, setOpenDtc] = useState(false);
 
-  // ✅ vehicle history modal
   const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
 
-  // prefill
   const [prefillCause, setPrefillCause] = useState("");
   const [prefillCorrection, setPrefillCorrection] = useState("");
 
-  // parts used
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
@@ -132,7 +140,6 @@ export default function FocusedJobModal(props: {
     console.error(prefix, err);
   };
 
-  // ✅ stable callback so exhaustive-deps is satisfied
   const ensureShopContext = useCallback(
     async (id: string | null) => {
       if (!id) return;
@@ -164,13 +171,10 @@ export default function FocusedJobModal(props: {
   };
 
   useEffect(() => {
-    if (!isOpen) {
-      closeAllSubModals();
-    }
+    if (!isOpen) closeAllSubModals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // initial load
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
 
@@ -197,7 +201,6 @@ export default function FocusedJobModal(props: {
 
           setWorkOrder(wo ?? null);
 
-          // set shop scope early (helps future writes)
           const sid = (wo?.shop_id as string | null) ?? null;
           if (sid) {
             try {
@@ -216,9 +219,7 @@ export default function FocusedJobModal(props: {
               .maybeSingle<Vehicle>();
             if (ve) throw ve;
             setVehicle(v ?? null);
-          } else {
-            setVehicle(null);
-          }
+          } else setVehicle(null);
 
           if (wo?.customer_id) {
             const { data: c, error: ce } = await supabase
@@ -228,9 +229,7 @@ export default function FocusedJobModal(props: {
               .maybeSingle<Customer>();
             if (ce) throw ce;
             setCustomer(c ?? null);
-          } else {
-            setCustomer(null);
-          }
+          } else setCustomer(null);
         }
       } catch (e) {
         const err = e as { message?: string };
@@ -241,7 +240,6 @@ export default function FocusedJobModal(props: {
     })();
   }, [isOpen, workOrderLineId, supabase, ensureShopContext]);
 
-  // realtime line
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     const ch = supabase
@@ -335,7 +333,6 @@ export default function FocusedJobModal(props: {
     return () => window.removeEventListener("wol:refresh", handler);
   }, [refresh]);
 
-  // parts request events
   useEffect(() => {
     const handleClose = () => setOpenParts(false);
     const handleSubmitted = async () => {
@@ -351,7 +348,6 @@ export default function FocusedJobModal(props: {
     };
   }, [refresh]);
 
-  // inspection done → open complete
   useEffect(() => {
     const onInspectionDone = (evt: Event) => {
       const e = evt as CustomEvent<{
@@ -436,7 +432,6 @@ export default function FocusedJobModal(props: {
   const uploadPhoto = async (file: File) => {
     if (!workOrderLineId || !workOrder?.id) return;
 
-    // (Optional) scope for storage-related RLS setups
     try {
       await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
     } catch (e) {
@@ -484,7 +479,6 @@ export default function FocusedJobModal(props: {
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
 
-  // ✅ REQUIRED BY CauseCorrectionModal: use complaint first, then description
   const lineLabel =
     (line?.complaint ?? "").trim() ||
     (line?.description ?? "").trim() ||
@@ -500,8 +494,377 @@ export default function FocusedJobModal(props: {
     line?.status === "declined" ||
     (!!line?.approval_state && line.approval_state !== "approved");
 
-  return (
-    <>
+  // ✅ The reusable “body” (used by both modal + panel variants)
+  const Body = (
+    <div
+      className={`rounded-lg border border-white/15 bg-neutral-950/95 p-5 text-foreground shadow-xl ${
+        openAi ? "" : "max-h-[75vh] overflow-y-auto"
+      }`}
+    >
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="text-lg font-semibold tracking-tight">
+          <span className={chip(line?.status ?? null)}>{titleText}</span>
+          {workOrder ? (
+            <span className="ml-2 text-xs font-normal text-neutral-400">
+              WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
+            </span>
+          ) : null}
+          {line?.status === "awaiting_approval" && (
+            <span className="ml-2 rounded border border-blue-500/80 px-2 py-0.5 text-[0.65rem] text-blue-100">
+              Awaiting approval
+            </span>
+          )}
+          {line?.status === "declined" && (
+            <span className="ml-2 rounded border border-red-500/80 px-2 py-0.5 text-[0.65rem] text-red-100">
+              Declined
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {workOrder?.id && (
+            <button
+              type="button"
+              className="rounded-md border border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_12px_rgba(248,113,22,0.35)] hover:bg-[var(--accent-copper-light)]"
+              onClick={() => {
+                closeAllSubModals();
+                setOpenAddJob(true);
+              }}
+              disabled={busy}
+            >
+              + Job
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              closeAllSubModals();
+              onClose();
+            }}
+            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs text-neutral-200 hover:bg-white/5"
+            title="Close"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {busy && !line ? (
+        <div className="grid gap-3">
+          <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
+          <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
+        </div>
+      ) : !line ? (
+        <div className="text-sm text-neutral-300">No job found.</div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                Status
+              </div>
+              <div className={`mt-1 text-sm font-semibold ${chip(line.status ?? null)}`}>
+                {String(line.status || "awaiting").replaceAll("_", " ")}
+              </div>
+            </div>
+            <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Start</div>
+              <div className="mt-1 text-sm text-neutral-100">{createdStart}</div>
+            </div>
+            <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Finish</div>
+              <div className="mt-1 text-sm text-neutral-100">{createdFinish}</div>
+            </div>
+            <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                Hold Reason
+              </div>
+              <div className="mt-1 text-sm text-neutral-100">{line.hold_reason ?? "—"}</div>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3 text-sm">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                  Vehicle
+                </div>
+                <div className="mt-1 truncate text-neutral-100">
+                  {vehicle
+                    ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+                        .trim()
+                        .replace(/\s+/g, " ") || "—"
+                    : "—"}
+                </div>
+                <div className="mt-0.5 text-[11px] text-neutral-400">
+                  VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                  Customer
+                </div>
+                <div className="mt-1 truncate text-neutral-100">
+                  {customer
+                    ? [customer.first_name ?? "", customer.last_name ?? ""]
+                        .filter(Boolean)
+                        .join(" ") || "—"
+                    : "—"}
+                </div>
+                <div className="mt-0.5 text-[11px] text-neutral-400">
+                  {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {mode === "tech" && line && line.status !== "completed" && (
+            <div className="glass-card relative z-[5] rounded-2xl border border-white/10 bg-black/40 p-3">
+              <JobPunchButton
+                lineId={line.id}
+                punchedInAt={line.punched_in_at}
+                punchedOutAt={line.punched_out_at}
+                status={line.status as WorkflowStatus}
+                onFinishRequested={() => {
+                  closeAllSubModals();
+                  setPrefillCause(line.cause ?? "");
+                  setPrefillCorrection(line.correction ?? "");
+                  setOpenComplete(true);
+                }}
+                onUpdated={refresh}
+                disabled={completionBlocked}
+              />
+              {completionBlocked && (
+                <div className="mt-2 text-[11px] text-amber-300">
+                  {line.status === "awaiting_approval"
+                    ? "Awaiting approval — punching disabled"
+                    : line.status === "declined"
+                      ? "Declined — punching disabled"
+                      : line.approval_state && line.approval_state !== "approved"
+                        ? "Not approved — punching disabled"
+                        : ""}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {mode === "tech" ? (
+              <>
+                <button
+                  type="button"
+                  className={btnAccent}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setPrefillCause(line?.cause ?? "");
+                    setPrefillCorrection(line?.correction ?? "");
+                    setOpenComplete(true);
+                  }}
+                  disabled={completionBlocked}
+                >
+                  Complete (Cause / Correction)
+                </button>
+
+                <button
+                  type="button"
+                  className={btnDanger}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setOpenParts(true);
+                  }}
+                  disabled={busy}
+                >
+                  Request Parts
+                </button>
+
+                <button
+                  type="button"
+                  className={btnWarn}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setOpenHold(true);
+                  }}
+                  disabled={busy}
+                >
+                  {line.status === "on_hold" ? "On Hold" : "Hold"}
+                </button>
+
+                <button
+                  type="button"
+                  className={btnNeutral}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setOpenPhoto(true);
+                  }}
+                  disabled={busy}
+                >
+                  Add Photo
+                </button>
+
+                <button
+                  type="button"
+                  className={btnNeutral}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setOpenChat(true);
+                  }}
+                >
+                  Chat
+                </button>
+
+                <button
+                  type="button"
+                  className={btnInfo}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setOpenAi(true);
+                  }}
+                >
+                  AI Assist
+                </button>
+
+                <button
+                  type="button"
+                  className={btnNeutral}
+                  onClick={() => {
+                    if (!vehicle?.id) {
+                      toast.error("No vehicle linked to this work order yet.");
+                      return;
+                    }
+                    setOpenVehicleHistory(true);
+                  }}
+                  disabled={busy || !vehicle?.id}
+                >
+                  Vehicle History
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={btnNeutral}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setOpenChat(true);
+                  }}
+                >
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  className={btnInfo}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setOpenAi(true);
+                  }}
+                >
+                  AI Assist
+                </button>
+                <button
+                  type="button"
+                  className={btnInfo}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setOpenDtc(true);
+                  }}
+                  disabled={busy}
+                >
+                  DTC Assist (AI)
+                </button>
+
+                <button
+                  type="button"
+                  className={btnNeutral}
+                  onClick={() => {
+                    if (!vehicle?.id) {
+                      toast.error("No vehicle linked to this work order yet.");
+                      return;
+                    }
+                    setOpenVehicleHistory(true);
+                  }}
+                  disabled={busy || !vehicle?.id}
+                >
+                  Vehicle History
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+            <div className="mb-2 text-sm font-medium text-neutral-100">Parts used</div>
+
+            {allocsLoading ? (
+              <div className="text-sm text-neutral-300">Loading…</div>
+            ) : allocs.length === 0 ? (
+              <div className="text-sm text-neutral-300">No parts used yet.</div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+                <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                  <div className="col-span-7">Part</div>
+                  <div className="col-span-3">Location</div>
+                  <div className="col-span-2 text-right">Qty</div>
+                </div>
+                <ul className="max-h-56 overflow-auto divide-y divide-white/5">
+                  {allocs.map((a) => (
+                    <li key={a.id} className="grid grid-cols-12 items-center px-3 py-2 text-sm">
+                      <div className="col-span-7 truncate text-neutral-100">{a.parts?.name ?? "Part"}</div>
+                      <div className="col-span-3 truncate text-neutral-400">
+                        {a.location_id ? `loc ${String(a.location_id).slice(0, 6)}…` : "—"}
+                      </div>
+                      <div className="col-span-2 text-right font-semibold text-neutral-100">{a.qty}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+            <label className="mb-1 block text-sm font-medium text-neutral-100">Tech Notes</label>
+            <textarea
+              rows={4}
+              value={techNotes}
+              onChange={(e) => setTechNotes(e.target.value)}
+              onBlur={saveNotes}
+              disabled={savingNotes}
+              className="w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]"
+              placeholder="Add notes for this job…"
+            />
+          </div>
+
+          <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+            <h3 className="mb-2 text-sm font-medium text-neutral-100">AI Suggested Repairs</h3>
+            {line && workOrder ? (
+              <SuggestedQuickAdd
+                jobId={line.id}
+                workOrderId={workOrder.id}
+                vehicleId={vehicle?.id ?? null}
+                onAdded={async () => {
+                  toast.success("Suggested line added");
+                  await refresh();
+                }}
+              />
+            ) : (
+              <div className="text-sm text-neutral-300">Vehicle/work order details required.</div>
+            )}
+          </div>
+
+          <div className="text-xs text-neutral-400">
+            Job ID: {line.id}
+            {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
+            {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
+            {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ✅ Render mode: "panel" (no overlay) vs "modal" (Dialog overlay)
+  const Shell =
+    variant === "panel" ? (
+      <div className="relative">{Body}</div>
+    ) : (
       <Dialog
         open={isOpen}
         onClose={() => {
@@ -511,392 +874,15 @@ export default function FocusedJobModal(props: {
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
-
-        <div
-          className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div
-            className={`rounded-lg border border-white/15 bg-neutral-950/95 p-5 text-foreground shadow-xl ${
-              openAi ? "" : "max-h-[75vh] overflow-y-auto"
-            }`}
-          >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div className="text-lg font-semibold tracking-tight">
-                <span className={chip(line?.status ?? null)}>{titleText}</span>
-                {workOrder ? (
-                  <span className="ml-2 text-xs font-normal text-neutral-400">
-                    WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
-                  </span>
-                ) : null}
-                {line?.status === "awaiting_approval" && (
-                  <span className="ml-2 rounded border border-blue-500/80 px-2 py-0.5 text-[0.65rem] text-blue-100">
-                    Awaiting approval
-                  </span>
-                )}
-                {line?.status === "declined" && (
-                  <span className="ml-2 rounded border border-red-500/80 px-2 py-0.5 text-[0.65rem] text-red-100">
-                    Declined
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {workOrder?.id && (
-                  <button
-                    type="button"
-                    className="rounded-md border border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_12px_rgba(248,113,22,0.35)] hover:bg-[var(--accent-copper-light)]"
-                    onClick={() => {
-                      closeAllSubModals();
-                      setOpenAddJob(true);
-                    }}
-                    disabled={busy}
-                  >
-                    + Job
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    closeAllSubModals();
-                    onClose();
-                  }}
-                  className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs text-neutral-200 hover:bg-white/5"
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {busy && !line ? (
-              <div className="grid gap-3">
-                <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
-                <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
-              </div>
-            ) : !line ? (
-              <div className="text-sm text-neutral-300">No job found.</div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Status
-                    </div>
-                    <div className={`mt-1 text-sm font-semibold ${chip(line.status ?? null)}`}>
-                      {String(line.status || "awaiting").replaceAll("_", " ")}
-                    </div>
-                  </div>
-                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Start
-                    </div>
-                    <div className="mt-1 text-sm text-neutral-100">{createdStart}</div>
-                  </div>
-                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Finish
-                    </div>
-                    <div className="mt-1 text-sm text-neutral-100">{createdFinish}</div>
-                  </div>
-                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                      Hold Reason
-                    </div>
-                    <div className="mt-1 text-sm text-neutral-100">{line.hold_reason ?? "—"}</div>
-                  </div>
-                </div>
-
-                <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3 text-sm">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                        Vehicle
-                      </div>
-                      <div className="mt-1 truncate text-neutral-100">
-                        {vehicle
-                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
-                              .trim()
-                              .replace(/\s+/g, " ") || "—"
-                          : "—"}
-                      </div>
-                      <div className="mt-0.5 text-[11px] text-neutral-400">
-                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                        Customer
-                      </div>
-                      <div className="mt-1 truncate text-neutral-100">
-                        {customer
-                          ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") ||
-                            "—"
-                          : "—"}
-                      </div>
-                      <div className="mt-0.5 text-[11px] text-neutral-400">
-                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {mode === "tech" && line && line.status !== "completed" && (
-                  <div className="glass-card relative z-[5] rounded-2xl border border-white/10 bg-black/40 p-3">
-                    <JobPunchButton
-                      lineId={line.id}
-                      punchedInAt={line.punched_in_at}
-                      punchedOutAt={line.punched_out_at}
-                      status={line.status as WorkflowStatus}
-                      onFinishRequested={() => {
-                        closeAllSubModals();
-                        setPrefillCause(line.cause ?? "");
-                        setPrefillCorrection(line.correction ?? "");
-                        setOpenComplete(true);
-                      }}
-                      onUpdated={refresh}
-                      disabled={completionBlocked}
-                    />
-                    {completionBlocked && (
-                      <div className="mt-2 text-[11px] text-amber-300">
-                        {line.status === "awaiting_approval"
-                          ? "Awaiting approval — punching disabled"
-                          : line.status === "declined"
-                            ? "Declined — punching disabled"
-                            : line.approval_state && line.approval_state !== "approved"
-                              ? "Not approved — punching disabled"
-                              : ""}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {mode === "tech" ? (
-                    <>
-                      <button
-                        type="button"
-                        className={btnAccent}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setPrefillCause(line?.cause ?? "");
-                          setPrefillCorrection(line?.correction ?? "");
-                          setOpenComplete(true);
-                        }}
-                        disabled={completionBlocked}
-                      >
-                        Complete (Cause / Correction)
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnDanger}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenParts(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Request Parts
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnWarn}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenHold(true);
-                        }}
-                        disabled={busy}
-                      >
-                        {line.status === "on_hold" ? "On Hold" : "Hold"}
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenPhoto(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Add Photo
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenChat(true);
-                        }}
-                      >
-                        Chat
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenAi(true);
-                        }}
-                      >
-                        AI Assist
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          if (!vehicle?.id) {
-                            toast.error("No vehicle linked to this work order yet.");
-                            return;
-                          }
-                          setOpenComplete(false);
-                          setOpenParts(false);
-                          setOpenHold(false);
-                          setOpenPhoto(false);
-                          setOpenChat(false);
-                          setOpenAddJob(false);
-                          setOpenAi(false);
-                          setOpenVehicleHistory(true);
-                        }}
-                        disabled={busy || !vehicle?.id}
-                      >
-                        Vehicle History
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenChat(true);
-                        }}
-                      >
-                        Chat
-                      </button>
-                      <button
-                        type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenAi(true);
-                        }}
-                      >
-                        AI Assist
-                      </button>
-                      <button
-                        type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenDtc(true);
-                        }}
-                        disabled={busy}
-                      >
-                        DTC Assist (AI)
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          if (!vehicle?.id) {
-                            toast.error("No vehicle linked to this work order yet.");
-                            return;
-                          }
-                          setOpenVehicleHistory(true);
-                        }}
-                        disabled={busy || !vehicle?.id}
-                      >
-                        Vehicle History
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-                  <div className="mb-2 text-sm font-medium text-neutral-100">Parts used</div>
-
-                  {allocsLoading ? (
-                    <div className="text-sm text-neutral-300">Loading…</div>
-                  ) : allocs.length === 0 ? (
-                    <div className="text-sm text-neutral-300">No parts used yet.</div>
-                  ) : (
-                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
-                      <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                        <div className="col-span-7">Part</div>
-                        <div className="col-span-3">Location</div>
-                        <div className="col-span-2 text-right">Qty</div>
-                      </div>
-                      <ul className="max-h-56 overflow-auto divide-y divide-white/5">
-                        {allocs.map((a) => (
-                          <li
-                            key={a.id}
-                            className="grid grid-cols-12 items-center px-3 py-2 text-sm"
-                          >
-                            <div className="col-span-7 truncate text-neutral-100">
-                              {a.parts?.name ?? "Part"}
-                            </div>
-                            <div className="col-span-3 truncate text-neutral-400">
-                              {a.location_id ? `loc ${String(a.location_id).slice(0, 6)}…` : "—"}
-                            </div>
-                            <div className="col-span-2 text-right font-semibold text-neutral-100">
-                              {a.qty}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-                  <label className="mb-1 block text-sm font-medium text-neutral-100">Tech Notes</label>
-                  <textarea
-                    rows={4}
-                    value={techNotes}
-                    onChange={(e) => setTechNotes(e.target.value)}
-                    onBlur={saveNotes}
-                    disabled={savingNotes}
-                    className="w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]"
-                    placeholder="Add notes for this job…"
-                  />
-                </div>
-
-                <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-                  <h3 className="mb-2 text-sm font-medium text-neutral-100">AI Suggested Repairs</h3>
-                  {line && workOrder ? (
-                    <SuggestedQuickAdd
-                      jobId={line.id}
-                      workOrderId={workOrder.id}
-                      vehicleId={vehicle?.id ?? null}
-                      onAdded={async () => {
-                        toast.success("Suggested line added");
-                        await refresh();
-                      }}
-                    />
-                  ) : (
-                    <div className="text-sm text-neutral-300">Vehicle/work order details required.</div>
-                  )}
-                </div>
-
-                <div className="text-xs text-neutral-400">
-                  Job ID: {line.id}
-                  {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
-                  {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-                  {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
-                </div>
-              </div>
-            )}
-          </div>
+        <div className="relative z-[110] mx-4 my-6 w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+          {Body}
         </div>
       </Dialog>
+    );
+
+  return (
+    <>
+      {Shell}
 
       {openVehicleHistory && vehicle?.id ? (
         <VehicleHistoryModal
@@ -930,7 +916,6 @@ export default function FocusedJobModal(props: {
             if (!line.punched_in_at) update.punched_in_at = nowIso;
 
             const { error } = await supabase.from("work_order_lines").update(update).eq("id", line.id);
-
             if (error) {
               showErr("Complete job failed", error);
               throw error;
@@ -945,10 +930,7 @@ export default function FocusedJobModal(props: {
 
             const { error } = await supabase
               .from("work_order_lines")
-              .update({
-                cause,
-                correction,
-              } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+              .update({ cause, correction } as DB["public"]["Tables"]["work_order_lines"]["Update"])
               .eq("id", line.id);
 
             if (error) {
@@ -963,12 +945,7 @@ export default function FocusedJobModal(props: {
       )}
 
       {openParts && workOrder?.id && line && (
-        <PartsRequestModal
-          isOpen={openParts}
-          workOrderId={workOrder.id}
-          jobId={line.id}
-          requestNote={line.description ?? ""}
-        />
+        <PartsRequestModal isOpen={openParts} workOrderId={workOrder.id} jobId={line.id} requestNote={line.description ?? ""} />
       )}
 
       {openHold && line && (
@@ -982,9 +959,7 @@ export default function FocusedJobModal(props: {
         />
       )}
 
-      {openPhoto && (
-        <PhotoCaptureModal isOpen={openPhoto} onClose={() => setOpenPhoto(false)} onCapture={uploadPhoto} />
-      )}
+      {openPhoto && <PhotoCaptureModal isOpen={openPhoto} onClose={() => setOpenPhoto(false)} onCapture={uploadPhoto} />}
 
       {openChat && (
         <NewChatModal
@@ -1004,11 +979,7 @@ export default function FocusedJobModal(props: {
           workOrderLineId={line?.id ?? undefined}
           defaultVehicle={
             vehicle
-              ? {
-                  year: vehicle.year ? String(vehicle.year) : undefined,
-                  make: vehicle.make ?? undefined,
-                  model: vehicle.model ?? undefined,
-                }
+              ? { year: vehicle.year ? String(vehicle.year) : undefined, make: vehicle.make ?? undefined, model: vehicle.model ?? undefined }
               : undefined
           }
         />
@@ -1020,9 +991,7 @@ export default function FocusedJobModal(props: {
           onClose={() => setOpenAddJob(false)}
           workOrderId={workOrder.id}
           vehicleId={vehicle?.id ?? null}
-          techId={
-            (line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ?? "system"
-          }
+          techId={(line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ?? "system"}
           shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {
             await refresh();
