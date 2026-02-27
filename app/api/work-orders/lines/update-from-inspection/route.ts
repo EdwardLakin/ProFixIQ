@@ -1,4 +1,4 @@
-// /app/api/work-orders/lines/update-from-inspection/route.ts
+//app/api/work-orders/lines/update-from-inspection/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -11,30 +11,29 @@ type Body = {
   workOrderId: string;
   workOrderLineId: string;
   laborHours?: number | null;
-  notes?: string | null; // inspection notes (free text)
+  notes?: string | null; // inspection note (free text)
   aiSummary?: string | null; // optional AI summary
-  complaint?: string | null; // optional explicit complaint override
 };
 
 function isValidBody(b: unknown): b is Body {
   if (typeof b !== "object" || b === null) return false;
   const o = b as Record<string, unknown>;
-  return (
-    typeof o.workOrderId === "string" &&
-    typeof o.workOrderLineId === "string"
-  );
+  return typeof o.workOrderId === "string" && typeof o.workOrderLineId === "string";
 }
 
-function toNullableTrimmedString(v: unknown): string | null {
+function trimOrNull(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const t = v.trim();
   return t.length ? t : null;
 }
 
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && !Number.isNaN(v);
+}
+
 export async function POST(req: Request) {
   try {
     const bodyUnknown: unknown = await req.json();
-
     if (!isValidBody(bodyUnknown)) {
       return NextResponse.json(
         { error: "Invalid body: require workOrderId, workOrderLineId" },
@@ -42,14 +41,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const {
-      workOrderId,
-      workOrderLineId,
-      laborHours,
-      notes,
-      aiSummary,
-      complaint,
-    } = bodyUnknown;
+    const { workOrderId, workOrderLineId, laborHours, notes, aiSummary } = bodyUnknown;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey =
@@ -64,10 +56,10 @@ export async function POST(req: Request) {
 
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // Ensure the line belongs to the provided work order (prevents cross-WO updates)
-    const { data: existing, error: loadErr } = await supabase
+    // ✅ Ensure line exists + belongs to WO (prevents cross-WO updates)
+    const { data: line, error: loadErr } = await supabase
       .from("work_order_lines")
-      .select("id, work_order_id, complaint, notes")
+      .select("id, work_order_id, status, approval_state, punchable")
       .eq("id", workOrderLineId)
       .maybeSingle();
 
@@ -78,49 +70,44 @@ export async function POST(req: Request) {
         { status: 500 },
       );
     }
-
-    if (!existing) {
+    if (!line) {
       return NextResponse.json({ error: "Work order line not found" }, { status: 404 });
     }
-
-    if (String((existing as { work_order_id?: unknown }).work_order_id) !== workOrderId) {
+    if (String((line as { work_order_id?: unknown }).work_order_id) !== workOrderId) {
       return NextResponse.json(
         { error: "Work order line does not belong to the given work order" },
         { status: 400 },
       );
     }
 
+    // ✅ Build update payload
     const update: Record<string, unknown> = {};
 
-    // labor_time update
+    // labor_time is numeric in DB; supabase-js accepts number
     if (laborHours === null) {
       update.labor_time = null;
-    } else if (typeof laborHours === "number" && !Number.isNaN(laborHours)) {
+    } else if (isFiniteNumber(laborHours)) {
       update.labor_time = laborHours;
     }
 
-    // We treat "complaint" as: explicit complaint OR inspection notes (fallback)
-    const complaintValue =
-      toNullableTrimmedString(complaint) ?? toNullableTrimmedString(notes);
+    const n = trimOrNull(notes);
+    const s = trimOrNull(aiSummary);
 
-    // Only set complaint if we have something meaningful
-    if (complaintValue !== null) {
-      update.complaint = complaintValue;
+    // complaint: use inspection note (helps advisors quickly see "what's wrong")
+    if (n) update.complaint = n;
+
+    // notes: store compact context (don’t overwrite advisor notes unless you want to)
+    if (n || s) {
+      const parts: string[] = [];
+      if (n) parts.push(`From inspection: ${n}`);
+      if (s) parts.push(`AI: ${s}`);
+      update.notes = parts.join(" • ");
     }
 
-    // Notes: keep advisor context and AI summary compact
-    // (If you prefer to overwrite notes entirely, change this behavior.)
-    const nextNotesParts: string[] = [];
-
-    const n = toNullableTrimmedString(notes);
-    if (n) nextNotesParts.push(`From inspection: ${n}`);
-
-    const s = toNullableTrimmedString(aiSummary);
-    if (s) nextNotesParts.push(`AI: ${s}`);
-
-    if (nextNotesParts.length > 0) {
-      update.notes = nextNotesParts.join(" • ");
-    }
+    // ✅ Keep it non-punchable until approved (matches your “quote line” rule)
+    update.status = "awaiting_approval";
+    update.approval_state = "pending";
+    update.punchable = false;
 
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ ok: true, updated: false });

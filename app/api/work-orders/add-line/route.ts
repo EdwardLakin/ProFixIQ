@@ -44,13 +44,20 @@ interface InsertWorkOrderLine {
   status: LineStatus;
   approval_state: ApprovalState;
 
-  // ✅ NEW: store complaint directly on the WO line
+  // ✅ DB columns you actually have
   complaint: string | null;
-
-  // existing advisor context notes
   notes: string | null;
-
   labor_time: number | null;
+
+  // ✅ important workflow controls (DB column exists)
+  punchable: boolean;
+
+  // ✅ store estimate and parts (DB columns exist)
+  price_estimate: number | null;
+  parts_needed: unknown | null;
+
+  // ✅ optional link back to inspection session (DB column exists)
+  inspection_session_id: string | null;
 }
 
 interface AddLineRequestBody {
@@ -66,8 +73,11 @@ interface AddLineRequestBody {
     | "diagnosis"
     | "tech-suggested";
 
-  // ✅ NEW: allow client to pass complaint explicitly
+  // ✅ allow client to pass complaint explicitly
   complaint?: string | null;
+
+  // ✅ optional: link the WO line to the inspection session id
+  inspectionSessionId?: string | null;
 }
 
 function isValidBody(b: unknown): b is AddLineRequestBody {
@@ -85,6 +95,57 @@ function toNullableTrimmedString(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const t = v.trim();
   return t.length ? t : null;
+}
+
+function finiteNumberOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) && !Number.isNaN(v)
+    ? v
+    : null;
+}
+
+function normalizeParts(parts: PartLine[] | undefined): Array<{
+  name: string;
+  qty: number;
+  cost: number | null;
+  notes: string | null;
+}> {
+  const arr = Array.isArray(parts) ? parts : [];
+  return arr
+    .map((p) => ({
+      name: String(p?.name ?? "").trim(),
+      qty: typeof p?.qty === "number" && Number.isFinite(p.qty) && p.qty > 0 ? p.qty : 1,
+      cost: finiteNumberOrNull(p?.cost),
+      notes: toNullableTrimmedString(p?.notes),
+    }))
+    .filter((p) => p.name.length > 0);
+}
+
+function computePriceEstimate(args: {
+  parts: Array<{ qty: number; cost: number | null }>;
+  laborHours: number | null;
+  laborRate: number | null;
+  explicit: number | null;
+}): number | null {
+  const explicit = args.explicit;
+  if (explicit != null && explicit >= 0) return explicit;
+
+  const partsTotal = args.parts.reduce((sum, p) => {
+    const cost = typeof p.cost === "number" ? p.cost : 0;
+    const qty = typeof p.qty === "number" && p.qty > 0 ? p.qty : 1;
+    return sum + cost * qty;
+  }, 0);
+
+  const hrs = args.laborHours ?? null;
+  const rate = args.laborRate ?? null;
+
+  // if we have neither usable labor nor usable parts cost, skip
+  const hasPartsMoney = partsTotal > 0;
+  const hasLaborMoney = hrs != null && rate != null && hrs >= 0 && rate >= 0;
+
+  if (!hasPartsMoney && !hasLaborMoney) return null;
+
+  const laborTotal = hasLaborMoney ? (hrs as number) * (rate as number) : 0;
+  return Math.max(0, partsTotal + laborTotal);
 }
 
 export async function POST(req: Request) {
@@ -106,6 +167,7 @@ export async function POST(req: Request) {
       suggestion,
       jobType = "inspection",
       complaint: complaintFromClient,
+      inspectionSessionId,
     } = bodyUnknown;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -138,26 +200,49 @@ export async function POST(req: Request) {
 
     const notes: string | null = notesParts.length ? notesParts.join(" • ") : null;
 
-    const laborTime: number | null =
-      typeof suggestion.laborHours === "number" ? suggestion.laborHours : null;
+    const laborTime: number | null = finiteNumberOrNull(suggestion?.laborHours);
 
-    // ✅ Create as a quote line:
-    // - status: awaiting_approval (non-punchable)
-    // - approval_state: pending
+    const laborRate: number | null = finiteNumberOrNull(suggestion?.laborRate);
+    const parts = normalizeParts(suggestion?.parts);
+
+    const priceEstimate = computePriceEstimate({
+      parts,
+      laborHours: laborTime,
+      laborRate,
+      explicit: finiteNumberOrNull(suggestion?.price),
+    });
+
+    // ✅ Store parts in parts_needed (jsonb)
+    // Keep structure predictable for later consumption
+    const partsNeededJson =
+      parts.length > 0
+        ? parts.map((p) => ({
+            name: p.name,
+            qty: p.qty,
+            cost: p.cost,
+            notes: p.notes,
+            source: "inspection_ai",
+          }))
+        : null;
+
     const insertPayload: InsertWorkOrderLine = {
       work_order_id: workOrderId,
       description,
       job_type: (jobType as JobType) ?? "inspection",
+
+      // ✅ quote line (non-punchable)
       status: "awaiting_approval",
       approval_state: "pending",
+      punchable: false,
 
-      // ✅ this is what you want to show under "Complaint"
       complaint,
-
-      // ✅ compact advisor context
       notes,
-
       labor_time: laborTime,
+
+      price_estimate: priceEstimate,
+      parts_needed: partsNeededJson,
+
+      inspection_session_id: toNullableTrimmedString(inspectionSessionId),
     };
 
     const { data, error } = await supabase
