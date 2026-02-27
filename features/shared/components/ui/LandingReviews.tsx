@@ -167,7 +167,7 @@ export default function LandingReviews() {
   }, [stats]);
 
   return (
-    <section className="relative mx-auto max-w-[1400px] px-4 py-16 md:py-20">
+    <section className="relative mx-auto max-w-[1400px] overflow-x-hidden px-4 py-16 md:py-20">
       {/* backplate */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div
