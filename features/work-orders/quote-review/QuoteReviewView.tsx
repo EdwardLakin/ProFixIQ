@@ -30,7 +30,8 @@ type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type LineUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
 
 type Allocation = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
-type AllocationUpdate = DB["public"]["Tables"]["work_order_part_allocations"]["Update"];
+type AllocationUpdate =
+  DB["public"]["Tables"]["work_order_part_allocations"]["Update"];
 
 type Part = DB["public"]["Tables"]["parts"]["Row"];
 
@@ -99,6 +100,7 @@ export default function QuoteReviewView(props: {
 }): JSX.Element {
   const router = useRouter();
   const woId = String(props.workOrderId ?? "").trim();
+  const embedded = Boolean(props.embedded);
 
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -256,13 +258,17 @@ export default function QuoteReviewView(props: {
   }, [supabase]);
 
   const laborRate = useMemo(() => {
-    const candidate = (shop as unknown as { labor_rate?: unknown } | null)?.labor_rate;
+    const candidate = (shop as unknown as { labor_rate?: unknown } | null)
+      ?.labor_rate;
     const n = asNumber(candidate);
     return n ?? 120;
   }, [shop]);
 
   const provinceCode = useMemo<ProvinceCode | null>(() => {
-    const s = shop as unknown as { province_code?: unknown; province?: unknown } | null;
+    const s = shop as unknown as {
+      province_code?: unknown;
+      province?: unknown;
+    } | null;
     const raw = safeTrim(s?.province_code ?? s?.province ?? "").toUpperCase();
     if (!raw) return null;
     return isProvinceCode(raw) ? raw : null;
@@ -300,7 +306,8 @@ export default function QuoteReviewView(props: {
 
     const partsTotal = allocs.reduce((sum, a) => {
       const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
-      const unit = typeof a.unit_cost === "number" ? a.unit_cost : Number(a.unit_cost);
+      const unit =
+        typeof a.unit_cost === "number" ? a.unit_cost : Number(a.unit_cost);
       const q = Number.isFinite(qty) ? qty : 0;
       const u = Number.isFinite(unit) ? unit : 0;
       return sum + q * u;
@@ -316,17 +323,26 @@ export default function QuoteReviewView(props: {
 
   const setLineField = useCallback((lineId: string, patch: Partial<Line>) => {
     setLines((prev) =>
-      prev.map((l) => (l.id === lineId ? ({ ...l, ...patch, _dirty: true } as EditableLine) : l)),
-    );
-  }, []);
-
-  const setAllocField = useCallback((allocId: string, patch: Partial<EditableAlloc>) => {
-    setAllocs((prev) =>
-      prev.map((a) =>
-        a.id === allocId ? ({ ...a, ...patch, _dirty: true } as EditableAlloc) : a,
+      prev.map((l) =>
+        l.id === lineId
+          ? ({ ...l, ...patch, _dirty: true } as EditableLine)
+          : l,
       ),
     );
   }, []);
+
+  const setAllocField = useCallback(
+    (allocId: string, patch: Partial<EditableAlloc>) => {
+      setAllocs((prev) =>
+        prev.map((a) =>
+          a.id === allocId
+            ? ({ ...a, ...patch, _dirty: true } as EditableAlloc)
+            : a,
+        ),
+      );
+    },
+    [],
+  );
 
   async function saveAllDirty() {
     if (!woId) return;
@@ -353,7 +369,10 @@ export default function QuoteReviewView(props: {
           labor_time: l.labor_time,
         };
 
-        const { error } = await supabase.from("work_order_lines").update(patch).eq("id", l.id);
+        const { error } = await supabase
+          .from("work_order_lines")
+          .update(patch)
+          .eq("id", l.id);
         if (error) throw error;
       }
 
@@ -381,7 +400,10 @@ export default function QuoteReviewView(props: {
     }
   }
 
-  async function setDecision(lineId: string, decision: "approve" | "decline" | "defer") {
+  async function setDecision(
+    lineId: string,
+    decision: "approve" | "decline" | "defer",
+  ) {
     const patch: LineUpdate =
       decision === "approve"
         ? { approval_state: "approved", status: "queued" }
@@ -389,7 +411,10 @@ export default function QuoteReviewView(props: {
           ? { approval_state: "declined", status: "declined" }
           : { approval_state: null, status: "awaiting_approval" };
 
-    const { error } = await supabase.from("work_order_lines").update(patch).eq("id", lineId);
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update(patch)
+      .eq("id", lineId);
     if (error) {
       toast.error(error.message);
       return;
@@ -434,7 +459,8 @@ export default function QuoteReviewView(props: {
     }
   }
 
-  if (!woId) return <div className="p-6 text-red-300">Missing work order id.</div>;
+  if (!woId)
+    return <div className="p-6 text-red-300">Missing work order id.</div>;
   if (loading) return <div className="p-6 text-neutral-300">Loading…</div>;
   if (!wo) return <div className="p-6 text-red-300">Work order not found.</div>;
 
@@ -442,22 +468,32 @@ export default function QuoteReviewView(props: {
   const emailRaw = safeTrim(customer?.email ?? "");
   const tel = normalizePhoneForTel(phoneRaw);
 
-  return (
-    <div
-      className={
-        props.embedded
-          ? "min-h-full px-2 py-2 text-foreground"
-          : `
+  // ✅ Embedded vs Standalone layout wrappers
+  const shellClass = embedded
+    ? "w-full min-h-0 text-foreground"
+    : `
         min-h-screen px-4 py-6 text-foreground
         bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
-      `
-      }
+      `;
+
+  const shellPad = embedded ? "" : "px-4 py-6";
+
+  // ✅ Critical: when embedded, do NOT constrain width or center like a page
+  const innerClass = embedded ? "w-full" : "mx-auto max-w-6xl";
+
+  return (
+    <div
+      className={`${shellClass} ${shellPad}`}
       style={{ ["--copper" as never]: COPPER }}
     >
-      <div className={props.embedded ? "mx-auto max-w-6xl" : "mx-auto max-w-6xl"}>
+      <div className={innerClass}>
         {/* top row */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          {!props.embedded && (
+        <div
+          className={`flex flex-wrap items-center justify-between gap-3 ${
+            embedded ? "mb-3" : "mb-4"
+          }`}
+        >
+          {!embedded && (
             <button
               onClick={() => router.back()}
               className="text-sm text-[color:var(--copper)] hover:underline"
@@ -493,32 +529,40 @@ export default function QuoteReviewView(props: {
               {saving ? "Saving…" : "Save"}
             </button>
 
-            <a
-              href={`/work-orders/${woId}`}
-              className="
-                rounded-full border border-white/10 bg-black/40
-                px-4 py-2 text-sm font-semibold text-neutral-200
-                hover:bg-black/55
-              "
-              title="Open the work order"
-            >
-              Open WO
-            </a>
+            {/* ✅ Only show Open WO in standalone. In split view the panel controls it. */}
+            {!embedded && (
+              <a
+                href={`/work-orders/${woId}`}
+                className="
+                  rounded-full border border-white/10 bg-black/40
+                  px-4 py-2 text-sm font-semibold text-neutral-200
+                  hover:bg-black/55
+                "
+                title="Open the work order"
+              >
+                Open WO
+              </a>
+            )}
           </div>
         </div>
 
         {/* header card */}
-        <div className={`${card} px-5 py-4`}>
+        <div className={`${card} ${embedded ? "px-4 py-3" : "px-5 py-4"}`}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             {/* left */}
             <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">Quote Review</div>
+              <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
+                Quote Review
+              </div>
               <div className="mt-1 text-2xl font-semibold text-white">
                 <span className="text-white">#</span>
-                <span style={{ color: COPPER }}>{wo.custom_id ? wo.custom_id : wo.id.slice(0, 8)}</span>
+                <span style={{ color: COPPER }}>
+                  {wo.custom_id ? wo.custom_id : wo.id.slice(0, 8)}
+                </span>
               </div>
               <div className="mt-1 text-sm text-neutral-400">
-                Status: {statusLabel(wo.status)} {shop?.name ? `• ${shop.name}` : ""}
+                Status: {statusLabel(wo.status)}{" "}
+                {shop?.name ? `• ${shop.name}` : ""}
               </div>
             </div>
 
@@ -536,7 +580,9 @@ export default function QuoteReviewView(props: {
               <div className="mt-2 grid gap-2 sm:grid-cols-3">
                 <div className="min-w-0">
                   <div className="text-[11px] text-neutral-500">Name</div>
-                  <div className="truncate text-sm font-semibold text-white">{customerDisplayName(customer)}</div>
+                  <div className="truncate text-sm font-semibold text-white">
+                    {customerDisplayName(customer)}
+                  </div>
                 </div>
 
                 <div className="min-w-0">
@@ -550,7 +596,9 @@ export default function QuoteReviewView(props: {
                       {phoneRaw}
                     </a>
                   ) : (
-                    <div className="truncate text-sm font-semibold text-white/70">—</div>
+                    <div className="truncate text-sm font-semibold text-white/70">
+                      —
+                    </div>
                   )}
                 </div>
 
@@ -565,7 +613,9 @@ export default function QuoteReviewView(props: {
                       {emailRaw}
                     </a>
                   ) : (
-                    <div className="truncate text-sm font-semibold text-white/70">—</div>
+                    <div className="truncate text-sm font-semibold text-white/70">
+                      —
+                    </div>
                   )}
                 </div>
               </div>
@@ -573,32 +623,45 @@ export default function QuoteReviewView(props: {
 
             {/* right */}
             <div className="text-right">
-              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Labor rate</div>
-              <div className="mt-1 text-lg font-semibold text-white">{fmt(laborRate)}/hr</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+                Labor rate
+              </div>
+              <div className="mt-1 text-lg font-semibold text-white">
+                {fmt(laborRate)}/hr
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div className={`${embedded ? "mt-3" : "mt-4"} grid gap-4 lg:grid-cols-3`}>
           {/* lines */}
           <div className="lg:col-span-2">
             <div className={card}>
-              <div className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Line Items
               </div>
 
               {lines.length === 0 ? (
-                <div className="px-5 py-4 text-sm text-neutral-400">No lines yet.</div>
+                <div className="px-5 py-4 text-sm text-neutral-400">
+                  No lines yet.
+                </div>
               ) : (
                 <div className="divide-y divide-white/10">
                   {lines.map((l) => {
                     const la = lineAllocs.get(l.id) ?? [];
-                    const laborHours = typeof l.labor_time === "number" ? l.labor_time : 0;
+                    const laborHours =
+                      typeof l.labor_time === "number" ? l.labor_time : 0;
                     const laborAmt = laborHours * laborRate;
 
                     const partsAmt = la.reduce((sum, a) => {
-                      const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
-                      const unit = typeof a.unit_cost === "number" ? a.unit_cost : Number(a.unit_cost);
+                      const qty =
+                        typeof a.qty === "number" ? a.qty : Number(a.qty);
+                      const unit =
+                        typeof a.unit_cost === "number"
+                          ? a.unit_cost
+                          : Number(a.unit_cost);
                       const q = Number.isFinite(qty) ? qty : 0;
                       const u = Number.isFinite(unit) ? unit : 0;
                       return sum + q * u;
@@ -620,19 +683,27 @@ export default function QuoteReviewView(props: {
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-sm font-semibold text-white">Line</div>
+                              <div className="text-sm font-semibold text-white">
+                                Line
+                              </div>
                               <span
                                 className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${pillClass}`}
                                 title={`approval_state=${l.approval_state ?? "null"} status=${l.status ?? "null"}`}
                               >
-                                {l.approval_state ? statusLabel(l.approval_state) : "pending"} •{" "}
-                                {statusLabel(l.status)}
+                                {l.approval_state
+                                  ? statusLabel(l.approval_state)
+                                  : "pending"}{" "}
+                                • {statusLabel(l.status)}
                               </span>
 
                               {l._dirty ? (
-                                <span className="text-xs text-[color:var(--copper)]">Unsaved</span>
+                                <span className="text-xs text-[color:var(--copper)]">
+                                  Unsaved
+                                </span>
                               ) : (
-                                <span className="text-xs text-neutral-500">Saved</span>
+                                <span className="text-xs text-neutral-500">
+                                  Saved
+                                </span>
                               )}
                             </div>
 
@@ -641,7 +712,11 @@ export default function QuoteReviewView(props: {
                                 Description
                                 <input
                                   value={l.description ?? ""}
-                                  onChange={(e) => setLineField(l.id, { description: e.target.value })}
+                                  onChange={(e) =>
+                                    setLineField(l.id, {
+                                      description: e.target.value,
+                                    })
+                                  }
                                   className={inputCls}
                                   placeholder="Describe the work..."
                                 />
@@ -651,7 +726,11 @@ export default function QuoteReviewView(props: {
                                 Complaint
                                 <input
                                   value={l.complaint ?? ""}
-                                  onChange={(e) => setLineField(l.id, { complaint: e.target.value })}
+                                  onChange={(e) =>
+                                    setLineField(l.id, {
+                                      complaint: e.target.value,
+                                    })
+                                  }
                                   className={inputCls}
                                   placeholder="Customer complaint..."
                                 />
@@ -661,7 +740,9 @@ export default function QuoteReviewView(props: {
                                 Cause
                                 <input
                                   value={l.cause ?? ""}
-                                  onChange={(e) => setLineField(l.id, { cause: e.target.value })}
+                                  onChange={(e) =>
+                                    setLineField(l.id, { cause: e.target.value })
+                                  }
                                   className={inputCls}
                                   placeholder="Root cause..."
                                 />
@@ -671,7 +752,11 @@ export default function QuoteReviewView(props: {
                                 Correction
                                 <input
                                   value={l.correction ?? ""}
-                                  onChange={(e) => setLineField(l.id, { correction: e.target.value })}
+                                  onChange={(e) =>
+                                    setLineField(l.id, {
+                                      correction: e.target.value,
+                                    })
+                                  }
                                   className={inputCls}
                                   placeholder="Correction performed..."
                                 />
@@ -681,7 +766,11 @@ export default function QuoteReviewView(props: {
                                 Labor hours
                                 <input
                                   inputMode="decimal"
-                                  value={typeof l.labor_time === "number" ? String(l.labor_time) : ""}
+                                  value={
+                                    typeof l.labor_time === "number"
+                                      ? String(l.labor_time)
+                                      : ""
+                                  }
                                   onChange={(e) => {
                                     const n = asNumber(e.target.value);
                                     setLineField(l.id, { labor_time: n ?? 0 });
@@ -693,7 +782,9 @@ export default function QuoteReviewView(props: {
 
                               <div className="text-xs text-neutral-400">
                                 Line total
-                                <div className="mt-2 text-lg font-semibold text-white">{fmt(lineTotal)}</div>
+                                <div className="mt-2 text-lg font-semibold text-white">
+                                  {fmt(lineTotal)}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -706,7 +797,9 @@ export default function QuoteReviewView(props: {
                                 px-4 py-2 text-sm font-semibold text-emerald-200
                                 hover:bg-emerald-400/15
                               "
-                              disabled={safeTrim(l.status).toLowerCase() === "declined"}
+                              disabled={
+                                safeTrim(l.status).toLowerCase() === "declined"
+                              }
                             >
                               Approve
                             </button>
@@ -754,17 +847,25 @@ export default function QuoteReviewView(props: {
                           </div>
 
                           {la.length === 0 ? (
-                            <div className="text-sm text-neutral-400">No parts allocated to this line.</div>
+                            <div className="text-sm text-neutral-400">
+                              No parts allocated to this line.
+                            </div>
                           ) : (
                             <div className="space-y-2">
                               {la.map((a) => {
                                 const partName =
                                   (a.parts?.name ?? "").trim() ||
                                   (a.parts?.sku ?? "").trim() ||
-                                  (a.part_id ? `Part ${a.part_id.slice(0, 8)}` : "Part");
+                                  (a.part_id
+                                    ? `Part ${a.part_id.slice(0, 8)}`
+                                    : "Part");
 
-                                const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
-                                const unit = typeof a.unit_cost === "number" ? a.unit_cost : Number(a.unit_cost);
+                                const qty =
+                                  typeof a.qty === "number" ? a.qty : Number(a.qty);
+                                const unit =
+                                  typeof a.unit_cost === "number"
+                                    ? a.unit_cost
+                                    : Number(a.unit_cost);
                                 const q = Number.isFinite(qty) ? qty : 0;
                                 const u = Number.isFinite(unit) ? unit : 0;
                                 const rowTotal = q * u;
@@ -778,9 +879,13 @@ export default function QuoteReviewView(props: {
                                     "
                                   >
                                     <div className="min-w-0">
-                                      <div className="truncate text-sm font-medium text-white">{partName}</div>
+                                      <div className="truncate text-sm font-medium text-white">
+                                        {partName}
+                                      </div>
                                       <div className="text-xs text-neutral-500">
-                                        {a.location_id ? `Location: ${a.location_id}` : "No location"}
+                                        {a.location_id
+                                          ? `Location: ${a.location_id}`
+                                          : "No location"}
                                         {a._dirty ? " • Unsaved" : ""}
                                       </div>
                                     </div>
@@ -806,7 +911,9 @@ export default function QuoteReviewView(props: {
                                           value={String(u)}
                                           onChange={(e) => {
                                             const n = asNumber(e.target.value);
-                                            setAllocField(a.id, { unit_cost: n ?? 0 });
+                                            setAllocField(a.id, {
+                                              unit_cost: n ?? 0,
+                                            });
                                           }}
                                           className={`${inputBase} ${inputFocus} ml-2 w-28`}
                                         />
@@ -824,7 +931,8 @@ export default function QuoteReviewView(props: {
                         </div>
 
                         <div className="mt-3 text-xs text-neutral-500">
-                          Current: approval_state={l.approval_state ?? "null"} • status={l.status ?? "null"}
+                          Current: approval_state={l.approval_state ?? "null"} •
+                          status={l.status ?? "null"}
                         </div>
                       </div>
                     );
@@ -837,11 +945,14 @@ export default function QuoteReviewView(props: {
           {/* right column */}
           <div className="space-y-4">
             <div className={card}>
-              <div className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Quick add job
               </div>
               <div className="px-5 py-4 text-sm text-neutral-400">
-                Add missing lines while reviewing the quote (ex: Alignment after tie rod ends).
+                Add missing lines while reviewing the quote (ex: Alignment after
+                tie rod ends).
                 <div className="mt-3">
                   <button
                     type="button"
@@ -867,32 +978,46 @@ export default function QuoteReviewView(props: {
             </div>
 
             <div className={card}>
-              <div className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Totals
               </div>
 
               <div className="px-5 py-4 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-400">Labor</span>
-                  <span className="font-medium text-white">{fmt(totals.laborTotal)}</span>
+                  <span className="font-medium text-white">
+                    {fmt(totals.laborTotal)}
+                  </span>
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-neutral-400">Parts</span>
-                  <span className="font-medium text-white">{fmt(totals.partsTotal)}</span>
+                  <span className="font-medium text-white">
+                    {fmt(totals.partsTotal)}
+                  </span>
                 </div>
 
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}>
+                <div
+                  className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}
+                >
                   <span className="text-neutral-300">Subtotal</span>
-                  <span className="font-semibold text-white">{fmt(totals.subtotal)}</span>
+                  <span className="font-semibold text-white">
+                    {fmt(totals.subtotal)}
+                  </span>
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-neutral-400">Tax {provinceCode ? `(${provinceCode})` : "(not set)"}</span>
+                  <span className="text-neutral-400">
+                    Tax {provinceCode ? `(${provinceCode})` : "(not set)"}
+                  </span>
                   <span className="font-medium text-white">{fmt(totals.tax)}</span>
                 </div>
 
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}>
+                <div
+                  className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}
+                >
                   <span className="font-semibold text-white">Grand total</span>
                   <span className="text-lg font-bold" style={{ color: COPPER }}>
                     {fmt(totals.total)}
@@ -900,7 +1025,8 @@ export default function QuoteReviewView(props: {
                 </div>
 
                 <div className="mt-4 text-xs text-neutral-500">
-                  Tip: set shop province to enable CA tax, and shop labor rate to match pricing.
+                  Tip: set shop province to enable CA tax, and shop labor rate to
+                  match pricing.
                 </div>
 
                 <div className="mt-4 flex gap-2">
@@ -920,11 +1046,14 @@ export default function QuoteReviewView(props: {
             </div>
 
             <div className={card}>
-              <div className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Send to customer
               </div>
               <div className="px-5 py-4 text-sm text-neutral-400">
-                Sends an email and creates a portal notification with the quote link.
+                Sends an email and creates a portal notification with the quote
+                link.
                 <div className="mt-3">
                   <button
                     onClick={() => void sendQuoteToCustomer()}
@@ -939,22 +1068,27 @@ export default function QuoteReviewView(props: {
                   </button>
                 </div>
                 <div className="mt-3 text-xs text-neutral-500">
-                  Portal link will be: <span className="text-neutral-300">/portal/quotes/{woId}</span>
+                  Portal link will be:{" "}
+                  <span className="text-neutral-300">/portal/quotes/{woId}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="mt-6 text-xs text-neutral-500">
-          Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}
-        </div>
+        {!embedded && (
+          <div className="mt-6 text-xs text-neutral-500">
+            Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}
+          </div>
+        )}
 
         <AddJobModal
           isOpen={addJobOpen}
           onClose={() => setAddJobOpen(false)}
           workOrderId={wo.id}
-          vehicleId={(wo as unknown as { vehicle_id?: string | null }).vehicle_id ?? null}
+          vehicleId={
+            (wo as unknown as { vehicle_id?: string | null }).vehicle_id ?? null
+          }
           techId={currentUserId}
           shopId={wo.shop_id ?? null}
           onJobAdded={async () => {
