@@ -86,6 +86,25 @@ function normalizePhoneForTel(raw: string): string | null {
   return cleaned;
 }
 
+function deriveComplaintFromNotes(notes: unknown): string | null {
+  const s = safeTrim(notes);
+  if (!s) return null;
+
+  // Common patterns you have in UI notes:
+  // "AI: For governor leaking."
+  // "AI - governor leaking"
+  // "AI: governor leaking"
+  const m =
+    s.match(/(?:^|\s)AI\s*[:\-]\s*(.+)$/i) ||
+    s.match(/(?:^|\s)AI\s*for\s+(.+)$/i);
+
+  const derived = safeTrim(m?.[1] ?? "");
+  if (!derived) return null;
+
+  // Strip trailing punctuation that makes it look weird in an input
+  return derived.replace(/[.\s]+$/, "");
+}
+
 type EditableLine = Line & { _dirty?: boolean };
 type EditableAlloc = AllocationWithPart & { _dirty?: boolean };
 
@@ -213,9 +232,21 @@ export default function QuoteReviewView(props: {
     if (lineErr) {
       toast.error(lineErr.message);
       setLines([]);
-    } else {
-      setLines((lineRows ?? []).map((l) => ({ ...l, _dirty: false })));
-    }
+     } else {
+      const mapped = (lineRows ?? []).map((l) => {
+        const existingComplaint = safeTrim(l.complaint);
+        if (existingComplaint) return { ...l, _dirty: false } as EditableLine;
+
+        const derived = deriveComplaintFromNotes(l.notes);
+        if (!derived) return { ...l, _dirty: false } as EditableLine;
+
+        // Auto-prefill complaint so Quote Review matches what the WO card implies.
+        // Mark dirty so clicking "Save" will persist it.
+        return { ...l, complaint: derived, _dirty: true } as EditableLine;
+      });
+
+        setLines(mapped);
+     }
 
     // allocations
     const { data: aRows, error: aErr } = await supabase

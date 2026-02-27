@@ -1689,7 +1689,13 @@ export default function GenericInspectionScreen(
                 workOrderId,
                 workOrderLineId: existingLineId,
                 laborHours: laborTime,
-                notes: String(it.notes ?? "") || null,
+
+                // ✅ complaint = inspection notes (what the customer/tech reports)
+                complaint: String(it.notes ?? "").trim() || null,
+
+                // keep notes too if your API already uses it for internal notes
+                notes: String(it.notes ?? "").trim() || null,
+
                 aiSummary: suggestion.summary ?? null,
               }),
             },
@@ -1739,19 +1745,28 @@ export default function GenericInspectionScreen(
         }
 
         // ✅ CREATE new estimate/job (first submit)
-        const created = await addWorkOrderLineFromSuggestion({
-          workOrderId,
-          description: desc,
-          section: String(session.sections[secIdx]?.title ?? ""),
-          status: status as "fail" | "recommend",
-          suggestion: {
-            ...suggestion,
-            parts: mergedParts,
-            laborHours: laborTime,
-          },
-          source: "inspection",
-          jobType: "repair",
-        });
+        const complaint = String(it.notes ?? "").trim() || null;
+
+            const created = await addWorkOrderLineFromSuggestion({
+              workOrderId,
+              description: desc,
+              section: String(session.sections[secIdx]?.title ?? ""),
+              status: status as "fail" | "recommend",
+
+              // ✅ NEW: pass complaint explicitly
+              complaint,
+
+              suggestion: {
+                ...suggestion,
+                parts: mergedParts,
+                laborHours: laborTime,
+
+                // ✅ also set suggestion.notes so *either* side can use it
+                notes: complaint ?? undefined,
+              },
+              source: "inspection",
+              jobType: "repair",
+            });
 
         const createdId = (created as unknown as { id?: unknown })?.id;
         const createdJobId =

@@ -7,11 +7,28 @@ export type AISuggestion = {
   summary: string;
   confidence?: "low" | "medium" | "high";
   price?: number;
+
+  /**
+   * IMPORTANT:
+   * When this suggestion originates from an inspection item,
+   * set this to the inspection item's notes (e.g. "Air governor leaking").
+   * We'll pass it through as the WO line complaint.
+   */
   notes?: string;
+
   title?: string;
 };
 
-type JobType = "diagnosis" | "inspection" | "maintenance" | "repair" | "tech-suggested";
+type JobType =
+  | "diagnosis"
+  | "inspection"
+  | "maintenance"
+  | "repair"
+  | "tech-suggested";
+
+function safeTrim(x: unknown): string {
+  return typeof x === "string" ? x.trim() : "";
+}
 
 export async function addWorkOrderLineFromSuggestion(args: {
   workOrderId: string;
@@ -22,11 +39,26 @@ export async function addWorkOrderLineFromSuggestion(args: {
   source?: "inspection";
   /** mark AI-added items clearly for UI rules like “not punchable until approved” */
   jobType?: JobType; // default will be set server-side if omitted
+
+  /**
+   * Optional explicit complaint.
+   * If omitted, we default complaint from suggestion.notes (inspection notes).
+   */
+  complaint?: string | null;
 }) {
+  const derivedComplaint =
+    args.complaint != null ? safeTrim(args.complaint) : safeTrim(args.suggestion?.notes);
+
+  const payload = {
+    ...args,
+    // ✅ complaint becomes the inspection "notes" unless caller explicitly overrides it
+    complaint: derivedComplaint || null,
+  };
+
   const res = await fetch("/api/work-orders/add-line", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(args),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
