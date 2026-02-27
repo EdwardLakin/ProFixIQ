@@ -35,7 +35,7 @@ function SignalDot() {
 
 export default function LandingHero() {
   return (
-    <section className="relative">
+    <section className="relative overflow-x-hidden">
       <style jsx>{`
         /* Copper “signal sweep” across the rail line */
         @keyframes pfqSweep {
