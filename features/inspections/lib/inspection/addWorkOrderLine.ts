@@ -1,4 +1,4 @@
-// features/inspections/lib/inspection/addWorkOrderLine.ts
+// /features/inspections/lib/inspection/addWorkOrderLine.ts (FULL FILE REPLACEMENT)
 
 export type AISuggestion = {
   parts: { name: string; qty?: number; cost?: number; notes?: string }[];
@@ -38,7 +38,7 @@ export async function addWorkOrderLineFromSuggestion(args: {
   suggestion: AISuggestion;
   source?: "inspection";
   /** mark AI-added items clearly for UI rules like “not punchable until approved” */
-  jobType?: JobType; // default will be set server-side if omitted
+  jobType?: JobType; // default set server-side if omitted
 
   /**
    * Optional explicit complaint.

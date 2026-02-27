@@ -1,4 +1,4 @@
-// features/inspections/lib/inspection/aiQuote.ts
+// /features/inspections/lib/inspection/aiQuote.ts (FULL FILE REPLACEMENT)
 
 export type AISuggestion = {
   parts: { name: string; qty?: number; cost?: number; notes?: string }[];
@@ -11,6 +11,13 @@ export type AISuggestion = {
   title?: string;
 };
 
+type VehicleInput = {
+  year?: string | number | null;
+  make?: string | null;
+  model?: string | null;
+  vin?: string | null;
+};
+
 export async function requestQuoteSuggestion(args: {
   item: string;
   notes?: string;
@@ -18,7 +25,7 @@ export async function requestQuoteSuggestion(args: {
   status: string;
   value?: string;
   unit?: string;
-  vehicle?: Record<string, any>;
+  vehicle?: VehicleInput | null;
 }): Promise<AISuggestion | null> {
   try {
     const res = await fetch("/api/ai/quote-suggest", {
@@ -27,9 +34,14 @@ export async function requestQuoteSuggestion(args: {
       body: JSON.stringify(args),
     });
     if (!res.ok) return null;
-    const data = await res.json();
+
+    const data = (await res.json().catch(() => null)) as
+      | { suggestion?: AISuggestion | null }
+      | null;
+
     return (data?.suggestion ?? null) as AISuggestion | null;
   } catch (e) {
+    // eslint-disable-next-line no-console
     console.error("requestQuoteSuggestion error:", e);
     return null;
   }

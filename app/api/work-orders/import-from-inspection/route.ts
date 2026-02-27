@@ -1,4 +1,4 @@
-// app/api/work-orders/import-from-inspection/route.ts
+// /app/api/work-orders/import-from-inspection/route.ts (FULL FILE REPLACEMENT)
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -8,9 +8,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import {
-  insertPrioritizedJobsFromInspection,
-} from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
+import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 
 type DB = Database;
 
@@ -46,7 +44,7 @@ export async function POST(req: Request) {
       .from("work_orders")
       .select("id, shop_id")
       .eq("id", workOrderId)
-      .maybeSingle();
+      .maybeSingle<{ id: string; shop_id: string | null }>();
 
     if (woErr) {
       return NextResponse.json(
@@ -55,10 +53,7 @@ export async function POST(req: Request) {
       );
     }
     if (!wo) {
-      return NextResponse.json(
-        { error: "Work order not found." },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Work order not found." }, { status: 404 });
     }
 
     const res = await insertPrioritizedJobsFromInspection({
@@ -81,6 +76,7 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    // eslint-disable-next-line no-console
     console.error("import-from-inspection error:", message);
     return NextResponse.json(
       { error: "Failed to import inspection jobs." },

@@ -1,7 +1,11 @@
-// /app/api/work-orders/add-line/route.ts
+// /app/api/work-orders/add-line/route.ts (FULL FILE REPLACEMENT)
+import "server-only";
+
 import { NextResponse } from "next/server";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
+
+type DB = Database;
 
 type PartLine = { name: string; qty?: number; cost?: number; notes?: string };
 
@@ -24,11 +28,13 @@ type JobType =
   | "tech-suggested"
   | null;
 
+type InspectionItemStatus = "recommend" | "fail";
+
 interface AddLineRequestBody {
   workOrderId: string;
   description: string;
   section?: string;
-  status?: "recommend" | "fail";
+  status?: InspectionItemStatus;
   suggestion: AISuggestion;
   jobType?: Exclude<JobType, null>;
 
@@ -101,6 +107,9 @@ function computePriceEstimate(args: {
   return Math.max(0, partsTotal + laborTotal);
 }
 
+type WoRow = DB["public"]["Tables"]["work_orders"]["Row"];
+type WoLineInsert = TablesInsert<"work_order_lines">;
+
 export async function POST(req: Request) {
   try {
     const bodyUnknown: unknown = await req.json();
@@ -128,10 +137,37 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
 
     if (!supabaseUrl || !serviceKey) {
-      return NextResponse.json({ error: "Server not configured for Supabase" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Server not configured for Supabase" },
+        { status: 500 },
+      );
     }
 
-    const supabase = createClient<Database>(supabaseUrl, serviceKey);
+    const supabase = createClient<DB>(supabaseUrl, serviceKey);
+
+    // ✅ Always derive shop_id from the work order (keeps data consistent)
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("id, shop_id, vehicle_id")
+      .eq("id", workOrderId)
+      .maybeSingle<Pick<WoRow, "id" | "shop_id" | "vehicle_id">>();
+
+    if (woErr) {
+      const e = woErr as PostgrestError;
+      return NextResponse.json(
+        { error: e.message, details: e.details, hint: e.hint, code: e.code },
+        { status: 500 },
+      );
+    }
+    if (!wo) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+    }
+    if (!wo.shop_id) {
+      return NextResponse.json(
+        { error: "Work order missing shop_id (required for inserts)" },
+        { status: 400 },
+      );
+    }
 
     const complaint =
       toNullableTrimmedString(complaintFromClient) ??
@@ -166,22 +202,36 @@ export async function POST(req: Request) {
           }))
         : null;
 
-    // ✅ Typed insert: only real DB columns can be sent
-    const insertPayload: TablesInsert<"work_order_lines"> = {
+    // ✅ CRITICAL FIX:
+    // - work_order_lines.status has CHECK constraint and cannot be "fail"/"recommend".
+    // - Store inspection meaning in line_status instead.
+    const lineStatus: string | null =
+      status === "fail" ? "fail" : status === "recommend" ? "recommend" : null;
+
+    const insertPayload: WoLineInsert = {
       work_order_id: workOrderId,
+      shop_id: wo.shop_id,
+      vehicle_id: wo.vehicle_id ?? null,
+
       description,
       job_type: (jobType as JobType) ?? "inspection",
 
+      // workflow status must be allowed by CHECK constraint
       status: "awaiting_approval",
       approval_state: "pending",
       punchable: false,
+
+      // store inspection fail/recommend meaning here
+      line_status: lineStatus,
 
       complaint,
       notes,
       labor_time: laborTime,
 
       price_estimate: priceEstimate,
-      parts_needed: partsNeededJson as unknown as TablesInsert<"work_order_lines">["parts_needed"],
+
+      // typed safely (Json-like). If your generated type differs, this still compiles because it matches Json structure.
+      parts_needed: partsNeededJson as unknown as WoLineInsert["parts_needed"],
 
       inspection_session_id: toNullableTrimmedString(inspectionSessionId),
     };

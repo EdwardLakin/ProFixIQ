@@ -1,4 +1,4 @@
-// /app/api/work-orders/lines/update-from-inspection/route.ts
+// /app/api/work-orders/lines/update-from-inspection/route.ts (FULL FILE REPLACEMENT)
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -6,6 +6,9 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
 
 type Body = {
   workOrderId: string;
@@ -13,7 +16,7 @@ type Body = {
 
   laborHours?: number | null;
 
-  // ✅ allow client to pass complaint explicitly
+  // allow client to pass complaint explicitly
   complaint?: string | null;
 
   // inspection note (free text)
@@ -57,12 +60,15 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
 
     if (!supabaseUrl || !serviceKey) {
-      return NextResponse.json({ error: "Server not configured for Supabase" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Server not configured for Supabase" },
+        { status: 500 },
+      );
     }
 
-    const supabase = createClient(supabaseUrl, serviceKey);
+    const supabase = createClient<DB>(supabaseUrl, serviceKey);
 
-    // ✅ Ensure line exists + belongs to WO (prevents cross-WO updates)
+    // Ensure line exists + belongs to WO (prevents cross-WO updates)
     const { data: line, error: loadErr } = await supabase
       .from("work_order_lines")
       .select("id, work_order_id, status, approval_state, punchable")
@@ -99,13 +105,13 @@ export async function POST(req: Request) {
     const noteClean = trimOrNull(notes);
     const summaryClean = trimOrNull(aiSummary);
 
-    // ✅ complaint precedence:
+    // complaint precedence:
     // 1) explicit complaint
     // 2) notes
     if (complaintClean) update.complaint = complaintClean;
     else if (noteClean) update.complaint = noteClean;
 
-    // notes: store compact context (don’t overwrite advisor notes unless you want to)
+    // notes: store compact context
     if (noteClean || summaryClean) {
       const parts: string[] = [];
       if (noteClean) parts.push(`From inspection: ${noteClean}`);
@@ -113,7 +119,7 @@ export async function POST(req: Request) {
       update.notes = parts.join(" • ");
     }
 
-    // ✅ Keep it non-punchable until approved (matches your “quote line” rule)
+    // Keep it non-punchable until approved
     update.status = "awaiting_approval";
     update.approval_state = "pending";
     update.punchable = false;

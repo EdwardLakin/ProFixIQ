@@ -1,4 +1,6 @@
-// /app/api/ai/quote-suggest/route.ts
+// /app/api/ai/quote-suggest/route.ts (FULL FILE REPLACEMENT)
+import "server-only";
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -58,9 +60,7 @@ function buildVehicleYmm(vehicle?: VehicleInput | null): string | null {
   if (!vehicle) return null;
 
   const year =
-    vehicle.year !== undefined && vehicle.year !== null
-      ? String(vehicle.year)
-      : "";
+    vehicle.year !== undefined && vehicle.year !== null ? String(vehicle.year) : "";
   const make = vehicle.make ?? "";
   const model = vehicle.model ?? "";
 
@@ -88,6 +88,35 @@ function buildComplaint(input: RequestBody): string {
   return parts.join(" | ");
 }
 
+async function resolveShopIdForUser(supabase: ReturnType<typeof createRouteHandlerClient<DB>>): Promise<{
+  userId: string | null;
+  shopId: string | null;
+}> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const userId = user?.id ?? null;
+  if (!userId) return { userId: null, shopId: null };
+
+  // support both common profile key shapes
+  const { data: byId } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", userId)
+    .maybeSingle<{ shop_id: string | null }>();
+  if (byId?.shop_id) return { userId, shopId: byId.shop_id };
+
+  const { data: byUserId } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("user_id", userId)
+    .maybeSingle<{ shop_id: string | null }>();
+  if (byUserId?.shop_id) return { userId, shopId: byUserId.shop_id };
+
+  return { userId, shopId: null };
+}
+
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
@@ -100,28 +129,7 @@ export async function POST(req: Request) {
     const body: RequestBody = rawBody;
     const { item, notes, section, status, vehicle } = body;
 
-    // Resolve shopId from the authenticated user (if available)
-    let shopId: string | null = null;
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const userId = session?.user?.id ?? null;
-      if (userId) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("shop_id")
-          .eq("user_id", userId)
-          .maybeSingle();
-
-        if (profile?.shop_id) shopId = profile.shop_id;
-      }
-    } catch (resolveErr) {
-      // Do not block suggestion if shop resolution fails
-      // eslint-disable-next-line no-console
-      console.warn("[AI] Failed to resolve shopId for quote-suggest:", resolveErr);
-    }
+    const { userId, shopId } = await resolveShopIdForUser(supabase);
 
     const complaint = buildComplaint(body);
     const vehicleYmm = buildVehicleYmm(vehicle);
@@ -155,9 +163,10 @@ export async function POST(req: Request) {
           confidence: "low",
         };
 
-    // ✅ IMPORTANT: Only log to ai_events if we have a real shopId.
-    // This prevents noisy 400s when shop_id is NOT NULL / FK constrained / enum constrained.
-    if (shopId) {
+    // ✅ Log safely:
+    // Your ai_events.event_type allowed list does NOT include "quote_suggest".
+    // Use "message" (allowed) and always include payload.
+    if (shopId && userId) {
       try {
         const vehiclePayload =
           vehicle !== undefined && vehicle !== null
@@ -170,6 +179,7 @@ export async function POST(req: Request) {
             : null;
 
         const payload: Json = {
+          kind: "quote_suggest",
           input: {
             item,
             notes: notes ?? null,
@@ -181,12 +191,13 @@ export async function POST(req: Request) {
             complaint,
           },
           output: suggestion,
-        } as unknown as Json;
+        };
 
         const { error: logErr } = await supabase.from("ai_events").insert({
-          event_type: "quote_suggest",
+          event_type: "message",
           payload,
           shop_id: shopId,
+          user_id: userId,
           entity_id: null,
           entity_table: "inspection_results",
         });
