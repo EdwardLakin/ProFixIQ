@@ -1,4 +1,4 @@
-// /features/inspections/lib/inspection/aiQuote.ts (FULL FILE REPLACEMENT)
+// features/inspections/lib/inspection/aiQuote.ts
 
 export type AISuggestion = {
   parts: { name: string; qty?: number; cost?: number; notes?: string }[];
@@ -11,7 +11,7 @@ export type AISuggestion = {
   title?: string;
 };
 
-type VehicleInput = {
+export type VehicleInput = {
   year?: string | number | null;
   make?: string | null;
   model?: string | null;
@@ -33,13 +33,14 @@ export async function requestQuoteSuggestion(args: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(args),
     });
+
     if (!res.ok) return null;
 
     const data = (await res.json().catch(() => null)) as
-      | { suggestion?: AISuggestion | null }
+      | { suggestion?: AISuggestion }
       | null;
 
-    return (data?.suggestion ?? null) as AISuggestion | null;
+    return data?.suggestion ?? null;
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("requestQuoteSuggestion error:", e);

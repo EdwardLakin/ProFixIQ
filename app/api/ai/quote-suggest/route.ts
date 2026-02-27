@@ -1,6 +1,4 @@
-// /app/api/ai/quote-suggest/route.ts (FULL FILE REPLACEMENT)
-import "server-only";
-
+// /app/api/ai/quote-suggest/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -11,7 +9,6 @@ type DB = Database;
 
 type ConfidenceLevel = "low" | "medium" | "high";
 
-// Keep the response structured and easy to consume
 export type AISuggestion = {
   parts: { name: string; qty?: number; cost?: number; notes?: string }[];
   laborHours: number;
@@ -58,22 +55,17 @@ function mapConfidence(score: number): ConfidenceLevel {
 
 function buildVehicleYmm(vehicle?: VehicleInput | null): string | null {
   if (!vehicle) return null;
-
-  const year =
-    vehicle.year !== undefined && vehicle.year !== null ? String(vehicle.year) : "";
+  const year = vehicle.year != null ? String(vehicle.year) : "";
   const make = vehicle.make ?? "";
   const model = vehicle.model ?? "";
-
   const combined = [year, make, model].join(" ").trim();
   return combined.length > 0 ? combined : null;
 }
 
 function buildComplaint(input: RequestBody): string {
   const parts: string[] = [];
-
   if (input.section) parts.push(`[${input.section}]`);
   if (input.status) parts.push(`Status: ${input.status}`);
-
   parts.push(input.item);
 
   if (typeof input.notes === "string" && input.notes.trim().length > 0) {
@@ -88,35 +80,6 @@ function buildComplaint(input: RequestBody): string {
   return parts.join(" | ");
 }
 
-async function resolveShopIdForUser(supabase: ReturnType<typeof createRouteHandlerClient<DB>>): Promise<{
-  userId: string | null;
-  shopId: string | null;
-}> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const userId = user?.id ?? null;
-  if (!userId) return { userId: null, shopId: null };
-
-  // support both common profile key shapes
-  const { data: byId } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", userId)
-    .maybeSingle<{ shop_id: string | null }>();
-  if (byId?.shop_id) return { userId, shopId: byId.shop_id };
-
-  const { data: byUserId } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("user_id", userId)
-    .maybeSingle<{ shop_id: string | null }>();
-  if (byUserId?.shop_id) return { userId, shopId: byUserId.shop_id };
-
-  return { userId, shopId: null };
-}
-
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
@@ -129,12 +92,25 @@ export async function POST(req: Request) {
     const body: RequestBody = rawBody;
     const { item, notes, section, status, vehicle } = body;
 
-    const { userId, shopId } = await resolveShopIdForUser(supabase);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Resolve shopId (best-effort)
+    let shopId: string | null = null;
+    if (user?.id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user.id)
+        .maybeSingle<{ shop_id: string | null }>();
+
+      shopId = profile?.shop_id ?? null;
+    }
 
     const complaint = buildComplaint(body);
     const vehicleYmm = buildVehicleYmm(vehicle);
 
-    // Call central AI engine (shopId optional for the AI itself)
     const aiResult = await ProFixAI.suggestQuote({
       shopId: shopId ?? "unknown_shop",
       vehicleYmm,
@@ -163,21 +139,9 @@ export async function POST(req: Request) {
           confidence: "low",
         };
 
-    // ✅ Log safely:
-    // Your ai_events.event_type allowed list does NOT include "quote_suggest".
-    // Use "message" (allowed) and always include payload.
-    if (shopId && userId) {
+    // ✅ Log using a VALID event_type to avoid 400s (your enum/check constraint)
+    if (shopId && user?.id) {
       try {
-        const vehiclePayload =
-          vehicle !== undefined && vehicle !== null
-            ? {
-                year: vehicle.year ?? null,
-                make: vehicle.make ?? null,
-                model: vehicle.model ?? null,
-                vin: vehicle.vin ?? null,
-              }
-            : null;
-
         const payload: Json = {
           kind: "quote_suggest",
           input: {
@@ -187,17 +151,17 @@ export async function POST(req: Request) {
             status,
             value: body.value ?? null,
             unit: body.unit ?? null,
-            vehicle: vehiclePayload,
+            vehicle: vehicle ?? null,
             complaint,
           },
           output: suggestion,
-        };
+        } as unknown as Json;
 
         const { error: logErr } = await supabase.from("ai_events").insert({
-          event_type: "message",
+          event_type: "message", // ✅ valid in your allowed list
           payload,
           shop_id: shopId,
-          user_id: userId,
+          user_id: user.id,
           entity_id: null,
           entity_table: "inspection_results",
         });
