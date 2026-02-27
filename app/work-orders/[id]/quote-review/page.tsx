@@ -9,7 +9,7 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import FocusedJobSplitView from "../focused-job/_components/FocusedJobSplitView";
-import WorkOrderIdClient from "../Client"; // <-- adjust ONLY if your filename is actually ../Client
+import WorkOrderIdClient from "../Client"; // adjust ONLY if your filename is actually ../Client
 import QuoteReviewPanelClient from "./_components/QuoteReviewPanelClient";
 
 type DB = Database;
@@ -48,11 +48,11 @@ export default async function Page({ params }: { params: { id: string } }) {
   }
 
   if (!resolved) {
-    // Try case-insensitive custom_id
+    // Try case-insensitive match on custom_id
     const { data } = await supabase
       .from("work_orders")
       .select("id, custom_id")
-      .ilike("custom_id", routeId.toUpperCase())
+      .ilike("custom_id", routeId)
       .maybeSingle();
 
     if (data) resolved = data;
