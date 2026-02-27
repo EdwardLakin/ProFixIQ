@@ -1,5 +1,4 @@
-//app/api/ai/quote-suggest/route.ts
-
+// /app/api/ai/quote-suggest/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -72,13 +71,8 @@ function buildVehicleYmm(vehicle?: VehicleInput | null): string | null {
 function buildComplaint(input: RequestBody): string {
   const parts: string[] = [];
 
-  if (input.section) {
-    parts.push(`[${input.section}]`);
-  }
-
-  if (input.status) {
-    parts.push(`Status: ${input.status}`);
-  }
+  if (input.section) parts.push(`[${input.section}]`);
+  if (input.status) parts.push(`Status: ${input.status}`);
 
   parts.push(input.item);
 
@@ -100,10 +94,7 @@ export async function POST(req: Request) {
   try {
     const rawBody: unknown = await req.json();
     if (!isRequestBody(rawBody)) {
-      return NextResponse.json(
-        { error: "Invalid request body" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
     const body: RequestBody = rawBody;
@@ -124,22 +115,18 @@ export async function POST(req: Request) {
           .eq("user_id", userId)
           .maybeSingle();
 
-        if (profile?.shop_id) {
-          shopId = profile.shop_id;
-        }
+        if (profile?.shop_id) shopId = profile.shop_id;
       }
     } catch (resolveErr) {
       // Do not block suggestion if shop resolution fails
-      console.warn(
-        "[AI] Failed to resolve shopId for quote-suggest:",
-        resolveErr,
-      );
+      // eslint-disable-next-line no-console
+      console.warn("[AI] Failed to resolve shopId for quote-suggest:", resolveErr);
     }
 
     const complaint = buildComplaint(body);
     const vehicleYmm = buildVehicleYmm(vehicle);
 
-    // Call central AI engine
+    // Call central AI engine (shopId optional for the AI itself)
     const aiResult = await ProFixAI.suggestQuote({
       shopId: shopId ?? "unknown_shop",
       vehicleYmm,
@@ -147,78 +134,77 @@ export async function POST(req: Request) {
     });
 
     const baseSummary =
-      typeof notes === "string" && notes.trim().length > 0
-        ? notes.trim()
-        : item;
+      typeof notes === "string" && notes.trim().length > 0 ? notes.trim() : item;
 
-    let suggestion: AISuggestion;
+    const suggestion: AISuggestion = aiResult
+      ? {
+          parts: aiResult.parts.map((p: QuoteEnginePart) => ({
+            name: p.description || "Suggested part",
+            qty: p.qty,
+            cost: p.price,
+            notes: p.partId ? `Part ID: ${p.partId}` : undefined,
+          })),
+          laborHours: aiResult.laborHours,
+          summary: baseSummary,
+          confidence: mapConfidence(aiResult.confidence),
+        }
+      : {
+          parts: [],
+          laborHours: 0.5,
+          summary: baseSummary,
+          confidence: "low",
+        };
 
-    if (aiResult) {
-      suggestion = {
-        parts: aiResult.parts.map((p: QuoteEnginePart) => ({
-          name: p.description || "Suggested part",
-          qty: p.qty,
-          cost: p.price,
-          notes: p.partId ? `Part ID: ${p.partId}` : undefined,
-        })),
-        laborHours: aiResult.laborHours,
-        summary: baseSummary,
-        confidence: mapConfidence(aiResult.confidence),
-      };
-    } else {
-      // Fallback: minimal but valid suggestion
-      suggestion = {
-        parts: [],
-        laborHours: 0.5,
-        summary: baseSummary,
-        confidence: "low",
-      };
-    }
+    // ✅ IMPORTANT: Only log to ai_events if we have a real shopId.
+    // This prevents noisy 400s when shop_id is NOT NULL / FK constrained / enum constrained.
+    if (shopId) {
+      try {
+        const vehiclePayload =
+          vehicle !== undefined && vehicle !== null
+            ? {
+                year: vehicle.year ?? null,
+                make: vehicle.make ?? null,
+                model: vehicle.model ?? null,
+                vin: vehicle.vin ?? null,
+              }
+            : null;
 
-    // Persist the inference into ai_events (best-effort; ignore failures)
-    try {
-      const vehiclePayload =
-        vehicle !== undefined && vehicle !== null
-          ? {
-              year: vehicle.year ?? null,
-              make: vehicle.make ?? null,
-              model: vehicle.model ?? null,
-              vin: vehicle.vin ?? null,
-            }
-          : null;
+        const payload: Json = {
+          input: {
+            item,
+            notes: notes ?? null,
+            section,
+            status,
+            value: body.value ?? null,
+            unit: body.unit ?? null,
+            vehicle: vehiclePayload,
+            complaint,
+          },
+          output: suggestion,
+        } as unknown as Json;
 
-      const payload: Json = {
-        input: {
-          item,
-          notes: notes ?? null,
-          section,
-          status,
-          value: body.value ?? null,
-          unit: body.unit ?? null,
-          vehicle: vehiclePayload,
-          complaint,
-        },
-        output: suggestion,
-      } as unknown as Json;
+        const { error: logErr } = await supabase.from("ai_events").insert({
+          event_type: "quote_suggest",
+          payload,
+          shop_id: shopId,
+          entity_id: null,
+          entity_table: "inspection_results",
+        });
 
-      await supabase.from("ai_events").insert({
-        event_type: "quote_suggest",
-        payload,
-        shop_id: shopId,
-        entity_id: null,
-        entity_table: "inspection_results",
-      });
-    } catch (logErr) {
-      console.warn("[AI] Failed to log quote-suggest event:", logErr);
+        if (logErr) {
+          // eslint-disable-next-line no-console
+          console.warn("[AI] Failed to log quote-suggest event:", logErr);
+        }
+      } catch (logErr) {
+        // eslint-disable-next-line no-console
+        console.warn("[AI] Failed to log quote-suggest event:", logErr);
+      }
     }
 
     return NextResponse.json({ suggestion });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("quote-suggest error:", err);
-    return NextResponse.json(
-      { error: "AI suggestion failed" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "AI suggestion failed" }, { status: 500 });
   }
 }

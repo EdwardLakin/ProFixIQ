@@ -1828,14 +1828,26 @@ export default function GenericInspectionScreen(
       } else {
         toast.error("Missing work order id — saved locally only", { id: toastId });
       }
-    } catch (e: unknown) {
-      // eslint-disable-next-line no-console
-      console.error("Submit AI failed:", e);
-      toast.error("Couldn't add to work order");
-    } finally {
-      inFlightRef.current.delete(key);
+      } catch (e: unknown) {
+    // eslint-disable-next-line no-console
+    console.error("Submit AI failed:", e);
+
+    // ✅ replace the loading toast if it exists
+    const msg = e instanceof Error ? e.message : "Couldn't add to work order";
+    if (toastId !== undefined) {
+      toast.error(msg, { id: toastId });
+    } else {
+      toast.error(msg);
     }
-  };
+  } finally {
+    inFlightRef.current.delete(key);
+
+    // ✅ ALWAYS dismiss the loading toast so it can never get stuck
+    if (toastId !== undefined) {
+      toast.dismiss(toastId);
+    }
+  }
+};
 
   useEffect(() => {
     if (!isEmbed) return;

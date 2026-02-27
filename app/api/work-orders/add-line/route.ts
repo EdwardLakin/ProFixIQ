@@ -1,6 +1,7 @@
 // /app/api/work-orders/add-line/route.ts
 import { NextResponse } from "next/server";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
+import type { Database, TablesInsert } from "@shared/types/types/supabase";
 
 type PartLine = { name: string; qty?: number; cost?: number; notes?: string };
 
@@ -15,20 +16,6 @@ type AISuggestion = {
   title?: string;
 };
 
-type LineStatus =
-  | "awaiting"
-  | "queued"
-  | "in_progress"
-  | "on_hold"
-  | "paused"
-  | "completed"
-  | "assigned"
-  | "unassigned"
-  | "awaiting_approval"
-  | "declined";
-
-type ApprovalState = "pending" | "approved" | "declined" | null;
-
 type JobType =
   | "diagnosis"
   | "inspection"
@@ -37,46 +24,15 @@ type JobType =
   | "tech-suggested"
   | null;
 
-interface InsertWorkOrderLine {
-  work_order_id: string;
-  description: string;
-  job_type: JobType;
-  status: LineStatus;
-  approval_state: ApprovalState;
-
-  // ✅ DB columns you actually have
-  complaint: string | null;
-  notes: string | null;
-  labor_time: number | null;
-
-  // ✅ important workflow controls (DB column exists)
-  punchable: boolean;
-
-  // ✅ store estimate and parts (DB columns exist)
-  price_estimate: number | null;
-  parts_needed: unknown | null;
-
-  // ✅ optional link back to inspection session (DB column exists)
-  inspection_session_id: string | null;
-}
-
 interface AddLineRequestBody {
   workOrderId: string;
   description: string;
   section?: string;
   status?: "recommend" | "fail";
   suggestion: AISuggestion;
-  jobType?:
-    | "inspection"
-    | "repair"
-    | "maintenance"
-    | "diagnosis"
-    | "tech-suggested";
+  jobType?: Exclude<JobType, null>;
 
-  // ✅ allow client to pass complaint explicitly
   complaint?: string | null;
-
-  // ✅ optional: link the WO line to the inspection session id
   inspectionSessionId?: string | null;
 }
 
@@ -98,9 +54,7 @@ function toNullableTrimmedString(v: unknown): string | null {
 }
 
 function finiteNumberOrNull(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) && !Number.isNaN(v)
-    ? v
-    : null;
+  return typeof v === "number" && Number.isFinite(v) && !Number.isNaN(v) ? v : null;
 }
 
 function normalizeParts(parts: PartLine[] | undefined): Array<{
@@ -138,7 +92,6 @@ function computePriceEstimate(args: {
   const hrs = args.laborHours ?? null;
   const rate = args.laborRate ?? null;
 
-  // if we have neither usable labor nor usable parts cost, skip
   const hasPartsMoney = partsTotal > 0;
   const hasLaborMoney = hrs != null && rate != null && hrs >= 0 && rate >= 0;
 
@@ -163,7 +116,7 @@ export async function POST(req: Request) {
       workOrderId,
       description,
       section,
-      status, // "recommend" | "fail" from inspection
+      status,
       suggestion,
       jobType = "inspection",
       complaint: complaintFromClient,
@@ -175,33 +128,23 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
 
     if (!supabaseUrl || !serviceKey) {
-      return NextResponse.json(
-        { error: "Server not configured for Supabase" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "Server not configured for Supabase" }, { status: 500 });
     }
 
-    const supabase = createClient(supabaseUrl, serviceKey);
+    const supabase = createClient<Database>(supabaseUrl, serviceKey);
 
-    // ✅ Complaint precedence:
-    // 1) explicit complaint from client
-    // 2) suggestion.notes (your helper may copy inspection notes into suggestion.notes)
     const complaint =
       toNullableTrimmedString(complaintFromClient) ??
       toNullableTrimmedString(suggestion?.notes);
 
-    // Build compact notes (extra context for advisors)
     const notesParts: string[] = [];
     if (section) notesParts.push(`Section: ${section}`);
     if (status) notesParts.push(`From inspection: ${status.toUpperCase()}`);
     if (suggestion.title?.trim()) notesParts.push(`Title: ${suggestion.title.trim()}`);
-    if (suggestion.summary?.trim())
-      notesParts.push(`AI: ${suggestion.summary.trim()}`);
-
-    const notes: string | null = notesParts.length ? notesParts.join(" • ") : null;
+    if (suggestion.summary?.trim()) notesParts.push(`AI: ${suggestion.summary.trim()}`);
+    const notes = notesParts.length ? notesParts.join(" • ") : null;
 
     const laborTime: number | null = finiteNumberOrNull(suggestion?.laborHours);
-
     const laborRate: number | null = finiteNumberOrNull(suggestion?.laborRate);
     const parts = normalizeParts(suggestion?.parts);
 
@@ -212,8 +155,6 @@ export async function POST(req: Request) {
       explicit: finiteNumberOrNull(suggestion?.price),
     });
 
-    // ✅ Store parts in parts_needed (jsonb)
-    // Keep structure predictable for later consumption
     const partsNeededJson =
       parts.length > 0
         ? parts.map((p) => ({
@@ -225,12 +166,12 @@ export async function POST(req: Request) {
           }))
         : null;
 
-    const insertPayload: InsertWorkOrderLine = {
+    // ✅ Typed insert: only real DB columns can be sent
+    const insertPayload: TablesInsert<"work_order_lines"> = {
       work_order_id: workOrderId,
       description,
       job_type: (jobType as JobType) ?? "inspection",
 
-      // ✅ quote line (non-punchable)
       status: "awaiting_approval",
       approval_state: "pending",
       punchable: false,
@@ -240,7 +181,7 @@ export async function POST(req: Request) {
       labor_time: laborTime,
 
       price_estimate: priceEstimate,
-      parts_needed: partsNeededJson,
+      parts_needed: partsNeededJson as unknown as TablesInsert<"work_order_lines">["parts_needed"],
 
       inspection_session_id: toNullableTrimmedString(inspectionSessionId),
     };
@@ -260,7 +201,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ id: (data as { id: string }).id });
-  } catch (e) {
+  } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: msg }, { status: 500 });
   }

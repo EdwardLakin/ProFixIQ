@@ -31,6 +31,7 @@ interface SectionDisplayProps {
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
   isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
 
+  // ✅ keep DB/session shape strict: qty is number
   onUpdateParts?: (
     sectionIndex: number,
     itemIndex: number,
@@ -83,9 +84,11 @@ function getParts(item: ItemExtended): PartRow[] {
   return v
     .map((p) => ({
       description: typeof p?.description === "string" ? p.description : "",
-      qty: typeof p?.qty === "number" && Number.isFinite(p.qty) ? p.qty : 1,
+      // ✅ allow "blank" qty behavior by storing 0 (UI will render as empty)
+      qty: typeof p?.qty === "number" && Number.isFinite(p.qty) ? p.qty : 0,
     }))
-    .filter((p) => p.description.length > 0 || p.qty >= 1);
+    // ✅ keep draft rows even if qty is 0
+    .filter((p) => p.description.length > 0 || p.qty >= 0);
 }
 
 function getLaborHours(item: ItemExtended): number | null {
@@ -124,7 +127,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
   const items = (section.items ?? []) as ItemExtended[];
 
-  // ✅ never rely on callers passing title correctly (you had title="" before)
+  // ✅ never rely on callers passing title correctly
   const resolvedTitle = (title || section.title || "").trim();
   const gridSection = isGridSection(resolvedTitle);
 
@@ -139,11 +142,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     if (!isControlled) setInternalOpen((v) => !v);
   };
 
-  /**
-   * ✅ FIX: derive stats every render (NO memo).
-   * Your updates can mutate items in-place (same array ref),
-   * which makes memo-by-ref stale.
-   */
+  // ✅ derive stats every render (NO memo)
   const total = items.length || 0;
   const counts = { ok: 0, fail: 0, na: 0, recommend: 0, unset: 0 };
 
@@ -176,10 +175,28 @@ export default function SectionDisplay(props: SectionDisplayProps) {
   );
   const [editByKey, setEditByKey] = useState<Record<string, boolean>>({});
 
+  // ✅ Qty filler state (string) so it can be blank until typed
+  const [qtyDraftByKey, setQtyDraftByKey] = useState<Record<string, string>>(
+    {},
+  );
+
   const setPartsOpen = (k: string, v: boolean) =>
     setPartsOpenByKey((p) => ({ ...p, [k]: v }));
   const setEditing = (k: string, v: boolean) =>
     setEditByKey((p) => ({ ...p, [k]: v }));
+
+  const setQtyDraft = (k: string, v: string) =>
+    setQtyDraftByKey((p) => ({ ...p, [k]: v }));
+
+  const clearQtyDraftPrefix = (prefix: string) => {
+    setQtyDraftByKey((prev) => {
+      const next: Record<string, string> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (!k.startsWith(prefix)) next[k] = v;
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
@@ -281,7 +298,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
             <div />
           ) : (
             <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)]">
-              {/* Desktop header row (table vibe) — desktop only */}
+              {/* Desktop header row — desktop only */}
               <div className="hidden border-b border-white/10 bg-black/25 px-4 py-2 lg:block">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
@@ -398,10 +415,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         };
 
                         const addEmptyPart = () => {
-                          handlePartsChange([
-                            ...currentParts,
-                            { description: "", qty: 1 },
-                          ]);
+                          const nextIdx = currentParts.length;
+                          const draftKey = `${k}:part:${nextIdx}:qty`;
+                          setQtyDraft(draftKey, ""); // ✅ blank filler
+                          handlePartsChange([...currentParts, { description: "", qty: 0 }]);
                         };
 
                         const updatePart = (idx: number, patch: Partial<PartRow>) => {
@@ -413,6 +430,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                         const removePart = (idx: number) => {
                           const next = currentParts.filter((_, i) => i !== idx);
+                          // clear drafts for this item (cheap + avoids stale)
+                          clearQtyDraftPrefix(`${k}:part:`);
                           handlePartsChange(next);
                         };
 
@@ -481,51 +500,109 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                             {partsOpen && (
                               <>
                                 <div className="space-y-2">
-                                  {currentParts.map((p, pIdx) => (
-                                    <div
-                                      key={pIdx}
-                                      className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
-                                    >
-                                      <input
-                                        disabled={lockInputs}
-                                        className={[
-                                          "min-w-0 flex-1 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
-                                          "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                          lockInputs ? "opacity-60 cursor-not-allowed" : "",
-                                        ].join(" ")}
-                                        placeholder="Part description"
-                                        value={p.description}
-                                        onChange={(e) =>
-                                          updatePart(pIdx, { description: e.target.value })
-                                        }
-                                      />
-                                      <input
-                                        disabled={lockInputs}
-                                        className={[
-                                          "w-16 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
-                                          "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                          lockInputs ? "opacity-60 cursor-not-allowed" : "",
-                                        ].join(" ")}
-                                        placeholder="Qty"
-                                        type="number"
-                                        min={1}
-                                        value={Number.isFinite(p.qty) ? p.qty : ""}
-                                        onChange={(e) =>
-                                          updatePart(pIdx, { qty: Number(e.target.value) || 1 })
-                                        }
-                                      />
-                                      <button
-                                        type="button"
-                                        className={[
-                                          "text-[11px] text-red-300 hover:text-red-200",
-                                          lockInputs ? "opacity-40 pointer-events-none" : "",
-                                        ].join(" ")}
-                                        onClick={() => removePart(pIdx)}
+                                  {currentParts.map((p, pIdx) => {
+                                    const qtyKey = `${k}:part:${pIdx}:qty`;
+                                    const draft = qtyDraftByKey[qtyKey];
+
+                                    // ✅ if user hasn't typed, show blank when qty is 0
+                                    const displayQty =
+                                      typeof draft === "string"
+                                        ? draft
+                                        : p.qty > 0
+                                          ? String(p.qty)
+                                          : "";
+
+                                    return (
+                                      <div
+                                        key={pIdx}
+                                        className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
                                       >
-                                        Remove
-                                      </button>
-                                    </div>
-                                  ))}
+                                        <input
+                                          disabled={lockInputs}
+                                          className={[
+                                            "min-w-0 flex-1 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
+                                            "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
+                                            lockInputs
+                                              ? "opacity-60 cursor-not-allowed"
+                                              : "",
+                                          ].join(" ")}
+                                          placeholder="Part description"
+                                          value={p.description}
+                                          onChange={(e) =>
+                                            updatePart(pIdx, {
+                                              description: e.target.value,
+                                            })
+                                          }
+                                        />
+
+                                        {/* ✅ Qty filler (blank until typed) */}
+                                        <input
+                                          disabled={lockInputs}
+                                          className={[
+                                            "w-16 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
+                                            "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
+                                            lockInputs
+                                              ? "opacity-60 cursor-not-allowed"
+                                              : "",
+                                          ].join(" ")}
+                                          placeholder="Qty"
+                                          inputMode="numeric"
+                                          type="number"
+                                          min={0}
+                                          step={1}
+                                          value={displayQty}
+                                          onChange={(e) => {
+                                            const raw = e.target.value;
+
+                                            // keep the typed string so it can be blank
+                                            setQtyDraft(qtyKey, raw);
+
+                                            if (raw === "") {
+                                              // ✅ blank qty => store 0 (no default)
+                                              updatePart(pIdx, { qty: 0 });
+                                              return;
+                                            }
+
+                                            const n = Number(raw);
+                                            if (!Number.isFinite(n)) {
+                                              updatePart(pIdx, { qty: 0 });
+                                              return;
+                                            }
+
+                                            updatePart(pIdx, {
+                                              qty: Math.max(0, Math.floor(n)),
+                                            });
+                                          }}
+                                          onBlur={() => {
+                                            // If user typed a number, you can drop draft and rely on qty.
+                                            // If blank, keep draft "" so placeholder behavior remains.
+                                            const raw = qtyDraftByKey[qtyKey];
+                                            if (raw && raw.trim() !== "") {
+                                              setQtyDraft(qtyKey, "");
+                                              setQtyDraftByKey((prev) => {
+                                                const next = { ...prev };
+                                                delete next[qtyKey];
+                                                return next;
+                                              });
+                                            }
+                                          }}
+                                        />
+
+                                        <button
+                                          type="button"
+                                          className={[
+                                            "text-[11px] text-red-300 hover:text-red-200",
+                                            lockInputs
+                                              ? "opacity-40 pointer-events-none"
+                                              : "",
+                                          ].join(" ")}
+                                          onClick={() => removePart(pIdx)}
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
 
                                   <button
                                     type="button"
@@ -552,7 +629,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     className={[
                                       "w-20 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
                                       "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                      lockInputs ? "opacity-60 cursor-not-allowed" : "",
+                                      lockInputs
+                                        ? "opacity-60 cursor-not-allowed"
+                                        : "",
                                     ].join(" ")}
                                     placeholder="0.0"
                                     type="number"
@@ -561,7 +640,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     value={currentLabor ?? ""}
                                     onChange={(e) =>
                                       handleLaborChange(
-                                        e.target.value === "" ? null : Number(e.target.value) || 0,
+                                        e.target.value === ""
+                                          ? null
+                                          : Number(e.target.value) || 0,
                                       )
                                     }
                                   />
@@ -586,9 +667,13 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   size="sm"
                                   className="px-3"
                                   disabled={submitting}
-                                  onClick={() => onSubmitAI(sectionIndex, itemIndex)}
+                                  onClick={() =>
+                                    onSubmitAI?.(sectionIndex, itemIndex)
+                                  }
                                 >
-                                  {submitting ? "Submitting…" : "Submit for estimate"}
+                                  {submitting
+                                    ? "Submitting…"
+                                    : "Submit for estimate"}
                                 </Button>
                               );
                             }
@@ -601,7 +686,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   size="sm"
                                   className="px-3"
                                   disabled={submitting}
-                                  onClick={() => onSubmitAI(sectionIndex, itemIndex)}
+                                  onClick={() =>
+                                    onSubmitAI?.(sectionIndex, itemIndex)
+                                  }
                                 >
                                   {submitting ? "Updating…" : "Update estimate"}
                                 </Button>

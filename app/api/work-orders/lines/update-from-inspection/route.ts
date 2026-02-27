@@ -1,4 +1,4 @@
-//app/api/work-orders/lines/update-from-inspection/route.ts
+// /app/api/work-orders/lines/update-from-inspection/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -10,9 +10,17 @@ import { createClient, type PostgrestError } from "@supabase/supabase-js";
 type Body = {
   workOrderId: string;
   workOrderLineId: string;
+
   laborHours?: number | null;
-  notes?: string | null; // inspection note (free text)
-  aiSummary?: string | null; // optional AI summary
+
+  // ✅ allow client to pass complaint explicitly
+  complaint?: string | null;
+
+  // inspection note (free text)
+  notes?: string | null;
+
+  // optional AI summary
+  aiSummary?: string | null;
 };
 
 function isValidBody(b: unknown): b is Body {
@@ -41,17 +49,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const { workOrderId, workOrderLineId, laborHours, notes, aiSummary } = bodyUnknown;
+    const { workOrderId, workOrderLineId, laborHours, complaint, notes, aiSummary } =
+      bodyUnknown;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey =
       process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
 
     if (!supabaseUrl || !serviceKey) {
-      return NextResponse.json(
-        { error: "Server not configured for Supabase" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "Server not configured for Supabase" }, { status: 500 });
     }
 
     const supabase = createClient(supabaseUrl, serviceKey);
@@ -80,7 +86,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Build update payload
     const update: Record<string, unknown> = {};
 
     // labor_time is numeric in DB; supabase-js accepts number
@@ -90,17 +95,21 @@ export async function POST(req: Request) {
       update.labor_time = laborHours;
     }
 
-    const n = trimOrNull(notes);
-    const s = trimOrNull(aiSummary);
+    const complaintClean = trimOrNull(complaint);
+    const noteClean = trimOrNull(notes);
+    const summaryClean = trimOrNull(aiSummary);
 
-    // complaint: use inspection note (helps advisors quickly see "what's wrong")
-    if (n) update.complaint = n;
+    // ✅ complaint precedence:
+    // 1) explicit complaint
+    // 2) notes
+    if (complaintClean) update.complaint = complaintClean;
+    else if (noteClean) update.complaint = noteClean;
 
     // notes: store compact context (don’t overwrite advisor notes unless you want to)
-    if (n || s) {
+    if (noteClean || summaryClean) {
       const parts: string[] = [];
-      if (n) parts.push(`From inspection: ${n}`);
-      if (s) parts.push(`AI: ${s}`);
+      if (noteClean) parts.push(`From inspection: ${noteClean}`);
+      if (summaryClean) parts.push(`AI: ${summaryClean}`);
       update.notes = parts.join(" • ");
     }
 
@@ -108,10 +117,6 @@ export async function POST(req: Request) {
     update.status = "awaiting_approval";
     update.approval_state = "pending";
     update.punchable = false;
-
-    if (Object.keys(update).length === 0) {
-      return NextResponse.json({ ok: true, updated: false });
-    }
 
     const { error: updErr } = await supabase
       .from("work_order_lines")
