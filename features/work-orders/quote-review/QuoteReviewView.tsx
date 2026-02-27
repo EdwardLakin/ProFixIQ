@@ -4,6 +4,10 @@
 // Shared Quote Review UI used both by:
 //  - /app/quote-review/[id] (standalone)
 //  - /app/work-orders/[id]/quote-review (split panel)
+//
+// IMPORTANT:
+// - Tailwind breakpoints (lg/xl) are based on viewport width, not panel width.
+// - When embedded in the right panel, we must FORCE a panel-friendly layout.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -324,9 +328,7 @@ export default function QuoteReviewView(props: {
   const setLineField = useCallback((lineId: string, patch: Partial<Line>) => {
     setLines((prev) =>
       prev.map((l) =>
-        l.id === lineId
-          ? ({ ...l, ...patch, _dirty: true } as EditableLine)
-          : l,
+        l.id === lineId ? ({ ...l, ...patch, _dirty: true } as EditableLine) : l,
       ),
     );
   }, []);
@@ -415,6 +417,7 @@ export default function QuoteReviewView(props: {
       .from("work_order_lines")
       .update(patch)
       .eq("id", lineId);
+
     if (error) {
       toast.error(error.message);
       return;
@@ -459,8 +462,7 @@ export default function QuoteReviewView(props: {
     }
   }
 
-  if (!woId)
-    return <div className="p-6 text-red-300">Missing work order id.</div>;
+  if (!woId) return <div className="p-6 text-red-300">Missing work order id.</div>;
   if (loading) return <div className="p-6 text-neutral-300">Loading…</div>;
   if (!wo) return <div className="p-6 text-red-300">Work order not found.</div>;
 
@@ -468,31 +470,37 @@ export default function QuoteReviewView(props: {
   const emailRaw = safeTrim(customer?.email ?? "");
   const tel = normalizePhoneForTel(phoneRaw);
 
-  // ✅ Embedded vs Standalone layout wrappers
-  const shellClass = embedded
-    ? "w-full min-h-0 text-foreground"
+  // ✅ Embedded mode sizing + padding
+  const outerCls = embedded
+    ? "min-h-full w-full px-0 py-0 text-foreground"
     : `
-        min-h-screen px-4 py-6 text-foreground
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
-      `;
+      min-h-screen px-4 py-6 text-foreground
+      bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+    `;
 
-  const shellPad = embedded ? "" : "px-4 py-6";
+  const containerCls = embedded ? "mx-auto w-full max-w-none" : "mx-auto max-w-6xl";
+  const padX = embedded ? "px-3" : "px-5";
+  const padY = embedded ? "py-3" : "py-4";
 
-  // ✅ Critical: when embedded, do NOT constrain width or center like a page
-  const innerClass = embedded ? "w-full" : "mx-auto max-w-6xl";
+  // ✅ Force panel-friendly layout (NOT viewport-based lg columns)
+  const mainGridCls = embedded ? "mt-3 grid gap-3" : "mt-4 grid gap-4 lg:grid-cols-3";
+  const linesColCls = embedded ? "" : "lg:col-span-2";
+  const sideColCls = embedded ? "" : "space-y-4";
+
+  // ✅ Smaller action buttons when embedded
+  const actionBtnCls = embedded
+    ? "rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black/65 disabled:opacity-60"
+    : "rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm font-semibold text-white hover:bg-black/65 disabled:opacity-60";
+
+  const saveBtnCls = embedded
+    ? "rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 px-3 py-1.5 text-xs font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/15 disabled:opacity-60"
+    : "rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 px-4 py-2 text-sm font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/15 disabled:opacity-60";
 
   return (
-    <div
-      className={`${shellClass} ${shellPad}`}
-      style={{ ["--copper" as never]: COPPER }}
-    >
-      <div className={innerClass}>
+    <div className={outerCls} style={{ ["--copper" as never]: COPPER }}>
+      <div className={containerCls}>
         {/* top row */}
-        <div
-          className={`flex flex-wrap items-center justify-between gap-3 ${
-            embedded ? "mb-3" : "mb-4"
-          }`}
-        >
+        <div className={embedded ? "mb-2 flex flex-wrap items-center justify-between gap-2" : "mb-4 flex flex-wrap items-center justify-between gap-3"}>
           {!embedded && (
             <button
               onClick={() => router.back()}
@@ -506,11 +514,7 @@ export default function QuoteReviewView(props: {
             <button
               onClick={() => void sendQuoteToCustomer()}
               disabled={sending}
-              className="
-                rounded-full border border-white/10 bg-black/50
-                px-4 py-2 text-sm font-semibold text-white
-                hover:bg-black/65 disabled:opacity-60
-              "
+              className={actionBtnCls}
               title="Email the quote to the customer and notify their portal"
             >
               {sending ? "Sending…" : "Send Quote"}
@@ -519,17 +523,12 @@ export default function QuoteReviewView(props: {
             <button
               onClick={() => void saveAllDirty()}
               disabled={saving}
-              className="
-                rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10
-                px-4 py-2 text-sm font-semibold text-[color:var(--copper)]
-                hover:bg-[color:var(--copper)]/15 disabled:opacity-60
-              "
+              className={saveBtnCls}
               title="Save all changes"
             >
               {saving ? "Saving…" : "Save"}
             </button>
 
-            {/* ✅ Only show Open WO in standalone. In split view the panel controls it. */}
             {!embedded && (
               <a
                 href={`/work-orders/${woId}`}
@@ -547,14 +546,15 @@ export default function QuoteReviewView(props: {
         </div>
 
         {/* header card */}
-        <div className={`${card} ${embedded ? "px-4 py-3" : "px-5 py-4"}`}>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className={`${card} ${padX} ${padY}`}>
+          {/* ✅ Embedded: ALWAYS stack header blocks (no lg:flex-row inside narrow panel) */}
+          <div className={embedded ? "flex flex-col gap-3" : "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"}>
             {/* left */}
             <div className="min-w-0">
               <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
                 Quote Review
               </div>
-              <div className="mt-1 text-2xl font-semibold text-white">
+              <div className={embedded ? "mt-1 text-xl font-semibold text-white" : "mt-1 text-2xl font-semibold text-white"}>
                 <span className="text-white">#</span>
                 <span style={{ color: COPPER }}>
                   {wo.custom_id ? wo.custom_id : wo.id.slice(0, 8)}
@@ -568,16 +568,17 @@ export default function QuoteReviewView(props: {
 
             {/* middle */}
             <div
-              className="
-                w-full max-w-xl rounded-2xl border border-white/10 bg-black/35
+              className={`
+                w-full rounded-2xl border border-white/10 bg-black/35
                 px-4 py-3
-              "
+              `}
             >
               <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
                 Customer contact
               </div>
 
-              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              {/* ✅ Embedded: keep 1 column so it doesn’t squish */}
+              <div className={embedded ? "mt-2 grid gap-2" : "mt-2 grid gap-2 sm:grid-cols-3"}>
                 <div className="min-w-0">
                   <div className="text-[11px] text-neutral-500">Name</div>
                   <div className="truncate text-sm font-semibold text-white">
@@ -622,7 +623,7 @@ export default function QuoteReviewView(props: {
             </div>
 
             {/* right */}
-            <div className="text-right">
+            <div className={embedded ? "text-left" : "text-right"}>
               <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
                 Labor rate
               </div>
@@ -633,20 +634,16 @@ export default function QuoteReviewView(props: {
           </div>
         </div>
 
-        <div className={`${embedded ? "mt-3" : "mt-4"} grid gap-4 lg:grid-cols-3`}>
+        <div className={mainGridCls}>
           {/* lines */}
-          <div className="lg:col-span-2">
+          <div className={linesColCls}>
             <div className={card}>
-              <div
-                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
-              >
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
                 Line Items
               </div>
 
               {lines.length === 0 ? (
-                <div className="px-5 py-4 text-sm text-neutral-400">
-                  No lines yet.
-                </div>
+                <div className={`${padX} py-4 text-sm text-neutral-400`}>No lines yet.</div>
               ) : (
                 <div className="divide-y divide-white/10">
                   {lines.map((l) => {
@@ -679,7 +676,7 @@ export default function QuoteReviewView(props: {
                           : "border-amber-400/25 bg-amber-400/10 text-amber-200";
 
                     return (
-                      <div key={l.id} className="px-5 py-5">
+                      <div key={l.id} className={`${padX} py-5`}>
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -707,7 +704,7 @@ export default function QuoteReviewView(props: {
                               )}
                             </div>
 
-                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div className={embedded ? "mt-3 grid gap-3" : "mt-3 grid gap-3 md:grid-cols-2"}>
                               <label className="text-xs text-neutral-400">
                                 Description
                                 <input
@@ -789,7 +786,7 @@ export default function QuoteReviewView(props: {
                             </div>
                           </div>
 
-                          <div className="flex shrink-0 flex-col gap-2">
+                          <div className={embedded ? "flex w-full flex-wrap gap-2" : "flex shrink-0 flex-col gap-2"}>
                             <button
                               onClick={() => void setDecision(l.id, "approve")}
                               className="
@@ -861,7 +858,9 @@ export default function QuoteReviewView(props: {
                                     : "Part");
 
                                 const qty =
-                                  typeof a.qty === "number" ? a.qty : Number(a.qty);
+                                  typeof a.qty === "number"
+                                    ? a.qty
+                                    : Number(a.qty);
                                 const unit =
                                   typeof a.unit_cost === "number"
                                     ? a.unit_cost
@@ -943,16 +942,13 @@ export default function QuoteReviewView(props: {
           </div>
 
           {/* right column */}
-          <div className="space-y-4">
+          <div className={sideColCls}>
             <div className={card}>
-              <div
-                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
-              >
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
                 Quick add job
               </div>
-              <div className="px-5 py-4 text-sm text-neutral-400">
-                Add missing lines while reviewing the quote (ex: Alignment after
-                tie rod ends).
+              <div className={`${padX} py-4 text-sm text-neutral-400`}>
+                Add missing lines while reviewing the quote (ex: Alignment after tie rod ends).
                 <div className="mt-3">
                   <button
                     type="button"
@@ -978,46 +974,32 @@ export default function QuoteReviewView(props: {
             </div>
 
             <div className={card}>
-              <div
-                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
-              >
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
                 Totals
               </div>
 
-              <div className="px-5 py-4 text-sm">
+              <div className={`${padX} py-4 text-sm`}>
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-400">Labor</span>
-                  <span className="font-medium text-white">
-                    {fmt(totals.laborTotal)}
-                  </span>
+                  <span className="font-medium text-white">{fmt(totals.laborTotal)}</span>
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-neutral-400">Parts</span>
-                  <span className="font-medium text-white">
-                    {fmt(totals.partsTotal)}
-                  </span>
+                  <span className="font-medium text-white">{fmt(totals.partsTotal)}</span>
                 </div>
 
-                <div
-                  className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}
-                >
+                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}>
                   <span className="text-neutral-300">Subtotal</span>
-                  <span className="font-semibold text-white">
-                    {fmt(totals.subtotal)}
-                  </span>
+                  <span className="font-semibold text-white">{fmt(totals.subtotal)}</span>
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-neutral-400">
-                    Tax {provinceCode ? `(${provinceCode})` : "(not set)"}
-                  </span>
+                  <span className="text-neutral-400">Tax {provinceCode ? `(${provinceCode})` : "(not set)"}</span>
                   <span className="font-medium text-white">{fmt(totals.tax)}</span>
                 </div>
 
-                <div
-                  className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}
-                >
+                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}>
                   <span className="font-semibold text-white">Grand total</span>
                   <span className="text-lg font-bold" style={{ color: COPPER }}>
                     {fmt(totals.total)}
@@ -1025,8 +1007,7 @@ export default function QuoteReviewView(props: {
                 </div>
 
                 <div className="mt-4 text-xs text-neutral-500">
-                  Tip: set shop province to enable CA tax, and shop labor rate to
-                  match pricing.
+                  Tip: set shop province to enable CA tax, and shop labor rate to match pricing.
                 </div>
 
                 <div className="mt-4 flex gap-2">
@@ -1046,14 +1027,11 @@ export default function QuoteReviewView(props: {
             </div>
 
             <div className={card}>
-              <div
-                className={`border-b ${divider} px-5 py-3 text-sm font-semibold text-neutral-200`}
-              >
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
                 Send to customer
               </div>
-              <div className="px-5 py-4 text-sm text-neutral-400">
-                Sends an email and creates a portal notification with the quote
-                link.
+              <div className={`${padX} py-4 text-sm text-neutral-400`}>
+                Sends an email and creates a portal notification with the quote link.
                 <div className="mt-3">
                   <button
                     onClick={() => void sendQuoteToCustomer()}
