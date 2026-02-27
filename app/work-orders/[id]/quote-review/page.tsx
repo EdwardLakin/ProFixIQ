@@ -18,8 +18,8 @@ function looksLikeUuid(s: string): boolean {
   return s.includes("-") && s.length >= 36;
 }
 
-export default async function Page({ params }: { params: { id: string } }) {
-  const routeId = params.id;
+export default async function Page(props: { params: Promise<{ id: string }> }) {
+  const { id: routeId } = await props.params;
 
   const supabase = createServerComponentClient<DB>({ cookies });
 
@@ -72,7 +72,9 @@ export default async function Page({ params }: { params: { id: string } }) {
   return (
     <FocusedJobSplitView
       left={<WorkOrderIdClient key={routeId} />}
-      right={<QuoteReviewPanelClient workOrderId={woUuid} workOrderLabel={woCustomId} />}
+      right={
+        <QuoteReviewPanelClient workOrderId={woUuid} workOrderLabel={woCustomId} />
+      }
     />
   );
 }
