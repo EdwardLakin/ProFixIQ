@@ -1,8 +1,11 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
+/**
+ * Minimal JSON type compatible with Supabase `jsonb`
+ */
 type Json =
   | string
   | number
@@ -24,7 +27,7 @@ type AgentResponse = {
   answers?: Record<string, string> | null;
 };
 
-function nowIso() {
+function nowIso(): string {
   return new Date().toISOString();
 }
 
@@ -41,8 +44,11 @@ function toJsonRecord(v: unknown): Record<string, Json | undefined> {
   return v as Record<string, Json | undefined>;
 }
 
-export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
-  const { id } = ctx.params;
+export async function POST(
+  req: Request,
+  context: { params: { id: string } }
+) {
+  const { id } = context.params;
 
   let body: ReplyBody | null = null;
   try {
@@ -58,23 +64,23 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
-  // Who is replying?
+  // Identify user
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const userId = user?.id ?? null;
 
-  // 1) Read current normalized_json so we can append safely
-  const { data: row, error: selErr } = await supabase
+  // Fetch current normalized_json
+  const { data: row, error: selectErr } = await supabase
     .from("agent_requests")
     .select("id, normalized_json")
     .eq("id", id)
     .maybeSingle();
 
-  if (selErr) {
+  if (selectErr) {
     return NextResponse.json(
-      { error: `select failed: ${selErr.message}` },
+      { error: `select failed: ${selectErr.message}` },
       { status: 500 }
     );
   }
@@ -100,20 +106,19 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     last_response_at: nowIso(),
   };
 
-  // 2) Update request row
-  const { data: updated, error: updErr } = await supabase
+  const { data: updated, error: updateErr } = await supabase
     .from("agent_requests")
     .update({
-      normalized_json: nextNormalized as unknown as Json,
+      normalized_json: nextNormalized as Json,
       updated_at: nowIso(),
     })
     .eq("id", id)
     .select("*")
     .single();
 
-  if (updErr) {
+  if (updateErr) {
     return NextResponse.json(
-      { error: `update failed: ${updErr.message}` },
+      { error: `update failed: ${updateErr.message}` },
       { status: 500 }
     );
   }
