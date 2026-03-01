@@ -1,3 +1,5 @@
+// /features/agent/components/AgentTriggerButton.tsx (FULL FILE REPLACEMENT)
+
 "use client";
 
 import { useEffect, useState } from "react";

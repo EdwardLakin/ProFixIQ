@@ -1,4 +1,5 @@
-/// /app/api/agent/requests/[id]/route.ts
+// /app/api/agent/requests/[id]/route.ts (FULL FILE REPLACEMENT)
+
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -56,6 +57,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function safeUuid(v: unknown): string | null {
   const s = typeof v === "string" ? v.trim() : "";
+  // Supabase UUIDs are standard 36-char (with hyphens)
   return s.length === 36 ? s : null;
 }
 
@@ -66,7 +68,6 @@ async function approveActionsAndEnqueueJobs(params: {
 }) {
   const { supabase, requestId, approvedBy } = params;
 
-  // Find any actions that are waiting for approval (be tolerant on statuses)
   const { data: actions, error: actionsErr } = await supabase
     .from("agent_actions")
     .select("id, request_id, kind, status, risk, summary, payload, created_at")
@@ -87,9 +88,12 @@ async function approveActionsAndEnqueueJobs(params: {
   const enqueuedJobIds: string[] = [];
 
   for (const a of list) {
-    // 1) Approve action via RPC
+    const actionId = safeUuid(a.id);
+    if (!actionId) continue;
+
+    // 1) Approve via RPC (source-of-truth)
     const { error: rpcErr } = await supabase.rpc("agent_approve_action", {
-      p_action_id: a.id,
+      p_action_id: actionId,
       p_approved_by: approvedBy,
     });
 
@@ -97,10 +101,13 @@ async function approveActionsAndEnqueueJobs(params: {
       throw new Error(`agent_approve_action failed: ${rpcErr.message}`);
     }
 
-    approvedActionIds.push(a.id);
+    approvedActionIds.push(actionId);
 
-    // 2) Enqueue a job for the worker
-    // Important: include actionId so executeAction can resolve directly without extra lookups.
+    // 2) Enqueue job for worker
+    const payload = isRecord(a.payload)
+      ? { ...a.payload, actionId }
+      : { actionId, payload: a.payload };
+
     const { data: jobRow, error: jobErr } = await supabase
       .from("agent_jobs")
       .insert({
@@ -108,9 +115,7 @@ async function approveActionsAndEnqueueJobs(params: {
         kind: a.kind,
         status: "queued",
         priority: 100,
-        payload: isRecord(a.payload)
-          ? { ...a.payload, actionId: a.id }
-          : { actionId: a.id, payload: a.payload },
+        payload,
         run_after: nowIso(),
       })
       .select("id")
@@ -129,8 +134,8 @@ async function approveActionsAndEnqueueJobs(params: {
 /**
  * PATCH /api/agent/requests/:id
  * - approve / reject a request
- * - approving ALSO approves any pending agent_actions and enqueues agent_jobs (best approach)
- * - PR merge step stays as a separate best-effort step
+ * - approving ALSO approves any pending agent_actions and enqueues agent_jobs
+ * - PR merge step stays separate (best-effort)
  */
 export async function PATCH(req: NextRequest) {
   const id = getIdFromUrl(req);
@@ -162,7 +167,7 @@ export async function PATCH(req: NextRequest) {
 
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Enforce role-based approval
+  // Role gate
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, role, agent_role")
@@ -181,7 +186,7 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  // Load current request (includes PR info)
+  // Load request (PR info)
   const { data: existing, error: existingError } = await supabase
     .from("agent_requests")
     .select("id, status, github_pr_number, github_pr_url, github_branch, github_commit_sha")
@@ -193,14 +198,10 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Agent request not found" }, { status: 404 });
   }
 
-  // Default final status
   let finalStatus: AgentRequestStatus = body.action === "approve" ? "approved" : "rejected";
-
   let newCommitSha: string | null = existing.github_commit_sha;
   let newBranch: string | null = existing.github_branch;
 
-  // ✅ BEST APPROACH:
-  // When approving/rejecting, also move the underlying actions.
   let approvedActionIds: string[] = [];
   let enqueuedJobIds: string[] = [];
 
@@ -215,11 +216,10 @@ export async function PATCH(req: NextRequest) {
       enqueuedJobIds = out.enqueuedJobIds;
     } catch (err) {
       console.error("Approve actions/enqueue jobs failed", err);
-      // If we cannot enqueue work, mark request as failed so it’s obvious
       finalStatus = "failed";
     }
   } else {
-    // Reject: reject any pending actions (best-effort)
+    // Reject pending actions (best-effort)
     try {
       const { data: actions, error: actionsErr } = await supabase
         .from("agent_actions")
@@ -244,11 +244,10 @@ export async function PATCH(req: NextRequest) {
       }
     } catch (err) {
       console.error("Reject actions failed (continuing)", err);
-      // keep request rejected even if action reject RPC fails (UI intent still stands)
     }
   }
 
-  // PR merge step (only when a PR exists and request was awaiting_approval)
+  // PR merge step (only if PR exists and request was awaiting_approval)
   if (
     body.action === "approve" &&
     existing.github_pr_number != null &&
@@ -262,12 +261,7 @@ export async function PATCH(req: NextRequest) {
       });
 
       if (!mergeRes.ok) {
-        console.error(
-          "Agent merge endpoint returned non-OK",
-          mergeRes.status,
-          await mergeRes.text(),
-        );
-        // don’t override queued work, but reflect merge failure
+        console.error("Agent merge endpoint returned non-OK", mergeRes.status, await mergeRes.text());
         finalStatus = "failed";
       } else {
         const mergeJson = (await mergeRes.json()) as {
@@ -316,11 +310,6 @@ export async function PATCH(req: NextRequest) {
   });
 }
 
-/**
- * DELETE /api/agent/requests/:id
- * - developer-only
- * - best-effort cleanup of screenshot files in agent_uploads
- */
 export async function DELETE(req: NextRequest) {
   const id = getIdFromUrl(req);
 

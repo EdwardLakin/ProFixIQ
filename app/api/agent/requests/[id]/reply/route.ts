@@ -1,11 +1,11 @@
+// /app/api/agent/requests/[id]/reply/route.ts (FULL FILE REPLACEMENT)
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-/**
- * Minimal JSON type compatible with Supabase `jsonb`
- */
+/** Minimal JSON type compatible with Supabase jsonb */
 type Json =
   | string
   | number
@@ -85,10 +85,7 @@ export async function POST(req: Request, context: unknown) {
     .maybeSingle();
 
   if (selectErr) {
-    return NextResponse.json(
-      { error: `select failed: ${selectErr.message}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: `select failed: ${selectErr.message}` }, { status: 500 });
   }
 
   if (!row) {
@@ -123,10 +120,7 @@ export async function POST(req: Request, context: unknown) {
     .single();
 
   if (updateErr) {
-    return NextResponse.json(
-      { error: `update failed: ${updateErr.message}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: `update failed: ${updateErr.message}` }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, request: updated });
