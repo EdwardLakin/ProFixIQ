@@ -1,4 +1,4 @@
-// app/api/agent/requests/[id]/route.ts
+/// /app/api/agent/requests/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -15,7 +15,6 @@ type AgentRequestStatus =
 
 type PatchBody = {
   action?: "approve" | "reject";
-  // optional: allow overriding / adding notes when deciding
   llm_notes?: string;
 };
 
@@ -26,7 +25,6 @@ const AGENT_SERVICE_URL =
   process.env.PROFIXIQ_AGENT_URL?.replace(/\/$/, "") ||
   "https://obscure-space-guacamole-69pvggxvgrxj2qxr-4001.app.github.dev";
 
-// Helper to extract id from /api/agent/requests/:id
 function getIdFromUrl(req: NextRequest): string | null {
   const url = new URL(req.url);
   const pathname = url.pathname.replace(/\/$/, "");
@@ -35,19 +33,110 @@ function getIdFromUrl(req: NextRequest): string | null {
   return id || null;
 }
 
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+type AgentActionRisk = "low" | "medium" | "high" | "unknown";
+
+type AgentActionRow = {
+  id: string;
+  request_id: string;
+  kind: string;
+  status: string;
+  risk: AgentActionRisk | null;
+  summary: string | null;
+  payload: unknown;
+  created_at: string;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function safeUuid(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s.length === 36 ? s : null;
+}
+
+async function approveActionsAndEnqueueJobs(params: {
+  supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
+  requestId: string;
+  approvedBy: string;
+}) {
+  const { supabase, requestId, approvedBy } = params;
+
+  // Find any actions that are waiting for approval (be tolerant on statuses)
+  const { data: actions, error: actionsErr } = await supabase
+    .from("agent_actions")
+    .select("id, request_id, kind, status, risk, summary, payload, created_at")
+    .eq("request_id", requestId)
+    .in("status", ["awaiting_approval", "pending_approval", "needs_approval"])
+    .order("created_at", { ascending: true });
+
+  if (actionsErr) {
+    throw new Error(`Failed to load agent_actions: ${actionsErr.message}`);
+  }
+
+  const list = (actions ?? []) as AgentActionRow[];
+  if (list.length === 0) {
+    return { approvedActionIds: [] as string[], enqueuedJobIds: [] as string[] };
+  }
+
+  const approvedActionIds: string[] = [];
+  const enqueuedJobIds: string[] = [];
+
+  for (const a of list) {
+    // 1) Approve action via RPC
+    const { error: rpcErr } = await supabase.rpc("agent_approve_action", {
+      p_action_id: a.id,
+      p_approved_by: approvedBy,
+    });
+
+    if (rpcErr) {
+      throw new Error(`agent_approve_action failed: ${rpcErr.message}`);
+    }
+
+    approvedActionIds.push(a.id);
+
+    // 2) Enqueue a job for the worker
+    // Important: include actionId so executeAction can resolve directly without extra lookups.
+    const { data: jobRow, error: jobErr } = await supabase
+      .from("agent_jobs")
+      .insert({
+        request_id: requestId,
+        kind: a.kind,
+        status: "queued",
+        priority: 100,
+        payload: isRecord(a.payload)
+          ? { ...a.payload, actionId: a.id }
+          : { actionId: a.id, payload: a.payload },
+        run_after: nowIso(),
+      })
+      .select("id")
+      .single();
+
+    if (jobErr) {
+      throw new Error(`Failed to enqueue agent_jobs: ${jobErr.message}`);
+    }
+
+    enqueuedJobIds.push(String(jobRow.id));
+  }
+
+  return { approvedActionIds, enqueuedJobIds };
+}
+
 /**
  * PATCH /api/agent/requests/:id
  * - approve / reject a request
- * - when approving a PR in awaiting_approval, call the agent merge endpoint
+ * - approving ALSO approves any pending agent_actions and enqueues agent_jobs (best approach)
+ * - PR merge step stays as a separate best-effort step
  */
 export async function PATCH(req: NextRequest) {
   const id = getIdFromUrl(req);
 
   if (!id) {
-    return NextResponse.json(
-      { error: "Missing agent request id" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
   }
 
   const body = (await req.json().catch(() => null)) as PatchBody | null;
@@ -58,7 +147,7 @@ export async function PATCH(req: NextRequest) {
         error: "action is required and must be 'approve' or 'reject'",
         example: { action: "approve" },
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -71,11 +160,9 @@ export async function PATCH(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Load profile to enforce role-based approval
+  // Enforce role-based approval
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, role, agent_role")
@@ -90,61 +177,97 @@ export async function PATCH(req: NextRequest) {
   if (!APPROVER_ROLES.includes(profile.agent_role ?? "")) {
     return NextResponse.json(
       { error: "Forbidden – insufficient role to approve/reject" },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
-  // Load current request so we know PR info & current status
-  const {
-    data: existing,
-    error: existingError,
-  } = await supabase
+  // Load current request (includes PR info)
+  const { data: existing, error: existingError } = await supabase
     .from("agent_requests")
-    .select(
-      "id, status, github_pr_number, github_pr_url, github_branch, github_commit_sha"
-    )
+    .select("id, status, github_pr_number, github_pr_url, github_branch, github_commit_sha")
     .eq("id", id)
     .single();
 
   if (existingError || !existing) {
     console.error("agent_requests PATCH load error", existingError);
-    return NextResponse.json(
-      { error: "Agent request not found" },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: "Agent request not found" }, { status: 404 });
   }
 
-  // Default new status based on action
-  let finalStatus: AgentRequestStatus =
-    body.action === "approve" ? "approved" : "rejected";
+  // Default final status
+  let finalStatus: AgentRequestStatus = body.action === "approve" ? "approved" : "rejected";
 
-  // We may update these if merge succeeds
   let newCommitSha: string | null = existing.github_commit_sha;
   let newBranch: string | null = existing.github_branch;
 
-  // If approving and we have a PR, ask the Agent service to merge & delete branch
+  // ✅ BEST APPROACH:
+  // When approving/rejecting, also move the underlying actions.
+  let approvedActionIds: string[] = [];
+  let enqueuedJobIds: string[] = [];
+
+  if (body.action === "approve") {
+    try {
+      const out = await approveActionsAndEnqueueJobs({
+        supabase,
+        requestId: id,
+        approvedBy: user.id,
+      });
+      approvedActionIds = out.approvedActionIds;
+      enqueuedJobIds = out.enqueuedJobIds;
+    } catch (err) {
+      console.error("Approve actions/enqueue jobs failed", err);
+      // If we cannot enqueue work, mark request as failed so it’s obvious
+      finalStatus = "failed";
+    }
+  } else {
+    // Reject: reject any pending actions (best-effort)
+    try {
+      const { data: actions, error: actionsErr } = await supabase
+        .from("agent_actions")
+        .select("id, status")
+        .eq("request_id", id)
+        .in("status", ["awaiting_approval", "pending_approval", "needs_approval"])
+        .order("created_at", { ascending: true });
+
+      if (actionsErr) throw new Error(actionsErr.message);
+
+      for (const a of actions ?? []) {
+        const actionId = safeUuid((a as { id: unknown }).id);
+        if (!actionId) continue;
+
+        const { error: rpcErr } = await supabase.rpc("agent_reject_action", {
+          p_action_id: actionId,
+          p_rejected_by: user.id,
+          p_reason: "Rejected from Agent Console UI",
+        });
+
+        if (rpcErr) throw new Error(rpcErr.message);
+      }
+    } catch (err) {
+      console.error("Reject actions failed (continuing)", err);
+      // keep request rejected even if action reject RPC fails (UI intent still stands)
+    }
+  }
+
+  // PR merge step (only when a PR exists and request was awaiting_approval)
   if (
     body.action === "approve" &&
     existing.github_pr_number != null &&
     existing.status === "awaiting_approval"
   ) {
     try {
-      const mergeRes = await fetch(
-        `${AGENT_SERVICE_URL}/feature-requests/merge`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prNumber: existing.github_pr_number }),
-        }
-      );
+      const mergeRes = await fetch(`${AGENT_SERVICE_URL}/feature-requests/merge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prNumber: existing.github_pr_number }),
+      });
 
       if (!mergeRes.ok) {
         console.error(
           "Agent merge endpoint returned non-OK",
           mergeRes.status,
-          await mergeRes.text()
+          await mergeRes.text(),
         );
-        // mark as failed so you know merge didn't happen
+        // don’t override queued work, but reflect merge failure
         finalStatus = "failed";
       } else {
         const mergeJson = (await mergeRes.json()) as {
@@ -168,7 +291,7 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  // Update row
+  // Update request row
   const { data, error } = await supabase
     .from("agent_requests")
     .update({
@@ -183,13 +306,14 @@ export async function PATCH(req: NextRequest) {
 
   if (error || !data) {
     console.error("agent_requests PATCH update error", error);
-    return NextResponse.json(
-      { error: "Failed to update agent request" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update agent request" }, { status: 500 });
   }
 
-  return NextResponse.json({ request: data });
+  return NextResponse.json({
+    request: data,
+    approvedActionIds,
+    enqueuedJobIds,
+  });
 }
 
 /**
@@ -201,10 +325,7 @@ export async function DELETE(req: NextRequest) {
   const id = getIdFromUrl(req);
 
   if (!id) {
-    return NextResponse.json(
-      { error: "Missing agent request id" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
   }
 
   const cookieStore = cookies();
@@ -216,11 +337,8 @@ export async function DELETE(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Same role gate as PATCH: only developer (agent_role) can delete
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, agent_role")
@@ -235,15 +353,11 @@ export async function DELETE(req: NextRequest) {
   if (!APPROVER_ROLES.includes(profile.agent_role ?? "")) {
     return NextResponse.json(
       { error: "Forbidden – insufficient role to delete requests" },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
-  // Fetch the row so we can see any attachmentIds
-  const {
-    data: existing,
-    error: existingError,
-  } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("agent_requests")
     .select("id, normalized_json")
     .eq("id", id)
@@ -251,44 +365,29 @@ export async function DELETE(req: NextRequest) {
 
   if (existingError || !existing) {
     console.error("agent_requests DELETE load error", existingError);
-    return NextResponse.json(
-      { error: "Agent request not found" },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: "Agent request not found" }, { status: 404 });
   }
 
-  // Best-effort cleanup of screenshot files in agent_uploads
+  // Cleanup screenshot files (best-effort)
   try {
-    const ctx = (existing.normalized_json ?? {}) as {
-      attachmentIds?: string[];
-    };
+    const ctx = (existing.normalized_json ?? {}) as { attachmentIds?: string[] };
 
     if (Array.isArray(ctx.attachmentIds) && ctx.attachmentIds.length > 0) {
       const { error: storageError } = await supabase.storage
         .from("agent_uploads")
         .remove(ctx.attachmentIds);
 
-      if (storageError) {
-        console.error("agent_uploads cleanup error", storageError);
-        // don't fail the whole delete because of storage
-      }
+      if (storageError) console.error("agent_uploads cleanup error", storageError);
     }
   } catch (err) {
     console.error("Error processing attachmentIds for cleanup", err);
   }
 
-  // Finally remove the DB row
-  const { error: deleteError } = await supabase
-    .from("agent_requests")
-    .delete()
-    .eq("id", id);
+  const { error: deleteError } = await supabase.from("agent_requests").delete().eq("id", id);
 
   if (deleteError) {
     console.error("agent_requests DELETE error", deleteError);
-    return NextResponse.json(
-      { error: "Failed to delete agent request" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete agent request" }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });
