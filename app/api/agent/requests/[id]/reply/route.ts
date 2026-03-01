@@ -1,20 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-type ReplyBody = {
-  message: string;
-  answers?: Record<string, string>;
-};
-
-type AgentRequestRow = Database["public"]["Tables"]["agent_requests"]["Row"];
-type AgentRequestUpdate = Database["public"]["Tables"]["agent_requests"]["Update"];
-
-/**
- * Local Json type compatible with Supabase "json/jsonb" columns.
- * (Keeps us out of `any` while still allowing structured objects.)
- */
 type Json =
   | string
   | number
@@ -23,12 +11,17 @@ type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+type ReplyBody = {
+  message: string;
+  answers?: Record<string, string>;
+};
+
 type AgentResponse = {
   id: string;
   created_at: string;
   user_id: string | null;
   message: string;
-  answers: Record<string, string> | null;
+  answers?: Record<string, string> | null;
 };
 
 function nowIso() {
@@ -39,45 +32,16 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
-function isStringRecord(v: unknown): v is Record<string, string> {
-  if (!isRecord(v)) return false;
-  for (const val of Object.values(v)) {
-    if (typeof val !== "string") return false;
-  }
-  return true;
+function safeArray<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
 }
 
-function toAgentResponses(v: unknown): AgentResponse[] {
-  if (!Array.isArray(v)) return [];
-  const out: AgentResponse[] = [];
-
-  for (const item of v) {
-    if (!isRecord(item)) continue;
-
-    const id = typeof item.id === "string" ? item.id : null;
-    const created_at = typeof item.created_at === "string" ? item.created_at : null;
-    const user_id = typeof item.user_id === "string" ? item.user_id : null;
-    const message = typeof item.message === "string" ? item.message : null;
-
-    // answers optional
-    const answers =
-      "answers" in item && isStringRecord(item.answers) ? item.answers : null;
-
-    if (!id || !created_at || !message) continue;
-
-    out.push({
-      id,
-      created_at,
-      user_id,
-      message,
-      answers,
-    });
-  }
-
-  return out;
+function toJsonRecord(v: unknown): Record<string, Json | undefined> {
+  if (!isRecord(v)) return {};
+  return v as Record<string, Json | undefined>;
 }
 
-export async function POST(req: Request, ctx: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
   const { id } = ctx.params;
 
   let body: ReplyBody | null = null;
@@ -114,41 +78,35 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       { status: 500 }
     );
   }
+
   if (!row) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  const normalizedRaw: unknown = (row as AgentRequestRow).normalized_json;
-  const normalized = isRecord(normalizedRaw) ? normalizedRaw : {};
-
-  const prevResponses = toAgentResponses(normalized.responses);
+  const normalized = toJsonRecord(row.normalized_json);
+  const prevResponses = safeArray<AgentResponse>(normalized.responses);
 
   const newResponse: AgentResponse = {
     id: `resp_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     created_at: nowIso(),
     user_id: userId,
     message,
-    answers: body?.answers && isStringRecord(body.answers) ? body.answers : null,
+    answers: body?.answers && isRecord(body.answers) ? body.answers : null,
   };
 
-  const nextNormalized: Record<string, unknown> = {
+  const nextNormalized: Record<string, Json | undefined> = {
     ...normalized,
     responses: [...prevResponses, newResponse],
     last_response_at: nowIso(),
   };
 
-  // Ensure we only write JSON-safe values
-  const jsonNormalized = nextNormalized as unknown as Json;
-
   // 2) Update request row
-  const updatePatch: AgentRequestUpdate = {
-    normalized_json: jsonNormalized,
-    updated_at: nowIso(),
-  };
-
   const { data: updated, error: updErr } = await supabase
     .from("agent_requests")
-    .update(updatePatch)
+    .update({
+      normalized_json: nextNormalized as unknown as Json,
+      updated_at: nowIso(),
+    })
     .eq("id", id)
     .select("*")
     .single();

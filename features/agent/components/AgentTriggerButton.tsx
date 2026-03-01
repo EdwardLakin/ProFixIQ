@@ -1,5 +1,3 @@
-// features/agent/components/AgentTriggerButton.tsx (FULL FILE REPLACEMENT)
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -12,10 +10,10 @@ type StreamEvent = {
   id: string;
 };
 
-function safeUUID(): string {
+function newIdempotencyKey(): string {
   const c = (globalThis as unknown as { crypto?: Crypto }).crypto;
   if (c?.randomUUID) return c.randomUUID();
-  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return `idemp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
 export default function AgentTriggerButton({
@@ -37,7 +35,7 @@ export default function AgentTriggerButton({
         body: JSON.stringify({
           goal: defaultGoal ?? "Create a brake job",
           context:
-            defaultContext ?? ({
+            defaultContext ?? {
               customerId: "REPLACE-CUSTOMER-UUID",
               vehicleId: "REPLACE-VEHICLE-UUID",
               lineDescription: "Front brake pads & rotors",
@@ -45,17 +43,23 @@ export default function AgentTriggerButton({
               laborHours: 3,
               partCost: 220,
               emailInvoiceTo: "customer@example.com",
-            } satisfies Record<string, unknown>),
-          idempotencyKey: safeUUID(),
+            },
+          idempotencyKey: newIdempotencyKey(),
         }),
       });
 
-      const json = (await res.json()) as { runId?: string; error?: string };
-      if (!res.ok || !json.runId) throw new Error(json.error ?? "Agent failed");
+      const json = (await res.json().catch(() => null)) as
+        | { runId?: string; error?: string }
+        | null;
+
+      if (!res.ok || !json?.runId) {
+        throw new Error(json?.error ?? `Agent failed (status ${res.status})`);
+      }
+
       setRunId(json.runId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      alert(msg);
+      window.alert(msg);
     } finally {
       setLoading(false);
     }
@@ -67,9 +71,11 @@ export default function AgentTriggerButton({
         onClick={handleClick}
         disabled={loading}
         className="btn btn-primary"
+        type="button"
       >
         {loading ? "Running…" : "Run ProFix Agent"}
       </button>
+
       {runId && <AgentEventStream runId={runId} />}
     </div>
   );
@@ -81,7 +87,8 @@ function AgentEventStream({ runId }: { runId: string }) {
   useEffect(() => {
     const url = new URL("/api/agent/events", window.location.origin);
     url.searchParams.set("runId", runId);
-    const es = new EventSource(url.toString(), { withCredentials: true });
+
+    const es = new EventSource(url.toString());
 
     es.onmessage = (msg: MessageEvent<string>) => {
       try {
