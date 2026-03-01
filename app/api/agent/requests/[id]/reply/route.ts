@@ -44,11 +44,19 @@ function toJsonRecord(v: unknown): Record<string, Json | undefined> {
   return v as Record<string, Json | undefined>;
 }
 
-export async function POST(
-  req: Request,
-  context: { params: { id: string } }
-) {
-  const { id } = context.params;
+function getParamId(context: unknown): string | null {
+  if (!isRecord(context)) return null;
+  const params = context.params;
+  if (!isRecord(params)) return null;
+  const id = params.id;
+  return typeof id === "string" && id.trim().length > 0 ? id : null;
+}
+
+export async function POST(req: Request, context: unknown) {
+  const id = getParamId(context);
+  if (!id) {
+    return NextResponse.json({ error: "missing route param id" }, { status: 400 });
+  }
 
   let body: ReplyBody | null = null;
   try {
@@ -64,14 +72,12 @@ export async function POST(
 
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
-  // Identify user
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const userId = user?.id ?? null;
 
-  // Fetch current normalized_json
   const { data: row, error: selectErr } = await supabase
     .from("agent_requests")
     .select("id, normalized_json")
