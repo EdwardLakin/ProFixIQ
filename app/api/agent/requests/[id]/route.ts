@@ -1,5 +1,3 @@
-// /app/api/agent/requests/[id]/route.ts (FULL FILE REPLACEMENT)
-
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -21,6 +19,7 @@ type PatchBody = {
 
 const APPROVER_ROLES = ["developer"];
 
+// Same base URL as /app/api/agent/requests/route.ts
 const AGENT_SERVICE_URL =
   process.env.PROFIXIQ_AGENT_URL?.replace(/\/$/, "") ||
   "https://obscure-space-guacamole-69pvggxvgrxj2qxr-4001.app.github.dev";
@@ -59,13 +58,8 @@ function safeUuid(v: unknown): string | null {
   return s.length === 36 ? s : null;
 }
 
-function buildJobPayload(action: AgentActionRow): Record<string, unknown> {
-  const actionId = safeUuid(action.id);
-  if (!actionId) return { actionId: String(action.id) };
-
-  if (isRecord(action.payload)) return { ...action.payload, actionId };
-  return { actionId, payload: action.payload };
-}
+// ✅ IMPORTANT: your DB enum currently has ONLY "awaiting_approval"
+const PENDING_ACTION_STATUSES = ["awaiting_approval"] as const;
 
 async function approveActionsAndEnqueueJobs(params: {
   supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
@@ -74,43 +68,38 @@ async function approveActionsAndEnqueueJobs(params: {
 }) {
   const { supabase, requestId, approvedBy } = params;
 
-  // IMPORTANT:
-  // agent_actions.status is an ENUM. If we query with an invalid status value,
-  // Postgres throws. So we fetch by request_id only and filter in TS.
   const { data: actions, error: actionsErr } = await supabase
     .from("agent_actions")
     .select("id, request_id, kind, status, risk, summary, payload, created_at")
     .eq("request_id", requestId)
+    .in("status", [...PENDING_ACTION_STATUSES])
     .order("created_at", { ascending: true });
 
-  if (actionsErr) {
-    throw new Error(`Failed to load agent_actions: ${actionsErr.message}`);
-  }
+  if (actionsErr) throw new Error(`Failed to load agent_actions: ${actionsErr.message}`);
 
   const list = (actions ?? []) as AgentActionRow[];
-
-  // Only approve actions that are truly awaiting approval
-  const pending = list.filter((a) => String(a.status).trim() === "awaiting_approval");
-
-  if (pending.length === 0) {
+  if (list.length === 0) {
     return { approvedActionIds: [] as string[], enqueuedJobIds: [] as string[] };
   }
 
   const approvedActionIds: string[] = [];
   const enqueuedJobIds: string[] = [];
 
-  for (const a of pending) {
-    const actionId = safeUuid(a.id);
-    if (!actionId) continue;
-
+  for (const a of list) {
+    // 1) Approve via RPC (single source of truth)
     const { error: rpcErr } = await supabase.rpc("agent_approve_action", {
-      p_action_id: actionId,
+      p_action_id: a.id,
       p_approved_by: approvedBy,
     });
 
     if (rpcErr) throw new Error(`agent_approve_action failed: ${rpcErr.message}`);
+    approvedActionIds.push(a.id);
 
-    approvedActionIds.push(actionId);
+    // 2) Enqueue worker job. MUST include actionId so worker doesn’t have to guess.
+    const payload =
+      isRecord(a.payload)
+        ? { ...a.payload, actionId: a.id }
+        : { actionId: a.id, payload: a.payload };
 
     const { data: jobRow, error: jobErr } = await supabase
       .from("agent_jobs")
@@ -119,59 +108,24 @@ async function approveActionsAndEnqueueJobs(params: {
         kind: a.kind,
         status: "queued",
         priority: 100,
-        payload: buildJobPayload(a),
+        payload,
         run_after: nowIso(),
       })
       .select("id")
       .single();
 
     if (jobErr) throw new Error(`Failed to enqueue agent_jobs: ${jobErr.message}`);
-
     enqueuedJobIds.push(String(jobRow.id));
   }
 
   return { approvedActionIds, enqueuedJobIds };
 }
 
-async function rejectPendingActions(params: {
-  supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
-  requestId: string;
-  rejectedBy: string;
-}) {
-  const { supabase, requestId, rejectedBy } = params;
-
-  const { data: actions, error: actionsErr } = await supabase
-    .from("agent_actions")
-    .select("id, status")
-    .eq("request_id", requestId)
-    .order("created_at", { ascending: true });
-
-  if (actionsErr) {
-    throw new Error(`Failed to load agent_actions: ${actionsErr.message}`);
-  }
-
-  const list = (actions ?? []) as Array<{ id: unknown; status: unknown }>;
-  const pending = list.filter((a) => String(a.status ?? "").trim() === "awaiting_approval");
-
-  for (const a of pending) {
-    const actionId = safeUuid(a.id);
-    if (!actionId) continue;
-
-    const { error: rpcErr } = await supabase.rpc("agent_reject_action", {
-      p_action_id: actionId,
-      p_rejected_by: rejectedBy,
-      p_reason: "Rejected from Agent Console UI",
-    });
-
-    if (rpcErr) throw new Error(`agent_reject_action failed: ${rpcErr.message}`);
-  }
-}
-
 /**
  * PATCH /api/agent/requests/:id
  * - approve / reject a request
- * - approving ALSO approves any awaiting_approval agent_actions and enqueues agent_jobs
- * - PR merge remains separate best-effort
+ * - approving ALSO approves any pending agent_actions and enqueues agent_jobs
+ * - PR merge step stays separate best-effort
  */
 export async function PATCH(req: NextRequest) {
   const id = getIdFromUrl(req);
@@ -180,7 +134,7 @@ export async function PATCH(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as PatchBody | null;
   if (!body || (body.action !== "approve" && body.action !== "reject")) {
     return NextResponse.json(
-      { error: "action is required and must be 'approve' or 'reject'", example: { action: "approve" } },
+      { error: "action is required and must be approve or reject", example: { action: "approve" } },
       { status: 400 },
     );
   }
@@ -188,10 +142,7 @@ export async function PATCH(req: NextRequest) {
   const cookieStore = cookies();
   const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: profile, error: profileError } = await supabase
@@ -241,13 +192,35 @@ export async function PATCH(req: NextRequest) {
       finalStatus = "failed";
     }
   } else {
+    // Reject pending actions (best-effort)
     try {
-      await rejectPendingActions({ supabase, requestId: id, rejectedBy: user.id });
+      const { data: actions, error: actionsErr } = await supabase
+        .from("agent_actions")
+        .select("id, status")
+        .eq("request_id", id)
+        .in("status", [...PENDING_ACTION_STATUSES])
+        .order("created_at", { ascending: true });
+
+      if (actionsErr) throw new Error(actionsErr.message);
+
+      for (const a of actions ?? []) {
+        const actionId = safeUuid((a as { id: unknown }).id);
+        if (!actionId) continue;
+
+        const { error: rpcErr } = await supabase.rpc("agent_reject_action", {
+          p_action_id: actionId,
+          p_rejected_by: user.id,
+          p_reason: "Rejected from Agent Console UI",
+        });
+
+        if (rpcErr) throw new Error(rpcErr.message);
+      }
     } catch (err) {
       console.error("Reject actions failed (continuing)", err);
     }
   }
 
+  // Optional PR merge step (separate concern)
   if (
     body.action === "approve" &&
     existing.github_pr_number != null &&
@@ -261,7 +234,7 @@ export async function PATCH(req: NextRequest) {
       });
 
       if (!mergeRes.ok) {
-        console.error("Agent merge endpoint returned non-OK", mergeRes.status, await mergeRes.text());
+        console.error("Agent merge endpoint non-OK", mergeRes.status, await mergeRes.text());
         finalStatus = "failed";
       } else {
         const mergeJson = (await mergeRes.json()) as {
@@ -305,6 +278,11 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ request: data, approvedActionIds, enqueuedJobIds });
 }
 
+/**
+ * DELETE /api/agent/requests/:id
+ * - developer-only
+ * - best-effort cleanup of screenshot files in agent_uploads
+ */
 export async function DELETE(req: NextRequest) {
   const id = getIdFromUrl(req);
   if (!id) return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
@@ -312,10 +290,7 @@ export async function DELETE(req: NextRequest) {
   const cookieStore = cookies();
   const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: profile, error: profileError } = await supabase
@@ -344,6 +319,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Agent request not found" }, { status: 404 });
   }
 
+  // cleanup attachments best-effort
   try {
     const ctx = (existing.normalized_json ?? {}) as { attachmentIds?: string[] };
     if (Array.isArray(ctx.attachmentIds) && ctx.attachmentIds.length > 0) {
@@ -355,7 +331,6 @@ export async function DELETE(req: NextRequest) {
   }
 
   const { error: deleteError } = await supabase.from("agent_requests").delete().eq("id", id);
-
   if (deleteError) {
     console.error("agent_requests DELETE error", deleteError);
     return NextResponse.json({ error: "Failed to delete agent request" }, { status: 500 });
