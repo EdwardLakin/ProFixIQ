@@ -2,7 +2,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@shared/components/ui/Button";
 import Card from "@shared/components/ui/Card";
@@ -20,6 +20,16 @@ type AgentRequestStatus =
   | "failed"
   | "merged";
 
+type AgentQuestion = { id?: string; question: string };
+
+type AgentResponse = {
+  id: string;
+  created_at: string;
+  user_id: string | null;
+  message: string;
+  answers?: Record<string, string> | null;
+};
+
 type AgentContext = {
   location?: string | null;
   steps?: string | null;
@@ -27,6 +37,13 @@ type AgentContext = {
   actual?: string | null;
   device?: string | null;
   attachmentIds?: string[];
+
+  // optional: worker can put questions here later
+  questions?: AgentQuestion[];
+
+  // answers/replies stored here by /reply route
+  responses?: AgentResponse[];
+
   [key: string]: unknown;
 };
 
@@ -83,6 +100,10 @@ function prettyIntent(intent: string | null): string {
   return intent.replace(/_/g, " ");
 }
 
+function isString(v: unknown): v is string {
+  return typeof v === "string";
+}
+
 export default function AgentConsolePage() {
   const [requests, setRequests] = useState<AgentRequest[]>([]);
   const [selected, setSelected] = useState<AgentRequest | null>(null);
@@ -96,7 +117,78 @@ export default function AgentConsolePage() {
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
+  // reply UI
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
+
   const selectedContext: AgentContext | null = selected?.normalized_json ?? null;
+
+  const questions = useMemo<AgentQuestion[]>(() => {
+    const raw = selectedContext?.questions;
+    if (!raw || !Array.isArray(raw)) return [];
+    // keep only well-formed entries
+    return raw
+      .filter((q): q is AgentQuestion => !!q && typeof q === "object")
+      .filter((q) => isString((q as { question?: unknown }).question))
+      .map((q) => ({
+        id: isString((q as { id?: unknown }).id) ? (q as { id: string }).id : undefined,
+        question: (q as { question: string }).question,
+      }));
+  }, [selectedContext?.questions]);
+
+  const responses = useMemo<AgentResponse[]>(() => {
+    const raw = selectedContext?.responses;
+    const arr: AgentResponse[] =
+      raw && Array.isArray(raw)
+        ? raw
+            .filter((r): r is AgentResponse => !!r && typeof r === "object")
+            .filter((r) => {
+              const obj = r as {
+                id?: unknown;
+                created_at?: unknown;
+                user_id?: unknown;
+                message?: unknown;
+              };
+              return (
+                isString(obj.id) &&
+                isString(obj.created_at) &&
+                isString(obj.message) &&
+                (obj.user_id === null || isString(obj.user_id))
+              );
+            })
+            .map((r) => {
+              const obj = r as {
+                id: string;
+                created_at: string;
+                user_id: string | null;
+                message: string;
+                answers?: unknown;
+              };
+
+              const answers =
+                obj.answers &&
+                typeof obj.answers === "object" &&
+                !Array.isArray(obj.answers)
+                  ? (obj.answers as Record<string, string>)
+                  : null;
+
+              return {
+                id: obj.id,
+                created_at: obj.created_at,
+                user_id: obj.user_id,
+                message: obj.message,
+                answers,
+              };
+            })
+        : [];
+
+    // newest last
+    return arr.slice().sort((a, b) => {
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      return ta - tb;
+    });
+  }, [selectedContext?.responses]);
 
   async function loadRequests() {
     try {
@@ -111,7 +203,6 @@ export default function AgentConsolePage() {
       const json = (await res.json()) as { requests: AgentRequest[] };
       setRequests(json.requests);
 
-      // keep selection fresh if it still exists
       if (selected?.id) {
         const nextSelected =
           json.requests.find((r) => r.id === selected.id) ?? null;
@@ -218,11 +309,6 @@ export default function AgentConsolePage() {
   async function notifyDiscord(request: AgentRequest) {
     startTransition(async () => {
       try {
-        /**
-         * IMPORTANT:
-         * Let the server build the message + include requestId/actionId
-         * so the worker can generate LINK buttons.
-         */
         const res = await fetch(
           `/api/agent/requests/${request.id}/notify-discord`,
           {
@@ -237,27 +323,6 @@ export default function AgentConsolePage() {
           console.error("Notify Discord failed", txt);
           window.alert("Notify Discord failed (check logs).");
           return;
-        }
-
-        const json = (await res.json().catch(() => null)) as
-          | {
-              ok?: boolean;
-              requestId?: string | null;
-              actionId?: string | null;
-              actionStatus?: string | null;
-              actionKind?: string | null;
-            }
-          | null;
-
-        if (json && json.ok && !json.actionId) {
-          console.warn(
-            "[agent-console] notify-discord: no actionId found for request; buttons will not render",
-            {
-              requestId: json.requestId,
-              actionStatus: json.actionStatus,
-              actionKind: json.actionKind,
-            }
-          );
         }
 
         await loadRequests();
@@ -293,11 +358,47 @@ export default function AgentConsolePage() {
           setLightboxUrl(null);
         }
       } catch (err) {
-        console.error("Error deleting agent request", err);
+        console.error("Error deleting request", err);
         window.alert("Error deleting (check logs).");
       }
     });
   }
+
+  async function sendReply() {
+    if (!selected) return;
+    const msg = replyText.trim();
+    if (!msg) return;
+
+    setReplySending(true);
+    try {
+      const res = await fetch(`/api/agent/requests/${selected.id}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg }),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        console.error("Reply failed", txt);
+        window.alert("Reply failed (check logs).");
+        return;
+      }
+
+      setReplyText("");
+      await loadRequests();
+    } catch (err) {
+      console.error("Reply error", err);
+      window.alert("Reply error (check logs).");
+    } finally {
+      setReplySending(false);
+    }
+  }
+
+  // (optional) ensure bucket exists / auth works in console, but don’t block UI
+  useEffect(() => {
+    const supabase = createBrowserSupabase();
+    supabase.auth.getSession().catch(() => null);
+  }, []);
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-6 text-white">
@@ -332,6 +433,7 @@ export default function AgentConsolePage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
+        {/* LEFT LIST */}
         <Card className="flex h-[70vh] flex-col rounded-2xl border border-white/10 bg-black/30 p-3 shadow-card backdrop-blur-md">
           <div className="mb-2 flex items-center justify-between px-1">
             <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">
@@ -367,7 +469,8 @@ export default function AgentConsolePage() {
                       {req.description}
                     </span>
                     <span className="text-[0.7rem] text-neutral-400">
-                      {prettyIntent(req.intent)} • {new Date(req.created_at).toLocaleString()}
+                      {prettyIntent(req.intent)} •{" "}
+                      {new Date(req.created_at).toLocaleString()}
                     </span>
                   </div>
                   <div className="flex flex-col items-end gap-1">
@@ -391,6 +494,7 @@ export default function AgentConsolePage() {
           </div>
         </Card>
 
+        {/* RIGHT DETAILS */}
         <Card className="flex h-[70vh] flex-col rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-md">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">
@@ -409,6 +513,7 @@ export default function AgentConsolePage() {
 
             {selected && (
               <>
+                {/* DESCRIPTION */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold text-neutral-50">Description</h3>
@@ -428,6 +533,7 @@ export default function AgentConsolePage() {
 
                 <Separator className="bg-white/10" />
 
+                {/* META */}
                 <div className="grid grid-cols-2 gap-4 text-[0.75rem]">
                   <div className="space-y-1">
                     <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
@@ -446,7 +552,9 @@ export default function AgentConsolePage() {
                       Confidence
                     </div>
                     <div className="text-neutral-100">
-                      {selected.llm_confidence != null ? selected.llm_confidence.toFixed(3) : "n/a"}
+                      {selected.llm_confidence != null
+                        ? selected.llm_confidence.toFixed(3)
+                        : "n/a"}
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -459,6 +567,7 @@ export default function AgentConsolePage() {
 
                 <Separator className="bg-white/10" />
 
+                {/* CONTEXT */}
                 {selectedContext && Object.keys(selectedContext).length > 0 && (
                   <>
                     <div className="space-y-2 text-[0.75rem]">
@@ -503,6 +612,7 @@ export default function AgentConsolePage() {
                           </div>
                         )}
 
+                        {/* ATTACHMENTS */}
                         {Array.isArray(selectedContext.attachmentIds) &&
                           selectedContext.attachmentIds.length > 0 && (
                             <div className="space-y-1">
@@ -515,50 +625,52 @@ export default function AgentConsolePage() {
                               )}
 
                               <ul className="mt-0.5 space-y-2 text-[0.7rem]">
-                                {selectedContext.attachmentIds.map((path, idx) => {
-                                  const url = attachmentUrls[path];
+                                {selectedContext.attachmentIds
+                                  .filter((p): p is string => typeof p === "string" && p.length > 0)
+                                  .map((path, idx) => {
+                                    const url = attachmentUrls[path];
 
-                                  return (
-                                    <li key={path} className="text-neutral-300">
-                                      <div className="flex items-center gap-2">
-                                        <button
-                                          type="button"
-                                          disabled={!url}
-                                          onClick={() => url && setLightboxUrl(url)}
-                                          className={cn(
-                                            "text-left text-orange-400 underline underline-offset-2 hover:text-orange-300",
-                                            !url && "cursor-not-allowed opacity-60"
-                                          )}
-                                        >
-                                          Screenshot {idx + 1}
-                                        </button>
-                                        <span className="truncate text-neutral-500">
-                                          ({path.split("/")[path.split("/").length - 1]})
-                                        </span>
-                                      </div>
-
-                                      {url && (
-                                        <div className="mt-1">
+                                    return (
+                                      <li key={path} className="text-neutral-300">
+                                        <div className="flex items-center gap-2">
                                           <button
                                             type="button"
-                                            className="block"
-                                            onClick={() => setLightboxUrl(url)}
-                                            aria-label={`Open Screenshot ${idx + 1}`}
+                                            disabled={!url}
+                                            onClick={() => url && setLightboxUrl(url)}
+                                            className={cn(
+                                              "text-left text-orange-400 underline underline-offset-2 hover:text-orange-300",
+                                              !url && "cursor-not-allowed opacity-60"
+                                            )}
                                           >
-                                            <Image
-                                              src={url}
-                                              alt={`Screenshot ${idx + 1}`}
-                                              width={640}
-                                              height={360}
-                                              unoptimized
-                                              className="max-h-40 w-auto cursor-zoom-in rounded-md border border-white/10 bg-black/40 object-contain"
-                                            />
+                                            Screenshot {idx + 1}
                                           </button>
+                                          <span className="truncate text-neutral-500">
+                                            ({path.split("/")[path.split("/").length - 1]})
+                                          </span>
                                         </div>
-                                      )}
-                                    </li>
-                                  );
-                                })}
+
+                                        {url && (
+                                          <div className="mt-1">
+                                            <button
+                                              type="button"
+                                              className="block"
+                                              onClick={() => setLightboxUrl(url)}
+                                              aria-label={`Open Screenshot ${idx + 1}`}
+                                            >
+                                              <Image
+                                                src={url}
+                                                alt={`Screenshot ${idx + 1}`}
+                                                width={640}
+                                                height={360}
+                                                unoptimized
+                                                className="max-h-40 w-auto cursor-zoom-in rounded-md border border-white/10 bg-black/40 object-contain"
+                                              />
+                                            </button>
+                                          </div>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
                               </ul>
                             </div>
                           )}
@@ -569,6 +681,7 @@ export default function AgentConsolePage() {
                   </>
                 )}
 
+                {/* GITHUB */}
                 <div className="space-y-1 text-[0.75rem]">
                   <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
                     GitHub
@@ -611,6 +724,7 @@ export default function AgentConsolePage() {
                   </div>
                 </div>
 
+                {/* LLM NOTES */}
                 {selected.llm_notes && (
                   <>
                     <Separator className="bg-white/10" />
@@ -623,8 +737,94 @@ export default function AgentConsolePage() {
                   </>
                 )}
 
+                {/* QUESTIONS + RESPONSES */}
+                <Separator className="bg-white/10" />
+                <div className="space-y-2 text-[0.75rem]">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                      Agent Q&A
+                    </div>
+                    <span className="text-[10px] text-neutral-500">
+                      {responses.length} repl{responses.length === 1 ? "y" : "ies"}
+                    </span>
+                  </div>
+
+                  {questions.length > 0 ? (
+                    <div className="rounded-lg border border-white/10 bg-black/25 p-2">
+                      <div className="text-[0.7rem] text-neutral-400">
+                        Questions the agent needs answered:
+                      </div>
+                      <ul className="mt-2 space-y-2">
+                        {questions.map((q, idx) => (
+                          <li key={q.id ?? `${idx}`} className="rounded-md bg-black/40 p-2">
+                            <div className="text-xs text-neutral-200">
+                              <span className="text-neutral-500">Q{idx + 1}:</span>{" "}
+                              {q.question}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="text-[0.7rem] text-neutral-500">
+                      No structured questions yet. (Once the worker starts asking, they’ll show here.)
+                    </div>
+                  )}
+
+                  {responses.length > 0 && (
+                    <div className="rounded-lg border border-white/10 bg-black/25 p-2">
+                      <div className="text-[0.7rem] text-neutral-400">Replies</div>
+                      <div className="mt-2 space-y-2">
+                        {responses.map((r) => (
+                          <div key={r.id} className="rounded-md bg-black/40 p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-[10px] text-neutral-500">
+                                {new Date(r.created_at).toLocaleString()}
+                              </div>
+                              <div className="text-[10px] text-neutral-600 truncate">
+                                {r.user_id ? `user: ${r.user_id}` : "user: unknown"}
+                              </div>
+                            </div>
+                            <div className="mt-1 whitespace-pre-wrap text-xs text-neutral-200">
+                              {r.message}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 rounded-lg border border-white/10 bg-black/25 p-2">
+                    <div className="text-[0.7rem] text-neutral-400">
+                      Reply (answer the agent / add missing info)
+                    </div>
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Example: This only happens on iPad Safari. Console shows 'ReferenceError: window is not defined' from RoleSidebar.tsx ..."
+                      className="min-h-[90px] w-full rounded-md border border-white/10 bg-black/40 p-2 text-xs text-neutral-200 outline-none focus:border-orange-500/60"
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!replyText.trim() || replySending}
+                        className={cn(
+                          "border-orange-500/60 text-xs font-semibold text-orange-300 hover:bg-orange-600 hover:text-black disabled:opacity-50",
+                          replySending && "cursor-wait"
+                        )}
+                        onClick={sendReply}
+                      >
+                        {replySending ? "Sending…" : "Send Reply"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
                 <Separator className="bg-white/10" />
 
+                {/* ACTION BUTTONS */}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
