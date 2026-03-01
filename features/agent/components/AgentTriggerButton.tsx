@@ -1,6 +1,7 @@
-//features/agent/components/AgentTriggerButton.tsx
+// features/agent/components/AgentTriggerButton.tsx (FULL FILE REPLACEMENT)
 
 "use client";
+
 import { useEffect, useState } from "react";
 
 type StreamEvent = {
@@ -11,9 +12,15 @@ type StreamEvent = {
   id: string;
 };
 
+function safeUUID(): string {
+  const c = (globalThis as unknown as { crypto?: Crypto }).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 export default function AgentTriggerButton({
   defaultGoal,
-  defaultContext
+  defaultContext,
 }: {
   defaultGoal?: string;
   defaultContext?: Record<string, unknown>;
@@ -29,19 +36,21 @@ export default function AgentTriggerButton({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           goal: defaultGoal ?? "Create a brake job",
-          context: defaultContext ?? {
-            customerId: "REPLACE-CUSTOMER-UUID",
-            vehicleId: "REPLACE-VEHICLE-UUID",
-            lineDescription: "Front brake pads & rotors",
-            jobType: "repair",
-            laborHours: 3,
-            partCost: 220,
-            emailInvoiceTo: "customer@example.com"
-          },
-          idempotencyKey: crypto.randomUUID()
-        })
+          context:
+            defaultContext ?? ({
+              customerId: "REPLACE-CUSTOMER-UUID",
+              vehicleId: "REPLACE-VEHICLE-UUID",
+              lineDescription: "Front brake pads & rotors",
+              jobType: "repair",
+              laborHours: 3,
+              partCost: 220,
+              emailInvoiceTo: "customer@example.com",
+            } satisfies Record<string, unknown>),
+          idempotencyKey: safeUUID(),
+        }),
       });
-      const json: { runId?: string; error?: string } = await res.json();
+
+      const json = (await res.json()) as { runId?: string; error?: string };
       if (!res.ok || !json.runId) throw new Error(json.error ?? "Agent failed");
       setRunId(json.runId);
     } catch (e) {
@@ -54,7 +63,11 @@ export default function AgentTriggerButton({
 
   return (
     <div className="space-y-2">
-      <button onClick={handleClick} disabled={loading} className="btn btn-primary">
+      <button
+        onClick={handleClick}
+        disabled={loading}
+        className="btn btn-primary"
+      >
         {loading ? "Running…" : "Run ProFix Agent"}
       </button>
       {runId && <AgentEventStream runId={runId} />}
@@ -72,13 +85,16 @@ function AgentEventStream({ runId }: { runId: string }) {
 
     es.onmessage = (msg: MessageEvent<string>) => {
       try {
-        const data: StreamEvent = JSON.parse(msg.data) as StreamEvent;
-        setEvents(prev => [...prev, data]);
+        const data = JSON.parse(msg.data) as StreamEvent;
+        setEvents((prev) => [...prev, data]);
       } catch {
         // ignore bad event
       }
     };
-    es.onerror = () => { es.close(); };
+
+    es.onerror = () => {
+      es.close();
+    };
 
     return () => es.close();
   }, [runId]);
@@ -87,8 +103,12 @@ function AgentEventStream({ runId }: { runId: string }) {
     <div className="rounded border p-2 max-h-96 overflow-auto">
       {events.map((ev) => (
         <div key={ev.id} className="border-b py-2">
-          <div className="text-xs opacity-70">#{ev.step} — {ev.kind}</div>
-          <pre className="text-sm whitespace-pre-wrap">{JSON.stringify(ev.content, null, 2)}</pre>
+          <div className="text-xs opacity-70">
+            #{ev.step} — {ev.kind}
+          </div>
+          <pre className="text-sm whitespace-pre-wrap">
+            {JSON.stringify(ev.content, null, 2)}
+          </pre>
         </div>
       ))}
     </div>
