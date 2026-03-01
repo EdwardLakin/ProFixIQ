@@ -21,7 +21,6 @@ type PatchBody = {
 
 const APPROVER_ROLES = ["developer"];
 
-// Same base URL as /app/api/agent/requests/route.ts
 const AGENT_SERVICE_URL =
   process.env.PROFIXIQ_AGENT_URL?.replace(/\/$/, "") ||
   "https://obscure-space-guacamole-69pvggxvgrxj2qxr-4001.app.github.dev";
@@ -57,8 +56,15 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function safeUuid(v: unknown): string | null {
   const s = typeof v === "string" ? v.trim() : "";
-  // Supabase UUIDs are standard 36-char (with hyphens)
   return s.length === 36 ? s : null;
+}
+
+function buildJobPayload(action: AgentActionRow): Record<string, unknown> {
+  const actionId = safeUuid(action.id);
+  if (!actionId) return { actionId: String(action.id) };
+
+  if (isRecord(action.payload)) return { ...action.payload, actionId };
+  return { actionId, payload: action.payload };
 }
 
 async function approveActionsAndEnqueueJobs(params: {
@@ -68,11 +74,13 @@ async function approveActionsAndEnqueueJobs(params: {
 }) {
   const { supabase, requestId, approvedBy } = params;
 
+  // IMPORTANT:
+  // agent_actions.status is an ENUM. If we query with an invalid status value,
+  // Postgres throws. So we fetch by request_id only and filter in TS.
   const { data: actions, error: actionsErr } = await supabase
     .from("agent_actions")
     .select("id, request_id, kind, status, risk, summary, payload, created_at")
     .eq("request_id", requestId)
-    .in("status", ["awaiting_approval", "pending_approval", "needs_approval"])
     .order("created_at", { ascending: true });
 
   if (actionsErr) {
@@ -80,33 +88,29 @@ async function approveActionsAndEnqueueJobs(params: {
   }
 
   const list = (actions ?? []) as AgentActionRow[];
-  if (list.length === 0) {
+
+  // Only approve actions that are truly awaiting approval
+  const pending = list.filter((a) => String(a.status).trim() === "awaiting_approval");
+
+  if (pending.length === 0) {
     return { approvedActionIds: [] as string[], enqueuedJobIds: [] as string[] };
   }
 
   const approvedActionIds: string[] = [];
   const enqueuedJobIds: string[] = [];
 
-  for (const a of list) {
+  for (const a of pending) {
     const actionId = safeUuid(a.id);
     if (!actionId) continue;
 
-    // 1) Approve via RPC (source-of-truth)
     const { error: rpcErr } = await supabase.rpc("agent_approve_action", {
       p_action_id: actionId,
       p_approved_by: approvedBy,
     });
 
-    if (rpcErr) {
-      throw new Error(`agent_approve_action failed: ${rpcErr.message}`);
-    }
+    if (rpcErr) throw new Error(`agent_approve_action failed: ${rpcErr.message}`);
 
     approvedActionIds.push(actionId);
-
-    // 2) Enqueue job for worker
-    const payload = isRecord(a.payload)
-      ? { ...a.payload, actionId }
-      : { actionId, payload: a.payload };
 
     const { data: jobRow, error: jobErr } = await supabase
       .from("agent_jobs")
@@ -115,15 +119,13 @@ async function approveActionsAndEnqueueJobs(params: {
         kind: a.kind,
         status: "queued",
         priority: 100,
-        payload,
+        payload: buildJobPayload(a),
         run_after: nowIso(),
       })
       .select("id")
       .single();
 
-    if (jobErr) {
-      throw new Error(`Failed to enqueue agent_jobs: ${jobErr.message}`);
-    }
+    if (jobErr) throw new Error(`Failed to enqueue agent_jobs: ${jobErr.message}`);
 
     enqueuedJobIds.push(String(jobRow.id));
   }
@@ -131,35 +133,60 @@ async function approveActionsAndEnqueueJobs(params: {
   return { approvedActionIds, enqueuedJobIds };
 }
 
+async function rejectPendingActions(params: {
+  supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
+  requestId: string;
+  rejectedBy: string;
+}) {
+  const { supabase, requestId, rejectedBy } = params;
+
+  const { data: actions, error: actionsErr } = await supabase
+    .from("agent_actions")
+    .select("id, status")
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: true });
+
+  if (actionsErr) {
+    throw new Error(`Failed to load agent_actions: ${actionsErr.message}`);
+  }
+
+  const list = (actions ?? []) as Array<{ id: unknown; status: unknown }>;
+  const pending = list.filter((a) => String(a.status ?? "").trim() === "awaiting_approval");
+
+  for (const a of pending) {
+    const actionId = safeUuid(a.id);
+    if (!actionId) continue;
+
+    const { error: rpcErr } = await supabase.rpc("agent_reject_action", {
+      p_action_id: actionId,
+      p_rejected_by: rejectedBy,
+      p_reason: "Rejected from Agent Console UI",
+    });
+
+    if (rpcErr) throw new Error(`agent_reject_action failed: ${rpcErr.message}`);
+  }
+}
+
 /**
  * PATCH /api/agent/requests/:id
  * - approve / reject a request
- * - approving ALSO approves any pending agent_actions and enqueues agent_jobs
- * - PR merge step stays separate (best-effort)
+ * - approving ALSO approves any awaiting_approval agent_actions and enqueues agent_jobs
+ * - PR merge remains separate best-effort
  */
 export async function PATCH(req: NextRequest) {
   const id = getIdFromUrl(req);
-
-  if (!id) {
-    return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
-  }
+  if (!id) return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
 
   const body = (await req.json().catch(() => null)) as PatchBody | null;
-
   if (!body || (body.action !== "approve" && body.action !== "reject")) {
     return NextResponse.json(
-      {
-        error: "action is required and must be 'approve' or 'reject'",
-        example: { action: "approve" },
-      },
+      { error: "action is required and must be 'approve' or 'reject'", example: { action: "approve" } },
       { status: 400 },
     );
   }
 
   const cookieStore = cookies();
-  const supabase = createRouteHandlerClient<Database>({
-    cookies: () => cookieStore,
-  });
+  const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
 
   const {
     data: { user },
@@ -167,7 +194,6 @@ export async function PATCH(req: NextRequest) {
 
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Role gate
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, role, agent_role")
@@ -180,13 +206,9 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (!APPROVER_ROLES.includes(profile.agent_role ?? "")) {
-    return NextResponse.json(
-      { error: "Forbidden – insufficient role to approve/reject" },
-      { status: 403 },
-    );
+    return NextResponse.json({ error: "Forbidden – insufficient role to approve/reject" }, { status: 403 });
   }
 
-  // Load request (PR info)
   const { data: existing, error: existingError } = await supabase
     .from("agent_requests")
     .select("id, status, github_pr_number, github_pr_url, github_branch, github_commit_sha")
@@ -219,35 +241,13 @@ export async function PATCH(req: NextRequest) {
       finalStatus = "failed";
     }
   } else {
-    // Reject pending actions (best-effort)
     try {
-      const { data: actions, error: actionsErr } = await supabase
-        .from("agent_actions")
-        .select("id, status")
-        .eq("request_id", id)
-        .in("status", ["awaiting_approval", "pending_approval", "needs_approval"])
-        .order("created_at", { ascending: true });
-
-      if (actionsErr) throw new Error(actionsErr.message);
-
-      for (const a of actions ?? []) {
-        const actionId = safeUuid((a as { id: unknown }).id);
-        if (!actionId) continue;
-
-        const { error: rpcErr } = await supabase.rpc("agent_reject_action", {
-          p_action_id: actionId,
-          p_rejected_by: user.id,
-          p_reason: "Rejected from Agent Console UI",
-        });
-
-        if (rpcErr) throw new Error(rpcErr.message);
-      }
+      await rejectPendingActions({ supabase, requestId: id, rejectedBy: user.id });
     } catch (err) {
       console.error("Reject actions failed (continuing)", err);
     }
   }
 
-  // PR merge step (only if PR exists and request was awaiting_approval)
   if (
     body.action === "approve" &&
     existing.github_pr_number != null &&
@@ -285,7 +285,6 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  // Update request row
   const { data, error } = await supabase
     .from("agent_requests")
     .update({
@@ -303,24 +302,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Failed to update agent request" }, { status: 500 });
   }
 
-  return NextResponse.json({
-    request: data,
-    approvedActionIds,
-    enqueuedJobIds,
-  });
+  return NextResponse.json({ request: data, approvedActionIds, enqueuedJobIds });
 }
 
 export async function DELETE(req: NextRequest) {
   const id = getIdFromUrl(req);
-
-  if (!id) {
-    return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
-  }
+  if (!id) return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
 
   const cookieStore = cookies();
-  const supabase = createRouteHandlerClient<Database>({
-    cookies: () => cookieStore,
-  });
+  const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
 
   const {
     data: { user },
@@ -340,10 +330,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (!APPROVER_ROLES.includes(profile.agent_role ?? "")) {
-    return NextResponse.json(
-      { error: "Forbidden – insufficient role to delete requests" },
-      { status: 403 },
-    );
+    return NextResponse.json({ error: "Forbidden – insufficient role to delete requests" }, { status: 403 });
   }
 
   const { data: existing, error: existingError } = await supabase
@@ -357,15 +344,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Agent request not found" }, { status: 404 });
   }
 
-  // Cleanup screenshot files (best-effort)
   try {
     const ctx = (existing.normalized_json ?? {}) as { attachmentIds?: string[] };
-
     if (Array.isArray(ctx.attachmentIds) && ctx.attachmentIds.length > 0) {
-      const { error: storageError } = await supabase.storage
-        .from("agent_uploads")
-        .remove(ctx.attachmentIds);
-
+      const { error: storageError } = await supabase.storage.from("agent_uploads").remove(ctx.attachmentIds);
       if (storageError) console.error("agent_uploads cleanup error", storageError);
     }
   } catch (err) {
