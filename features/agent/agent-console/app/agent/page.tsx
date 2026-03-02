@@ -1,4 +1,3 @@
-// features/agent/agent-console/app/agent/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import Image from "next/image";
@@ -111,9 +110,7 @@ export default function AgentConsolePage() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>(
-    {}
-  );
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
@@ -126,12 +123,13 @@ export default function AgentConsolePage() {
   const questions = useMemo<AgentQuestion[]>(() => {
     const raw = selectedContext?.questions;
     if (!raw || !Array.isArray(raw)) return [];
-    // keep only well-formed entries
     return raw
       .filter((q): q is AgentQuestion => !!q && typeof q === "object")
       .filter((q) => isString((q as { question?: unknown }).question))
       .map((q) => ({
-        id: isString((q as { id?: unknown }).id) ? (q as { id: string }).id : undefined,
+        id: isString((q as { id?: unknown }).id)
+          ? (q as { id: string }).id
+          : undefined,
         question: (q as { question: string }).question,
       }));
   }, [selectedContext?.questions]);
@@ -182,7 +180,6 @@ export default function AgentConsolePage() {
             })
         : [];
 
-    // newest last
     return arr.slice().sort((a, b) => {
       const ta = new Date(a.created_at).getTime();
       const tb = new Date(b.created_at).getTime();
@@ -190,9 +187,11 @@ export default function AgentConsolePage() {
     });
   }, [selectedContext?.responses]);
 
-  async function loadRequests() {
+  async function loadRequests(opts?: { silent?: boolean }) {
+    const silent = !!opts?.silent;
+
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       setError(null);
 
       const res = await fetch("/api/agent/requests");
@@ -210,19 +209,23 @@ export default function AgentConsolePage() {
       }
     } catch (err) {
       console.error("Failed to load agent requests", err);
-      setError("Failed to load agent requests. Check logs.");
+      if (!silent) setError("Failed to load agent requests. Check logs.");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }
 
+  // Baseline refresh cadence (30s). Uses silent refresh to avoid UI flicker.
   useEffect(() => {
-    loadRequests();
-    const interval = setInterval(loadRequests, 30000);
+    void loadRequests();
+    const interval = setInterval(() => {
+      void loadRequests({ silent: true });
+    }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Attachment signed URLs (only when selected changes)
   useEffect(() => {
     const paths =
       (selectedContext?.attachmentIds ?? []).filter(
@@ -270,13 +273,47 @@ export default function AgentConsolePage() {
       }
     }
 
-    fetchSignedUrls();
+    void fetchSignedUrls();
 
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id]);
+
+  // ✅ FAST POLL while a request is selected and still "active"
+  useEffect(() => {
+    if (!selected?.id) return;
+
+    const activeStatuses: AgentRequestStatus[] = [
+      "submitted",
+      "in_progress",
+      "awaiting_approval",
+      "approved",
+    ];
+
+    if (!activeStatuses.includes(selected.status)) return;
+
+    const tick = () => {
+      if (document.visibilityState === "visible") {
+        void loadRequests({ silent: true });
+      }
+    };
+
+    // quick initial tick so you see changes immediately after selecting
+    tick();
+
+    const interval = setInterval(tick, 2000);
+
+    const onVisibility = () => tick();
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, selected?.status]);
 
   async function updateStatus(action: "approve" | "reject", request: AgentRequest) {
     startTransition(async () => {
@@ -299,6 +336,9 @@ export default function AgentConsolePage() {
           prev.map((r) => (r.id === json.request.id ? json.request : r))
         );
         setSelected(json.request);
+
+        // Make the UI feel instant even before the next poll tick.
+        void loadRequests({ silent: true });
       } catch (err) {
         console.error("Error updating agent request", err);
         window.alert("Error updating request (check logs).");
@@ -325,7 +365,7 @@ export default function AgentConsolePage() {
           return;
         }
 
-        await loadRequests();
+        await loadRequests({ silent: true });
       } catch (err) {
         console.error("Notify Discord error", err);
         window.alert("Notify Discord error (check logs).");
@@ -385,7 +425,7 @@ export default function AgentConsolePage() {
       }
 
       setReplyText("");
-      await loadRequests();
+      await loadRequests({ silent: true });
     } catch (err) {
       console.error("Reply error", err);
       window.alert("Reply error (check logs).");
@@ -425,7 +465,7 @@ export default function AgentConsolePage() {
             size="sm"
             variant="outline"
             className="border-orange-500/60 bg-black/40 text-xs font-semibold text-orange-400 hover:bg-orange-600 hover:text-black"
-            onClick={() => loadRequests()}
+            onClick={() => void loadRequests()}
           >
             Refresh
           </Button>
