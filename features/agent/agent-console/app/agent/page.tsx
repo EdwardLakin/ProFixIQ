@@ -37,10 +37,7 @@ type AgentContext = {
   device?: string | null;
   attachmentIds?: string[];
 
-  // optional: worker can put questions here later
   questions?: AgentQuestion[];
-
-  // answers/replies stored here by /reply route
   responses?: AgentResponse[];
 
   [key: string]: unknown;
@@ -110,7 +107,9 @@ export default function AgentConsolePage() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>(
+    {},
+  );
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
@@ -187,11 +186,9 @@ export default function AgentConsolePage() {
     });
   }, [selectedContext?.responses]);
 
-  async function loadRequests(opts?: { silent?: boolean }) {
-    const silent = !!opts?.silent;
-
+  async function loadRequests() {
     try {
-      if (!silent) setIsLoading(true);
+      setIsLoading(true);
       setError(null);
 
       const res = await fetch("/api/agent/requests");
@@ -209,27 +206,27 @@ export default function AgentConsolePage() {
       }
     } catch (err) {
       console.error("Failed to load agent requests", err);
-      if (!silent) setError("Failed to load agent requests. Check logs.");
+      setError("Failed to load agent requests. Check logs.");
     } finally {
-      if (!silent) setIsLoading(false);
+      setIsLoading(false);
     }
   }
 
-  // Baseline refresh cadence (30s). Uses silent refresh to avoid UI flicker.
+  // Baseline polling (slow)
   useEffect(() => {
     void loadRequests();
     const interval = setInterval(() => {
-      void loadRequests({ silent: true });
+      void loadRequests();
     }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Attachment signed URLs (only when selected changes)
+  // Attachments: signed URLs
   useEffect(() => {
     const paths =
       (selectedContext?.attachmentIds ?? []).filter(
-        (p): p is string => typeof p === "string" && p.trim().length > 0
+        (p): p is string => typeof p === "string" && p.trim().length > 0,
       ) || [];
 
     if (!paths.length) {
@@ -281,7 +278,8 @@ export default function AgentConsolePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id]);
 
-  // ✅ FAST POLL while a request is selected and still "active"
+  // ✅ FAST POLL: while a request is selected and still “moving”, refresh every 2s
+  // Put this right where your arrow was.
   useEffect(() => {
     if (!selected?.id) return;
 
@@ -294,22 +292,24 @@ export default function AgentConsolePage() {
 
     if (!activeStatuses.includes(selected.status)) return;
 
+    let interval: ReturnType<typeof setInterval> | null = null;
+
     const tick = () => {
       if (document.visibilityState === "visible") {
-        void loadRequests({ silent: true });
+        void loadRequests();
       }
     };
 
-    // quick initial tick so you see changes immediately after selecting
+    // immediately refresh when selecting
     tick();
 
-    const interval = setInterval(tick, 2000);
+    interval = setInterval(tick, 2000);
 
     const onVisibility = () => tick();
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,12 +333,9 @@ export default function AgentConsolePage() {
         const json = (await res.json()) as { request: AgentRequest };
 
         setRequests((prev) =>
-          prev.map((r) => (r.id === json.request.id ? json.request : r))
+          prev.map((r) => (r.id === json.request.id ? json.request : r)),
         );
         setSelected(json.request);
-
-        // Make the UI feel instant even before the next poll tick.
-        void loadRequests({ silent: true });
       } catch (err) {
         console.error("Error updating agent request", err);
         window.alert("Error updating request (check logs).");
@@ -355,7 +352,7 @@ export default function AgentConsolePage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({}),
-          }
+          },
         );
 
         if (!res.ok) {
@@ -365,7 +362,7 @@ export default function AgentConsolePage() {
           return;
         }
 
-        await loadRequests({ silent: true });
+        await loadRequests();
       } catch (err) {
         console.error("Notify Discord error", err);
         window.alert("Notify Discord error (check logs).");
@@ -375,7 +372,7 @@ export default function AgentConsolePage() {
 
   async function deleteRequest(request: AgentRequest) {
     const confirmed = window.confirm(
-      "Delete this agent request and its metadata? This cannot be undone."
+      "Delete this agent request and its metadata? This cannot be undone.",
     );
     if (!confirmed) return;
 
@@ -425,7 +422,7 @@ export default function AgentConsolePage() {
       }
 
       setReplyText("");
-      await loadRequests({ silent: true });
+      await loadRequests();
     } catch (err) {
       console.error("Reply error", err);
       window.alert("Reply error (check logs).");
@@ -500,7 +497,8 @@ export default function AgentConsolePage() {
                 onClick={() => setSelected(req)}
                 className={cn(
                   "w-full rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-left text-xs text-neutral-100 transition hover:border-orange-500/70 hover:bg-orange-500/5",
-                  selected?.id === req.id && "border-orange-500/80 bg-orange-500/10"
+                  selected?.id === req.id &&
+                    "border-orange-500/80 bg-orange-500/10",
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -517,7 +515,7 @@ export default function AgentConsolePage() {
                     <Badge
                       className={cn(
                         "border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                        statusClasses(req.status)
+                        statusClasses(req.status),
                       )}
                     >
                       {req.status.replace(/_/g, " ")}
@@ -547,7 +545,8 @@ export default function AgentConsolePage() {
           <div className="flex-1 space-y-4 overflow-auto text-sm text-neutral-100">
             {!selected && (
               <p className="text-xs text-neutral-500">
-                Choose a request on the left to see description, GitHub links, context, and LLM notes.
+                Choose a request on the left to see description, GitHub links,
+                context, and LLM notes.
               </p>
             )}
 
@@ -556,11 +555,13 @@ export default function AgentConsolePage() {
                 {/* DESCRIPTION */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-neutral-50">Description</h3>
+                    <h3 className="text-sm font-semibold text-neutral-50">
+                      Description
+                    </h3>
                     <Badge
                       className={cn(
                         "border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                        statusClasses(selected.status)
+                        statusClasses(selected.status),
                       )}
                     >
                       {selected.status.replace(/_/g, " ")}
@@ -579,13 +580,17 @@ export default function AgentConsolePage() {
                     <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
                       Intent
                     </div>
-                    <div className="text-neutral-100">{prettyIntent(selected.intent)}</div>
+                    <div className="text-neutral-100">
+                      {prettyIntent(selected.intent)}
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
                       LLM Model
                     </div>
-                    <div className="text-neutral-100">{selected.llm_model ?? "n/a"}</div>
+                    <div className="text-neutral-100">
+                      {selected.llm_model ?? "n/a"}
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
@@ -601,7 +606,9 @@ export default function AgentConsolePage() {
                     <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
                       Reporter Role
                     </div>
-                    <div className="text-neutral-100">{selected.reporter_role ?? "unknown"}</div>
+                    <div className="text-neutral-100">
+                      {selected.reporter_role ?? "unknown"}
+                    </div>
                   </div>
                 </div>
 
@@ -629,7 +636,9 @@ export default function AgentConsolePage() {
                         )}
                         {selectedContext.steps && (
                           <div>
-                            <div className="text-neutral-500">Steps to Reproduce:</div>
+                            <div className="text-neutral-500">
+                              Steps to Reproduce:
+                            </div>
                             <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
                               {selectedContext.steps}
                             </pre>
@@ -656,7 +665,9 @@ export default function AgentConsolePage() {
                         {Array.isArray(selectedContext.attachmentIds) &&
                           selectedContext.attachmentIds.length > 0 && (
                             <div className="space-y-1">
-                              <div className="text-neutral-500">Attachments:</div>
+                              <div className="text-neutral-500">
+                                Attachments:
+                              </div>
 
                               {attachmentsLoading && (
                                 <div className="text-[0.7rem] text-neutral-500">
@@ -666,26 +677,41 @@ export default function AgentConsolePage() {
 
                               <ul className="mt-0.5 space-y-2 text-[0.7rem]">
                                 {selectedContext.attachmentIds
-                                  .filter((p): p is string => typeof p === "string" && p.length > 0)
+                                  .filter(
+                                    (p): p is string =>
+                                      typeof p === "string" && p.length > 0,
+                                  )
                                   .map((path, idx) => {
                                     const url = attachmentUrls[path];
 
                                     return (
-                                      <li key={path} className="text-neutral-300">
+                                      <li
+                                        key={path}
+                                        className="text-neutral-300"
+                                      >
                                         <div className="flex items-center gap-2">
                                           <button
                                             type="button"
                                             disabled={!url}
-                                            onClick={() => url && setLightboxUrl(url)}
+                                            onClick={() =>
+                                              url && setLightboxUrl(url)
+                                            }
                                             className={cn(
                                               "text-left text-orange-400 underline underline-offset-2 hover:text-orange-300",
-                                              !url && "cursor-not-allowed opacity-60"
+                                              !url &&
+                                                "cursor-not-allowed opacity-60",
                                             )}
                                           >
                                             Screenshot {idx + 1}
                                           </button>
                                           <span className="truncate text-neutral-500">
-                                            ({path.split("/")[path.split("/").length - 1]})
+                                            (
+                                            {
+                                              path.split("/")[
+                                                path.split("/").length - 1
+                                              ]
+                                            }
+                                            )
                                           </span>
                                         </div>
 
@@ -694,7 +720,9 @@ export default function AgentConsolePage() {
                                             <button
                                               type="button"
                                               className="block"
-                                              onClick={() => setLightboxUrl(url)}
+                                              onClick={() =>
+                                                setLightboxUrl(url)
+                                              }
                                               aria-label={`Open Screenshot ${idx + 1}`}
                                             >
                                               <Image
@@ -757,9 +785,13 @@ export default function AgentConsolePage() {
                     ) : (
                       <div>PR: n/a</div>
                     )}
-                    {selected.github_branch && <div>Branch: {selected.github_branch}</div>}
+                    {selected.github_branch && (
+                      <div>Branch: {selected.github_branch}</div>
+                    )}
                     {selected.github_commit_sha && (
-                      <div className="truncate">Commit: {selected.github_commit_sha}</div>
+                      <div className="truncate">
+                        Commit: {selected.github_commit_sha}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -772,7 +804,9 @@ export default function AgentConsolePage() {
                       <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
                         LLM Notes
                       </div>
-                      <p className="whitespace-pre-line text-neutral-300">{selected.llm_notes}</p>
+                      <p className="whitespace-pre-line text-neutral-300">
+                        {selected.llm_notes}
+                      </p>
                     </div>
                   </>
                 )}
@@ -785,7 +819,8 @@ export default function AgentConsolePage() {
                       Agent Q&A
                     </div>
                     <span className="text-[10px] text-neutral-500">
-                      {responses.length} repl{responses.length === 1 ? "y" : "ies"}
+                      {responses.length} repl
+                      {responses.length === 1 ? "y" : "ies"}
                     </span>
                   </div>
 
@@ -796,9 +831,14 @@ export default function AgentConsolePage() {
                       </div>
                       <ul className="mt-2 space-y-2">
                         {questions.map((q, idx) => (
-                          <li key={q.id ?? `${idx}`} className="rounded-md bg-black/40 p-2">
+                          <li
+                            key={q.id ?? `${idx}`}
+                            className="rounded-md bg-black/40 p-2"
+                          >
                             <div className="text-xs text-neutral-200">
-                              <span className="text-neutral-500">Q{idx + 1}:</span>{" "}
+                              <span className="text-neutral-500">
+                                Q{idx + 1}:
+                              </span>{" "}
                               {q.question}
                             </div>
                           </li>
@@ -807,22 +847,30 @@ export default function AgentConsolePage() {
                     </div>
                   ) : (
                     <div className="text-[0.7rem] text-neutral-500">
-                      No structured questions yet. (Once the worker starts asking, they’ll show here.)
+                      No structured questions yet. (Once the worker starts
+                      asking, they’ll show here.)
                     </div>
                   )}
 
                   {responses.length > 0 && (
                     <div className="rounded-lg border border-white/10 bg-black/25 p-2">
-                      <div className="text-[0.7rem] text-neutral-400">Replies</div>
+                      <div className="text-[0.7rem] text-neutral-400">
+                        Replies
+                      </div>
                       <div className="mt-2 space-y-2">
                         {responses.map((r) => (
-                          <div key={r.id} className="rounded-md bg-black/40 p-2">
+                          <div
+                            key={r.id}
+                            className="rounded-md bg-black/40 p-2"
+                          >
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-[10px] text-neutral-500">
                                 {new Date(r.created_at).toLocaleString()}
                               </div>
                               <div className="text-[10px] text-neutral-600 truncate">
-                                {r.user_id ? `user: ${r.user_id}` : "user: unknown"}
+                                {r.user_id
+                                  ? `user: ${r.user_id}`
+                                  : "user: unknown"}
                               </div>
                             </div>
                             <div className="mt-1 whitespace-pre-wrap text-xs text-neutral-200">
@@ -852,9 +900,9 @@ export default function AgentConsolePage() {
                         disabled={!replyText.trim() || replySending}
                         className={cn(
                           "border-orange-500/60 text-xs font-semibold text-orange-300 hover:bg-orange-600 hover:text-black disabled:opacity-50",
-                          replySending && "cursor-wait"
+                          replySending && "cursor-wait",
                         )}
-                        onClick={sendReply}
+                        onClick={() => void sendReply()}
                       >
                         {replySending ? "Sending…" : "Send Reply"}
                       </Button>
@@ -873,7 +921,7 @@ export default function AgentConsolePage() {
                     disabled={!selected || isPending}
                     className={cn(
                       "border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-black disabled:opacity-50",
-                      isPending && "cursor-wait"
+                      isPending && "cursor-wait",
                     )}
                     onClick={() => selected && updateStatus("approve", selected)}
                   >
@@ -887,7 +935,7 @@ export default function AgentConsolePage() {
                     disabled={!selected || isPending}
                     className={cn(
                       "border-red-500/70 text-xs font-semibold text-red-300 hover:bg-red-600 hover:text-black disabled:opacity-50",
-                      isPending && "cursor-wait"
+                      isPending && "cursor-wait",
                     )}
                     onClick={() => selected && updateStatus("reject", selected)}
                   >
@@ -901,7 +949,7 @@ export default function AgentConsolePage() {
                     disabled={!selected || isPending}
                     className={cn(
                       "border-indigo-500/60 text-xs font-semibold text-indigo-200 hover:bg-indigo-600 hover:text-black disabled:opacity-50",
-                      isPending && "cursor-wait"
+                      isPending && "cursor-wait",
                     )}
                     onClick={() => selected && notifyDiscord(selected)}
                   >
@@ -915,7 +963,7 @@ export default function AgentConsolePage() {
                     disabled={!selected || isPending}
                     className={cn(
                       "border-white/40 text-xs font-semibold text-neutral-300 hover:bg-red-700 hover:text-white disabled:opacity-50",
-                      isPending && "cursor-wait"
+                      isPending && "cursor-wait",
                     )}
                     onClick={() => selected && deleteRequest(selected)}
                   >
