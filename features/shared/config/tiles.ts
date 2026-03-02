@@ -95,14 +95,6 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
   {
-    href: "/work-orders/queue",
-    title: "Job Queue",
-    subtitle: "Active & in-progress",
-    roles: ["advisor", "manager", "owner", "admin"],
-    scopes: ["work_orders", "all"],
-    section: "Operations",
-  },
-  {
     href: "/work-orders/quote-review",
     title: "Quote Review",
     subtitle: "Review & send estimates",

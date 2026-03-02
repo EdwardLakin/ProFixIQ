@@ -1,4 +1,3 @@
-// app/dashboard/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -9,6 +8,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import ShopBoostWidget from "@/features/shared/components/ui/ShopBoostWidget";
+import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
 
 // ✅ Pull tech performance using your existing stats helper
 import type { TimeRange } from "@shared/lib/stats/getShopStats";
@@ -413,6 +413,13 @@ export default function DashboardPage() {
           </>
         )}
       </section>
+
+      {/* ✅ Advisor Queue Widget (advisor/manager/admin/owner) */}
+      {!tech && (
+        <section>
+          <AdvisorQueueWidget />
+        </section>
+      )}
 
       {/* quick actions */}
       <section className="space-y-3">
