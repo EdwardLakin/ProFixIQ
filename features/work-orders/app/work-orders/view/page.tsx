@@ -1,8 +1,9 @@
 // app/work-orders/view/page.tsx
 // ✅ FULL FILE REPLACEMENT
-// - Removes "new" from filters
-// - Includes awaiting_approval in the default (empty) “Active” filter
-// - Wires StatusPickerModal into this page with role gating (advisor/manager/admin/owner)
+// - Adds "Tech rollup" (derived from work_order_lines statuses) so view page matches queue logic
+// - Treats WO.status="completed" as the invoice-review stage
+//   → if invoice review passes, auto-advances WO.status to "ready_to_invoice"
+// - Keeps existing status filter + status picker role gating
 
 "use client";
 
@@ -24,6 +25,7 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
+type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 type Row = WorkOrder & {
   customers:
@@ -113,6 +115,33 @@ function isStatusKey(x: string): x is StatusKey {
   );
 }
 
+/* --------------------------- Tech rollup (from lines) --------------------------- */
+type TechRollup = "awaiting" | "in_progress" | "on_hold" | "completed";
+
+const TECH_ROLLUP_BADGE: Record<TechRollup, string> = {
+  awaiting: "bg-slate-500/10 border-slate-400/50 text-slate-100",
+  in_progress:
+    "bg-[var(--accent-copper)]/15 border-[var(--accent-copper-light)]/70 text-[var(--accent-copper-light)]",
+  on_hold: "bg-amber-500/10 border-amber-400/70 text-amber-100",
+  completed: "bg-green-500/10 border-green-400/70 text-green-100",
+};
+
+function rollupTechStatus(lines: Array<Pick<Line, "status">>): TechRollup {
+  const s = new Set(
+    (lines ?? []).map((l) => String(l.status ?? "awaiting").toLowerCase()),
+  );
+  if (s.has("in_progress")) return "in_progress";
+  if (s.has("on_hold")) return "on_hold";
+  // treat fully completed as completed
+  if ((lines ?? []).length > 0 && (lines ?? []).every((l) => (l.status ?? "") === "completed"))
+    return "completed";
+  return "awaiting";
+}
+
+function techChip(rollup: TechRollup): string {
+  return `${BADGE_BASE} ${TECH_ROLLUP_BADGE[rollup]}`;
+}
+
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
@@ -142,6 +171,11 @@ export default function WorkOrdersView(): JSX.Element {
   const [reviewByWo, setReviewByWo] = useState<
     Record<string, ReviewResponse | undefined>
   >({});
+
+  // ✅ derived tech rollup per work order
+  const [techRollupByWo, setTechRollupByWo] = useState<Record<string, TechRollup>>(
+    {},
+  );
 
   // ✅ status picker modal
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
@@ -179,7 +213,7 @@ export default function WorkOrdersView(): JSX.Element {
   );
 
   // -------------------------------------------------------------------
-  // Load work orders
+  // Load work orders (+ derived tech rollups from lines)
   // -------------------------------------------------------------------
   const load = useCallback(async () => {
     setLoading(true);
@@ -207,6 +241,7 @@ export default function WorkOrdersView(): JSX.Element {
     if (error) {
       setErr(error.message);
       setRows([]);
+      setTechRollupByWo({});
       setLoading(false);
       return;
     }
@@ -241,76 +276,134 @@ export default function WorkOrdersView(): JSX.Element {
           });
 
     setRows(filtered);
+
+    // derived tech rollup: fetch minimal line statuses for these WOs
+    const ids = filtered.map((r) => r.id).filter(Boolean);
+    if (ids.length === 0) {
+      setTechRollupByWo({});
+      setLoading(false);
+      return;
+    }
+
+    const { data: lines, error: lnErr } = await supabase
+      .from("work_order_lines")
+      .select("work_order_id,status")
+      .in("work_order_id", ids);
+
+    if (lnErr) {
+      console.warn("[WorkOrdersView] failed to load lines for rollup:", lnErr.message);
+      setTechRollupByWo({});
+      setLoading(false);
+      return;
+    }
+
+    const map: Record<string, Array<Pick<Line, "status">>> = {};
+    (lines ?? []).forEach((l) => {
+      const woId = (l as Pick<Line, "work_order_id">).work_order_id;
+      if (!woId) return;
+      if (!map[woId]) map[woId] = [];
+      map[woId].push(l as Pick<Line, "status">);
+    });
+
+    const rollups: Record<string, TechRollup> = {};
+    ids.forEach((woId) => {
+      rollups[woId] = rollupTechStatus(map[woId] ?? []);
+    });
+
+    setTechRollupByWo(rollups);
     setLoading(false);
   }, [q, status, supabase]);
 
   // -------------------------------------------------------------------
   // Invoice review gate (AI)
   // -------------------------------------------------------------------
-  const runInvoiceReview = useCallback(async (woId: string) => {
-    try {
-      setReviewLoadingId(woId);
-
-      const res = await fetch(`/api/work-orders/${woId}/invoice`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const raw = await res.text();
-
-      let parsed: unknown = null;
+  const runInvoiceReview = useCallback(
+    async (woId: string) => {
       try {
-        parsed = raw ? JSON.parse(raw) : null;
-      } catch {
-        parsed = null;
-      }
+        setReviewLoadingId(woId);
 
-      if (!res.ok) {
-        console.error("[invoice-review] Non-OK response", {
-          status: res.status,
-          statusText: res.statusText,
-          raw,
+        const res = await fetch(`/api/work-orders/${woId}/invoice`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
         });
-        toast.error(`Invoice review failed (${res.status}).`);
-        return;
+
+        const raw = await res.text();
+
+        let parsed: unknown = null;
+        try {
+          parsed = raw ? JSON.parse(raw) : null;
+        } catch {
+          parsed = null;
+        }
+
+        if (!res.ok) {
+          console.error("[invoice-review] Non-OK response", {
+            status: res.status,
+            statusText: res.statusText,
+            raw,
+          });
+          toast.error(`Invoice review failed (${res.status}).`);
+          return;
+        }
+
+        if (
+          !parsed ||
+          typeof parsed !== "object" ||
+          typeof (parsed as Record<string, unknown>).ok !== "boolean"
+        ) {
+          console.error("[invoice-review] Invalid JSON shape", { raw, parsed });
+          toast.error("Invoice review failed (invalid response shape).");
+          return;
+        }
+
+        const obj = parsed as Record<string, unknown>;
+        const issues = Array.isArray(obj.issues) ? (obj.issues as ReviewIssue[]) : [];
+
+        const safeResult: ReviewResponse = {
+          ok: Boolean(obj.ok),
+          issues,
+        };
+
+        setReviewByWo((prev) => ({ ...prev, [woId]: safeResult }));
+
+        if (safeResult.ok) {
+          toast.success("Invoice review passed ✅");
+
+          // ✅ If WO is currently "completed", advance it to "ready_to_invoice"
+          const current = rows.find((r) => r.id === woId);
+          const statusLower = String(current?.status ?? "").toLowerCase().replaceAll(" ", "_");
+          if (statusLower === "completed") {
+            const { error } = await supabase
+              .from("work_orders")
+              .update({ status: "ready_to_invoice" } as DB["public"]["Tables"]["work_orders"]["Update"])
+              .eq("id", woId)
+              .eq("status", "completed");
+
+            if (error) {
+              console.warn("[invoice-review] could not advance status:", error.message);
+            } else {
+              toast.success("Moved to Ready to invoice");
+            }
+          }
+
+          // refresh list + rollups
+          await load();
+        } else {
+          toast.error(
+            `Invoice review found ${issues.length} issue(s)${
+              issues[0]?.message ? `: ${issues[0].message}` : ""
+            }`,
+          );
+        }
+      } catch (e) {
+        console.error("[invoice-review] crash:", e);
+        toast.error("Invoice review crashed");
+      } finally {
+        setReviewLoadingId(null);
       }
-
-      if (
-        !parsed ||
-        typeof parsed !== "object" ||
-        typeof (parsed as Record<string, unknown>).ok !== "boolean"
-      ) {
-        console.error("[invoice-review] Invalid JSON shape", { raw, parsed });
-        toast.error("Invoice review failed (invalid response shape).");
-        return;
-      }
-
-      const obj = parsed as Record<string, unknown>;
-      const issues = Array.isArray(obj.issues) ? (obj.issues as ReviewIssue[]) : [];
-
-      const safeResult: ReviewResponse = {
-        ok: Boolean(obj.ok),
-        issues,
-      };
-
-      setReviewByWo((prev) => ({ ...prev, [woId]: safeResult }));
-
-      if (safeResult.ok) {
-        toast.success("Invoice review passed ✅ Ready to invoice.");
-      } else {
-        toast.error(
-          `Invoice review found ${issues.length} issue(s)${
-            issues[0]?.message ? `: ${issues[0].message}` : ""
-          }`,
-        );
-      }
-    } catch (e) {
-      console.error("[invoice-review] crash:", e);
-      toast.error("Invoice review crashed");
-    } finally {
-      setReviewLoadingId(null);
-    }
-  }, []);
+    },
+    [load, rows, supabase],
+  );
 
   // -------------------------------------------------------------------
   // Auth + portal role + mechanics
@@ -396,6 +489,12 @@ export default function WorkOrdersView(): JSX.Element {
       if (error) {
         alert("Failed to delete: " + error.message);
         setRows(prev);
+      } else {
+        setTechRollupByWo((m) => {
+          const next = { ...m };
+          delete next[id];
+          return next;
+        });
       }
     },
     [rows, supabase],
@@ -477,7 +576,7 @@ export default function WorkOrdersView(): JSX.Element {
               Work Orders
             </h1>
             <p className="mt-1 text-[0.75rem] text-neutral-300">
-              Live view of active jobs, their status, and technician assignments.
+              Advisor view. WO status is business workflow; Tech status is derived from job lines.
             </p>
           </div>
 
@@ -519,7 +618,7 @@ export default function WorkOrdersView(): JSX.Element {
               <option value="in_progress">In progress</option>
               <option value="on_hold">On hold</option>
               <option value="planned">Planned</option>
-              <option value="completed">Completed</option>
+              <option value="completed">Completed (review)</option>
               <option value="ready_to_invoice">Ready to invoice</option>
               <option value="invoiced">Invoiced</option>
             </select>
@@ -603,13 +702,15 @@ export default function WorkOrdersView(): JSX.Element {
 
               const plate = r.vehicles?.license_plate ?? "";
 
-              const statusLower = String(r.status ?? "").toLowerCase();
-              const isReadyToInvoice =
+              const statusLower = String(r.status ?? "").toLowerCase().replaceAll(" ", "_");
+              const isInvoiceStage =
                 statusLower === "ready_to_invoice" || statusLower === "completed";
 
               const review = reviewByWo[r.id];
               const reviewedOk = Boolean(review?.ok);
               const issueCount = review?.issues?.length ?? 0;
+
+              const techRollup = techRollupByWo[r.id] ?? "awaiting";
 
               return (
                 <div
@@ -637,8 +738,14 @@ export default function WorkOrdersView(): JSX.Element {
                         </span>
                       )}
 
+                      {/* Business status */}
                       <span className={chip(r.status)}>
                         {(r.status ?? "awaiting").replaceAll("_", " ")}
+                      </span>
+
+                      {/* Tech rollup status */}
+                      <span className={techChip(techRollup)}>
+                        Tech: {techRollup.replaceAll("_", " ")}
                       </span>
 
                       {review ? (
@@ -688,7 +795,7 @@ export default function WorkOrdersView(): JSX.Element {
                       </button>
                     )}
 
-                    {isReadyToInvoice && (
+                    {isInvoiceStage && (
                       <button
                         onClick={() => void runInvoiceReview(r.id)}
                         disabled={reviewLoadingId === r.id || reviewedOk}
@@ -711,7 +818,7 @@ export default function WorkOrdersView(): JSX.Element {
                       </button>
                     )}
 
-                    {isReadyToInvoice && (
+                    {statusLower === "ready_to_invoice" && (
                       <button
                         onClick={() => openInvoicePage(r.id)}
                         disabled={!reviewedOk}
