@@ -111,6 +111,14 @@ export default function MobileCustomerProfilePage() {
     );
   }
 
+  const displayName = customer
+    ? customer.business_name ||
+      [customer.first_name ?? "", customer.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ") ||
+      "Customer"
+    : "Customer";
+
   return (
     <MobileShell>
       <div className="px-4 py-4 space-y-4 text-foreground">
@@ -137,13 +145,7 @@ export default function MobileCustomerProfilePage() {
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
             Customer
           </h1>
-          {customer && (
-            <p className="text-xs text-neutral-400">
-              {[customer.first_name ?? "", customer.last_name ?? ""]
-                .filter(Boolean)
-                .join(" ") || "Customer"}
-            </p>
-          )}
+          <p className="text-xs text-neutral-400">{displayName}</p>
         </div>
 
         {err && (
@@ -169,10 +171,7 @@ export default function MobileCustomerProfilePage() {
               </div>
               <div className="space-y-1 text-xs text-neutral-200">
                 <div>
-                  <span className="text-neutral-500">Name:</span>{" "}
-                  {[customer.first_name ?? "", customer.last_name ?? ""]
-                    .filter(Boolean)
-                    .join(" ") || "—"}
+                  <span className="text-neutral-500">Name:</span> {displayName}
                 </div>
                 <div>
                   <span className="text-neutral-500">Email:</span>{" "}
@@ -262,7 +261,9 @@ export default function MobileCustomerProfilePage() {
                           </div>
                           <div>
                             <span className="text-neutral-500">Engine hrs:</span>{" "}
-                            {v.engine_hours != null ? String(v.engine_hours) : "—"}
+                            {v.engine_hours != null
+                              ? String(v.engine_hours)
+                              : "—"}
                           </div>
                           <div>
                             <span className="text-neutral-500">Engine:</span>{" "}

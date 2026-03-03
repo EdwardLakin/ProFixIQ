@@ -15,6 +15,9 @@
  * - Vehicle search + pick now includes engine_hours + engine + transmission + fuel_type + drivetrain
  * - Vehicle insert persists those fields
  * - If a vehicle already exists (match by id or VIN/plate), we update it with edited fields
+ *
+ * ✅ Patch (today):
+ * - getOrLinkShopId now matches desktop: tries profiles.user_id first, then profiles.id
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -97,38 +100,60 @@ function numStringOrNull(v: unknown): string | null {
 
 /**
  * Resolve the user's shop_id.
- * - First tries profiles.id = userId
+ * - First tries profiles.user_id = userId (new)
+ * - Then tries profiles.id = userId (legacy)
  * - If none, tries shops.owner_id = userId and writes back to profile
  */
 async function getOrLinkShopId(
   supabase: ReturnType<typeof createClientComponentClient<DB>>,
   userId: string,
 ): Promise<string | null> {
-  const { data: profileById, error: profErr } = await supabase
+  // ✅ prefer user_id (new)
+  const byUserId = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (byUserId.error) throw byUserId.error;
+  if (byUserId.data?.shop_id) return byUserId.data.shop_id;
+
+  // legacy: profiles.id == auth.uid()
+  const byId = await supabase
     .from("profiles")
     .select("shop_id")
     .eq("id", userId)
     .maybeSingle();
 
-  if (profErr) throw profErr;
-  if (profileById?.shop_id) return profileById.shop_id;
+  if (byId.error) throw byId.error;
+  if (byId.data?.shop_id) return byId.data.shop_id;
 
-  const { data: ownedShop, error: shopErr } = await supabase
+  // fallback: shops.owner_id
+  const ownedShop = await supabase
     .from("shops")
     .select("id")
     .eq("owner_id", userId)
     .maybeSingle();
 
-  if (shopErr) throw shopErr;
-  if (!ownedShop?.id) return null;
+  if (ownedShop.error) throw ownedShop.error;
+  if (!ownedShop.data?.id) return null;
 
-  const { error: updErr } = await supabase
+  // write back: try user_id first, then id
+  const updByUserId = await supabase
     .from("profiles")
-    .update({ shop_id: ownedShop.id })
-    .eq("id", userId);
+    .update({ shop_id: ownedShop.data.id })
+    .eq("user_id", userId);
 
-  if (updErr) throw updErr;
-  return ownedShop.id;
+  if (updByUserId.error) {
+    const updById = await supabase
+      .from("profiles")
+      .update({ shop_id: ownedShop.data.id })
+      .eq("id", userId);
+
+    if (updById.error) throw updById.error;
+  }
+
+  return ownedShop.data.id;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -525,8 +550,7 @@ export default function MobileCreateWorkOrderPage() {
         transmission: draftVehicle.transmission ?? prev.transmission ?? null,
         fuel_type: draftVehicle.fuel_type ?? prev.fuel_type ?? null,
         drivetrain: draftVehicle.drivetrain ?? prev.drivetrain ?? null,
-        engine_hours:
-          draftVehicle.engine_hours ?? prev.engine_hours ?? null,
+        engine_hours: draftVehicle.engine_hours ?? prev.engine_hours ?? null,
         unit_number: draftVehicle.unit_number ?? prev.unit_number ?? null,
         color: draftVehicle.color ?? prev.color ?? null,
       }));
@@ -813,7 +837,9 @@ export default function MobileCreateWorkOrderPage() {
 
       setWo(createdWo);
       setIsWaiter(
-        Boolean((createdWo as unknown as { is_waiter?: boolean | null }).is_waiter),
+        Boolean(
+          (createdWo as unknown as { is_waiter?: boolean | null }).is_waiter,
+        ),
       );
       await fetchLines();
     } catch (e) {
@@ -1110,7 +1136,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="VIN"
                 value={vehicle.vin ?? ""}
                 onChange={(e) =>
-                  setVehicle((p) => ({ ...p, vin: e.target.value || null, id: p.id }))
+                  setVehicle((p) => ({
+                    ...p,
+                    vin: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <input
@@ -1130,7 +1160,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="Color"
                 value={vehicle.color ?? ""}
                 onChange={(e) =>
-                  setVehicle((p) => ({ ...p, color: e.target.value || null, id: p.id }))
+                  setVehicle((p) => ({
+                    ...p,
+                    color: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <input
@@ -1151,7 +1185,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="Engine / Trim"
                 value={vehicle.engine ?? ""}
                 onChange={(e) =>
-                  setVehicle((p) => ({ ...p, engine: e.target.value || null, id: p.id }))
+                  setVehicle((p) => ({
+                    ...p,
+                    engine: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <select
@@ -1221,15 +1259,29 @@ export default function MobileCreateWorkOrderPage() {
                 onDecoded={(decoded) => {
                   const v: DraftVehicleShape = {
                     vin: decoded.vin ?? null,
-                    year: (decoded as unknown as { year?: string | number | null }).year
-                      ? String((decoded as unknown as { year?: string | number | null }).year)
+                    year: (decoded as unknown as { year?: string | number | null })
+                      .year
+                      ? String(
+                          (decoded as unknown as { year?: string | number | null })
+                            .year,
+                        )
                       : null,
                     make: (decoded as unknown as { make?: string | null }).make ?? null,
-                    model: (decoded as unknown as { model?: string | null }).model ?? null,
-                    engine: (decoded as unknown as { engine?: string | null }).engine ?? null,
-                    fuel_type: (decoded as unknown as { fuelType?: string | null }).fuelType ?? null,
-                    drivetrain: (decoded as unknown as { driveType?: string | null }).driveType ?? null,
-                    transmission: (decoded as unknown as { transmission?: string | null }).transmission ?? null,
+                    model:
+                      (decoded as unknown as { model?: string | null }).model ??
+                      null,
+                    engine:
+                      (decoded as unknown as { engine?: string | null }).engine ??
+                      null,
+                    fuel_type:
+                      (decoded as unknown as { fuelType?: string | null }).fuelType ??
+                      null,
+                    drivetrain:
+                      (decoded as unknown as { driveType?: string | null }).driveType ??
+                      null,
+                    transmission:
+                      (decoded as unknown as { transmission?: string | null })
+                        .transmission ?? null,
                   };
 
                   draft.setVehicle(v);

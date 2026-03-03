@@ -915,7 +915,8 @@ export default function CreateWorkOrderPage() {
           model: veh.model ?? null,
           license_plate: veh.license_plate ?? null,
           mileage: (veh.mileage as string | null) ?? vehicle.mileage ?? null,
-          unit_number: (veh.unit_number as string | null) ?? vehicle.unit_number ?? null,
+          unit_number:
+            (veh.unit_number as string | null) ?? vehicle.unit_number ?? null,
           color: (veh.color as string | null) ?? vehicle.color ?? null,
           engine_hours:
             veh.engine_hours != null
@@ -926,7 +927,8 @@ export default function CreateWorkOrderPage() {
           engine: (veh.engine as string | null) ?? vehicle.engine ?? null,
           transmission:
             (veh.transmission as string | null) ?? vehicle.transmission ?? null,
-          fuel_type: (veh.fuel_type as string | null) ?? vehicle.fuel_type ?? null,
+          fuel_type:
+            (veh.fuel_type as string | null) ?? vehicle.fuel_type ?? null,
           drivetrain:
             (veh.drivetrain as string | null) ?? vehicle.drivetrain ?? null,
         },
@@ -1036,21 +1038,29 @@ export default function CreateWorkOrderPage() {
       f: File,
       mediaType: "photo" | "document",
     ) => {
-      const key = `veh_${vId}/${Date.now()}_${f.name}`;
+      // ✅ IMPORTANT: match Customer Profile page storage_path convention: `${vehicleId}/...`
+      const safeName = f.name.replaceAll("/", "_");
+      const key = `${vId}/${Date.now()}_${safeName}`;
+
       const up = await supabase.storage.from(bucket).upload(key, f, {
         upsert: false,
+        contentType: f.type || undefined,
       });
+
       if (up.error) {
         failed += 1;
         return;
       }
+
       const { error: rowErr } = await supabase.from("vehicle_media").insert({
         vehicle_id: vId,
         type: mediaType,
         storage_path: key,
+        filename: f.name,
         uploaded_by: uploader,
         shop_id: currentShopIdForMedia,
       });
+
       if (rowErr) failed += 1;
       else uploaded += 1;
     };
