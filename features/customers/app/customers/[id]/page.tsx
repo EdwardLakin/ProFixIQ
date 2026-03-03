@@ -16,7 +16,15 @@ type VehicleMedia = DB["public"]["Tables"]["vehicle_media"]["Row"];
 
 type CustomerSearchRow = Pick<
   Customer,
-  "id" | "first_name" | "last_name" | "email" | "phone" | "phone_number" | "created_at"
+  | "id"
+  | "first_name"
+  | "last_name"
+  | "name"
+  | "business_name"
+  | "email"
+  | "phone"
+  | "phone_number"
+  | "created_at"
 >;
 
 type ParamsShape = Record<string, string | string[]>;
@@ -52,7 +60,9 @@ function chipClass(status: string | null | undefined): string {
 
 function fmtName(c: Pick<Customer, "first_name" | "last_name"> | null): string {
   if (!c) return "—";
-  return [c.first_name ?? "", c.last_name ?? ""].filter(Boolean).join(" ") || "—";
+  return (
+    [c.first_name ?? "", c.last_name ?? ""].filter(Boolean).join(" ") || "—"
+  );
 }
 
 function fmtVehicleLabel(v: Vehicle): string {
@@ -162,7 +172,9 @@ function Modal({ title, open, onClose, children, footer }: ModalProps) {
       <div className="w-full max-w-2xl rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(2,6,23,0.98))] shadow-[0_28px_90px_rgba(0,0,0,0.95)]">
         <div className="flex items-center justify-between gap-3 border-b border-slate-800/60 px-4 py-3">
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-white">{title}</div>
+            <div className="truncate text-sm font-semibold text-white">
+              {title}
+            </div>
           </div>
           <button
             type="button"
@@ -223,19 +235,22 @@ function computeVehicleExtraDetails(
   const r = selectedVehicle as unknown;
   if (!isRecord(r)) return [];
 
-  const candidates: Array<{ label: string; key: string; kind: "string" | "number" }> = [
+  const candidates: Array<{
+    label: string;
+    key: string;
+    kind: "string" | "number";
+  }> = [
+    { label: "Submodel", key: "submodel", kind: "string" },
+
     { label: "Engine", key: "engine", kind: "string" },
-    { label: "Engine Model", key: "engine_model", kind: "string" },
-    { label: "Engine Serial", key: "engine_serial", kind: "string" },
+    { label: "Engine Type", key: "engine_type", kind: "string" },
+    { label: "Engine Family", key: "engine_family", kind: "string" },
+
     { label: "Transmission", key: "transmission", kind: "string" },
-    { label: "Transmission Model", key: "transmission_model", kind: "string" },
+    { label: "Transmission Type", key: "transmission_type", kind: "string" },
+
     { label: "Fuel Type", key: "fuel_type", kind: "string" },
-    { label: "Drive Type", key: "drive_type", kind: "string" },
-    { label: "Trim", key: "trim", kind: "string" },
-    { label: "GVWR", key: "gvwr", kind: "number" },
-    { label: "Axle Ratio", key: "axle_ratio", kind: "string" },
-    { label: "Body Type", key: "body_type", kind: "string" },
-    { label: "DOT/CVIP", key: "cvip_number", kind: "string" },
+    { label: "Drivetrain", key: "drivetrain", kind: "string" },
   ];
 
   const out: Array<{ label: string; value: string | number }> = [];
@@ -280,7 +295,9 @@ export default function CustomerProfilePage(): JSX.Element {
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(
+    null,
+  );
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [showAllHistory, setShowAllHistory] = useState<boolean>(false);
@@ -329,7 +346,9 @@ export default function CustomerProfilePage(): JSX.Element {
       try {
         const { data: cust, error: custErr } = await supabase
           .from("customers")
-          .select("*")
+          .select(
+            "id, first_name, last_name, name, business_name, email, phone, phone_number, created_at",
+          )
           .eq("id", customerId)
           .maybeSingle();
 
@@ -374,7 +393,8 @@ export default function CustomerProfilePage(): JSX.Element {
         if (woErr) throw woErr;
         setWorkOrders((wos ?? []) as WorkOrder[]);
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Failed to load customer file.";
+        const msg =
+          e instanceof Error ? e.message : "Failed to load customer file.";
         setViewError(msg);
         setCustomer(null);
         setVehicles([]);
@@ -501,11 +521,15 @@ export default function CustomerProfilePage(): JSX.Element {
 
       const { data, error } = await supabase
         .from("customers")
-        .select("id, first_name, last_name, email, phone, phone_number, created_at")
+        .select(
+          "id, first_name, last_name, name, business_name, email, phone, phone_number, created_at",
+        )
         .or(
           [
             `first_name.ilike.${like}`,
             `last_name.ilike.${like}`,
+            `business_name.ilike.${like}`,
+            `name.ilike.${like}`,
             `email.ilike.${like}`,
             `phone.ilike.${like}`,
             `phone_number.ilike.${like}`,
@@ -573,10 +597,12 @@ export default function CustomerProfilePage(): JSX.Element {
         let lastErrMsg: string | null = null;
 
         for (const bucket of bucketCandidates(kind)) {
-          const { error: upErr } = await supabase.storage.from(bucket).upload(storagePath, file, {
-            upsert: true,
-            contentType: file.type || undefined,
-          });
+          const { error: upErr } = await supabase.storage
+            .from(bucket)
+            .upload(storagePath, file, {
+              upsert: true,
+              contentType: file.type || undefined,
+            });
 
           if (!upErr) {
             uploadedBucket = bucket;
@@ -591,7 +617,9 @@ export default function CustomerProfilePage(): JSX.Element {
         }
 
         // Store a URL if bucket is public; otherwise it can be null and we’ll use signed urls for display
-        const { data: pub } = supabase.storage.from(uploadedBucket).getPublicUrl(storagePath);
+        const { data: pub } = supabase.storage
+          .from(uploadedBucket)
+          .getPublicUrl(storagePath);
         const publicUrl = pub?.publicUrl ?? null;
 
         const insertRow = {
@@ -626,13 +654,17 @@ export default function CustomerProfilePage(): JSX.Element {
     setCustDraft({
       first_name: customer.first_name ?? null,
       last_name: customer.last_name ?? null,
+      name: typeof r["name"] === "string" ? (r["name"] as string) : "",
+      business_name:
+        typeof r["business_name"] === "string" ? (r["business_name"] as string) : "",
       email: customer.email ?? null,
       phone: customer.phone ?? null,
       phone_number: customer.phone_number ?? null,
       address: typeof r["address"] === "string" ? (r["address"] as string) : "",
       city: typeof r["city"] === "string" ? (r["city"] as string) : "",
       province: typeof r["province"] === "string" ? (r["province"] as string) : "",
-      postal_code: typeof r["postal_code"] === "string" ? (r["postal_code"] as string) : "",
+      postal_code:
+        typeof r["postal_code"] === "string" ? (r["postal_code"] as string) : "",
     });
   }, [customer]);
 
@@ -640,18 +672,31 @@ export default function CustomerProfilePage(): JSX.Element {
     if (!customer) return;
 
     const updateRecord: Record<string, unknown> = {
-      first_name: typeof custDraft["first_name"] === "string" ? custDraft["first_name"] : null,
-      last_name: typeof custDraft["last_name"] === "string" ? custDraft["last_name"] : null,
+      first_name:
+        typeof custDraft["first_name"] === "string" ? custDraft["first_name"] : null,
+      last_name:
+        typeof custDraft["last_name"] === "string" ? custDraft["last_name"] : null,
+      name:
+        typeof custDraft["name"] === "string" ? (custDraft["name"] as string) || null : null,
+      business_name:
+        typeof custDraft["business_name"] === "string"
+          ? (custDraft["business_name"] as string) || null
+          : null,
       email: typeof custDraft["email"] === "string" ? custDraft["email"] : null,
       phone: typeof custDraft["phone"] === "string" ? custDraft["phone"] : null,
-      phone_number: typeof custDraft["phone_number"] === "string" ? custDraft["phone_number"] : null,
+      phone_number:
+        typeof custDraft["phone_number"] === "string" ? custDraft["phone_number"] : null,
     };
 
     // Optional fields (if your schema has them, they'll save; if not, Supabase will error and we show it)
-    if (typeof custDraft["address"] === "string") updateRecord["address"] = custDraft["address"] || null;
-    if (typeof custDraft["city"] === "string") updateRecord["city"] = custDraft["city"] || null;
-    if (typeof custDraft["province"] === "string") updateRecord["province"] = custDraft["province"] || null;
-    if (typeof custDraft["postal_code"] === "string") updateRecord["postal_code"] = custDraft["postal_code"] || null;
+    if (typeof custDraft["address"] === "string")
+      updateRecord["address"] = custDraft["address"] || null;
+    if (typeof custDraft["city"] === "string")
+      updateRecord["city"] = custDraft["city"] || null;
+    if (typeof custDraft["province"] === "string")
+      updateRecord["province"] = custDraft["province"] || null;
+    if (typeof custDraft["postal_code"] === "string")
+      updateRecord["postal_code"] = custDraft["postal_code"] || null;
 
     const { error } = await supabase
       .from("customers")
@@ -679,26 +724,59 @@ export default function CustomerProfilePage(): JSX.Element {
     if (!selectedVehicle) return;
 
     const updateRecord: Record<string, unknown> = {
-      year: typeof vehDraft["year"] === "number" ? vehDraft["year"] : selectedVehicle.year ?? null,
-      make: typeof vehDraft["make"] === "string" ? vehDraft["make"] : selectedVehicle.make ?? null,
-      model: typeof vehDraft["model"] === "string" ? vehDraft["model"] : selectedVehicle.model ?? null,
-      vin: typeof vehDraft["vin"] === "string" ? vehDraft["vin"] : selectedVehicle.vin ?? null,
+      year:
+        typeof vehDraft["year"] === "number" ? vehDraft["year"] : selectedVehicle.year ?? null,
+      make:
+        typeof vehDraft["make"] === "string" ? vehDraft["make"] : selectedVehicle.make ?? null,
+      model:
+        typeof vehDraft["model"] === "string" ? vehDraft["model"] : selectedVehicle.model ?? null,
+      vin:
+        typeof vehDraft["vin"] === "string" ? vehDraft["vin"] : selectedVehicle.vin ?? null,
       license_plate:
         typeof vehDraft["license_plate"] === "string"
           ? vehDraft["license_plate"]
-          : (selectedVehicle as unknown as Record<string, unknown>)["license_plate"] ?? selectedVehicle.license_plate ?? null,
+          : (selectedVehicle as unknown as Record<string, unknown>)["license_plate"] ??
+            selectedVehicle.license_plate ??
+            null,
       mileage:
         typeof vehDraft["mileage"] === "string"
           ? vehDraft["mileage"]
-          : (selectedVehicle as unknown as Record<string, unknown>)["mileage"] ?? selectedVehicle.mileage ?? null,
+          : (selectedVehicle as unknown as Record<string, unknown>)["mileage"] ??
+            selectedVehicle.mileage ??
+            null,
     };
 
-    // Optional-ish vehicle fields
-    if (typeof vehDraft["unit_number"] === "string") updateRecord["unit_number"] = vehDraft["unit_number"] || null;
-    if (typeof vehDraft["color"] === "string") updateRecord["color"] = vehDraft["color"] || null;
-    if (typeof vehDraft["engine_hours"] === "number") updateRecord["engine_hours"] = vehDraft["engine_hours"];
+    // Optional-ish vehicle fields (confirmed by your vehicles table)
+    if (typeof vehDraft["unit_number"] === "string")
+      updateRecord["unit_number"] = vehDraft["unit_number"] || null;
+    if (typeof vehDraft["color"] === "string")
+      updateRecord["color"] = vehDraft["color"] || null;
+    if (vehDraft["engine_hours"] === null || typeof vehDraft["engine_hours"] === "number") {
+      updateRecord["engine_hours"] = vehDraft["engine_hours"];
+    }
 
-    const { error } = await supabase
+    // ✅ extra vehicle profile fields
+    if (typeof vehDraft["submodel"] === "string")
+      updateRecord["submodel"] = vehDraft["submodel"] || null;
+
+    if (typeof vehDraft["engine"] === "string")
+      updateRecord["engine"] = vehDraft["engine"] || null;
+    if (typeof vehDraft["engine_type"] === "string")
+      updateRecord["engine_type"] = vehDraft["engine_type"] || null;
+    if (typeof vehDraft["engine_family"] === "string")
+      updateRecord["engine_family"] = vehDraft["engine_family"] || null;
+
+    if (typeof vehDraft["transmission"] === "string")
+      updateRecord["transmission"] = vehDraft["transmission"] || null;
+    if (typeof vehDraft["transmission_type"] === "string")
+      updateRecord["transmission_type"] = vehDraft["transmission_type"] || null;
+
+    if (typeof vehDraft["fuel_type"] === "string")
+      updateRecord["fuel_type"] = vehDraft["fuel_type"] || null;
+    if (typeof vehDraft["drivetrain"] === "string")
+      updateRecord["drivetrain"] = vehDraft["drivetrain"] || null;
+
+       const { error } = await supabase
       .from("vehicles")
       .update(updateRecord as DB["public"]["Tables"]["vehicles"]["Update"])
       .eq("id", selectedVehicle.id);
@@ -717,12 +795,20 @@ export default function CustomerProfilePage(): JSX.Element {
     year: null,
     make: "",
     model: "",
+    submodel: "",
     vin: "",
     license_plate: "",
     mileage: "",
     unit_number: "",
     color: "",
     engine_hours: null,
+    engine: "",
+    engine_type: "",
+    engine_family: "",
+    transmission: "",
+    transmission_type: "",
+    fuel_type: "",
+    drivetrain: "",
   });
 
   const createVehicle = useCallback(async () => {
@@ -742,6 +828,20 @@ export default function CustomerProfilePage(): JSX.Element {
     if (typeof newVeh["unit_number"] === "string") insertRecord["unit_number"] = newVeh["unit_number"] || null;
     if (typeof newVeh["color"] === "string") insertRecord["color"] = newVeh["color"] || null;
     if (typeof newVeh["engine_hours"] === "number") insertRecord["engine_hours"] = newVeh["engine_hours"];
+
+    // ✅ extra vehicle profile fields (confirmed by your vehicles table)
+    if (typeof newVeh["submodel"] === "string") insertRecord["submodel"] = newVeh["submodel"] || null;
+
+    if (typeof newVeh["engine"] === "string") insertRecord["engine"] = newVeh["engine"] || null;
+    if (typeof newVeh["engine_type"] === "string") insertRecord["engine_type"] = newVeh["engine_type"] || null;
+    if (typeof newVeh["engine_family"] === "string") insertRecord["engine_family"] = newVeh["engine_family"] || null;
+
+    if (typeof newVeh["transmission"] === "string") insertRecord["transmission"] = newVeh["transmission"] || null;
+    if (typeof newVeh["transmission_type"] === "string")
+      insertRecord["transmission_type"] = newVeh["transmission_type"] || null;
+
+    if (typeof newVeh["fuel_type"] === "string") insertRecord["fuel_type"] = newVeh["fuel_type"] || null;
+    if (typeof newVeh["drivetrain"] === "string") insertRecord["drivetrain"] = newVeh["drivetrain"] || null;
 
     const { data, error } = await supabase
       .from("vehicles")
@@ -808,9 +908,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
           <div className="mt-4">
             {query.trim().length === 0 ? (
-              <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>
-                Start typing to search customers.
-              </div>
+              <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>Start typing to search customers.</div>
             ) : results.length === 0 ? (
               <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>
                 {searching ? "Searching…" : "No matches yet."}
@@ -829,7 +927,20 @@ export default function CustomerProfilePage(): JSX.Element {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold text-white">
-                            {fmtName(r)}
+                            {r.business_name?.trim()
+                              ? r.business_name
+                              : r.name?.trim()
+                                ? r.name
+                                : fmtName(r)}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-slate-400">
+                            {r.business_name?.trim() && (r.first_name || r.last_name)
+                              ? fmtName(r)
+                              : r.business_name?.trim()
+                                ? "—"
+                                : r.name?.trim()
+                                  ? fmtName(r)
+                                  : "—"}
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-400">
                             {r.email ?? "—"}
@@ -861,8 +972,7 @@ export default function CustomerProfilePage(): JSX.Element {
         <div className={`${CARD_BASE} p-4`}>
           <div className="text-sm text-slate-200">This route expects a customer id.</div>
           <div className="mt-2 text-xs text-slate-400">
-            Use{" "}
-            <span className="font-mono text-slate-200">/customers/search</span> to open the customer directory.
+            Use <span className="font-mono text-slate-200">/customers/search</span> to open the customer directory.
           </div>
           <div className="mt-4">
             <button
@@ -905,22 +1015,36 @@ export default function CustomerProfilePage(): JSX.Element {
             <div className={`${CARD_BASE} p-4`}>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <h1
-                    className="truncate text-2xl font-semibold text-white sm:text-3xl"
-                    style={{ fontFamily: "var(--font-blackops), system-ui" }}
-                  >
-                    {fmtName(customer)}
-                  </h1>
+                  {(() => {
+                    const biz = customer.business_name?.trim() ?? "";
+                    const disp = customer.name?.trim() ?? "";
+                    const title = biz || disp || fmtName(customer);
 
-                  <div className="mt-2 text-sm text-slate-300">
-                    {customer.email ?? "—"}
-                    {(customer.phone ?? customer.phone_number) ? (
+                    return (
                       <>
-                        <span className="mx-2 text-slate-600">•</span>
-                        {customer.phone ?? customer.phone_number}
+                        <h1
+                          className="truncate text-2xl font-semibold text-white sm:text-3xl"
+                          style={{ fontFamily: "var(--font-blackops), system-ui" }}
+                        >
+                          {title}
+                        </h1>
+
+                        {biz && (customer.first_name || customer.last_name) ? (
+                          <div className="mt-1 text-xs text-slate-400">{fmtName(customer)}</div>
+                        ) : null}
+
+                        <div className="mt-2 text-sm text-slate-300">
+                          {customer.email ?? "—"}
+                          {customer.phone ?? customer.phone_number ? (
+                            <>
+                              <span className="mx-2 text-slate-600">•</span>
+                              {customer.phone ?? customer.phone_number}
+                            </>
+                          ) : null}
+                        </div>
                       </>
-                    ) : null}
-                  </div>
+                    );
+                  })()}
 
                   <div className="mt-2 text-sm leading-6 text-slate-400">
                     <div>{asText((customer as unknown as Record<string, unknown>)["address"])}</div>
@@ -968,9 +1092,7 @@ export default function CustomerProfilePage(): JSX.Element {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-semibold text-white sm:text-base">Vehicles</h2>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Select a vehicle to view details and files.
-                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">Select a vehicle to view details and files.</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -1009,15 +1131,11 @@ export default function CustomerProfilePage(): JSX.Element {
               </div>
 
               {vehicles.length === 0 ? (
-                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>
-                  No vehicles linked to this customer yet.
-                </div>
+                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>No vehicles linked to this customer yet.</div>
               ) : selectedVehicle ? (
                 <div className="mt-3 space-y-3">
                   <div className={`${CARD_INNER} p-3`}>
-                    <div className="text-sm font-semibold text-white">
-                      {fmtVehicleLabel(selectedVehicle)}
-                    </div>
+                    <div className="text-sm font-semibold text-white">{fmtVehicleLabel(selectedVehicle)}</div>
 
                     <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <DetailRow label="VIN" value={selectedVehicle.vin} />
@@ -1101,9 +1219,7 @@ export default function CustomerProfilePage(): JSX.Element {
               </div>
 
               {workOrders.length === 0 ? (
-                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>
-                  No work orders yet.
-                </div>
+                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>No work orders yet.</div>
               ) : (
                 <div className="mt-3 space-y-2">
                   {historySlice.map((wo) => (
@@ -1121,9 +1237,7 @@ export default function CustomerProfilePage(): JSX.Element {
                               ? `WO ${(wo as unknown as Record<string, unknown>)["custom_id"] as string}`
                               : `WO #${wo.id.slice(0, 8)}`}
                           </div>
-                          <div className="mt-0.5 text-[11px] text-slate-400">
-                            {safeDate(wo.created_at)}
-                          </div>
+                          <div className="mt-0.5 text-[11px] text-slate-400">{safeDate(wo.created_at)}</div>
                         </div>
 
                         <span className={chipClass((wo as unknown as Record<string, unknown>)["status"] as string | null)}>
@@ -1154,9 +1268,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   }}
                   className="w-full text-sm text-slate-200"
                 />
-                {uploadingPhoto ? (
-                  <div className="mt-2 text-[11px] text-slate-400">Uploading photo…</div>
-                ) : null}
+                {uploadingPhoto ? <div className="mt-2 text-[11px] text-slate-400">Uploading photo…</div> : null}
               </div>
             </div>
 
@@ -1199,13 +1311,9 @@ export default function CustomerProfilePage(): JSX.Element {
               </div>
 
               {!selectedVehicleId ? (
-                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>
-                  Select a vehicle to view files.
-                </div>
+                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>Select a vehicle to view files.</div>
               ) : media.length === 0 ? (
-                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>
-                  No files uploaded yet.
-                </div>
+                <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>No files uploaded yet.</div>
               ) : (
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {media.map((m) => {
@@ -1271,15 +1379,9 @@ export default function CustomerProfilePage(): JSX.Element {
           </div>
         ) : viewerItem.kind === "photo" || isImageUrl(viewerItem.displayUrl) ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={viewerItem.displayUrl}
-            alt={viewerItem.filename ?? "photo"}
-            className="w-full rounded-xl"
-          />
+          <img src={viewerItem.displayUrl} alt={viewerItem.filename ?? "photo"} className="w-full rounded-xl" />
         ) : (
-          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>
-            Document ready. Use “Open in new tab”.
-          </div>
+          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>Document ready. Use “Open in new tab”.</div>
         )}
       </Modal>
 
@@ -1312,6 +1414,8 @@ export default function CustomerProfilePage(): JSX.Element {
             [
               ["First name", "first_name"],
               ["Last name", "last_name"],
+              ["Business name", "business_name"],
+              ["Display name", "name"],
               ["Email", "email"],
               ["Phone", "phone"],
               ["Alt phone", "phone_number"],
@@ -1322,14 +1426,10 @@ export default function CustomerProfilePage(): JSX.Element {
             ] as const
           ).map(([label, key]) => (
             <div key={key} className="space-y-1">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                {label}
-              </div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
               <input
                 value={String(custDraft[key] ?? "")}
-                onChange={(e) =>
-                  setCustDraft((p) => ({ ...p, [key]: e.target.value }))
-                }
+                onChange={(e) => setCustDraft((p) => ({ ...p, [key]: e.target.value }))}
                 className="w-full rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
               />
             </div>
@@ -1370,18 +1470,24 @@ export default function CustomerProfilePage(): JSX.Element {
                 ["Year", "year"],
                 ["Make", "make"],
                 ["Model", "model"],
+                ["Submodel", "submodel"],
                 ["VIN", "vin"],
                 ["License plate", "license_plate"],
                 ["Mileage", "mileage"],
                 ["Unit #", "unit_number"],
                 ["Color", "color"],
                 ["Engine hours", "engine_hours"],
+                ["Engine", "engine"],
+                ["Engine type", "engine_type"],
+                ["Engine family", "engine_family"],
+                ["Transmission", "transmission"],
+                ["Transmission type", "transmission_type"],
+                ["Fuel type", "fuel_type"],
+                ["Drivetrain", "drivetrain"],
               ] as const
             ).map(([label, key]) => (
               <div key={key} className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  {label}
-                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
                 <input
                   value={String(vehDraft[key] ?? "")}
                   onChange={(e) => {
@@ -1436,18 +1542,24 @@ export default function CustomerProfilePage(): JSX.Element {
                 ["Year", "year"],
                 ["Make", "make"],
                 ["Model", "model"],
+                ["Submodel", "submodel"],
                 ["VIN", "vin"],
                 ["License plate", "license_plate"],
                 ["Mileage", "mileage"],
                 ["Unit #", "unit_number"],
                 ["Color", "color"],
                 ["Engine hours", "engine_hours"],
+                ["Engine", "engine"],
+                ["Engine type", "engine_type"],
+                ["Engine family", "engine_family"],
+                ["Transmission", "transmission"],
+                ["Transmission type", "transmission_type"],
+                ["Fuel type", "fuel_type"],
+                ["Drivetrain", "drivetrain"],
               ] as const
             ).map(([label, key]) => (
               <div key={key} className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  {label}
-                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
                 <input
                   value={String(newVeh[key] ?? "")}
                   onChange={(e) => {
