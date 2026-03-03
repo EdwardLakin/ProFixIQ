@@ -2427,6 +2427,7 @@ export type Database = {
           custom_interval_km: number | null
           fleet_id: string
           nickname: string | null
+          shop_id: string | null
           vehicle_id: string
         }
         Insert: {
@@ -2436,6 +2437,7 @@ export type Database = {
           custom_interval_km?: number | null
           fleet_id: string
           nickname?: string | null
+          shop_id?: string | null
           vehicle_id: string
         }
         Update: {
@@ -2445,6 +2447,7 @@ export type Database = {
           custom_interval_km?: number | null
           fleet_id?: string
           nickname?: string | null
+          shop_id?: string | null
           vehicle_id?: string
         }
         Relationships: [
@@ -2453,6 +2456,20 @@ export type Database = {
             columns: ["fleet_id"]
             isOneToOne: false
             referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_vehicles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_vehicles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
           {
@@ -4693,7 +4710,7 @@ export type Database = {
       }
       part_requests: {
         Row: {
-          assigned_tech_id: string | null
+          assigned_to: string | null
           created_at: string
           id: string
           job_id: string | null
@@ -4704,7 +4721,7 @@ export type Database = {
           work_order_id: string | null
         }
         Insert: {
-          assigned_tech_id?: string | null
+          assigned_to?: string | null
           created_at?: string
           id?: string
           job_id?: string | null
@@ -4715,7 +4732,7 @@ export type Database = {
           work_order_id?: string | null
         }
         Update: {
-          assigned_tech_id?: string | null
+          assigned_to?: string | null
           created_at?: string
           id?: string
           job_id?: string | null
@@ -9340,6 +9357,7 @@ export type Database = {
           approval_note: string | null
           approval_state: string | null
           assigned_tech_id: string | null
+          assigned_to: string | null
           cause: string | null
           complaint: string | null
           correction: string | null
@@ -9381,6 +9399,10 @@ export type Database = {
           urgency: string | null
           user_id: string | null
           vehicle_id: string | null
+          voided_at: string | null
+          voided_by: string | null
+          voided_note: string | null
+          voided_reason: string | null
           work_order_id: string | null
         }
         Insert: {
@@ -9389,6 +9411,7 @@ export type Database = {
           approval_note?: string | null
           approval_state?: string | null
           assigned_tech_id?: string | null
+          assigned_to?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
@@ -9430,6 +9453,10 @@ export type Database = {
           urgency?: string | null
           user_id?: string | null
           vehicle_id?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_note?: string | null
+          voided_reason?: string | null
           work_order_id?: string | null
         }
         Update: {
@@ -9438,6 +9465,7 @@ export type Database = {
           approval_note?: string | null
           approval_state?: string | null
           assigned_tech_id?: string | null
+          assigned_to?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
@@ -9479,6 +9507,10 @@ export type Database = {
           urgency?: string | null
           user_id?: string | null
           vehicle_id?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_note?: string | null
+          voided_reason?: string | null
           work_order_id?: string | null
         }
         Relationships: [
@@ -9757,6 +9789,7 @@ export type Database = {
           total_price: number | null
           unit_price: number | null
           work_order_id: string | null
+          work_order_line_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -9767,6 +9800,7 @@ export type Database = {
           total_price?: number | null
           unit_price?: number | null
           work_order_id?: string | null
+          work_order_line_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -9777,6 +9811,7 @@ export type Database = {
           total_price?: number | null
           unit_price?: number | null
           work_order_id?: string | null
+          work_order_line_id?: string | null
         }
         Relationships: [
           {
@@ -10691,6 +10726,7 @@ export type Database = {
           approval_note: string | null
           approval_state: string | null
           assigned_tech_id: string | null
+          assigned_to: string | null
           cause: string | null
           complaint: string | null
           correction: string | null
@@ -11142,6 +11178,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      agent_job_heartbeat: {
+        Args: { job_id: string; worker_id: string }
+        Returns: undefined
+      }
       agent_mark_job_canceled: {
         Args: { job_id: string; reason?: string }
         Returns: undefined
@@ -11420,7 +11460,7 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_agent_developer: { Args: never; Returns: boolean }
       is_customer: { Args: { _customer: string }; Returns: boolean }
-      is_shop_member: { Args: { shop_id: string }; Returns: boolean }
+      is_shop_member: { Args: { p_shop_id: string }; Returns: boolean }
       is_shop_member_v2: { Args: { shop_id: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
       mark_active: { Args: never; Returns: undefined }
