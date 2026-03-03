@@ -13,6 +13,7 @@ type WorkOrderSlim = Pick<
   "id" | "custom_id"
 >;
 type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
+type PartRequestMini = Pick<PartRequest, "job_id" | "work_order_id">;
 
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
@@ -89,7 +90,9 @@ function readPrefs(): TechPrefs {
       ...fallback,
       ...parsed,
       defaultBucket:
-        bucket === "awaiting" || bucket === "in_progress" || bucket === "on_hold"
+        bucket === "awaiting" ||
+        bucket === "in_progress" ||
+        bucket === "on_hold"
           ? bucket
           : fallback.defaultBucket,
     };
@@ -116,11 +119,15 @@ export default function TechQueuePage() {
 
   // active job / work order highlighting
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
-  const [activeWorkOrderId, setActiveWorkOrderId] = useState<string | null>(null);
+  const [activeWorkOrderId, setActiveWorkOrderId] = useState<string | null>(
+    null,
+  );
 
   // parts requests (open) mapped by job_id and work_order_id
   const [partsByJobId, setPartsByJobId] = useState<Record<string, number>>({});
-  const [partsByWorkOrderId, setPartsByWorkOrderId] = useState<Record<string, number>>({});
+  const [partsByWorkOrderId, setPartsByWorkOrderId] = useState<
+    Record<string, number>
+  >({});
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -185,7 +192,9 @@ export default function TechQueuePage() {
         .order("created_at", { ascending: false });
 
       const { data: techLines, error: linesErr } = prefs.showUnassigned
-        ? await baseQuery.or(`assigned_tech_id.eq.${user.id},assigned_tech_id.is.null`)
+        ? await baseQuery.or(
+            `assigned_tech_id.eq.${user.id},assigned_tech_id.is.null`,
+          )
         : await baseQuery.eq("assigned_tech_id", user.id);
 
       if (linesErr) {
@@ -225,7 +234,8 @@ export default function TechQueuePage() {
           .select("id, custom_id")
           .in("id", woIds);
 
-        const map: Record<string, { id: string; custom_id: string | null }> = {};
+        const map: Record<string, { id: string; custom_id: string | null }> =
+          {};
         (wos ?? []).forEach((wo) => {
           const row = wo as WorkOrderSlim;
           map[row.id] = { id: row.id, custom_id: row.custom_id ?? null };
@@ -238,7 +248,9 @@ export default function TechQueuePage() {
       // 6) fetch open part requests for this tech in this shop (involved)
       const { data: prs, error: prErr } = await supabase
         .from("part_requests")
-        .select("id, shop_id, work_order_id, job_id, requested_by, assigned_tech_id, status")
+        .select(
+          "id, shop_id, work_order_id, job_id, requested_by, assigned_tech_id, status",
+        )
         .eq("shop_id", prof.shop_id)
         .not("status", "in", `(${CLOSED_PART_STATUSES.join(",")})`)
         .or(`requested_by.eq.${user.id},assigned_tech_id.eq.${user.id}`);
@@ -252,9 +264,10 @@ export default function TechQueuePage() {
         const woMap: Record<string, number> = {};
 
         (prs ?? []).forEach((p) => {
-          const row = p as PartRequest;
+          const row = p as PartRequestMini;
           if (row.job_id) jobMap[row.job_id] = (jobMap[row.job_id] ?? 0) + 1;
-          if (row.work_order_id) woMap[row.work_order_id] = (woMap[row.work_order_id] ?? 0) + 1;
+          if (row.work_order_id)
+            woMap[row.work_order_id] = (woMap[row.work_order_id] ?? 0) + 1;
         });
 
         setPartsByJobId(jobMap);
@@ -301,7 +314,8 @@ export default function TechQueuePage() {
     return lines.filter((l) => toBucket(l.status) === activeFilter);
   }, [lines, activeFilter]);
 
-  if (loading) return <div className="p-6 text-white">Loading assigned jobs…</div>;
+  if (loading)
+    return <div className="p-6 text-white">Loading assigned jobs…</div>;
   if (err) return <div className="p-6 text-red-200">{err}</div>;
 
   const compact = prefs.compactCards;
@@ -357,7 +371,13 @@ export default function TechQueuePage() {
               <div className="text-xs uppercase tracking-wide text-neutral-300">
                 {STATUS_LABELS[s]}
               </div>
-              <div className={compact ? "mt-1 text-2xl font-semibold" : "mt-1 text-3xl font-semibold"}>
+              <div
+                className={
+                  compact
+                    ? "mt-1 text-2xl font-semibold"
+                    : "mt-1 text-3xl font-semibold"
+                }
+              >
                 {counts[s]}
               </div>
               {isActive && (
@@ -374,7 +394,9 @@ export default function TechQueuePage() {
       <div className="space-y-2">
         {filteredLines.map((line) => {
           const bucket = toBucket(line.status);
-          const wo = line.work_order_id ? workOrderMap[line.work_order_id] : null;
+          const wo = line.work_order_id
+            ? workOrderMap[line.work_order_id]
+            : null;
 
           const woLabel = wo?.custom_id
             ? wo.custom_id
@@ -382,7 +404,8 @@ export default function TechQueuePage() {
               ? `WO #${line.work_order_id.slice(0, 8)}`
               : "Work order";
 
-          const title = (line.description || line.complaint || "Untitled job").trim();
+          const title = (line.description || line.complaint || "Untitled job")
+            .trim();
 
           const isActiveJob = Boolean(activeLineId && line.id === activeLineId);
           const isSameWorkOrder =
@@ -422,7 +445,9 @@ export default function TechQueuePage() {
                   <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-300">
                     {woLabel}
                     {isSameWorkOrder ? (
-                      <span className="ml-2 text-[10px] text-neutral-200/80">• Same WO</span>
+                      <span className="ml-2 text-[10px] text-neutral-200/80">
+                        • Same WO
+                      </span>
                     ) : null}
                     {isActiveJob ? (
                       <span className="ml-2 text-[10px] text-[color:var(--accent-copper-light,#fed7aa)]">
@@ -431,7 +456,13 @@ export default function TechQueuePage() {
                     ) : null}
                   </div>
 
-                  <div className={compact ? "mt-1 truncate text-sm font-semibold text-white" : "mt-1 truncate text-base font-semibold text-white"}>
+                  <div
+                    className={
+                      compact
+                        ? "mt-1 truncate text-sm font-semibold text-white"
+                        : "mt-1 truncate text-base font-semibold text-white"
+                    }
+                  >
                     {title}
                   </div>
 
@@ -442,11 +473,14 @@ export default function TechQueuePage() {
 
                     {partsCount > 0 ? (
                       <span className={PARTS_BADGE}>
-                        🧾 Parts <span className="text-sky-200/90">({partsCount})</span>
+                        🧾 Parts{" "}
+                        <span className="text-sky-200/90">({partsCount})</span>
                       </span>
                     ) : null}
 
-                    {bucket === "on_hold" ? <span className={HOLD_BADGE}>⏸ Hold</span> : null}
+                    {bucket === "on_hold" ? (
+                      <span className={HOLD_BADGE}>⏸ Hold</span>
+                    ) : null}
                   </div>
                 </div>
 
