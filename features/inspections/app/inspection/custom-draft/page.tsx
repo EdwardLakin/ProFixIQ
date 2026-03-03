@@ -87,8 +87,7 @@ function normalizeItemLike(i: unknown): {
       ? (i.value as InspectionItem["value"])
       : undefined;
 
-  const laborHours =
-    typeof i.laborHours === "number" ? i.laborHours : undefined;
+  const laborHours = typeof i.laborHours === "number" ? i.laborHours : undefined;
 
   const parts = Array.isArray(i.parts)
     ? (i.parts as InspectionItem["parts"])
@@ -244,6 +243,12 @@ export default function CustomDraftPage() {
   const [showSectionPicker, setShowSectionPicker] = useState(false);
   const [sectionSearch, setSectionSearch] = useState("");
 
+  // ✅ Menu item creation (Option A: /api/menu/save)
+  const [showMenuCreate, setShowMenuCreate] = useState(false);
+  const [menuName, setMenuName] = useState<string>("");
+  const [menuDescription, setMenuDescription] = useState<string>("");
+  const [creatingMenu, setCreatingMenu] = useState(false);
+
   const laborHoursNumber = useMemo(() => {
     const n = coerceNumberOrNull(laborHoursInput);
     return n ?? 0;
@@ -294,9 +299,7 @@ export default function CustomDraftPage() {
     return masterByTitle.get(key) ?? [];
   }
 
-  function attachKeysFromNormalized(
-    normalized: InspectionSection[],
-  ): DraftSection[] {
+  function attachKeysFromNormalized(normalized: InspectionSection[]): DraftSection[] {
     return normalized.map((s) => ({
       title: s.title,
       items: (s.items ?? []).map((it) => ({
@@ -362,10 +365,8 @@ export default function CustomDraftPage() {
       const titleLegacy = sessionStorage.getItem("customInspection:title");
       const includeOilRawLegacy =
         sessionStorage.getItem("customInspection:includeOil");
-      const storedDutyLegacy =
-        sessionStorage.getItem("customInspection:dutyClass");
-      const storedGridLegacy =
-        sessionStorage.getItem("customInspection:gridMode");
+      const storedDutyLegacy = sessionStorage.getItem("customInspection:dutyClass");
+      const storedGridLegacy = sessionStorage.getItem("customInspection:gridMode");
 
       const raw = rawInspection ?? rawLegacy;
       const t = titleInspection ?? titleLegacy;
@@ -379,8 +380,7 @@ export default function CustomDraftPage() {
           if (isRecord(parsed)) {
             const dc = asString(parsed.dutyClass);
             const gm = normalizeGridMode(asString(parsed.grid));
-            if (dc === "light" || dc === "medium" || dc === "heavy")
-              nextDuty = dc;
+            if (dc === "light" || dc === "medium" || dc === "heavy") nextDuty = dc;
             if (gm) nextGrid = gm;
           }
         } catch {
@@ -485,9 +485,7 @@ export default function CustomDraftPage() {
       ...prev,
       {
         title: "New Section",
-        items: [
-          { item: "", unit: null, status: "na", _key: mkKey() } as DraftItem,
-        ],
+        items: [{ item: "", unit: null, status: "na", _key: mkKey() } as DraftItem],
       },
     ]);
   }
@@ -550,11 +548,7 @@ export default function CustomDraftPage() {
   /**
    * Returns true if added, false if skipped (already exists / empty)
    */
-  function addItemFromMaster(
-    secIdx: number,
-    label: string,
-    unit?: string | null,
-  ): boolean {
+  function addItemFromMaster(secIdx: number, label: string, unit?: string | null): boolean {
     const trimmed = (label || "").trim();
     if (!trimmed) return false;
 
@@ -668,6 +662,7 @@ export default function CustomDraftPage() {
         tags: ["custom", "draft"],
         is_public: false,
         labor_hours: hours,
+        shop_id: shopId ?? undefined,
       };
 
       const { error, data } = await supabase
@@ -747,10 +742,7 @@ export default function CustomDraftPage() {
         return;
       }
       sessionStorage.setItem("inspection:sections", JSON.stringify(cleaned));
-      sessionStorage.setItem(
-        "inspection:title",
-        (title || "").trim() || "Inspection",
-      );
+      sessionStorage.setItem("inspection:title", (title || "").trim() || "Inspection");
 
       const qs = new URLSearchParams();
       qs.set("template", title || "Inspection");
@@ -762,6 +754,115 @@ export default function CustomDraftPage() {
       setRunning(false);
     }
   };
+
+  /* ------------------------- Menu item creation helpers ------------------------- */
+
+  async function saveTemplateSilentlyReturnId(): Promise<string | null> {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u?.user) {
+      toast.error("Please sign in.");
+      return null;
+    }
+
+    const cleaned = normalizeSections(stripKeys(sections));
+    if (cleaned.length === 0) {
+      toast.error("Add at least one section with items.");
+      return null;
+    }
+
+    const hours = coerceNumberOrNull(laborHoursInput);
+
+    const payload: InsertTemplate = {
+      template_name: (title || "").trim() || "Custom Template",
+      sections:
+        cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
+      description: "Created from Custom Draft",
+      vehicle_type: vehicleType || undefined,
+      tags: ["custom", "draft"],
+      is_public: false,
+      labor_hours: hours,
+      shop_id: shopId ?? undefined,
+    };
+
+    const { error, data } = await supabase
+      .from("inspection_templates")
+      .insert(payload)
+      .select("id")
+      .maybeSingle();
+
+    if (error || !data?.id) {
+      console.error(error);
+      toast.error("Failed to save template.");
+      return null;
+    }
+
+    return data.id;
+  }
+
+  async function createMenuItemFromDraft() {
+    const name = (menuName || "").trim() || (title || "").trim();
+    if (!name) {
+      toast.error("Menu item name is required.");
+      return;
+    }
+
+    const cleaned = normalizeSections(stripKeys(sections));
+    if (cleaned.length === 0) {
+      toast.error("Add at least one section with items.");
+      return;
+    }
+
+    setCreatingMenu(true);
+    try {
+      // Ensure we have a saved template to link
+      let ensureTemplateId: string | null = templateId;
+
+      if (!ensureTemplateId) {
+        ensureTemplateId = await saveTemplateSilentlyReturnId();
+        if (!ensureTemplateId) return;
+      } else {
+        // If editing an existing template, ensure latest changes are saved before packaging
+        // (non-blocking: only run if there are unsaved edits? we keep it simple: user controls "Save Changes")
+      }
+
+      const laborHours = coerceNumberOrNull(laborHoursInput);
+      const body = {
+        item: {
+          name,
+          description: (menuDescription || "").trim() || null,
+          labor_time: laborHours,
+          part_cost: null,
+          total_price: null,
+          inspection_template_id: ensureTemplateId,
+          shop_id: shopId ?? null,
+        },
+        parts: [],
+      };
+
+      const res = await fetch("/api/menu/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; id?: string; error?: string; detail?: string }
+        | null;
+
+      if (!res.ok || !json?.ok || !json?.id) {
+        toast.error(json?.detail || json?.error || `Menu create failed (HTTP ${res.status})`);
+        return;
+      }
+
+      toast.success("Menu item created (inspection-linked).");
+      setShowMenuCreate(false);
+      router.push(`/menu/item/${json.id}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to create menu item.");
+    } finally {
+      setCreatingMenu(false);
+    }
+  }
 
   /* ------------------------------ derived pickers ------------------------------ */
 
@@ -847,28 +948,98 @@ export default function CustomDraftPage() {
 
           <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-neutral-400 md:mt-0">
             <span>
-              Sections:{" "}
-              <span className="font-semibold text-neutral-100">
-                {totalSections}
-              </span>
+              Sections: <span className="font-semibold text-neutral-100">{totalSections}</span>
             </span>
             <span>
-              Items:{" "}
-              <span className="font-semibold text-neutral-100">
-                {totalItems}
-              </span>
+              Items: <span className="font-semibold text-neutral-100">{totalItems}</span>
             </span>
             <span>
               Labor:{" "}
               <span className="font-semibold text-neutral-100">
-                {Number.isFinite(laborHoursNumber)
-                  ? laborHoursNumber.toFixed(2)
-                  : "0.00"}
+                {Number.isFinite(laborHoursNumber) ? laborHoursNumber.toFixed(2) : "0.00"}
               </span>{" "}
               hrs
             </span>
           </div>
         </div>
+
+        {/* ✅ Create Menu Item panel */}
+        {showMenuCreate ? (
+          <div className="mb-5 rounded-2xl border border-orange-500/20 bg-neutral-950/85 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-orange-300">
+                Create Menu Item from this Draft
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMenuCreate(false)}
+                className="rounded-full border border-neutral-700 bg-black/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                  Menu item name
+                </span>
+                <input
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                  value={menuName}
+                  onChange={(e) => setMenuName(e.target.value)}
+                  placeholder="e.g. Vibration at 100 km/h diagnostic inspection"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                  Labor hours (optional)
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                  value={laborHoursInput}
+                  placeholder="e.g. 1.50"
+                  onChange={(e) => setLaborHoursInput(e.target.value)}
+                  onBlur={() => {
+                    const n = coerceNumberOrNull(laborHoursInput);
+                    if (n === null) setLaborHoursInput("");
+                    else setLaborHoursInput(n.toFixed(2));
+                  }}
+                />
+              </label>
+            </div>
+
+            <label className="mt-3 flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                Description (optional)
+              </span>
+              <textarea
+                className="min-h-[72px] w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                value={menuDescription}
+                onChange={(e) => setMenuDescription(e.target.value)}
+                placeholder="Customer-facing: what you’ll inspect, what’s included, evidence trail, etc."
+              />
+            </label>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-neutral-400">
+              <div>
+                Links this menu item to a saved inspection template (evidence trail). Parts can be added later.
+              </div>
+
+              <button
+                type="button"
+                onClick={createMenuItemFromDraft}
+                disabled={creatingMenu}
+                className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(212,118,49,0.35)] hover:brightness-110 disabled:opacity-60"
+              >
+                {creatingMenu ? "Creating…" : "Create Menu Item"}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {/* Header controls */}
         <div className="mb-5 grid gap-3 md:grid-cols-[minmax(0,1.8fr),minmax(0,1fr),minmax(0,1fr),auto] md:items-end">
@@ -887,9 +1058,7 @@ export default function CustomDraftPage() {
               className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
               value={vehicleType ?? ""}
               onChange={(e) =>
-                setVehicleType(
-                  e.target.value ? (e.target.value as VehicleType) : null,
-                )
+                setVehicleType(e.target.value ? (e.target.value as VehicleType) : null)
               }
             >
               <option value="">— Not specified —</option>
@@ -906,9 +1075,7 @@ export default function CustomDraftPage() {
               className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
               value={dutyClass ?? ""}
               onChange={(e) =>
-                setDutyClass(
-                  e.target.value ? (e.target.value as DutyClass) : null,
-                )
+                setDutyClass(e.target.value ? (e.target.value as DutyClass) : null)
               }
             >
               <option value="">— Not specified —</option>
@@ -919,9 +1086,7 @@ export default function CustomDraftPage() {
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-neutral-300">
-              Labor hours (inspection total)
-            </span>
+            <span className="text-sm text-neutral-300">Labor hours (inspection total)</span>
             <input
               type="text"
               inputMode="decimal"
@@ -1007,9 +1172,7 @@ export default function CustomDraftPage() {
             const filteredMasterItems =
               q.length === 0
                 ? availableMasterItems
-                : availableMasterItems.filter((mi) =>
-                    mi.item.toLowerCase().includes(q),
-                  );
+                : availableMasterItems.filter((mi) => mi.item.toLowerCase().includes(q));
 
             const addPanelOpen = openAddItemFor === i;
 
@@ -1135,16 +1298,8 @@ export default function CustomDraftPage() {
                                   key={mi.item}
                                   type="button"
                                   onClick={() => {
-                                    const added = addItemFromMaster(
-                                      i,
-                                      mi.item,
-                                      mi.unit ?? null,
-                                    );
-
-                                    // ✅ Remove from dropdown immediately + give feedback
-                                    if (added) {
-                                      setItemSearch("");
-                                    }
+                                    const added = addItemFromMaster(i, mi.item, mi.unit ?? null);
+                                    if (added) setItemSearch("");
                                   }}
                                   className="rounded-xl border border-neutral-800 bg-black/60 px-3 py-2 text-left text-sm text-neutral-100 hover:bg-black/70"
                                   title="Add item"
@@ -1297,6 +1452,25 @@ export default function CustomDraftPage() {
             className="rounded-full border border-neutral-700 bg-black/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
           >
             + Add Section from Master
+          </button>
+
+          {/* ✅ NEW: Create Menu Item from Draft */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowMenuCreate((v) => {
+                const next = !v;
+                if (next) {
+                  setMenuName((title || "").trim());
+                  setMenuDescription("");
+                }
+                return next;
+              });
+            }}
+            className="rounded-full border border-orange-500/60 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-200 hover:bg-orange-500/20"
+            title="Package this draft into a Menu Item linked to the inspection template"
+          >
+            Create Menu Item
           </button>
 
           {templateId && (

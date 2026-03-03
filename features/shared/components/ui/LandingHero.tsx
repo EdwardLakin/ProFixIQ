@@ -126,9 +126,12 @@ export default function LandingHero() {
                 Heavy-Duty &amp; Fleet Software
               </span>
               <span className="text-white/10">•</span>
-              <span className="text-neutral-400">Built like an operating system</span>
+              <span className="text-neutral-400">
+                Built like an operating system
+              </span>
             </div>
 
+            {/* ✅ New premium headline hierarchy */}
             <h1
               className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
               style={{
@@ -136,21 +139,24 @@ export default function LandingHero() {
                 textShadow: "0 0 46px rgba(0,0,0,0.85)",
               }}
             >
-              Run your shop like a{" "}
-              <span
-                style={{
-                  color: COPPER_LIGHT,
-                  textShadow: "0 0 26px rgba(197,122,74,0.45)",
-                }}
-              >
-                fleet operation
-              </span>
-              .
+              Run a tighter, more profitable shop.
             </h1>
 
+            <div
+              className="mt-4 text-lg font-extrabold uppercase tracking-[0.18em] sm:text-xl md:text-2xl"
+              style={{
+                color: COPPER_LIGHT,
+                textShadow: "0 0 26px rgba(197,122,74,0.35)",
+              }}
+            >
+              Heavy-duty. Automotive. Fleet.
+            </div>
+
+            {/* ✅ Owner-focused subcopy */}
             <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
-              Inspections, quotes, parts, approvals, portals, invoicing, and AI — one workflow
-              that reduces screen time, speeds approvals, and builds a defensible evidence trail.
+              Inspections, quotes, parts, approvals, portals, invoicing, and AI —
+              one connected workflow that reduces bottlenecks, speeds approvals,
+              and gets you paid faster.
             </p>
 
             {/* CTAs */}
@@ -181,7 +187,9 @@ export default function LandingHero() {
               <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
                 <SignalDot />
                 <div>
-                  <div className="text-sm font-extrabold text-white">Less screen time</div>
+                  <div className="text-sm font-extrabold text-white">
+                    Less screen time
+                  </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
                     Voice + automation keep techs working.
                   </div>
@@ -191,7 +199,9 @@ export default function LandingHero() {
               <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
                 <SignalDot />
                 <div>
-                  <div className="text-sm font-extrabold text-white">Faster approvals</div>
+                  <div className="text-sm font-extrabold text-white">
+                    Faster approvals
+                  </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
                     Portals + evidence streamline decisions.
                   </div>
@@ -201,7 +211,9 @@ export default function LandingHero() {
               <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
                 <SignalDot />
                 <div>
-                  <div className="text-sm font-extrabold text-white">Clean evidence trail</div>
+                  <div className="text-sm font-extrabold text-white">
+                    Clean evidence trail
+                  </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
                     From inspection to invoice, attached.
                   </div>
@@ -236,8 +248,9 @@ export default function LandingHero() {
               </div>
 
               <p className="mt-3 text-sm text-neutral-300">
-                ProFixIQ ties together inspections, quotes, parts, approvals, and portals — so
-                fleets and customers see the same truth your bay sees.
+                ProFixIQ ties together inspections, quotes, parts, approvals, and
+                portals — so fleets and customers see the same truth your bay
+                sees.
               </p>
 
               {/* Workflow rail (ANIMATED) */}
@@ -261,7 +274,8 @@ export default function LandingHero() {
                         style={{
                           background:
                             "linear-gradient(90deg, rgba(197,122,74,0) 0%, rgba(197,122,74,0.95) 45%, rgba(197,122,74,0) 100%)",
-                          filter: "drop-shadow(0 0 18px rgba(197,122,74,0.55))",
+                          filter:
+                            "drop-shadow(0 0 18px rgba(197,122,74,0.55))",
                           animation: "pfqSweep 6s linear infinite",
                         }}
                       />
@@ -271,22 +285,27 @@ export default function LandingHero() {
                     <div className="pointer-events-none absolute left-0 right-0 top-[2px]">
                       <div
                         className="grid grid-cols-6 gap-2"
-                        style={{ animation: "pfqHop6 6s steps(1) infinite" }}
+                        style={{
+                          animation: "pfqHop6 6s steps(1) infinite",
+                        }}
                       >
                         {/* Only the first col renders content; animation shifts this container */}
                         <div className="col-span-1 flex justify-center">
                           <div
                             className="mt-[2px] flex h-7 w-7 items-center justify-center rounded-full"
                             style={{
-                              boxShadow: "0 0 0 1px rgba(197,122,74,0.25) inset, 0 0 26px rgba(197,122,74,0.22)",
+                              boxShadow:
+                                "0 0 0 1px rgba(197,122,74,0.25) inset, 0 0 26px rgba(197,122,74,0.22)",
                             }}
                           >
                             <span
                               className="h-2.5 w-2.5 rounded-full"
                               style={{
                                 backgroundColor: "rgba(197,122,74,0.98)",
-                                boxShadow: "0 0 22px rgba(197,122,74,0.60)",
-                                animation: "pfqBreathe 1.2s ease-in-out infinite",
+                                boxShadow:
+                                  "0 0 22px rgba(197,122,74,0.60)",
+                                animation:
+                                  "pfqBreathe 1.2s ease-in-out infinite",
                               }}
                             />
                           </div>
@@ -309,7 +328,8 @@ export default function LandingHero() {
                               className="h-2.5 w-2.5 rounded-full"
                               style={{
                                 backgroundColor: "rgba(197,122,74,0.45)",
-                                boxShadow: "0 0 10px rgba(197,122,74,0.14)",
+                                boxShadow:
+                                  "0 0 10px rgba(197,122,74,0.14)",
                               }}
                             />
                           </div>
@@ -333,7 +353,9 @@ export default function LandingHero() {
                     <SignalDot />
                     Seamless onboarding from uploads
                   </div>
-                  <span className="text-[11px] text-neutral-400">Day-one ready</span>
+                  <span className="text-[11px] text-neutral-400">
+                    Day-one ready
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
@@ -341,7 +363,9 @@ export default function LandingHero() {
                     <SignalDot />
                     Voice + corner grids for tech speed
                   </div>
-                  <span className="text-[11px] text-neutral-400">Less typing</span>
+                  <span className="text-[11px] text-neutral-400">
+                    Less typing
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
@@ -349,7 +373,9 @@ export default function LandingHero() {
                     <SignalDot />
                     Quotes, approvals, portal, invoices
                   </div>
-                  <span className="text-[11px] text-neutral-400">One truth</span>
+                  <span className="text-[11px] text-neutral-400">
+                    One truth
+                  </span>
                 </div>
               </div>
 

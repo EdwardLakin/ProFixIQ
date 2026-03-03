@@ -4,8 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
-
-// ✅ Updated: import buildFromMaster + types from the same module you already use
 import {
   buildFromMaster,
   masterInspectionList,
@@ -28,7 +26,6 @@ type SectionItem = {
   cvipGroups?: CvipGroup[]; // optional if present in master
 };
 
-// Minimal shape we care about when merging/staging
 type Section = {
   title: string;
   items: SectionItem[];
@@ -38,10 +35,7 @@ type Section = {
 /* Corner-grid detection + builders (FINAL / CANONICAL)               */
 /* ------------------------------------------------------------------ */
 
-// LF/RF/LR/RR
 const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
-
-// Steer / Drive / Tag / Trailer
 const AIR_ITEM_RE = /^(Steer|Drive|Tag|Trailer)\s*\d*\s+(Left|Right)\s+/i;
 
 function looksLikeCornerTitle(title?: string | null): boolean {
@@ -104,18 +98,16 @@ function buildAirCornerSection(): Section {
 }
 
 /* ------------------------------------------------------------------ */
-/* TIRE GRIDS (SEPARATE FROM BRAKES)                                  */
+/* TIRE GRIDS                                                         */
 /* ------------------------------------------------------------------ */
 
 function hasTireGrid(sections: Section[]): boolean {
   return sections.some((s) => (s.title || "").toLowerCase().includes("tire grid"));
 }
 
-/* ---- AIR BRAKE TIRE GRID (axles) ---- */
 function buildAirTireGrid(): Section {
   const axles = ["Steer 1", "Drive 1"];
   const sides = ["Left", "Right"];
-
   const items: Section["items"] = [];
 
   for (const axle of axles) {
@@ -125,34 +117,17 @@ function buildAirTireGrid(): Section {
       axle.toLowerCase().startsWith("tag") ||
       axle.toLowerCase().startsWith("trailer");
 
-    // ✅ ADDED: row-level status carrier so TireGrid can render StatusButtons
-    // even when only pressure/tread fields exist.
     items.push({ item: `${axle} Tire Status`, unit: null });
 
     for (const side of sides) {
       if (!isDual) {
-        // SINGLE (Steer): 1 TP + 1 TD
         items.push({ item: `${axle} ${side} Tire Pressure`, unit: "psi" });
         items.push({ item: `${axle} ${side} Tread Depth`, unit: "mm" });
       } else {
-        // DUAL (Drive/Rear/Tag/Trailer): TP + TD inner/outer
-        items.push({
-          item: `${axle} ${side} Tire Pressure (Outer)`,
-          unit: "psi",
-        });
-        items.push({
-          item: `${axle} ${side} Tire Pressure (Inner)`,
-          unit: "psi",
-        });
-
-        items.push({
-          item: `${axle} ${side} Tread Depth (Outer)`,
-          unit: "mm",
-        });
-        items.push({
-          item: `${axle} ${side} Tread Depth (Inner)`,
-          unit: "mm",
-        });
+        items.push({ item: `${axle} ${side} Tire Pressure (Outer)`, unit: "psi" });
+        items.push({ item: `${axle} ${side} Tire Pressure (Inner)`, unit: "psi" });
+        items.push({ item: `${axle} ${side} Tread Depth (Outer)`, unit: "mm" });
+        items.push({ item: `${axle} ${side} Tread Depth (Inner)`, unit: "mm" });
       }
     }
   }
@@ -163,14 +138,12 @@ function buildAirTireGrid(): Section {
   };
 }
 
-/* ---- HYDRAULIC TIRE GRID (automotive) ---- */
 function buildHydraulicTireGrid(): Section {
   const front = ["LF", "RF"] as const;
   const rear = ["LR", "RR"] as const;
 
   const items: Section["items"] = [];
 
-  // ✅ ADDED: row-level status carriers (matches TireGrid fallback paths)
   items.push({ item: "LF Tire Status", unit: null });
   items.push({ item: "RF Tire Status", unit: null });
   items.push({ item: "LR Tire Status", unit: null });
@@ -195,7 +168,7 @@ function buildHydraulicTireGrid(): Section {
 }
 
 /* ------------------------------------------------------------------ */
-/* BATTERY GRID (CCA ONLY, 1–5 BATTERIES)                             */
+/* BATTERY GRID                                                       */
 /* ------------------------------------------------------------------ */
 
 function hasBatteryGrid(sections: Section[]): boolean {
@@ -299,35 +272,27 @@ function prepareSections(
   includeBattery: boolean,
   batteryCount: number,
 ): Section[] {
-  // Strip any pre-existing corner-grid-ish sections to prevent duplicates
   let sections = (base || []).filter((s) => {
     const title = s?.title ?? "";
     if (looksLikeCornerTitle(title)) return false;
 
     const items = s.items ?? [];
-    const looksHyd = items.some((it) =>
-      HYD_ITEM_RE.test((it.item || it.name || "").trim()),
-    );
-    const looksAir = items.some((it) =>
-      AIR_ITEM_RE.test((it.item || it.name || "").trim()),
-    );
+    const looksHyd = items.some((it) => HYD_ITEM_RE.test((it.item || it.name || "").trim()));
+    const looksAir = items.some((it) => AIR_ITEM_RE.test((it.item || it.name || "").trim()));
     return !(looksHyd || looksAir);
   });
 
-  // Inject corner grid FIRST
   if (gridMode === "air") sections = [buildAirCornerSection(), ...sections];
   if (gridMode === "hyd") sections = [buildHydraulicCornerSection(), ...sections];
 
-  // Inject tire grid AFTER corner grid
   if (includeTires && !hasTireGrid(sections)) {
     const tire = gridMode === "air" ? buildAirTireGrid() : buildHydraulicTireGrid();
     const insertAt = sections.length > 0 ? 1 : 0;
     sections = [...sections.slice(0, insertAt), tire, ...sections.slice(insertAt)];
   }
 
-  // Inject battery grid AFTER tires (or after corner grid if no tires)
   if (includeBattery && !hasBatteryGrid(sections)) {
-    const insertAt = sections.length >= 2 ? 2 : sections.length; // best-effort
+    const insertAt = sections.length >= 2 ? 2 : sections.length;
     sections = [
       ...sections.slice(0, insertAt),
       buildBatteryGrid(batteryCount),
@@ -339,6 +304,90 @@ function prepareSections(
 }
 
 /* ------------------------------------------------------------------ */
+/* Prompt triggers                                                    */
+/* ------------------------------------------------------------------ */
+
+type PromptInferred = {
+  dutyClass?: DutyClass;
+  gridMode?: GridMode;
+  vehicleType?: VehicleType;
+  brakeSystem?: BrakeSystem;
+  includeTireGrid?: boolean;
+  includeBatteryGrid?: boolean;
+  includeGreaseChassis?: boolean;
+  includeOil?: boolean;
+  oilEngineType?: EngineType;
+  targetCount?: number;
+  titleHint?: string;
+};
+
+function parsePromptTriggers(prompt: string): PromptInferred {
+  const p = (prompt || "").toLowerCase();
+
+  const inferred: PromptInferred = {};
+
+  // --- count: "30 point", "60-point", "80 pt"
+  const m = p.match(/(\d{2,3})\s*(point|pt)\b/i);
+  if (m?.[1]) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > 0) inferred.targetCount = n;
+  }
+
+  // --- duty class words
+  if (/\blight\s*duty\b|\bautomotive\b|\bpassenger\b|\bsuv\b|\bcar\b/.test(p)) {
+    inferred.dutyClass = "light";
+    inferred.vehicleType = "car";
+    inferred.brakeSystem = "hyd_brake";
+    inferred.gridMode = "hyd";
+  }
+  if (/\bmedium\s*duty\b|\bclass\s*5\b|\bclass\s*6\b/.test(p)) {
+    inferred.dutyClass = "medium";
+    // leave vehicle/brake flexible
+  }
+  if (/\bheavy\s*duty\b|\bclass\s*7\b|\bclass\s*8\b|\btractor\b|\bsemi\b/.test(p)) {
+    inferred.dutyClass = "heavy";
+    inferred.vehicleType = inferred.vehicleType ?? "truck";
+  }
+
+  // --- vehicle type hints
+  if (/\btruck\b|\btractor\b|\bhighway\b|\bsemi\b/.test(p)) inferred.vehicleType = "truck";
+  if (/\btrailer\b/.test(p)) inferred.vehicleType = "trailer";
+  if (/\bbus\b|\bcoach\b|\bmotorcoach\b/.test(p)) inferred.vehicleType = "bus";
+
+  // --- brake system hints
+  if (/\bair\s*brake\b|\bairbrake\b|\bpush\s*rod\b|\bslack\s*adjuster\b/.test(p)) {
+    inferred.brakeSystem = "air_brake";
+    inferred.gridMode = inferred.gridMode ?? "air";
+  }
+  if (/\bhydraulic\b|\bhyd\b|\bpassenger\b/.test(p)) {
+    inferred.brakeSystem = inferred.brakeSystem ?? "hyd_brake";
+    inferred.gridMode = inferred.gridMode ?? "hyd";
+  }
+
+  // --- grids/toggles
+  if (/\btire\s*grid\b|\btires?\b.*\bpressure\b|\btread\b/.test(p)) inferred.includeTireGrid = true;
+  if (/\bbattery\s*grid\b|\bbatter(y|ies)\b|\bcca\b/.test(p)) inferred.includeBatteryGrid = true;
+  if (/\bgrease\b|\bchassis\b/.test(p)) inferred.includeGreaseChassis = true;
+
+  // --- oil hints
+  if (/\boil\s*change\b|\boil\b.*\bfilter\b/.test(p)) inferred.includeOil = true;
+  if (/\bdiesel\b/.test(p)) inferred.oilEngineType = "diesel";
+  if (/\bgas\b|\bgasoline\b/.test(p)) inferred.oilEngineType = "gas";
+
+  // --- explicit corner grid disable
+  if (/\bno\s*corner\s*grid\b|\bwithout\s*corner\s*grid\b|\bno\s*grid\b/.test(p)) {
+    inferred.gridMode = "none";
+  }
+
+  // --- title hint (very light-touch)
+  if (/\bcvip\b/.test(p)) inferred.titleHint = "CVIP Inspection";
+  if (/\bpre\s*trip\b|\bpretrip\b/.test(p)) inferred.titleHint = "Pre-Trip Inspection";
+  if (/\bbrake\b/.test(p) && /\binspect\b|\binspection\b/.test(p)) inferred.titleHint = "Brake Inspection";
+
+  return inferred;
+}
+
+/* ------------------------------------------------------------------ */
 
 type AiPresetKey = "cvip_air" | "cvip_hyd" | "cvip_bus_air";
 
@@ -346,17 +395,17 @@ const CVIP_PRESETS: Record<AiPresetKey, { label: string; prompt: string }> = {
   cvip_air: {
     label: "CVIP Air (Truck/Tractor)",
     prompt:
-      "Generate an Alberta CVIP (Commercial Vehicle Inspection Program) inspection template for a truck/tractor with AIR BRAKES. Use the official CVIP truck/tractor form sections and checklist items. Output must be in ProFixIQ format: an array of sections with { title, items:[{item, unit?}] }. Include ProFixIQ air corner grid + air tire/brake measurement grid items where appropriate. Do not omit any required CVIP items. Keep section titles clear and CVIP-like.",
+      "Generate an Alberta CVIP inspection template for a truck/tractor with AIR BRAKES. Output: sections [{title, items:[{item, unit?}]}]. Include tire grid + battery grid if relevant. 120-point.",
   },
   cvip_hyd: {
     label: "CVIP Hydraulic (Truck/Tractor)",
     prompt:
-      "Generate an Alberta CVIP (Commercial Vehicle Inspection Program) inspection template for a truck/tractor with HYDRAULIC BRAKES. Use the official CVIP truck/tractor form sections and checklist items. Output must be in ProFixIQ format: an array of sections with { title, items:[{item, unit?}] }. Include ProFixIQ hydraulic corner grid + hydraulic tire/brake measurement grid items where appropriate. Do not omit any required CVIP items. Keep section titles clear and CVIP-like.",
+      "Generate an Alberta CVIP inspection template for a truck/tractor with HYDRAULIC BRAKES. Output: sections [{title, items:[{item, unit?}]}]. Include tire grid + battery grid if relevant. 120-point.",
   },
   cvip_bus_air: {
     label: "CVIP Bus (Air)",
     prompt:
-      "Generate an Alberta CVIP (Commercial Vehicle Inspection Program) inspection template for a BUS/MOTORCOACH with AIR BRAKES. Use the official CVIP bus/motorcoach form sections and checklist items. Output must be in ProFixIQ format: an array of sections with { title, items:[{item, unit?}] }. Include ProFixIQ air corner grid + air tire/brake measurement grid items where appropriate. Do not omit any required CVIP items. Keep section titles clear and CVIP-like.",
+      "Generate an Alberta CVIP inspection template for a BUS/MOTORCOACH with AIR BRAKES. Output: sections [{title, items:[{item, unit?}]}]. Include tire grid + battery grid if relevant. 120-point.",
   },
 };
 
@@ -364,7 +413,7 @@ function inferCvipGroup(v: VehicleType, b: BrakeSystem): CvipGroup | undefined {
   if (v === "truck") return b === "air_brake" ? "cvip_truck_air" : "cvip_truck_hyd";
   if (v === "trailer") return b === "air_brake" ? "cvip_trailer_air" : "cvip_trailer_hyd";
   if (v === "bus") return b === "air_brake" ? "cvip_bus_air" : "cvip_bus_hyd";
-  return undefined; // car => no CVIP group
+  return undefined;
 }
 
 export default function CustomBuilderPage() {
@@ -374,12 +423,9 @@ export default function CustomBuilderPage() {
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
 
-  // labor hours (string so user can delete)
   const [laborHours, setLaborHours] = useState<string>("");
 
-  const [gridMode, setGridMode] = useState<GridMode>(
-    dutyClass === "heavy" ? "air" : "hyd",
-  );
+  const [gridMode, setGridMode] = useState<GridMode>(dutyClass === "heavy" ? "air" : "hyd");
   const [gridTouched, setGridTouched] = useState(false);
 
   const [selections, setSelections] = useState<Record<string, string[]>>({});
@@ -387,31 +433,22 @@ export default function CustomBuilderPage() {
   const [oilEngineType, setOilEngineType] = useState<EngineType>("diesel");
 
   const [includeBatteryGrid, setIncludeBatteryGrid] = useState(false);
-  const [batteryCount,] = useState<number>(1);
+  const [batteryCount] = useState<number>(1);
 
-  // toggles
   const [includeTireGrid, setIncludeTireGrid] = useState(false);
   const [includeGreaseChassis, setIncludeGreaseChassis] = useState(false);
 
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiPreset, setAiPreset] = useState<AiPresetKey | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // ✅ Quick Build (deterministic) controls
-  const [vehicleType, setVehicleType] = useState<VehicleType>(
-    dutyClass === "light" ? "car" : "truck",
-  );
-  const [brakeSystem, setBrakeSystem] = useState<BrakeSystem>(
-    dutyClass === "heavy" ? "air_brake" : "hyd_brake",
-  );
+  const [vehicleType, setVehicleType] = useState<VehicleType>(dutyClass === "light" ? "car" : "truck");
+  const [brakeSystem, setBrakeSystem] = useState<BrakeSystem>(dutyClass === "heavy" ? "air_brake" : "hyd_brake");
   const [targetCount, setTargetCount] = useState<number>(80);
 
-  // avoid stomping user choices when duty class changes
   const [quickTouched, setQuickTouched] = useState(false);
 
   useEffect(() => {
@@ -425,10 +462,7 @@ export default function CustomBuilderPage() {
     setBrakeSystem(dutyClass === "heavy" ? "air_brake" : "hyd_brake");
   }, [dutyClass, quickTouched]);
 
-  const cvipGroup = useMemo(
-    () => inferCvipGroup(vehicleType, brakeSystem),
-    [vehicleType, brakeSystem],
-  );
+  const cvipGroup = useMemo(() => inferCvipGroup(vehicleType, brakeSystem), [vehicleType, brakeSystem]);
 
   const gridModeLabel =
     gridMode === "air"
@@ -438,11 +472,7 @@ export default function CustomBuilderPage() {
         : "No corner grid";
 
   const dutyLabel =
-    dutyClass === "light"
-      ? "Light duty"
-      : dutyClass === "medium"
-        ? "Medium duty"
-        : "Heavy duty";
+    dutyClass === "light" ? "Light duty" : dutyClass === "medium" ? "Medium duty" : "Heavy duty";
 
   const totalSelected = useMemo(
     () => Object.values(selections).reduce((sum, arr) => sum + (arr?.length ?? 0), 0),
@@ -458,19 +488,14 @@ export default function CustomBuilderPage() {
     });
 
   function selectAllInSection(sectionTitle: string, items: Array<{ item: string }>) {
-    setSelections((prev) => ({
-      ...prev,
-      [sectionTitle]: items.map((i) => i.item),
-    }));
+    setSelections((prev) => ({ ...prev, [sectionTitle]: items.map((i) => i.item) }));
   }
   function clearSection(sectionTitle: string) {
     setSelections((prev) => ({ ...prev, [sectionTitle]: [] }));
   }
   function selectAllEverywhere() {
     const next: Record<string, string[]> = {};
-    for (const sec of masterInspectionList) {
-      next[sec.title] = sec.items.map((i) => i.item);
-    }
+    for (const sec of masterInspectionList) next[sec.title] = sec.items.map((i) => i.item);
     setSelections(next);
   }
   function clearAll() {
@@ -478,13 +503,9 @@ export default function CustomBuilderPage() {
   }
 
   function toggleSectionCollapsed(sectionTitle: string) {
-    setCollapsedSections((prev) => ({
-      ...prev,
-      [sectionTitle]: !prev[sectionTitle],
-    }));
+    setCollapsedSections((prev) => ({ ...prev, [sectionTitle]: !prev[sectionTitle] }));
   }
 
-  // Oil change section
   function buildOilSection(engine: EngineType): Section {
     return {
       title: engine === "diesel" ? "Oil Change (Diesel)" : "Oil Change (Gas)",
@@ -492,30 +513,15 @@ export default function CustomBuilderPage() {
     };
   }
 
-  // Grease chassis section
   function buildGreaseChassisSection(): Section {
-    return {
-      title: "Grease Chassis",
-      items: [{ item: "Grease chassis" }],
-    };
+    return { title: "Grease Chassis", items: [{ item: "Grease chassis" }] };
   }
 
-  /**
-   * Stage into `inspection:*` keys and route into `/inspections/run`
-   * (Canonical runtime keys only — avoids builder-mode bleed)
-   */
   function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
     const base = Array.isArray(sections) ? (sections as Section[]) : [];
 
-    let finalSections = prepareSections(
-      base,
-      gridMode,
-      includeTireGrid,
-      includeBatteryGrid,
-      batteryCount,
-    );
+    let finalSections = prepareSections(base, gridMode, includeTireGrid, includeBatteryGrid, batteryCount);
 
-    // Inject Grease Chassis at end if enabled
     if (
       includeGreaseChassis &&
       !finalSections.some((s) => normalizeTitle(s.title) === "grease chassis")
@@ -523,7 +529,6 @@ export default function CustomBuilderPage() {
       finalSections = [...finalSections, buildGreaseChassisSection()];
     }
 
-    // Canonical runtime keys ONLY
     sessionStorage.setItem("inspection:sections", JSON.stringify(finalSections));
     sessionStorage.setItem("inspection:title", tplTitle);
     sessionStorage.setItem("inspection:template", "generic");
@@ -544,7 +549,6 @@ export default function CustomBuilderPage() {
     if (includeOil) qs.set("oil", oilEngineType);
     if (laborHours.trim()) qs.set("hours", laborHours.trim());
 
-    // Remove builder keys
     sessionStorage.removeItem("customInspection:sections");
     sessionStorage.removeItem("customInspection:title");
     sessionStorage.removeItem("customInspection:gridMode");
@@ -565,8 +569,6 @@ export default function CustomBuilderPage() {
         greaseChassis: includeGreaseChassis,
         oil: includeOil ? oilEngineType : null,
         laborHours: laborHours.trim() || null,
-
-        // ✅ Helpful runtime context (non-breaking)
         vehicleType,
         brakeSystem,
         cvipGroup: cvipGroup ?? null,
@@ -608,16 +610,66 @@ export default function CustomBuilderPage() {
     goToRunWithSections(withOil, title);
   }
 
+  function applyAiPreset(key: AiPresetKey) {
+    setAiPreset(key);
+    const p = CVIP_PRESETS[key].prompt;
+    setAiPrompt(p);
+    // also apply triggers immediately
+    applyPromptToControls(p);
+  }
+
+  function applyPromptToControls(prompt: string) {
+    const inferred = parsePromptTriggers(prompt);
+
+    // Keep “don’t stomp user choices” behavior:
+    // - if quickTouched/gridTouched, only apply the missing bits
+    if (inferred.dutyClass) setDutyClass(inferred.dutyClass);
+
+    if (!gridTouched && inferred.gridMode) setGridMode(inferred.gridMode);
+
+    if (!quickTouched) {
+      if (inferred.vehicleType) setVehicleType(inferred.vehicleType);
+      if (inferred.brakeSystem) setBrakeSystem(inferred.brakeSystem);
+    }
+
+    if (typeof inferred.targetCount === "number" && inferred.targetCount > 0) {
+      setTargetCount(inferred.targetCount);
+    }
+
+    if (typeof inferred.includeTireGrid === "boolean") setIncludeTireGrid(inferred.includeTireGrid);
+    if (typeof inferred.includeBatteryGrid === "boolean")
+      setIncludeBatteryGrid(inferred.includeBatteryGrid);
+    if (typeof inferred.includeGreaseChassis === "boolean")
+      setIncludeGreaseChassis(inferred.includeGreaseChassis);
+
+    if (typeof inferred.includeOil === "boolean") setIncludeOil(inferred.includeOil);
+    if (inferred.oilEngineType) setOilEngineType(inferred.oilEngineType);
+
+    if (inferred.titleHint && (!title || title.toLowerCase().includes("custom inspection"))) {
+      setTitle(inferred.titleHint);
+    }
+  }
+
   async function buildFromPrompt() {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
     setAiError(null);
 
     try {
+      // ✅ apply triggers before calling API (so toggles match the prompt)
+      applyPromptToControls(aiPrompt);
+
       const res = await fetch("/api/inspections/build-from-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: aiPrompt, dutyClass }),
+        // ✅ send richer context (your API route already supports these fields)
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          dutyClass,
+          vehicleType,
+          brakeSystem,
+          targetCount,
+        }),
       });
 
       if (!res.ok) {
@@ -634,9 +686,7 @@ export default function CustomBuilderPage() {
       }) as unknown as Section[];
 
       const aiHasOil = aiSections.some((s) => normalizeTitle(s.title).startsWith("oil change"));
-      const manualHasOil = manualBuilt.some((s) =>
-        normalizeTitle(s.title).startsWith("oil change"),
-      );
+      const manualHasOil = manualBuilt.some((s) => normalizeTitle(s.title).startsWith("oil change"));
 
       const base =
         includeOil && !aiHasOil && !manualHasOil
@@ -656,10 +706,26 @@ export default function CustomBuilderPage() {
     }
   }
 
-  function applyAiPreset(key: AiPresetKey) {
-    setAiPreset(key);
-    setAiPrompt(CVIP_PRESETS[key].prompt);
-  }
+  const gridModeButtons = useMemo(
+    () =>
+      [
+        { value: "hyd" as const, label: "Hydraulic" },
+        { value: "air" as const, label: "Air" },
+        { value: "none" as const, label: "None" },
+      ] as const,
+    [],
+  );
+
+  const promptChips = useMemo(
+    () => [
+      "Brake inspection, hydraulic, include tires, 30 point",
+      "Pre-trip inspection for heavy duty truck, air brakes, include tires, include batteries, 60 point",
+      "Small oil change inspection diesel, 15 point",
+      "Trailer annual inspection, air brakes, include tires, 50 point",
+      "Battery + charging system inspection, include battery grid, 20 point",
+    ],
+    [],
+  );
 
   return (
     <div className="p-4 text-white">
@@ -859,21 +925,13 @@ export default function CustomBuilderPage() {
           >
             {includeBatteryGrid ? "Battery Grid: ON" : "Battery Grid: OFF"}
           </button>
-
-          
         </div>
 
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
           <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
             Corner grid mode
           </span>
-          {(
-            [
-              { value: "hyd", label: "Hydraulic" },
-              { value: "air", label: "Air" },
-              { value: "none", label: "None" },
-            ] as const
-          ).map((opt) => {
+          {gridModeButtons.map((opt) => {
             const active = gridMode === opt.value;
             return (
               <button
@@ -949,7 +1007,7 @@ export default function CustomBuilderPage() {
               </span>
               <input
                 type="number"
-                min={20}
+                min={10}
                 max={250}
                 className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                 value={String(targetCount)}
@@ -977,16 +1035,34 @@ export default function CustomBuilderPage() {
           </div>
         </div>
 
-        {/* AI builder */}
+        {/* ✅ Prompt-driven builder */}
         <div className="mb-8 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-4">
           <div className="mb-2 text-center font-semibold text-orange-400">
-            Build with AI (optional)
+            Build with Prompt (Trigger Words)
           </div>
+
           <p className="mb-2 text-center text-sm text-neutral-300">
-            Describe what you want to inspect. We’ll generate sections &amp; items.
+            Type what you want. We auto-set options using trigger words (air/hydraulic, tires, batteries, grease, oil, “60 point”, etc).
           </p>
 
-          {/* ✅ Hardcoded CVIP preset buttons */}
+          <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+            {promptChips.map((sample) => (
+              <button
+                key={sample}
+                type="button"
+                onClick={() => {
+                  setAiPreset(null);
+                  setAiPrompt(sample);
+                  applyPromptToControls(sample);
+                }}
+                className="rounded-full border border-orange-500/50 bg-orange-500/10 px-3 py-1 text-[11px] text-orange-200 hover:bg-orange-500/20"
+              >
+                Use sample
+              </button>
+            ))}
+          </div>
+
+          {/* ✅ CVIP preset buttons */}
           <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
             {(Object.keys(CVIP_PRESETS) as AiPresetKey[]).map((key) => {
               const active = aiPreset === key;
@@ -1011,43 +1087,47 @@ export default function CustomBuilderPage() {
 
           <textarea
             className="mb-3 min-h-[90px] w-full rounded-xl border border-neutral-700 bg-neutral-900/80 p-3 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-            placeholder="e.g. 60-point commercial truck inspection with air brakes, suspension, steering, lighting, and undercarriage."
+            placeholder="e.g. small brake inspection, hydraulic, include tires, 30 point"
             value={aiPrompt}
             onChange={(e) => {
               setAiPrompt(e.target.value);
               setAiPreset(null);
             }}
+            onBlur={() => {
+              // ✅ apply triggers on blur (non-annoying)
+              if (aiPrompt.trim()) applyPromptToControls(aiPrompt);
+            }}
           />
 
-          <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-            {[
-              "60-point light-duty car inspection with focus on tires, brakes, and fluids.",
-              "Heavy-duty highway tractor with air brakes, suspension, steering, lighting, and batteries.",
-              "Fleet trailer annual inspection including brakes, tires, frame, lighting, and battery checks.",
-            ].map((sample) => (
-              <button
-                key={sample}
-                type="button"
-                onClick={() => {
-                  setAiPreset(null);
-                  setAiPrompt(sample);
-                }}
-                className="rounded-full border border-orange-500/50 bg-orange-500/10 px-3 py-1 text-[11px] text-orange-200 hover:bg-orange-500/20"
-              >
-                Use sample
-              </button>
-            ))}
-          </div>
+          <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => applyPromptToControls(aiPrompt)}
+              disabled={!aiPrompt.trim()}
+              className="rounded-full border border-neutral-700 bg-black/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/80 disabled:opacity-60"
+            >
+              Apply triggers
+            </button>
 
-          <div className="flex items-center justify-center gap-3">
             <button
               onClick={buildFromPrompt}
               disabled={aiLoading || !aiPrompt.trim()}
               className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white hover:bg-indigo-500 disabled:opacity-60"
             >
-              {aiLoading ? "Generating…" : "Build from AI Prompt"}
+              {aiLoading ? "Generating…" : "Build from Prompt"}
             </button>
+
             {aiError ? <span className="text-xs text-red-400">{aiError}</span> : null}
+          </div>
+
+          <div className="text-center text-[11px] text-neutral-500">
+            Tip: include words like <span className="text-neutral-200">air brake</span>,{" "}
+            <span className="text-neutral-200">hydraulic</span>,{" "}
+            <span className="text-neutral-200">tire grid</span>,{" "}
+            <span className="text-neutral-200">battery grid</span>,{" "}
+            <span className="text-neutral-200">grease chassis</span>,{" "}
+            <span className="text-neutral-200">oil change diesel</span>,{" "}
+            <span className="text-neutral-200">60 point</span>.
           </div>
         </div>
 
@@ -1168,7 +1248,7 @@ export default function CustomBuilderPage() {
             disabled={aiLoading || !aiPrompt.trim()}
             className="rounded-full bg-indigo-600 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white hover:bg-indigo-500 disabled:opacity-60"
           >
-            {aiLoading ? "Generating…" : "Start with AI"}
+            {aiLoading ? "Generating…" : "Start with Prompt"}
           </button>
         </div>
       </div>
