@@ -1,7 +1,7 @@
 // app/customers/[id]/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -20,6 +20,7 @@ type CustomerSearchRow = Pick<
 >;
 
 type ParamsShape = Record<string, string | string[]>;
+
 function paramToString(v: string | string[] | undefined): string | null {
   if (!v) return null;
   return Array.isArray(v) ? v[0] ?? null : v;
@@ -58,7 +59,11 @@ function fmtVehicleLabel(v: Vehicle): string {
   const ym = [v.year != null ? String(v.year) : "", v.make ?? "", v.model ?? ""]
     .filter(Boolean)
     .join(" ");
-  const plate = v.license_plate ? ` • ${v.license_plate}` : "";
+  const plate = (v as unknown as Record<string, unknown>)["license_plate"]
+    ? ` • ${(v as unknown as Record<string, unknown>)["license_plate"] as string}`
+    : v.license_plate
+      ? ` • ${v.license_plate}`
+      : "";
   return `${ym || "Vehicle"}${plate}`;
 }
 
@@ -93,17 +98,152 @@ function DetailRow({
   );
 }
 
-/** Storage buckets (from your Supabase screenshot) */
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+function optString(obj: Record<string, unknown>, key: string): string | null {
+  const v = obj[key];
+  if (typeof v === "string") return v.length ? v : null;
+  return null;
+}
+
+function optNumber(obj: Record<string, unknown>, key: string): number | null {
+  const v = obj[key];
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  return null;
+}
+
+function asText(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "string") return v.trim().length ? v : "—";
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return "—";
+}
+
+/** Storage buckets (from your screenshot set). We don't store bucket in DB, so we "probe" candidates. */
 const BUCKET_PHOTOS_PRIMARY = "vehicle-photos";
 const BUCKET_DOCS_PRIMARY = "vehicle-docs";
-
-/** Legacy fallbacks (in case older code used underscores) */
+/** Legacy fallbacks */
 const BUCKET_PHOTOS_LEGACY = "vehicle_photos";
 const BUCKET_DOCS_LEGACY = "vehicle_docs";
 
 function bucketCandidates(kind: "photo" | "document"): string[] {
-  if (kind === "photo") return [BUCKET_PHOTOS_PRIMARY, BUCKET_PHOTOS_LEGACY];
-  return [BUCKET_DOCS_PRIMARY, BUCKET_DOCS_LEGACY];
+  return kind === "photo"
+    ? [BUCKET_PHOTOS_PRIMARY, BUCKET_PHOTOS_LEGACY]
+    : [BUCKET_DOCS_PRIMARY, BUCKET_DOCS_LEGACY];
+}
+
+type DisplayMedia = VehicleMedia & {
+  displayUrl: string | null;
+  kind: "photo" | "document";
+};
+
+type ModalProps = {
+  title: string;
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+};
+
+function Modal({ title, open, onClose, children, footer }: ModalProps) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-2xl rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(2,6,23,0.98))] shadow-[0_28px_90px_rgba(0,0,0,0.95)]">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-800/60 px-4 py-3">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-white">{title}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-700/60 bg-black/40 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200 hover:bg-black/55"
+          >
+            Close
+          </button>
+        </div>
+        <div className="px-4 py-4">{children}</div>
+        {footer ? (
+          <div className="flex items-center justify-end gap-2 border-t border-slate-800/60 px-4 py-3">
+            {footer}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** IMPORTANT: keep these OUTSIDE the component so the page doesn't remount on every keystroke. */
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
+      {children}
+    </div>
+  );
+}
+
+function TopBar({
+  rightLabel,
+  onBack,
+}: {
+  rightLabel: string;
+  onBack: () => void;
+}) {
+  return (
+    <div className="mb-4 flex items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex items-center gap-2 rounded-full border border-slate-700/60 bg-black/40 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-slate-200 hover:bg-black/55 hover:text-white"
+      >
+        <span aria-hidden className="text-base leading-none">
+          ←
+        </span>
+        Back
+      </button>
+      <div className="text-[10px] text-slate-500">{rightLabel}</div>
+    </div>
+  );
+}
+
+function computeVehicleExtraDetails(
+  selectedVehicle: Vehicle | null,
+): Array<{ label: string; value: string | number }> {
+  if (!selectedVehicle) return [];
+  const r = selectedVehicle as unknown;
+  if (!isRecord(r)) return [];
+
+  const candidates: Array<{ label: string; key: string; kind: "string" | "number" }> = [
+    { label: "Engine", key: "engine", kind: "string" },
+    { label: "Engine Model", key: "engine_model", kind: "string" },
+    { label: "Engine Serial", key: "engine_serial", kind: "string" },
+    { label: "Transmission", key: "transmission", kind: "string" },
+    { label: "Transmission Model", key: "transmission_model", kind: "string" },
+    { label: "Fuel Type", key: "fuel_type", kind: "string" },
+    { label: "Drive Type", key: "drive_type", kind: "string" },
+    { label: "Trim", key: "trim", kind: "string" },
+    { label: "GVWR", key: "gvwr", kind: "number" },
+    { label: "Axle Ratio", key: "axle_ratio", kind: "string" },
+    { label: "Body Type", key: "body_type", kind: "string" },
+    { label: "DOT/CVIP", key: "cvip_number", kind: "string" },
+  ];
+
+  const out: Array<{ label: string; value: string | number }> = [];
+  for (const c of candidates) {
+    const v = c.kind === "string" ? optString(r, c.key) : optNumber(r, c.key);
+    if (v !== null) out.push({ label: c.label, value: v });
+  }
+  return out;
 }
 
 export default function CustomerProfilePage(): JSX.Element {
@@ -123,6 +263,7 @@ export default function CustomerProfilePage(): JSX.Element {
     return v === "search" || v === "all" || v === "directory";
   }, [rawId]);
 
+  // optional override if you ever do /customers/search?customerId=...
   const forcedCustomerId = useMemo(() => {
     const q = sp.get("customerId");
     return looksLikeUuid(q) ? q : null;
@@ -144,19 +285,35 @@ export default function CustomerProfilePage(): JSX.Element {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [showAllHistory, setShowAllHistory] = useState<boolean>(false);
 
-  const [vehicleMedia, setVehicleMedia] = useState<VehicleMedia[]>([]);
+  const [rawVehicleMedia, setRawVehicleMedia] = useState<VehicleMedia[]>([]);
+  const [media, setMedia] = useState<DisplayMedia[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState<boolean>(false);
   const [uploadingDoc, setUploadingDoc] = useState<boolean>(false);
+
+  // Lightbox
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerItem, setViewerItem] = useState<DisplayMedia | null>(null);
+
+  // Edit modals
+  const [editCustomerOpen, setEditCustomerOpen] = useState(false);
+  const [editVehicleOpen, setEditVehicleOpen] = useState(false);
+  const [addVehicleOpen, setAddVehicleOpen] = useState(false);
 
   // Search / directory mode
   const [query, setQuery] = useState<string>("");
   const [searching, setSearching] = useState<boolean>(false);
   const [results, setResults] = useState<CustomerSearchRow[]>([]);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedVehicle = useMemo(() => {
     if (!selectedVehicleId) return null;
     return vehicles.find((v) => v.id === selectedVehicleId) ?? null;
   }, [vehicles, selectedVehicleId]);
+
+  const vehicleExtraDetails = useMemo(
+    () => computeVehicleExtraDetails(selectedVehicle),
+    [selectedVehicle],
+  );
 
   const historySlice = useMemo(() => {
     if (showAllHistory) return workOrders;
@@ -183,7 +340,8 @@ export default function CustomerProfilePage(): JSX.Element {
           setVehicles([]);
           setSelectedVehicleId(null);
           setWorkOrders([]);
-          setVehicleMedia([]);
+          setRawVehicleMedia([]);
+          setMedia([]);
           setViewError("Customer not found / not visible.");
           setLoading(false);
           return;
@@ -202,7 +360,6 @@ export default function CustomerProfilePage(): JSX.Element {
         const vrows = (vs ?? []) as Vehicle[];
         setVehicles(vrows);
 
-        // Keep current selection if still valid; otherwise default to first
         setSelectedVehicleId((prev) => {
           if (prev && vrows.some((v) => v.id === prev)) return prev;
           return vrows[0]?.id ?? null;
@@ -223,7 +380,8 @@ export default function CustomerProfilePage(): JSX.Element {
         setVehicles([]);
         setSelectedVehicleId(null);
         setWorkOrders([]);
-        setVehicleMedia([]);
+        setRawVehicleMedia([]);
+        setMedia([]);
       } finally {
         setLoading(false);
       }
@@ -231,7 +389,6 @@ export default function CustomerProfilePage(): JSX.Element {
     [supabase],
   );
 
-  // Initial load (only if we have an actual customer id)
   useEffect(() => {
     if (!effectiveCustomerId) {
       setLoading(false);
@@ -241,22 +398,22 @@ export default function CustomerProfilePage(): JSX.Element {
   }, [effectiveCustomerId, fetchCustomerFile]);
 
   // ------------------ Fetch media for selected vehicle ------------------
-  const fetchMedia = useCallback(
+  const fetchRawMedia = useCallback(
     async (vehicleId: string) => {
       try {
-        const { data: media, error } = await supabase
+        const { data: rows, error } = await supabase
           .from("vehicle_media")
           .select("*")
           .eq("vehicle_id", vehicleId)
           .order("created_at", { ascending: false });
 
         if (error) {
-          setVehicleMedia([]);
+          setRawVehicleMedia([]);
           return;
         }
-        setVehicleMedia((media ?? []) as VehicleMedia[]);
+        setRawVehicleMedia((rows ?? []) as VehicleMedia[]);
       } catch {
-        setVehicleMedia([]);
+        setRawVehicleMedia([]);
       }
     },
     [supabase],
@@ -264,11 +421,71 @@ export default function CustomerProfilePage(): JSX.Element {
 
   useEffect(() => {
     if (!selectedVehicleId) {
-      setVehicleMedia([]);
+      setRawVehicleMedia([]);
+      setMedia([]);
       return;
     }
-    void fetchMedia(selectedVehicleId);
-  }, [selectedVehicleId, fetchMedia]);
+    void fetchRawMedia(selectedVehicleId);
+  }, [selectedVehicleId, fetchRawMedia]);
+
+  // Turn stored media rows into viewable URLs
+  const buildDisplayUrl = useCallback(
+    async (
+      row: VehicleMedia,
+    ): Promise<{ displayUrl: string | null; kind: "photo" | "document" }> => {
+      const kind: "photo" | "document" =
+        (row.type ?? "").toLowerCase() === "photo" ? "photo" : "document";
+
+      const existing = row.url ?? null;
+      const storagePath = (row.storage_path ?? null) as string | null;
+
+      if (!storagePath) {
+        return { displayUrl: existing, kind };
+      }
+
+      // Probe buckets for a signed url (works for private buckets)
+      for (const bucket of bucketCandidates(kind)) {
+        const { data, error } = await supabase.storage
+          .from(bucket)
+          .createSignedUrl(storagePath, 60 * 10);
+
+        if (!error && data?.signedUrl) {
+          return { displayUrl: data.signedUrl, kind };
+        }
+      }
+
+      // fallback to stored publicUrl (if any)
+      return { displayUrl: existing, kind };
+    },
+    [supabase],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!rawVehicleMedia.length) {
+        setMedia([]);
+        return;
+      }
+
+      const out: DisplayMedia[] = [];
+      for (const row of rawVehicleMedia) {
+        const built = await buildDisplayUrl(row);
+        out.push({
+          ...(row as VehicleMedia),
+          displayUrl: built.displayUrl,
+          kind: built.kind,
+        });
+      }
+
+      if (!cancelled) setMedia(out);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rawVehicleMedia, buildDisplayUrl]);
 
   // ------------------ Directory search ------------------
   const runSearch = useCallback(async () => {
@@ -310,13 +527,33 @@ export default function CustomerProfilePage(): JSX.Element {
     }
   }, [query, supabase]);
 
+  // Optional: prime query from ?q= ONCE (do not keep syncing, avoids focus/typing weirdness)
   useEffect(() => {
-    if (!isDirectoryMode && !sp.get("mode")) return;
-    // optional: prime query from ?q=
+    if (!isDirectoryMode && sp.get("mode") !== "search") return;
+
     const q = sp.get("q");
-    if (q && !query) setQuery(q);
+    if (q && q.trim().length && !query) {
+      setQuery(q);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDirectoryMode]);
+
+  // Debounced search while typing (no URL updates; avoids remount/focus loss)
+  useEffect(() => {
+    if (!(isDirectoryMode || sp.get("mode") === "search")) return;
+
+    const q = query.trim();
+    if (!q) {
+      setResults([]);
+      return;
+    }
+
+    const t = window.setTimeout(() => {
+      void runSearch();
+    }, 250);
+
+    return () => window.clearTimeout(t);
+  }, [query, isDirectoryMode, sp, runSearch]);
 
   // ------------------ Upload ------------------
   const handleUpload = useCallback(
@@ -336,23 +573,16 @@ export default function CustomerProfilePage(): JSX.Element {
         let lastErrMsg: string | null = null;
 
         for (const bucket of bucketCandidates(kind)) {
-          const { error: upErr } = await supabase.storage
-            .from(bucket)
-            .upload(storagePath, file, {
-              upsert: true,
-              contentType: file.type || undefined,
-            });
+          const { error: upErr } = await supabase.storage.from(bucket).upload(storagePath, file, {
+            upsert: true,
+            contentType: file.type || undefined,
+          });
 
           if (!upErr) {
             uploadedBucket = bucket;
             break;
           }
-
           lastErrMsg = upErr.message;
-
-          // If bucket exists but policy blocks, no point retrying bucket name.
-          // But if bucket name is wrong/missing, the fallback helps.
-          // We just try both and move on.
         }
 
         if (!uploadedBucket) {
@@ -360,15 +590,10 @@ export default function CustomerProfilePage(): JSX.Element {
           return;
         }
 
-        const { data: pub } = supabase.storage
-          .from(uploadedBucket)
-          .getPublicUrl(storagePath);
-
+        // Store a URL if bucket is public; otherwise it can be null and we’ll use signed urls for display
+        const { data: pub } = supabase.storage.from(uploadedBucket).getPublicUrl(storagePath);
         const publicUrl = pub?.publicUrl ?? null;
 
-        // IMPORTANT:
-        // Your generated types indicate `vehicle_media` does NOT have `storage_bucket`,
-        // so we only insert known-safe fields.
         const insertRow = {
           vehicle_id: selectedVehicleId,
           url: publicUrl,
@@ -383,40 +608,164 @@ export default function CustomerProfilePage(): JSX.Element {
           return;
         }
 
-        await fetchMedia(selectedVehicleId);
+        await fetchRawMedia(selectedVehicleId);
       } finally {
         if (isPhoto) setUploadingPhoto(false);
         else setUploadingDoc(false);
       }
     },
-    [fetchMedia, selectedVehicleId, supabase],
+    [fetchRawMedia, selectedVehicleId, supabase],
   );
 
-  // ------------------ UI ------------------
-  const PageShell = ({ children }: { children: React.ReactNode }) => (
-    <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
-      {children}
-    </div>
-  );
+  // ------------------ Edit Customer ------------------
+  const [custDraft, setCustDraft] = useState<Record<string, unknown>>({});
 
-  // DIRECTORY MODE (tile-friendly)
+  useEffect(() => {
+    if (!customer) return;
+    const r = customer as unknown as Record<string, unknown>;
+    setCustDraft({
+      first_name: customer.first_name ?? null,
+      last_name: customer.last_name ?? null,
+      email: customer.email ?? null,
+      phone: customer.phone ?? null,
+      phone_number: customer.phone_number ?? null,
+      address: typeof r["address"] === "string" ? (r["address"] as string) : "",
+      city: typeof r["city"] === "string" ? (r["city"] as string) : "",
+      province: typeof r["province"] === "string" ? (r["province"] as string) : "",
+      postal_code: typeof r["postal_code"] === "string" ? (r["postal_code"] as string) : "",
+    });
+  }, [customer]);
+
+  const saveCustomer = useCallback(async () => {
+    if (!customer) return;
+
+    const updateRecord: Record<string, unknown> = {
+      first_name: typeof custDraft["first_name"] === "string" ? custDraft["first_name"] : null,
+      last_name: typeof custDraft["last_name"] === "string" ? custDraft["last_name"] : null,
+      email: typeof custDraft["email"] === "string" ? custDraft["email"] : null,
+      phone: typeof custDraft["phone"] === "string" ? custDraft["phone"] : null,
+      phone_number: typeof custDraft["phone_number"] === "string" ? custDraft["phone_number"] : null,
+    };
+
+    // Optional fields (if your schema has them, they'll save; if not, Supabase will error and we show it)
+    if (typeof custDraft["address"] === "string") updateRecord["address"] = custDraft["address"] || null;
+    if (typeof custDraft["city"] === "string") updateRecord["city"] = custDraft["city"] || null;
+    if (typeof custDraft["province"] === "string") updateRecord["province"] = custDraft["province"] || null;
+    if (typeof custDraft["postal_code"] === "string") updateRecord["postal_code"] = custDraft["postal_code"] || null;
+
+    const { error } = await supabase
+      .from("customers")
+      .update(updateRecord as DB["public"]["Tables"]["customers"]["Update"])
+      .eq("id", customer.id);
+
+    if (error) {
+      setViewError(error.message);
+      return;
+    }
+
+    setEditCustomerOpen(false);
+    await fetchCustomerFile(customer.id);
+  }, [customer, custDraft, fetchCustomerFile, supabase]);
+
+  // ------------------ Edit Vehicle ------------------
+  const [vehDraft, setVehDraft] = useState<Record<string, unknown>>({});
+
+  useEffect(() => {
+    if (!selectedVehicle) return;
+    setVehDraft({ ...(selectedVehicle as unknown as Record<string, unknown>) });
+  }, [selectedVehicle]);
+
+  const saveVehicle = useCallback(async () => {
+    if (!selectedVehicle) return;
+
+    const updateRecord: Record<string, unknown> = {
+      year: typeof vehDraft["year"] === "number" ? vehDraft["year"] : selectedVehicle.year ?? null,
+      make: typeof vehDraft["make"] === "string" ? vehDraft["make"] : selectedVehicle.make ?? null,
+      model: typeof vehDraft["model"] === "string" ? vehDraft["model"] : selectedVehicle.model ?? null,
+      vin: typeof vehDraft["vin"] === "string" ? vehDraft["vin"] : selectedVehicle.vin ?? null,
+      license_plate:
+        typeof vehDraft["license_plate"] === "string"
+          ? vehDraft["license_plate"]
+          : (selectedVehicle as unknown as Record<string, unknown>)["license_plate"] ?? selectedVehicle.license_plate ?? null,
+      mileage:
+        typeof vehDraft["mileage"] === "string"
+          ? vehDraft["mileage"]
+          : (selectedVehicle as unknown as Record<string, unknown>)["mileage"] ?? selectedVehicle.mileage ?? null,
+    };
+
+    // Optional-ish vehicle fields
+    if (typeof vehDraft["unit_number"] === "string") updateRecord["unit_number"] = vehDraft["unit_number"] || null;
+    if (typeof vehDraft["color"] === "string") updateRecord["color"] = vehDraft["color"] || null;
+    if (typeof vehDraft["engine_hours"] === "number") updateRecord["engine_hours"] = vehDraft["engine_hours"];
+
+    const { error } = await supabase
+      .from("vehicles")
+      .update(updateRecord as DB["public"]["Tables"]["vehicles"]["Update"])
+      .eq("id", selectedVehicle.id);
+
+    if (error) {
+      setViewError(error.message);
+      return;
+    }
+
+    setEditVehicleOpen(false);
+    if (customer?.id) await fetchCustomerFile(customer.id);
+  }, [customer?.id, fetchCustomerFile, selectedVehicle, supabase, vehDraft]);
+
+  // ------------------ Add Vehicle ------------------
+  const [newVeh, setNewVeh] = useState<Record<string, unknown>>({
+    year: null,
+    make: "",
+    model: "",
+    vin: "",
+    license_plate: "",
+    mileage: "",
+    unit_number: "",
+    color: "",
+    engine_hours: null,
+  });
+
+  const createVehicle = useCallback(async () => {
+    if (!customer?.id) return;
+
+    const insertRecord: Record<string, unknown> = {
+      customer_id: customer.id,
+      year: typeof newVeh["year"] === "number" ? newVeh["year"] : null,
+      make: typeof newVeh["make"] === "string" ? (newVeh["make"] as string) || null : null,
+      model: typeof newVeh["model"] === "string" ? (newVeh["model"] as string) || null : null,
+      vin: typeof newVeh["vin"] === "string" ? (newVeh["vin"] as string) || null : null,
+      license_plate:
+        typeof newVeh["license_plate"] === "string" ? (newVeh["license_plate"] as string) || null : null,
+      mileage: typeof newVeh["mileage"] === "string" ? (newVeh["mileage"] as string) || null : null,
+    };
+
+    if (typeof newVeh["unit_number"] === "string") insertRecord["unit_number"] = newVeh["unit_number"] || null;
+    if (typeof newVeh["color"] === "string") insertRecord["color"] = newVeh["color"] || null;
+    if (typeof newVeh["engine_hours"] === "number") insertRecord["engine_hours"] = newVeh["engine_hours"];
+
+    const { data, error } = await supabase
+      .from("vehicles")
+      .insert(insertRecord as DB["public"]["Tables"]["vehicles"]["Insert"])
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      setViewError(error.message);
+      return;
+    }
+
+    setAddVehicleOpen(false);
+    await fetchCustomerFile(customer.id);
+
+    const newId = (data as Pick<Vehicle, "id"> | null)?.id ?? null;
+    if (newId) setSelectedVehicleId(newId);
+  }, [customer?.id, fetchCustomerFile, newVeh, supabase]);
+
+  // ------------------ DIRECTORY MODE ------------------
   if (isDirectoryMode || sp.get("mode") === "search") {
     return (
       <PageShell>
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-700/60 bg-black/40 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-slate-200 hover:bg-black/55 hover:text-white"
-          >
-            <span aria-hidden className="text-base leading-none">
-              ←
-            </span>
-            Back
-          </button>
-
-          <div className="text-[10px] text-slate-500">Customers</div>
-        </div>
+        <TopBar rightLabel="Customers" onBack={() => router.back()} />
 
         <div className={`${CARD_BASE} p-4`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -432,10 +781,17 @@ export default function CustomerProfilePage(): JSX.Element {
               </p>
             </div>
 
-            <div className="flex w-full gap-2 sm:w-[520px]">
+            <div className="flex w-full gap-2 sm:w-[560px]">
               <input
+                ref={searchInputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void runSearch();
+                  }
+                }}
                 placeholder="Search customers…"
                 className="w-full rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
               />
@@ -462,8 +818,7 @@ export default function CustomerProfilePage(): JSX.Element {
             ) : (
               <div className="space-y-2">
                 {results.map((r) => {
-                  const phone =
-                    r.phone ?? r.phone_number ?? null;
+                  const phone = r.phone ?? r.phone_number ?? null;
                   return (
                     <button
                       key={r.id}
@@ -486,9 +841,7 @@ export default function CustomerProfilePage(): JSX.Element {
                             ) : null}
                           </div>
                         </div>
-                        <div className="text-[10px] text-slate-500">
-                          {safeDate(r.created_at)}
-                        </div>
+                        <div className="text-[10px] text-slate-500">{safeDate(r.created_at)}</div>
                       </div>
                     </button>
                   );
@@ -501,17 +854,15 @@ export default function CustomerProfilePage(): JSX.Element {
     );
   }
 
-  // If they navigated to /customers/<something> that isn't a UUID,
-  // treat it like a search landing (so it still "works" without needing a new route).
+  // ------------------ Non-UUID guard ------------------
   if (!effectiveCustomerId) {
     return (
       <PageShell>
         <div className={`${CARD_BASE} p-4`}>
-          <div className="text-sm text-slate-200">
-            This route expects a customer id.
-          </div>
+          <div className="text-sm text-slate-200">This route expects a customer id.</div>
           <div className="mt-2 text-xs text-slate-400">
-            Use <span className="font-mono text-slate-200">/customers/search</span> to open the customer directory.
+            Use{" "}
+            <span className="font-mono text-slate-200">/customers/search</span> to open the customer directory.
           </div>
           <div className="mt-4">
             <button
@@ -527,23 +878,10 @@ export default function CustomerProfilePage(): JSX.Element {
     );
   }
 
-  // CUSTOMER FILE MODE
+  // ------------------ CUSTOMER FILE MODE ------------------
   return (
     <PageShell>
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-2 rounded-full border border-slate-700/60 bg-black/40 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-slate-200 hover:bg-black/55 hover:text-white"
-        >
-          <span aria-hidden className="text-base leading-none">
-            ←
-          </span>
-          Back
-        </button>
-
-        <div className="text-[10px] text-slate-500">Customer File</div>
-      </div>
+      <TopBar rightLabel="Customer File" onBack={() => router.back()} />
 
       {viewError && (
         <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200 shadow-[0_18px_45px_rgba(0,0,0,0.75)]">
@@ -585,56 +923,89 @@ export default function CustomerProfilePage(): JSX.Element {
                   </div>
 
                   <div className="mt-2 text-sm leading-6 text-slate-400">
-                    <div>{customer.address ?? "—"}</div>
+                    <div>{asText((customer as unknown as Record<string, unknown>)["address"])}</div>
                     <div>
-                      {[customer.city, customer.province, customer.postal_code]
-                        .filter(Boolean)
+                      {[
+                        (customer as unknown as Record<string, unknown>)["city"],
+                        (customer as unknown as Record<string, unknown>)["province"],
+                        (customer as unknown as Record<string, unknown>)["postal_code"],
+                      ]
+                        .map((x) => (typeof x === "string" ? x : ""))
+                        .filter((x) => x.length)
                         .join(", ") || "—"}
                     </div>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push(
-                      `/work-orders/create?customerId=${customer.id}${
-                        selectedVehicleId ? `&vehicleId=${selectedVehicleId}` : ""
-                      }`,
-                    )
-                  }
-                  className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
-                >
-                  Create Work Order
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditCustomerOpen(true)}
+                    className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-sm font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
+                  >
+                    Edit customer
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        `/work-orders/create?customerId=${customer.id}${
+                          selectedVehicleId ? `&vehicleId=${selectedVehicleId}` : ""
+                        }`,
+                      )
+                    }
+                    className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
+                  >
+                    Create Work Order
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Vehicles */}
             <div className={`${CARD_BASE} p-4`}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-white sm:text-base">
-                    Vehicles
-                  </h2>
+                  <h2 className="text-sm font-semibold text-white sm:text-base">Vehicles</h2>
                   <p className="mt-1 text-[11px] text-slate-400">
                     Select a vehicle to view details and files.
                   </p>
                 </div>
 
-                {vehicles.length > 0 ? (
-                  <select
-                    value={selectedVehicleId ?? ""}
-                    onChange={(e) => setSelectedVehicleId(e.target.value || null)}
-                    className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none"
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAddVehicleOpen(true)}
+                    className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[12px] font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
                   >
-                    {vehicles.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {fmtVehicleLabel(v)}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
+                    + Add vehicle
+                  </button>
+
+                  {vehicles.length > 0 ? (
+                    <select
+                      value={selectedVehicleId ?? ""}
+                      onChange={(e) => setSelectedVehicleId(e.target.value || null)}
+                      className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none"
+                    >
+                      {vehicles.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {fmtVehicleLabel(v)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+
+                  {selectedVehicle ? (
+                    <button
+                      type="button"
+                      onClick={() => setEditVehicleOpen(true)}
+                      className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[12px] font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
+                    >
+                      Edit vehicle
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               {vehicles.length === 0 ? (
@@ -647,21 +1018,62 @@ export default function CustomerProfilePage(): JSX.Element {
                     <div className="text-sm font-semibold text-white">
                       {fmtVehicleLabel(selectedVehicle)}
                     </div>
+
                     <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <DetailRow label="VIN" value={selectedVehicle.vin} />
-                      <DetailRow label="License Plate" value={selectedVehicle.license_plate} />
-                      <DetailRow label="Mileage" value={selectedVehicle.mileage} />
-                      <DetailRow label="Unit #" value={selectedVehicle.unit_number} />
-                      <DetailRow label="Color" value={selectedVehicle.color} />
                       <DetailRow
-                        label="Engine Hours"
+                        label="License Plate"
                         value={
-                          typeof selectedVehicle.engine_hours === "number"
-                            ? selectedVehicle.engine_hours
-                            : selectedVehicle.engine_hours ?? null
+                          ((selectedVehicle as unknown as Record<string, unknown>)["license_plate"] as
+                            | string
+                            | null
+                            | undefined) ?? selectedVehicle.license_plate
                         }
                       />
+                      <DetailRow
+                        label="Mileage"
+                        value={
+                          ((selectedVehicle as unknown as Record<string, unknown>)["mileage"] as
+                            | string
+                            | null
+                            | undefined) ?? selectedVehicle.mileage
+                        }
+                      />
+                      <DetailRow
+                        label="Unit #"
+                        value={(selectedVehicle as unknown as Record<string, unknown>)["unit_number"] as
+                          | string
+                          | null
+                          | undefined}
+                      />
+                      <DetailRow
+                        label="Color"
+                        value={(selectedVehicle as unknown as Record<string, unknown>)["color"] as
+                          | string
+                          | null
+                          | undefined}
+                      />
+                      <DetailRow
+                        label="Engine Hours"
+                        value={(selectedVehicle as unknown as Record<string, unknown>)["engine_hours"] as
+                          | number
+                          | null
+                          | undefined}
+                      />
                     </div>
+
+                    {vehicleExtraDetails.length > 0 ? (
+                      <div className="mt-3">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Additional vehicle details
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {vehicleExtraDetails.map((it) => (
+                            <DetailRow key={it.label} label={it.label} value={it.value} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -671,9 +1083,7 @@ export default function CustomerProfilePage(): JSX.Element {
             <div className={`${CARD_BASE} p-4`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-white sm:text-base">
-                    Work Order History
-                  </h2>
+                  <h2 className="text-sm font-semibold text-white sm:text-base">Work Order History</h2>
                   <p className="mt-1 text-[11px] text-slate-400">
                     Showing {showAllHistory ? "all" : "latest 3"} work orders for this customer.
                   </p>
@@ -707,15 +1117,17 @@ export default function CustomerProfilePage(): JSX.Element {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold text-white">
-                            {wo.custom_id ? `WO ${wo.custom_id}` : `WO #${wo.id.slice(0, 8)}`}
+                            {(wo as unknown as Record<string, unknown>)["custom_id"]
+                              ? `WO ${(wo as unknown as Record<string, unknown>)["custom_id"] as string}`
+                              : `WO #${wo.id.slice(0, 8)}`}
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-400">
                             {safeDate(wo.created_at)}
                           </div>
                         </div>
 
-                        <span className={chipClass(wo.status)}>
-                          {(wo.status ?? "awaiting").replaceAll("_", " ")}
+                        <span className={chipClass((wo as unknown as Record<string, unknown>)["status"] as string | null)}>
+                          {String(((wo as unknown as Record<string, unknown>)["status"] as string | null) ?? "awaiting").replaceAll("_", " ")}
                         </span>
                       </div>
                     </button>
@@ -729,10 +1141,7 @@ export default function CustomerProfilePage(): JSX.Element {
           <aside className="space-y-6">
             <div className={`${CARD_BASE} p-4`}>
               <h3 className="text-sm font-semibold text-white">Upload Vehicle Photos</h3>
-              <p className="mt-1 text-[11px] text-slate-400">
-                Condition photos, damage evidence, before/after.
-              </p>
-
+              <p className="mt-1 text-[11px] text-slate-400">Condition photos, damage evidence, before/after.</p>
               <div className="mt-3">
                 <input
                   type="file"
@@ -745,18 +1154,15 @@ export default function CustomerProfilePage(): JSX.Element {
                   }}
                   className="w-full text-sm text-slate-200"
                 />
-                {uploadingPhoto && (
+                {uploadingPhoto ? (
                   <div className="mt-2 text-[11px] text-slate-400">Uploading photo…</div>
-                )}
+                ) : null}
               </div>
             </div>
 
             <div className={`${CARD_BASE} p-4`}>
               <h3 className="text-sm font-semibold text-white">Upload Documents</h3>
-              <p className="mt-1 text-[11px] text-slate-400">
-                Registration, CVIP, inspection PDFs, misc docs.
-              </p>
-
+              <p className="mt-1 text-[11px] text-slate-400">Registration, CVIP, inspection PDFs, misc docs.</p>
               <div className="mt-3">
                 <input
                   type="file"
@@ -769,55 +1175,64 @@ export default function CustomerProfilePage(): JSX.Element {
                   }}
                   className="w-full text-sm text-slate-200"
                 />
-                {uploadingDoc && (
+                {uploadingDoc ? (
                   <div className="mt-2 text-[11px] text-slate-400">Uploading document…</div>
-                )}
+                ) : null}
               </div>
             </div>
 
             <div className={`${CARD_BASE} p-4`}>
-              <h3 className="text-sm font-semibold text-white">Vehicle Gallery & Files</h3>
-              <p className="mt-1 text-[11px] text-slate-400">
-                Files shown for the selected vehicle.
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Vehicle Gallery & Files</h3>
+                  <p className="mt-1 text-[11px] text-slate-400">Files shown for the selected vehicle.</p>
+                </div>
+                {selectedVehicleId ? (
+                  <button
+                    type="button"
+                    onClick={() => void fetchRawMedia(selectedVehicleId)}
+                    className="rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-[11px] font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
+                  >
+                    Refresh
+                  </button>
+                ) : null}
+              </div>
 
               {!selectedVehicleId ? (
                 <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>
                   Select a vehicle to view files.
                 </div>
-              ) : vehicleMedia.length === 0 ? (
+              ) : media.length === 0 ? (
                 <div className={`${CARD_INNER} mt-3 p-3 text-sm text-slate-300`}>
                   No files uploaded yet.
                 </div>
               ) : (
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  {vehicleMedia.map((m) => {
-                    const url = m.url ?? null;
-                    const img = isImageUrl(url) || (m.type ?? "") === "photo";
+                  {media.map((m) => {
+                    const url = m.displayUrl ?? m.url ?? null;
+                    const img = m.kind === "photo" || isImageUrl(url);
                     const title = m.filename ?? (m.type ?? "file");
 
                     return (
-                      <a
+                      <button
                         key={m.id}
-                        href={url ?? "#"}
-                        target="_blank"
-                        rel="noreferrer"
+                        type="button"
+                        onClick={() => {
+                          setViewerItem(m);
+                          setViewerOpen(true);
+                        }}
                         className="block overflow-hidden rounded-xl border border-slate-700/60 bg-black/40 hover:border-[rgba(184,115,51,0.65)]"
                         title={title}
                       >
-                        {img ? (
+                        {img && url ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={url ?? ""}
-                            alt={title}
-                            className="h-28 w-full object-cover"
-                          />
+                          <img src={url} alt={title} className="h-28 w-full object-cover" />
                         ) : (
                           <div className="flex h-28 w-full items-center justify-center px-2 text-center text-[11px] text-slate-300">
-                            View document
+                            Open file
                           </div>
                         )}
-                      </a>
+                      </button>
                     );
                   })}
                 </div>
@@ -826,6 +1241,232 @@ export default function CustomerProfilePage(): JSX.Element {
           </aside>
         </div>
       )}
+
+      {/* Viewer (fixes “opens new tab but never renders”) */}
+      <Modal
+        title={viewerItem?.filename ?? "File"}
+        open={viewerOpen}
+        onClose={() => {
+          setViewerOpen(false);
+          setViewerItem(null);
+        }}
+        footer={
+          viewerItem?.displayUrl ? (
+            <a
+              href={viewerItem.displayUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-[rgba(184,115,51,0.65)]"
+            >
+              Open in new tab
+            </a>
+          ) : null
+        }
+      >
+        {!viewerItem ? (
+          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>No file selected.</div>
+        ) : !viewerItem.displayUrl ? (
+          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>
+            This file doesn’t have a viewable URL yet (likely a private bucket without a signed URL).
+          </div>
+        ) : viewerItem.kind === "photo" || isImageUrl(viewerItem.displayUrl) ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={viewerItem.displayUrl}
+            alt={viewerItem.filename ?? "photo"}
+            className="w-full rounded-xl"
+          />
+        ) : (
+          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>
+            Document ready. Use “Open in new tab”.
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit Customer */}
+      <Modal
+        title="Edit customer"
+        open={editCustomerOpen}
+        onClose={() => setEditCustomerOpen(false)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditCustomerOpen(false)}
+              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-slate-500/70"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveCustomer()}
+              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
+            >
+              Save
+            </button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {(
+            [
+              ["First name", "first_name"],
+              ["Last name", "last_name"],
+              ["Email", "email"],
+              ["Phone", "phone"],
+              ["Alt phone", "phone_number"],
+              ["Address", "address"],
+              ["City", "city"],
+              ["Province", "province"],
+              ["Postal code", "postal_code"],
+            ] as const
+          ).map(([label, key]) => (
+            <div key={key} className="space-y-1">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                {label}
+              </div>
+              <input
+                value={String(custDraft[key] ?? "")}
+                onChange={(e) =>
+                  setCustDraft((p) => ({ ...p, [key]: e.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+              />
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      {/* Edit Vehicle */}
+      <Modal
+        title="Edit vehicle"
+        open={editVehicleOpen}
+        onClose={() => setEditVehicleOpen(false)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditVehicleOpen(false)}
+              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-slate-500/70"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveVehicle()}
+              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
+            >
+              Save
+            </button>
+          </>
+        }
+      >
+        {!selectedVehicle ? (
+          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>No vehicle selected.</div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["Year", "year"],
+                ["Make", "make"],
+                ["Model", "model"],
+                ["VIN", "vin"],
+                ["License plate", "license_plate"],
+                ["Mileage", "mileage"],
+                ["Unit #", "unit_number"],
+                ["Color", "color"],
+                ["Engine hours", "engine_hours"],
+              ] as const
+            ).map(([label, key]) => (
+              <div key={key} className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  {label}
+                </div>
+                <input
+                  value={String(vehDraft[key] ?? "")}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setVehDraft((p) => {
+                      if (key === "year" || key === "engine_hours") {
+                        const n = raw.trim().length ? Number(raw) : null;
+                        return { ...p, [key]: Number.isFinite(n as number) ? n : null };
+                      }
+                      return { ...p, [key]: raw };
+                    });
+                  }}
+                  className="w-full rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      {/* Add Vehicle */}
+      <Modal
+        title="Add vehicle"
+        open={addVehicleOpen}
+        onClose={() => setAddVehicleOpen(false)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setAddVehicleOpen(false)}
+              className="rounded-xl border border-slate-700/60 bg-black/40 px-4 py-2 text-[12px] font-semibold text-white hover:border-slate-500/70"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void createVehicle()}
+              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
+              disabled={!customer}
+            >
+              Create
+            </button>
+          </>
+        }
+      >
+        {!customer ? (
+          <div className={`${CARD_INNER} p-3 text-sm text-slate-300`}>No customer loaded.</div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["Year", "year"],
+                ["Make", "make"],
+                ["Model", "model"],
+                ["VIN", "vin"],
+                ["License plate", "license_plate"],
+                ["Mileage", "mileage"],
+                ["Unit #", "unit_number"],
+                ["Color", "color"],
+                ["Engine hours", "engine_hours"],
+              ] as const
+            ).map(([label, key]) => (
+              <div key={key} className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  {label}
+                </div>
+                <input
+                  value={String(newVeh[key] ?? "")}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setNewVeh((p) => {
+                      if (key === "year" || key === "engine_hours") {
+                        const n = raw.trim().length ? Number(raw) : null;
+                        return { ...p, [key]: Number.isFinite(n as number) ? n : null };
+                      }
+                      return { ...p, [key]: raw };
+                    });
+                  }}
+                  className="w-full rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </PageShell>
   );
 }
