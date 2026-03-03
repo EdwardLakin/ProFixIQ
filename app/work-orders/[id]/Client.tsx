@@ -47,6 +47,9 @@ type AllocationRow =
   DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
     parts?: { name: string | null } | null;
   };
+type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
+  parts?: { name: string | null; sku?: string | null } | null;
+};
 type LineTechRow = DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
@@ -208,6 +211,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
 
   const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
+  const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
   const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
@@ -454,7 +458,9 @@ export default function WorkOrderIdClient(): JSX.Element {
           setVehicle(null);
           setCustomer(null);
           setAllocsByLine({});
+          setStagedPartsByLine({});
           setLineTechsByLine({});
+        
 
           // ✅ reset review state
           setReviewChecked(true);
@@ -522,22 +528,32 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         // allocations + line techs
         if (lineRows.length) {
-          const [allocsQuery, lineTechsQuery] = await Promise.all([
-            supabase
-              .from("work_order_part_allocations")
-              .select("*, parts(name)")
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-            supabase
-              .from("work_order_line_technicians")
-              .select("work_order_line_id, technician_id")
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-          ]);
+          const [allocsQuery, stagedQuery, lineTechsQuery] = await Promise.all([
+  supabase
+    .from("work_order_part_allocations")
+    .select("*, parts(name)")
+    .in(
+      "work_order_line_id",
+      lineRows.map((l) => l.id),
+    ),
+
+  // ✅ NEW: staged/quoted parts from menu quick add (NOT allocated inventory)
+  supabase
+    .from("work_order_parts")
+    .select("*, parts(name, sku)")
+    .in(
+      "work_order_line_id",
+      lineRows.map((l) => l.id),
+    ),
+
+  supabase
+    .from("work_order_line_technicians")
+    .select("work_order_line_id, technician_id")
+    .in(
+      "work_order_line_id",
+      lineRows.map((l) => l.id),
+    ),
+]);
 
           const byLine: Record<string, AllocationRow[]> = {};
           (allocsQuery.data ?? []).forEach((a) => {
@@ -547,6 +563,16 @@ export default function WorkOrderIdClient(): JSX.Element {
             byLine[key].push(row);
           });
           setAllocsByLine(byLine);
+
+          const stagedByLine: Record<string, WorkOrderPartRow[]> = {};
+(stagedQuery.data ?? []).forEach((p) => {
+  const row = p as WorkOrderPartRow;
+  const key = row.work_order_line_id;
+  if (!key) return;
+  if (!stagedByLine[key]) stagedByLine[key] = [];
+  stagedByLine[key].push(row);
+});
+setStagedPartsByLine(stagedByLine);
 
           const techMap: Record<string, string[]> = {};
           (lineTechsQuery.data as LineTechRow[] | null)?.forEach((lt) => {
@@ -560,6 +586,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setLineTechsByLine(techMap);
         } else {
           setAllocsByLine({});
+          setStagedPartsByLine({});
           setLineTechsByLine({});
         }
 
@@ -613,6 +640,16 @@ export default function WorkOrderIdClient(): JSX.Element {
           event: "*",
           schema: "public",
           table: "work_order_lines",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_parts",
           filter: `work_order_id=eq.${wo.id}`,
         },
         () => fetchAll(),
@@ -1527,7 +1564,31 @@ export default function WorkOrderIdClient(): JSX.Element {
                 {sortedLines.map((ln, idx) => {
                   const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
-                  const partsForLine = allocsByLine[ln.id] ?? [];
+                  const allocPartsForLine = allocsByLine[ln.id] ?? [];
+const stagedForLine = stagedPartsByLine[ln.id] ?? [];
+
+const stagedAsAllocShape: AllocationRow[] = stagedForLine.map((p) => {
+  // map staged quote parts to the AllocationRow shape JobCard expects
+  return {
+    // AllocationRow base fields (we only need work_order_line_id + parts(name) for display)
+    id: p.id,
+    work_order_line_id: p.work_order_line_id as string,
+    shop_id: p.shop_id,
+    created_at: p.created_at,
+    // best-effort fields (safe fallbacks)
+    part_id: p.part_id ?? null,
+    quantity: (p.quantity as unknown as number) ?? 0,
+    unit_cost: p.unit_price ?? null,
+    unit_price: p.unit_price ?? null,
+    total_cost: null,
+    total_price: p.total_price ?? null,
+    status: "staged",
+    // nested join used by PartsUsedList
+    parts: { name: p.parts?.name ?? null } as { name: string | null },
+  } as unknown as AllocationRow;
+});
+
+const partsForLine = [...allocPartsForLine, ...stagedAsAllocShape];
 
                   const lineTechIds = lineTechsByLine[ln.id] ?? [];
                   const primaryId =
