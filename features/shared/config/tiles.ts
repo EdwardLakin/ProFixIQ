@@ -87,14 +87,6 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
   {
-  href: "/customers/search",
-  title: "Customers",
-  subtitle: "Search customer files",
-  roles: ["advisor", "manager", "owner", "admin"],
-  scopes: ["work_orders", "all"],
-  section: "Operations",
-  },
-  {
     href: "/work-orders/view",
     title: "View Work Orders",
     subtitle: "Browse & manage",
@@ -109,6 +101,14 @@ export const TILES: Tile[] = [
     roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["work_orders", "all"],
     section: "Operations",
+  },
+  {
+  href: "/customers/search",
+  title: "Customers",
+  subtitle: "Search customer files",
+  roles: ["advisor", "manager", "owner", "admin"],
+  scopes: ["work_orders", "all"],
+  section: "Operations",
   },
   {
     href: "/billing",

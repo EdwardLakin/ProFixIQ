@@ -347,7 +347,7 @@ export default function CustomerProfilePage(): JSX.Element {
         const { data: cust, error: custErr } = await supabase
           .from("customers")
           .select(
-            "id, first_name, last_name, name, business_name, email, phone, phone_number, created_at",
+            "id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, address, city, province, postal_code",
           )
           .eq("id", customerId)
           .maybeSingle();
