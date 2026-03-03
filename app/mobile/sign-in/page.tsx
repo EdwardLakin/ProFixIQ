@@ -1,7 +1,11 @@
+// app/mobile/sign-in/page.tsx (FULL FILE REPLACEMENT)
+// ✅ Adds "Forgot password?" that routes to /forgot-password (preserves ?redirect=...)
+// ❗ No other behavior changes
+
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -12,12 +16,19 @@ const SHOP_USER_DOMAIN = "local.profix-internal";
 
 export default function MobileSignInPage() {
   const router = useRouter();
+  const sp = useSearchParams();
   const supabase = createClientComponentClient<DB>();
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
+
+  const goForgotPassword = () => {
+    const redirect = sp.get("redirect");
+    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
+    router.push(`/forgot-password${tail}`);
+  };
 
   // If already signed in, gate by onboarding before letting them into mobile
   useEffect(() => {
@@ -157,6 +168,18 @@ export default function MobileSignInPage() {
                 required
                 minLength={6}
               />
+            </div>
+
+            {/* Forgot password */}
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={goForgotPassword}
+                disabled={loading}
+                className="text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Forgot password?
+              </button>
             </div>
 
             <button

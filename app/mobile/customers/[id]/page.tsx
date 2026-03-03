@@ -1,3 +1,4 @@
+// app/mobile/customers/[id]/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -262,6 +263,22 @@ export default function MobileCustomerProfilePage() {
                           <div>
                             <span className="text-neutral-500">Engine hrs:</span>{" "}
                             {v.engine_hours != null ? String(v.engine_hours) : "—"}
+                          </div>
+                          <div>
+                            <span className="text-neutral-500">Engine:</span>{" "}
+                            {v.engine || "—"}
+                          </div>
+                          <div>
+                            <span className="text-neutral-500">Trans:</span>{" "}
+                            {v.transmission || "—"}
+                          </div>
+                          <div>
+                            <span className="text-neutral-500">Fuel:</span>{" "}
+                            {v.fuel_type || "—"}
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-neutral-500">Drivetrain:</span>{" "}
+                            {v.drivetrain || "—"}
                           </div>
                         </div>
                       </div>

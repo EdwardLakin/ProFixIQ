@@ -1,4 +1,4 @@
-// app/mobile/work-orders/create/page.tsx
+// app/mobile/work-orders/create/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 /**
@@ -10,6 +10,11 @@
  * - Search/select existing Customer + Vehicle from DB (scoped to shop)
  * - Create Work Order only when user taps "Create / Continue"
  * - Then allow adding lines + continue to mobile WO detail
+ *
+ * ✅ Fixes:
+ * - Vehicle search + pick now includes engine_hours + engine + transmission + fuel_type + drivetrain
+ * - Vehicle insert persists those fields
+ * - If a vehicle already exists (match by id or VIN/plate), we update it with edited fields
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -48,10 +53,14 @@ type DraftVehicleShape = {
   model?: string | null;
   license_plate?: string | null;
   plate?: string | null;
+
   engine?: string | null;
   fuel_type?: string | null;
   drivetrain?: string | null;
   transmission?: string | null;
+  engine_hours?: string | number | null;
+  unit_number?: string | null;
+  color?: string | null;
 };
 
 function strOrNull(v: unknown): string | null {
@@ -59,8 +68,29 @@ function strOrNull(v: unknown): string | null {
   return s.length ? s : null;
 }
 
+function toYearNumberOrNull(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toNumberOrNull(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
 function numStringOrNull(v: unknown): string | null {
-  const s = typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "";
+  const s =
+    typeof v === "string"
+      ? v.trim()
+      : typeof v === "number"
+        ? String(v)
+        : "";
   if (!s) return null;
   return s;
 }
@@ -217,8 +247,12 @@ function CustomerSearch({
               setOpen(false);
             }}
           >
-            <div className="truncate text-neutral-100">{formatCustomerTitle(c)}</div>
-            <div className="truncate text-xs text-neutral-400">{formatCustomerSub(c)}</div>
+            <div className="truncate text-neutral-100">
+              {formatCustomerTitle(c)}
+            </div>
+            <div className="truncate text-xs text-neutral-400">
+              {formatCustomerSub(c)}
+            </div>
           </button>
         ))}
         {!busy && rows.length === 0 && (
@@ -243,6 +277,12 @@ type VehiclePick = {
   model: string | null;
   mileage: string | null;
   color: string | null;
+
+  engine_hours: number | null;
+  engine: string | null;
+  transmission: string | null;
+  fuel_type: string | null;
+  drivetrain: string | null;
 };
 
 function formatVehicleTitle(v: VehiclePick): string {
@@ -302,7 +342,7 @@ function VehicleSearch({
         const { data, error } = await supabase
           .from("vehicles")
           .select(
-            "id,unit_number,license_plate,vin,year,make,model,mileage,color,created_at",
+            "id,unit_number,license_plate,vin,year,make,model,mileage,color,engine_hours,engine,transmission,fuel_type,drivetrain,created_at",
           )
           .eq("shop_id", shopId)
           .eq("customer_id", customerId)
@@ -362,7 +402,9 @@ function VehicleSearch({
             }}
           >
             <div className="truncate text-neutral-100">{formatVehicleTitle(v)}</div>
-            <div className="truncate text-xs text-neutral-400">{formatVehicleSub(v) || "—"}</div>
+            <div className="truncate text-xs text-neutral-400">
+              {formatVehicleSub(v) || "—"}
+            </div>
           </button>
         ))}
         {!busy && rows.length === 0 && (
@@ -398,6 +440,12 @@ export default function MobileCreateWorkOrderPage() {
     license_plate: null,
     mileage: null,
     color: null,
+    unit_number: null,
+    engine_hours: null,
+    engine: null,
+    transmission: null,
+    fuel_type: null,
+    drivetrain: null,
   });
 
   const [shopId, setShopId] = useState<string | null>(null);
@@ -468,7 +516,19 @@ export default function MobileCreateWorkOrderPage() {
         make: draftVehicle.make ?? prev.make,
         model: draftVehicle.model ?? prev.model,
         license_plate:
-          draftVehicle.license_plate ?? draftVehicle.plate ?? prev.license_plate,
+          draftVehicle.license_plate ??
+          draftVehicle.plate ??
+          prev.license_plate ??
+          null,
+
+        engine: draftVehicle.engine ?? prev.engine ?? null,
+        transmission: draftVehicle.transmission ?? prev.transmission ?? null,
+        fuel_type: draftVehicle.fuel_type ?? prev.fuel_type ?? null,
+        drivetrain: draftVehicle.drivetrain ?? prev.drivetrain ?? null,
+        engine_hours:
+          draftVehicle.engine_hours ?? prev.engine_hours ?? null,
+        unit_number: draftVehicle.unit_number ?? prev.unit_number ?? null,
+        color: draftVehicle.color ?? prev.color ?? null,
       }));
     }
 
@@ -530,7 +590,9 @@ export default function MobileCreateWorkOrderPage() {
           .update({ is_waiter: value } as Partial<WorkOrderRow>)
           .eq("id", wo.id);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to update visit type.");
+        setError(
+          e instanceof Error ? e.message : "Failed to update visit type.",
+        );
       }
     },
     [wo?.id, supabase],
@@ -539,67 +601,82 @@ export default function MobileCreateWorkOrderPage() {
   /* ------------------------------------------------------------------------ */
   /* Ensure customer + vehicle (minimal, aligned behavior)                    */
   /* ------------------------------------------------------------------------ */
-  const ensureCustomer = useCallback(
-    async (): Promise<CustomerRow> => {
-      if (!shopId) throw new Error("Missing shop.");
+  const ensureCustomer = useCallback(async (): Promise<CustomerRow> => {
+    if (!shopId) throw new Error("Missing shop.");
 
-      // If selected existing customer id → fetch it (and optionally update)
-      if (customer.id) {
-        const { data: existing, error: exErr } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("id", customer.id)
-          .eq("shop_id", shopId)
-          .maybeSingle();
-        if (exErr) throw exErr;
-        if (!existing) throw new Error("Selected customer not found.");
-        return existing;
-      }
-
-      // Try match by phone or email (within shop)
-      const phone = strOrNull(customer.phone);
-      const email = strOrNull(customer.email);
-
-      if (phone || email) {
-        let q = supabase.from("customers").select("*").eq("shop_id", shopId).limit(1);
-        if (phone) q = q.ilike("phone", phone);
-        else if (email) q = q.ilike("email", email);
-
-        const { data: found, error: fErr } = await q;
-        if (fErr) throw fErr;
-        if (found?.length) {
-          setCustomer((prev) => ({ ...prev, id: found[0].id }));
-          return found[0] as CustomerRow;
-        }
-      }
-
-      // Insert new
-      const { data: inserted, error: insErr } = await supabase
+    if (customer.id) {
+      const { data: existing, error: exErr } = await supabase
         .from("customers")
-        .insert({
-          shop_id: shopId,
-          first_name: strOrNull(customer.first_name),
-          last_name: strOrNull(customer.last_name),
-          phone: phone,
-          email: email,
-        })
         .select("*")
-        .single();
+        .eq("id", customer.id)
+        .eq("shop_id", shopId)
+        .maybeSingle();
+      if (exErr) throw exErr;
+      if (!existing) throw new Error("Selected customer not found.");
+      return existing;
+    }
 
-      if (insErr || !inserted) {
-        throw new Error(insErr?.message ?? "Failed to create customer.");
+    const phone = strOrNull(customer.phone);
+    const email = strOrNull(customer.email);
+
+    if (phone || email) {
+      let q = supabase
+        .from("customers")
+        .select("*")
+        .eq("shop_id", shopId)
+        .limit(1);
+      if (phone) q = q.ilike("phone", phone);
+      else if (email) q = q.ilike("email", email);
+
+      const { data: found, error: fErr } = await q;
+      if (fErr) throw fErr;
+      if (found?.length) {
+        setCustomer((prev) => ({ ...prev, id: found[0].id }));
+        return found[0] as CustomerRow;
       }
+    }
 
-      setCustomer((prev) => ({ ...prev, id: inserted.id }));
-      return inserted as CustomerRow;
-    },
-    [customer, shopId, supabase],
-  );
+    const { data: inserted, error: insErr } = await supabase
+      .from("customers")
+      .insert({
+        shop_id: shopId,
+        first_name: strOrNull(customer.first_name),
+        last_name: strOrNull(customer.last_name),
+        phone: phone,
+        email: email,
+      })
+      .select("*")
+      .single();
+
+    if (insErr || !inserted) {
+      throw new Error(insErr?.message ?? "Failed to create customer.");
+    }
+
+    setCustomer((prev) => ({ ...prev, id: inserted.id }));
+    return inserted as CustomerRow;
+  }, [customer, shopId, supabase]);
 
   const ensureVehicle = useCallback(
     async (cust: CustomerRow): Promise<VehicleRow> => {
       if (!shopId) throw new Error("Missing shop.");
 
+      const desired = {
+        vin: strOrNull(vehicle.vin),
+        license_plate: strOrNull(vehicle.license_plate),
+        year: toYearNumberOrNull(vehicle.year),
+        make: strOrNull(vehicle.make),
+        model: strOrNull(vehicle.model),
+        mileage: numStringOrNull(vehicle.mileage),
+        color: strOrNull(vehicle.color),
+        unit_number: strOrNull(vehicle.unit_number),
+        engine_hours: toNumberOrNull(vehicle.engine_hours),
+        engine: strOrNull(vehicle.engine),
+        transmission: strOrNull(vehicle.transmission),
+        fuel_type: strOrNull(vehicle.fuel_type),
+        drivetrain: strOrNull(vehicle.drivetrain),
+      };
+
+      // If picked by id, update it with any edits so it "sticks"
       if (vehicle.id) {
         const { data: existing, error: exErr } = await supabase
           .from("vehicles")
@@ -607,18 +684,35 @@ export default function MobileCreateWorkOrderPage() {
           .eq("id", vehicle.id)
           .eq("shop_id", shopId)
           .maybeSingle();
+
         if (exErr) throw exErr;
         if (!existing) throw new Error("Selected vehicle not found.");
-        return existing;
+
+        const { data: updated, error: upErr } = await supabase
+          .from("vehicles")
+          .update({
+            customer_id: cust.id,
+            ...desired,
+          })
+          .eq("id", existing.id)
+          .eq("shop_id", shopId)
+          .select("*")
+          .single();
+
+        if (upErr || !updated) {
+          throw new Error(upErr?.message ?? "Failed to update vehicle.");
+        }
+
+        setVehicle((prev) => ({ ...prev, id: updated.id }));
+        return updated as VehicleRow;
       }
 
       // Try match by vin or plate for this customer
-      const vin = strOrNull(vehicle.vin);
-      const plate = strOrNull(vehicle.license_plate);
-
       const orParts = [
-        vin ? `vin.eq.${vin}` : "",
-        plate ? `license_plate.eq.${plate}` : "",
+        desired.vin ? `vin.eq.${desired.vin}` : "",
+        desired.license_plate
+          ? `license_plate.eq.${desired.license_plate}`
+          : "",
       ].filter(Boolean);
 
       if (orParts.length) {
@@ -631,9 +725,27 @@ export default function MobileCreateWorkOrderPage() {
           .limit(1);
 
         if (mErr) throw mErr;
+
         if (maybe?.length) {
-          setVehicle((prev) => ({ ...prev, id: maybe[0].id }));
-          return maybe[0] as VehicleRow;
+          // ✅ Update the matched row so edits persist
+          const target = maybe[0] as VehicleRow;
+          const { data: updated, error: upErr } = await supabase
+            .from("vehicles")
+            .update({
+              customer_id: cust.id,
+              ...desired,
+            })
+            .eq("id", target.id)
+            .eq("shop_id", shopId)
+            .select("*")
+            .single();
+
+          if (upErr || !updated) {
+            throw new Error(upErr?.message ?? "Failed to update vehicle.");
+          }
+
+          setVehicle((prev) => ({ ...prev, id: updated.id }));
+          return updated as VehicleRow;
         }
       }
 
@@ -643,13 +755,7 @@ export default function MobileCreateWorkOrderPage() {
         .insert({
           shop_id: shopId,
           customer_id: cust.id,
-          vin: vin,
-          license_plate: plate,
-          year: vehicle.year ? Number(vehicle.year) : null,
-          make: strOrNull(vehicle.make),
-          model: strOrNull(vehicle.model),
-          mileage: numStringOrNull(vehicle.mileage),
-          color: strOrNull(vehicle.color),
+          ...desired,
         })
         .select("*")
         .single();
@@ -676,22 +782,25 @@ export default function MobileCreateWorkOrderPage() {
       if (!currentUserId) throw new Error("Not signed in.");
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
-      // Require at least something for customer
-      if (!customer.first_name && !customer.last_name && !customer.phone && !customer.email) {
+      if (
+        !customer.first_name &&
+        !customer.last_name &&
+        !customer.phone &&
+        !customer.email
+      ) {
         throw new Error("Enter at least a name, phone, or email.");
       }
 
       const cust = await ensureCustomer();
       const veh = await ensureVehicle(cust);
 
-      // Create WO via DB retry function (custom_id generated inside)
       const { data: created, error: rpcErr } = await supabase.rpc(
         "create_work_order_with_custom_id",
         {
           p_shop_id: shopId,
           p_customer_id: cust.id,
           p_vehicle_id: veh.id,
-          p_notes: "" ,
+          p_notes: "",
           p_priority: 3,
           p_is_waiter: isWaiter,
         },
@@ -700,11 +809,12 @@ export default function MobileCreateWorkOrderPage() {
       if (rpcErr) throw rpcErr;
       if (!created) throw new Error("Failed to create work order.");
 
-      // `rpc` returns a row-ish object. Cast safely to WorkOrderRow.
       const createdWo = created as unknown as WorkOrderRow;
 
       setWo(createdWo);
-      setIsWaiter(Boolean((createdWo as unknown as { is_waiter?: boolean | null }).is_waiter));
+      setIsWaiter(
+        Boolean((createdWo as unknown as { is_waiter?: boolean | null }).is_waiter),
+      );
       await fetchLines();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create work order.");
@@ -851,7 +961,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="First name"
                 value={customer.first_name ?? ""}
                 onChange={(e) =>
-                  setCustomer((p) => ({ ...p, first_name: e.target.value || null, id: p.id }))
+                  setCustomer((p) => ({
+                    ...p,
+                    first_name: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <input
@@ -859,7 +973,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="Last name"
                 value={customer.last_name ?? ""}
                 onChange={(e) =>
-                  setCustomer((p) => ({ ...p, last_name: e.target.value || null, id: p.id }))
+                  setCustomer((p) => ({
+                    ...p,
+                    last_name: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <input
@@ -867,7 +985,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="Phone"
                 value={customer.phone ?? ""}
                 onChange={(e) =>
-                  setCustomer((p) => ({ ...p, phone: e.target.value || null, id: p.id }))
+                  setCustomer((p) => ({
+                    ...p,
+                    phone: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <input
@@ -875,7 +997,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="Email"
                 value={customer.email ?? ""}
                 onChange={(e) =>
-                  setCustomer((p) => ({ ...p, email: e.target.value || null, id: p.id }))
+                  setCustomer((p) => ({
+                    ...p,
+                    email: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
             </div>
@@ -912,6 +1038,13 @@ export default function MobileCreateWorkOrderPage() {
                     license_plate: v.license_plate ?? null,
                     mileage: v.mileage ?? null,
                     color: v.color ?? null,
+                    unit_number: v.unit_number ?? null,
+                    engine_hours:
+                      v.engine_hours != null ? String(v.engine_hours) : null,
+                    engine: v.engine ?? null,
+                    transmission: v.transmission ?? null,
+                    fuel_type: v.fuel_type ?? null,
+                    drivetrain: v.drivetrain ?? null,
                   });
                 }}
               />
@@ -929,7 +1062,11 @@ export default function MobileCreateWorkOrderPage() {
                 inputMode="numeric"
                 value={vehicle.year ?? ""}
                 onChange={(e) =>
-                  setVehicle((p) => ({ ...p, year: e.target.value || null, id: p.id }))
+                  setVehicle((p) => ({
+                    ...p,
+                    year: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <input
@@ -937,7 +1074,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="Plate"
                 value={vehicle.license_plate ?? ""}
                 onChange={(e) =>
-                  setVehicle((p) => ({ ...p, license_plate: e.target.value || null, id: p.id }))
+                  setVehicle((p) => ({
+                    ...p,
+                    license_plate: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <input
@@ -945,7 +1086,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="Make"
                 value={vehicle.make ?? ""}
                 onChange={(e) =>
-                  setVehicle((p) => ({ ...p, make: e.target.value || null, id: p.id }))
+                  setVehicle((p) => ({
+                    ...p,
+                    make: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <input
@@ -953,7 +1098,11 @@ export default function MobileCreateWorkOrderPage() {
                 placeholder="Model"
                 value={vehicle.model ?? ""}
                 onChange={(e) =>
-                  setVehicle((p) => ({ ...p, model: e.target.value || null, id: p.id }))
+                  setVehicle((p) => ({
+                    ...p,
+                    model: e.target.value || null,
+                    id: p.id,
+                  }))
                 }
               />
               <input
@@ -964,6 +1113,104 @@ export default function MobileCreateWorkOrderPage() {
                   setVehicle((p) => ({ ...p, vin: e.target.value || null, id: p.id }))
                 }
               />
+              <input
+                className="input col-span-2"
+                placeholder="Unit #"
+                value={vehicle.unit_number ?? ""}
+                onChange={(e) =>
+                  setVehicle((p) => ({
+                    ...p,
+                    unit_number: e.target.value || null,
+                    id: p.id,
+                  }))
+                }
+              />
+              <input
+                className="input col-span-2"
+                placeholder="Color"
+                value={vehicle.color ?? ""}
+                onChange={(e) =>
+                  setVehicle((p) => ({ ...p, color: e.target.value || null, id: p.id }))
+                }
+              />
+              <input
+                className="input col-span-2"
+                placeholder="Engine hours"
+                inputMode="numeric"
+                value={vehicle.engine_hours ?? ""}
+                onChange={(e) =>
+                  setVehicle((p) => ({
+                    ...p,
+                    engine_hours: e.target.value || null,
+                    id: p.id,
+                  }))
+                }
+              />
+              <input
+                className="input col-span-2"
+                placeholder="Engine / Trim"
+                value={vehicle.engine ?? ""}
+                onChange={(e) =>
+                  setVehicle((p) => ({ ...p, engine: e.target.value || null, id: p.id }))
+                }
+              />
+              <select
+                className="input col-span-2"
+                value={vehicle.transmission ?? ""}
+                onChange={(e) =>
+                  setVehicle((p) => ({
+                    ...p,
+                    transmission: e.target.value || null,
+                    id: p.id,
+                  }))
+                }
+              >
+                <option value="">Select transmission</option>
+                <option value="automatic">Automatic</option>
+                <option value="manual">Manual</option>
+                <option value="cvt">CVT</option>
+                <option value="dct">Dual-clutch</option>
+                <option value="other">Other</option>
+              </select>
+
+              <select
+                className="input col-span-2"
+                value={vehicle.fuel_type ?? ""}
+                onChange={(e) =>
+                  setVehicle((p) => ({
+                    ...p,
+                    fuel_type: e.target.value || null,
+                    id: p.id,
+                  }))
+                }
+              >
+                <option value="">Select fuel type</option>
+                <option value="gasoline">Gasoline</option>
+                <option value="diesel">Diesel</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="phev">Plug-in hybrid</option>
+                <option value="ev">Electric (BEV)</option>
+                <option value="other">Other</option>
+              </select>
+
+              <select
+                className="input col-span-2"
+                value={vehicle.drivetrain ?? ""}
+                onChange={(e) =>
+                  setVehicle((p) => ({
+                    ...p,
+                    drivetrain: e.target.value || null,
+                    id: p.id,
+                  }))
+                }
+              >
+                <option value="">Select drivetrain</option>
+                <option value="fwd">FWD</option>
+                <option value="rwd">RWD</option>
+                <option value="awd">AWD</option>
+                <option value="4x4">4x4</option>
+                <option value="other">Other</option>
+              </select>
             </div>
 
             {/* VIN scan */}
@@ -972,26 +1219,31 @@ export default function MobileCreateWorkOrderPage() {
                 userId={currentUserId ?? "anon"}
                 action="/api/vin"
                 onDecoded={(decoded) => {
-                  // store in shared draft (used by desktop + other flows)
                   const v: DraftVehicleShape = {
                     vin: decoded.vin ?? null,
-                    year: decoded.year ?? null,
-                    make: decoded.make ?? null,
-                    model: decoded.model ?? null,
+                    year: (decoded as unknown as { year?: string | number | null }).year
+                      ? String((decoded as unknown as { year?: string | number | null }).year)
+                      : null,
+                    make: (decoded as unknown as { make?: string | null }).make ?? null,
+                    model: (decoded as unknown as { model?: string | null }).model ?? null,
                     engine: (decoded as unknown as { engine?: string | null }).engine ?? null,
                     fuel_type: (decoded as unknown as { fuelType?: string | null }).fuelType ?? null,
                     drivetrain: (decoded as unknown as { driveType?: string | null }).driveType ?? null,
                     transmission: (decoded as unknown as { transmission?: string | null }).transmission ?? null,
                   };
+
                   draft.setVehicle(v);
 
-                  // patch local state
                   setVehicle((prev) => ({
                     ...prev,
-                    vin: decoded.vin ?? prev.vin,
-                    year: decoded.year ?? prev.year,
-                    make: decoded.make ?? prev.make,
-                    model: decoded.model ?? prev.model,
+                    vin: v.vin ?? prev.vin,
+                    year: v.year ?? prev.year,
+                    make: v.make ?? prev.make,
+                    model: v.model ?? prev.model,
+                    engine: v.engine ?? prev.engine ?? null,
+                    fuel_type: v.fuel_type ?? prev.fuel_type ?? null,
+                    drivetrain: v.drivetrain ?? prev.drivetrain ?? null,
+                    transmission: v.transmission ?? prev.transmission ?? null,
                   }));
                 }}
               >

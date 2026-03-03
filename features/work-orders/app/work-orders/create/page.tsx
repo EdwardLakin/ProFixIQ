@@ -86,15 +86,20 @@ type CreateWoRpcRow = Pick<
 type CustomerVehicleDraftHook = {
   customer?: Partial<CustomerWithBusiness>;
   vehicle?: Partial<VehicleWithExtra> & { plate?: string | null };
+
   setCustomerField: (
     field: keyof SessionCustomer | "business_name",
     value: string | null,
   ) => void;
-  setVehicleField: (field: keyof SessionVehicle, value: string | null) => void;
+
+  // ✅ allow extra vehicle fields to persist in the draft
+  setVehicleField: (field: keyof VehicleWithExtra, value: string | null) => void;
+
   bulkSet: (data: {
     customer?: Partial<CustomerWithBusiness>;
     vehicle?: Partial<VehicleWithExtra>;
   }) => void;
+
   reset: () => void;
 };
 
@@ -267,7 +272,6 @@ export default function CreateWorkOrderPage() {
     const hasDraftVeh = Object.values(dv).some(Boolean);
 
     if (hasDraftCust) {
-      // ✅ Explicit per-field hydration (no indexed assignment -> no TS2322)
       setCustomer((prev) => ({
         ...prev,
         business_name:
@@ -318,6 +322,17 @@ export default function CreateWorkOrderPage() {
         model: dv.model ?? prev.model,
         license_plate:
           dv.license_plate ?? dv.plate ?? prev.license_plate ?? null,
+
+        mileage: dv.mileage ?? prev.mileage ?? null,
+        unit_number: dv.unit_number ?? prev.unit_number ?? null,
+        color: dv.color ?? prev.color ?? null,
+        engine_hours: dv.engine_hours ?? prev.engine_hours ?? null,
+
+        // ✅ persist extra fields from draft too
+        engine: dv.engine ?? prev.engine ?? null,
+        transmission: dv.transmission ?? prev.transmission ?? null,
+        fuel_type: dv.fuel_type ?? prev.fuel_type ?? null,
+        drivetrain: dv.drivetrain ?? prev.drivetrain ?? null,
       }));
     }
 
@@ -332,8 +347,9 @@ export default function CreateWorkOrderPage() {
     [cvDraft, setCustomer],
   );
 
+  // ✅ allow extra vehicle fields to flow through from the form
   const onVehicleChange = useCallback(
-    (field: keyof SessionVehicle, value: string | null) => {
+    (field: keyof VehicleWithExtra, value: string | null) => {
       setVehicle((v) => ({ ...v, [field]: value }));
       cvDraft.setVehicleField(field, value);
     },
@@ -436,6 +452,12 @@ export default function CreateWorkOrderPage() {
           draft.vehicle?.license_plate ??
           draft.vehicle?.plate ??
           prev.license_plate,
+
+        // ✅ extra fields from VIN draft
+        engine: draft.vehicle?.engine ?? prev.engine ?? null,
+        fuel_type: draft.vehicle?.fuel_type ?? prev.fuel_type ?? null,
+        drivetrain: draft.vehicle?.drivetrain ?? prev.drivetrain ?? null,
+        transmission: draft.vehicle?.transmission ?? prev.transmission ?? null,
       }));
     }
     if (hasCust) {
@@ -534,6 +556,7 @@ export default function CreateWorkOrderPage() {
     shop_id: shopId,
   });
 
+  // ✅ include extra vehicle fields in INSERT
   const buildVehicleInsert = (
     v: VehicleWithExtra,
     customerIdIn: string,
@@ -549,8 +572,67 @@ export default function CreateWorkOrderPage() {
     unit_number: strOrNull(v.unit_number),
     color: strOrNull(v.color),
     engine_hours: numOrNull(v.engine_hours),
+
+    // ✅ NEW
+    engine: strOrNull(v.engine ?? null),
+    transmission: strOrNull(v.transmission ?? null),
+    fuel_type: strOrNull(v.fuel_type ?? null),
+    drivetrain: strOrNull(v.drivetrain ?? null),
+
     shop_id: shopId,
   });
+
+  // ✅ patch update (only include fields that have values)
+  const buildVehiclePatch = (
+    v: VehicleWithExtra,
+    customerIdIn: string,
+  ): Partial<VehicleRow> => {
+    const patch: Partial<VehicleRow> = {
+      customer_id: customerIdIn,
+    };
+
+    const vin = strOrNull(v.vin);
+    if (vin !== null) patch.vin = vin;
+
+    const yr = numOrNull(v.year);
+    if (yr !== null) patch.year = yr;
+
+    const make = strOrNull(v.make);
+    if (make !== null) patch.make = make;
+
+    const model = strOrNull(v.model);
+    if (model !== null) patch.model = model;
+
+    const plate = strOrNull(v.license_plate);
+    if (plate !== null) patch.license_plate = plate;
+
+    const mileage = strOrNull(v.mileage);
+    if (mileage !== null) patch.mileage = mileage;
+
+    const unit = strOrNull(v.unit_number);
+    if (unit !== null) patch.unit_number = unit;
+
+    const color = strOrNull(v.color);
+    if (color !== null) patch.color = color;
+
+    const eh = numOrNull(v.engine_hours);
+    if (eh !== null) patch.engine_hours = eh;
+
+    // ✅ NEW
+    const engine = strOrNull(v.engine ?? null);
+    if (engine !== null) patch.engine = engine;
+
+    const trans = strOrNull(v.transmission ?? null);
+    if (trans !== null) patch.transmission = trans;
+
+    const fuel = strOrNull(v.fuel_type ?? null);
+    if (fuel !== null) patch.fuel_type = fuel;
+
+    const drive = strOrNull(v.drivetrain ?? null);
+    if (drive !== null) patch.drivetrain = drive;
+
+    return patch;
+  };
 
   const hydrateCustomerFromRow = useCallback(
     (row: CustomerRowWithBusiness): CustomerWithBusiness => ({
@@ -601,7 +683,7 @@ export default function CreateWorkOrderPage() {
           const { data } = await supabase
             .from("vehicles")
             .select(
-              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, customer_id",
+              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, transmission, fuel_type, drivetrain, customer_id",
             )
             .eq("id", prefillVehicleId)
             .single();
@@ -617,6 +699,12 @@ export default function CreateWorkOrderPage() {
               color: getStrField(data, "color"),
               engine_hours:
                 data.engine_hours != null ? String(data.engine_hours) : null,
+
+              // ✅ NEW
+              engine: getStrField(data, "engine"),
+              transmission: getStrField(data, "transmission"),
+              fuel_type: getStrField(data, "fuel_type"),
+              drivetrain: getStrField(data, "drivetrain"),
             });
             setVehicleId(data.id);
 
@@ -692,17 +780,33 @@ export default function CreateWorkOrderPage() {
     return inserted as CustomerRowWithBusiness;
   }
 
+  // ✅ when a vehicle exists, UPDATE it with the form values so edits persist
   async function ensureVehicleRow(
     cust: CustomerRow,
     shopId: string,
   ): Promise<VehicleRow> {
+    // If an explicit vehicleId is set, patch update that vehicle (instead of just returning it)
     if (vehicleId) {
-      const { data } = await supabase
+      const patch = buildVehiclePatch(vehicle, cust.id);
+
+      const { data: updated, error: updErr } = await supabase
+        .from("vehicles")
+        .update(patch)
+        .eq("id", vehicleId)
+        .eq("shop_id", shopId)
+        .select("*")
+        .single();
+
+      if (updErr) throw updErr;
+      if (updated) return updated as VehicleRow;
+
+      // fallback read (shouldn’t usually happen)
+      const { data: fallback } = await supabase
         .from("vehicles")
         .select("*")
         .eq("id", vehicleId)
         .single();
-      if (data) return data as VehicleRow;
+      if (fallback) return fallback as VehicleRow;
     }
 
     const orParts = [
@@ -711,17 +815,36 @@ export default function CreateWorkOrderPage() {
     ].filter(Boolean);
 
     if (orParts.length) {
-      const { data: maybe } = await supabase
+      const { data: maybe, error: findErr } = await supabase
         .from("vehicles")
         .select("*")
         .eq("customer_id", cust.id)
+        .eq("shop_id", shopId)
         .or(orParts.join(","));
+
+      if (findErr) throw findErr;
+
       if (maybe?.length) {
-        setVehicleId(maybe[0].id);
-        return maybe[0] as VehicleRow;
+        // ✅ patch update the matched vehicle so edits persist
+        const id = (maybe[0] as VehicleRow).id;
+        const patch = buildVehiclePatch(vehicle, cust.id);
+
+        const { data: updated, error: updErr } = await supabase
+          .from("vehicles")
+          .update(patch)
+          .eq("id", id)
+          .eq("shop_id", shopId)
+          .select("*")
+          .single();
+
+        if (updErr) throw updErr;
+
+        setVehicleId(id);
+        return (updated ?? maybe[0]) as VehicleRow;
       }
     }
 
+    // Otherwise insert new
     const { data: inserted, error: insErr } = await supabase
       .from("vehicles")
       .insert(buildVehicleInsert(vehicle, cust.id, shopId))
@@ -772,6 +895,7 @@ export default function CreateWorkOrderPage() {
       const cust = await ensureCustomer(shopId);
       const veh = await ensureVehicleRow(cust, shopId);
 
+      // ✅ persist full vehicle info into draft/session
       cvDraft.bulkSet({
         customer: {
           first_name: cust.first_name ?? null,
@@ -791,9 +915,20 @@ export default function CreateWorkOrderPage() {
           model: veh.model ?? null,
           license_plate: veh.license_plate ?? null,
           mileage: (veh.mileage as string | null) ?? vehicle.mileage ?? null,
-          unit_number: vehicle.unit_number ?? null,
-          color: veh.color ?? null,
-          engine_hours: vehicle.engine_hours ?? null,
+          unit_number: (veh.unit_number as string | null) ?? vehicle.unit_number ?? null,
+          color: (veh.color as string | null) ?? vehicle.color ?? null,
+          engine_hours:
+            veh.engine_hours != null
+              ? String(veh.engine_hours)
+              : vehicle.engine_hours ?? null,
+
+          // ✅ NEW
+          engine: (veh.engine as string | null) ?? vehicle.engine ?? null,
+          transmission:
+            (veh.transmission as string | null) ?? vehicle.transmission ?? null,
+          fuel_type: (veh.fuel_type as string | null) ?? vehicle.fuel_type ?? null,
+          drivetrain:
+            (veh.drivetrain as string | null) ?? vehicle.drivetrain ?? null,
         },
       });
 
@@ -1216,7 +1351,11 @@ export default function CreateWorkOrderPage() {
                 shopId={wo?.shop_id ?? currentShopId}
                 handlers={{
                   onCustomerChange,
-                  onVehicleChange,
+                  // ✅ cast to keep props serializable + avoid leaking internal types
+                  onVehicleChange: onVehicleChange as unknown as (
+                    field: keyof SessionVehicle,
+                    value: string | null,
+                  ) => void,
                   onCustomerSelected: (id: string) => setCustomerId(id),
                   onVehicleSelected: (id: string) => setVehicleId(id),
                 }}

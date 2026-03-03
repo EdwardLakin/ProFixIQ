@@ -1,6 +1,6 @@
-// features/work-orders/mobile/MobileCustomerVehicleForm.tsx (FULL FILE REPLACEMENT)
-// ✅ Theme alignment only (remove dependency on glass-chip class, match other inputs/cards)
-// ❗ No logic changes
+// /features/work-orders/mobile/MobileCustomerVehicleForm.tsx (FULL FILE REPLACEMENT)
+// ✅ Theme alignment + add missing vehicle fields (unit/color/engine hours/engine/trans/fuel/drivetrain)
+// ❗ No save logic changes; only updates local state via onVehicleChange
 
 "use client";
 
@@ -138,6 +138,7 @@ export function MobileCustomerVehicleForm({
         <h3 className={labelClass}>Vehicle</h3>
 
         <div className="grid grid-cols-1 gap-3">
+          {/* Year/Make/Model */}
           <div className="flex gap-2">
             <div className="w-20 space-y-1">
               <label className={labelClass}>Year</label>
@@ -186,6 +187,40 @@ export function MobileCustomerVehicleForm({
             </div>
           </div>
 
+          {/* Unit / Color */}
+          <div className="flex gap-2">
+            <div className="flex-1 space-y-1">
+              <label className={labelClass}>Unit #</label>
+              <input
+                className={inputBase}
+                value={vehicle.unit_number ?? ""}
+                onChange={(e) =>
+                  onVehicleChange((prev) => ({
+                    ...prev,
+                    unit_number: e.target.value || null,
+                  }))
+                }
+                placeholder="Unit / Asset #"
+              />
+            </div>
+
+            <div className="flex-1 space-y-1">
+              <label className={labelClass}>Color</label>
+              <input
+                className={inputBase}
+                value={vehicle.color ?? ""}
+                onChange={(e) =>
+                  onVehicleChange((prev) => ({
+                    ...prev,
+                    color: e.target.value || null,
+                  }))
+                }
+                placeholder="White, Blue…"
+              />
+            </div>
+          </div>
+
+          {/* VIN */}
           <div className="space-y-1">
             <label className={labelClass}>VIN</label>
             <input
@@ -201,6 +236,7 @@ export function MobileCustomerVehicleForm({
             />
           </div>
 
+          {/* Plate */}
           <div className="space-y-1">
             <label className={labelClass}>License plate</label>
             <input
@@ -216,6 +252,7 @@ export function MobileCustomerVehicleForm({
             />
           </div>
 
+          {/* Mileage */}
           <div className="space-y-1">
             <label className={labelClass}>Odometer / mileage</label>
             <input
@@ -230,6 +267,106 @@ export function MobileCustomerVehicleForm({
               }
               placeholder="km or mi"
             />
+          </div>
+
+          {/* Engine hours */}
+          <div className="space-y-1">
+            <label className={labelClass}>Engine hours</label>
+            <input
+              inputMode="numeric"
+              className={inputBase}
+              value={vehicle.engine_hours ?? ""}
+              onChange={(e) =>
+                onVehicleChange((prev) => ({
+                  ...prev,
+                  engine_hours: e.target.value || null,
+                }))
+              }
+              placeholder="Hours"
+            />
+          </div>
+
+          {/* Engine / Trim */}
+          <div className="space-y-1">
+            <label className={labelClass}>Engine / Trim</label>
+            <input
+              className={inputBase}
+              value={vehicle.engine ?? ""}
+              onChange={(e) =>
+                onVehicleChange((prev) => ({
+                  ...prev,
+                  engine: e.target.value || null,
+                }))
+              }
+              placeholder="e.g. 3.5L EcoBoost"
+            />
+          </div>
+
+          {/* Transmission */}
+          <div className="space-y-1">
+            <label className={labelClass}>Transmission</label>
+            <select
+              className={inputBase}
+              value={vehicle.transmission ?? ""}
+              onChange={(e) =>
+                onVehicleChange((prev) => ({
+                  ...prev,
+                  transmission: e.target.value || null,
+                }))
+              }
+            >
+              <option value="">Select transmission</option>
+              <option value="automatic">Automatic</option>
+              <option value="manual">Manual</option>
+              <option value="cvt">CVT</option>
+              <option value="dct">Dual-clutch</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {/* Fuel type */}
+          <div className="space-y-1">
+            <label className={labelClass}>Fuel type</label>
+            <select
+              className={inputBase}
+              value={vehicle.fuel_type ?? ""}
+              onChange={(e) =>
+                onVehicleChange((prev) => ({
+                  ...prev,
+                  fuel_type: e.target.value || null,
+                }))
+              }
+            >
+              <option value="">Select fuel type</option>
+              <option value="gasoline">Gasoline</option>
+              <option value="diesel">Diesel</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="phev">Plug-in hybrid</option>
+              <option value="ev">Electric (BEV)</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {/* Drivetrain */}
+          <div className="space-y-1">
+            <label className={labelClass}>Drivetrain</label>
+            <select
+              className={inputBase}
+              value={vehicle.drivetrain ?? ""}
+              onChange={(e) =>
+                onVehicleChange((prev) => ({
+                  ...prev,
+                  drivetrain: e.target.value || null,
+                }))
+              }
+            >
+              <option value="">Select drivetrain</option>
+              <option value="fwd">FWD</option>
+              <option value="rwd">RWD</option>
+              <option value="awd">AWD</option>
+              <option value="4x4">4x4</option>
+              <option value="other">Other</option>
+            </select>
           </div>
         </div>
       </div>
