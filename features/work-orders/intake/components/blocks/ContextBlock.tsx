@@ -1,11 +1,25 @@
+// features/work-orders/intake/components/blocks/ContextBlock.tsx (FULL FILE REPLACEMENT)
 import React from "react";
 import type { IntakeV1 } from "../../types";
+
+type Ctx = NonNullable<IntakeV1["context"]>;
+type RecentEvent = NonNullable<Ctx["recent_events"]>[number];
+
+const RECENT_EVENTS: ReadonlyArray<RecentEvent> = [
+  "breakdown",
+  "tow",
+  "accident",
+  "jump_start",
+  "fuel_contamination",
+  // If you want this, add it to the IntakeV1 type first:
+  // "regen_event",
+];
 
 export function ContextBlock(props: {
   intake: IntakeV1;
   onChange: (patch: NonNullable<IntakeV1["context"]>) => void;
 }) {
-  const ctx = props.intake.context ?? {
+  const ctx: Ctx = props.intake.context ?? {
     recent_events: null,
     smells_smoke_sounds: null,
     parked_extended: null,
@@ -13,9 +27,7 @@ export function ContextBlock(props: {
     previous_recommendations_declined: null,
   };
 
-  const toggleEvent = (
-    v: NonNullable<IntakeV1["context"]>["recent_events"][number],
-  ) => {
+  const toggleEvent = (v: RecentEvent) => {
     const set = new Set(ctx.recent_events ?? []);
     if (set.has(v)) set.delete(v);
     else set.add(v);
@@ -29,16 +41,7 @@ export function ContextBlock(props: {
       <div style={{ display: "grid", gap: 8 }}>
         <label style={{ fontWeight: 700 }}>Recent events</label>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {(
-            [
-              "breakdown",
-              "tow",
-              "accident",
-              "jump_start",
-              "fuel_contamination",
-              "regen_event",
-            ] as const
-          ).map((v) => (
+          {RECENT_EVENTS.map((v) => (
             <button
               key={v}
               type="button"
@@ -50,7 +53,7 @@ export function ContextBlock(props: {
                 opacity: (ctx.recent_events ?? []).includes(v) ? 1 : 0.65,
               }}
             >
-              {v.replace("_", " ")}
+              {v.replaceAll("_", " ")}
             </button>
           ))}
         </div>
@@ -61,9 +64,7 @@ export function ContextBlock(props: {
         <textarea
           rows={3}
           value={ctx.smells_smoke_sounds ?? ""}
-          onChange={(e) =>
-            props.onChange({ ...ctx, smells_smoke_sounds: e.target.value })
-          }
+          onChange={(e) => props.onChange({ ...ctx, smells_smoke_sounds: e.target.value })}
           placeholder="Optional details…"
           style={{ padding: 12, borderRadius: 10, width: "100%" }}
         />
@@ -113,9 +114,7 @@ export function ContextBlock(props: {
         <textarea
           rows={2}
           value={ctx.last_service_note ?? ""}
-          onChange={(e) =>
-            props.onChange({ ...ctx, last_service_note: e.target.value })
-          }
+          onChange={(e) => props.onChange({ ...ctx, last_service_note: e.target.value })}
           placeholder="Optional…"
           style={{ padding: 12, borderRadius: 10, width: "100%" }}
         />
