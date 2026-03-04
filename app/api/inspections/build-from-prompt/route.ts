@@ -1,3 +1,4 @@
+// app/api/inspections/build-from-prompt/route.ts (FULL FILE REPLACEMENT)
 import "server-only";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
@@ -5,9 +6,9 @@ import {
   buildFromMaster,
   type VehicleType,
   type BrakeSystem,
+  type CvipGroup,
+  type DutyClass,
 } from "@/features/inspections/lib/inspection/masterInspectionList";
-
-type DutyClass = "light" | "medium" | "heavy";
 
 /* ------------------------------------------------------------------ */
 /* Types & helpers                                                    */
@@ -22,6 +23,35 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
+}
+
+function asNumber(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function isVehicleType(v: unknown): v is VehicleType {
+  return v === "car" || v === "truck" || v === "bus" || v === "trailer";
+}
+
+function isBrakeSystem(v: unknown): v is BrakeSystem {
+  return v === "hyd_brake" || v === "air_brake";
+}
+
+function isDutyClass(v: unknown): v is DutyClass {
+  return v === "light" || v === "medium" || v === "heavy";
+}
+
+function isCvipGroup(v: unknown): v is CvipGroup {
+  return (
+    v === "cvip_truck_air" ||
+    v === "cvip_truck_hyd" ||
+    v === "cvip_trailer_air" ||
+    v === "cvip_trailer_hyd" ||
+    v === "cvip_bus_air" ||
+    v === "cvip_bus_hyd" ||
+    v === "cvip_coach_air" ||
+    v === "cvip_coach_hyd"
+  );
 }
 
 function unitHint(label: string): string | null {
@@ -81,35 +111,8 @@ function sanitizeSections(input: unknown): SectionOut[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Air/HD detectors so cars don't get truck stuff                     */
+/* Prompt heuristics                                                  */
 /* ------------------------------------------------------------------ */
-
-function looksAirBrakeItem(label: string): boolean {
-  const l = label.toLowerCase();
-  if (l.includes("push rod")) return true;
-  if (l.includes("pushrod")) return true;
-  if (l.includes("slack adjuster")) return true;
-  if (l.includes("air tank")) return true;
-  if (l.includes("air leak")) return true;
-  if (l.includes("governor")) return true;
-  if (/^(steer|drive|tag|trailer)\s*\d*\s+(left|right)\s+/i.test(label))
-    return true;
-  return false;
-}
-
-function looksAirBrakeSection(title: string): boolean {
-  const t = title.toLowerCase();
-  return (
-    t.includes("air brake") ||
-    t.includes("axle") ||
-    t.includes("corner grid (air)") ||
-    t.includes("steer") ||
-    t.includes("drive 1") ||
-    t.includes("drive 2") ||
-    t.includes("trailer") ||
-    t.includes("fifth wheel")
-  );
-}
 
 function promptSaysAutomotive(p: string): boolean {
   const l = p.toLowerCase();
@@ -125,17 +128,96 @@ function promptSaysAutomotive(p: string): boolean {
 
 function inferDutyFromPrompt(p: string): DutyClass | null {
   const l = p.toLowerCase();
-  if (
-    l.includes("light duty") ||
-    l.includes("automotive") ||
-    l.includes("passenger")
-  )
+  if (l.includes("light duty") || l.includes("automotive") || l.includes("passenger"))
     return "light";
   if (l.includes("medium duty") || l.includes("class 5") || l.includes("class 6"))
     return "medium";
   if (l.includes("heavy duty") || l.includes("class 7") || l.includes("class 8"))
     return "heavy";
   return null;
+}
+
+function inferCvipGroupFromPrompt(p: string): CvipGroup | null {
+  const l = p.toLowerCase();
+
+  // Only infer if the prompt is explicitly CVIP-ish; otherwise leave null.
+  const mentionsCvip =
+    l.includes("cvip") ||
+    l.includes("commercial vehicle inspection") ||
+    l.includes("alberta inspection");
+
+  if (!mentionsCvip) return null;
+
+  const isTrailer = l.includes("trailer") || l.includes("dolly");
+  const isBus = l.includes("bus");
+  const isCoach = l.includes("coach") || l.includes("motorcoach");
+
+  const mentionsAir = l.includes("air brake") || l.includes("air-brake");
+  const mentionsHyd = l.includes("hydraulic") || l.includes("hyd brake") || l.includes("hyd-brake");
+
+  const kind: "truck" | "trailer" | "bus" | "coach" =
+    isCoach ? "coach" : isBus ? "bus" : isTrailer ? "trailer" : "truck";
+
+  const sys: "air" | "hyd" | null = mentionsAir ? "air" : mentionsHyd ? "hyd" : null;
+  if (!sys) return null;
+
+  const key = `cvip_${kind}_${sys}` as const;
+  return isCvipGroup(key) ? key : null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Narrow HD-only gating (AI augmentation ONLY)                        */
+/* ------------------------------------------------------------------ */
+/**
+ * IMPORTANT:
+ * We only strip items that are unambiguously HD/air/tractor-trailer specific.
+ * We do NOT gate shared items (lights, tires, wheel bearings, leaks, etc.).
+ */
+
+const HD_ONLY_ITEM_PATTERNS: RegExp[] = [
+  /push\s*rod/i,
+  /slack\s*adjuster/i,
+  /\bs-?cam\b/i,
+  /treadle\s*valve/i,
+  /glad\s*hand/i,
+  /tractor\s*protection/i,
+  /trailer\s*hand\s*valve/i,
+  /spring\s*brake/i,
+  /\bair\s*compress(or|ion)\b/i,
+  /air\s*dryer/i,
+  /governor\s*(cut-?in|cut-?out)/i,
+  /\bair\s*tank\b/i,
+  /air\s*leak(age)?/i,
+  /fifth\s*wheel/i,
+  /\bking\s*pin\b/i,
+  /landing\s*gear/i,
+  /service\s*brake\b/i, // AI tends to phrase air-brake content this way
+];
+
+const HD_ONLY_SECTION_PATTERNS: RegExp[] = [
+  /\bbrakes?\b.*\bair\b/i,
+  /\bair\s*system\b/i,
+  /\bfifth\s*wheel\b/i,
+  /\bcouplers?\b/i,
+  /\bglad\s*hand\b/i,
+];
+
+function isHdOnlySectionTitle(title: string): boolean {
+  return HD_ONLY_SECTION_PATTERNS.some((re) => re.test(title));
+}
+
+function isHdOnlyItemLabel(label: string): boolean {
+  return HD_ONLY_ITEM_PATTERNS.some((re) => re.test(label));
+}
+
+function aiContainsHdOnly(sections: SectionOut[]): boolean {
+  for (const s of sections) {
+    if (isHdOnlySectionTitle(s.title)) return true;
+    for (const it of s.items) {
+      if (isHdOnlyItemLabel(it.item)) return true;
+    }
+  }
+  return false;
 }
 
 /* ------------------------------------------------------------------ */
@@ -166,7 +248,6 @@ const SectionsSchema = {
                   item: { type: "string", minLength: 1 },
                   unit: { type: ["string", "null"] },
                 },
-                // IMPORTANT: json_schema format requires required to include every property key
                 required: ["item", "unit"],
               },
             },
@@ -252,24 +333,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const prompt = asString(body.prompt);
-    const vehicleTypeStr = asString(body.vehicleType);
-    const brakeSystemStr = asString(body.brakeSystem);
-    const dutyClassStr = asString(body.dutyClass);
-    const targetCountRaw = body.targetCount;
-
+    const prompt = asString(body.prompt)?.trim() ?? null;
     if (!prompt) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
     const promptIsAuto = promptSaysAutomotive(prompt);
 
-    // 1) infer vehicle — prompt wins if it says automotive
+    // Optional explicit inputs
+    const vehicleTypeIn = body.vehicleType;
+    const brakeSystemIn = body.brakeSystem;
+    const dutyClassIn = body.dutyClass;
+    const cvipGroupIn = body.cvipGroup;
+    const targetCountIn = body.targetCount;
+
+    // 1) vehicleType (prompt wins if it says automotive)
     let vehicleType: VehicleType;
     if (promptIsAuto) {
       vehicleType = "car";
-    } else if (vehicleTypeStr) {
-      vehicleType = vehicleTypeStr as VehicleType;
+    } else if (isVehicleType(vehicleTypeIn)) {
+      vehicleType = vehicleTypeIn;
     } else {
       const p = prompt.toLowerCase();
       vehicleType =
@@ -282,25 +365,21 @@ export async function POST(req: Request) {
           : "car";
     }
 
-    // 2) infer duty class (body > prompt > vehicle fallback)
+    // 2) dutyClass (body > prompt > vehicle fallback)
     let dutyClass: DutyClass;
-    if (
-      dutyClassStr === "light" ||
-      dutyClassStr === "medium" ||
-      dutyClassStr === "heavy"
-    ) {
-      dutyClass = dutyClassStr;
+    if (isDutyClass(dutyClassIn)) {
+      dutyClass = dutyClassIn;
     } else {
       const fromPrompt = inferDutyFromPrompt(prompt);
       dutyClass = fromPrompt ?? (vehicleType === "car" ? "light" : "heavy");
     }
 
-    // 3) infer brake system (hyd = light/auto, air = HD)
+    // 3) brakeSystem (prompt auto => hyd, else body, else inferred)
     let brakeSystem: BrakeSystem;
     if (promptIsAuto) {
       brakeSystem = "hyd_brake";
-    } else if (brakeSystemStr) {
-      brakeSystem = brakeSystemStr as BrakeSystem;
+    } else if (isBrakeSystem(brakeSystemIn)) {
+      brakeSystem = brakeSystemIn;
     } else {
       brakeSystem =
         dutyClass === "light"
@@ -310,21 +389,32 @@ export async function POST(req: Request) {
             : "air_brake";
     }
 
-    // 4) target size
+    // 4) cvipGroup (body > prompt inference, but never forced)
+    let cvipGroup: CvipGroup | undefined;
+    if (isCvipGroup(cvipGroupIn)) {
+      cvipGroup = cvipGroupIn;
+    } else {
+      const inferred = inferCvipGroupFromPrompt(prompt);
+      if (inferred) cvipGroup = inferred;
+    }
+
+    // 5) targetCount
     let targetCount: number;
-    if (typeof targetCountRaw === "number" && targetCountRaw > 0) {
-      targetCount = targetCountRaw;
+    const n = asNumber(targetCountIn);
+    if (n && n > 0) {
+      targetCount = Math.floor(n);
     } else {
       const m = prompt.match(/(\d{2,3})\s*(point|pt)?/i);
       targetCount = m ? parseInt(m[1] ?? "20", 10) : 20;
     }
 
-    // 5) deterministic base — duty-aware
+    // 6) deterministic base (DO NOT text-gate base)
     const baseSections = buildFromMaster({
       vehicleType,
       brakeSystem,
       targetCount,
       dutyClass,
+      cvipGroup,
     });
 
     // If no OpenAI, return base
@@ -332,18 +422,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ sections: baseSections }, { status: 200 });
     }
 
-    // 6) try to augment with OpenAI
+    // 7) try to augment with OpenAI
     let aiSections: SectionOut[] = [];
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+      const lightDutyMode = dutyClass === "light" || brakeSystem === "hyd_brake";
+
       const system = [
         "You are an AI assistant for generating vehicle inspection templates.",
-        dutyClass === "light" || brakeSystem === "hyd_brake"
-          ? "This is a light-duty / automotive inspection. Do NOT include heavy-duty truck or air-brake items such as push rod travel, slack adjusters, axle-by-axle dual tire rows, 5th wheel, or trailer air supply."
+        lightDutyMode
+          ? "This is a LIGHT-DUTY / HYDRAULIC inspection. Avoid HD AIR-BRAKE and tractor-trailer-specific items (push rod travel, slack adjusters, air tanks/compressor/governor, glad hands, fifth wheel, kingpin, landing gear). Shared items like tires, lights, wheel bearings, steering linkage, leaks, and general safety checks are allowed."
           : dutyClass === "medium"
-            ? "This is a medium-duty inspection. Prefer hydraulic/light-truck items, but medium truck chassis/suspension/steering items are OK. Avoid HD tractor-only items like fifth wheel unless the prompt explicitly asks."
-            : "This inspection may include heavy-duty / air-brake content.",
+            ? "This is a MEDIUM-DUTY inspection. Prefer hydraulic/light-truck items. Avoid tractor-only items like fifth wheel unless explicitly requested."
+            : "This inspection may include HEAVY-DUTY / AIR-BRAKE content where appropriate.",
         "Return ONLY JSON that follows the supplied schema.",
         `Aim for about ${targetCount} inspection items.`,
       ].join(" ");
@@ -352,8 +444,12 @@ export async function POST(req: Request) {
         `Prompt: ${prompt}`,
         `Vehicle type: ${vehicleType}`,
         `Duty class: ${dutyClass}`,
+        `Brake system: ${brakeSystem}`,
+        cvipGroup ? `CVIP group: ${cvipGroup}` : null,
         "Generate inspection sections and items suitable for a professional repair shop.",
-      ].join("\n");
+      ]
+        .filter((v): v is string => Boolean(v))
+        .join("\n");
 
       const resp = await openai.responses.create({
         model: "gpt-4o-mini",
@@ -378,24 +474,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ sections: baseSections }, { status: 200 });
     }
 
-    // 7) if light-duty, strip HD/air from AI
-    if (dutyClass === "light" || brakeSystem === "hyd_brake") {
+    // 8) AI-only gating: for light-duty/hyd, strip ONLY unambiguous HD-only content
+    const lightDutyMode = dutyClass === "light" || brakeSystem === "hyd_brake";
+    if (lightDutyMode) {
       aiSections = aiSections
         .map((sec) => {
-          if (looksAirBrakeSection(sec.title)) return null;
-          const filteredItems = sec.items.filter((it) => !looksAirBrakeItem(it.item));
+          if (isHdOnlySectionTitle(sec.title)) return null;
+          const filteredItems = sec.items.filter((it) => !isHdOnlyItemLabel(it.item));
           if (!filteredItems.length) return null;
           return { ...sec, items: filteredItems };
         })
         .filter((v): v is SectionOut => v !== null);
     }
 
-    // 8) merge if AI is good enough
+    // 9) Merge policy:
+    // - Require enough AI items
+    // - In light-duty mode, refuse to merge if AI still contains HD-only signatures
     const aiItemCount = aiSections.reduce((sum, s) => sum + s.items.length, 0);
     const minItemsToMerge = Math.max(10, Math.floor(targetCount * 0.5));
-    const shouldMerge = aiSections.length >= 3 && aiItemCount >= minItemsToMerge;
+
+    const shouldMerge =
+      aiSections.length >= 3 &&
+      aiItemCount >= minItemsToMerge &&
+      (!lightDutyMode || !aiContainsHdOnly(aiSections));
 
     const merged = [...baseSections];
+
     if (shouldMerge) {
       for (const aiSec of aiSections) {
         const existing = merged.find(
