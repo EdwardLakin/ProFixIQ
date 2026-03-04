@@ -364,7 +364,13 @@ export default function PortalRequestWhenPage() {
 
     setStarting(true);
     try {
-      const payload = { vehicleId, startsAt: selectedSlotIso, visitType };
+      // ✅ Matches /api/portal/request/start expectations
+      const payload = {
+        vehicleId,
+        startsAt: selectedSlotIso,
+        durationMins: 60,
+        visitType,
+      };
 
       const r = await postJson<{ workOrderId?: string; bookingId?: string }>(
         "/api/portal/request/start",
@@ -408,8 +414,12 @@ export default function PortalRequestWhenPage() {
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">Request service</h1>
           <p className="mt-2 text-sm text-neutral-400">We couldn’t find your customer profile yet.</p>
           <div className="mt-4 flex gap-2">
-            <LinkButton href="/portal/profile" variant="outline" size="sm">Go to profile</LinkButton>
-            <LinkButton href="/portal/vehicles" size="sm">Add a vehicle</LinkButton>
+            <LinkButton href="/portal/profile" variant="outline" size="sm">
+              Go to profile
+            </LinkButton>
+            <LinkButton href="/portal/vehicles" size="sm">
+              Add a vehicle
+            </LinkButton>
           </div>
         </div>
       </div>
@@ -424,8 +434,12 @@ export default function PortalRequestWhenPage() {
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">Request service</h1>
           <p className="mt-2 text-sm text-neutral-400">Your portal account isn’t linked to a shop yet.</p>
           <div className="mt-4 flex gap-2">
-            <LinkButton href="/portal/profile" variant="outline" size="sm">Go to profile</LinkButton>
-            <LinkButton href="/portal/customer-appointments" size="sm">My appointments</LinkButton>
+            <LinkButton href="/portal/profile" variant="outline" size="sm">
+              Go to profile
+            </LinkButton>
+            <LinkButton href="/portal/customer-appointments" size="sm">
+              My appointments
+            </LinkButton>
           </div>
         </div>
       </div>
@@ -460,13 +474,16 @@ export default function PortalRequestWhenPage() {
             <div className="rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-sm text-neutral-300">
               No vehicles found. Add one first.
               <div className="mt-3">
-                <LinkButton href="/portal/vehicles" size="sm">Add vehicle</LinkButton>
+                <LinkButton href="/portal/vehicles" size="sm">
+                  Add vehicle
+                </LinkButton>
               </div>
             </div>
           ) : (
             <select className={inputClass()} value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
               {vehicles.map((v) => {
-                const label = [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() || "Vehicle";
+                const label =
+                  [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() || "Vehicle";
                 const vin = v.vin ? ` • VIN ${String(v.vin).slice(-6)}` : "";
                 return (
                   <option key={v.id} value={v.id}>
@@ -548,7 +565,7 @@ export default function PortalRequestWhenPage() {
             disabled={!canStart || starting || vehicles.length === 0}
             className="min-w-[180px]"
           >
-            {starting ? "Starting…" : "Next: build request"}
+            {starting ? "Starting…" : "Next: intake & request"}
           </Button>
 
           <LinkButton href="/portal/customer-appointments" variant="outline" size="sm">
@@ -557,7 +574,7 @@ export default function PortalRequestWhenPage() {
         </div>
 
         <p className="text-[0.75rem] text-neutral-500">
-          Next you’ll build your service request (menu items, custom lines, and quote-only requests).
+          Next you’ll complete an intake form, then build your request (menu items, custom lines, and quote-only requests).
         </p>
       </section>
     </div>

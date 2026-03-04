@@ -56,12 +56,15 @@ export async function POST(req: Request) {
       return bad("visitType must be 'waiter' or 'drop_off'");
     }
 
-    const startsAtRaw = typeof body.startsAt === "string" ? body.startsAt.trim() : "";
+    const startsAtRaw =
+      typeof body.startsAt === "string" ? body.startsAt.trim() : "";
     if (!startsAtRaw) return bad("Missing startsAt (ISO) from selected slot.");
-    if (!isIsoDateString(startsAtRaw)) return bad("startsAt must be a valid ISO date string.");
+    if (!isIsoDateString(startsAtRaw))
+      return bad("startsAt must be a valid ISO date string.");
 
     const duration =
-      typeof body.durationMins === "number" && Number.isFinite(body.durationMins)
+      typeof body.durationMins === "number" &&
+      Number.isFinite(body.durationMins)
         ? Math.max(15, Math.min(180, Math.trunc(body.durationMins)))
         : 60;
 
@@ -84,14 +87,16 @@ export async function POST(req: Request) {
 
     if (custErr) return bad(custErr.message, 500);
     if (!customer?.id) return bad("Customer profile not found", 404);
-    if (!customer.shop_id) return bad("Customer is not linked to a shop", 400);
+    if (!customer.shop_id)
+      return bad("Customer is not linked to a shop", 400);
 
-    // Overlap check BEFORE inserting booking
+    // ✅ Overlap check BEFORE inserting booking (no .or() string parsing)
     const { data: overlaps, error: ovErr } = await supabase
       .from("bookings")
       .select("id")
       .eq("shop_id", customer.shop_id)
-      .or(`and(starts_at.lt.${endsAt},ends_at.gt.${startsAt})`)
+      .lt("starts_at", endsAt)
+      .gt("ends_at", startsAt)
       .limit(1);
 
     if (ovErr) return bad("Failed to check availability", 500);
@@ -114,7 +119,9 @@ export async function POST(req: Request) {
     const { data: createdWo, error: woErr } = await supabase
       .from("work_orders")
       .insert(insertWo)
-      .select("id, shop_id, customer_id, vehicle_id, status, approval_state, is_waiter, created_at")
+      .select(
+        "id, shop_id, customer_id, vehicle_id, status, approval_state, is_waiter, created_at",
+      )
       .single();
 
     if (woErr || !createdWo?.id) return bad("Failed to create work order", 500);
@@ -126,6 +133,9 @@ export async function POST(req: Request) {
       ends_at: endsAt,
       status: "pending",
       notes: null,
+
+      // ✅ Recommended (if you add this column):
+      // work_order_id: createdWo.id,
     };
 
     const { data: createdBooking, error: bErr } = await supabase

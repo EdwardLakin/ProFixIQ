@@ -1,4 +1,3 @@
-// /features/portal/server/portalAuth.ts
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -16,7 +15,9 @@ export type PortalCustomer = Pick<
   "id" | "user_id" | "shop_id" | "first_name" | "last_name" | "email" | "phone"
 >;
 
-// ✅ Include EVERYTHING portal pages read from work_orders
+/**
+ * Work order fields visible to the customer portal
+ */
 export type PortalWorkOrder = Pick<
   WorkOrderRow,
   | "id"
@@ -37,6 +38,10 @@ export type PortalWorkOrder = Pick<
   | "invoice_total"
   | "labor_total"
   | "parts_total"
+  | "intake_json"
+  | "intake_status"
+  | "intake_submitted_at"
+  | "intake_submitted_by"
 >;
 
 export function nonEmpty(s: unknown): s is string {
@@ -49,6 +54,9 @@ export function asIsoOrThrow(iso: string, label: string): string {
   return d.toISOString();
 }
 
+/**
+ * Ensure the Supabase session has a valid user
+ */
 export async function requireAuthedUser(
   supabase: SupabaseClient<DB>,
 ): Promise<{ id: string }> {
@@ -64,6 +72,9 @@ export async function requireAuthedUser(
   return { id: user.id };
 }
 
+/**
+ * Ensure the logged-in user has a matching customer record
+ */
 export async function requirePortalCustomer(
   supabase: SupabaseClient<DB>,
   userId: string,
@@ -80,6 +91,9 @@ export async function requirePortalCustomer(
   return data;
 }
 
+/**
+ * Verify the work order belongs to the authenticated customer
+ */
 export async function requireWorkOrderOwnedByCustomer(
   supabase: SupabaseClient<DB>,
   workOrderId: string,
@@ -107,6 +121,10 @@ export async function requireWorkOrderOwnedByCustomer(
         "invoice_total",
         "labor_total",
         "parts_total",
+        "intake_json",
+        "intake_status",
+        "intake_submitted_at",
+        "intake_submitted_by",
       ].join(","),
     )
     .eq("id", workOrderId)
@@ -119,6 +137,21 @@ export async function requireWorkOrderOwnedByCustomer(
   return data;
 }
 
+/**
+ * Optional helper specifically for intake routes
+ * (Same validation, but clearer intent)
+ */
+export async function requireCustomerWorkOrderForIntake(
+  supabase: SupabaseClient<DB>,
+  workOrderId: string,
+  customerId: string,
+): Promise<PortalWorkOrder> {
+  return requireWorkOrderOwnedByCustomer(supabase, workOrderId, customerId);
+}
+
+/**
+ * Load shop by slug (portal routing)
+ */
 export async function requireShopBySlug(
   supabase: SupabaseClient<DB>,
   shopSlug: string,

@@ -22,6 +22,7 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type QuoteLineRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
+type BookingRow = DB["public"]["Tables"]["bookings"]["Row"];
 
 const COPPER = "#C57A4A";
 
@@ -34,11 +35,7 @@ function inputClass() {
 }
 
 function sectionTitle(s: string) {
-  return (
-    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
-      {s}
-    </div>
-  );
+  return <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">{s}</div>;
 }
 
 async function postJson<TResp>(
@@ -79,10 +76,7 @@ function safeTrim(s: unknown) {
 }
 
 function rec(row: unknown): Record<string, unknown> {
-  return (row && typeof row === "object" ? (row as Record<string, unknown>) : {}) as Record<
-    string,
-    unknown
-  >;
+  return (row && typeof row === "object" ? (row as Record<string, unknown>) : {}) as Record<string, unknown>;
 }
 
 function getOptString(row: unknown, key: string): string | null {
@@ -118,10 +112,7 @@ function modalShell(open: boolean) {
 }
 
 function modalBackdrop(open: boolean) {
-  return cx(
-    "absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity",
-    open ? "opacity-100" : "opacity-0",
-  );
+  return cx("absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity", open ? "opacity-100" : "opacity-0");
 }
 
 function modalCard(open: boolean) {
@@ -131,20 +122,64 @@ function modalCard(open: boolean) {
   );
 }
 
+function fmtBookingRange(b: BookingRow | null) {
+  if (!b) return null;
+  const s = typeof b.starts_at === "string" ? Date.parse(b.starts_at) : NaN;
+  const e = typeof b.ends_at === "string" ? Date.parse(b.ends_at) : NaN;
+  if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+
+  const sd = new Date(s);
+  const ed = new Date(e);
+  const date = sd.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const st = sd.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const et = ed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${date} • ${st} – ${et}`;
+}
+
+// Intake helpers (stored into work_orders.notes without schema changes)
+function buildIntakeNotesBlock(input: {
+  concern: string;
+  details: string;
+  contactPref: string;
+  mileage: string;
+}) {
+  const lines: string[] = [];
+  lines.push("PORTAL INTAKE");
+  lines.push(`Concern: ${input.concern.trim()}`);
+  if (input.details.trim()) lines.push(`Details: ${input.details.trim()}`);
+  if (input.contactPref.trim()) lines.push(`Contact: ${input.contactPref.trim()}`);
+  if (input.mileage.trim()) lines.push(`Mileage: ${input.mileage.trim()}`);
+  return lines.join("\n");
+}
+
+function mergeNotes(existing: string | null | undefined, intakeBlock: string) {
+  const base = (existing ?? "").trim();
+  // Replace prior PORTAL INTAKE block if present
+  const marker = "PORTAL INTAKE";
+  if (!base) return intakeBlock;
+
+  const idx = base.indexOf(marker);
+  if (idx >= 0) {
+    const before = base.slice(0, idx).trimEnd();
+    return before ? `${before}\n\n${intakeBlock}` : intakeBlock;
+  }
+
+  return `${base}\n\n${intakeBlock}`;
+}
+
 export default function PortalRequestBuildPage() {
   const supabase = createClientComponentClient<DB>();
   const router = useRouter();
   const sp = useSearchParams();
 
   const workOrderId = sp.get("wo") ?? "";
-
-  // ✅ Option B: carry bookingId from when page (NOT startsAt)
   const bookingId = sp.get("booking") ?? sp.get("bookingId") ?? "";
 
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
   const [wo, setWo] = useState<WorkOrderRow | null>(null);
   const [vehicle, setVehicle] = useState<VehicleRow | null>(null);
+  const [booking, setBooking] = useState<BookingRow | null>(null);
 
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
   const [menuSearch, setMenuSearch] = useState("");
@@ -162,7 +197,15 @@ export default function PortalRequestBuildPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // NEW: Review & Sign
+  // NEW: Intake form flow
+  const [intakeConcern, setIntakeConcern] = useState("");
+  const [intakeDetails, setIntakeDetails] = useState("");
+  const [intakeContactPref, setIntakeContactPref] = useState("Text or call");
+  const [intakeMileage, setIntakeMileage] = useState("");
+  const [intakeSaving, setIntakeSaving] = useState(false);
+  const [intakeSavedAt, setIntakeSavedAt] = useState<string | null>(null);
+
+  // Review & Sign
   const [reviewOpen, setReviewOpen] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [sigUrl, setSigUrl] = useState<string | null>(null);
@@ -174,10 +217,7 @@ export default function PortalRequestBuildPage() {
 
     return menuItems
       .filter((m) => {
-        const hay = [menuTitle(m), m.description ?? "", m.category ?? "", m.service_key ?? ""]
-          .join(" ")
-          .toLowerCase();
-
+        const hay = [menuTitle(m), m.description ?? "", m.category ?? "", m.service_key ?? ""].join(" ").toLowerCase();
         return hay.includes(q);
       })
       .slice(0, 40);
@@ -186,6 +226,11 @@ export default function PortalRequestBuildPage() {
   async function loadAll() {
     if (!workOrderId) {
       toast.error("Missing work order id.");
+      router.replace("/portal/request/when");
+      return;
+    }
+    if (!bookingId) {
+      toast.error("Missing booking. Please pick a time again.");
       router.replace("/portal/request/when");
       return;
     }
@@ -235,10 +280,54 @@ export default function PortalRequestBuildPage() {
       }
       setWo(w as WorkOrderRow);
 
+      // Load booking (basic; schema currently doesn’t link customer/wo)
+      const { data: b, error: bErr } = await supabase
+        .from("bookings")
+        .select("*")
+        .eq("id", bookingId)
+        .maybeSingle();
+
+      if (bErr) throw new Error(bErr.message);
+      if (!b) {
+        toast.error("Booking not found. Please pick a time again.");
+        router.replace("/portal/request/when");
+        return;
+      }
+      // Minimal sanity: same shop
+      const bShop = (b as BookingRow).shop_id ?? null;
+      if (bShop && w.shop_id && bShop !== w.shop_id) {
+        toast.error("Booking mismatch. Please pick a time again.");
+        router.replace("/portal/request/when");
+        return;
+      }
+      setBooking(b as BookingRow);
+
+      // Hydrate intake fields from notes if already saved
+      const existingNotes = (w as WorkOrderRow).notes ?? null;
+      if (typeof existingNotes === "string" && existingNotes.includes("PORTAL INTAKE")) {
+        // very light parse (best-effort)
+        const lines = existingNotes.split("\n").map((x) => x.trim());
+        const getVal = (prefix: string) => {
+          const hit = lines.find((l) => l.toLowerCase().startsWith(prefix.toLowerCase()));
+          if (!hit) return "";
+          const idx = hit.indexOf(":");
+          return idx >= 0 ? hit.slice(idx + 1).trim() : "";
+        };
+        const c0 = getVal("Concern");
+        const d0 = getVal("Details");
+        const p0 = getVal("Contact");
+        const m0 = getVal("Mileage");
+
+        if (c0) setIntakeConcern(c0);
+        if (d0) setIntakeDetails(d0);
+        if (p0) setIntakeContactPref(p0);
+        if (m0) setIntakeMileage(m0);
+      }
+
       if (w.vehicle_id) {
         const { data: v, error: vErr } = await supabase
           .from("vehicles")
-          .select("id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at")
+          .select("id,customer_id,shop_id,year,make,model,vin,,license_plate,mileage,color,created_at")
           .eq("id", w.vehicle_id)
           .maybeSingle();
 
@@ -313,7 +402,46 @@ export default function PortalRequestBuildPage() {
   useEffect(() => {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workOrderId]);
+  }, [workOrderId, bookingId]);
+
+  async function saveIntake() {
+    if (!wo?.id || intakeSaving) return;
+
+    const concern = intakeConcern.trim();
+    if (!concern) {
+      toast.error("Please enter your main concern.");
+      return;
+    }
+
+    setIntakeSaving(true);
+    try {
+      const intakeBlock = buildIntakeNotesBlock({
+        concern,
+        details: intakeDetails,
+        contactPref: intakeContactPref,
+        mileage: intakeMileage,
+      });
+
+      const merged = mergeNotes(wo.notes ?? null, intakeBlock);
+
+      const { data: updated, error } = await supabase
+        .from("work_orders")
+        .update({ notes: merged })
+        .eq("id", wo.id)
+        .select("*")
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (updated) setWo(updated as WorkOrderRow);
+      setIntakeSavedAt(new Date().toISOString());
+      toast.success("Intake saved.");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save intake.");
+    } finally {
+      setIntakeSaving(false);
+    }
+  }
 
   async function addMenuLine(menuItemId: string) {
     if (!wo?.id) return;
@@ -389,7 +517,7 @@ export default function PortalRequestBuildPage() {
     await loadAll();
   }
 
-  // NEW: open the review gate instead of submitting immediately
+  // Open review gate (requires intake)
   function beginSubmit() {
     if (!wo?.id || submitting) return;
 
@@ -399,7 +527,11 @@ export default function PortalRequestBuildPage() {
       return;
     }
 
-    // reset per-open state
+    if (!intakeConcern.trim()) {
+      toast.error("Please complete the intake form first.");
+      return;
+    }
+
     setAgreed(false);
     setSigUrl(null);
     setReviewOpen(true);
@@ -487,9 +619,7 @@ export default function PortalRequestBuildPage() {
       <div className="mx-auto max-w-3xl space-y-3 text-white">
         <Toaster position="top-center" />
         <div className={cardClass()}>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
-            Build request
-          </h1>
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">Build request</h1>
           <p className="mt-2 text-sm text-neutral-400">This request is missing or expired.</p>
           <div className="mt-4">
             <LinkButton href="/portal/request/when" size="sm">
@@ -502,8 +632,9 @@ export default function PortalRequestBuildPage() {
   }
 
   const name =
-    [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() ||
-    "Customer";
+    [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() || "Customer";
+
+  const bookingLabel = fmtBookingRange(booking);
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5 text-white">
@@ -519,11 +650,12 @@ export default function PortalRequestBuildPage() {
               Request
             </div>
             <h1 className="mt-2 text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
-              Build your request
+              Intake &amp; request
             </h1>
             <p className="mt-1 text-xs text-neutral-400">
               {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"} • WO{" "}
               <span className="font-mono text-neutral-300">{wo.id.slice(0, 8)}…</span>
+              {bookingLabel ? <span className="ml-2">• {bookingLabel}</span> : null}
             </p>
           </div>
 
@@ -537,6 +669,65 @@ export default function PortalRequestBuildPage() {
           </div>
         </div>
       </header>
+
+      {/* NEW: Intake form flow */}
+      <section className={cardClass() + " space-y-3"}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            {sectionTitle("Intake form")}
+            <div className="mt-1 text-xs text-neutral-500">
+              Tell us what’s going on. This helps the shop triage your request faster.
+            </div>
+          </div>
+          <div className="text-[0.75rem] text-neutral-500">
+            {intakeSavedAt ? <span className="text-emerald-200">Saved</span> : <span className="text-neutral-400">Not saved yet</span>}
+          </div>
+        </div>
+
+        <input
+          className={inputClass()}
+          placeholder="Main concern (required) — e.g., ‘Brake pedal feels soft’"
+          value={intakeConcern}
+          onChange={(e) => setIntakeConcern(e.target.value)}
+        />
+
+        <textarea
+          className={inputClass() + " min-h-[92px] resize-none"}
+          placeholder="Details (optional) — noises, when it happens, warning lights, etc."
+          value={intakeDetails}
+          onChange={(e) => setIntakeDetails(e.target.value)}
+        />
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <select
+            className={inputClass()}
+            value={intakeContactPref}
+            onChange={(e) => setIntakeContactPref(e.target.value)}
+          >
+            <option value="Text or call">Text or call</option>
+            <option value="Text only">Text only</option>
+            <option value="Call only">Call only</option>
+            <option value="Email">Email</option>
+          </select>
+
+          <input
+            className={inputClass()}
+            inputMode="numeric"
+            placeholder="Mileage (optional)"
+            value={intakeMileage}
+            onChange={(e) => setIntakeMileage(e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" onClick={() => void saveIntake()} disabled={intakeSaving}>
+            {intakeSaving ? "Saving…" : "Save intake"}
+          </Button>
+          <span className="text-[0.75rem] text-neutral-500">
+            Saved into the work order notes as <span className="text-neutral-300">PORTAL INTAKE</span>.
+          </span>
+        </div>
+      </section>
 
       <section className={cardClass()}>
         <div className="flex items-center justify-between">
@@ -623,12 +814,7 @@ export default function PortalRequestBuildPage() {
             <div className="mt-1 text-xs text-neutral-500">Fixed pricing lines your shop already offers.</div>
           </div>
           <div className="w-full max-w-sm">
-            <input
-              className={inputClass()}
-              placeholder="Search menu…"
-              value={menuSearch}
-              onChange={(e) => setMenuSearch(e.target.value)}
-            />
+            <input className={inputClass()} placeholder="Search menu…" value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} />
           </div>
         </div>
 
@@ -706,13 +892,7 @@ export default function PortalRequestBuildPage() {
             value={qoDesc}
             onChange={(e) => setQoDesc(e.target.value)}
           />
-          <input
-            className={inputClass()}
-            inputMode="numeric"
-            placeholder="Qty"
-            value={qoQty}
-            onChange={(e) => setQoQty(e.target.value)}
-          />
+          <input className={inputClass()} inputMode="numeric" placeholder="Qty" value={qoQty} onChange={(e) => setQoQty(e.target.value)} />
         </div>
 
         <textarea
@@ -732,14 +912,14 @@ export default function PortalRequestBuildPage() {
       <section className={cardClass()}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-neutral-100">Submit request</div>
+            <div className="text-sm font-semibold text-neutral-100">Review &amp; submit</div>
             <div className="mt-1 text-xs text-neutral-500">
-              Submitting will finalize your draft and keep the reserved booking.
+              You’ll review terms and submit your intake + request to the shop.
             </div>
           </div>
 
           <Button type="button" onClick={beginSubmit} disabled={submitting}>
-            {submitting ? "Submitting…" : "Submit request"}
+            {submitting ? "Submitting…" : "Review & Submit"}
           </Button>
         </div>
       </section>
@@ -754,14 +934,11 @@ export default function PortalRequestBuildPage() {
         <div className={modalCard(reviewOpen)} role="dialog" aria-modal="true">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div
-                className="font-blackops text-[0.9rem] uppercase tracking-[0.18em]"
-                style={{ color: COPPER }}
-              >
+              <div className="font-blackops text-[0.9rem] uppercase tracking-[0.18em]" style={{ color: COPPER }}>
                 Review &amp; sign
               </div>
               <div className="mt-1 text-xs text-neutral-300">
-                Confirm your request details and agree to terms before submitting.
+                Confirm your intake + request details and agree to terms before submitting.
               </div>
             </div>
 
@@ -776,25 +953,34 @@ export default function PortalRequestBuildPage() {
 
           <div className="mt-4 grid gap-3">
             <div className="rounded-2xl border border-white/10 bg-black/35 p-3">
-              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
-                Summary
-              </div>
+              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">Summary</div>
               <div className="mt-2 text-sm text-neutral-100">
                 {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"}
               </div>
               <div className="mt-1 text-xs text-neutral-400">
+                {bookingLabel ? <span>{bookingLabel} • </span> : null}
                 WO <span className="font-mono text-neutral-300">{wo.id}</span> • Lines {lines.length} • Quote requests{" "}
                 {quoteLines.length}
               </div>
-              <div className="mt-2 text-xs text-neutral-500">
-                Booking reservation is held while you submit this request.
+
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
+                <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">Intake</div>
+                <div className="mt-2 text-sm text-neutral-100">{intakeConcern.trim() || "—"}</div>
+                {intakeDetails.trim() ? <div className="mt-1 text-xs text-neutral-400">{intakeDetails.trim()}</div> : null}
+                <div className="mt-2 text-xs text-neutral-500">
+                  Contact: <span className="text-neutral-300">{intakeContactPref || "—"}</span>
+                  {intakeMileage.trim() ? (
+                    <>
+                      {" "}
+                      • Mileage: <span className="text-neutral-300">{intakeMileage.trim()}</span>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/25 p-3 text-xs text-neutral-300">
-              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
-                Disclaimers
-              </div>
+              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">Disclaimers</div>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-neutral-300">
                 <li>Prices and estimates are subject to change after inspection and diagnosis.</li>
                 <li>This is a request and is not confirmed until the shop approves the appointment.</li>
@@ -809,8 +995,7 @@ export default function PortalRequestBuildPage() {
             <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs text-neutral-300">
-                  Signature{" "}
-                  <span className="text-neutral-500">(recommended)</span>
+                  Signature <span className="text-neutral-500">(recommended)</span>
                 </div>
                 <div className="text-[0.7rem] text-neutral-500">
                   {sigUrl ? (
@@ -834,9 +1019,7 @@ export default function PortalRequestBuildPage() {
                   {submitting ? "Submitting…" : "Agree & Submit request"}
                 </Button>
 
-                <span className="text-[0.7rem] text-neutral-500">
-                  Staff will review and approve the appointment.
-                </span>
+                <span className="text-[0.7rem] text-neutral-500">Staff will review and approve the appointment.</span>
               </div>
             </div>
           </div>

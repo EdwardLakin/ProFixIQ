@@ -1,3 +1,6 @@
+// /app/portal/work-orders/view/[id]/page.tsx (FULL FILE REPLACEMENT)
+
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -41,6 +44,8 @@ type WorkOrderLite = Pick<
   | "customer_id"
   | "vehicle_id"
   | "invoice_pdf_url"
+  | "intake_status"
+  | "intake_submitted_at"
 >;
 
 type VehicleLite = Pick<
@@ -134,16 +139,12 @@ export default async function PortalWorkOrderViewerPage({
   try {
     const { id: userId } = await requireAuthedUser(supabase);
     const portalCustomer = await requirePortalCustomer(supabase, userId);
-    await requireWorkOrderOwnedByCustomer(
-      supabase,
-      workOrderId,
-      portalCustomer.id,
-    );
+    await requireWorkOrderOwnedByCustomer(supabase, workOrderId, portalCustomer.id);
 
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
       .select(
-        "id, custom_id, status, created_at, updated_at, invoice_total, labor_total, parts_total, shop_id, customer_id, vehicle_id, invoice_pdf_url",
+        "id, custom_id, status, created_at, updated_at, invoice_total, labor_total, parts_total, shop_id, customer_id, vehicle_id, invoice_pdf_url, intake_status, intake_submitted_at",
       )
       .eq("id", workOrderId)
       .eq("customer_id", portalCustomer.id)
@@ -224,7 +225,9 @@ export default async function PortalWorkOrderViewerPage({
       new Set(
         allocations
           .map((a) => a.part_id)
-          .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
+          .filter(
+            (id): id is string => typeof id === "string" && id.trim().length > 0,
+          ),
       ),
     );
 
@@ -279,52 +282,85 @@ export default async function PortalWorkOrderViewerPage({
     const woInvoiceTotal = safeNumber(wo.invoice_total);
     const payAmountCents = dollarsToCents(woInvoiceTotal > 0 ? woInvoiceTotal : null);
 
+    // Intake CTA (portal)
+    const intakeStatus = String(wo.intake_status ?? "").toLowerCase();
+    const intakeSubmitted = intakeStatus === "submitted";
+    const intakeHref = `/portal/work-orders/${wo.id}/intake`;
+
+    const intakeCtaLabel = intakeSubmitted ? "View intake" : "Complete intake";
+    const intakeCtaHint = intakeSubmitted
+      ? "You’ve already submitted the intake."
+      : "Please complete the intake so the technician has the full details.";
+
     return (
-      <WorkOrderViewer
-        kind="portal"
-        workOrder={wo}
-        currency={currency}
-        vehicle={vehicle ?? undefined}
-        customer={
-          customerRow
-            ? {
-                ...customerRow,
-                phone: pickCustomerPhone(customerRow) ?? customerRow.phone ?? null,
-              }
-            : undefined
-        }
-        shop={
-          shop
-            ? {
-                name: pickShopName(shop),
-                phone_number: shop.phone_number ?? null,
-                email: shop.email ?? null,
-                street: shop.street ?? null,
-                city: shop.city ?? null,
-                province: shop.province ?? null,
-                postal_code: shop.postal_code ?? null,
-              }
-            : undefined
-        }
-        lines={lines}
-        parts={parts}
-        backHref="/portal/history"
-        title="Work order"
-        subtitle="Read-only view (customer portal)."
-        invoicePdfUrl={wo.invoice_pdf_url ?? null}
-        showPay={Boolean(wo.shop_id)}
-        paySlot={
-          wo.shop_id ? (
-            <PortalInvoicePayButton
-              shopId={wo.shop_id}
-              workOrderId={wo.id}
-              amountCents={payAmountCents}
-              currency={stripeCurrency}
-              disabled={payAmountCents < 50}
-            />
-          ) : null
-        }
-      />
+      <div className="mx-auto w-full max-w-[1100px] px-3 py-4 sm:px-6">
+        <div className="mb-4 rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-white">
+                Intake
+                <span className="ml-2 text-[11px] font-medium text-neutral-300">
+                  {intakeSubmitted ? "Submitted" : "Not submitted"}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-neutral-300">{intakeCtaHint}</div>
+            </div>
+
+            <Link
+              href={intakeHref}
+              className="inline-flex items-center justify-center rounded-xl border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.12)] px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.18)]"
+            >
+              {intakeCtaLabel} →
+            </Link>
+          </div>
+        </div>
+
+        <WorkOrderViewer
+          kind="portal"
+          workOrder={wo}
+          currency={currency}
+          vehicle={vehicle ?? undefined}
+          customer={
+            customerRow
+              ? {
+                  ...customerRow,
+                  phone: pickCustomerPhone(customerRow) ?? customerRow.phone ?? null,
+                }
+              : undefined
+          }
+          shop={
+            shop
+              ? {
+                  name: pickShopName(shop),
+                  phone_number: shop.phone_number ?? null,
+                  email: shop.email ?? null,
+                  street: shop.street ?? null,
+                  city: shop.city ?? null,
+                  province: shop.province ?? null,
+                  postal_code: shop.postal_code ?? null,
+                }
+              : undefined
+          }
+          lines={lines}
+          parts={parts}
+          backHref="/portal/history"
+          title="Work order"
+          subtitle="Read-only view (customer portal)."
+          invoicePdfUrl={wo.invoice_pdf_url ?? null}
+          showPay={Boolean(wo.shop_id)}
+          paySlot={
+            wo.shop_id ? (
+              <PortalInvoicePayButton
+                shopId={wo.shop_id}
+                workOrderId={wo.id}
+                amountCents={payAmountCents}
+                currency={stripeCurrency}
+                disabled={payAmountCents < 50}
+              />
+            ) : null
+          }
+        />
+      </div>
     );
   } catch (e) {
     // eslint-disable-next-line no-console

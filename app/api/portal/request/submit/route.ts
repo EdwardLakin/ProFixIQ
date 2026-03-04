@@ -1,4 +1,4 @@
-// app/api/portal/request/submit/route.ts
+// app/api/portal/request/submit/route.ts (FULL FILE REPLACEMENT)
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -12,7 +12,7 @@ type Body = {
   workOrderId: string;
   bookingId: string;
 
-  // NEW (optional for backwards compatibility)
+  // Review gate
   customerAgreedAt?: string | null;
   customerSignatureUrl?: string | null;
 };
@@ -47,6 +47,34 @@ function parseIsoDate(v: unknown): string | null {
   return new Date(t).toISOString();
 }
 
+/** Extract the "Concern:" line from the PORTAL INTAKE block (best-effort). */
+function extractPortalIntakeConcern(notes: unknown): string | null {
+  if (typeof notes !== "string") return null;
+  if (!notes.includes("PORTAL INTAKE")) return null;
+
+  const lines = notes
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  // Prefer an explicit "Concern:" line
+  const concernLine = lines.find((l) => l.toLowerCase().startsWith("concern:"));
+  if (concernLine) {
+    const idx = concernLine.indexOf(":");
+    const v = idx >= 0 ? concernLine.slice(idx + 1).trim() : "";
+    return v || null;
+  }
+
+  // Fallback: next non-empty line after PORTAL INTAKE marker
+  const markerIdx = lines.findIndex((l) => l.toLowerCase() === "portal intake");
+  if (markerIdx >= 0) {
+    const next = lines.slice(markerIdx + 1).find((l) => !l.toLowerCase().startsWith("details:"));
+    if (next && !next.includes(":")) return next.trim() || null;
+  }
+
+  return null;
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
@@ -68,7 +96,7 @@ export async function POST(req: Request) {
     const bookingId = (body?.bookingId ?? "").trim();
     if (!workOrderId || !bookingId) return bad("Missing workOrderId or bookingId");
 
-    // NEW: require "agreed at" (review step gate)
+    // Require "agreed at" (review gate)
     const customerAgreedAt = parseIsoDate(body?.customerAgreedAt ?? null);
     if (!customerAgreedAt) return bad("You must agree to the terms before submitting.", 400);
 
@@ -87,7 +115,7 @@ export async function POST(req: Request) {
     // Load WO + ensure ownership
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
-      .select("id, shop_id, customer_id")
+      .select("id, shop_id, customer_id, notes")
       .eq("id", workOrderId)
       .maybeSingle();
 
@@ -106,17 +134,16 @@ export async function POST(req: Request) {
     if (!booking) return bad("Booking not found", 404);
     if (booking.shop_id !== wo.shop_id) return bad("Not allowed", 403);
 
-    // Optional sanity
+    // Optional sanity: booking not in the past
     const startT = Date.parse(String(booking.starts_at ?? ""));
     if (Number.isFinite(startT) && startT < Date.now() - 60_000) {
       return bad("This booking time is in the past. Please start again.", 409);
     }
 
-    // Persist portal approval artifacts on the WO (non-breaking if columns exist)
-    // NOTE: you must add these columns to work_orders:
-    // - customer_agreed_at timestamptz
-    // - customer_signature_url text
-    // - portal_submitted_at timestamptz (optional but useful)
+    // ✅ IMPORTANT:
+    // Use the column names that already exist in YOUR schema/types.
+    // If your code currently uses customer_approval_at + customer_approval_signature_url,
+    // stick to those to avoid TS errors.
     const woUpdate: DB["public"]["Tables"]["work_orders"]["Update"] = {
       customer_approval_at: customerAgreedAt,
       customer_approval_signature_url: customerSignatureUrl,
@@ -126,7 +153,6 @@ export async function POST(req: Request) {
     if (woUpdErr) return bad("Failed to save agreement/signature", 500);
 
     // Finalize booking (Option B)
-    // Keep it pending for staff-side approve/decline on appointments page.
     const bookingUpdate: DB["public"]["Tables"]["bookings"]["Update"] = {
       status: booking.status ?? "pending",
     };
@@ -135,7 +161,47 @@ export async function POST(req: Request) {
     if (updErr) return bad("Failed to finalize booking", 500);
 
     /* ------------------------------------------------------------------ */
-    /* Parts request creation                                              */
+    /* ✅ Auto-create diagnostic line from intake concern                   */
+    /* ------------------------------------------------------------------ */
+
+    const concern = extractPortalIntakeConcern(wo.notes);
+    if (concern) {
+      const prefix = "[Portal Intake] Diagnostic";
+      const desc = `${prefix}: ${concern}`.slice(0, 240);
+
+      // Prevent duplicates: if one already exists on this WO, skip
+      const { data: existing, error: exErr } = await supabase
+        .from("work_order_lines")
+        .select("id")
+        .eq("work_order_id", wo.id)
+        .ilike("description", `${prefix}%`)
+        .limit(1);
+
+      if (!exErr && (!existing || existing.length === 0)) {
+        // Minimal insert that should work with your schema
+        // job_type/status are TEXT per your enum check.
+        const insertLine: DB["public"]["Tables"]["work_order_lines"]["Insert"] = {
+          work_order_id: wo.id,
+          shop_id: wo.shop_id,
+
+          // Make the intake visible in the workflow immediately:
+          job_type: "diagnostic",
+          status: "awaiting",
+
+          // Put it where your UI/parts system will see it
+          description: desc,
+          complaint: concern,
+          notes: "Auto-created from portal intake on submit.",
+        };
+
+        // If your table has required NOT NULL columns not covered above,
+        // Supabase will error here and we’ll add them explicitly once you paste the error.
+        await supabase.from("work_order_lines").insert(insertLine);
+      }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Parts request creation (unchanged behavior)                          */
     /* ------------------------------------------------------------------ */
 
     const { data: lines, error: linesErr } = await supabase

@@ -10004,12 +10004,14 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           custom_id: string | null
+          customer_agreed_at: string | null
           customer_approval_at: string | null
           customer_approval_signature_path: string | null
           customer_approval_signature_url: string | null
           customer_approved_by: string | null
           customer_id: string | null
           customer_name: string | null
+          customer_signature_url: string | null
           external_id: string | null
           id: string
           import_confidence: number | null
@@ -10017,6 +10019,10 @@ export type Database = {
           inspection_id: string | null
           inspection_pdf_url: string | null
           inspection_type: string | null
+          intake_json: Json | null
+          intake_status: string | null
+          intake_submitted_at: string | null
+          intake_submitted_by: string | null
           invoice_last_sent_to: string | null
           invoice_pdf_url: string | null
           invoice_sent_at: string | null
@@ -10027,6 +10033,7 @@ export type Database = {
           notes: string | null
           odometer_km: number | null
           parts_total: number | null
+          portal_submitted_at: string | null
           priority: number | null
           quote: Json | null
           quote_url: string | null
@@ -10062,12 +10069,14 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           custom_id?: string | null
+          customer_agreed_at?: string | null
           customer_approval_at?: string | null
           customer_approval_signature_path?: string | null
           customer_approval_signature_url?: string | null
           customer_approved_by?: string | null
           customer_id?: string | null
           customer_name?: string | null
+          customer_signature_url?: string | null
           external_id?: string | null
           id?: string
           import_confidence?: number | null
@@ -10075,6 +10084,10 @@ export type Database = {
           inspection_id?: string | null
           inspection_pdf_url?: string | null
           inspection_type?: string | null
+          intake_json?: Json | null
+          intake_status?: string | null
+          intake_submitted_at?: string | null
+          intake_submitted_by?: string | null
           invoice_last_sent_to?: string | null
           invoice_pdf_url?: string | null
           invoice_sent_at?: string | null
@@ -10085,6 +10098,7 @@ export type Database = {
           notes?: string | null
           odometer_km?: number | null
           parts_total?: number | null
+          portal_submitted_at?: string | null
           priority?: number | null
           quote?: Json | null
           quote_url?: string | null
@@ -10120,12 +10134,14 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           custom_id?: string | null
+          customer_agreed_at?: string | null
           customer_approval_at?: string | null
           customer_approval_signature_path?: string | null
           customer_approval_signature_url?: string | null
           customer_approved_by?: string | null
           customer_id?: string | null
           customer_name?: string | null
+          customer_signature_url?: string | null
           external_id?: string | null
           id?: string
           import_confidence?: number | null
@@ -10133,6 +10149,10 @@ export type Database = {
           inspection_id?: string | null
           inspection_pdf_url?: string | null
           inspection_type?: string | null
+          intake_json?: Json | null
+          intake_status?: string | null
+          intake_submitted_at?: string | null
+          intake_submitted_by?: string | null
           invoice_last_sent_to?: string | null
           invoice_pdf_url?: string | null
           invoice_sent_at?: string | null
@@ -10143,6 +10163,7 @@ export type Database = {
           notes?: string | null
           odometer_km?: number | null
           parts_total?: number | null
+          portal_submitted_at?: string | null
           priority?: number | null
           quote?: Json | null
           quote_url?: string | null
@@ -11337,12 +11358,14 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           custom_id: string | null
+          customer_agreed_at: string | null
           customer_approval_at: string | null
           customer_approval_signature_path: string | null
           customer_approval_signature_url: string | null
           customer_approved_by: string | null
           customer_id: string | null
           customer_name: string | null
+          customer_signature_url: string | null
           external_id: string | null
           id: string
           import_confidence: number | null
@@ -11350,6 +11373,10 @@ export type Database = {
           inspection_id: string | null
           inspection_pdf_url: string | null
           inspection_type: string | null
+          intake_json: Json | null
+          intake_status: string | null
+          intake_submitted_at: string | null
+          intake_submitted_by: string | null
           invoice_last_sent_to: string | null
           invoice_pdf_url: string | null
           invoice_sent_at: string | null
@@ -11360,6 +11387,7 @@ export type Database = {
           notes: string | null
           odometer_km: number | null
           parts_total: number | null
+          portal_submitted_at: string | null
           priority: number | null
           quote: Json | null
           quote_url: string | null
@@ -11615,6 +11643,10 @@ export type Database = {
       work_order_in_my_shop: {
         Args: { p_work_order_id: string }
         Returns: boolean
+      }
+      work_orders_set_intake: {
+        Args: { p_intake: Json; p_submit?: boolean; p_work_order_id: string }
+        Returns: undefined
       }
     }
     Enums: {

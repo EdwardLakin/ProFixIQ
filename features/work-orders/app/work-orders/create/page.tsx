@@ -220,8 +220,9 @@ export default function CreateWorkOrderPage() {
   });
 
   // ✅ memoized defaults to satisfy exhaustive-deps (stable identity)
-  const defaultCustomer = useMemo<SessionCustomer>(
+  const defaultCustomer = useMemo<CustomerWithBusiness>(
     () => ({
+      business_name: null,
       first_name: null,
       last_name: null,
       phone: null,

@@ -1270,21 +1270,24 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
 
                 <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="rounded-full border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-4 py-1.5 text-xs font-semibold text-amber-100 hover:bg-[rgba(184,115,51,0.16)]"
+                    onClick={() => {
+                      if (!wo?.id) return;
+                      router.push(`/work-orders/${wo.id}/intake`);
+                    }}
+                      title="Open intake"
+                    >
+                      Intake
+                    </button>
+
                   <span className={chip(wo.status)}>
                     {(wo.status ?? "awaiting").replaceAll("_", " ")}
                   </span>
+
                   {isWaiter && (
-                    <span
-                      className="
-                        inline-flex items-center whitespace-nowrap
-                        rounded-full border border-red-500/60
-                        bg-red-500/10
-                        px-4 py-1.5
-                        text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
-                        text-red-200
-                        shadow-[0_0_18px_rgba(248,113,113,0.9)]
-                      "
-                    >
+                    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-red-500/60 bg-red-500/10 px-4 py-1.5 text-xs sm:text-sm font-semibold uppercase tracking-[0.16em] text-red-200 shadow-[0_0_18px_rgba(248,113,113,0.9)]">
                       Waiter
                     </span>
                   )}
