@@ -342,7 +342,6 @@ function parsePromptTriggers(prompt: string): PromptInferred {
   }
   if (/\bmedium\s*duty\b|\bclass\s*5\b|\bclass\s*6\b/.test(p)) {
     inferred.dutyClass = "medium";
-    // leave vehicle/brake flexible
   }
   if (/\bheavy\s*duty\b|\bclass\s*7\b|\bclass\s*8\b|\btractor\b|\bsemi\b/.test(p)) {
     inferred.dutyClass = "heavy";
@@ -464,7 +463,6 @@ export default function CustomBuilderPage() {
 
   const [quickTouched, setQuickTouched] = useState(false);
 
-  // triggers: avoid spamming apply on every keystroke (still “auto”)
   const triggerTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -635,10 +633,8 @@ export default function CustomBuilderPage() {
     }
 
     if (typeof inferred.includeTireGrid === "boolean") setIncludeTireGrid(inferred.includeTireGrid);
-    if (typeof inferred.includeBatteryGrid === "boolean")
-      setIncludeBatteryGrid(inferred.includeBatteryGrid);
-    if (typeof inferred.includeGreaseChassis === "boolean")
-      setIncludeGreaseChassis(inferred.includeGreaseChassis);
+    if (typeof inferred.includeBatteryGrid === "boolean") setIncludeBatteryGrid(inferred.includeBatteryGrid);
+    if (typeof inferred.includeGreaseChassis === "boolean") setIncludeGreaseChassis(inferred.includeGreaseChassis);
 
     if (typeof inferred.includeOil === "boolean") setIncludeOil(inferred.includeOil);
     if (inferred.oilEngineType) setOilEngineType(inferred.oilEngineType);
@@ -692,13 +688,9 @@ export default function CustomBuilderPage() {
       const manualHasOil = manualBuilt.some((s) => normalizeTitle(s.title).startsWith("oil change"));
 
       const base =
-        includeOil && !aiHasOil && !manualHasOil
-          ? [...aiSections, buildOilSection(oilEngineType)]
-          : aiSections;
+        includeOil && !aiHasOil && !manualHasOil ? [...aiSections, buildOilSection(oilEngineType)] : aiSections;
 
-      const merged = mergeSections(base, manualBuilt).filter(
-        (s) => Array.isArray(s.items) && s.items.length > 0,
-      );
+      const merged = mergeSections(base, manualBuilt).filter((s) => Array.isArray(s.items) && s.items.length > 0);
 
       goToRunWithSections(merged, title || "AI Inspection");
     } catch (e) {
@@ -724,18 +716,11 @@ export default function CustomBuilderPage() {
       { label: "Hydraulic brake (30pt + tires)", prompt: "Brake inspection, hydraulic, include tires, 30 point" },
       {
         label: "HD pre-trip (60pt + tires + batteries)",
-        prompt:
-          "Pre-trip inspection for heavy duty truck, air brakes, include tires, include batteries, 60 point",
+        prompt: "Pre-trip inspection for heavy duty truck, air brakes, include tires, include batteries, 60 point",
       },
       { label: "Oil change (diesel, 15pt)", prompt: "Small oil change inspection diesel, 15 point" },
-      {
-        label: "Trailer annual (air, 50pt + tires)",
-        prompt: "Trailer annual inspection, air brakes, include tires, 50 point",
-      },
-      {
-        label: "Battery + charging (20pt + battery grid)",
-        prompt: "Battery + charging system inspection, include battery grid, 20 point",
-      },
+      { label: "Trailer annual (air, 50pt + tires)", prompt: "Trailer annual inspection, air brakes, include tires, 50 point" },
+      { label: "Battery + charging (20pt + battery grid)", prompt: "Battery + charging system inspection, include battery grid, 20 point" },
     ],
     [],
   );
@@ -751,394 +736,406 @@ export default function CustomBuilderPage() {
     chips.push({ k: "Selected", v: String(totalSelected) });
     if (laborHours.trim()) chips.push({ k: "Hours", v: laborHours.trim() });
     return chips;
-  }, [
-    dutyLabel,
-    gridMode,
-    includeTireGrid,
-    includeBatteryGrid,
-    includeGreaseChassis,
-    includeOil,
-    oilEngineType,
-    totalSelected,
-    laborHours,
-  ]);
+  }, [dutyLabel, gridMode, includeTireGrid, includeBatteryGrid, includeGreaseChassis, includeOil, oilEngineType, totalSelected, laborHours]);
 
-  // ✅ Copper-only (no orange fills / no brown pill backgrounds)
-  const COPPER = "var(--accent-copper-soft,#c87a43)";
-  const COPPER_BORDER = `border-[color:${COPPER}]`;
-  const COPPER_RING = `focus:ring-[color:${COPPER}]`;
+  /* ------------------------------------------------------------------ */
+  /* THEME: match templates page, but copper instead of orange          */
+  /* ------------------------------------------------------------------ */
 
-  const tileBase =
-    "rounded-full border border-[color:var(--metal-border-soft,rgba(255,255,255,0.12))] bg-black/45 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/55";
+  // copper: slightly muted, avoids neon/orange pop
+  const COPPER = "rgba(200,122,67,0.9)";
+  const COPPER_55 = "rgba(200,122,67,0.55)";
+  const COPPER_20 = "rgba(200,122,67,0.20)";
+  const COPPER_14 = "rgba(200,122,67,0.14)";
 
-  // Active pills: same text color, copper outline, NO background tint
-  const tileOn =
-    "rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/55 " +
-    COPPER_BORDER +
-    " shadow-[0_0_0_1px_rgba(200,122,67,0.15)]";
+  const headerCard =
+    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
+    "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
-  // Primary/secondary buttons: copper outline + neutral text (no orange fill)
-  const primaryBtn =
-    "rounded-full border bg-black/45 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/55 disabled:opacity-60 " +
-    COPPER_BORDER;
+  const sectionCard =
+    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
+    "bg-black/70 shadow-[0_20px_70px_rgba(0,0,0,0.95)] backdrop-blur-xl";
 
-  const secondaryBtn =
-    "rounded-full border bg-black/35 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/45 disabled:opacity-60 " +
-    COPPER_BORDER;
+  const pillBase =
+    "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border transition-colors";
+
+  // Active: copper border + deep slate wash, not bright
+  const pillActive = `border-[${COPPER_55}] bg-[rgba(15,23,42,0.95)] text-[rgba(248,250,252,0.95)]`;
+  // Inactive: no visible border
+  const pillInactive = "border-transparent bg-transparent text-neutral-400 hover:bg-zinc-900/80";
 
   const inputBase =
-    "rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 " +
-    COPPER_RING +
-    " focus:border-[color:var(--accent-copper-soft,#c87a43)]";
+    "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 " +
+    `focus:ring-[${COPPER_55}]`;
 
   const selectBase =
-    "rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 " +
-    COPPER_RING +
-    " focus:border-[color:var(--accent-copper-soft,#c87a43)]";
+    "w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 " +
+    `focus:ring-[${COPPER_55}]`;
+
+  const actionBtn =
+    "rounded-full border border-[color:var(--metal-border-soft,#374151)] " +
+    "bg-black/70 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] " +
+    "text-neutral-100 hover:bg-black/80 " +
+    `hover:border-[${COPPER_55}]`;
+
+  const primaryBtn =
+    "rounded-full bg-[linear-gradient(to_right,rgba(200,122,67,0.85),rgba(200,122,67,0.55))] " +
+    "px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black " +
+    `shadow-[0_0_18px_${COPPER_20}] hover:shadow-[0_0_26px_${COPPER_20}] disabled:opacity-60`;
 
   return (
-    <div className="p-4 text-white">
-      <div className="mx-auto w-full max-w-6xl rounded-2xl border border-white/10 bg-black/55 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-6">
-        <div className="mb-4 flex flex-col items-center gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="text-center md:text-left">
-            <h1
-              className={cx(
-                "text-2xl font-bold tracking-[0.18em]",
-                "text-[color:var(--accent-copper-soft,#c87a43)]",
-              )}
-              style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-            >
-              Inspection Builder
-            </h1>
-            <div className="mt-1 text-xs text-neutral-400">
-              Quick build, prompt build, or manual selection — all from your master list.
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {topChips.map((c) => (
-              <span
-                key={c.k}
-                className={cx(
-                  "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px]",
-                  "bg-transparent text-neutral-200",
-                  COPPER_BORDER, // ✅ copper outline only
-                )}
-              >
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{c.k}</span>
-                <span className="font-semibold text-neutral-100">{c.v}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-5 grid gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-sm text-neutral-300">Template title</span>
-            <input className={inputBase} value={title} onChange={(e) => setTitle(e.target.value)} />
-          </label>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1">
-              <span className="text-sm text-neutral-300">Duty Class</span>
-              <select
-                className={selectBase}
-                value={dutyClass}
-                onChange={(e) => setDutyClass(e.target.value as DutyClass)}
-              >
-                <option value="light">Light</option>
-                <option value="medium">Medium</option>
-                <option value="heavy">Heavy</option>
-              </select>
-              <span className="mt-1 text-[11px] text-neutral-500">
-                Influences defaults (vehicle/brake + corner grid). You can override below.
-              </span>
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="text-sm text-neutral-300">Labor hours</span>
-              <input
-                inputMode="decimal"
-                className={inputBase}
-                value={laborHours}
-                onChange={(e) => setLaborHours(e.target.value)}
-                placeholder="e.g. 2.5"
-              />
-              <span className="mt-1 text-[11px] text-neutral-500">Optional. Stored in inspection params.</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Toggles row (neutral text, copper outline only) */}
-        <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIncludeOil((v) => !v)}
-            className={includeOil ? tileOn : tileBase}
-            title="Include an oil change section"
-          >
-            Oil {includeOil ? `• ${oilEngineType.toUpperCase()}` : "• Off"}
-          </button>
-
-          {includeOil && (
-            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-2">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Engine</span>
-              <select
-                className={cx(
-                  "rounded-full border border-neutral-700 bg-neutral-900/70 px-3 py-1 text-[12px] text-white focus:outline-none focus:ring-2",
-                  COPPER_RING,
-                  "focus:border-[color:var(--accent-copper-soft,#c87a43)]",
-                )}
-                value={oilEngineType}
-                onChange={(e) => setOilEngineType(e.target.value as EngineType)}
-              >
-                <option value="gas">Gas</option>
-                <option value="diesel">Diesel</option>
-              </select>
-            </div>
+    <div className="px-4 py-6 text-white">
+      <div className="mx-auto w-full max-w-6xl space-y-5">
+        {/* Copper wash (templates-style, but copper) */}
+        <div
+          aria-hidden
+          className={cx(
+            "pointer-events-none fixed inset-0 -z-10",
+            `bg-[radial-gradient(circle_at_top,${COPPER_20},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.96),#020617_78%)]`,
           )}
+        />
 
-          <button
-            type="button"
-            onClick={() => setIncludeTireGrid((v) => !v)}
-            className={includeTireGrid ? tileOn : tileBase}
-            title="Add a tire grid section if not present"
-          >
-            Tire Grid {includeTireGrid ? "• On" : "• Off"}
-          </button>
+        {/* Header */}
+        <div className={headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+          <div
+            aria-hidden
+            className={cx(
+              "pointer-events-none absolute inset-x-0 -top-10 h-24",
+              `bg-[radial-gradient(circle_at_top,${COPPER_20},transparent_65%)]`,
+            )}
+          />
 
-          <button
-            type="button"
-            onClick={() => setIncludeBatteryGrid((v) => !v)}
-            className={includeBatteryGrid ? tileOn : tileBase}
-            title="Add a battery grid section if not present"
-          >
-            Battery Grid {includeBatteryGrid ? "• On" : "• Off"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIncludeGreaseChassis((v) => !v)}
-            className={includeGreaseChassis ? tileOn : tileBase}
-            title="Add a grease chassis section"
-          >
-            Grease {includeGreaseChassis ? "• On" : "• Off"}
-          </button>
-        </div>
-
-        {/* Corner Grid mode */}
-        <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
-          <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Corner grid</span>
-          {gridModeButtons.map((opt) => {
-            const active = gridMode === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => {
-                  setGridTouched(true);
-                  setGridMode(opt.value);
-                }}
-                className={active ? tileOn : tileBase}
+          <div className="relative flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="text-center md:text-left">
+              <h1
+                className="text-xl font-bold tracking-[0.22em] uppercase md:text-2xl"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif", color: COPPER }}
               >
-                {opt.label}
-              </button>
-            );
-          })}
+                Inspection Builder
+              </h1>
+              <p className="mt-1 text-xs text-neutral-300">
+                Quick build, prompt build, or manual selection — all from your master list.
+              </p>
+            </div>
+
+            {/* Summary chips -> same pill system, not white borders */}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {topChips.map((c) => (
+                <span
+                  key={c.k}
+                  className={cx(
+                    "inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/60 px-3 py-1 text-[11px]",
+                    "text-neutral-200",
+                  )}
+                >
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{c.k}</span>
+                  <span className="font-semibold text-neutral-100">{c.v}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Title + duty + hours */}
+          <div className="relative mt-4 grid gap-3 md:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-sm text-neutral-300">Template title</span>
+              <input className={inputBase} value={title} onChange={(e) => setTitle(e.target.value)} />
+            </label>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-sm text-neutral-300">Duty Class</span>
+                <select className={selectBase} value={dutyClass} onChange={(e) => setDutyClass(e.target.value as DutyClass)}>
+                  <option value="light">Light</option>
+                  <option value="medium">Medium</option>
+                  <option value="heavy">Heavy</option>
+                </select>
+                <span className="mt-1 text-[11px] text-neutral-500">
+                  Influences defaults (vehicle/brake + corner grid). You can override below.
+                </span>
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-sm text-neutral-300">Labor hours</span>
+                <input
+                  inputMode="decimal"
+                  className={inputBase}
+                  value={laborHours}
+                  onChange={(e) => setLaborHours(e.target.value)}
+                  placeholder="e.g. 2.5"
+                />
+                <span className="mt-1 text-[11px] text-neutral-500">Optional. Stored in inspection params.</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Toggles + corner grid (templates-style pill group) */}
+          <div className="relative mt-5 space-y-3">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="flex overflow-hidden rounded-full border border-neutral-700/80 bg-black/60">
+                <button
+                  type="button"
+                  onClick={() => setIncludeOil((v) => !v)}
+                  className={pillBase + " " + (includeOil ? pillActive : pillInactive)}
+                >
+                  Oil {includeOil ? `• ${oilEngineType.toUpperCase()}` : "• Off"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncludeTireGrid((v) => !v)}
+                  className={pillBase + " " + (includeTireGrid ? pillActive : pillInactive)}
+                >
+                  Tire Grid • {includeTireGrid ? "On" : "Off"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncludeBatteryGrid((v) => !v)}
+                  className={pillBase + " " + (includeBatteryGrid ? pillActive : pillInactive)}
+                >
+                  Battery Grid • {includeBatteryGrid ? "On" : "Off"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncludeGreaseChassis((v) => !v)}
+                  className={pillBase + " " + (includeGreaseChassis ? pillActive : pillInactive)}
+                >
+                  Grease • {includeGreaseChassis ? "On" : "Off"}
+                </button>
+              </div>
+
+              {includeOil && (
+                <div className="flex items-center gap-2 rounded-full border border-neutral-700/80 bg-black/60 px-3 py-1.5">
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Engine</span>
+                  <select
+                    className={cx(
+                      "rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1 text-[12px] text-white focus:outline-none focus:ring-2",
+                      `focus:ring-[${COPPER_55}]`,
+                    )}
+                    value={oilEngineType}
+                    onChange={(e) => setOilEngineType(e.target.value as EngineType)}
+                  >
+                    <option value="gas">Gas</option>
+                    <option value="diesel">Diesel</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Corner grid</span>
+              <div className="flex overflow-hidden rounded-full border border-neutral-700/80 bg-black/60">
+                {gridModeButtons.map((opt) => {
+                  const active = gridMode === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setGridTouched(true);
+                        setGridMode(opt.value);
+                      }}
+                      className={pillBase + " " + (active ? pillActive : pillInactive)}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Quick build */}
-        <div className="mb-8 rounded-2xl border border-white/10 bg-black/40 p-4">
-          <div className="mb-1 text-center text-sm font-semibold text-[color:var(--accent-copper-soft,#c87a43)]">
-            Quick Build
-          </div>
-          <p className="mb-3 text-center text-sm text-neutral-400">
-            Deterministic build from your master list (keeps CVIP/spec codes).
-          </p>
+        <div className={sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+          <div
+            aria-hidden
+            className={cx(
+              "pointer-events-none absolute inset-x-0 -top-10 h-20",
+              `bg-[radial-gradient(circle_at_top,${COPPER_14},transparent_70%)]`,
+            )}
+          />
 
-          <div className="grid gap-3 md:grid-cols-4">
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Vehicle</span>
-              <select
-                className={selectBase}
-                value={vehicleType}
-                onChange={(e) => {
-                  setQuickTouched(true);
-                  setVehicleType(e.target.value as VehicleType);
-                }}
-              >
-                <option value="car">Car</option>
-                <option value="truck">Truck</option>
-                <option value="bus">Bus</option>
-                <option value="trailer">Trailer</option>
-              </select>
-            </label>
+          <div className="relative">
+            <div className="mb-1 text-center text-sm font-semibold" style={{ color: COPPER }}>
+              Quick Build
+            </div>
+            <p className="mb-4 text-center text-sm text-neutral-400">
+              Deterministic build from your master list (keeps CVIP/spec codes).
+            </p>
 
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Brake system</span>
-              <select
-                className={selectBase}
-                value={brakeSystem}
-                onChange={(e) => {
-                  setQuickTouched(true);
-                  setBrakeSystem(e.target.value as BrakeSystem);
-                }}
-              >
-                <option value="hyd_brake">Hydraulic</option>
-                <option value="air_brake">Air</option>
-              </select>
-            </label>
+            <div className="grid gap-3 md:grid-cols-4">
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Vehicle</span>
+                <select
+                  className={selectBase}
+                  value={vehicleType}
+                  onChange={(e) => {
+                    setQuickTouched(true);
+                    setVehicleType(e.target.value as VehicleType);
+                  }}
+                >
+                  <option value="car">Car</option>
+                  <option value="truck">Truck</option>
+                  <option value="bus">Bus</option>
+                  <option value="trailer">Trailer</option>
+                </select>
+              </label>
 
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Target count</span>
-              <input
-                type="number"
-                min={10}
-                max={250}
-                className={cx(
-                  "rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
-                  COPPER_RING,
-                  "focus:border-[color:var(--accent-copper-soft,#c87a43)]",
-                )}
-                value={String(targetCount)}
-                onChange={(e) => {
-                  setQuickTouched(true);
-                  setTargetCount(Number(e.target.value) || 80);
-                }}
-              />
-            </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Brake system</span>
+                <select
+                  className={selectBase}
+                  value={brakeSystem}
+                  onChange={(e) => {
+                    setQuickTouched(true);
+                    setBrakeSystem(e.target.value as BrakeSystem);
+                  }}
+                >
+                  <option value="hyd_brake">Hydraulic</option>
+                  <option value="air_brake">Air</option>
+                </select>
+              </label>
 
-            <div className="flex flex-col justify-end gap-2">
-              <div className="text-[11px] text-neutral-500">
-                CVIP group: <span className="font-semibold text-neutral-100">{cvipGroup ?? "—"}</span>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Target count</span>
+                <input
+                  type="number"
+                  min={10}
+                  max={250}
+                  className={inputBase}
+                  value={String(targetCount)}
+                  onChange={(e) => {
+                    setQuickTouched(true);
+                    setTargetCount(Number(e.target.value) || 80);
+                  }}
+                />
+              </label>
+
+              <div className="flex flex-col justify-end gap-2">
+                <div className="text-[11px] text-neutral-500">
+                  CVIP group: <span className="font-semibold text-neutral-100">{cvipGroup ?? "—"}</span>
+                </div>
+                <button type="button" onClick={startQuickFromMaster} className={primaryBtn}>
+                  Start (Quick Build)
+                </button>
               </div>
-              <button type="button" onClick={startQuickFromMaster} className={primaryBtn}>
-                Start (Quick Build)
-              </button>
             </div>
           </div>
         </div>
 
         {/* Prompt build */}
-        <div className="mb-8 rounded-2xl border border-white/10 bg-black/40 p-4">
-          <div className="mb-1 text-center text-sm font-semibold text-[color:var(--accent-copper-soft,#c87a43)]">
-            Prompt Build
-          </div>
-          <p className="mb-3 text-center text-sm text-neutral-400">
-            Triggers auto-apply while typing (air/hydraulic, tires, batteries, grease, oil, “60 point”, etc).
-          </p>
-
-          <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-            {samplePrompts.map((s) => (
-              <button
-                key={s.label}
-                type="button"
-                onClick={() => {
-                  setAiPreset(null);
-                  setAiPrompt(s.prompt);
-                  applyPromptToControls(s.prompt);
-                }}
-                className={secondaryBtn + " px-3 py-1 text-[11px]"}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-            {(Object.keys(CVIP_PRESETS) as AiPresetKey[]).map((key) => {
-              const active = aiPreset === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => applyAiPreset(key)}
-                  className={(active ? primaryBtn : secondaryBtn) + " px-3 py-1 text-[11px]"}
-                >
-                  {CVIP_PRESETS[key].label}
-                </button>
-              );
-            })}
-          </div>
-
-          <textarea
+        <div className={sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+          <div
+            aria-hidden
             className={cx(
-              "mb-3 min-h-[90px] w-full rounded-xl border border-neutral-700 bg-neutral-900/70 p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
-              COPPER_RING,
-              "focus:border-[color:var(--accent-copper-soft,#c87a43)]",
+              "pointer-events-none absolute inset-x-0 -top-10 h-20",
+              `bg-[radial-gradient(circle_at_top,${COPPER_14},transparent_70%)]`,
             )}
-            placeholder="e.g. brake inspection, hydraulic, include tires, 30 point"
-            value={aiPrompt}
-            onChange={(e) => {
-              const next = e.target.value;
-              setAiPrompt(next);
-              setAiPreset(null);
-              scheduleAutoTriggerApply(next);
-            }}
-            onBlur={() => {
-              if (aiPrompt.trim()) applyPromptToControls(aiPrompt);
-            }}
           />
 
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <button onClick={buildFromPrompt} disabled={aiLoading || !aiPrompt.trim()} className={primaryBtn}>
-              {aiLoading ? "Generating…" : "Build from Prompt"}
-            </button>
+          <div className="relative">
+            <div className="mb-1 text-center text-sm font-semibold" style={{ color: COPPER }}>
+              Prompt Build
+            </div>
+            <p className="mb-4 text-center text-sm text-neutral-400">
+              Triggers auto-apply while typing (air/hydraulic, tires, batteries, grease, oil, “60 point”, etc).
+            </p>
 
-            {aiError ? <span className="text-xs text-red-400">{aiError}</span> : null}
-          </div>
+            <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+              {samplePrompts.map((s) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  onClick={() => {
+                    setAiPreset(null);
+                    setAiPrompt(s.prompt);
+                    applyPromptToControls(s.prompt);
+                  }}
+                  className={actionBtn + " px-3 py-1"}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
 
-          <div className="mt-3 text-center text-[11px] text-neutral-500">
-            Tip: include <span className="text-neutral-200">air brake</span>,{" "}
-            <span className="text-neutral-200">hydraulic</span>,{" "}
-            <span className="text-neutral-200">tire grid</span>,{" "}
-            <span className="text-neutral-200">battery grid</span>,{" "}
-            <span className="text-neutral-200">grease chassis</span>,{" "}
-            <span className="text-neutral-200">oil change diesel</span>,{" "}
-            <span className="text-neutral-200">60 point</span>.
+            <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+              {(Object.keys(CVIP_PRESETS) as AiPresetKey[]).map((key) => {
+                const active = aiPreset === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => applyAiPreset(key)}
+                    className={cx(actionBtn, "px-3 py-1", active && `border-[${COPPER_55}]`)}
+                  >
+                    {CVIP_PRESETS[key].label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <textarea
+              className={cx(
+                "mb-3 min-h-[90px] w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
+                `focus:ring-[${COPPER_55}]`,
+              )}
+              placeholder="e.g. brake inspection, hydraulic, include tires, 30 point"
+              value={aiPrompt}
+              onChange={(e) => {
+                const next = e.target.value;
+                setAiPrompt(next);
+                setAiPreset(null);
+                scheduleAutoTriggerApply(next);
+              }}
+              onBlur={() => {
+                if (aiPrompt.trim()) applyPromptToControls(aiPrompt);
+              }}
+            />
+
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button onClick={buildFromPrompt} disabled={aiLoading || !aiPrompt.trim()} className={primaryBtn}>
+                {aiLoading ? "Generating…" : "Build from Prompt"}
+              </button>
+
+              {aiError ? <span className="text-xs text-red-400">{aiError}</span> : null}
+            </div>
+
+            <div className="mt-3 text-center text-[11px] text-neutral-500">
+              Tip: include <span className="text-neutral-200">air brake</span>,{" "}
+              <span className="text-neutral-200">hydraulic</span>,{" "}
+              <span className="text-neutral-200">tire grid</span>,{" "}
+              <span className="text-neutral-200">battery grid</span>,{" "}
+              <span className="text-neutral-200">grease chassis</span>,{" "}
+              <span className="text-neutral-200">oil change diesel</span>,{" "}
+              <span className="text-neutral-200">60 point</span>.
+            </div>
           </div>
         </div>
 
         {/* Manual pick list */}
-        <div className="mb-8 space-y-4">
+        <div className="space-y-4">
           {masterInspectionList.map((sec) => {
             const selectedCount = selections[sec.title]?.length ?? 0;
             const collapsed = collapsedSections[sec.title] ?? false;
 
             return (
-              <div
-                key={sec.title}
-                className="rounded-2xl border border-white/10 bg-black/40 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.7)]"
-              >
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div key={sec.title} className={sectionCard + " px-4 py-4 md:px-6 md:py-5"}>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="font-semibold text-neutral-100">{sec.title}</div>
-                    <span
-                      className={cx(
-                        "rounded-full border bg-transparent px-2 py-[2px] text-[11px] text-neutral-300",
-                        COPPER_BORDER,
-                      )}
-                    >
+                    <span className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/60 px-2 py-0.5 text-[11px] text-neutral-300">
                       {selectedCount}/{sec.items.length} selected
                     </span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => selectAllInSection(sec.title, sec.items)}
-                      className={secondaryBtn + " px-3 py-1 text-[11px]"}
-                    >
+                    <button type="button" onClick={() => selectAllInSection(sec.title, sec.items)} className={actionBtn + " px-3 py-1"}>
                       Select all
                     </button>
-                    <button type="button" onClick={() => clearSection(sec.title)} className={tileBase + " px-3 py-1"}>
+                    <button type="button" onClick={() => clearSection(sec.title)} className={actionBtn + " px-3 py-1"}>
                       Clear
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleSectionCollapsed(sec.title)}
-                      className={tileBase + " px-3 py-1"}
-                    >
+                    <button type="button" onClick={() => toggleSectionCollapsed(sec.title)} className={actionBtn + " px-3 py-1"}>
                       {collapsed ? "Expand" : "Collapse"}
                     </button>
                   </div>
@@ -1154,15 +1151,15 @@ export default function CustomBuilderPage() {
                         <label
                           key={label}
                           className={cx(
-                            "flex items-center gap-2 rounded-lg border border-white/10 bg-black/35 px-2 py-1 text-sm text-neutral-100",
-                            checked && COPPER_BORDER,
+                            "flex items-center gap-2 rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/60 px-2 py-1 text-sm text-neutral-100",
+                            checked && `border-[${COPPER_55}]`,
                           )}
                         >
                           <input
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggle(sec.title, label)}
-                            className="h-4 w-4 accent-[color:var(--accent-copper-soft,#c87a43)]"
+                            className="h-4 w-4 accent-[rgba(200,122,67,0.95)]"
                           />
                           <span className="text-xs sm:text-sm">{label}</span>
                         </label>
@@ -1179,16 +1176,17 @@ export default function CustomBuilderPage() {
           })}
         </div>
 
+        {/* Footer actions */}
         <div className="flex flex-wrap justify-center gap-3">
           <button onClick={startManual} className={primaryBtn}>
             Start (Manual)
           </button>
 
-          <button onClick={startQuickFromMaster} className={secondaryBtn}>
+          <button onClick={startQuickFromMaster} className={actionBtn}>
             Start (Quick Build)
           </button>
 
-          <button onClick={buildFromPrompt} disabled={aiLoading || !aiPrompt.trim()} className={secondaryBtn}>
+          <button onClick={buildFromPrompt} disabled={aiLoading || !aiPrompt.trim()} className={actionBtn}>
             {aiLoading ? "Generating…" : "Start (Prompt)"}
           </button>
         </div>
