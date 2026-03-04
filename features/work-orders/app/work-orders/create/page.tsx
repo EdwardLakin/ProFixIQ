@@ -1,11 +1,6 @@
 // /features/work-orders/app/work-orders/create/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
-/**
- * Create Work Order (Front Desk)
- * ---------------------------------------------------------------------------
- * Integrated with VIN scanner + draft store.
- */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -36,6 +31,15 @@ const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
   { ssr: false },
 );
+
+/* =============================================================================
+   Theme constants (match quote-review)
+============================================================================= */
+const COPPER = "#C57A4A";
+
+const card =
+  "rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_70px_rgba(0,0,0,0.65)]";
+const divider = "border-white/10";
 
 /* =============================================================================
    Types & helpers
@@ -715,9 +719,7 @@ export default function CreateWorkOrderPage() {
                 .eq("id", data.customer_id)
                 .maybeSingle();
               if (cust) {
-                setCustomer(
-                  hydrateCustomerFromRow(cust as CustomerRowWithBusiness),
-                );
+                setCustomer(hydrateCustomerFromRow(cust as CustomerRowWithBusiness));
                 setCustomerId(cust.id);
               }
             }
@@ -752,11 +754,7 @@ export default function CreateWorkOrderPage() {
       if (data) return data as CustomerRowWithBusiness;
     }
 
-    let q = supabase
-      .from("customers")
-      .select("*")
-      .eq("shop_id", shopId)
-      .limit(1);
+    let q = supabase.from("customers").select("*").eq("shop_id", shopId).limit(1);
 
     if (customer.phone) q = q.ilike("phone", customer.phone);
     else if (customer.email) q = q.ilike("email", customer.email);
@@ -1219,14 +1217,10 @@ export default function CreateWorkOrderPage() {
               }.`,
             );
           } else {
-            setInviteNotice(
-              "Work order created. Invite email sent to the customer.",
-            );
+            setInviteNotice("Work order created. Invite email sent to the customer.");
           }
         } catch {
-          setInviteNotice(
-            "Work order created. Failed to send invite email (caught).",
-          );
+          setInviteNotice("Work order created. Failed to send invite email (caught).");
         }
       }
 
@@ -1293,65 +1287,88 @@ export default function CreateWorkOrderPage() {
   const vehicleIdProp: string | null = vehicleId ?? wo?.vehicle_id ?? null;
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] px-4 py-6 text-white">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
-      />
-
+    <div
+      className="
+        min-h-screen px-4 py-6 text-foreground
+        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+      "
+      style={{ ["--copper" as never]: COPPER }}
+    >
       <div className="mx-auto max-w-6xl space-y-6">
-        <section className="metal-card mb-2 flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
-          <div>
-            <h1
-              className="text-2xl font-semibold text-white"
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              Create Work Order
-            </h1>
-            <p className="mt-1 text-sm text-neutral-400">
-              Link a customer and vehicle, add jobs and inspections, then send
-              to approval and signature.
-            </p>
-            {wo?.custom_id && (
-              <p className="mt-1 text-xs text-neutral-500">
-                Current WO:{" "}
-                <span className="font-mono text-orange-300">{wo.custom_id}</span>
+        {/* Header */}
+        <div className={cx(card, "px-5 py-4")}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
+                Work Orders
+              </div>
+              <h1
+                className="mt-1 text-2xl font-semibold text-white"
+                style={{ fontFamily: "var(--font-blackops), system-ui" }}
+              >
+                Create Work Order
+              </h1>
+              <p className="mt-1 text-sm text-neutral-400">
+                Link a customer and vehicle, add jobs and inspections, then send to
+                approval and signature.
               </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-200 shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:bg-white/5"
-          >
-            Back to list
-          </button>
-        </section>
 
-        <section className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl sm:px-6 sm:py-6">
+              {wo?.custom_id && (
+                <p className="mt-1 text-xs text-neutral-500">
+                  Current WO:{" "}
+                  <span className="font-mono text-[color:var(--copper)]">
+                    {wo.custom_id}
+                  </span>
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="
+                shrink-0 rounded-full border border-white/10 bg-black/50
+                px-4 py-2 text-sm font-semibold text-neutral-200
+                hover:bg-black/65
+              "
+            >
+              Back to list
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <section className={cx(card, "px-4 py-5 backdrop-blur-xl sm:px-6 sm:py-6")}>
           {error && (
-            <div className="mb-4 rounded-lg border border-red-500/60 bg-red-950/70 px-4 py-2 text-sm text-red-100">
+            <div className="mb-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {error}
             </div>
           )}
 
           {uploadSummary && (
-            <div className="mb-4 rounded-lg border border-neutral-700 bg-black/60 px-4 py-2 text-sm text-neutral-100">
+            <div className="mb-4 rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-sm text-neutral-200">
               Uploaded {uploadSummary.uploaded} file(s)
               {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
             </div>
           )}
+
           {inviteNotice && (
-            <div className="mb-4 rounded-lg border border-neutral-700 bg-black/60 px-4 py-2 text-sm text-neutral-100">
+            <div className="mb-4 rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-sm text-neutral-200">
               {inviteNotice}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">
-                Customer &amp; Vehicle
-              </h2>
+            {/* Customer & Vehicle */}
+            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                  Customer &amp; Vehicle
+                </h2>
+                <span className="text-[11px] text-neutral-500">
+                  Save first, then add lines
+                </span>
+              </div>
 
               <CustomerVehicleForm
                 customer={customer}
@@ -1376,7 +1393,11 @@ export default function CreateWorkOrderPage() {
                   type="button"
                   onClick={() => void handleSaveCustomerVehicle()}
                   disabled={savingCv || loading}
-                  className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500 hover:bg-black/80 disabled:opacity-60 sm:text-sm"
+                  className="
+                    rounded-full border border-white/10 bg-black/50
+                    px-4 py-2 text-sm font-semibold text-neutral-200
+                    hover:bg-black/65 disabled:opacity-60
+                  "
                 >
                   {savingCv ? "Saving…" : "Save & Continue"}
                 </button>
@@ -1384,7 +1405,11 @@ export default function CreateWorkOrderPage() {
                 <button
                   type="button"
                   onClick={handleClearForm}
-                  className="rounded-full border border-red-600/70 bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-red-200 hover:bg-red-900/30 sm:text-sm"
+                  className="
+                    rounded-full border border-red-400/25 bg-black/50
+                    px-4 py-2 text-sm font-semibold text-red-200
+                    hover:bg-red-500/10
+                  "
                 >
                   Clear form
                 </button>
@@ -1432,7 +1457,13 @@ export default function CreateWorkOrderPage() {
                     });
                   }}
                 >
-                  <span className="cursor-pointer rounded-full border border-orange-500/80 bg-black/70 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/10 sm:text-sm">
+                  <span
+                    className="
+                      cursor-pointer rounded-full border px-4 py-2 text-sm font-semibold
+                      bg-[color:var(--copper)]/10 text-[color:var(--copper)]
+                      border-[color:var(--copper)]/70 hover:bg-[color:var(--copper)]/15
+                    "
+                  >
                     Add by VIN / Scan
                   </span>
                 </VinCaptureModal>
@@ -1444,17 +1475,22 @@ export default function CreateWorkOrderPage() {
                   type="checkbox"
                   checked={sendInvite}
                   onChange={(e) => setSendInvite(e.target.checked)}
-                  className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
+                  className="h-4 w-4 rounded border-white/10 bg-black/50"
                   disabled={loading}
                 />
                 Email a customer portal sign-up link
               </label>
             </section>
 
-            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-              <h2 className="mb-3 text-sm font-semibold text-neutral-100">
-                Uploads
-              </h2>
+            {/* Uploads */}
+            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                  Uploads
+                </h2>
+                <span className="text-[11px] text-neutral-500">Optional</span>
+              </div>
+
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
@@ -1464,9 +1500,7 @@ export default function CreateWorkOrderPage() {
                     type="file"
                     accept="image/*"
                     multiple
-                    onChange={(e) =>
-                      setPhotoFiles(Array.from(e.target.files ?? []))
-                    }
+                    onChange={(e) => setPhotoFiles(Array.from(e.target.files ?? []))}
                     className="input"
                     disabled={loading}
                   />
@@ -1479,9 +1513,7 @@ export default function CreateWorkOrderPage() {
                     type="file"
                     accept="application/pdf,image/*"
                     multiple
-                    onChange={(e) =>
-                      setDocFiles(Array.from(e.target.files ?? []))
-                    }
+                    onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))}
                     className="input"
                     disabled={loading}
                   />
@@ -1489,20 +1521,28 @@ export default function CreateWorkOrderPage() {
               </div>
             </section>
 
+            {/* Menu quick add */}
             {wo?.id && (
-              <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-                <h2 className="mb-3 text-sm font-semibold text-orange-300">
-                  Quick add from menu
-                </h2>
+              <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+                <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--copper)]">
+                    Quick add from menu
+                  </h2>
+                  <span className="text-[11px] text-neutral-500">Saved services</span>
+                </div>
                 <MenuQuickAdd workOrderId={wo.id} />
               </section>
             )}
 
+            {/* Add line */}
             {wo?.id && (
-              <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-                <h2 className="mb-3 text-sm font-semibold text-neutral-100">
-                  Add Job Line
-                </h2>
+              <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+                <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                    Add job line
+                  </h2>
+                  <span className="text-[11px] text-neutral-500">Manual entry</span>
+                </div>
                 <NewWorkOrderLineForm
                   workOrderId={wo.id}
                   vehicleId={vehicleIdProp}
@@ -1513,16 +1553,22 @@ export default function CreateWorkOrderPage() {
               </section>
             )}
 
-            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-sm font-semibold text-neutral-100">
+            {/* Current lines */}
+            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+              <div className={cx("mb-3 flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between", divider)}>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
                   Current lines
                 </h2>
+
                 {wo?.id && (
                   <button
                     type="button"
                     onClick={() => setAiSuggestOpen(true)}
-                    className="inline-flex items-center rounded-full border border-blue-600 bg-black/70 px-3 py-1.5 text-xs text-blue-300 hover:bg-blue-900/30 sm:text-sm"
+                    className="
+                      inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold
+                      border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 text-[color:var(--copper)]
+                      hover:bg-[color:var(--copper)]/15
+                    "
                   >
                     AI: Suggest jobs
                   </button>
@@ -1536,18 +1582,16 @@ export default function CreateWorkOrderPage() {
                   {lines.map((ln) => (
                     <div
                       key={ln.id}
-                      className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-950/80 p-3 sm:flex-row sm:items-start sm:justify-between"
+                      className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/50 p-3 sm:flex-row sm:items-start sm:justify-between"
                     >
                       <div className="min-w-0">
-                        <div className="truncate font-medium">
+                        <div className="truncate font-medium text-neutral-100">
                           {ln.description || ln.complaint || "Untitled job"}
                         </div>
-                        <div className="text-xs text-neutral-400">
+                        <div className="text-xs text-neutral-500">
                           {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                          {typeof ln.labor_time === "number"
-                            ? `${ln.labor_time}h`
-                            : "—"}{" "}
-                          • {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                          {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •{" "}
+                          {(ln.status ?? "awaiting").replaceAll("_", " ")}
                         </div>
                         {(ln.complaint || ln.cause || ln.correction) && (
                           <div className="mt-1 text-xs text-neutral-500">
@@ -1557,20 +1601,30 @@ export default function CreateWorkOrderPage() {
                           </div>
                         )}
                       </div>
+
                       <div className="flex gap-2">
                         {ln.job_type === "inspection" && (
                           <button
                             type="button"
                             onClick={() => void openInspectionForLine(ln)}
-                            className="rounded border border-orange-500 px-2 py-1 text-xs text-orange-200 hover:bg-orange-500/10"
+                            className="
+                              rounded-full border px-3 py-2 text-sm font-semibold
+                              border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 text-[color:var(--copper)]
+                              hover:bg-[color:var(--copper)]/15
+                            "
                           >
                             Open inspection
                           </button>
                         )}
+
                         <button
                           type="button"
                           onClick={() => void handleDeleteLine(ln.id)}
-                          className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                          className="
+                            rounded-full border border-red-400/25 bg-black/50
+                            px-3 py-2 text-sm font-semibold text-red-200
+                            hover:bg-red-500/10
+                          "
                         >
                           Delete
                         </button>
@@ -1581,10 +1635,15 @@ export default function CreateWorkOrderPage() {
               )}
             </section>
 
-            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
-              <h2 className="mb-3 text-sm font-semibold text-neutral-100">
-                Work order options
-              </h2>
+            {/* Options */}
+            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                  Work order options
+                </h2>
+                <span className="text-[11px] text-neutral-500">Defaults</span>
+              </div>
+
               <div className="grid gap-3 md:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
@@ -1604,6 +1663,7 @@ export default function CreateWorkOrderPage() {
                     Sets the default for new lines you add on this work order.
                   </p>
                 </div>
+
                 <div>
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                     Priority
@@ -1623,6 +1683,7 @@ export default function CreateWorkOrderPage() {
                     Used to highlight urgent jobs in queues and dashboards.
                   </p>
                 </div>
+
                 <div>
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                     Customer waiting (waiter)
@@ -1638,9 +1699,11 @@ export default function CreateWorkOrderPage() {
                   </select>
                   <p className="mt-1 text-[11px] text-neutral-500">
                     When set to waiter, the work order will show a{" "}
-                    <span className="font-semibold">WAITING</span> status badge.
+                    <span className="font-semibold text-neutral-300">WAITING</span>{" "}
+                    status badge.
                   </p>
                 </div>
+
                 <div className="md:col-span-3">
                   <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                     Notes
@@ -1657,14 +1720,21 @@ export default function CreateWorkOrderPage() {
               </div>
             </section>
 
+            {/* Footer actions */}
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
                 disabled={loading}
-                className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_24px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60"
+                className="
+                  rounded-full border border-[color:var(--copper)]/70
+                  bg-[color:var(--copper)]/12 px-6 py-2 text-sm font-semibold
+                  text-[color:var(--copper)] hover:bg-[color:var(--copper)]/15
+                  disabled:opacity-60
+                "
               >
                 {loading ? "Creating..." : "Approve & Sign"}
               </button>
+
               <button
                 type="button"
                 onClick={() => router.push("/work-orders")}
@@ -1701,4 +1771,8 @@ export default function CreateWorkOrderPage() {
       </div>
     </div>
   );
+}
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
 }

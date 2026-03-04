@@ -18,10 +18,10 @@ import {
 } from "lucide-react";
 
 /**
- * BillingClient – FULL UI VERSION (theme-aligned)
- * - Glass cards + copper accent (no orange-400/500)
- * - Includes: Plan, Usage, Payment Method, Billing Details, Taxes, Invoices, History, Actions
- * - Uses mock data placeholders so you can wire Supabase/Stripe later without blocking UI work
+ * BillingClient – FULL UI VERSION (theme-aligned to /app/work-orders/quote-review/page.tsx)
+ * - Uses same copper + metal-card feel (thin borders, black glass, subtle shadows)
+ * - Removes orange-400/500 style vibes; copper only
+ * - Mock data placeholders remain (wire Supabase/Stripe later)
  */
 
 /* -------------------------------------------------------------------------- */
@@ -147,11 +147,30 @@ const MOCK: BillingSnapshot = {
     },
   ],
   history: [
-    { id: "h1", label: "Subscription created", meta: "ProFixIQ Pro (Monthly)", at: "Dec 15, 2025 • 10:38 AM" },
-    { id: "h2", label: "Payment method added", meta: "Visa •••• 4242", at: "Dec 15, 2025 • 10:41 AM" },
+    {
+      id: "h1",
+      label: "Subscription created",
+      meta: "ProFixIQ Pro (Monthly)",
+      at: "Dec 15, 2025 • 10:38 AM",
+    },
+    {
+      id: "h2",
+      label: "Payment method added",
+      meta: "Visa •••• 4242",
+      at: "Dec 15, 2025 • 10:41 AM",
+    },
     { id: "h3", label: "Invoice paid", meta: "INV-0001", at: "Dec 15, 2025 • 10:42 AM" },
   ],
 };
+
+/* -------------------------------------------------------------------------- */
+/* Theme constants (match quote-review)                                       */
+/* -------------------------------------------------------------------------- */
+
+const COPPER = "#C57A4A";
+const card =
+  "rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_70px_rgba(0,0,0,0.65)]";
+const divider = "border-white/10";
 
 /* -------------------------------------------------------------------------- */
 /* Small UI helpers                                                           */
@@ -171,12 +190,12 @@ function Badge({
   const styles: Record<typeof tone, React.CSSProperties> = {
     neutral: {
       borderColor: "rgba(255,255,255,0.12)",
-      backgroundColor: "rgba(255,255,255,0.06)",
+      backgroundColor: "rgba(0,0,0,0.35)",
       color: "rgba(255,255,255,0.82)",
     },
     success: {
       borderColor: "rgba(34,197,94,0.25)",
-      backgroundColor: "rgba(34,197,94,0.12)",
+      backgroundColor: "rgba(34,197,94,0.10)",
       color: "rgba(187,247,208,0.95)",
     },
     warning: {
@@ -190,9 +209,9 @@ function Badge({
       color: "rgba(254,202,202,0.95)",
     },
     copper: {
-      borderColor: "rgba(255,255,255,0.12)",
-      backgroundColor: "rgba(193,102,59,0.16)",
-      color: "var(--accent-copper-light)",
+      borderColor: "rgba(197,122,74,0.55)",
+      backgroundColor: "rgba(197,122,74,0.12)",
+      color: COPPER,
     },
   };
 
@@ -220,12 +239,7 @@ function GlassCard({
   className?: string;
 }) {
   return (
-    <div
-      className={cx(
-        "rounded-3xl border border-white/10 bg-black/30 p-6 backdrop-blur-xl",
-        className,
-      )}
-    >
+    <div className={cx(card, "p-6 backdrop-blur-xl", className)}>
       {(title || right) && (
         <div className="mb-4 flex items-start justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -266,11 +280,16 @@ function CopperButton({
       disabled={disabled}
       onClick={onClick}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-black transition",
+        "inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition",
         "disabled:cursor-not-allowed disabled:opacity-60",
         className,
       )}
-      style={{ backgroundColor: "var(--accent-copper)" }}
+      style={{
+        ["--copper" as never]: COPPER,
+        borderColor: "rgba(197,122,74,0.70)",
+        backgroundColor: "rgba(197,122,74,0.14)",
+        color: COPPER,
+      }}
     >
       {icon ? <span className="opacity-90">{icon}</span> : null}
       {children}
@@ -302,8 +321,8 @@ function GhostButton({
       disabled={disabled}
       onClick={onClick}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-black/40 px-4 py-2 text-sm font-semibold text-neutral-200",
-        "transition hover:bg-black/60 disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-200",
+        "transition hover:bg-black/65 disabled:cursor-not-allowed disabled:opacity-60",
         className,
       )}
     >
@@ -314,7 +333,7 @@ function GhostButton({
 }
 
 function Divider() {
-  return <div className="my-6 h-px bg-white/10" />;
+  return <div className={cx("my-6 border-t", divider)} />;
 }
 
 function StatusPill({ status }: { status: BillingStatus }) {
@@ -351,12 +370,13 @@ function StatusPill({ status }: { status: BillingStatus }) {
 }
 
 function InvoiceStatusBadge({ s }: { s: InvoiceRow["status"] }) {
-  const map: Record<InvoiceRow["status"], { tone: any; label: string }> = {
-    paid: { tone: "success", label: "Paid" },
-    open: { tone: "warning", label: "Open" },
-    void: { tone: "neutral", label: "Void" },
-    uncollectible: { tone: "danger", label: "Uncollectible" },
-  };
+  const map: Record<InvoiceRow["status"], { tone: "success" | "warning" | "neutral" | "danger"; label: string }> =
+    {
+      paid: { tone: "success", label: "Paid" },
+      open: { tone: "warning", label: "Open" },
+      void: { tone: "neutral", label: "Void" },
+      uncollectible: { tone: "danger", label: "Uncollectible" },
+    };
   const v = map[s];
   return <Badge tone={v.tone}>{v.label}</Badge>;
 }
@@ -403,7 +423,6 @@ export default function BillingClient() {
       console.log("TODO: update payment method");
     },
     viewInvoices: () => {
-      // TODO: scroll to invoices section or open invoices modal
       document.getElementById("billing-invoices")?.scrollIntoView({ behavior: "smooth" });
     },
     refreshBilling: () => {
@@ -413,12 +432,21 @@ export default function BillingClient() {
   };
 
   return (
-    <div className="p-6 text-white">
-      {/* Header */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+    <div
+      className="
+        min-h-screen px-4 py-6 text-foreground
+        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+      "
+      style={{ ["--copper" as never]: COPPER }}
+    >
+      <div className="mx-auto max-w-6xl">
+        {/* Header */}
+        <div className={cx(card, "px-5 py-4")}>
+          <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
+            Account
+          </div>
           <h1
-            className="text-2xl"
+            className="mt-1 text-2xl font-semibold text-white"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
             Billing
@@ -426,462 +454,396 @@ export default function BillingClient() {
           <p className="mt-1 text-sm text-neutral-400">
             Subscription, invoices, payment method, and tax settings.
           </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <GhostButton
-            onClick={actions.refreshBilling}
-            icon={<RefreshCcw size={16} />}
-          >
-            Refresh
-          </GhostButton>
-
-          <GhostButton
-            onClick={actions.openCustomerPortal}
-            icon={<ArrowUpRight size={16} />}
-            title="Recommended: manage billing in Stripe Customer Portal"
-          >
-            Open billing portal
-          </GhostButton>
-
-          <CopperButton
-            onClick={actions.changePlan}
-            icon={<ExternalLink size={16} />}
-          >
-            Change plan
-          </CopperButton>
-        </div>
-      </div>
-
-      {/* Top grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Plan + status */}
-        <GlassCard
-          title="Subscription"
-          icon={<ShieldCheck size={16} />}
-          right={<StatusPill status={data.status} />}
-          className="lg:col-span-2"
-        >
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-neutral-400">
-                Current plan
-              </p>
-              <p
-                className="mt-1 text-xl font-semibold"
-                style={{ color: "var(--accent-copper-light)" }}
-              >
-                {data.plan.name}
-              </p>
-              <p className="mt-1 text-sm text-neutral-300">
-                {data.plan.priceLabel} • {data.plan.interval}
-              </p>
-              <p className="mt-1 text-xs text-neutral-500">{data.plan.renewalLabel}</p>
-
-              <div className="mt-3">
-                <Badge tone="neutral">
-                  Lookup key: <span className="font-mono">{data.plan.lookupKey}</span>
-                </Badge>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <GhostButton
-                onClick={actions.viewInvoices}
-                icon={<Receipt size={16} />}
-              >
-                View invoices
-              </GhostButton>
-              <GhostButton
-                onClick={actions.openCustomerPortal}
-                icon={<ArrowUpRight size={16} />}
-              >
-                Manage in portal
-              </GhostButton>
-            </div>
-          </div>
-
-          <Divider />
-
-          {/* Usage */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-wide text-neutral-400">
-                  Seats
-                </p>
-                <Users size={16} className="text-neutral-400" />
-              </div>
-              <p className="mt-2 text-sm font-semibold text-neutral-200">
-                {seatsLabel}
-              </p>
-
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${Math.round(usagePct * 100)}%`,
-                    backgroundColor: "var(--accent-copper)",
-                    opacity: 0.9,
-                  }}
-                />
-              </div>
-
-              <p className="mt-2 text-xs text-neutral-500">
-                Track active users across your shop.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-wide text-neutral-400">
-                  Locations
-                </p>
-                <MapPin size={16} className="text-neutral-400" />
-              </div>
-              <p className="mt-2 text-sm font-semibold text-neutral-200">
-                {data.usage.activeLocations}
-              </p>
-              <p className="mt-2 text-xs text-neutral-500">
-                Multi-location support is included.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-wide text-neutral-400">
-                  Billing status
-                </p>
-                <ShieldCheck size={16} className="text-neutral-400" />
-              </div>
-              <p className="mt-2 text-sm font-semibold text-neutral-200 capitalize">
-                {data.status.replace("_", " ")}
-              </p>
-              <p className="mt-2 text-xs text-neutral-500">
-                Issues show here (failed payment, past due, etc).
-              </p>
-            </div>
-          </div>
-        </GlassCard>
-
-        {/* Payment Method */}
-        <GlassCard title="Payment method" icon={<CreditCard size={16} />}>
-          <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-neutral-200">
-                  {data.paymentMethod.brand} •••• {data.paymentMethod.last4}
-                </p>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Expires {data.paymentMethod.expMonth}/{data.paymentMethod.expYear}
-                </p>
-                <p className="mt-2 text-xs text-neutral-400">
-                  Billing name:{" "}
-                  <span className="text-neutral-200">
-                    {data.paymentMethod.billingName}
-                  </span>
-                </p>
-              </div>
-
-              <Badge tone="copper">Default</Badge>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <GhostButton
-                onClick={actions.updatePaymentMethod}
-                icon={<ArrowUpRight size={16} />}
-              >
-                Update in portal
-              </GhostButton>
-
-              <GhostButton
-                onClick={() => console.log("TODO: add payment method")}
-                icon={<Plus size={16} />}
-              >
-                Add new
-              </GhostButton>
-            </div>
-          </div>
-
-          <p className="mt-4 text-xs text-neutral-500">
-            Tip: Use Stripe Customer Portal for payment updates to keep PCI handling off your app.
-          </p>
-        </GlassCard>
-      </div>
-
-      {/* Second row */}
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Billing details */}
-        <GlassCard
-          title="Billing details"
-          icon={<Building2 size={16} />}
-          className="lg:col-span-2"
-          right={<Badge tone="neutral">Stored</Badge>}
-        >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <p className="text-xs uppercase tracking-wide text-neutral-400">
-                Company
-              </p>
-              <p className="mt-2 text-sm font-semibold text-neutral-200">
-                {data.billingProfile.companyName}
-              </p>
-              <p className="mt-1 text-xs text-neutral-500">
-                {data.billingProfile.contactEmail}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <p className="text-xs uppercase tracking-wide text-neutral-400">
-                Address
-              </p>
-              <p className="mt-2 text-sm text-neutral-200">
-                {data.billingProfile.addressLine1}
-              </p>
-              <p className="mt-1 text-xs text-neutral-500">
-                {data.billingProfile.city}, {data.billingProfile.region}{" "}
-                {data.billingProfile.postal}
-              </p>
-              <p className="mt-1 text-xs text-neutral-500">
-                {data.billingProfile.country}
-              </p>
-            </div>
-          </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
+            <GhostButton onClick={actions.refreshBilling} icon={<RefreshCcw size={16} />}>
+              Refresh
+            </GhostButton>
+
             <GhostButton
               onClick={actions.openCustomerPortal}
               icon={<ArrowUpRight size={16} />}
+              title="Recommended: manage billing in Stripe Customer Portal"
             >
-              Edit details in portal
+              Open billing portal
             </GhostButton>
-            <GhostButton
-              onClick={() => console.log("TODO: update billing profile in-app")}
-              icon={<ExternalLink size={16} />}
-            >
-              Edit in app (later)
-            </GhostButton>
-          </div>
-        </GlassCard>
 
-        {/* Tax */}
-        <GlassCard title="Taxes" icon={<ShieldCheck size={16} />}>
-          <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-            <div className="flex items-start justify-between gap-3">
+            <CopperButton onClick={actions.changePlan} icon={<ExternalLink size={16} />}>
+              Change plan
+            </CopperButton>
+          </div>
+        </div>
+
+        {/* Top grid */}
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Plan + status */}
+          <GlassCard
+            title="Subscription"
+            icon={<ShieldCheck size={16} />}
+            right={<StatusPill status={data.status} />}
+            className="lg:col-span-2"
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-neutral-200">
-                  {data.taxes.autoTaxEnabled ? "Automatic tax" : "Manual tax"}
+                <p className="text-xs uppercase tracking-wide text-neutral-400">
+                  Current plan
                 </p>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Region: {data.taxes.region}
+                <p className="mt-1 text-xl font-semibold" style={{ color: COPPER }}>
+                  {data.plan.name}
                 </p>
-                <p className="mt-2 text-xs text-neutral-400">
-                  Behavior:{" "}
-                  <span className="text-neutral-200">
-                    {data.taxes.taxBehavior === "exclusive"
-                      ? "Tax added at checkout"
-                      : "Tax included in price"}
-                  </span>
+                <p className="mt-1 text-sm text-neutral-300">
+                  {data.plan.priceLabel} • {data.plan.interval}
                 </p>
+                <p className="mt-1 text-xs text-neutral-500">{data.plan.renewalLabel}</p>
+
+                <div className="mt-3">
+                  <Badge tone="neutral">
+                    Lookup key: <span className="font-mono">{data.plan.lookupKey}</span>
+                  </Badge>
+                </div>
               </div>
-              <Badge tone={data.taxes.autoTaxEnabled ? "success" : "neutral"}>
-                {data.taxes.autoTaxEnabled ? "Enabled" : "Disabled"}
-              </Badge>
+
+              <div className="flex flex-wrap gap-2">
+                <GhostButton onClick={actions.viewInvoices} icon={<Receipt size={16} />}>
+                  View invoices
+                </GhostButton>
+                <GhostButton onClick={actions.openCustomerPortal} icon={<ArrowUpRight size={16} />}>
+                  Manage in portal
+                </GhostButton>
+              </div>
             </div>
 
-            {data.billingProfile.taxIdLabel && data.billingProfile.taxIdValue ? (
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/35 p-3">
-                <p className="text-xs text-neutral-400">
-                  {data.billingProfile.taxIdLabel}
-                </p>
-                <p className="mt-1 text-sm font-mono text-neutral-200">
-                  {data.billingProfile.taxIdValue}
+            <Divider />
+
+            {/* Usage */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-wide text-neutral-400">Seats</p>
+                  <Users size={16} className="text-neutral-400" />
+                </div>
+                <p className="mt-2 text-sm font-semibold text-neutral-200">{seatsLabel}</p>
+
+                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.round(usagePct * 100)}%`,
+                      backgroundColor: COPPER,
+                      opacity: 0.9,
+                    }}
+                  />
+                </div>
+
+                <p className="mt-2 text-xs text-neutral-500">
+                  Track active users across your shop.
                 </p>
               </div>
-            ) : null}
-          </div>
 
-          <p className="mt-4 text-xs text-neutral-500">
-            Configure taxes in Stripe to keep billing consistent across regions.
-          </p>
-        </GlassCard>
-      </div>
+              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-wide text-neutral-400">Locations</p>
+                  <MapPin size={16} className="text-neutral-400" />
+                </div>
+                <p className="mt-2 text-sm font-semibold text-neutral-200">
+                  {data.usage.activeLocations}
+                </p>
+                <p className="mt-2 text-xs text-neutral-500">
+                  Multi-location support is included.
+                </p>
+              </div>
 
-      {/* Invoices */}
-      <div id="billing-invoices" className="mt-6">
-        <GlassCard
-          title="Invoices"
-          icon={<Receipt size={16} />}
-          right={
-            <div className="flex items-center gap-2">
-              <select
-                value={invoiceFilter}
-                onChange={(e) =>
-                  setInvoiceFilter(e.target.value as typeof invoiceFilter)
-                }
-                className="rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-xs text-neutral-200 outline-none"
-              >
-                <option value="all">All</option>
-                <option value="paid">Paid</option>
-                <option value="open">Open</option>
-                <option value="void">Void</option>
-                <option value="uncollectible">Uncollectible</option>
-              </select>
+              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-wide text-neutral-400">Billing status</p>
+                  <ShieldCheck size={16} className="text-neutral-400" />
+                </div>
+                <p className="mt-2 text-sm font-semibold text-neutral-200 capitalize">
+                  {data.status.replace("_", " ")}
+                </p>
+                <p className="mt-2 text-xs text-neutral-500">
+                  Issues show here (failed payment, past due, etc).
+                </p>
+              </div>
+            </div>
+          </GlassCard>
 
+          {/* Payment Method */}
+          <GlassCard title="Payment method" icon={<CreditCard size={16} />}>
+            <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-200">
+                    {data.paymentMethod.brand} •••• {data.paymentMethod.last4}
+                  </p>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Expires {data.paymentMethod.expMonth}/{data.paymentMethod.expYear}
+                  </p>
+                  <p className="mt-2 text-xs text-neutral-400">
+                    Billing name:{" "}
+                    <span className="text-neutral-200">{data.paymentMethod.billingName}</span>
+                  </p>
+                </div>
+
+                <Badge tone="copper">Default</Badge>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <GhostButton onClick={actions.updatePaymentMethod} icon={<ArrowUpRight size={16} />}>
+                  Update in portal
+                </GhostButton>
+
+                <GhostButton onClick={() => console.log("TODO: add payment method")} icon={<Plus size={16} />}>
+                  Add new
+                </GhostButton>
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-neutral-500">
+              Tip: Use Stripe Customer Portal for payment updates to keep PCI handling off your app.
+            </p>
+          </GlassCard>
+        </div>
+
+        {/* Second row */}
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Billing details */}
+          <GlassCard
+            title="Billing details"
+            icon={<Building2 size={16} />}
+            className="lg:col-span-2"
+            right={<Badge tone="neutral">Stored</Badge>}
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+                <p className="text-xs uppercase tracking-wide text-neutral-400">Company</p>
+                <p className="mt-2 text-sm font-semibold text-neutral-200">
+                  {data.billingProfile.companyName}
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">{data.billingProfile.contactEmail}</p>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+                <p className="text-xs uppercase tracking-wide text-neutral-400">Address</p>
+                <p className="mt-2 text-sm text-neutral-200">{data.billingProfile.addressLine1}</p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {data.billingProfile.city}, {data.billingProfile.region} {data.billingProfile.postal}
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">{data.billingProfile.country}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <GhostButton onClick={actions.openCustomerPortal} icon={<ArrowUpRight size={16} />}>
+                Edit details in portal
+              </GhostButton>
               <GhostButton
-                onClick={actions.openCustomerPortal}
-                icon={<ArrowUpRight size={16} />}
-                className="px-3 py-2 text-xs"
+                onClick={() => console.log("TODO: update billing profile in-app")}
+                icon={<ExternalLink size={16} />}
               >
-                Portal
+                Edit in app (later)
               </GhostButton>
             </div>
-          }
-        >
-          <div className="overflow-hidden rounded-2xl border border-white/10">
-            <div className="grid grid-cols-12 bg-black/45 px-4 py-3 text-xs font-semibold text-neutral-300">
-              <div className="col-span-4 sm:col-span-3">Invoice</div>
-              <div className="col-span-4 sm:col-span-3">Date</div>
-              <div className="col-span-4 sm:col-span-2 text-right">Amount</div>
-              <div className="col-span-6 sm:col-span-2 text-right hidden sm:block">
-                Status
-              </div>
-              <div className="col-span-4 sm:col-span-2 text-right">Actions</div>
-            </div>
+          </GlassCard>
 
-            <div className="divide-y divide-white/10 bg-black/30">
-              {filteredInvoices.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-neutral-400">
-                  No invoices match this filter.
+          {/* Tax */}
+          <GlassCard title="Taxes" icon={<ShieldCheck size={16} />}>
+            <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-200">
+                    {data.taxes.autoTaxEnabled ? "Automatic tax" : "Manual tax"}
+                  </p>
+                  <p className="mt-1 text-xs text-neutral-500">Region: {data.taxes.region}</p>
+                  <p className="mt-2 text-xs text-neutral-400">
+                    Behavior:{" "}
+                    <span className="text-neutral-200">
+                      {data.taxes.taxBehavior === "exclusive"
+                        ? "Tax added at checkout"
+                        : "Tax included in price"}
+                    </span>
+                  </p>
                 </div>
-              ) : (
-                filteredInvoices.map((inv) => (
-                  <div
-                    key={inv.id}
-                    className="grid grid-cols-12 items-center px-4 py-3 text-sm"
-                  >
-                    <div className="col-span-4 sm:col-span-3">
-                      <div className="font-semibold text-neutral-200">
-                        {inv.number}
-                      </div>
-                      <div className="text-xs text-neutral-500">
-                        {inv.id}
-                      </div>
-                    </div>
+                <Badge tone={data.taxes.autoTaxEnabled ? "success" : "neutral"}>
+                  {data.taxes.autoTaxEnabled ? "Enabled" : "Disabled"}
+                </Badge>
+              </div>
 
-                    <div className="col-span-4 sm:col-span-3 text-neutral-300">
-                      {inv.date}
-                    </div>
-
-                    <div className="col-span-4 sm:col-span-2 text-right font-semibold text-neutral-200">
-                      {inv.amount}
-                    </div>
-
-                    <div className="col-span-6 sm:col-span-2 justify-end hidden sm:flex">
-                      <InvoiceStatusBadge s={inv.status} />
-                    </div>
-
-                    <div className="col-span-4 sm:col-span-2 flex justify-end gap-2">
-                      <GhostButton
-                        onClick={() => console.log("TODO: open hosted invoice", inv.hostedInvoiceUrl)}
-                        icon={<ExternalLink size={16} />}
-                        className="px-3 py-2 text-xs"
-                        title="Open invoice"
-                      >
-                        Open
-                      </GhostButton>
-
-                      <GhostButton
-                        onClick={() => console.log("TODO: download PDF", inv.pdfUrl)}
-                        icon={<Download size={16} />}
-                        className="px-3 py-2 text-xs"
-                        title="Download PDF"
-                      >
-                        PDF
-                      </GhostButton>
-                    </div>
-                  </div>
-                ))
-              )}
+              {data.billingProfile.taxIdLabel && data.billingProfile.taxIdValue ? (
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/35 p-3">
+                  <p className="text-xs text-neutral-400">{data.billingProfile.taxIdLabel}</p>
+                  <p className="mt-1 text-sm font-mono text-neutral-200">{data.billingProfile.taxIdValue}</p>
+                </div>
+              ) : null}
             </div>
-          </div>
 
-          <p className="mt-4 text-xs text-neutral-500">
-            You can also show invoices from your own{" "}
-            <span className="font-mono">subscriptions</span> /{" "}
-            <span className="font-mono">invoices</span> tables once you persist them.
-          </p>
-        </GlassCard>
-      </div>
+            <p className="mt-4 text-xs text-neutral-500">
+              Configure taxes in Stripe to keep billing consistent across regions.
+            </p>
+          </GlassCard>
+        </div>
 
-      {/* History */}
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <GlassCard title="Billing activity" icon={<Receipt size={16} />} className="lg:col-span-2">
-          <div className="space-y-3">
-            {data.history.map((h) => (
-              <div
-                key={h.id}
-                className="rounded-xl border border-white/10 bg-black/40 p-4"
+        {/* Invoices */}
+        <div id="billing-invoices" className="mt-6">
+          <GlassCard
+            title="Invoices"
+            icon={<Receipt size={16} />}
+            right={
+              <div className="flex items-center gap-2">
+                <select
+                  value={invoiceFilter}
+                  onChange={(e) => setInvoiceFilter(e.target.value as typeof invoiceFilter)}
+                  className="
+                    rounded-full border border-white/10 bg-black/50 px-3 py-2
+                    text-xs text-neutral-200 outline-none
+                    focus:ring-2 focus:ring-[color:var(--copper)]/35
+                  "
+                  style={{ ["--copper" as never]: COPPER }}
+                >
+                  <option value="all">All</option>
+                  <option value="paid">Paid</option>
+                  <option value="open">Open</option>
+                  <option value="void">Void</option>
+                  <option value="uncollectible">Uncollectible</option>
+                </select>
+
+                <GhostButton
+                  onClick={actions.openCustomerPortal}
+                  icon={<ArrowUpRight size={16} />}
+                  className="px-3 py-2 text-xs"
+                >
+                  Portal
+                </GhostButton>
+              </div>
+            }
+          >
+            <div className="overflow-hidden rounded-2xl border border-white/10">
+              <div className="grid grid-cols-12 bg-black/45 px-4 py-3 text-xs font-semibold text-neutral-300">
+                <div className="col-span-4 sm:col-span-3">Invoice</div>
+                <div className="col-span-4 sm:col-span-3">Date</div>
+                <div className="col-span-4 sm:col-span-2 text-right">Amount</div>
+                <div className="col-span-6 sm:col-span-2 text-right hidden sm:block">Status</div>
+                <div className="col-span-4 sm:col-span-2 text-right">Actions</div>
+              </div>
+
+              <div className="divide-y divide-white/10 bg-black/30">
+                {filteredInvoices.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-neutral-400">
+                    No invoices match this filter.
+                  </div>
+                ) : (
+                  filteredInvoices.map((inv) => (
+                    <div key={inv.id} className="grid grid-cols-12 items-center px-4 py-3 text-sm">
+                      <div className="col-span-4 sm:col-span-3">
+                        <div className="font-semibold text-neutral-200">{inv.number}</div>
+                        <div className="text-xs text-neutral-500">{inv.id}</div>
+                      </div>
+
+                      <div className="col-span-4 sm:col-span-3 text-neutral-300">{inv.date}</div>
+
+                      <div className="col-span-4 sm:col-span-2 text-right font-semibold text-neutral-200">
+                        {inv.amount}
+                      </div>
+
+                      <div className="col-span-6 sm:col-span-2 justify-end hidden sm:flex">
+                        <InvoiceStatusBadge s={inv.status} />
+                      </div>
+
+                      <div className="col-span-4 sm:col-span-2 flex justify-end gap-2">
+                        <GhostButton
+                          onClick={() => console.log("TODO: open hosted invoice", inv.hostedInvoiceUrl)}
+                          icon={<ExternalLink size={16} />}
+                          className="px-3 py-2 text-xs"
+                          title="Open invoice"
+                        >
+                          Open
+                        </GhostButton>
+
+                        <GhostButton
+                          onClick={() => console.log("TODO: download PDF", inv.pdfUrl)}
+                          icon={<Download size={16} />}
+                          className="px-3 py-2 text-xs"
+                          title="Download PDF"
+                        >
+                          PDF
+                        </GhostButton>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-neutral-500">
+              You can also show invoices from your own{" "}
+              <span className="font-mono">subscriptions</span> /{" "}
+              <span className="font-mono">invoices</span> tables once you persist them.
+            </p>
+          </GlassCard>
+        </div>
+
+        {/* History */}
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <GlassCard title="Billing activity" icon={<Receipt size={16} />} className="lg:col-span-2">
+            <div className="space-y-3">
+              {data.history.map((h) => (
+                <div key={h.id} className="rounded-xl border border-white/10 bg-black/50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-200">{h.label}</p>
+                      {h.meta ? <p className="mt-1 text-xs text-neutral-500">{h.meta}</p> : null}
+                    </div>
+                    <p className="text-xs text-neutral-500">{h.at}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+
+          {/* Developer / Wiring notes */}
+          <GlassCard title="Wiring checklist" icon={<ShieldCheck size={16} />}>
+            <div className="space-y-3 text-sm text-neutral-300">
+              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+                <p className="text-xs uppercase tracking-wide text-neutral-400">
+                  Recommended endpoints
+                </p>
+                <ul className="mt-2 space-y-2 text-xs text-neutral-400">
+                  <li>
+                    <span className="font-mono text-neutral-200">POST /api/stripe/portal</span>{" "}
+                    → returns {`{ url }`}
+                  </li>
+                  <li>
+                    <span className="font-mono text-neutral-200">GET /api/billing/snapshot</span>{" "}
+                    → plan/status/payment/invoices
+                  </li>
+                </ul>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+                <p className="text-xs uppercase tracking-wide text-neutral-400">
+                  Keep secrets server-only
+                </p>
+                <p className="mt-2 text-xs text-neutral-500">
+                  Use Stripe secret key only inside route handlers / server actions.
+                  Client should only receive portal URLs + safe invoice links.
+                </p>
+              </div>
+
+              <GhostButton
+                onClick={() => console.log("TODO: navigate to billing docs")}
+                icon={<ArrowUpRight size={16} />}
+                className="w-full justify-center"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-200">
-                      {h.label}
-                    </p>
-                    {h.meta ? (
-                      <p className="mt-1 text-xs text-neutral-500">{h.meta}</p>
-                    ) : null}
-                  </div>
-                  <p className="text-xs text-neutral-500">{h.at}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
-
-        {/* Developer / Wiring notes */}
-        <GlassCard title="Wiring checklist" icon={<ShieldCheck size={16} />}>
-          <div className="space-y-3 text-sm text-neutral-300">
-            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <p className="text-xs uppercase tracking-wide text-neutral-400">
-                Recommended endpoints
-              </p>
-              <ul className="mt-2 space-y-2 text-xs text-neutral-400">
-                <li>
-                  <span className="font-mono text-neutral-200">POST /api/stripe/portal</span>{" "}
-                  → returns {`{ url }`}
-                </li>
-                <li>
-                  <span className="font-mono text-neutral-200">GET /api/billing/snapshot</span>{" "}
-                  → plan/status/payment/invoices
-                </li>
-              </ul>
+                Open billing docs (later)
+              </GhostButton>
             </div>
+          </GlassCard>
+        </div>
 
-            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <p className="text-xs uppercase tracking-wide text-neutral-400">
-                Keep secrets server-only
-              </p>
-              <p className="mt-2 text-xs text-neutral-500">
-                Use Stripe secret key only inside route handlers / server actions.
-                Client should only receive portal URLs + safe invoice links.
-              </p>
-            </div>
-
-            <GhostButton
-              onClick={() => console.log("TODO: navigate to billing docs")}
-              icon={<ArrowUpRight size={16} />}
-              className="w-full justify-center"
-            >
-              Open billing docs (later)
-            </GhostButton>
-          </div>
-        </GlassCard>
-      </div>
-
-      {/* Footer note */}
-      <div className="mt-6 text-xs text-neutral-500">
-        Taxes and invoices reflect your Stripe configuration. Cancel anytime from the billing portal.
+        {/* Footer note */}
+        <div className="mt-6 text-xs text-neutral-500">
+          Taxes and invoices reflect your Stripe configuration. Cancel anytime from the billing portal.
+        </div>
       </div>
     </div>
   );
