@@ -1,4 +1,4 @@
-// app/menu/page.tsx (FULL FILE REPLACEMENT)
+// /app/menu/page.tsx (FULL FILE REPLACEMENT)
 // Menu list routes to: /menu/item/[id]
 // NO `any` casts.
 // IMPORTANT: labor rate is pulled from shops table (no manual labor rate input).
@@ -136,6 +136,14 @@ export default function MenuItemsPage() {
   }, [shopDefaults]);
 
   // ---------------------------
+  // THEME (copper, matching inspections pages)
+  // ---------------------------
+  const COPPER = "rgba(200,122,67,0.95)";
+  const COPPER_SOFT = "rgba(200,122,67,0.70)";
+  const COPPER_RING = "rgba(200,122,67,0.55)";
+  const COPPER_WASH_A = "rgba(200,122,67,0.16)";
+
+  // ---------------------------
   // SHOP DEFAULTS (use shops table)
   // ---------------------------
   const fetchShopDefaults = useCallback(async () => {
@@ -203,10 +211,7 @@ export default function MenuItemsPage() {
     [effectiveLaborHours, laborRate],
   );
 
-  const subtotal = useMemo(
-    () => partsTotal + laborTotal,
-    [partsTotal, laborTotal],
-  );
+  const subtotal = useMemo(() => partsTotal + laborTotal, [partsTotal, laborTotal]);
 
   // Auto-fill labor when template selected and labor box is empty
   useEffect(() => {
@@ -365,11 +370,7 @@ export default function MenuItemsPage() {
 
           toast.success(`Picked ${label}`);
         })().catch(() => {
-          setParts((rows) =>
-            rows.map((r, i) =>
-              i === rowIdx ? { ...r, part_id: sel.part_id } : r,
-            ),
-          );
+          setParts((rows) => rows.map((r, i) => (i === rowIdx ? { ...r, part_id: sel.part_id } : r)));
         });
       },
     [supabase],
@@ -475,7 +476,6 @@ export default function MenuItemsPage() {
         }));
 
       const itemLaborHours = effectiveLaborHours > 0 ? effectiveLaborHours : null;
-
       const computedTotal = partsTotal + (itemLaborHours ?? 0) * laborRate;
 
       const payload = {
@@ -527,15 +527,7 @@ export default function MenuItemsPage() {
     } finally {
       setSaving(false);
     }
-  }, [
-    form,
-    parts,
-    partsTotal,
-    laborRate,
-    shopId,
-    fetchItems,
-    effectiveLaborHours,
-  ]);
+  }, [form, parts, partsTotal, laborRate, shopId, fetchItems, effectiveLaborHours]);
 
   // ---------------------------
   // Saved menu items: collapsible + searchable
@@ -554,16 +546,9 @@ export default function MenuItemsPage() {
     });
   }, [menuItems, savedNeedle]);
 
-  const activeMenuItems = useMemo(
-    () => filteredMenuItems.filter((x) => x.is_active),
-    [filteredMenuItems],
-  );
-  const inactiveMenuItems = useMemo(
-    () => filteredMenuItems.filter((x) => !x.is_active),
-    [filteredMenuItems],
-  );
+  const activeMenuItems = useMemo(() => filteredMenuItems.filter((x) => x.is_active), [filteredMenuItems]);
+  const inactiveMenuItems = useMemo(() => filteredMenuItems.filter((x) => !x.is_active), [filteredMenuItems]);
 
-  // SAFE now: hooks are already declared above
   if (isLoading) {
     return (
       <div className="flex min-h-[200px] items-center justify-center text-sm text-neutral-300">
@@ -572,22 +557,49 @@ export default function MenuItemsPage() {
     );
   }
 
-  const flatMaster = masterServicesList.flatMap((cat) =>
-    cat.items.map((i) => i.item),
-  );
+  const flatMaster = masterServicesList.flatMap((cat) => cat.items.map((i) => i.item));
+
+  const inputBase =
+    "w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm " +
+    "text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md " +
+    `focus:outline-none focus:ring-2 focus:ring-[${COPPER_RING}]`;
+
+  const pill =
+    "rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] text-neutral-400";
+
+  const btnGhost =
+    "rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-100 " +
+    `hover:border-[${COPPER_SOFT}] hover:bg-neutral-900`;
+
+  const btnOutline =
+    "inline-flex items-center justify-center rounded-full border bg-black/70 px-4 py-2 text-xs font-semibold " +
+    "text-neutral-100 disabled:cursor-not-allowed disabled:opacity-50 " +
+    `border-[${COPPER_SOFT}] hover:bg-[rgba(200,122,67,0.12)]`;
+
+  const btnPrimary =
+    "inline-flex items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold text-neutral-50 " +
+    "shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-md transition " +
+    `border-[${COPPER_SOFT}] hover:border-[rgba(200,122,67,0.85)] ` +
+    "bg-[linear-gradient(to_right,rgba(0,0,0,0.80),rgba(200,122,67,0.14),rgba(0,0,0,0.80))] " +
+    "hover:bg-[linear-gradient(to_right,rgba(0,0,0,0.80),rgba(200,122,67,0.22),rgba(0,0,0,0.80))] " +
+    "disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
     <div className="relative space-y-8 fade-in">
+      {/* Copper wash (was orange) */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+        className={`
+          pointer-events-none absolute inset-0 -z-10
+          bg-[radial-gradient(circle_at_top,${COPPER_WASH_A},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.95),#020617_70%)]
+        `}
       />
 
       {/* Header */}
       <section className="metal-card mb-2 flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
         <div>
           <h1
-            className="text-2xl font-semibold text-white"
+            className={`text-2xl font-semibold text-[${COPPER}]`}
             style={{ fontFamily: "var(--font-blackops), system-ui" }}
           >
             Service Menu
@@ -598,7 +610,7 @@ export default function MenuItemsPage() {
         </div>
 
         <div className="hidden items-center gap-2 text-[11px] text-neutral-400 md:flex">
-          <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1">
+          <span className={pill}>
             Labor rate:{" "}
             <span className="text-neutral-200">
               {laborRate > 0 ? `${laborRate.toFixed(0)}/${currency}/hr` : "—"}
@@ -613,7 +625,7 @@ export default function MenuItemsPage() {
           <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
             Create menu item
           </h2>
-          <div className="rounded-full border border-[color:var(--accent-copper,#f97316)]/50 bg-black/70 px-3 py-1 text-[11px] text-neutral-300">
+          <div className={`rounded-full border bg-black/70 px-3 py-1 text-[11px] text-neutral-300 border-[${COPPER_SOFT}]`}>
             Parts + labor + inspection template
           </div>
         </div>
@@ -633,7 +645,7 @@ export default function MenuItemsPage() {
                     source: e.target.value === "manual" ? "manual" : "master",
                   }))
                 }
-                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] backdrop-blur-md sm:w-44"
+                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] backdrop-blur-md sm:w-44 focus:outline-none"
               >
                 <option value="master">From master list</option>
                 <option value="manual">Manual</option>
@@ -646,7 +658,7 @@ export default function MenuItemsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   list={form.source === "master" ? "master-services" : undefined}
                   autoComplete="off"
-                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md"
+                  className={inputBase}
                 />
                 {form.source === "master" ? (
                   <datalist id="master-services">
@@ -666,18 +678,14 @@ export default function MenuItemsPage() {
             </label>
             <select
               value={form.inspectionTemplateId}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, inspectionTemplateId: e.target.value }))
-              }
-              className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] backdrop-blur-md"
+              onChange={(e) => setForm((f) => ({ ...f, inspectionTemplateId: e.target.value }))}
+              className={inputBase}
             >
               <option value="">— none —</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.template_name ?? "Untitled"}
-                  {typeof t.labor_hours === "number"
-                    ? ` (${t.labor_hours.toFixed(1)}h)`
-                    : ""}
+                  {typeof t.labor_hours === "number" ? ` (${t.labor_hours.toFixed(1)}h)` : ""}
                 </option>
               ))}
             </select>
@@ -692,7 +700,7 @@ export default function MenuItemsPage() {
               placeholder="Optional details visible to customer"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              className="min-h-[80px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md"
+              className={inputBase + " min-h-[80px]"}
             />
           </div>
 
@@ -712,27 +720,21 @@ export default function MenuItemsPage() {
                   laborTimeStr: cleanNumericString(e.target.value),
                 }))
               }
-              className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md"
+              className={inputBase}
             />
 
             <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-neutral-400">
-              <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1">
+              <span className={pill}>
                 Labor rate:{" "}
                 <span className="text-neutral-200">
                   {laborRate > 0 ? `${laborRate.toFixed(0)}/${currency}/hr` : "—"}
                 </span>
               </span>
-              <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1">
-                Labor total:{" "}
-                <span className="text-neutral-200">
-                  {money(currency, laborTotal)}
-                </span>
+              <span className={pill}>
+                Labor total: <span className="text-neutral-200">{money(currency, laborTotal)}</span>
               </span>
-              <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1">
-                Parts total:{" "}
-                <span className="text-neutral-200">
-                  {money(currency, partsTotal)}
-                </span>
+              <span className={pill}>
+                Parts total: <span className="text-neutral-200">{money(currency, partsTotal)}</span>
               </span>
             </div>
           </div>
@@ -743,9 +745,7 @@ export default function MenuItemsPage() {
               <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
                 Parts
               </h3>
-              <span className="text-[11px] text-neutral-500">
-                Linked to parts catalog
-              </span>
+              <span className="text-[11px] text-neutral-500">Linked to parts catalog</span>
             </div>
 
             <div className="space-y-3 p-4">
@@ -758,29 +758,46 @@ export default function MenuItemsPage() {
                     placeholder="Part name (or pick)"
                     value={p.name}
                     onChange={(e) => setPartField(idx, "name", e.target.value)}
-                    className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
+                    className={`
+                      w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent
+                      px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none
+                      focus:ring-2 focus:ring-[${COPPER_RING}]
+                    `}
                   />
                   <input
                     placeholder="Qty"
                     inputMode="numeric"
                     value={p.quantityStr}
                     onChange={(e) => setPartField(idx, "quantityStr", e.target.value)}
-                    className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
+                    className={`
+                      w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent
+                      px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none
+                      focus:ring-2 focus:ring-[${COPPER_RING}]
+                    `}
                   />
                   <input
                     placeholder="Unit cost"
                     inputMode="decimal"
                     value={p.unitCostStr}
                     onChange={(e) => setPartField(idx, "unitCostStr", e.target.value)}
-                    className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
+                    className={`
+                      w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent
+                      px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none
+                      focus:ring-2 focus:ring-[${COPPER_RING}]
+                    `}
                   />
+
                   <button
                     type="button"
                     onClick={() => setPickerOpenForRow(idx)}
-                    className="rounded-lg border border-[color:var(--accent-copper-soft,#fdba74)]/60 px-3 py-2 text-xs font-medium text-neutral-100 hover:bg-[color:var(--accent-copper,#f97316)]/15"
+                    className={`
+                      rounded-lg border px-3 py-2 text-xs font-medium text-neutral-100
+                      border-[${COPPER_SOFT}] hover:bg-[rgba(200,122,67,0.12)]
+                    `}
                   >
                     Pick
                   </button>
+
                   <button
                     type="button"
                     onClick={() => removePartRow(idx)}
@@ -794,12 +811,12 @@ export default function MenuItemsPage() {
               <button
                 onClick={addPartRow}
                 type="button"
-                className="text-xs font-medium text-[color:var(--accent-copper,#f97316)] hover:text-[color:var(--accent-copper-light,#fed7aa)]"
+                className={`text-xs font-medium text-[${COPPER}] hover:text-[rgba(200,122,67,0.80)]`}
               >
                 + Add part
               </button>
 
-              {/* Manual parts request (internal flag in UI only) */}
+              {/* Manual parts request */}
               <div className="mt-4 rounded-2xl border border-white/10 bg-black/55 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
@@ -811,11 +828,9 @@ export default function MenuItemsPage() {
                     </div>
                   </div>
 
-                  <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] text-neutral-400">
+                  <span className={pill}>
                     Items:{" "}
-                    <span className="text-neutral-200">
-                      {requestItemsPreview.length}
-                    </span>
+                    <span className="text-neutral-200">{requestItemsPreview.length}</span>
                   </span>
                 </div>
 
@@ -827,7 +842,7 @@ export default function MenuItemsPage() {
                     value={requestWorkOrderId}
                     onChange={(e) => setRequestWorkOrderId(e.target.value)}
                     placeholder="Paste work_order_id"
-                    className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 backdrop-blur-md"
+                    className={inputBase}
                   />
 
                   <div className="flex items-center gap-2 pt-1 text-[11px] text-neutral-400">
@@ -836,7 +851,7 @@ export default function MenuItemsPage() {
                       type="checkbox"
                       checked={requestIncludeUnlinkedOnly}
                       onChange={(e) => setRequestIncludeUnlinkedOnly(e.target.checked)}
-                      className="h-4 w-4"
+                      className="h-4 w-4 accent-[rgba(200,122,67,0.9)]"
                     />
                     <label htmlFor="unlinked-only" className="select-none">
                       Only include unlinked/manual parts
@@ -850,7 +865,7 @@ export default function MenuItemsPage() {
                     value={requestNotes}
                     onChange={(e) => setRequestNotes(e.target.value)}
                     placeholder="e.g. Urgent, customer waiting…"
-                    className="min-h-[70px] w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 backdrop-blur-md"
+                    className={inputBase + " min-h-[70px]"}
                   />
 
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -875,7 +890,7 @@ export default function MenuItemsPage() {
                       type="button"
                       onClick={createPartsRequest}
                       disabled={!canRequestParts}
-                      className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/70 bg-black/70 px-4 py-2 text-xs font-semibold text-neutral-100 hover:bg-[color:var(--accent-copper,#f97316)]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      className={btnOutline}
                     >
                       {requesting ? "Requesting…" : "Create parts request (internal)"}
                     </button>
@@ -897,24 +912,20 @@ export default function MenuItemsPage() {
               </div>
               <div className="text-neutral-300">
                 Total:{" "}
-                <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">
+                <span className={`font-semibold text-[${COPPER}]`}>
                   {money(currency, subtotal)}
                 </span>
               </div>
             </div>
 
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-6 py-2 text-sm font-semibold text-neutral-50 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-md transition hover:border-[color:var(--accent-copper-light,#fed7aa)] hover:bg-[color:var(--accent-copper,#f97316)]/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <button onClick={handleSubmit} disabled={saving} className={btnPrimary}>
               {saving ? "Saving…" : "Save menu item"}
             </button>
           </div>
         </div>
       </section>
 
-      {/* Saved items (collapsible + searchable) */}
+      {/* Saved items */}
       <section className="space-y-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
@@ -932,7 +943,7 @@ export default function MenuItemsPage() {
               value={savedQuery}
               onChange={(e) => setSavedQuery(e.target.value)}
               placeholder="Search saved menu items…"
-              className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md"
+              className={inputBase}
             />
           </div>
         </div>
@@ -952,7 +963,7 @@ export default function MenuItemsPage() {
               >
                 <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-[color:var(--accent-copper,#f97316)]">
+                    <div className={`text-sm font-semibold text-[${COPPER}]`}>
                       {mi.name}
                     </div>
 
@@ -984,7 +995,7 @@ export default function MenuItemsPage() {
                     <button
                       type="button"
                       onClick={() => router.push(`/menu/item/${mi.id}`)}
-                      className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-100 hover:border-orange-500 hover:bg-neutral-900"
+                      className={btnGhost}
                     >
                       View / Edit
                     </button>
@@ -1011,7 +1022,7 @@ export default function MenuItemsPage() {
               >
                 <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-[color:var(--accent-copper,#f97316)]">
+                    <div className={`text-sm font-semibold text-[${COPPER}]`}>
                       {mi.name}
                     </div>
 
@@ -1043,7 +1054,7 @@ export default function MenuItemsPage() {
                     <button
                       type="button"
                       onClick={() => router.push(`/menu/item/${mi.id}`)}
-                      className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-100 hover:border-orange-500 hover:bg-neutral-900"
+                      className={btnGhost}
                     >
                       View / Edit
                     </button>
@@ -1059,9 +1070,7 @@ export default function MenuItemsPage() {
         </details>
 
         {menuItems.length === 0 && (
-          <div className="text-sm text-neutral-400">
-            No menu items yet. Create your first service above.
-          </div>
+          <div className="text-sm text-neutral-400">No menu items yet. Create your first service above.</div>
         )}
       </section>
 
