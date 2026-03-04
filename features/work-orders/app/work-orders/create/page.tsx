@@ -151,6 +151,37 @@ const getMetaString = (meta: unknown, key: string): string | null => {
   return t.length ? t : null;
 };
 
+// Intake helpers (stored into work_orders.notes without schema changes)
+function buildIntakeNotesBlock(input: {
+  concern: string;
+  details: string;
+  contactPref: string;
+  mileage: string;
+}) {
+  const lines: string[] = [];
+  lines.push("PORTAL INTAKE"); // keep marker consistent across portal + app
+  lines.push(`Concern: ${input.concern.trim()}`);
+  if (input.details.trim()) lines.push(`Details: ${input.details.trim()}`);
+  if (input.contactPref.trim()) lines.push(`Contact: ${input.contactPref.trim()}`);
+  if (input.mileage.trim()) lines.push(`Mileage: ${input.mileage.trim()}`);
+  return lines.join("\n");
+}
+
+function mergeNotes(existing: string | null | undefined, intakeBlock: string) {
+  const base = (existing ?? "").trim();
+  const marker = "PORTAL INTAKE";
+  if (!base) return intakeBlock;
+
+  const idx = base.indexOf(marker);
+  if (idx >= 0) {
+    const before = base.slice(0, idx).trimEnd();
+    return before ? `${before}\n\n${intakeBlock}` : intakeBlock;
+  }
+  return `${base}\n\n${intakeBlock}`;
+}
+
+const INTAKE_DISMISS_KEY = "pfq.create.intake.dismiss.v1";
+
 const strOrNull = (v: string | null | undefined) => {
   const t = (v ?? "").trim();
   return t ? t : null;
@@ -197,6 +228,15 @@ export default function CreateWorkOrderPage() {
   useEffect(() => {
     (window as unknown as Record<string, unknown>)._sb = supabase;
   }, [supabase]);
+
+    useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(INTAKE_DISMISS_KEY);
+      setIntakeDismissed(v === "1");
+    } catch {
+      /* noop */
+    }
+  }, []);
 
   // Prefill ids from URL
   const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>(
@@ -381,6 +421,16 @@ export default function CreateWorkOrderPage() {
 
   // ✅ AI suggest modal state
   const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
+
+    // Soft intake pop (after save)
+  const [intakeOpen, setIntakeOpen] = useState(false);
+  const [intakeDismissed, setIntakeDismissed] = useState(false);
+
+  const [intakeConcern, setIntakeConcern] = useState("");
+  const [intakeDetails, setIntakeDetails] = useState("");
+  const [intakeContactPref, setIntakeContactPref] = useState("Text or call");
+  const [intakeMileage, setIntakeMileage] = useState("");
+  const [intakeSaving, setIntakeSaving] = useState(false);
 
   // Defaults / notes
   const [type, setType] = useTabState<WOType>("type", "maintenance");
@@ -992,6 +1042,115 @@ export default function CreateWorkOrderPage() {
     }
   }
 
+    async function maybeOpenIntakeAfterSave(woId: string) {
+    if (!woId) return;
+    if (intakeDismissed) return;
+
+    // If already saved on this WO, don't prompt
+    const { data: w } = await supabase
+      .from("work_orders")
+      .select("id, notes")
+      .eq("id", woId)
+      .maybeSingle();
+
+    const existingNotes = (w?.notes ?? null) as string | null;
+    if (
+      typeof existingNotes === "string" &&
+      existingNotes.includes("PORTAL INTAKE")
+    )
+      return;
+
+    setIntakeOpen(true);
+  }
+
+  async function saveIntakeAndCreateDiagnosticLine() {
+    if (!wo?.id) return;
+    const concern = intakeConcern.trim();
+    if (!concern) {
+      toast.error("Please enter the intake concern.");
+      return;
+    }
+
+    if (intakeSaving) return;
+    setIntakeSaving(true);
+
+    try {
+      // 1) Save intake into work_orders.notes (non-breaking, no schema change)
+      const intakeBlock = buildIntakeNotesBlock({
+        concern,
+        details: intakeDetails,
+        contactPref: intakeContactPref,
+        mileage: intakeMileage,
+      });
+
+      const merged = mergeNotes(wo.notes ?? null, intakeBlock);
+
+      const { data: updatedWo, error: woErr } = await supabase
+        .from("work_orders")
+        .update({ notes: merged })
+        .eq("id", wo.id)
+        .select("*")
+        .single();
+
+      if (woErr) throw woErr;
+      setWo(updatedWo as WorkOrderRow);
+
+      // 2) Auto-create diagnostic line (avoid duplicates)
+      const diagDesc = `Intake: ${concern}`;
+
+      const { data: existingLines, error: lErr } = await supabase
+        .from("work_order_lines")
+        .select("id, description")
+        .eq("work_order_id", wo.id)
+        .order("created_at", { ascending: true });
+
+      if (lErr) throw lErr;
+
+      const already = (existingLines ?? []).some(
+        (l) => (l.description ?? "") === diagDesc,
+      );
+
+      if (!already) {
+        const insertLine: DB["public"]["Tables"]["work_order_lines"]["Insert"] = {
+          work_order_id: wo.id,
+          job_type: "diagnosis",
+          status: "awaiting",
+          complaint: concern,
+          description: diagDesc,
+        };
+
+        const { error: insErr } = await supabase
+          .from("work_order_lines")
+          .insert(insertLine);
+
+        if (insErr) throw insErr;
+      }
+
+      await fetchLines();
+      toast.success("Intake saved and diagnostic line created.");
+      setIntakeOpen(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to save intake.";
+      toast.error(msg);
+    } finally {
+      setIntakeSaving(false);
+    }
+  }
+
+  function dismissIntakeOnce() {
+    setIntakeOpen(false);
+  }
+
+  function dismissIntakeForever() {
+    try {
+      window.localStorage.setItem(INTAKE_DISMISS_KEY, "1");
+    } catch {
+      /* noop */
+    }
+    setIntakeDismissed(true);
+    setIntakeOpen(false);
+  }
+
   const handleClearForm = useCallback(() => {
     setCustomer(defaultCustomer);
     setVehicle(defaultVehicle);
@@ -1391,17 +1550,20 @@ export default function CreateWorkOrderPage() {
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
-                  type="button"
-                  onClick={() => void handleSaveCustomerVehicle()}
-                  disabled={savingCv || loading}
-                  className="
-                    rounded-full border border-white/10 bg-black/50
-                    px-4 py-2 text-sm font-semibold text-neutral-200
-                    hover:bg-black/65 disabled:opacity-60
-                  "
-                >
-                  {savingCv ? "Saving…" : "Save & Continue"}
-                </button>
+  type="button"
+  onClick={async () => {
+    const id = await handleSaveCustomerVehicle();
+    if (id) await maybeOpenIntakeAfterSave(id);
+  }}
+  disabled={savingCv || loading}
+  className="
+    rounded-full border border-white/10 bg-black/50
+    px-4 py-2 text-sm font-semibold text-neutral-200
+    hover:bg-black/65 disabled:opacity-60
+  "
+>
+  {savingCv ? "Saving…" : "Save & Continue"}
+</button>
 
                 <button
                   type="button"
@@ -1767,6 +1929,137 @@ export default function CreateWorkOrderPage() {
                 void fetchLines();
               }}
             />
+          )}
+
+                    {/* Soft Intake Pop (after save) */}
+          {intakeOpen && (
+            <div className="fixed inset-0 z-[90] flex items-end justify-center p-3 sm:items-center">
+              <div
+                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                onClick={dismissIntakeOnce}
+              />
+              <div className="relative w-full max-w-2xl rounded-3xl border border-white/10 bg-black/70 p-4 shadow-[0_0_40px_rgba(0,0,0,0.85)] backdrop-blur-md">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
+                      Intake (quick)
+                    </div>
+                    <h3
+                      className="mt-1 text-xl font-semibold text-white"
+                      style={{ fontFamily: "var(--font-blackops), system-ui" }}
+                    >
+                      What brought them in?
+                    </h3>
+                    <p className="mt-1 text-sm text-neutral-400">
+                      Saves to WO notes and creates a diagnostic line for the tech.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={dismissIntakeOnce}
+                    className="rounded-full border border-white/10 bg-black/50 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/65"
+                  >
+                    Skip
+                  </button>
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                      Concern (required)
+                    </label>
+                    <input
+                      value={intakeConcern}
+                      onChange={(e) => setIntakeConcern(e.target.value)}
+                      className="input"
+                      placeholder="e.g. No start / rough idle / brake noise…"
+                      disabled={intakeSaving}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                      Details (optional)
+                    </label>
+                    <textarea
+                      value={intakeDetails}
+                      onChange={(e) => setIntakeDetails(e.target.value)}
+                      className="input"
+                      rows={3}
+                      placeholder="Anything else they said?"
+                      disabled={intakeSaving}
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                        Contact preference
+                      </label>
+                      <select
+                        value={intakeContactPref}
+                        onChange={(e) => setIntakeContactPref(e.target.value)}
+                        className="input"
+                        disabled={intakeSaving}
+                      >
+                        <option>Text or call</option>
+                        <option>Text only</option>
+                        <option>Call only</option>
+                        <option>Email</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                        Mileage (optional)
+                      </label>
+                      <input
+                        value={intakeMileage}
+                        onChange={(e) => setIntakeMileage(e.target.value)}
+                        className="input"
+                        placeholder="e.g. 245,000"
+                        disabled={intakeSaving}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={saveIntakeAndCreateDiagnosticLine}
+                      disabled={intakeSaving}
+                      className="
+                        rounded-full border border-[color:var(--copper)]/70
+                        bg-[color:var(--copper)]/12 px-5 py-2 text-sm font-semibold
+                        text-[color:var(--copper)] hover:bg-[color:var(--copper)]/15
+                        disabled:opacity-60
+                      "
+                    >
+                      {intakeSaving ? "Saving…" : "Save intake"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={dismissIntakeOnce}
+                      disabled={intakeSaving}
+                      className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/65 disabled:opacity-60"
+                    >
+                      Skip for now
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={dismissIntakeForever}
+                      disabled={intakeSaving}
+                      className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-400 hover:text-neutral-200 hover:bg-black/65 disabled:opacity-60"
+                    >
+                      Don’t ask again
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </section>
       </div>
