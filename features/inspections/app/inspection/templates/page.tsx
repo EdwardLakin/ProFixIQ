@@ -1,4 +1,4 @@
-// features/inspections/app/inspection/templates/page.tsx
+// features/inspections/app/inspection/templates/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -170,37 +170,49 @@ export default function InspectionTemplatesPage() {
     "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border " +
     "transition-colors";
 
+  // copper palette (replaces all orange usage)
+  const COPPER_18 = "rgba(200,122,67,0.18)";
+  const COPPER_20 = "rgba(200,122,67,0.20)";
+  const COPPER_14 = "rgba(200,122,67,0.14)";
+  const COPPER_90 = "rgba(200,122,67,0.90)";
+  const COPPER_70 = "rgba(200,122,67,0.70)";
+  const COPPER_65 = "rgba(200,122,67,0.65)";
+  const COPPER_55 = "rgba(200,122,67,0.55)";
+  const COPPER_SHADOW_60 = "rgba(200,122,67,0.60)";
+  const COPPER_SHADOW_80 = "rgba(200,122,67,0.80)";
+
   return (
     <div className="px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-6xl space-y-5">
-        {/* Copper wash */}
+        {/* Copper wash (was orange) */}
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+          className={`
+            pointer-events-none fixed inset-0 -z-10
+            bg-[radial-gradient(circle_at_top,${COPPER_18},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.96),#020617_78%)]
+          `}
         />
 
         {/* Header + filters */}
-        <div
-          className={
-            headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
-          }
-        >
+        <div className={headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.2),transparent_65%)]"
+            className={`
+              pointer-events-none absolute inset-x-0 -top-10 h-24
+              bg-[radial-gradient(circle_at_top,${COPPER_20},transparent_65%)]
+            `}
           />
 
           <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1
-                className="text-xl font-bold tracking-[0.22em] text-[rgba(248,113,22,0.9)] md:text-2xl uppercase"
+                className={`text-xl font-bold tracking-[0.22em] text-[${COPPER_90}] md:text-2xl uppercase`}
                 style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
               >
                 Inspection Templates
               </h1>
               <p className="mt-1 text-xs text-neutral-300">
-                Build, import, and manage inspection templates for your shop and
-                fleets.
+                Build, import, and manage inspection templates for your shop and fleets.
               </p>
             </div>
 
@@ -217,24 +229,26 @@ export default function InspectionTemplatesPage() {
                         pillBase +
                         " " +
                         (isActive
-                          ? "border-[rgba(248,113,22,0.7)] bg-[rgba(15,23,42,0.95)] text-[rgba(248,250,252,0.95)]"
+                          ? `border-[${COPPER_70}] bg-[rgba(15,23,42,0.95)] text-[rgba(248,250,252,0.95)]`
                           : "border-transparent bg-transparent text-neutral-400 hover:bg-zinc-900/80")
                       }
                     >
-                      {s === "mine"
-                        ? "My Templates"
-                        : s === "shared"
-                          ? "Shared"
-                          : "All"}
+                      {s === "mine" ? "My Templates" : s === "shared" ? "Shared" : "All"}
                     </button>
                   );
                 })}
               </div>
 
-              {/* New template CTA */}
+              {/* New template CTA (was orange gradient + orange glow) */}
               <Link
                 href="/inspections/custom-inspection"
-                className="mt-1 inline-flex items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#ea580c),var(--accent-copper,#f97316))] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_22px_rgba(248,113,22,0.6)] hover:shadow-[0_0_30px_rgba(248,113,22,0.8)] md:mt-0"
+                className={`
+                  mt-1 inline-flex items-center justify-center rounded-full
+                  bg-[linear-gradient(to_right,rgba(200,122,67,0.85),rgba(200,122,67,0.55))]
+                  px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black
+                  shadow-[0_0_22px_${COPPER_SHADOW_60}] hover:shadow-[0_0_30px_${COPPER_SHADOW_80}]
+                  md:mt-0
+                `}
               >
                 New Template
               </Link>
@@ -248,7 +262,11 @@ export default function InspectionTemplatesPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by name, description, or tags…"
-                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(248,113,22,0.55)]"
+                className={`
+                  w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70
+                  px-3 py-2 text-sm text-white placeholder:text-neutral-500
+                  focus:outline-none focus:ring-2 focus:ring-[${COPPER_55}]
+                `}
               />
             </div>
 
@@ -274,21 +292,16 @@ export default function InspectionTemplatesPage() {
                 No templates found
               </div>
               <p className="mt-2 text-xs text-neutral-400">
-                Try adjusting your filters or import a fleet form to generate a
-                template.
+                Try adjusting your filters or import a fleet form to generate a template.
               </p>
             </div>
           ) : (
             <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {rows.map((t) => {
                 const mineOwned = canEditOrDelete(t);
-                const encodedName = encodeURIComponent(
-                  t.template_name ?? "Custom Inspection",
-                );
+                const encodedName = encodeURIComponent(t.template_name ?? "Custom Inspection");
 
-                const createdAt = t.created_at
-                  ? new Date(t.created_at).toLocaleDateString()
-                  : "—";
+                const createdAt = t.created_at ? new Date(t.created_at).toLocaleDateString() : "—";
 
                 const tags = Array.isArray(t.tags) ? t.tags : [];
                 const lowerTags = tags.map((tag) => tag.toLowerCase());
@@ -344,7 +357,10 @@ export default function InspectionTemplatesPage() {
                   >
                     <div
                       aria-hidden
-                      className="pointer-events-none absolute inset-x-0 -top-10 h-20 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_70%)]"
+                      className={`
+                        pointer-events-none absolute inset-x-0 -top-10 h-20
+                        bg-[radial-gradient(circle_at_top,${COPPER_14},transparent_70%)]
+                      `}
                     />
 
                     <div className="relative flex flex-col gap-2">
@@ -418,24 +434,24 @@ export default function InspectionTemplatesPage() {
                           {/* Use Template / run */}
                           <Link
                             href={`/inspections/run?templateId=${t.id}`}
-                            className="
+                            className={`
                               rounded-full border border-[color:var(--metal-border-soft,#374151)]
                               bg-black/70 px-3 py-1.5 text-[11px] uppercase tracking-[0.16em]
-                              text-neutral-100 hover:border-[rgba(248,113,22,0.65)] hover:bg-black/80
-                            "
+                              text-neutral-100 hover:border-[${COPPER_65}] hover:bg-black/80
+                            `}
                           >
                             Use
                           </Link>
 
-                          {/* Edit -> go to custom draft, pass templateId + template name so header fills */}
+                          {/* Edit -> go to custom draft */}
                           {mineOwned && (
                             <Link
                               href={`/inspections/custom-draft?templateId=${t.id}&template=${encodedName}`}
-                              className="
+                              className={`
                                 rounded-full border border-[color:var(--metal-border-soft,#374151)]
                                 bg-black/70 px-3 py-1.5 text-[11px] uppercase tracking-[0.16em]
-                                text-neutral-100 hover:border-[rgba(248,113,22,0.65)] hover:bg-black/80
-                              "
+                                text-neutral-100 hover:border-[${COPPER_65}] hover:bg-black/80
+                              `}
                             >
                               Edit
                             </Link>
