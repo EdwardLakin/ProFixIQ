@@ -1,3 +1,4 @@
+// /app/inspections/custom-inspection/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -416,7 +417,7 @@ function inferCvipGroup(v: VehicleType, b: BrakeSystem): CvipGroup | undefined {
 }
 
 /* ------------------------------------------------------------------ */
-/* Small UI helpers                                                    */
+/* Small UI helpers                                                   */
 /* ------------------------------------------------------------------ */
 
 function cx(...parts: Array<string | false | null | undefined>) {
@@ -762,17 +763,38 @@ export default function CustomBuilderPage() {
     laborHours,
   ]);
 
+  // ✅ Copper-only (no orange fills / no brown pill backgrounds)
+  const COPPER = "var(--accent-copper-soft,#c87a43)";
+  const COPPER_BORDER = `border-[color:${COPPER}]`;
+  const COPPER_RING = `focus:ring-[color:${COPPER}]`;
+
   const tileBase =
     "rounded-full border border-[color:var(--metal-border-soft,rgba(255,255,255,0.12))] bg-black/45 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/55";
 
+  // Active pills: same text color, copper outline, NO background tint
   const tileOn =
-    "rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-200 hover:bg-orange-500/15";
+    "rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/55 " +
+    COPPER_BORDER +
+    " shadow-[0_0_0_1px_rgba(200,122,67,0.15)]";
 
+  // Primary/secondary buttons: copper outline + neutral text (no orange fill)
   const primaryBtn =
-    "rounded-full bg-orange-600 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-orange-500 disabled:opacity-60";
+    "rounded-full border bg-black/45 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/55 disabled:opacity-60 " +
+    COPPER_BORDER;
 
   const secondaryBtn =
-    "rounded-full border border-orange-500/50 bg-orange-500/10 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-200 hover:bg-orange-500/15 disabled:opacity-60";
+    "rounded-full border bg-black/35 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/45 disabled:opacity-60 " +
+    COPPER_BORDER;
+
+  const inputBase =
+    "rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 " +
+    COPPER_RING +
+    " focus:border-[color:var(--accent-copper-soft,#c87a43)]";
+
+  const selectBase =
+    "rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 " +
+    COPPER_RING +
+    " focus:border-[color:var(--accent-copper-soft,#c87a43)]";
 
   return (
     <div className="p-4 text-white">
@@ -780,7 +802,10 @@ export default function CustomBuilderPage() {
         <div className="mb-4 flex flex-col items-center gap-3 md:flex-row md:items-end md:justify-between">
           <div className="text-center md:text-left">
             <h1
-              className="text-2xl font-bold tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+              className={cx(
+                "text-2xl font-bold tracking-[0.18em]",
+                "text-[color:var(--accent-copper-soft,#c87a43)]",
+              )}
               style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
             >
               Inspection Builder
@@ -794,7 +819,11 @@ export default function CustomBuilderPage() {
             {topChips.map((c) => (
               <span
                 key={c.k}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[11px] text-neutral-200"
+                className={cx(
+                  "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px]",
+                  "bg-transparent text-neutral-200",
+                  COPPER_BORDER, // ✅ copper outline only
+                )}
               >
                 <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{c.k}</span>
                 <span className="font-semibold text-neutral-100">{c.v}</span>
@@ -806,18 +835,14 @@ export default function CustomBuilderPage() {
         <div className="mb-5 grid gap-3 md:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="text-sm text-neutral-300">Template title</span>
-            <input
-              className="w-full rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
+            <input className={inputBase} value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1">
               <span className="text-sm text-neutral-300">Duty Class</span>
               <select
-                className="rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                className={selectBase}
                 value={dutyClass}
                 onChange={(e) => setDutyClass(e.target.value as DutyClass)}
               >
@@ -834,7 +859,7 @@ export default function CustomBuilderPage() {
               <span className="text-sm text-neutral-300">Labor hours</span>
               <input
                 inputMode="decimal"
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                className={inputBase}
                 value={laborHours}
                 onChange={(e) => setLaborHours(e.target.value)}
                 placeholder="e.g. 2.5"
@@ -844,7 +869,7 @@ export default function CustomBuilderPage() {
           </div>
         </div>
 
-        {/* Toggles row (neutral + copper only) */}
+        {/* Toggles row (neutral text, copper outline only) */}
         <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"
@@ -859,7 +884,11 @@ export default function CustomBuilderPage() {
             <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-2">
               <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Engine</span>
               <select
-                className="rounded-full border border-neutral-700 bg-neutral-900/70 px-3 py-1 text-[12px] text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                className={cx(
+                  "rounded-full border border-neutral-700 bg-neutral-900/70 px-3 py-1 text-[12px] text-white focus:outline-none focus:ring-2",
+                  COPPER_RING,
+                  "focus:border-[color:var(--accent-copper-soft,#c87a43)]",
+                )}
                 value={oilEngineType}
                 onChange={(e) => setOilEngineType(e.target.value as EngineType)}
               >
@@ -920,7 +949,7 @@ export default function CustomBuilderPage() {
 
         {/* Quick build */}
         <div className="mb-8 rounded-2xl border border-white/10 bg-black/40 p-4">
-          <div className="mb-1 text-center text-sm font-semibold text-[color:var(--accent-copper,#f97316)]">
+          <div className="mb-1 text-center text-sm font-semibold text-[color:var(--accent-copper-soft,#c87a43)]">
             Quick Build
           </div>
           <p className="mb-3 text-center text-sm text-neutral-400">
@@ -931,7 +960,7 @@ export default function CustomBuilderPage() {
             <label className="flex flex-col gap-1">
               <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Vehicle</span>
               <select
-                className="rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                className={selectBase}
                 value={vehicleType}
                 onChange={(e) => {
                   setQuickTouched(true);
@@ -948,7 +977,7 @@ export default function CustomBuilderPage() {
             <label className="flex flex-col gap-1">
               <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Brake system</span>
               <select
-                className="rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                className={selectBase}
                 value={brakeSystem}
                 onChange={(e) => {
                   setQuickTouched(true);
@@ -966,7 +995,11 @@ export default function CustomBuilderPage() {
                 type="number"
                 min={10}
                 max={250}
-                className="rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                className={cx(
+                  "rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
+                  COPPER_RING,
+                  "focus:border-[color:var(--accent-copper-soft,#c87a43)]",
+                )}
                 value={String(targetCount)}
                 onChange={(e) => {
                   setQuickTouched(true);
@@ -988,7 +1021,7 @@ export default function CustomBuilderPage() {
 
         {/* Prompt build */}
         <div className="mb-8 rounded-2xl border border-white/10 bg-black/40 p-4">
-          <div className="mb-1 text-center text-sm font-semibold text-[color:var(--accent-copper,#f97316)]">
+          <div className="mb-1 text-center text-sm font-semibold text-[color:var(--accent-copper-soft,#c87a43)]">
             Prompt Build
           </div>
           <p className="mb-3 text-center text-sm text-neutral-400">
@@ -1020,7 +1053,7 @@ export default function CustomBuilderPage() {
                   key={key}
                   type="button"
                   onClick={() => applyAiPreset(key)}
-                  className={active ? primaryBtn + " px-3 py-1 text-[11px]" : secondaryBtn + " px-3 py-1 text-[11px]"}
+                  className={(active ? primaryBtn : secondaryBtn) + " px-3 py-1 text-[11px]"}
                 >
                   {CVIP_PRESETS[key].label}
                 </button>
@@ -1029,7 +1062,11 @@ export default function CustomBuilderPage() {
           </div>
 
           <textarea
-            className="mb-3 min-h-[90px] w-full rounded-xl border border-neutral-700 bg-neutral-900/70 p-3 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+            className={cx(
+              "mb-3 min-h-[90px] w-full rounded-xl border border-neutral-700 bg-neutral-900/70 p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
+              COPPER_RING,
+              "focus:border-[color:var(--accent-copper-soft,#c87a43)]",
+            )}
             placeholder="e.g. brake inspection, hydraulic, include tires, 30 point"
             value={aiPrompt}
             onChange={(e) => {
@@ -1076,7 +1113,12 @@ export default function CustomBuilderPage() {
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="font-semibold text-neutral-100">{sec.title}</div>
-                    <span className="rounded-full border border-white/10 bg-black/40 px-2 py-[2px] text-[11px] text-neutral-300">
+                    <span
+                      className={cx(
+                        "rounded-full border bg-transparent px-2 py-[2px] text-[11px] text-neutral-300",
+                        COPPER_BORDER,
+                      )}
+                    >
                       {selectedCount}/{sec.items.length} selected
                     </span>
                   </div>
@@ -1089,11 +1131,7 @@ export default function CustomBuilderPage() {
                     >
                       Select all
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => clearSection(sec.title)}
-                      className={tileBase + " px-3 py-1"}
-                    >
+                    <button type="button" onClick={() => clearSection(sec.title)} className={tileBase + " px-3 py-1"}>
                       Clear
                     </button>
                     <button
@@ -1111,19 +1149,20 @@ export default function CustomBuilderPage() {
                     {sec.items.map((i) => {
                       const label = i.item;
                       const checked = (selections[sec.title] ?? []).includes(label);
+
                       return (
                         <label
                           key={label}
                           className={cx(
                             "flex items-center gap-2 rounded-lg border border-white/10 bg-black/35 px-2 py-1 text-sm text-neutral-100",
-                            checked && "border-orange-500/30 bg-orange-500/5",
+                            checked && COPPER_BORDER,
                           )}
                         >
                           <input
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggle(sec.title, label)}
-                            className="h-4 w-4 accent-orange-500"
+                            className="h-4 w-4 accent-[color:var(--accent-copper-soft,#c87a43)]"
                           />
                           <span className="text-xs sm:text-sm">{label}</span>
                         </label>
@@ -1133,9 +1172,7 @@ export default function CustomBuilderPage() {
                 )}
 
                 {collapsed && (
-                  <p className="mt-1 text-[11px] text-neutral-500">
-                    Collapsed. Expand to adjust individual checks.
-                  </p>
+                  <p className="mt-1 text-[11px] text-neutral-500">Collapsed. Expand to adjust individual checks.</p>
                 )}
               </div>
             );
