@@ -1,7 +1,6 @@
-// app/inspections/custom/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
 import {
@@ -416,13 +415,26 @@ function inferCvipGroup(v: VehicleType, b: BrakeSystem): CvipGroup | undefined {
   return undefined;
 }
 
+/* ------------------------------------------------------------------ */
+/* Small UI helpers                                                    */
+/* ------------------------------------------------------------------ */
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function compactGridLabel(mode: GridMode) {
+  if (mode === "air") return "Air";
+  if (mode === "hyd") return "Hydraulic";
+  return "None";
+}
+
 export default function CustomBuilderPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
-
   const [laborHours, setLaborHours] = useState<string>("");
 
   const [gridMode, setGridMode] = useState<GridMode>(dutyClass === "heavy" ? "air" : "hyd");
@@ -451,6 +463,9 @@ export default function CustomBuilderPage() {
 
   const [quickTouched, setQuickTouched] = useState(false);
 
+  // triggers: avoid spamming apply on every keystroke (still “auto”)
+  const triggerTimerRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (gridTouched) return;
     setGridMode(dutyClass === "heavy" ? "air" : "hyd");
@@ -463,13 +478,6 @@ export default function CustomBuilderPage() {
   }, [dutyClass, quickTouched]);
 
   const cvipGroup = useMemo(() => inferCvipGroup(vehicleType, brakeSystem), [vehicleType, brakeSystem]);
-
-  const gridModeLabel =
-    gridMode === "air"
-      ? "Air brake corner grid (Steer + Drive)"
-      : gridMode === "hyd"
-        ? "Hydraulic brake corner grid (LF / RF / LR / RR)"
-        : "No corner grid";
 
   const dutyLabel =
     dutyClass === "light" ? "Light duty" : dutyClass === "medium" ? "Medium duty" : "Heavy duty";
@@ -492,14 +500,6 @@ export default function CustomBuilderPage() {
   }
   function clearSection(sectionTitle: string) {
     setSelections((prev) => ({ ...prev, [sectionTitle]: [] }));
-  }
-  function selectAllEverywhere() {
-    const next: Record<string, string[]> = {};
-    for (const sec of masterInspectionList) next[sec.title] = sec.items.map((i) => i.item);
-    setSelections(next);
-  }
-  function clearAll() {
-    setSelections({});
   }
 
   function toggleSectionCollapsed(sectionTitle: string) {
@@ -614,15 +614,12 @@ export default function CustomBuilderPage() {
     setAiPreset(key);
     const p = CVIP_PRESETS[key].prompt;
     setAiPrompt(p);
-    // also apply triggers immediately
     applyPromptToControls(p);
   }
 
   function applyPromptToControls(prompt: string) {
     const inferred = parsePromptTriggers(prompt);
 
-    // Keep “don’t stomp user choices” behavior:
-    // - if quickTouched/gridTouched, only apply the missing bits
     if (inferred.dutyClass) setDutyClass(inferred.dutyClass);
 
     if (!gridTouched && inferred.gridMode) setGridMode(inferred.gridMode);
@@ -650,19 +647,24 @@ export default function CustomBuilderPage() {
     }
   }
 
+  function scheduleAutoTriggerApply(nextPrompt: string) {
+    if (triggerTimerRef.current) window.clearTimeout(triggerTimerRef.current);
+    triggerTimerRef.current = window.setTimeout(() => {
+      if (nextPrompt.trim()) applyPromptToControls(nextPrompt);
+    }, 350);
+  }
+
   async function buildFromPrompt() {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
     setAiError(null);
 
     try {
-      // ✅ apply triggers before calling API (so toggles match the prompt)
       applyPromptToControls(aiPrompt);
 
       const res = await fetch("/api/inspections/build-from-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // ✅ send richer context (your API route already supports these fields)
         body: JSON.stringify({
           prompt: aiPrompt,
           dutyClass,
@@ -716,114 +718,106 @@ export default function CustomBuilderPage() {
     [],
   );
 
-  const promptChips = useMemo(
+  const samplePrompts = useMemo(
     () => [
-      "Brake inspection, hydraulic, include tires, 30 point",
-      "Pre-trip inspection for heavy duty truck, air brakes, include tires, include batteries, 60 point",
-      "Small oil change inspection diesel, 15 point",
-      "Trailer annual inspection, air brakes, include tires, 50 point",
-      "Battery + charging system inspection, include battery grid, 20 point",
+      { label: "Hydraulic brake (30pt + tires)", prompt: "Brake inspection, hydraulic, include tires, 30 point" },
+      {
+        label: "HD pre-trip (60pt + tires + batteries)",
+        prompt:
+          "Pre-trip inspection for heavy duty truck, air brakes, include tires, include batteries, 60 point",
+      },
+      { label: "Oil change (diesel, 15pt)", prompt: "Small oil change inspection diesel, 15 point" },
+      {
+        label: "Trailer annual (air, 50pt + tires)",
+        prompt: "Trailer annual inspection, air brakes, include tires, 50 point",
+      },
+      {
+        label: "Battery + charging (20pt + battery grid)",
+        prompt: "Battery + charging system inspection, include battery grid, 20 point",
+      },
     ],
     [],
   );
 
+  const topChips = useMemo(() => {
+    const chips: Array<{ k: string; v: string }> = [];
+    chips.push({ k: "Duty", v: dutyLabel });
+    chips.push({ k: "Corner Grid", v: compactGridLabel(gridMode) });
+    chips.push({ k: "Tires", v: includeTireGrid ? "On" : "Off" });
+    chips.push({ k: "Batteries", v: includeBatteryGrid ? "On" : "Off" });
+    chips.push({ k: "Grease", v: includeGreaseChassis ? "On" : "Off" });
+    chips.push({ k: "Oil", v: includeOil ? oilEngineType.toUpperCase() : "Off" });
+    chips.push({ k: "Selected", v: String(totalSelected) });
+    if (laborHours.trim()) chips.push({ k: "Hours", v: laborHours.trim() });
+    return chips;
+  }, [
+    dutyLabel,
+    gridMode,
+    includeTireGrid,
+    includeBatteryGrid,
+    includeGreaseChassis,
+    includeOil,
+    oilEngineType,
+    totalSelected,
+    laborHours,
+  ]);
+
+  const tileBase =
+    "rounded-full border border-[color:var(--metal-border-soft,rgba(255,255,255,0.12))] bg-black/45 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/55";
+
+  const tileOn =
+    "rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-200 hover:bg-orange-500/15";
+
+  const primaryBtn =
+    "rounded-full bg-orange-600 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-orange-500 disabled:opacity-60";
+
+  const secondaryBtn =
+    "rounded-full border border-orange-500/50 bg-orange-500/10 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-200 hover:bg-orange-500/15 disabled:opacity-60";
+
   return (
     <div className="p-4 text-white">
-      <div className="mx-auto w-full max-w-6xl rounded-2xl border border-white/10 bg-black/70 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-6">
-        <h1
-          className="mb-3 text-center text-2xl font-bold tracking-[0.18em] text-orange-400"
-          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-        >
-          Build Custom Inspection
-        </h1>
-
-        <div className="mb-5 rounded-2xl border border-white/10 bg-black/70 px-3 py-3 text-xs text-neutral-200 md:flex md:items-center md:justify-between md:px-4">
-          <div className="space-y-1 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-1 md:space-y-0">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Duty
-              </span>
-              <span className="rounded-full bg-orange-500/10 px-2 py-1 text-[11px] font-semibold text-orange-300">
-                {dutyLabel}
-              </span>
-            </span>
-
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Corner Grid
-              </span>
-              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">
-                {gridModeLabel}
-              </span>
-            </span>
-
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Tire Grid
-              </span>
-              <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-200">
-                {includeTireGrid ? "Enabled" : "Off"}
-              </span>
-            </span>
-
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Oil
-              </span>
-              <span className="rounded-full bg-zinc-700/60 px-2 py-1 text-[11px] font-semibold text-zinc-100">
-                {includeOil ? `Included (${oilEngineType.toUpperCase()})` : "No oil section"}
-              </span>
-            </span>
-
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Grease
-              </span>
-              <span className="rounded-full bg-lime-500/10 px-2 py-1 text-[11px] font-semibold text-lime-200">
-                {includeGreaseChassis ? "Chassis enabled" : "Off"}
-              </span>
-            </span>
-
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Batteries
-              </span>
-              <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-300">
-                {includeBatteryGrid ? "Battery grid enabled" : "No battery grid"}
-              </span>
-            </span>
-
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                Hours
-              </span>
-              <span className="rounded-full bg-neutral-800/80 px-2 py-1 text-[11px] font-semibold text-neutral-100">
-                {laborHours.trim() ? laborHours.trim() : "—"}
-              </span>
-            </span>
+      <div className="mx-auto w-full max-w-6xl rounded-2xl border border-white/10 bg-black/55 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-6">
+        <div className="mb-4 flex flex-col items-center gap-3 md:flex-row md:items-end md:justify-between">
+          <div className="text-center md:text-left">
+            <h1
+              className="text-2xl font-bold tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
+              style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+            >
+              Inspection Builder
+            </h1>
+            <div className="mt-1 text-xs text-neutral-400">
+              Quick build, prompt build, or manual selection — all from your master list.
+            </div>
           </div>
 
-          <div className="mt-2 text-[11px] text-neutral-400 md:mt-0">
-            Selected items:{" "}
-            <span className="font-semibold text-neutral-100">{totalSelected}</span>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {topChips.map((c) => (
+              <span
+                key={c.k}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[11px] text-neutral-200"
+              >
+                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{c.k}</span>
+                <span className="font-semibold text-neutral-100">{c.v}</span>
+              </span>
+            ))}
           </div>
         </div>
 
         <div className="mb-5 grid gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-1 text-center md:text-left">
+          <label className="flex flex-col gap-1">
             <span className="text-sm text-neutral-300">Template title</span>
             <input
-              className="w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+              className="w-full rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1 text-center md:text-left">
+            <label className="flex flex-col gap-1">
               <span className="text-sm text-neutral-300">Duty Class</span>
               <select
-                className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                className="rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                 value={dutyClass}
                 onChange={(e) => setDutyClass(e.target.value as DutyClass)}
               >
@@ -831,50 +825,41 @@ export default function CustomBuilderPage() {
                 <option value="medium">Medium</option>
                 <option value="heavy">Heavy</option>
               </select>
-
-              <span className="mt-1 text-[11px] text-neutral-400">
-                Duty class influences suggested items. Corner grid is chosen below.
+              <span className="mt-1 text-[11px] text-neutral-500">
+                Influences defaults (vehicle/brake + corner grid). You can override below.
               </span>
             </label>
 
-            <label className="flex flex-col gap-1 text-center md:text-left">
+            <label className="flex flex-col gap-1">
               <span className="text-sm text-neutral-300">Labor hours</span>
               <input
                 inputMode="decimal"
-                className="w-full rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                 value={laborHours}
                 onChange={(e) => setLaborHours(e.target.value)}
                 placeholder="e.g. 2.5"
               />
-              <span className="mt-1 text-[11px] text-neutral-500">
-                Optional. Stored in inspection params for downstream use.
-              </span>
+              <span className="mt-1 text-[11px] text-neutral-500">Optional. Stored in inspection params.</span>
             </label>
           </div>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
+        {/* Toggles row (neutral + copper only) */}
+        <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"
             onClick={() => setIncludeOil((v) => !v)}
-            className={
-              "rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]" +
-              " " +
-              (includeOil
-                ? "bg-emerald-500 text-black shadow-[0_0_18px_rgba(16,185,129,0.6)]"
-                : "border border-zinc-600 bg-zinc-800/80 text-white hover:bg-zinc-700")
-            }
+            className={includeOil ? tileOn : tileBase}
+            title="Include an oil change section"
           >
-            {includeOil ? "Oil Change Section: ON" : "Oil Change Section: OFF"}
+            Oil {includeOil ? `• ${oilEngineType.toUpperCase()}` : "• Off"}
           </button>
 
           {includeOil && (
-            <div className="flex items-center gap-2 rounded-full border border-neutral-700 bg-black/70 px-3 py-2">
-              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                Engine
-              </span>
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-2">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Engine</span>
               <select
-                className="rounded-full border border-neutral-700 bg-neutral-900/80 px-3 py-1 text-[12px] text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                className="rounded-full border border-neutral-700 bg-neutral-900/70 px-3 py-1 text-[12px] text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                 value={oilEngineType}
                 onChange={(e) => setOilEngineType(e.target.value as EngineType)}
               >
@@ -887,50 +872,34 @@ export default function CustomBuilderPage() {
           <button
             type="button"
             onClick={() => setIncludeTireGrid((v) => !v)}
-            className={
-              "rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]" +
-              " " +
-              (includeTireGrid
-                ? "bg-amber-400 text-black shadow-[0_0_18px_rgba(251,191,36,0.55)]"
-                : "border border-zinc-600 bg-zinc-800/80 text-white hover:bg-zinc-700")
-            }
+            className={includeTireGrid ? tileOn : tileBase}
+            title="Add a tire grid section if not present"
           >
-            {includeTireGrid ? "Tire Grid: ON" : "Tire Grid: OFF"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIncludeGreaseChassis((v) => !v)}
-            className={
-              "rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]" +
-              " " +
-              (includeGreaseChassis
-                ? "bg-lime-400 text-black shadow-[0_0_18px_rgba(163,230,53,0.55)]"
-                : "border border-zinc-600 bg-zinc-800/80 text-white hover:bg-zinc-700")
-            }
-          >
-            {includeGreaseChassis ? "Grease Chassis: ON" : "Grease Chassis: OFF"}
+            Tire Grid {includeTireGrid ? "• On" : "• Off"}
           </button>
 
           <button
             type="button"
             onClick={() => setIncludeBatteryGrid((v) => !v)}
-            className={
-              "rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]" +
-              " " +
-              (includeBatteryGrid
-                ? "bg-sky-500 text-black shadow-[0_0_18px_rgba(56,189,248,0.6)]"
-                : "border border-zinc-600 bg-zinc-800/80 text-white hover:bg-zinc-700")
-            }
+            className={includeBatteryGrid ? tileOn : tileBase}
+            title="Add a battery grid section if not present"
           >
-            {includeBatteryGrid ? "Battery Grid: ON" : "Battery Grid: OFF"}
+            Battery Grid {includeBatteryGrid ? "• On" : "• Off"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIncludeGreaseChassis((v) => !v)}
+            className={includeGreaseChassis ? tileOn : tileBase}
+            title="Add a grease chassis section"
+          >
+            Grease {includeGreaseChassis ? "• On" : "• Off"}
           </button>
         </div>
 
+        {/* Corner Grid mode */}
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
-          <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-            Corner grid mode
-          </span>
+          <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Corner grid</span>
           {gridModeButtons.map((opt) => {
             const active = gridMode === opt.value;
             return (
@@ -941,13 +910,7 @@ export default function CustomBuilderPage() {
                   setGridTouched(true);
                   setGridMode(opt.value);
                 }}
-                className={
-                  "rounded-full px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]" +
-                  " " +
-                  (active
-                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)]"
-                    : "border border-neutral-700 bg-black/70 text-neutral-100 hover:bg-black/80")
-                }
+                className={active ? tileOn : tileBase}
               >
                 {opt.label}
               </button>
@@ -955,22 +918,20 @@ export default function CustomBuilderPage() {
           })}
         </div>
 
-        {/* ✅ Quick build from Master (deterministic) */}
-        <div className="mb-8 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-4">
-          <div className="mb-2 text-center font-semibold text-orange-400">
-            Quick Build (Deterministic)
+        {/* Quick build */}
+        <div className="mb-8 rounded-2xl border border-white/10 bg-black/40 p-4">
+          <div className="mb-1 text-center text-sm font-semibold text-[color:var(--accent-copper,#f97316)]">
+            Quick Build
           </div>
-          <p className="mb-3 text-center text-sm text-neutral-300">
-            Builds a clean set of sections from your Master list (keeps CVIP/spec codes).
+          <p className="mb-3 text-center text-sm text-neutral-400">
+            Deterministic build from your master list (keeps CVIP/spec codes).
           </p>
 
           <div className="grid gap-3 md:grid-cols-4">
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                Vehicle
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Vehicle</span>
               <select
-                className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                className="rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                 value={vehicleType}
                 onChange={(e) => {
                   setQuickTouched(true);
@@ -985,11 +946,9 @@ export default function CustomBuilderPage() {
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                Brake System
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Brake system</span>
               <select
-                className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                className="rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                 value={brakeSystem}
                 onChange={(e) => {
                   setQuickTouched(true);
@@ -1002,14 +961,12 @@ export default function CustomBuilderPage() {
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                Target count
-              </span>
+              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Target count</span>
               <input
                 type="number"
                 min={10}
                 max={250}
-                className="rounded-xl border border-neutral-700 bg-neutral-900/80 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                className="rounded-xl border border-neutral-700 bg-neutral-900/70 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                 value={String(targetCount)}
                 onChange={(e) => {
                   setQuickTouched(true);
@@ -1019,50 +976,42 @@ export default function CustomBuilderPage() {
             </label>
 
             <div className="flex flex-col justify-end gap-2">
-              <div className="text-[11px] text-neutral-400">
-                CVIP group:{" "}
-                <span className="font-semibold text-neutral-100">{cvipGroup ?? "—"}</span>
+              <div className="text-[11px] text-neutral-500">
+                CVIP group: <span className="font-semibold text-neutral-100">{cvipGroup ?? "—"}</span>
               </div>
-
-              <button
-                type="button"
-                onClick={startQuickFromMaster}
-                className="rounded-full bg-orange-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-orange-500"
-              >
-                Start Inspection (Quick Build)
+              <button type="button" onClick={startQuickFromMaster} className={primaryBtn}>
+                Start (Quick Build)
               </button>
             </div>
           </div>
         </div>
 
-        {/* ✅ Prompt-driven builder */}
-        <div className="mb-8 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-4">
-          <div className="mb-2 text-center font-semibold text-orange-400">
-            Build with Prompt (Trigger Words)
+        {/* Prompt build */}
+        <div className="mb-8 rounded-2xl border border-white/10 bg-black/40 p-4">
+          <div className="mb-1 text-center text-sm font-semibold text-[color:var(--accent-copper,#f97316)]">
+            Prompt Build
           </div>
-
-          <p className="mb-2 text-center text-sm text-neutral-300">
-            Type what you want. We auto-set options using trigger words (air/hydraulic, tires, batteries, grease, oil, “60 point”, etc).
+          <p className="mb-3 text-center text-sm text-neutral-400">
+            Triggers auto-apply while typing (air/hydraulic, tires, batteries, grease, oil, “60 point”, etc).
           </p>
 
           <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-            {promptChips.map((sample) => (
+            {samplePrompts.map((s) => (
               <button
-                key={sample}
+                key={s.label}
                 type="button"
                 onClick={() => {
                   setAiPreset(null);
-                  setAiPrompt(sample);
-                  applyPromptToControls(sample);
+                  setAiPrompt(s.prompt);
+                  applyPromptToControls(s.prompt);
                 }}
-                className="rounded-full border border-orange-500/50 bg-orange-500/10 px-3 py-1 text-[11px] text-orange-200 hover:bg-orange-500/20"
+                className={secondaryBtn + " px-3 py-1 text-[11px]"}
               >
-                Use sample
+                {s.label}
               </button>
             ))}
           </div>
 
-          {/* ✅ CVIP preset buttons */}
           <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
             {(Object.keys(CVIP_PRESETS) as AiPresetKey[]).map((key) => {
               const active = aiPreset === key;
@@ -1071,13 +1020,7 @@ export default function CustomBuilderPage() {
                   key={key}
                   type="button"
                   onClick={() => applyAiPreset(key)}
-                  className={
-                    "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]" +
-                    " " +
-                    (active
-                      ? "bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)]"
-                      : "border border-orange-500/50 bg-orange-500/10 text-orange-200 hover:bg-orange-500/20")
-                  }
+                  className={active ? primaryBtn + " px-3 py-1 text-[11px]" : secondaryBtn + " px-3 py-1 text-[11px]"}
                 >
                   {CVIP_PRESETS[key].label}
                 </button>
@@ -1086,42 +1029,30 @@ export default function CustomBuilderPage() {
           </div>
 
           <textarea
-            className="mb-3 min-h-[90px] w-full rounded-xl border border-neutral-700 bg-neutral-900/80 p-3 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
-            placeholder="e.g. small brake inspection, hydraulic, include tires, 30 point"
+            className="mb-3 min-h-[90px] w-full rounded-xl border border-neutral-700 bg-neutral-900/70 p-3 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+            placeholder="e.g. brake inspection, hydraulic, include tires, 30 point"
             value={aiPrompt}
             onChange={(e) => {
-              setAiPrompt(e.target.value);
+              const next = e.target.value;
+              setAiPrompt(next);
               setAiPreset(null);
+              scheduleAutoTriggerApply(next);
             }}
             onBlur={() => {
-              // ✅ apply triggers on blur (non-annoying)
               if (aiPrompt.trim()) applyPromptToControls(aiPrompt);
             }}
           />
 
-          <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => applyPromptToControls(aiPrompt)}
-              disabled={!aiPrompt.trim()}
-              className="rounded-full border border-neutral-700 bg-black/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/80 disabled:opacity-60"
-            >
-              Apply triggers
-            </button>
-
-            <button
-              onClick={buildFromPrompt}
-              disabled={aiLoading || !aiPrompt.trim()}
-              className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white hover:bg-indigo-500 disabled:opacity-60"
-            >
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button onClick={buildFromPrompt} disabled={aiLoading || !aiPrompt.trim()} className={primaryBtn}>
               {aiLoading ? "Generating…" : "Build from Prompt"}
             </button>
 
             {aiError ? <span className="text-xs text-red-400">{aiError}</span> : null}
           </div>
 
-          <div className="text-center text-[11px] text-neutral-500">
-            Tip: include words like <span className="text-neutral-200">air brake</span>,{" "}
+          <div className="mt-3 text-center text-[11px] text-neutral-500">
+            Tip: include <span className="text-neutral-200">air brake</span>,{" "}
             <span className="text-neutral-200">hydraulic</span>,{" "}
             <span className="text-neutral-200">tire grid</span>,{" "}
             <span className="text-neutral-200">battery grid</span>,{" "}
@@ -1129,27 +1060,6 @@ export default function CustomBuilderPage() {
             <span className="text-neutral-200">oil change diesel</span>,{" "}
             <span className="text-neutral-200">60 point</span>.
           </div>
-        </div>
-
-        {/* Bulk actions */}
-        <div className="mb-3 flex flex-wrap items-center justify-center gap-2 text-xs text-neutral-400">
-          <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-            Global manual actions
-          </span>
-          <button
-            type="button"
-            onClick={selectAllEverywhere}
-            className="rounded-full bg-zinc-800 px-3 py-1 text-[11px] text-white hover:bg-zinc-700"
-          >
-            Select all (all sections)
-          </button>
-          <button
-            type="button"
-            onClick={clearAll}
-            className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-[11px] text-white hover:bg-zinc-800"
-          >
-            Clear all
-          </button>
         </div>
 
         {/* Manual pick list */}
@@ -1161,34 +1071,35 @@ export default function CustomBuilderPage() {
             return (
               <div
                 key={sec.title}
-                className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.85)]"
+                className="rounded-2xl border border-white/10 bg-black/40 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.7)]"
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-semibold text-orange-300">{sec.title}</div>
-                    <span className="rounded-full bg-zinc-800 px-2 py-[2px] text-[11px] text-zinc-300">
+                    <div className="font-semibold text-neutral-100">{sec.title}</div>
+                    <span className="rounded-full border border-white/10 bg-black/40 px-2 py-[2px] text-[11px] text-neutral-300">
                       {selectedCount}/{sec.items.length} selected
                     </span>
                   </div>
+
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => selectAllInSection(sec.title, sec.items)}
-                      className="rounded-full bg-zinc-800 px-2 py-1 text-[11px] text-white hover:bg-zinc-700"
+                      className={secondaryBtn + " px-3 py-1 text-[11px]"}
                     >
                       Select all
                     </button>
                     <button
                       type="button"
                       onClick={() => clearSection(sec.title)}
-                      className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-white hover:bg-zinc-800"
+                      className={tileBase + " px-3 py-1"}
                     >
                       Clear
                     </button>
                     <button
                       type="button"
                       onClick={() => toggleSectionCollapsed(sec.title)}
-                      className="rounded-full border border-neutral-600 bg-black/70 px-3 py-1 text-[11px] text-neutral-100 hover:bg-neutral-800"
+                      className={tileBase + " px-3 py-1"}
                     >
                       {collapsed ? "Expand" : "Collapse"}
                     </button>
@@ -1203,7 +1114,10 @@ export default function CustomBuilderPage() {
                       return (
                         <label
                           key={label}
-                          className="flex items-center gap-2 rounded-lg bg-black/60 px-2 py-1 text-sm text-neutral-100"
+                          className={cx(
+                            "flex items-center gap-2 rounded-lg border border-white/10 bg-black/35 px-2 py-1 text-sm text-neutral-100",
+                            checked && "border-orange-500/30 bg-orange-500/5",
+                          )}
                         >
                           <input
                             type="checkbox"
@@ -1220,7 +1134,7 @@ export default function CustomBuilderPage() {
 
                 {collapsed && (
                   <p className="mt-1 text-[11px] text-neutral-500">
-                    Section collapsed. Expand to adjust individual checks.
+                    Collapsed. Expand to adjust individual checks.
                   </p>
                 )}
               </div>
@@ -1229,26 +1143,16 @@ export default function CustomBuilderPage() {
         </div>
 
         <div className="flex flex-wrap justify-center gap-3">
-          <button
-            onClick={startManual}
-            className="rounded-full bg-orange-600 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black hover:bg-orange-500"
-          >
-            Start Inspection (Manual)
+          <button onClick={startManual} className={primaryBtn}>
+            Start (Manual)
           </button>
 
-          <button
-            onClick={startQuickFromMaster}
-            className="rounded-full border border-orange-500/60 bg-orange-500/10 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-200 hover:bg-orange-500/20"
-          >
+          <button onClick={startQuickFromMaster} className={secondaryBtn}>
             Start (Quick Build)
           </button>
 
-          <button
-            onClick={buildFromPrompt}
-            disabled={aiLoading || !aiPrompt.trim()}
-            className="rounded-full bg-indigo-600 px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white hover:bg-indigo-500 disabled:opacity-60"
-          >
-            {aiLoading ? "Generating…" : "Start with Prompt"}
+          <button onClick={buildFromPrompt} disabled={aiLoading || !aiPrompt.trim()} className={secondaryBtn}>
+            {aiLoading ? "Generating…" : "Start (Prompt)"}
           </button>
         </div>
       </div>

@@ -150,21 +150,21 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
 
-  /* ---------------------------------------------------------------------- */
+    /* ---------------------------------------------------------------------- */
   /* INSPECTIONS (no mechanic/tech sidebar access)                           */
   /* ---------------------------------------------------------------------- */
   {
-    href: "/inspections/templates",
-    title: "Inspection Templates",
-    subtitle: "View and edit",
+    href: "/inspections/custom-inspection",
+    title: "Inspection Builder", // ✅ renamed from "Custom Builder"
+    subtitle: "Design your own",
     roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["inspections", "all"],
     section: "Tools",
   },
   {
-    href: "/inspections/custom-inspection",
-    title: "Custom Builder",
-    subtitle: "Design your own",
+    href: "/inspections/templates",
+    title: "Inspection Templates",
+    subtitle: "View and edit",
     roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["inspections", "all"],
     section: "Tools",
