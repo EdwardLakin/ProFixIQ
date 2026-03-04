@@ -1,8 +1,9 @@
 // features/work-orders/components/workorders/FocusedJobModal.tsx (FULL FILE REPLACEMENT)
-// ✅ Adds `variant?: "modal" | "panel"` so we can reuse the same UI for:
-//    - modal overlay (mobile)
-//    - right-side in-page panel (desktop split route)
-// ✅ Fix build error: pass required `lineLabel` prop to CauseCorrectionModal
+// ✅ Reusable for:
+//   - modal overlay (mobile)  -> variant="modal"
+//   - right-side panel (desktop) -> variant="panel"
+// ✅ IMPORTANT: Do NOT early-return before hooks (react-hooks/rules-of-hooks).
+//    If you want "render nothing when closed", return null AFTER hooks are declared.
 
 "use client";
 
@@ -93,8 +94,8 @@ export default function FocusedJobModal(props: {
   workOrderLineId: string;
   onChanged?: () => void | Promise<void>;
   mode?: Mode;
-  variant?: Variant; // ✅ NEW
-}): JSX.Element {
+  variant?: Variant;
+}): JSX.Element | null {
   const {
     isOpen,
     onClose,
@@ -159,7 +160,7 @@ export default function FocusedJobModal(props: {
     [supabase],
   );
 
-  const closeAllSubModals = () => {
+  const closeAllSubModals = useCallback(() => {
     setOpenComplete(false);
     setOpenParts(false);
     setOpenHold(false);
@@ -168,15 +169,24 @@ export default function FocusedJobModal(props: {
     setOpenAddJob(false);
     setOpenAi(false);
     setOpenVehicleHistory(false);
-  };
+  }, []);
 
+  // ✅ Reset sub-modals when closing OR switching lines (panel mode)
   useEffect(() => {
-    if (!isOpen) closeAllSubModals();
+    if (!isOpen) {
+      closeAllSubModals();
+      return;
+    }
+    // if the focused line changes while open, close any sub-modals (prevents “stuck” modals)
+    closeAllSubModals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, workOrderLineId]);
 
+  // ✅ Load job + WO + vehicle/customer
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
+
+    let cancelled = false;
 
     (async () => {
       setBusy(true);
@@ -187,6 +197,7 @@ export default function FocusedJobModal(props: {
           .eq("id", workOrderLineId)
           .maybeSingle<WorkOrderLine>();
         if (le) throw le;
+        if (cancelled) return;
 
         setLine(l ?? null);
         setTechNotes(l?.notes ?? "");
@@ -198,6 +209,7 @@ export default function FocusedJobModal(props: {
             .eq("id", l.work_order_id)
             .maybeSingle<WorkOrder>();
           if (we) throw we;
+          if (cancelled) return;
 
           setWorkOrder(wo ?? null);
 
@@ -218,8 +230,11 @@ export default function FocusedJobModal(props: {
               .eq("id", wo.vehicle_id)
               .maybeSingle<Vehicle>();
             if (ve) throw ve;
+            if (cancelled) return;
             setVehicle(v ?? null);
-          } else setVehicle(null);
+          } else {
+            setVehicle(null);
+          }
 
           if (wo?.customer_id) {
             const { data: c, error: ce } = await supabase
@@ -228,20 +243,33 @@ export default function FocusedJobModal(props: {
               .eq("id", wo.customer_id)
               .maybeSingle<Customer>();
             if (ce) throw ce;
+            if (cancelled) return;
             setCustomer(c ?? null);
-          } else setCustomer(null);
+          } else {
+            setCustomer(null);
+          }
+        } else {
+          setWorkOrder(null);
+          setVehicle(null);
+          setCustomer(null);
         }
       } catch (e) {
         const err = e as { message?: string };
         toast.error(err?.message ?? "Failed to load job");
       } finally {
-        setBusy(false);
+        if (!cancelled) setBusy(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, workOrderLineId, supabase, ensureShopContext]);
 
+  // ✅ Realtime: job line updates
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
+
     const ch = supabase
       .channel(`wol-${workOrderLineId}`)
       .on(
@@ -260,8 +288,13 @@ export default function FocusedJobModal(props: {
         },
       )
       .subscribe();
+
     return () => {
-      void supabase.removeChannel(ch);
+      try {
+        void supabase.removeChannel(ch);
+      } catch {
+        //
+      }
     };
   }, [isOpen, workOrderLineId, supabase]);
 
@@ -289,6 +322,7 @@ export default function FocusedJobModal(props: {
     void loadAllocations();
   }, [isOpen, loadAllocations]);
 
+  // ✅ Realtime: allocations updates
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
 
@@ -321,6 +355,7 @@ export default function FocusedJobModal(props: {
       .select("*")
       .eq("id", workOrderLineId)
       .maybeSingle<WorkOrderLine>();
+
     setLine(l ?? null);
     setTechNotes(l?.notes ?? "");
     await onChanged?.();
@@ -492,11 +527,17 @@ export default function FocusedJobModal(props: {
     line?.status === "declined" ||
     (!!line?.approval_state && line.approval_state !== "approved");
 
-  // ✅ The reusable “body” (used by both modal + panel variants)
+  // ✅ NOW it's safe to "render nothing when closed" (hooks already ran)
+  if (!isOpen) return null;
+
   const Body = (
     <div
       className={`rounded-lg border border-white/15 bg-neutral-950/95 p-5 text-foreground shadow-xl ${
-        openAi ? "" : "max-h-[75vh] overflow-y-auto"
+        variant === "panel"
+          ? "h-[calc(100vh-10rem)] overflow-y-auto"
+          : openAi
+            ? ""
+            : "max-h-[75vh] overflow-y-auto"
       }`}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -565,14 +606,17 @@ export default function FocusedJobModal(props: {
                 {String(line.status || "awaiting").replaceAll("_", " ")}
               </div>
             </div>
+
             <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Start</div>
               <div className="mt-1 text-sm text-neutral-100">{createdStart}</div>
             </div>
+
             <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Finish</div>
               <div className="mt-1 text-sm text-neutral-100">{createdFinish}</div>
             </div>
+
             <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                 Hold Reason
@@ -748,6 +792,7 @@ export default function FocusedJobModal(props: {
                 >
                   Chat
                 </button>
+
                 <button
                   type="button"
                   className={btnInfo}
@@ -758,6 +803,7 @@ export default function FocusedJobModal(props: {
                 >
                   AI Assist
                 </button>
+
                 <button
                   type="button"
                   className={btnInfo}
@@ -803,15 +849,28 @@ export default function FocusedJobModal(props: {
                   <div className="col-span-2 text-right">Qty</div>
                 </div>
                 <ul className="max-h-56 overflow-auto divide-y divide-white/5">
-                  {allocs.map((a) => (
-                    <li key={a.id} className="grid grid-cols-12 items-center px-3 py-2 text-sm">
-                      <div className="col-span-7 truncate text-neutral-100">{a.parts?.name ?? "Part"}</div>
-                      <div className="col-span-3 truncate text-neutral-400">
-                        {a.location_id ? `loc ${String(a.location_id).slice(0, 6)}…` : "—"}
-                      </div>
-                      <div className="col-span-2 text-right font-semibold text-neutral-100">{a.qty}</div>
-                    </li>
-                  ))}
+                  {allocs.map((a) => {
+                    const qty =
+                      (a as unknown as { qty?: number | null }).qty ??
+                      (a as unknown as { quantity?: number | null }).quantity ??
+                      0;
+
+                    return (
+                      <li key={a.id} className="grid grid-cols-12 items-center px-3 py-2 text-sm">
+                        <div className="col-span-7 truncate text-neutral-100">
+                          {a.parts?.name ?? "Part"}
+                        </div>
+                        <div className="col-span-3 truncate text-neutral-400">
+                          {(a as unknown as { location_id?: string | null }).location_id
+                            ? `loc ${String((a as unknown as { location_id?: string | null }).location_id).slice(0, 6)}…`
+                            : "—"}
+                        </div>
+                        <div className="col-span-2 text-right font-semibold text-neutral-100">
+                          {qty}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -858,7 +917,6 @@ export default function FocusedJobModal(props: {
     </div>
   );
 
-  // ✅ Render mode: "panel" (no overlay) vs "modal" (Dialog overlay)
   const Shell =
     variant === "panel" ? (
       <div className="relative">{Body}</div>
@@ -872,7 +930,10 @@ export default function FocusedJobModal(props: {
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
-        <div className="relative z-[110] mx-4 my-6 w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
+          onClick={(e) => e.stopPropagation()}
+        >
           {Body}
         </div>
       </Dialog>
@@ -913,7 +974,11 @@ export default function FocusedJobModal(props: {
 
             if (!line.punched_in_at) update.punched_in_at = nowIso;
 
-            const { error } = await supabase.from("work_order_lines").update(update).eq("id", line.id);
+            const { error } = await supabase
+              .from("work_order_lines")
+              .update(update)
+              .eq("id", line.id);
+
             if (error) {
               showErr("Complete job failed", error);
               throw error;
@@ -943,7 +1008,12 @@ export default function FocusedJobModal(props: {
       )}
 
       {openParts && workOrder?.id && line && (
-        <PartsRequestModal isOpen={openParts} workOrderId={workOrder.id} jobId={line.id} requestNote={line.description ?? ""} />
+        <PartsRequestModal
+          isOpen={openParts}
+          workOrderId={workOrder.id}
+          jobId={line.id}
+          requestNote={line.description ?? ""}
+        />
       )}
 
       {openHold && line && (
@@ -957,7 +1027,13 @@ export default function FocusedJobModal(props: {
         />
       )}
 
-      {openPhoto && <PhotoCaptureModal isOpen={openPhoto} onClose={() => setOpenPhoto(false)} onCapture={uploadPhoto} />}
+      {openPhoto && (
+        <PhotoCaptureModal
+          isOpen={openPhoto}
+          onClose={() => setOpenPhoto(false)}
+          onCapture={uploadPhoto}
+        />
+      )}
 
       {openChat && (
         <NewChatModal
@@ -977,7 +1053,11 @@ export default function FocusedJobModal(props: {
           workOrderLineId={line?.id ?? undefined}
           defaultVehicle={
             vehicle
-              ? { year: vehicle.year ? String(vehicle.year) : undefined, make: vehicle.make ?? undefined, model: vehicle.model ?? undefined }
+              ? {
+                  year: vehicle.year ? String(vehicle.year) : undefined,
+                  make: vehicle.make ?? undefined,
+                  model: vehicle.model ?? undefined,
+                }
               : undefined
           }
         />
@@ -989,7 +1069,9 @@ export default function FocusedJobModal(props: {
           onClose={() => setOpenAddJob(false)}
           workOrderId={workOrder.id}
           vehicleId={vehicle?.id ?? null}
-          techId={(line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ?? "system"}
+          techId={
+            (line as unknown as { assigned_tech_id?: string | null })?.assigned_tech_id ?? "system"
+          }
           shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {
             await refresh();
