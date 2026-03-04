@@ -1117,6 +1117,7 @@ export default function CreateWorkOrderPage() {
           status: "awaiting",
           complaint: concern,
           description: diagDesc,
+          labor_time: 1.0,
         };
 
         const { error: insErr } = await supabase
