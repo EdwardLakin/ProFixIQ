@@ -475,14 +475,12 @@ export default function FocusedJobModal(props: {
   const finishAt = line?.punched_out_at ?? null;
 
   const titleText =
-    `${line?.line_no ? `#${line.line_no} ` : ""}` +
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
 
   const lineLabel =
     (line?.complaint ?? "").trim() ||
     (line?.description ?? "").trim() ||
-    (line?.line_no ? `Line #${line.line_no}` : "") ||
     "Job";
 
   const createdStart = startAt ? format(new Date(startAt), "PPpp") : "—";
