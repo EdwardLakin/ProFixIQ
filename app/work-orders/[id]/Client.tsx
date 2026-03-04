@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
@@ -199,6 +199,8 @@ function groupIssuesByLine(issues: ReviewIssue[]): Record<string, ReviewIssue[]>
 export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const routeId = (params?.id as string) || "";
 
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
@@ -224,10 +226,13 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
 
-  // ✅ focused job: support BOTH modal and new panel route
+  // ✅ focused job
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [warnedMissing, setWarnedMissing] = useState(false);
+
+  // ✅ panel breakpoint (tracks resize)
+  const [prefersPanel, setPrefersPanel] = useState(false);
 
   // parts
   const [partsLineId, setPartsLineId] = useState<string | null>(null);
@@ -260,6 +265,35 @@ export default function WorkOrderIdClient(): JSX.Element {
     {},
   );
 
+  // ✅ read job from query (desktop panel)
+  const jobFromQuery = searchParams?.get("job") || null;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setPrefersPanel(mq.matches);
+
+    update();
+
+    // Safari/iOS: addListener fallback
+    try {
+      mq.addEventListener("change", update);
+      return () => mq.removeEventListener("change", update);
+    } catch {
+      mq.addListener(update);
+      return () => mq.removeListener(update);
+    }
+  }, []);
+
+  // ✅ keep local focusedJobId in sync with query when in panel mode
+  useEffect(() => {
+    if (!prefersPanel) return;
+    setFocusedJobId(jobFromQuery);
+    // modal should be closed on desktop
+    setFocusedOpen(false);
+  }, [jobFromQuery, prefersPanel]);
+
   const fetchLatestReview = useCallback(async (workOrderId: string) => {
     if (!workOrderId) return;
 
@@ -290,31 +324,28 @@ export default function WorkOrderIdClient(): JSX.Element {
     }
   }, []);
 
-  // ✅ Decide whether to use the new panel route (desktop/tablet) or modal (mobile)
-  const prefersPanel = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    // Tailwind lg breakpoint ~1024px
-    return window.matchMedia("(min-width: 1024px)").matches;
-  }, []);
-
   const openFocusedJob = useCallback(
     (lineId: string) => {
       if (!lineId) return;
 
       if (prefersPanel) {
-        // New route: /work-orders/[id]/focused-job/[lineId]
-        router.push(`/work-orders/${routeId}/focused-job/${lineId}`);
+        // ✅ IMPORTANT: keep SAME route; just swap query param so it DOES NOT create a new tab
+        router.replace(`/work-orders/${routeId}?job=${encodeURIComponent(lineId)}`);
         return;
       }
 
-      // Fallback: modal (mobile / smaller screens)
+      // ✅ modal (mobile)
       setFocusedJobId(lineId);
       setFocusedOpen(true);
     },
     [prefersPanel, router, routeId],
   );
 
-    const openQuoteReview = useCallback(() => {
+  const closeFocusedPanel = useCallback(() => {
+    router.replace(`/work-orders/${routeId}`);
+  }, [router, routeId]);
+
+  const openQuoteReview = useCallback(() => {
     router.push(`/work-orders/${routeId}/quote-review`);
   }, [router, routeId]);
 
@@ -460,7 +491,6 @@ export default function WorkOrderIdClient(): JSX.Element {
           setAllocsByLine({});
           setStagedPartsByLine({});
           setLineTechsByLine({});
-        
 
           // ✅ reset review state
           setReviewChecked(true);
@@ -529,31 +559,31 @@ export default function WorkOrderIdClient(): JSX.Element {
         // allocations + line techs
         if (lineRows.length) {
           const [allocsQuery, stagedQuery, lineTechsQuery] = await Promise.all([
-  supabase
-    .from("work_order_part_allocations")
-    .select("*, parts(name)")
-    .in(
-      "work_order_line_id",
-      lineRows.map((l) => l.id),
-    ),
+            supabase
+              .from("work_order_part_allocations")
+              .select("*, parts(name)")
+              .in(
+                "work_order_line_id",
+                lineRows.map((l) => l.id),
+              ),
 
-  // ✅ NEW: staged/quoted parts from menu quick add (NOT allocated inventory)
-  supabase
-    .from("work_order_parts")
-    .select("*, parts(name, sku)")
-    .in(
-      "work_order_line_id",
-      lineRows.map((l) => l.id),
-    ),
+            // ✅ staged/quoted parts from menu quick add (NOT allocated inventory)
+            supabase
+              .from("work_order_parts")
+              .select("*, parts(name, sku)")
+              .in(
+                "work_order_line_id",
+                lineRows.map((l) => l.id),
+              ),
 
-  supabase
-    .from("work_order_line_technicians")
-    .select("work_order_line_id, technician_id")
-    .in(
-      "work_order_line_id",
-      lineRows.map((l) => l.id),
-    ),
-]);
+            supabase
+              .from("work_order_line_technicians")
+              .select("work_order_line_id, technician_id")
+              .in(
+                "work_order_line_id",
+                lineRows.map((l) => l.id),
+              ),
+          ]);
 
           const byLine: Record<string, AllocationRow[]> = {};
           (allocsQuery.data ?? []).forEach((a) => {
@@ -565,14 +595,14 @@ export default function WorkOrderIdClient(): JSX.Element {
           setAllocsByLine(byLine);
 
           const stagedByLine: Record<string, WorkOrderPartRow[]> = {};
-(stagedQuery.data ?? []).forEach((p) => {
-  const row = p as WorkOrderPartRow;
-  const key = row.work_order_line_id;
-  if (!key) return;
-  if (!stagedByLine[key]) stagedByLine[key] = [];
-  stagedByLine[key].push(row);
-});
-setStagedPartsByLine(stagedByLine);
+          (stagedQuery.data ?? []).forEach((p) => {
+            const row = p as WorkOrderPartRow;
+            const key = row.work_order_line_id;
+            if (!key) return;
+            if (!stagedByLine[key]) stagedByLine[key] = [];
+            stagedByLine[key].push(row);
+          });
+          setStagedPartsByLine(stagedByLine);
 
           const techMap: Record<string, string[]> = {};
           (lineTechsQuery.data as LineTechRow[] | null)?.forEach((lt) => {
@@ -610,6 +640,7 @@ setStagedPartsByLine(stagedByLine);
       setVehicle,
       setCustomer,
       fetchLatestReview,
+      setReviewChecked,
     ],
   );
 
@@ -1125,7 +1156,6 @@ setStagedPartsByLine(stagedByLine);
       sp.set("work_order_line_id", ln.id);
       sp.set("lineId", ln.id);
 
-      // ✅ NEW: template identity also in URL (modal derives displayTemplate from URL too)
       sp.set("templateId", templateId);
       sp.set("template_id", templateId);
       if (templateName) {
@@ -1143,7 +1173,7 @@ setStagedPartsByLine(stagedByLine);
       setInspectionOpen(true);
       toast.success("Inspection opened");
     },
-    [wo?.id, customer, vehicle],
+    [wo?.id, customer, vehicle,],
   );
 
   useEffect(() => {
@@ -1181,6 +1211,9 @@ setStagedPartsByLine(stagedByLine);
     "rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
   const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/60";
 
+  // ✅ layout: when panel mode, show a 2-col grid and render FocusedJobModal as a right panel
+  const showPanel = prefersPanel && !!focusedJobId;
+
   return (
     <div className="w-full bg-background px-3 py-6 text-foreground sm:px-6 lg:px-10 xl:px-16">
       <VoiceContextSetter
@@ -1188,7 +1221,7 @@ setStagedPartsByLine(stagedByLine);
         workOrderId={wo?.id}
         vehicleId={vehicle?.id}
         customerId={customer?.id}
-        lineId={null}
+        lineId={focusedJobId}
       />
 
       <div className="mb-4 flex items-center justify-between gap-2">
@@ -1220,192 +1253,249 @@ setStagedPartsByLine(stagedByLine);
       ) : !wo ? (
         <div className="mt-6 text-sm text-red-400">Work order not found.</div>
       ) : (
-        <div className="space-y-6">
-          {/* Header */}
-          <div className={`${cardBase} p-4`}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-1">
-                <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-                  Work Order{" "}
-                  <span className="text-[rgba(184,115,51,0.95)]">
-                    {wo.custom_id || `#${wo.id.slice(0, 8)}`}
-                  </span>
-                </h1>
-                <p className="text-xs text-muted-foreground">Created {createdAtText}</p>
-              </div>
+        <div className={showPanel ? "grid gap-6 lg:grid-cols-[1fr_460px]" : "space-y-6"}>
+          {/* ---------------- LEFT COLUMN ---------------- */}
+          <div className="space-y-6">
+            {/* Header */}
+            <div className={`${cardBase} p-4`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
+                    Work Order{" "}
+                    <span className="text-[rgba(184,115,51,0.95)]">
+                      {wo.custom_id || `#${wo.id.slice(0, 8)}`}
+                    </span>
+                  </h1>
+                  <p className="text-xs text-muted-foreground">Created {createdAtText}</p>
+                </div>
 
-              <div className="flex items-center gap-3">
-                <span className={chip(wo.status)}>
-                  {(wo.status ?? "awaiting").replaceAll("_", " ")}
-                </span>
-                {isWaiter && (
-                  <span
-                    className="
-                      inline-flex items-center whitespace-nowrap
-                      rounded-full border border-red-500/60
-                      bg-red-500/10
-                      px-4 py-1.5
-                      text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
-                      text-red-200
-                      shadow-[0_0_18px_rgba(248,113,113,0.9)]
-                    "
-                  >
-                    Waiter
+                <div className="flex items-center gap-3">
+                  <span className={chip(wo.status)}>
+                    {(wo.status ?? "awaiting").replaceAll("_", " ")}
                   </span>
-                )}
+                  {isWaiter && (
+                    <span
+                      className="
+                        inline-flex items-center whitespace-nowrap
+                        rounded-full border border-red-500/60
+                        bg-red-500/10
+                        px-4 py-1.5
+                        text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
+                        text-red-200
+                        shadow-[0_0_18px_rgba(248,113,113,0.9)]
+                      "
+                    >
+                      Waiter
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Vehicle & Customer */}
-          <div className={`${cardBase} p-4`}>
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-foreground sm:text-base">
-                Vehicle &amp; Customer
-              </h2>
-              <button
-                type="button"
-                className="text-xs font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                onClick={() => setShowDetails((v) => !v)}
-                aria-expanded={showDetails}
-              >
-                {showDetails ? "Hide details" : "Show details"}
-              </button>
-            </div>
+            {/* Vehicle & Customer */}
+            <div className={`${cardBase} p-4`}>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-foreground sm:text-base">
+                  Vehicle &amp; Customer
+                </h2>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                  onClick={() => setShowDetails((v) => !v)}
+                  aria-expanded={showDetails}
+                >
+                  {showDetails ? "Hide details" : "Show details"}
+                </button>
+              </div>
 
-            {showDetails && (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                {/* Vehicle */}
-                <div className={`${cardInner} p-3`}>
-                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Vehicle
-                  </h3>
-                  {vehicle ? (
-                    <>
-                      <p className="text-sm font-medium text-foreground">
-                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
-                        {vehicle.model ?? ""}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
-                        <br />
-                        Plate:{" "}
-                        {vehicle.license_plate ?? (
-                          <span className="text-muted-foreground">—</span>
+              {showDetails && (
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  {/* Vehicle */}
+                  <div className={`${cardInner} p-3`}>
+                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Vehicle
+                    </h3>
+                    {vehicle ? (
+                      <>
+                        <p className="text-sm font-medium text-foreground">
+                          {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
+                          {vehicle.model ?? ""}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
+                          <br />
+                          Plate:{" "}
+                          {vehicle.license_plate ?? (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                          <br />
+                          Mileage:{" "}
+                          {vehicle.mileage
+                            ? vehicle.mileage
+                            : wo?.odometer_km != null
+                              ? `${wo.odometer_km} km`
+                              : "—"}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No vehicle linked yet.</p>
+                    )}
+                  </div>
+
+                  {/* Customer */}
+                  <div className={`${cardInner} p-3`}>
+                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Customer
+                    </h3>
+                    {customer ? (
+                      <>
+                        <p className="text-sm font-medium text-foreground">
+                          {[customer.first_name ?? "", customer.last_name ?? ""]
+                            .filter(Boolean)
+                            .join(" ") || "—"}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {customer.phone ?? "—"}{" "}
+                          {customer.email ? (
+                            <>
+                              <span className="mx-1 text-muted-foreground">•</span>
+                              {customer.email}
+                            </>
+                          ) : null}
+                        </p>
+                        {customer.id && (
+                          <Link
+                            href={`/customers/${customer.id}`}
+                            className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                            title="Open customer profile"
+                          >
+                            View customer profile →
+                          </Link>
                         )}
-                        <br />
-                        Mileage:{" "}
-                        {vehicle.mileage
-                          ? vehicle.mileage
-                          : wo?.odometer_km != null
-                            ? `${wo.odometer_km} km`
-                            : "—"}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No vehicle linked yet.</p>
-                  )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No customer linked yet.</p>
+                    )}
+                  </div>
                 </div>
+              )}
+            </div>
 
-                {/* Customer */}
-                <div className={`${cardInner} p-3`}>
-                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Customer
-                  </h3>
-                  {customer ? (
-                    <>
-                      <p className="text-sm font-medium text-foreground">
-                        {[customer.first_name ?? "", customer.last_name ?? ""]
-                          .filter(Boolean)
-                          .join(" ") || "—"}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {customer.phone ?? "—"}{" "}
-                        {customer.email ? (
-                          <>
-                            <span className="mx-1 text-muted-foreground">•</span>
-                            {customer.email}
-                          </>
-                        ) : null}
-                      </p>
-                      {customer.id && (
-                        <Link
-                          href={`/customers/${customer.id}`}
-                          className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                          title="Open customer profile"
-                        >
-                          View customer profile →
-                        </Link>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No customer linked yet.</p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-                    {/* Awaiting Customer Approval */}
-          <div
-            className={`${cardBase} p-4 ${hasAnyApprovalItems ? "cursor-pointer hover:border-blue-400/30" : ""}`}
-            onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
-            role={hasAnyApprovalItems ? "button" : undefined}
-            tabIndex={hasAnyApprovalItems ? 0 : undefined}
-            onKeyDown={
-              hasAnyApprovalItems
-                ? (e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openQuoteReview();
+            {/* Awaiting Customer Approval */}
+            <div
+              className={`${cardBase} p-4 ${hasAnyApprovalItems ? "cursor-pointer hover:border-blue-400/30" : ""}`}
+              onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
+              role={hasAnyApprovalItems ? "button" : undefined}
+              tabIndex={hasAnyApprovalItems ? 0 : undefined}
+              onKeyDown={
+                hasAnyApprovalItems
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openQuoteReview();
+                      }
                     }
-                  }
-                : undefined
-            }
-            aria-label={hasAnyApprovalItems ? "Open quote review" : undefined}
-          >
+                  : undefined
+              }
+              aria-label={hasAnyApprovalItems ? "Open quote review" : undefined}
+            >
+              {!hasAnyApprovalItems ? (
+                <p className="text-xs text-muted-foreground">No lines waiting for approval.</p>
+              ) : (
+                <>
+                  {approvalPending.length > 0 && (
+                    <div className="space-y-2">
+                      {approvalPending.map((ln, idx) => {
+                        const isAwaitingPartsBase =
+                          (ln.status === "on_hold" &&
+                            (ln.hold_reason ?? "").toLowerCase().includes("part")) ||
+                          (ln.hold_reason ?? "").toLowerCase().includes("quote");
 
-            {!hasAnyApprovalItems ? (
-              <p className="text-xs text-muted-foreground">No lines waiting for approval.</p>
-            ) : (
-              <>
-                {approvalPending.length > 0 && (
-                  <div className="space-y-2">
-                    {approvalPending.map((ln, idx) => {
-                      const isAwaitingPartsBase =
-                        (ln.status === "on_hold" &&
-                          (ln.hold_reason ?? "").toLowerCase().includes("part")) ||
-                        (ln.hold_reason ?? "").toLowerCase().includes("quote");
+                        const hasQuotedParts = (activeQuotesByLine[ln.id] ?? []).length > 0;
+                        const partsLabel = hasQuotedParts
+                          ? "Quoted, awaiting approval"
+                          : "Awaiting parts quote";
 
-                      const hasQuotedParts = (activeQuotesByLine[ln.id] ?? []).length > 0;
+                        return (
+                          <div key={ln.id} className={`${cardInner} p-3`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium text-foreground">
+                                  {idx + 1}. {ln.description || ln.complaint || "Untitled job"}
+                                </div>
+                                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                                  {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                                  {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •
+                                  Status: {(ln.status ?? "awaiting").replaceAll("_", " ")} •
+                                  Approval: {(ln.approval_state ?? "pending").replaceAll("_", " ")}
+                                </div>
 
-                      const partsLabel = hasQuotedParts
-                        ? "Quoted, awaiting approval"
-                        : "Awaiting parts quote";
+                                {isAwaitingPartsBase && (
+                                  <div className="mt-1 inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-200">
+                                    {partsLabel}
+                                  </div>
+                                )}
 
-                      return (
-                        <div key={ln.id} className={`${cardInner} p-3`}>
+                                {ln.notes && (
+                                  <div className="mt-1 text-[11px] text-muted-foreground">
+                                    Notes: {ln.notes}
+                                  </div>
+                                )}
+                              </div>
+
+                              {canApprove && (
+                                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void approveLine(ln.id);
+                                    }}
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void declineLine(ln.id);
+                                    }}
+                                  >
+                                    Decline
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {approvalPendingQuotes.length > 0 && (
+                    <div className={approvalPending.length > 0 ? "mt-4 space-y-2" : "space-y-2"}>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-300">
+                        Quote suggestions
+                      </div>
+                      {approvalPendingQuotes.map((q, idx) => (
+                        <div key={q.id} className={`${cardInner} p-3`}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-foreground">
-                                {idx + 1}. {ln.description || ln.complaint || "Untitled job"}
+                                {idx + 1}. {q.description || "Quoted item"}
                               </div>
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                                {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •
-                                Status: {(ln.status ?? "awaiting").replaceAll("_", " ")} •
-                                Approval: {(ln.approval_state ?? "pending").replaceAll("_", " ")}
+                                {String(q.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                                {typeof q.est_labor_hours === "number"
+                                  ? `${q.est_labor_hours}h`
+                                  : "—"}{" "}
+                                • Status: {(q.status ?? "pending_parts").replaceAll("_", " ")}
                               </div>
-
-                              {isAwaitingPartsBase && (
-                                <div className="mt-1 inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-200">
-                                  {partsLabel}
-                                </div>
-                              )}
-
-                              {ln.notes && (
+                              {q.notes && (
                                 <div className="mt-1 text-[11px] text-muted-foreground">
-                                  Notes: {ln.notes}
+                                  Notes: {q.notes}
                                 </div>
                               )}
                             </div>
@@ -1417,8 +1507,8 @@ setStagedPartsByLine(stagedByLine);
                                   className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    void approveLine(ln.id);
-              }}
+                                    void approveQuoteLine(q.id);
+                                  }}
                                 >
                                   Approve
                                 </button>
@@ -1427,7 +1517,7 @@ setStagedPartsByLine(stagedByLine);
                                   className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    void declineLine(ln.id);
+                                    void declineQuoteLine(q.id);
                                   }}
                                 >
                                   Decline
@@ -1436,252 +1526,216 @@ setStagedPartsByLine(stagedByLine);
                             )}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {approvalPendingQuotes.length > 0 && (
-                  <div className={approvalPending.length > 0 ? "mt-4 space-y-2" : "space-y-2"}>
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-300">
-                      Quote suggestions
+                      ))}
                     </div>
-                    {approvalPendingQuotes.map((q, idx) => (
-                      <div key={q.id} className={`${cardInner} p-3`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium text-foreground">
-                              {idx + 1}. {q.description || "Quoted item"}
-                            </div>
-                            <div className="mt-0.5 text-[11px] text-muted-foreground">
-                              {String(q.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                              {typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"} •
-                              Status: {(q.status ?? "pending_parts").replaceAll("_", " ")}
-                            </div>
-                            {q.notes && (
-                              <div className="mt-1 text-[11px] text-muted-foreground">
-                                Notes: {q.notes}
-                              </div>
-                            )}
-                          </div>
-
-                          {canApprove && (
-                            <div className="flex shrink-0 flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void approveQuoteLine(q.id);
-                                }}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                type="button"
-                                className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void declineQuoteLine(q.id);
-                                }}
-                              >
-                                Decline
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Jobs list */}
-          <div className={`${cardBase} p-4 sm:p-5`}>
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <h2 className="text-sm font-semibold text-foreground sm:text-base">
-                  Jobs in this work order
-                </h2>
-                <p className="text-[11px] text-muted-foreground">
-                  Click any card to open the focused panel with full controls, punch and inspections.
-                </p>
-              </div>
-
-              {linesNeedingQuote.length > 0 && (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_0_18px_rgba(37,99,235,0.9)] hover:bg-blue-500 disabled:opacity-60"
-                  onClick={sendAllPendingToParts}
-                  disabled={bulkActive}
-                  title="Send all jobs to parts for quoting"
-                >
-                  ⚡ Quote all lines
-                </button>
+                  )}
+                </>
               )}
             </div>
 
-            {sortedLines.length > 0 && (
-              <div className="mb-4 rounded-xl border border-white/10 bg-black/50 px-3 py-2.5">
-                {(() => {
-                  const total = sortedLines.length;
-                  const done = sortedLines.filter((ln) => {
-                    const s = (ln.status ?? "").toLowerCase();
-                    return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
-                  }).length;
-                  const pct = total ? Math.round((done / total) * 100) : 0;
+            {/* Jobs list */}
+            <div className={`${cardBase} p-4 sm:p-5`}>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <h2 className="text-sm font-semibold text-foreground sm:text-base">
+                    Jobs in this work order
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    Click any card to open the focused panel with full controls, punch and
+                    inspections.
+                  </p>
+                </div>
 
-                  return (
-                    <>
-                      <div className="flex items-center justify-between gap-2 text-[11px] text-neutral-300">
-                        <span className="font-medium">
-                          Job progress: <span className="text-white">{done}/{total} done</span>
-                        </span>
-                        <span className="text-[10px] text-neutral-400">{pct}% complete</span>
-                      </div>
-                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-neutral-900">
-                        <div
-                          className="h-full rounded-full bg-[linear-gradient(90deg,_rgba(15,118,110,0.9),_rgba(16,185,129,0.9),_rgba(249,115,22,0.95))] transition-[width]"
-                          style={{ width: `${pct}%` }}
+                {linesNeedingQuote.length > 0 && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_0_18px_rgba(37,99,235,0.9)] hover:bg-blue-500 disabled:opacity-60"
+                    onClick={sendAllPendingToParts}
+                    disabled={bulkActive}
+                    title="Send all jobs to parts for quoting"
+                  >
+                    ⚡ Quote all lines
+                  </button>
+                )}
+              </div>
+
+              {sortedLines.length > 0 && (
+                <div className="mb-4 rounded-xl border border-white/10 bg-black/50 px-3 py-2.5">
+                  {(() => {
+                    const total = sortedLines.length;
+                    const done = sortedLines.filter((ln) => {
+                      const s = (ln.status ?? "").toLowerCase();
+                      return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
+                    }).length;
+                    const pct = total ? Math.round((done / total) * 100) : 0;
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-neutral-300">
+                          <span className="font-medium">
+                            Job progress: <span className="text-white">{done}/{total} done</span>
+                          </span>
+                          <span className="text-[10px] text-neutral-400">{pct}% complete</span>
+                        </div>
+                        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-neutral-900">
+                          <div
+                            className="h-full rounded-full bg-[linear-gradient(90deg,_rgba(15,118,110,0.9),_rgba(16,185,129,0.9),_rgba(249,115,22,0.95))] transition-[width]"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {sortedLines.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No jobs added yet. Use the{" "}
+                  <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">
+                    Add job
+                  </span>{" "}
+                  actions in the focused panel to start building this work order.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {sortedLines.map((ln, idx) => {
+                    const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
+
+                    const allocPartsForLine = allocsByLine[ln.id] ?? [];
+                    const stagedForLine = stagedPartsByLine[ln.id] ?? [];
+
+                    const stagedAsAllocShape: AllocationRow[] = stagedForLine.map((p) => {
+                      return {
+                        id: p.id,
+                        work_order_line_id: p.work_order_line_id as string,
+                        shop_id: p.shop_id,
+                        created_at: p.created_at,
+                        part_id: p.part_id ?? null,
+                        quantity: (p.quantity as unknown as number) ?? 0,
+                        unit_cost: p.unit_price ?? null,
+                        unit_price: p.unit_price ?? null,
+                        total_cost: null,
+                        total_price: p.total_price ?? null,
+                        status: "staged",
+                        parts: { name: p.parts?.name ?? null } as { name: string | null },
+                      } as unknown as AllocationRow;
+                    });
+
+                    const partsForLine = [...allocPartsForLine, ...stagedAsAllocShape];
+
+                    const lineTechIds = lineTechsByLine[ln.id] ?? [];
+                    const primaryId =
+                      typeof (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
+                        ? (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id
+                        : null;
+
+                    const orderedTechIds: string[] = [];
+                    if (primaryId) orderedTechIds.push(primaryId);
+                    lineTechIds.forEach((tid) => {
+                      if (!orderedTechIds.includes(tid)) orderedTechIds.push(tid);
+                    });
+
+                    const technicians = orderedTechIds.map((tid) => {
+                      const info = assignablesById[tid];
+                      return {
+                        id: tid,
+                        full_name: info?.full_name ?? null,
+                        role: info?.role ?? null,
+                      };
+                    });
+
+                    return (
+                      <div key={ln.id} className="relative">
+                        <JobCard
+                          index={idx}
+                          line={ln}
+                          parts={partsForLine}
+                          technicians={technicians}
+                          canAssign={canAssign}
+                          isPunchedIn={punchedIn}
+                          onOpen={() => openFocusedJob(ln.id)}
+                          onAssign={
+                            canAssign
+                              ? () => {
+                                  setAssignLineId(ln.id);
+                                  setAssignOpen(true);
+                                }
+                              : undefined
+                          }
+                          onOpenInspection={
+                            ln.job_type === "inspection"
+                              ? () => void openInspectionForLine(ln)
+                              : undefined
+                          }
+                          onAddPart={() => setPartsLineId(ln.id)}
+                          reviewOk={reviewOk}
+                          reviewIssues={reviewIssuesByLine[ln.id] ?? []}
+                          canDelete={canDeleteLine}
+                          onDelete={() => openDeleteForLine(ln.id)}
                         />
                       </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-            {sortedLines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No jobs added yet. Use the{" "}
-                <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">Add job</span>{" "}
-                actions in the focused panel to start building this work order.
+            <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
+              <WorkOrderSuggestionsPanel
+                workOrderId={wo.id}
+                vehicleId={vehicle?.id ?? null}
+                odometerKm={wo.odometer_km ?? null}
+                onAdded={fetchAll}
+              />
+            </div>
+
+            <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
+              <p>
+                Select a job card above to open the focused job panel with full editing, punch and
+                inspection controls.
               </p>
-            ) : (
-              <div className="space-y-2">
-                {sortedLines.map((ln, idx) => {
-                  const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
+            </div>
 
-                  const allocPartsForLine = allocsByLine[ln.id] ?? [];
-const stagedForLine = stagedPartsByLine[ln.id] ?? [];
-
-const stagedAsAllocShape: AllocationRow[] = stagedForLine.map((p) => {
-  // map staged quote parts to the AllocationRow shape JobCard expects
-  return {
-    // AllocationRow base fields (we only need work_order_line_id + parts(name) for display)
-    id: p.id,
-    work_order_line_id: p.work_order_line_id as string,
-    shop_id: p.shop_id,
-    created_at: p.created_at,
-    // best-effort fields (safe fallbacks)
-    part_id: p.part_id ?? null,
-    quantity: (p.quantity as unknown as number) ?? 0,
-    unit_cost: p.unit_price ?? null,
-    unit_price: p.unit_price ?? null,
-    total_cost: null,
-    total_price: p.total_price ?? null,
-    status: "staged",
-    // nested join used by PartsUsedList
-    parts: { name: p.parts?.name ?? null } as { name: string | null },
-  } as unknown as AllocationRow;
-});
-
-const partsForLine = [...allocPartsForLine, ...stagedAsAllocShape];
-
-                  const lineTechIds = lineTechsByLine[ln.id] ?? [];
-                  const primaryId =
-                    typeof (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
-                      ? (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id
-                      : null;
-
-                  const orderedTechIds: string[] = [];
-                  if (primaryId) orderedTechIds.push(primaryId);
-                  lineTechIds.forEach((tid) => {
-                    if (!orderedTechIds.includes(tid)) orderedTechIds.push(tid);
-                  });
-
-                  const technicians = orderedTechIds.map((tid) => {
-                    const info = assignablesById[tid];
-                    return {
-                      id: tid,
-                      full_name: info?.full_name ?? null,
-                      role: info?.role ?? null,
-                    };
-                  });
-
-                  return (
-                    <div key={ln.id} className="relative">
-                      <JobCard
-                        index={idx}
-                        line={ln}
-                        parts={partsForLine}
-                        technicians={technicians}
-                        canAssign={canAssign}
-                        isPunchedIn={punchedIn}
-                        onOpen={() => openFocusedJob(ln.id)}
-                        onAssign={
-                          canAssign
-                            ? () => {
-                                setAssignLineId(ln.id);
-                                setAssignOpen(true);
-                              }
-                            : undefined
-                        }
-                        onOpenInspection={
-                          ln.job_type === "inspection"
-                            ? () => void openInspectionForLine(ln)
-                            : undefined
-                        }
-                        onAddPart={() => setPartsLineId(ln.id)}
-                        reviewOk={reviewOk}
-                        reviewIssues={reviewIssuesByLine[ln.id] ?? []}
-                        // ✅ delete/void button lives inside JobCard now
-                        canDelete={canDeleteLine}
-                        onDelete={() => openDeleteForLine(ln.id)}
-                      />
-                    </div>
-                  );
-                })}
+            {/* Vehicle photos */}
+            {vehicle?.id && (
+              <div className="mt-8 space-y-4">
+                <h2 className="text-lg font-semibold text-foreground sm:text-xl">Vehicle photos</h2>
+                <VehiclePhotoUploader vehicleId={vehicle.id} />
+                <VehiclePhotoGallery
+                  vehicleId={vehicle.id}
+                  currentUserId={currentUserId || "anon"}
+                />
               </div>
             )}
           </div>
 
-          <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
-            <WorkOrderSuggestionsPanel
-              workOrderId={wo.id}
-              vehicleId={vehicle?.id ?? null}
-              odometerKm={wo.odometer_km ?? null}
-              onAdded={fetchAll}
-            />
-          </div>
-
-          <div className={`${cardBase} p-4 text-sm text-muted-foreground`}>
-            <p>
-              Select a job card above to open the focused job panel with full editing, punch and inspection controls.
-            </p>
-          </div>
+          {/* ---------------- RIGHT COLUMN (PANEL) ---------------- */}
+          {showPanel ? (
+            <div className="sticky top-24 h-[calc(100vh-7rem)]">
+              <FocusedJobModal
+                key={focusedJobId}
+                isOpen={true}
+                onClose={closeFocusedPanel}
+                workOrderLineId={focusedJobId}
+                onChanged={fetchAll}
+                mode="tech"
+                variant="panel"
+              />
+            </div>
+          ) : null}
         </div>
       )}
 
-      {/* Vehicle photos */}
-      {vehicle?.id && (
-        <div className="mt-8 space-y-4">
-          <h2 className="text-lg font-semibold text-foreground sm:text-xl">Vehicle photos</h2>
-          <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId || "anon"} />
-        </div>
-      )}
-
-      {/* Focused job modal (mobile/small screens fallback) */}
-      {focusedOpen && focusedJobId && (
+      {/* Focused job modal (mobile fallback) */}
+      {!prefersPanel && focusedOpen && focusedJobId && (
         <FocusedJobModal
           isOpen={focusedOpen}
           onClose={() => setFocusedOpen(false)}
           workOrderLineId={focusedJobId}
           onChanged={fetchAll}
           mode="tech"
+          variant="modal"
         />
       )}
 
