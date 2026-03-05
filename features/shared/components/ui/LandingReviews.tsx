@@ -279,7 +279,7 @@ export default function LandingReviews() {
               <span className="font-semibold" style={{ color: COPPER_LIGHT }}>
                 If you’re still reading,
               </span>{" "}
-              you’re already wasting time. Let ProFixIQ set the shop up for you.
+              you’re already wasting time. Let ProFixIQ build the system around your shop.
             </div>
           </div>
 

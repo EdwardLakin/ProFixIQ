@@ -43,7 +43,7 @@ const STEPS: StepCard[] = [
   {
     num: "01",
     kicker: "Profile",
-    title: "Answer 5–10 quick questions.",
+    title: "Tell us how your shop runs — we build around it.",
     badge: "Tailored",
     body: "Tell us what you run (fleet, mixed, diesel, automotive), how many bays/techs, and what data you have. We tailor the system to your workflow — not generic templates.",
   },

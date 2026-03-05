@@ -192,7 +192,7 @@ export default function WhySection() {
         />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-semibold text-neutral-50">
-            Result: fewer misses without adding admin work.
+            Result: faster repairs, cleaner approvals, fewer missed revenue opportunities.
           </div>
           <div className="text-xs text-neutral-400">
             Built for fleets • Works for automotive • Scales to multi-location

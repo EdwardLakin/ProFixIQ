@@ -217,7 +217,7 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
             </h2>
 
             <p className="mx-auto mt-4 max-w-2xl text-sm text-neutral-300 sm:text-base">
-              Fleet-first tools that also work great for automotive — built to reduce screen time and keep work moving.
+              Fleet-grade tools that also work perfectly for automotive shops — built to reduce screen time and keep work moving.
             </p>
           </div>
         ) : null}
