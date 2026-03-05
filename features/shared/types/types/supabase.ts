@@ -1159,7 +1159,22 @@ export type Database = {
           vehicle_model?: string | null
           vehicle_year?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customer_quotes_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_quotes_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       customer_settings: {
         Row: {
@@ -6259,35 +6274,50 @@ export type Database = {
       saved_menu_items: {
         Row: {
           created_at: string
+          created_by: string | null
           id: string
           labor_time: number | null
           make: string
           model: string
           parts: Json
+          published_at: string | null
+          published_by: string | null
+          shop_id: string | null
           title: string
           updated_at: string
+          visibility: string
           year_bucket: string
         }
         Insert: {
           created_at?: string
+          created_by?: string | null
           id?: string
           labor_time?: number | null
           make: string
           model: string
           parts?: Json
+          published_at?: string | null
+          published_by?: string | null
+          shop_id?: string | null
           title: string
           updated_at?: string
+          visibility?: string
           year_bucket: string
         }
         Update: {
           created_at?: string
+          created_by?: string | null
           id?: string
           labor_time?: number | null
           make?: string
           model?: string
           parts?: Json
+          published_at?: string | null
+          published_by?: string | null
+          shop_id?: string | null
           title?: string
           updated_at?: string
+          visibility?: string
           year_bucket?: string
         }
         Relationships: []
@@ -9370,6 +9400,10 @@ export type Database = {
           import_notes: string | null
           inspection_session_id: string | null
           inspection_template_id: string | null
+          intake_json: Json | null
+          intake_status: string | null
+          intake_submitted_at: string | null
+          intake_submitted_by: string | null
           job_type: string | null
           labor_time: number | null
           line_no: number | null
@@ -9424,6 +9458,10 @@ export type Database = {
           import_notes?: string | null
           inspection_session_id?: string | null
           inspection_template_id?: string | null
+          intake_json?: Json | null
+          intake_status?: string | null
+          intake_submitted_at?: string | null
+          intake_submitted_by?: string | null
           job_type?: string | null
           labor_time?: number | null
           line_no?: number | null
@@ -9478,6 +9516,10 @@ export type Database = {
           import_notes?: string | null
           inspection_session_id?: string | null
           inspection_template_id?: string | null
+          intake_json?: Json | null
+          intake_status?: string | null
+          intake_submitted_at?: string | null
+          intake_submitted_by?: string | null
           job_type?: string | null
           labor_time?: number | null
           line_no?: number | null
@@ -10559,6 +10601,57 @@ export type Database = {
           },
         ]
       }
+      v_global_saved_menu_items: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string | null
+          labor_time: number | null
+          make: string | null
+          model: string | null
+          parts: Json | null
+          published_at: string | null
+          published_by: string | null
+          shop_id: string | null
+          title: string | null
+          updated_at: string | null
+          visibility: string | null
+          year_bucket: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          labor_time?: number | null
+          make?: string | null
+          model?: string | null
+          parts?: Json | null
+          published_at?: string | null
+          published_by?: string | null
+          shop_id?: string | null
+          title?: string | null
+          updated_at?: string | null
+          visibility?: string | null
+          year_bucket?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          labor_time?: number | null
+          make?: string | null
+          model?: string | null
+          parts?: Json | null
+          published_at?: string | null
+          published_by?: string | null
+          shop_id?: string | null
+          title?: string | null
+          updated_at?: string | null
+          visibility?: string | null
+          year_bucket?: string | null
+        }
+        Relationships: []
+      }
       v_my_conversation_ids: {
         Row: {
           conversation_id: string | null
@@ -11426,6 +11519,10 @@ export type Database = {
       }
       current_shop_id: { Args: never; Returns: string }
       delete_part_request: { Args: { p_request_id: string }; Returns: string }
+      ensure_same_shop_policies: {
+        Args: { shop_col: string; tab: unknown }
+        Returns: undefined
+      }
       find_menu_item_for_vehicle_service: {
         Args: {
           p_engine_family: string
