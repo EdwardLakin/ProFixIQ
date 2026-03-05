@@ -18,6 +18,7 @@ import AddJobModal from "@/features/work-orders/components/workorders/AddJobModa
 import DeleteOrVoidLineModal from "@/features/work-orders/components/workorders/DeleteOrVoidLineModal";
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 import {
+import { QuoteLineCard } from "@/features/shared/quote/QuoteLineCard";
   calculateTax,
   getTaxAmount,
   isProvinceCode,
@@ -670,7 +671,7 @@ export default function QuoteReviewView(props: {
           <div className={linesColCls}>
             <div className={card}>
               <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
-                Line Items
+                Findings
               </div>
 
               {lines.length === 0 ? (
@@ -695,275 +696,46 @@ export default function QuoteReviewView(props: {
                       return sum + q * u;
                     }, 0);
 
-                    const lineTotal = laborAmt + partsAmt;
-
                     const ap = safeTrim(l.approval_state).toLowerCase();
-
-                    const pillClass =
+                    const tone =
                       ap === "approved"
-                        ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
+                        ? ("ok" as const)
                         : ap === "declined"
-                          ? "border-red-400/25 bg-red-400/10 text-red-200"
-                          : "border-amber-400/25 bg-amber-400/10 text-amber-200";
+                          ? ("bad" as const)
+                          : ("warn" as const);
+
+                    const title =
+                      safeTrim(l.description) ||
+                      (l.line_no != null ? `Line #${l.line_no}` : "Line");
+
+                    const issueText =
+                      safeTrim(l.cause) ||
+                      safeTrim(l.notes) ||
+                      safeTrim(l.complaint) ||
+                      "—";
+
+                    const recText =
+                      safeTrim(l.correction) ||
+                      safeTrim(l.description) ||
+                      "—";
 
                     return (
-                      <div key={l.id} className={`${padX} py-5`}>
-                        <div className="flex flex-wrap items-start justify-between gap-4">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-sm font-semibold text-white">
-                                Line
-                              </div>
-                              <span
-                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${pillClass}`}
-                                title={`approval_state=${l.approval_state ?? "null"} status=${l.status ?? "null"}`}
-                              >
-                                {l.approval_state
-                                  ? statusLabel(l.approval_state)
-                                  : "pending"}{" "}
-                                • {statusLabel(l.status)}
-                              </span>
-
-                              {l._dirty ? (
-                                <span className="text-xs text-[color:var(--copper)]">
-                                  Unsaved
-                                </span>
-                              ) : (
-                                <span className="text-xs text-neutral-500">
-                                  Saved
-                                </span>
-                              )}
-                            </div>
-
-                            <div className={embedded ? "mt-3 grid gap-3" : "mt-3 grid gap-3 md:grid-cols-2"}>
-                              <label className="text-xs text-neutral-400">
-                                Description
-                                <input
-                                  value={l.description ?? ""}
-                                  onChange={(e) =>
-                                    setLineField(l.id, {
-                                      description: e.target.value,
-                                    })
-                                  }
-                                  className={inputCls}
-                                  placeholder="Describe the work..."
-                                />
-                              </label>
-
-                              <label className="text-xs text-neutral-400">
-                                Complaint
-                                <input
-                                  value={l.complaint ?? ""}
-                                  onChange={(e) =>
-                                    setLineField(l.id, {
-                                      complaint: e.target.value,
-                                    })
-                                  }
-                                  className={inputCls}
-                                  placeholder="Customer complaint..."
-                                />
-                              </label>
-
-                              <label className="text-xs text-neutral-400">
-                                Cause
-                                <input
-                                  value={l.cause ?? ""}
-                                  onChange={(e) =>
-                                    setLineField(l.id, { cause: e.target.value })
-                                  }
-                                  className={inputCls}
-                                  placeholder="Root cause..."
-                                />
-                              </label>
-
-                              <label className="text-xs text-neutral-400">
-                                Correction
-                                <input
-                                  value={l.correction ?? ""}
-                                  onChange={(e) =>
-                                    setLineField(l.id, {
-                                      correction: e.target.value,
-                                    })
-                                  }
-                                  className={inputCls}
-                                  placeholder="Correction performed..."
-                                />
-                              </label>
-
-                              <label className="text-xs text-neutral-400">
-                                Labor hours
-                                <input
-                                  inputMode="decimal"
-                                  value={
-                                    typeof l.labor_time === "number"
-                                      ? String(l.labor_time)
-                                      : ""
-                                  }
-                                  onChange={(e) => {
-                                    const n = asNumber(e.target.value);
-                                    setLineField(l.id, { labor_time: n ?? 0 });
-                                  }}
-                                  className={inputCls}
-                                  placeholder="0.0"
-                                />
-                              </label>
-
-                              <div className="text-xs text-neutral-400">
-                                Line total
-                                <div className="mt-2 text-lg font-semibold text-white">
-                                  {fmt(lineTotal)}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className={embedded ? "flex w-full flex-wrap gap-2" : "flex shrink-0 flex-col gap-2"}>
-                            <button
-                              onClick={() => void setDecision(l.id, "approve")}
-                              className="
-                                rounded-lg border border-emerald-400/40 bg-emerald-400/10
-                                px-4 py-2 text-sm font-semibold text-emerald-200
-                                hover:bg-emerald-400/15
-                              "
-                              disabled={
-                                safeTrim(l.status).toLowerCase() === "declined"
-                              }
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => void setDecision(l.id, "decline")}
-                              className="
-                                rounded-lg border border-red-400/40 bg-red-400/10
-                                px-4 py-2 text-sm font-semibold text-red-200
-                                hover:bg-red-400/15
-                              "
-                              disabled={ap === "declined"}
-                            >
-                              Decline
-                            </button>
-                            <button
-                              onClick={() => void setDecision(l.id, "defer")}
-                              className="
-                                rounded-lg border border-amber-400/40 bg-amber-400/10
-                                px-4 py-2 text-sm font-semibold text-amber-200
-                                hover:bg-amber-400/15
-                              "
-                            >
-                              Defer
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openDeleteForLine(l.id)}
-                              className="
-                                rounded-lg border border-white/15 bg-black/50
-                                px-4 py-2 text-sm font-semibold text-neutral-200
-                                hover:bg-black/65 hover:text-white
-                              "
-                              title="Delete or void this line"
-                            >
-                              Delete / Void
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* parts */}
-                        <div className="mt-4 rounded-xl border border-white/10 bg-black/35 p-4">
-                          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                            Parts
-                          </div>
-
-                          {la.length === 0 ? (
-                            <div className="text-sm text-neutral-400">
-                              No parts allocated to this line.
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {la.map((a) => {
-                                const partName =
-                                  (a.parts?.name ?? "").trim() ||
-                                  (a.parts?.sku ?? "").trim() ||
-                                  (a.part_id
-                                    ? `Part ${a.part_id.slice(0, 8)}`
-                                    : "Part");
-
-                                const qty =
-                                  typeof a.qty === "number"
-                                    ? a.qty
-                                    : Number(a.qty);
-                                const unit =
-                                  typeof a.unit_cost === "number"
-                                    ? a.unit_cost
-                                    : Number(a.unit_cost);
-                                const q = Number.isFinite(qty) ? qty : 0;
-                                const u = Number.isFinite(unit) ? unit : 0;
-                                const rowTotal = q * u;
-
-                                return (
-                                  <div
-                                    key={a.id}
-                                    className="
-                                      flex flex-wrap items-center justify-between gap-3
-                                      rounded-xl border border-white/10 bg-black/45 px-3 py-3
-                                    "
-                                  >
-                                    <div className="min-w-0">
-                                      <div className="truncate text-sm font-medium text-white">
-                                        {partName}
-                                      </div>
-                                      <div className="text-xs text-neutral-500">
-                                        {a.location_id
-                                          ? `Location: ${a.location_id}`
-                                          : "No location"}
-                                        {a._dirty ? " • Unsaved" : ""}
-                                      </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                      <label className="text-xs text-neutral-400">
-                                        Qty
-                                        <input
-                                          inputMode="decimal"
-                                          value={String(q)}
-                                          onChange={(e) => {
-                                            const n = asNumber(e.target.value);
-                                            setAllocField(a.id, { qty: n ?? 0 });
-                                          }}
-                                          className={`${inputBase} ${inputFocus} ml-2 w-20`}
-                                        />
-                                      </label>
-
-                                      <label className="text-xs text-neutral-400">
-                                        Unit
-                                        <input
-                                          inputMode="decimal"
-                                          value={String(u)}
-                                          onChange={(e) => {
-                                            const n = asNumber(e.target.value);
-                                            setAllocField(a.id, {
-                                              unit_cost: n ?? 0,
-                                            });
-                                          }}
-                                          className={`${inputBase} ${inputFocus} ml-2 w-28`}
-                                        />
-                                      </label>
-
-                                      <div className="w-24 text-right text-sm font-semibold text-white">
-                                        {fmt(rowTotal)}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="mt-3 text-xs text-neutral-500">
-                          Current: approval_state={l.approval_state ?? "null"} •
-                          status={l.status ?? "null"}
-                        </div>
+                      <div key={l.id} className={`${padX} py-4`}>
+                        <QuoteLineCard
+                          title={title}
+                          statusLabel="Issue Found"
+                          statusTone={tone}
+                          issueText={issueText}
+                          photoUrl={null}
+                          recommendedText={recText}
+                          partsTotal={partsAmt}
+                          laborTotal={laborAmt}
+                          showActions
+                          onApprove={() => void setDecision(l.id, "approve")}
+                          onDecline={() => void setDecision(l.id, "decline")}
+                          onDefer={() => void setDecision(l.id, "defer")}
+                          footerNote={`approval_state=${l.approval_state ?? "null"} • status=${l.status ?? "null"}`}
+                        />
                       </div>
                     );
                   })}

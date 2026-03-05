@@ -1,3 +1,5 @@
+//features/portal/app/quotes/[id]/QuotePageClient.tsx
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";

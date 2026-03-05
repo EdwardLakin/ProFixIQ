@@ -1,3 +1,5 @@
+//app/work-orders/[id]/quote-review/_components/QuoteReviewPanelClient.tsx
+
 "use client";
 
 import { useRouter } from "next/navigation";
