@@ -1,3 +1,4 @@
+// features/shared/components/ui/LandingHero.tsx
 "use client";
 
 import Link from "next/link";
@@ -35,6 +36,7 @@ function SignalDot() {
 
 export default function LandingHero() {
   return (
+    // ✅ keep overflow-x-hidden ONLY (safe). If scroll is broken, it’s not from here.
     <section className="relative overflow-x-hidden">
       <style jsx>{`
         /* Copper “signal sweep” across the rail line */
@@ -127,11 +129,11 @@ export default function LandingHero() {
               </span>
               <span className="text-white/10">•</span>
               <span className="text-neutral-400">
-                Built for the floor — not forms
+                Built like an operating system
               </span>
             </div>
 
-            {/* Headline */}
+            {/* ✅ Agreed headline */}
             <h1
               className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
               style={{
@@ -139,9 +141,17 @@ export default function LandingHero() {
                 textShadow: "0 0 46px rgba(0,0,0,0.85)",
               }}
             >
-              Less typing. Faster approvals. More work out the door.
+              The operating system for modern repair shops.
             </h1>
 
+            {/* ✅ Agreed subcopy */}
+            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
+              Voice inspections, technician-built repairs, automated approvals,
+              parts workflows, and fleet transparency — all connected in one
+              system.
+            </p>
+
+            {/* ✅ Agreed industry line */}
             <div
               className="mt-4 text-lg font-extrabold uppercase tracking-[0.18em] sm:text-xl md:text-2xl"
               style={{
@@ -149,16 +159,8 @@ export default function LandingHero() {
                 textShadow: "0 0 26px rgba(197,122,74,0.35)",
               }}
             >
-              Voice inspections + proof-based approvals.
+              Heavy-Duty • Automotive • Fleet
             </div>
-
-            {/* Subcopy (aligned to your real workflow) */}
-            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
-              Advisors create the WO. Techs inspect by voice, then add parts +
-              labor once. Parts quotes. Customers/fleets approve in the portal —
-              and ProFixIQ moves the job from approval to parts to invoice
-              automatically.
-            </p>
 
             {/* CTAs */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -189,10 +191,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Tech-first capture
+                    Less screen time
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Voice fail/recommend + measurements stay attached.
+                    Voice + automation keep techs working.
                   </div>
                 </div>
               </div>
@@ -201,10 +203,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Proof-based approvals
+                    Faster approvals
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Fleets decide faster when they can see the evidence.
+                    Portals + evidence streamline decisions.
                   </div>
                 </div>
               </div>
@@ -213,10 +215,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Parts tied to the job
+                    Clean evidence trail
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Requests → quoting → receiving without losing the thread.
+                    From inspection to invoice, attached.
                   </div>
                 </div>
               </div>
@@ -249,7 +251,7 @@ export default function LandingHero() {
               </div>
 
               <p className="mt-3 text-sm text-neutral-300">
-                ProFixIQ ties together inspections, parts quoting, approvals, and
+                ProFixIQ ties together inspections, quotes, parts, approvals, and
                 portals — so fleets and customers see the same truth your bay
                 sees.
               </p>

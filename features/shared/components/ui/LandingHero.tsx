@@ -1,3 +1,4 @@
+// features/shared/components/ui/LandingHero.tsx
 "use client";
 
 import Link from "next/link";
@@ -123,7 +124,7 @@ export default function LandingHero() {
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
               <SignalDot />
               <span style={{ color: COPPER_LIGHT }}>
-                Heavy-Duty &amp; Fleet Software
+                Heavy-Duty &amp; Fleet Shop OS
               </span>
               <span className="text-white/10">•</span>
               <span className="text-neutral-400">
@@ -131,7 +132,7 @@ export default function LandingHero() {
               </span>
             </div>
 
-            {/* ✅ New premium headline hierarchy */}
+            {/* ✅ Hero wording (agreed) */}
             <h1
               className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
               style={{
@@ -139,9 +140,17 @@ export default function LandingHero() {
                 textShadow: "0 0 46px rgba(0,0,0,0.85)",
               }}
             >
-              Run a tighter, more profitable shop.
+              The operating system for modern repair shops.
             </h1>
 
+            {/* ✅ Subcopy (agreed) */}
+            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
+              Voice inspections, technician-built repairs, automated approvals,
+              parts workflows, and fleet transparency — all connected in one
+              system.
+            </p>
+
+            {/* ✅ Industry line (agreed) */}
             <div
               className="mt-4 text-lg font-extrabold uppercase tracking-[0.18em] sm:text-xl md:text-2xl"
               style={{
@@ -149,15 +158,8 @@ export default function LandingHero() {
                 textShadow: "0 0 26px rgba(197,122,74,0.35)",
               }}
             >
-              Heavy-duty. Automotive. Fleet.
+              Heavy-Duty • Automotive • Fleet
             </div>
-
-            {/* ✅ Owner-focused subcopy */}
-            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
-              Inspections, quotes, parts, approvals, portals, invoicing, and AI —
-              one connected workflow that reduces bottlenecks, speeds approvals,
-              and gets you paid faster.
-            </p>
 
             {/* CTAs */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -289,7 +291,6 @@ export default function LandingHero() {
                           animation: "pfqHop6 6s steps(1) infinite",
                         }}
                       >
-                        {/* Only the first col renders content; animation shifts this container */}
                         <div className="col-span-1 flex justify-center">
                           <div
                             className="mt-[2px] flex h-7 w-7 items-center justify-center rounded-full"
@@ -310,7 +311,6 @@ export default function LandingHero() {
                             />
                           </div>
                         </div>
-                        {/* empty placeholders so the grid keeps 6 columns */}
                         <div />
                         <div />
                         <div />
