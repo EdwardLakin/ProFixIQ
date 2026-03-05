@@ -118,7 +118,7 @@ export default function LandingHero() {
       {/* Full-bleed hero area */}
       <div className="mx-auto w-full max-w-[1400px] px-4 pb-10 pt-14 sm:pt-16 md:pt-20">
         <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
-          {/* LEFT: editorial / outcome */}
+          {/* LEFT */}
           <div className="relative">
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
               <SignalDot />
@@ -131,7 +131,7 @@ export default function LandingHero() {
               </span>
             </div>
 
-            {/* Headline */}
+            {/* ✅ AGREED HERO WORDING */}
             <h1
               className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
               style={{
@@ -139,26 +139,24 @@ export default function LandingHero() {
                 textShadow: "0 0 46px rgba(0,0,0,0.85)",
               }}
             >
-              Less typing. Faster approvals. More work out the door.
+              The operating system for modern repair shops.
             </h1>
 
+            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
+              Voice inspections, technician-built repairs, automated approvals,
+              parts workflows, and fleet transparency — all connected in one
+              system.
+            </p>
+
             <div
-              className="mt-4 text-lg font-extrabold uppercase tracking-[0.18em] sm:text-xl md:text-2xl"
+              className="mt-5 text-lg font-extrabold uppercase tracking-[0.18em] sm:text-xl md:text-2xl"
               style={{
                 color: COPPER_LIGHT,
                 textShadow: "0 0 26px rgba(197,122,74,0.35)",
               }}
             >
-              Voice inspections + proof-based approvals.
+              Heavy-Duty • Automotive • Fleet
             </div>
-
-            {/* Subcopy (aligned to your real workflow) */}
-            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
-              Advisors create the WO. Techs inspect by voice, then add parts +
-              labor once. Parts quotes. Customers/fleets approve in the portal —
-              and ProFixIQ moves the job from approval to parts to invoice
-              automatically.
-            </p>
 
             {/* CTAs */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -189,10 +187,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Tech-first capture
+                    Voice inspections
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Voice fail/recommend + measurements stay attached.
+                    Fail/recommend fast. Evidence stays attached.
                   </div>
                 </div>
               </div>
@@ -201,10 +199,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Proof-based approvals
+                    Tech-built repairs
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Fleets decide faster when they can see the evidence.
+                    Parts + labor added once — no re-entry.
                   </div>
                 </div>
               </div>
@@ -213,17 +211,17 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Parts tied to the job
+                    Automated approvals
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Requests → quoting → receiving without losing the thread.
+                    Portal decisions move jobs forward instantly.
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* RIGHT: “system snapshot” block */}
+          {/* RIGHT */}
           <div className="relative">
             <div className="rounded-2xl border border-white/10 bg-black/25 p-5 backdrop-blur">
               <div className="flex items-center justify-between gap-3">
@@ -249,9 +247,8 @@ export default function LandingHero() {
               </div>
 
               <p className="mt-3 text-sm text-neutral-300">
-                ProFixIQ ties together inspections, parts quoting, approvals, and
-                portals — so fleets and customers see the same truth your bay
-                sees.
+                ProFixIQ ties together inspections, parts, approvals, and portals
+                — so fleets and customers see the same truth your bay sees.
               </p>
 
               {/* Workflow rail (ANIMATED) */}
@@ -350,10 +347,10 @@ export default function LandingHero() {
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
                     <SignalDot />
-                    Day-one workflow (roll out in phases)
+                    Day-one onboarding from uploads
                   </div>
                   <span className="text-[11px] text-neutral-400">
-                    Not “setup weeks”
+                    Day-one ready
                   </span>
                 </div>
 
@@ -363,20 +360,22 @@ export default function LandingHero() {
                     Voice + evidence captured once
                   </div>
                   <span className="text-[11px] text-neutral-400">
-                    Floor speed
+                    Less typing
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
                     <SignalDot />
-                    Portal approvals + live job history
+                    Approvals → parts → invoice automation
                   </div>
-                  <span className="text-[11px] text-neutral-400">One truth</span>
+                  <span className="text-[11px] text-neutral-400">
+                    One truth
+                  </span>
                 </div>
               </div>
 
-              {/* Tiny portal links (still accessible) */}
+              {/* Tiny portal links */}
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4 text-xs text-neutral-400">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold uppercase tracking-[0.18em] text-neutral-500">
@@ -416,7 +415,7 @@ export default function LandingHero() {
         </div>
       </div>
 
-      {/* thin rail divider into next section */}
+      {/* thin rail divider */}
       <div className="mx-auto max-w-[1400px] px-4 pb-2">
         <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       </div>
