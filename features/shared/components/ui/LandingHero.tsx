@@ -1,4 +1,3 @@
-// features/shared/components/ui/LandingHero.tsx
 "use client";
 
 import Link from "next/link";
@@ -128,11 +127,11 @@ export default function LandingHero() {
               </span>
               <span className="text-white/10">•</span>
               <span className="text-neutral-400">
-                Built like an operating system
+                Built for the floor — not forms
               </span>
             </div>
 
-            {/* ✅ Hero wording (agreed) */}
+            {/* Headline */}
             <h1
               className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
               style={{
@@ -140,17 +139,9 @@ export default function LandingHero() {
                 textShadow: "0 0 46px rgba(0,0,0,0.85)",
               }}
             >
-              The operating system for modern repair shops.
+              Less typing. Faster approvals. More work out the door.
             </h1>
 
-            {/* ✅ Subcopy (agreed) */}
-            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
-              Voice inspections, technician-built repairs, automated approvals,
-              parts workflows, and fleet transparency — all connected in one
-              system.
-            </p>
-
-            {/* ✅ Industry line (agreed) */}
             <div
               className="mt-4 text-lg font-extrabold uppercase tracking-[0.18em] sm:text-xl md:text-2xl"
               style={{
@@ -158,8 +149,16 @@ export default function LandingHero() {
                 textShadow: "0 0 26px rgba(197,122,74,0.35)",
               }}
             >
-              Heavy-Duty • Automotive • Fleet
+              Voice inspections + proof-based approvals.
             </div>
+
+            {/* Subcopy (aligned to your real workflow) */}
+            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
+              Advisors create the WO. Techs inspect by voice, then add parts +
+              labor once. Parts quotes. Customers/fleets approve in the portal —
+              and ProFixIQ moves the job from approval to parts to invoice
+              automatically.
+            </p>
 
             {/* CTAs */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -190,10 +189,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Less screen time
+                    Tech-first capture
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Voice + automation keep techs working.
+                    Voice fail/recommend + measurements stay attached.
                   </div>
                 </div>
               </div>
@@ -202,10 +201,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Faster approvals
+                    Proof-based approvals
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Portals + evidence streamline decisions.
+                    Fleets decide faster when they can see the evidence.
                   </div>
                 </div>
               </div>
@@ -214,10 +213,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Clean evidence trail
+                    Parts tied to the job
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    From inspection to invoice, attached.
+                    Requests → quoting → receiving without losing the thread.
                   </div>
                 </div>
               </div>
@@ -250,7 +249,7 @@ export default function LandingHero() {
               </div>
 
               <p className="mt-3 text-sm text-neutral-300">
-                ProFixIQ ties together inspections, quotes, parts, approvals, and
+                ProFixIQ ties together inspections, parts quoting, approvals, and
                 portals — so fleets and customers see the same truth your bay
                 sees.
               </p>
@@ -351,31 +350,29 @@ export default function LandingHero() {
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
                     <SignalDot />
-                    Seamless onboarding from uploads
+                    Day-one workflow (roll out in phases)
                   </div>
                   <span className="text-[11px] text-neutral-400">
-                    Day-one ready
+                    Not “setup weeks”
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
                     <SignalDot />
-                    Voice + corner grids for tech speed
+                    Voice + evidence captured once
                   </div>
                   <span className="text-[11px] text-neutral-400">
-                    Less typing
+                    Floor speed
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
                     <SignalDot />
-                    Quotes, approvals, portal, invoices
+                    Portal approvals + live job history
                   </div>
-                  <span className="text-[11px] text-neutral-400">
-                    One truth
-                  </span>
+                  <span className="text-[11px] text-neutral-400">One truth</span>
                 </div>
               </div>
 

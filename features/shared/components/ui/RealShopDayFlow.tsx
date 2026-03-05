@@ -1,3 +1,5 @@
+//features/shared/components/ui/RealShopDayFlow.tsx
+
 "use client";
 
 import Link from "next/link";

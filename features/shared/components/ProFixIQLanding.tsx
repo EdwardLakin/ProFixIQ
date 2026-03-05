@@ -1,427 +1,333 @@
-// features/shared/components/ui/LandingHero.tsx
+// app/page.tsx
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Toaster } from "sonner";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
-const COPPER = "var(--pfq-copper)";
-const COPPER_LIGHT = "var(--accent-copper-light)";
+import LandingHero from "@shared/components/ui/LandingHero";
+import LandingShopBoost from "@shared/components/ui/LandingShopBoost";
+import RealShopDayFlow from "@shared/components/ui/RealShopDayFlow";
+import FeaturesSection from "@shared/components/ui/FeaturesSection";
+import WhySection from "@shared/components/ui/WhySection";
+import PricingSection from "@shared/components/ui/PricingSection";
+import Footer from "@shared/components/ui/Footer";
+import Container from "@shared/components/ui/Container";
+import LandingChatbot from "@/features/landing/LandingChatbot";
+import LandingReviews from "@shared/components/ui/LandingReviews";
 
-type RailStep = {
-  key: string;
-  label: string;
-  hint: string;
-};
+type Interval = "monthly" | "yearly";
 
-const RAIL: RailStep[] = [
-  { key: "inspect", label: "Inspect", hint: "Evidence + measurements" },
-  { key: "quote", label: "Quote", hint: "Lines built automatically" },
-  { key: "approve", label: "Approve", hint: "Fleet/customer portals" },
-  { key: "parts", label: "Parts", hint: "Requests → receiving" },
-  { key: "invoice", label: "Invoice", hint: "Clean billing trail" },
-  { key: "portal", label: "Portal", hint: "Live status + history" },
-];
+export default function ProFixIQLanding() {
+  const supabase = createClientComponentClient<Database>();
+  const [sessionExists, setSessionExists] = useState(false);
 
-function SignalDot() {
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      setSessionExists(!!session);
+
+      const { data } = supabase.auth.onAuthStateChange((_event, sess) => {
+        setSessionExists(!!sess);
+      });
+
+      unsub = () => data.subscription.unsubscribe();
+    })();
+
+    return () => {
+      unsub?.();
+    };
+  }, [supabase]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setSessionExists(false);
+    window.location.href = "/";
+  };
+
   return (
-    <span
-      className="inline-block h-2 w-2 rounded-full"
-      style={{
-        background: COPPER,
-        boxShadow: "0 0 18px rgba(197,122,74,0.55)",
-      }}
-      aria-hidden
-    />
-  );
-}
+    <div className="relative min-h-screen text-white">
+      <Toaster position="top-center" />
 
-export default function LandingHero() {
-  return (
-    // ✅ keep overflow-x-hidden ONLY (safe). If scroll is broken, it’s not from here.
-    <section className="relative overflow-x-hidden">
-      <style jsx>{`
-        /* Copper “signal sweep” across the rail line */
-        @keyframes pfqSweep {
-          0% {
-            transform: translateX(-30%);
-            opacity: 0;
-          }
-          12% {
-            opacity: 0.65;
-          }
-          50% {
-            opacity: 0.95;
-          }
-          88% {
-            opacity: 0.65;
-          }
-          100% {
-            transform: translateX(130%);
-            opacity: 0;
-          }
-        }
+      {/* Dark steel + copper signal background */}
+      <div
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          backgroundImage: [
+            // base steel falloff
+            "radial-gradient(1200px 700px at 20% -10%, rgba(148,163,184,0.18), transparent 55%)",
+            "radial-gradient(1000px 650px at 85% 0%, rgba(30,41,59,0.55), transparent 60%)",
+            "radial-gradient(900px 700px at 50% 110%, rgba(2,6,23,0.95), rgba(2,6,23,1) 55%)",
+            // copper “signal” sources
+            "radial-gradient(550px 250px at 18% 18%, rgba(197,122,74,0.22), transparent 65%)",
+            "radial-gradient(500px 240px at 80% 65%, rgba(197,122,74,0.14), transparent 70%)",
+            // steel scanlines / texture
+            "repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.00) 1px, rgba(0,0,0,0.10) 3px)",
+            // subtle diagonal steel grain
+            "repeating-linear-gradient(135deg, rgba(148,163,184,0.05) 0px, rgba(148,163,184,0.00) 6px, rgba(2,6,23,0.00) 14px)",
+          ].join(", "),
+          backgroundColor: "#020617",
+        }}
+      />
 
-        /* Active-node hop across 6 steps (discrete, not sliding) */
-        @keyframes pfqHop6 {
-          0% {
-            transform: translateX(0%);
-          }
-          16.66% {
-            transform: translateX(0%);
-          }
-          16.67% {
-            transform: translateX(100%);
-          }
-          33.33% {
-            transform: translateX(100%);
-          }
-          33.34% {
-            transform: translateX(200%);
-          }
-          50% {
-            transform: translateX(200%);
-          }
-          50.01% {
-            transform: translateX(300%);
-          }
-          66.66% {
-            transform: translateX(300%);
-          }
-          66.67% {
-            transform: translateX(400%);
-          }
-          83.33% {
-            transform: translateX(400%);
-          }
-          83.34% {
-            transform: translateX(500%);
-          }
-          100% {
-            transform: translateX(500%);
-          }
-        }
-
-        /* Subtle “breathing” glow on the active dot */
-        @keyframes pfqBreathe {
-          0% {
-            transform: scale(1);
-            opacity: 0.95;
-          }
-          50% {
-            transform: scale(1.08);
-            opacity: 1;
-          }
-          100% {
-            transform: scale(1);
-            opacity: 0.95;
-          }
-        }
-      `}</style>
-
-      {/* Full-bleed hero area */}
-      <div className="mx-auto w-full max-w-[1400px] px-4 pb-10 pt-14 sm:pt-16 md:pt-20">
-        <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
-          {/* LEFT: editorial / outcome */}
-          <div className="relative">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
-              <SignalDot />
-              <span style={{ color: COPPER_LIGHT }}>
-                Heavy-Duty &amp; Fleet Shop OS
-              </span>
-              <span className="text-white/10">•</span>
-              <span className="text-neutral-400">
-                Built like an operating system
-              </span>
-            </div>
-
-            {/* ✅ Agreed headline */}
-            <h1
-              className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
-              style={{
-                fontFamily: "var(--font-blackops)",
-                textShadow: "0 0 46px rgba(0,0,0,0.85)",
-              }}
-            >
-              The operating system for modern repair shops.
-            </h1>
-
-            {/* ✅ Agreed subcopy */}
-            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
-              Voice inspections, technician-built repairs, automated approvals,
-              parts workflows, and fleet transparency — all connected in one
-              system.
-            </p>
-
-            {/* ✅ Agreed industry line */}
-            <div
-              className="mt-4 text-lg font-extrabold uppercase tracking-[0.18em] sm:text-xl md:text-2xl"
-              style={{
-                color: COPPER_LIGHT,
-                textShadow: "0 0 26px rgba(197,122,74,0.35)",
-              }}
-            >
-              Heavy-Duty • Automotive • Fleet
-            </div>
-
-            {/* CTAs */}
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link
-                href="/demo/instant-shop-analysis"
-                className="rounded-xl px-5 py-3 text-sm font-extrabold text-black transition hover:brightness-110 active:scale-[0.99]"
+      {/* Top bar (ops header) */}
+      <div className="sticky top-0 z-30 w-full border-b border-white/10 bg-black/35 backdrop-blur-xl">
+        <Container>
+          <div className="flex items-center justify-between gap-3 py-3">
+            <Link href="/" className="flex items-center gap-3">
+              <div
+                className="grid h-9 w-9 place-items-center rounded-xl border bg-black/40"
                 style={{
-                  background:
-                    "linear-gradient(to right, var(--accent-copper-soft), var(--accent-copper))",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  boxShadow: "0 0 34px rgba(197,122,74,0.26)",
+                  borderColor: "rgba(255,255,255,0.10)",
+                  boxShadow: "0 0 0 1px rgba(255,255,255,0.04) inset",
                 }}
               >
-                Run Instant Shop Analysis
+                <span
+                  className="text-[11px] font-blackops tracking-[0.14em]"
+                  style={{ color: "var(--pfq-copper)" }}
+                >
+                  PFQ
+                </span>
+              </div>
+
+              <div className="leading-tight">
+                <div className="text-sm font-semibold text-white">ProFixIQ</div>
+                <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+                  {/* ✅ wording tweak: match your “Shop OS / modern repair shops” positioning */}
+                  <span>Shop OS for Heavy-Duty • Automotive • Fleet</span>
+                  <span className="text-white/10">•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: "rgba(197,122,74,0.9)" }}
+                    />
+                    <span className="text-neutral-500">Signal</span>
+                  </span>
+                </div>
+              </div>
+            </Link>
+
+            <div className="flex items-center gap-2">
+              {/* Always visible portal entry */}
+              <Link
+                href="/portal"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-1.5 text-sm font-extrabold text-neutral-100 transition hover:bg-neutral-900/40"
+                style={{
+                  boxShadow: "0 0 0 1px rgba(197,122,74,0.08) inset",
+                }}
+              >
+                Portal Sign In
               </Link>
 
               <Link
-                href="#features"
-                className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-neutral-100 transition hover:bg-black/30"
+                href="/portal/fleet"
+                className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-1.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
               >
-                See what’s included
+                Fleet Portal
               </Link>
-            </div>
 
-            {/* Proof bullets */}
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
-                <SignalDot />
-                <div>
-                  <div className="text-sm font-extrabold text-white">
-                    Less screen time
-                  </div>
-                  <div className="mt-0.5 text-xs text-neutral-300">
-                    Voice + automation keep techs working.
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
-                <SignalDot />
-                <div>
-                  <div className="text-sm font-extrabold text-white">
-                    Faster approvals
-                  </div>
-                  <div className="mt-0.5 text-xs text-neutral-300">
-                    Portals + evidence streamline decisions.
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
-                <SignalDot />
-                <div>
-                  <div className="text-sm font-extrabold text-white">
-                    Clean evidence trail
-                  </div>
-                  <div className="mt-0.5 text-xs text-neutral-300">
-                    From inspection to invoice, attached.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT: “system snapshot” block */}
-          <div className="relative">
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-5 backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                    System Snapshot
-                  </div>
-                  <div className="mt-1 text-lg font-extrabold text-white">
-                    One workflow, end-to-end
-                  </div>
-                </div>
-
-                <div
-                  className="rounded-full border px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.18em]"
-                  style={{
-                    borderColor: "rgba(255,255,255,0.14)",
-                    backgroundColor: "rgba(197,122,74,0.10)",
-                    color: COPPER_LIGHT,
-                  }}
-                >
-                  Live ops feel
-                </div>
-              </div>
-
-              <p className="mt-3 text-sm text-neutral-300">
-                ProFixIQ ties together inspections, quotes, parts, approvals, and
-                portals — so fleets and customers see the same truth your bay
-                sees.
-              </p>
-
-              {/* Workflow rail (ANIMATED) */}
-              <div className="mt-5">
-                <div className="flex items-center justify-between text-[11px] text-neutral-400">
-                  <span className="font-semibold uppercase tracking-[0.18em]">
-                    Workflow rail
-                  </span>
-                  <span className="text-neutral-500">Inspect → Portal</span>
-                </div>
-
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-4">
-                  <div className="relative">
-                    {/* base steel line */}
-                    <div className="absolute left-2 right-2 top-[13px] h-px bg-white/10" />
-
-                    {/* copper sweep line */}
-                    <div className="pointer-events-none absolute left-2 right-2 top-[12px] h-[3px] overflow-hidden">
-                      <div
-                        className="h-full w-[30%] rounded-full"
-                        style={{
-                          background:
-                            "linear-gradient(90deg, rgba(197,122,74,0) 0%, rgba(197,122,74,0.95) 45%, rgba(197,122,74,0) 100%)",
-                          filter:
-                            "drop-shadow(0 0 18px rgba(197,122,74,0.55))",
-                          animation: "pfqSweep 6s linear infinite",
-                        }}
-                      />
-                    </div>
-
-                    {/* active node glow hops across the 6 nodes */}
-                    <div className="pointer-events-none absolute left-0 right-0 top-[2px]">
-                      <div
-                        className="grid grid-cols-6 gap-2"
-                        style={{
-                          animation: "pfqHop6 6s steps(1) infinite",
-                        }}
-                      >
-                        <div className="col-span-1 flex justify-center">
-                          <div
-                            className="mt-[2px] flex h-7 w-7 items-center justify-center rounded-full"
-                            style={{
-                              boxShadow:
-                                "0 0 0 1px rgba(197,122,74,0.25) inset, 0 0 26px rgba(197,122,74,0.22)",
-                            }}
-                          >
-                            <span
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{
-                                backgroundColor: "rgba(197,122,74,0.98)",
-                                boxShadow:
-                                  "0 0 22px rgba(197,122,74,0.60)",
-                                animation:
-                                  "pfqBreathe 1.2s ease-in-out infinite",
-                              }}
-                            />
-                          </div>
-                        </div>
-                        <div />
-                        <div />
-                        <div />
-                        <div />
-                        <div />
-                      </div>
-                    </div>
-
-                    {/* rail nodes */}
-                    <div className="grid grid-cols-6 gap-2">
-                      {RAIL.map((s) => (
-                        <div key={s.key} className="text-center">
-                          <div className="mx-auto flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/40">
-                            <span
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{
-                                backgroundColor: "rgba(197,122,74,0.45)",
-                                boxShadow:
-                                  "0 0 10px rgba(197,122,74,0.14)",
-                              }}
-                            />
-                          </div>
-                          <div className="mt-2 text-[11px] font-extrabold text-white">
-                            {s.label}
-                          </div>
-                          <div className="mt-1 text-[10px] leading-snug text-neutral-400">
-                            {s.hint}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Included highlights */}
-              <div className="mt-5 grid gap-2">
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                    <SignalDot />
-                    Day-one workflow (roll out in phases)
-                  </div>
-                  <span className="text-[11px] text-neutral-400">
-                    Not “setup weeks”
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                    <SignalDot />
-                    Voice + evidence captured once
-                  </div>
-                  <span className="text-[11px] text-neutral-400">
-                    Floor speed
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                    <SignalDot />
-                    Portal approvals + live job history
-                  </div>
-                  <span className="text-[11px] text-neutral-400">One truth</span>
-                </div>
-              </div>
-
-              {/* Tiny portal links (still accessible) */}
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4 text-xs text-neutral-400">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                    Entry
-                  </span>
-                  <span className="text-white/10">•</span>
+              {sessionExists ? (
+                <>
                   <Link
-                    href="/portal"
-                    className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200"
+                    href="/dashboard"
+                    className="hidden sm:inline-flex rounded-xl border border-white/10 bg-black/25 px-3 py-1.5 text-sm text-neutral-200 transition hover:bg-neutral-900/40"
                   >
-                    Customer portal
+                    Dashboard
                   </Link>
-                  <span className="text-white/10">•</span>
-                  <Link
-                    href="/portal/fleet"
-                    className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200"
-                  >
-                    Fleet portal
-                  </Link>
-                </div>
 
+                  <button
+                    onClick={handleSignOut}
+                    className="inline-flex rounded-xl px-3 py-1.5 text-sm font-extrabold text-black transition"
+                    style={{
+                      background: "var(--pfq-copper)",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                    }}
+                  >
+                    Sign Out
+                  </button>
+                </>
+              ) : (
                 <Link
                   href="/sign-in"
-                  className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200"
+                  className="inline-flex rounded-xl border border-white/10 bg-black/15 px-3 py-1.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
                 >
-                  Sign in
+                  Sign In
+                </Link>
+              )}
+            </div>
+          </div>
+        </Container>
+      </div>
+
+      {/* HERO (full-bleed) */}
+      <LandingHero />
+
+      {/* SHOP BOOST */}
+      <div id="shop-boost">
+        <LandingShopBoost />
+      </div>
+
+      {/* ✅ REAL SHOP DAY FLOW (NEW) */}
+      <section id="real-shop-day" className="relative py-16 md:py-20">
+        <Container>
+          <RealShopDayFlow />
+        </Container>
+      </section>
+
+      {/* FEATURES */}
+      <section id="features" className="relative py-16 md:py-20">
+        <Container>
+          <div className="mx-auto max-w-3xl text-center">
+            <div
+              className="text-xs font-semibold uppercase tracking-[0.22em]"
+              style={{ color: "var(--pfq-copper)" }}
+            >
+              Included
+            </div>
+            <h2
+              className="mt-2 text-3xl text-neutral-100 md:text-5xl"
+              style={{ fontFamily: "var(--font-blackops)" }}
+            >
+              Everything included. One workflow.
+            </h2>
+            <p className="mt-3 text-sm text-neutral-300 md:text-base">
+              Fleet-first tools that also work great for automotive — built to
+              reduce screen time and keep work moving.
+            </p>
+          </div>
+
+          <div className="mt-12">
+            <FeaturesSection showHeading={false} />
+          </div>
+        </Container>
+      </section>
+
+      {/* WHY */}
+      <section id="why" className="relative py-16 md:py-20">
+        <Container>
+          <WhySection />
+        </Container>
+      </section>
+
+      {/* REVIEWS */}
+      <section id="reviews" className="relative py-16 md:py-20">
+        <LandingReviews />
+      </section>
+
+      {/* PRICING */}
+      <section id="plans" className="relative py-16 md:py-20">
+        <Container>
+          <div className="mx-auto max-w-3xl text-center">
+            <div
+              className="text-xs font-semibold uppercase tracking-[0.22em]"
+              style={{ color: "var(--pfq-copper)" }}
+            >
+              Plans
+            </div>
+            <h2
+              className="mt-2 text-3xl text-neutral-100 md:text-5xl"
+              style={{ fontFamily: "var(--font-blackops)" }}
+            >
+              Pricing that scales with your operation
+            </h2>
+            <p className="mt-3 text-sm text-neutral-300 md:text-base">
+              Start with a free trial. Upgrade when you’re ready — no migration
+              mess later.
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <PricingSection
+              onCheckout={async ({
+                priceId,
+                interval,
+              }: {
+                priceId: string;
+                interval: Interval;
+              }) => {
+                const res = await fetch("/api/stripe/checkout", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    planKey: priceId,
+                    shopId: "public_landing",
+                    userId: null,
+                    interval,
+                  }),
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                  alert(data?.details || data?.error || "Checkout failed");
+                  return;
+                }
+
+                if (data?.url) {
+                  window.location.href = data.url;
+                  return;
+                }
+
+                alert("No checkout URL returned");
+              }}
+              onStartFree={() => {
+                window.location.href = "/onboarding/profile";
+              }}
+            />
+          </div>
+
+          {/* CTA band */}
+          <div className="mt-10 rounded-2xl border border-white/10 bg-black/20 px-6 py-6 backdrop-blur">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-lg font-extrabold text-white">
+                  Ready to see it in motion?
+                </div>
+                <div className="mt-1 text-sm text-neutral-300">
+                  Create a work order, run an inspection, or let AI scan your
+                  shop&apos;s history.
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href="/work-orders/create"
+                  className="rounded-xl px-4 py-2 text-sm font-extrabold text-black"
+                  style={{
+                    background: "var(--pfq-copper)",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    boxShadow: "0 0 26px rgba(197,122,74,0.25)",
+                  }}
+                >
+                  Start a work order
+                </Link>
+                <Link
+                  href="/demo/instant-shop-analysis"
+                  className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
+                >
+                  Run Instant Shop Analysis
                 </Link>
               </div>
             </div>
-
-            {/* copper signal wash */}
-            <div
-              className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full blur-3xl"
-              style={{ background: "rgba(197,122,74,0.16)" }}
-            />
           </div>
-        </div>
+        </Container>
+      </section>
+
+      {/* Chatbot */}
+      <div className="relative">
+        <LandingChatbot />
       </div>
 
-      {/* thin rail divider into next section */}
-      <div className="mx-auto max-w-[1400px] px-4 pb-2">
-        <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+      {/* Footer */}
+      <div className="relative">
+        <Footer />
       </div>
-    </section>
+    </div>
   );
 }
