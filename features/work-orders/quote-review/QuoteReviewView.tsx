@@ -1,3 +1,4 @@
+// features/work-orders/quote-review/QuoteReviewView.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 // QuoteReviewView.tsx
@@ -14,11 +15,13 @@ import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
+
 import AddJobModal from "@/features/work-orders/components/workorders/AddJobModal";
 import DeleteOrVoidLineModal from "@/features/work-orders/components/workorders/DeleteOrVoidLineModal";
+
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
-import {
 import { QuoteLineCard } from "@/features/shared/quote/QuoteLineCard";
+import {
   calculateTax,
   getTaxAmount,
   isProvinceCode,
@@ -145,6 +148,9 @@ export default function QuoteReviewView(props: {
   const [addJobOpen, setAddJobOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("system");
 
+  // ✅ Restores original "editor" usage without killing the card UI
+  const [openDetails, setOpenDetails] = useState<Record<string, boolean>>({});
+
   function openAddJobWithPrefill(prefill: {
     jobName?: string | null;
     notes?: string | null;
@@ -233,7 +239,7 @@ export default function QuoteReviewView(props: {
     if (lineErr) {
       toast.error(lineErr.message);
       setLines([]);
-     } else {
+    } else {
       const mapped = (lineRows ?? []).map((l) => {
         const existingComplaint = safeTrim(l.complaint);
         if (existingComplaint) return { ...l, _dirty: false } as EditableLine;
@@ -246,8 +252,8 @@ export default function QuoteReviewView(props: {
         return { ...l, complaint: derived, _dirty: true } as EditableLine;
       });
 
-        setLines(mapped);
-     }
+      setLines(mapped);
+    }
 
     // allocations
     const { data: aRows, error: aErr } = await supabase
@@ -494,7 +500,8 @@ export default function QuoteReviewView(props: {
     }
   }
 
-  if (!woId) return <div className="p-6 text-red-300">Missing work order id.</div>;
+  if (!woId)
+    return <div className="p-6 text-red-300">Missing work order id.</div>;
   if (loading) return <div className="p-6 text-neutral-300">Loading…</div>;
   if (!wo) return <div className="p-6 text-red-300">Work order not found.</div>;
 
@@ -532,7 +539,13 @@ export default function QuoteReviewView(props: {
     <div className={outerCls} style={{ ["--copper" as never]: COPPER }}>
       <div className={containerCls}>
         {/* top row */}
-        <div className={embedded ? "mb-2 flex flex-wrap items-center justify-between gap-2" : "mb-4 flex flex-wrap items-center justify-between gap-3"}>
+        <div
+          className={
+            embedded
+              ? "mb-2 flex flex-wrap items-center justify-between gap-2"
+              : "mb-4 flex flex-wrap items-center justify-between gap-3"
+          }
+        >
           {!embedded && (
             <button
               onClick={() => router.back()}
@@ -580,21 +593,32 @@ export default function QuoteReviewView(props: {
         {/* header card */}
         <div className={`${card} ${padX} ${padY}`}>
           {/* ✅ Embedded: ALWAYS stack header blocks (no lg:flex-row inside narrow panel) */}
-          <div className={embedded ? "flex flex-col gap-3" : "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"}>
+          <div
+            className={
+              embedded
+                ? "flex flex-col gap-3"
+                : "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"
+            }
+          >
             {/* left */}
             <div className="min-w-0">
               <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
                 Quote Review
               </div>
-              <div className={embedded ? "mt-1 text-xl font-semibold text-white" : "mt-1 text-2xl font-semibold text-white"}>
+              <div
+                className={
+                  embedded
+                    ? "mt-1 text-xl font-semibold text-white"
+                    : "mt-1 text-2xl font-semibold text-white"
+                }
+              >
                 <span className="text-white">#</span>
                 <span style={{ color: COPPER }}>
                   {wo.custom_id ? wo.custom_id : wo.id.slice(0, 8)}
                 </span>
               </div>
               <div className="mt-1 text-sm text-neutral-400">
-                Status: {statusLabel(wo.status)}{" "}
-                {shop?.name ? `• ${shop.name}` : ""}
+                Status: {statusLabel(wo.status)} {shop?.name ? `• ${shop.name}` : ""}
               </div>
             </div>
 
@@ -629,9 +653,7 @@ export default function QuoteReviewView(props: {
                       {phoneRaw}
                     </a>
                   ) : (
-                    <div className="truncate text-sm font-semibold text-white/70">
-                      —
-                    </div>
+                    <div className="truncate text-sm font-semibold text-white/70">—</div>
                   )}
                 </div>
 
@@ -646,9 +668,7 @@ export default function QuoteReviewView(props: {
                       {emailRaw}
                     </a>
                   ) : (
-                    <div className="truncate text-sm font-semibold text-white/70">
-                      —
-                    </div>
+                    <div className="truncate text-sm font-semibold text-white/70">—</div>
                   )}
                 </div>
               </div>
@@ -670,27 +690,27 @@ export default function QuoteReviewView(props: {
           {/* lines */}
           <div className={linesColCls}>
             <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Findings
               </div>
 
               {lines.length === 0 ? (
-                <div className={`${padX} py-4 text-sm text-neutral-400`}>No lines yet.</div>
+                <div className={`${padX} py-4 text-sm text-neutral-400`}>
+                  No lines yet.
+                </div>
               ) : (
                 <div className="divide-y divide-white/10">
                   {lines.map((l) => {
                     const la = lineAllocs.get(l.id) ?? [];
-                    const laborHours =
-                      typeof l.labor_time === "number" ? l.labor_time : 0;
+                    const laborHours = typeof l.labor_time === "number" ? l.labor_time : 0;
                     const laborAmt = laborHours * laborRate;
 
                     const partsAmt = la.reduce((sum, a) => {
-                      const qty =
-                        typeof a.qty === "number" ? a.qty : Number(a.qty);
+                      const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
                       const unit =
-                        typeof a.unit_cost === "number"
-                          ? a.unit_cost
-                          : Number(a.unit_cost);
+                        typeof a.unit_cost === "number" ? a.unit_cost : Number(a.unit_cost);
                       const q = Number.isFinite(qty) ? qty : 0;
                       const u = Number.isFinite(unit) ? unit : 0;
                       return sum + q * u;
@@ -736,6 +756,191 @@ export default function QuoteReviewView(props: {
                           onDefer={() => void setDecision(l.id, "defer")}
                           footerNote={`approval_state=${l.approval_state ?? "null"} • status=${l.status ?? "null"}`}
                         />
+
+                        {/* ✅ Restored editor usage under the card (fixes “unused” lint + keeps ops tools) */}
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenDetails((p) => ({ ...p, [l.id]: !p[l.id] }))
+                            }
+                            className="
+                              w-full rounded-xl border border-white/10 bg-black/35
+                              px-4 py-2 text-sm font-semibold text-neutral-200
+                              hover:bg-black/45
+                            "
+                          >
+                            {openDetails[l.id] ? "Hide details" : "Show details"}
+                          </button>
+
+                          {openDetails[l.id] ? (
+                            <div className="mt-3 rounded-2xl border border-white/10 bg-black/30 p-4">
+                              {/* line editor */}
+                              <div className={embedded ? "grid gap-3" : "grid gap-3 md:grid-cols-2"}>
+                                <label className="text-xs text-neutral-400">
+                                  Description
+                                  <input
+                                    value={l.description ?? ""}
+                                    onChange={(e) =>
+                                      setLineField(l.id, { description: e.target.value })
+                                    }
+                                    className={inputCls}
+                                  />
+                                </label>
+
+                                <label className="text-xs text-neutral-400">
+                                  Complaint
+                                  <input
+                                    value={l.complaint ?? ""}
+                                    onChange={(e) =>
+                                      setLineField(l.id, { complaint: e.target.value })
+                                    }
+                                    className={inputCls}
+                                  />
+                                </label>
+
+                                <label className="text-xs text-neutral-400">
+                                  Cause
+                                  <input
+                                    value={l.cause ?? ""}
+                                    onChange={(e) => setLineField(l.id, { cause: e.target.value })}
+                                    className={inputCls}
+                                  />
+                                </label>
+
+                                <label className="text-xs text-neutral-400">
+                                  Correction
+                                  <input
+                                    value={l.correction ?? ""}
+                                    onChange={(e) =>
+                                      setLineField(l.id, { correction: e.target.value })
+                                    }
+                                    className={inputCls}
+                                  />
+                                </label>
+
+                                <label className="text-xs text-neutral-400">
+                                  Labor hours
+                                  <input
+                                    inputMode="decimal"
+                                    value={typeof l.labor_time === "number" ? String(l.labor_time) : ""}
+                                    onChange={(e) => {
+                                      const n = asNumber(e.target.value);
+                                      setLineField(l.id, { labor_time: n ?? 0 });
+                                    }}
+                                    className={inputCls}
+                                    placeholder="0.0"
+                                  />
+                                </label>
+
+                                <div className="text-xs text-neutral-400">
+                                  Line total
+                                  <div className="mt-2 text-lg font-semibold text-white">
+                                    {fmt(laborAmt + partsAmt)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* parts editor */}
+                              <div className="mt-4 rounded-xl border border-white/10 bg-black/35 p-4">
+                                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                                  Parts
+                                </div>
+
+                                {la.length === 0 ? (
+                                  <div className="text-sm text-neutral-400">
+                                    No parts allocated to this line.
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {la.map((a) => {
+                                      const partName =
+                                        safeTrim(a.parts?.name) ||
+                                        safeTrim(a.parts?.sku) ||
+                                        (a.part_id ? `Part ${a.part_id.slice(0, 8)}` : "Part");
+
+                                      const qty = typeof a.qty === "number" ? a.qty : Number(a.qty);
+                                      const unit =
+                                        typeof a.unit_cost === "number"
+                                          ? a.unit_cost
+                                          : Number(a.unit_cost);
+                                      const q = Number.isFinite(qty) ? qty : 0;
+                                      const u = Number.isFinite(unit) ? unit : 0;
+                                      const rowTotal = q * u;
+
+                                      return (
+                                        <div
+                                          key={a.id}
+                                          className="
+                                            flex flex-wrap items-center justify-between gap-3
+                                            rounded-xl border border-white/10 bg-black/45 px-3 py-3
+                                          "
+                                        >
+                                          <div className="min-w-0">
+                                            <div className="truncate text-sm font-medium text-white">
+                                              {partName}
+                                            </div>
+                                            <div className="text-xs text-neutral-500">
+                                              {a.location_id ? `Location: ${a.location_id}` : "No location"}
+                                              {a._dirty ? " • Unsaved" : ""}
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2">
+                                            <label className="text-xs text-neutral-400">
+                                              Qty
+                                              <input
+                                                inputMode="decimal"
+                                                value={String(q)}
+                                                onChange={(e) => {
+                                                  const n = asNumber(e.target.value);
+                                                  setAllocField(a.id, { qty: n ?? 0 });
+                                                }}
+                                                className={`${inputBase} ${inputFocus} ml-2 w-20`}
+                                              />
+                                            </label>
+
+                                            <label className="text-xs text-neutral-400">
+                                              Unit
+                                              <input
+                                                inputMode="decimal"
+                                                value={String(u)}
+                                                onChange={(e) => {
+                                                  const n = asNumber(e.target.value);
+                                                  setAllocField(a.id, { unit_cost: n ?? 0 });
+                                                }}
+                                                className={`${inputBase} ${inputFocus} ml-2 w-28`}
+                                              />
+                                            </label>
+
+                                            <div className="w-24 text-right text-sm font-semibold text-white">
+                                              {fmt(rowTotal)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* delete/void */}
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openDeleteForLine(l.id)}
+                                  className="
+                                    rounded-xl border border-white/15 bg-black/50
+                                    px-4 py-2 text-sm font-semibold text-neutral-200
+                                    hover:bg-black/65 hover:text-white
+                                  "
+                                >
+                                  Delete / Void
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     );
                   })}
@@ -747,7 +952,9 @@ export default function QuoteReviewView(props: {
           {/* right column */}
           <div className={sideColCls}>
             <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Quick add job
               </div>
               <div className={`${padX} py-4 text-sm text-neutral-400`}>
@@ -777,7 +984,9 @@ export default function QuoteReviewView(props: {
             </div>
 
             <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Totals
               </div>
 
@@ -798,7 +1007,9 @@ export default function QuoteReviewView(props: {
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-neutral-400">Tax {provinceCode ? `(${provinceCode})` : "(not set)"}</span>
+                  <span className="text-neutral-400">
+                    Tax {provinceCode ? `(${provinceCode})` : "(not set)"}
+                  </span>
                   <span className="font-medium text-white">{fmt(totals.tax)}</span>
                 </div>
 
@@ -830,7 +1041,9 @@ export default function QuoteReviewView(props: {
             </div>
 
             <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
+              <div
+                className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}
+              >
                 Send to customer
               </div>
               <div className={`${padX} py-4 text-sm text-neutral-400`}>
@@ -867,9 +1080,7 @@ export default function QuoteReviewView(props: {
           isOpen={addJobOpen}
           onClose={() => setAddJobOpen(false)}
           workOrderId={wo.id}
-          vehicleId={
-            (wo as unknown as { vehicle_id?: string | null }).vehicle_id ?? null
-          }
+          vehicleId={(wo as unknown as { vehicle_id?: string | null }).vehicle_id ?? null}
           techId={currentUserId}
           shopId={wo.shop_id ?? null}
           onJobAdded={async () => {
