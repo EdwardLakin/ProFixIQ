@@ -11,6 +11,31 @@ export default function WorkOrderBoardWidget(props: {
 }) {
   const variant = props.variant ?? "shop";
 
+  const title =
+    variant === "fleet"
+      ? "Fleet live board"
+      : variant === "portal"
+        ? "Live repair status"
+        : "Live work board";
+
+  const subtitle =
+    variant === "fleet"
+      ? "Current unit and repair status across fleet work orders."
+      : variant === "portal"
+        ? "Track progress, approvals, and next steps in real time."
+        : "Current shop activity across active work orders.";
+
+  const href =
+    props.href ??
+    (variant === "fleet"
+      ? "/portal/fleet/board"
+      : variant === "portal"
+        ? "/portal/status"
+        : "/work-orders/board");
+
+  const ctaLabel =
+    variant === "portal" ? "Open live status" : "Open full board";
+
   return (
     <div className="space-y-3">
       <WorkOrderBoard
@@ -18,35 +43,16 @@ export default function WorkOrderBoardWidget(props: {
         compact
         limit={5}
         fleetId={props.fleetId}
-        title={
-          variant === "fleet"
-            ? "Fleet live board"
-            : variant === "portal"
-              ? "Live status"
-              : "Work order board"
-        }
-        subtitle={
-          variant === "fleet"
-            ? "5 most recent live units. Expand for the full board."
-            : variant === "portal"
-              ? "Live status updates. Expand for full history."
-              : "5 most recent active work orders. Expand for the full board."
-        }
+        title={title}
+        subtitle={subtitle}
       />
 
       <div className="flex justify-end">
         <Link
-          href={
-            props.href ??
-            (variant === "fleet"
-              ? "/portal/fleet/board"
-              : variant === "portal"
-                ? "/portal/status"
-                : "/work-orders/board")
-          }
+          href={href}
           className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-black/35"
         >
-          View full board
+          {ctaLabel}
         </Link>
       </div>
     </div>
