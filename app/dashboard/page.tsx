@@ -10,8 +10,14 @@ import type { Database } from "@shared/types/types/supabase";
 import ReportsPerformanceWidget from "@/features/owner/reports/ReportsPerformanceWidget";
 import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
-// (If alias doesn't resolve, use:)
-// import WorkOrderBoardWidget from "@/features/shared/components/workboard/WorkOrderBoardWidget";
+import {
+  ShopPulseWidget,
+  ApprovalRiskWidget,
+  WaitingPartsWidget,
+  RevenueWatchWidget,
+  TechLoadWidget,
+  ComebackRiskWidget,
+} from "@/features/dashboard/widgets";
 
 // ✅ Pull tech performance using your existing stats helper
 import type { TimeRange } from "@shared/lib/stats/getShopStats";
@@ -44,8 +50,8 @@ function isTechRole(role: string | null): boolean {
   return r === "tech" || r === "mechanic" || r === "technician";
 }
 
-// ✅ Only owners/admin/managers can view owner reports widget
-function canViewShopHealth(role: string | null): boolean {
+// ✅ owners/admin/managers get the owner widget stack
+function canViewOwnerDashboard(role: string | null): boolean {
   const r = (role ?? "").toLowerCase();
   return r === "owner" || r === "admin" || r === "manager";
 }
@@ -183,7 +189,7 @@ export default function DashboardPage() {
   }, [supabase, userId, shopId, role]);
 
   /* ---------------------------------------------------------------------- */
-  /* Tech performance snapshot (for the circled tiles)                       */
+  /* Tech performance snapshot (for the circled tiles)                      */
   /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
@@ -320,7 +326,7 @@ export default function DashboardPage() {
   const firstName = name ? name.split(" ")[0] : null;
 
   const tech = isTechRole(role);
-  const showShopHealth = canViewShopHealth(role);
+  const showOwnerDashboard = canViewOwnerDashboard(role);
 
   const workedText =
     perfLoading || !perfRow ? "…" : fmtHours(perfRow.clockedHours);
@@ -349,11 +355,28 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Reports performance widget */}
-      {!tech && showShopHealth && (
-        <section>
-          <ReportsPerformanceWidget />
-        </section>
+      {/* Owner / manager AI widget stack */}
+      {!tech && showOwnerDashboard && shopId && (
+        <>
+          <section>
+            <ReportsPerformanceWidget />
+          </section>
+
+          <section className="grid gap-4 xl:grid-cols-2">
+            <ShopPulseWidget shopId={shopId} />
+            <RevenueWatchWidget shopId={shopId} />
+          </section>
+
+          <section className="grid gap-4 xl:grid-cols-3">
+            <ApprovalRiskWidget shopId={shopId} />
+            <WaitingPartsWidget shopId={shopId} />
+            <TechLoadWidget shopId={shopId} />
+          </section>
+
+          <section>
+            <ComebackRiskWidget shopId={shopId} />
+          </section>
+        </>
       )}
 
       {/* active job pill – only for tech/mechanic roles */}
