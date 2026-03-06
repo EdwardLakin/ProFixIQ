@@ -9,6 +9,7 @@ type DB = Database;
 
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type Bucket = "awaiting" | "in_progress" | "on_hold" | "ready_to_invoice";
 
@@ -70,7 +71,6 @@ function rollupAdvisorBucket(wo: WorkOrder, lines: Line[]): Bucket {
   if (statuses.has("on_hold")) return "on_hold";
   if (active.length > 0) return "awaiting";
 
-  // no active lines => everything completed-like
   return "ready_to_invoice";
 }
 
@@ -87,7 +87,6 @@ function woLabel(wo: WorkOrder): string {
 }
 
 function woHref(wo: WorkOrder): string {
-  // Use UUID route (stable)
   return `/work-orders/${wo.id}?mode=view`;
 }
 
@@ -140,7 +139,7 @@ function BucketButton({
 export default function AdvisorQueueWidget(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  const [shopId, setShopId] = useState<string | null>(null);
+  
   const [role, setRole] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -168,8 +167,9 @@ export default function AdvisorQueueWidget(): JSX.Element {
 
     const { data: profile, error: profErr } = await supabase
       .from("profiles")
-      .select("shop_id, role")
-      .eq("id", user.id)
+      .select("id, shop_id, role, user_id")
+      .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+      .limit(1)
       .maybeSingle();
 
     if (profErr) {
@@ -178,9 +178,11 @@ export default function AdvisorQueueWidget(): JSX.Element {
       return;
     }
 
-    const sid = (profile?.shop_id as string | null) ?? null;
-    setShopId(sid);
-    setRole((profile?.role as string | null) ?? null);
+    const prof = (profile as Pick<Profile, "id" | "shop_id" | "role" | "user_id"> | null) ?? null;
+    const sid = prof?.shop_id ?? null;
+    const pid = prof?.id ?? null;
+
+    setRole(prof?.role ?? null);
 
     if (!sid) {
       setErr("No shop linked to your profile yet.");
@@ -188,14 +190,20 @@ export default function AdvisorQueueWidget(): JSX.Element {
       return;
     }
 
-    // last 30 days
+    if (!pid) {
+      setErr("No profile found for this user.");
+      setLoading(false);
+      return;
+    }
+
     const since = new Date();
     since.setDate(since.getDate() - 30);
 
     const { data: wos, error: woErr } = await supabase
       .from("work_orders")
-      .select("id, custom_id, status, created_at, shop_id")
+      .select("id, custom_id, status, created_at, shop_id, advisor_id")
       .eq("shop_id", sid)
+      .eq("advisor_id", pid)
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: false })
       .limit(120);
@@ -244,7 +252,6 @@ export default function AdvisorQueueWidget(): JSX.Element {
     void load();
   }, [load]);
 
-  // Hide for tech roles automatically (dashboard should already do this, but double safe)
   const isTech = useMemo(() => {
     const r = String(role ?? "").toLowerCase();
     return r === "tech" || r === "mechanic" || r === "technician";
@@ -273,7 +280,6 @@ export default function AdvisorQueueWidget(): JSX.Element {
 
   const visibleRows = useMemo(() => {
     const filtered = enriched.filter((r) => r.bucket === activeBucket);
-    // show only a small list in the widget
     return filtered.slice(0, 8);
   }, [enriched, activeBucket]);
 
@@ -284,10 +290,10 @@ export default function AdvisorQueueWidget(): JSX.Element {
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-            Advisor queue
+            My advisor queue
           </div>
           <div className="mt-1 text-sm font-semibold text-white">
-            Work order flow snapshot (last 30 days)
+            Only work orders assigned to you (last 30 days)
           </div>
         </div>
 
@@ -315,7 +321,6 @@ export default function AdvisorQueueWidget(): JSX.Element {
         <div className="px-4 py-5 text-sm text-red-200">{err}</div>
       ) : (
         <div className="space-y-4 px-4 py-4">
-          {/* buckets */}
           <div className="grid gap-3 md:grid-cols-4">
             {(["awaiting", "in_progress", "on_hold", "ready_to_invoice"] as Bucket[]).map((b) => (
               <BucketButton
@@ -328,7 +333,6 @@ export default function AdvisorQueueWidget(): JSX.Element {
             ))}
           </div>
 
-          {/* list */}
           <div className="space-y-2">
             {visibleRows.map(({ wo, counts, bucket }) => {
               return (
@@ -353,18 +357,12 @@ export default function AdvisorQueueWidget(): JSX.Element {
 
                       <div className="mt-1 text-[11px] text-neutral-400">
                         Lines:{" "}
-                        <span className="text-neutral-300">
-                          {counts.awaiting} awaiting
-                        </span>{" "}
-                        ·{" "}
+                        <span className="text-neutral-300">{counts.awaiting} awaiting</span> ·{" "}
                         <span className="text-neutral-300">
                           {counts.in_progress} in progress
                         </span>{" "}
                         ·{" "}
-                        <span className="text-neutral-300">
-                          {counts.on_hold} on hold
-                        </span>{" "}
-                        ·{" "}
+                        <span className="text-neutral-300">{counts.on_hold} on hold</span> ·{" "}
                         <span className="text-neutral-300">
                           {counts.completed} completed
                         </span>
@@ -386,10 +384,8 @@ export default function AdvisorQueueWidget(): JSX.Element {
             ) : null}
           </div>
 
-          {/* footer */}
           <div className="text-[11px] text-neutral-500">
             This widget is read-only. Use <span className="text-neutral-300">Work Orders → View</span> for status changes, invoice review, and assignments.
-            {shopId ? null : ""}
           </div>
         </div>
       )}

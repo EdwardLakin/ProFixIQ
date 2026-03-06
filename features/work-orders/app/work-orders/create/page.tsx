@@ -1,7 +1,6 @@
 // /features/work-orders/app/work-orders/create/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
-
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -50,6 +49,7 @@ type LineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrderLine = LineRow;
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 
 type WOType = "inspection" | "maintenance" | "diagnosis";
 type UploadSummary = { uploaded: number; failed: number };
@@ -81,7 +81,7 @@ type CustomerRowWithBusiness = CustomerRow & { business_name?: string | null };
 
 type CreateWoRpcRow = Pick<
   WorkOrderRow,
-  "id" | "shop_id" | "custom_id" | "customer_id" | "vehicle_id"
+  "id" | "shop_id" | "custom_id" | "customer_id" | "vehicle_id" | "advisor_id"
 > & {
   is_waiter?: boolean | null;
 };
@@ -229,7 +229,7 @@ export default function CreateWorkOrderPage() {
     (window as unknown as Record<string, unknown>)._sb = supabase;
   }, [supabase]);
 
-    useEffect(() => {
+  useEffect(() => {
     try {
       const v = window.localStorage.getItem(INTAKE_DISMISS_KEY);
       setIntakeDismissed(v === "1");
@@ -422,7 +422,7 @@ export default function CreateWorkOrderPage() {
   // ✅ AI suggest modal state
   const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
 
-    // Soft intake pop (after save)
+  // Soft intake pop (after save)
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [intakeDismissed, setIntakeDismissed] = useState(false);
 
@@ -454,6 +454,8 @@ export default function CreateWorkOrderPage() {
 
   // Current user id (for VIN modal)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // ✅ advisor ownership tracking
+  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
 
   // read profile.shop_id early so autocomplete is scoped before WO exists
   const [currentShopId, setCurrentShopId] = useState<string | null>(null);
@@ -543,13 +545,26 @@ export default function CreateWorkOrderPage() {
     setIsWaiter(Boolean(flag));
   }, [wo, setIsWaiter]);
 
-  // get current user id (for VIN modal)
+  // get current user id + current profile id
   useEffect((): void => {
     (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       setCurrentUserId(user?.id ?? null);
+
+      if (!user?.id) {
+        setCurrentProfileId(null);
+        return;
+      }
+
+      try {
+        const profileId = await getCurrentProfileId(user.id);
+        setCurrentProfileId(profileId);
+      } catch {
+        setCurrentProfileId(null);
+      }
     })();
   }, [supabase]);
 
@@ -596,6 +611,27 @@ export default function CreateWorkOrderPage() {
     }
 
     return ownedShop.data.id;
+  }
+
+  // ✅ advisor ownership helper
+  async function getCurrentProfileId(userId: string): Promise<string | null> {
+    const byUserId = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle<Pick<ProfileRow, "id">>();
+
+    if (byUserId.error) throw byUserId.error;
+    if (byUserId.data?.id) return byUserId.data.id;
+
+    const byId = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle<Pick<ProfileRow, "id">>();
+
+    if (byId.error) throw byId.error;
+    return byId.data?.id ?? null;
   }
 
   const buildCustomerInsert = (c: CustomerWithBusiness, shopId: string) => ({
@@ -1006,17 +1042,23 @@ export default function CreateWorkOrderPage() {
         return wo.id;
       }
 
+      // ✅ advisor ownership
+      const advisorProfileId =
+        currentProfileId ?? (await getCurrentProfileId(user.id));
+
+      const rpcArgs: DB["public"]["Functions"]["create_work_order_with_custom_id"]["Args"] = {
+        p_shop_id: shopId,
+        p_customer_id: cust.id,
+        p_vehicle_id: veh.id,
+        p_notes: strOrNull(notes) ?? "",
+        p_priority: priority,
+        p_is_waiter: isWaiter,
+        ...(advisorProfileId ? { p_advisor_id: advisorProfileId } : {}),
+      };
+
       const { data: created, error: rpcErr } = await supabase.rpc(
         "create_work_order_with_custom_id",
-        {
-          p_shop_id: shopId,
-          p_customer_id: cust.id,
-          p_vehicle_id: veh.id,
-          // ✅ ensure string
-          p_notes: strOrNull(notes) ?? "",
-          p_priority: priority,
-          p_is_waiter: isWaiter,
-        },
+        rpcArgs,
       );
 
       if (rpcErr) {
@@ -1042,7 +1084,7 @@ export default function CreateWorkOrderPage() {
     }
   }
 
-    async function maybeOpenIntakeAfterSave(woId: string) {
+  async function maybeOpenIntakeAfterSave(woId: string) {
     if (!woId) return;
     if (intakeDismissed) return;
 
@@ -1551,20 +1593,20 @@ export default function CreateWorkOrderPage() {
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
-  type="button"
-  onClick={async () => {
-    const id = await handleSaveCustomerVehicle();
-    if (id) await maybeOpenIntakeAfterSave(id);
-  }}
-  disabled={savingCv || loading}
-  className="
-    rounded-full border border-white/10 bg-black/50
-    px-4 py-2 text-sm font-semibold text-neutral-200
-    hover:bg-black/65 disabled:opacity-60
-  "
->
-  {savingCv ? "Saving…" : "Save & Continue"}
-</button>
+                  type="button"
+                  onClick={async () => {
+                    const id = await handleSaveCustomerVehicle();
+                    if (id) await maybeOpenIntakeAfterSave(id);
+                  }}
+                  disabled={savingCv || loading}
+                  className="
+                    rounded-full border border-white/10 bg-black/50
+                    px-4 py-2 text-sm font-semibold text-neutral-200
+                    hover:bg-black/65 disabled:opacity-60
+                  "
+                >
+                  {savingCv ? "Saving…" : "Save & Continue"}
+                </button>
 
                 <button
                   type="button"
@@ -1932,7 +1974,7 @@ export default function CreateWorkOrderPage() {
             />
           )}
 
-                    {/* Soft Intake Pop (after save) */}
+          {/* Soft Intake Pop (after save) */}
           {intakeOpen && (
             <div className="fixed inset-0 z-[90] flex items-end justify-center p-3 sm:items-center">
               <div

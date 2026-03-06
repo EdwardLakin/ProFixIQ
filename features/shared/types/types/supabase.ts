@@ -10692,6 +10692,7 @@ export type Database = {
       }
       work_orders: {
         Row: {
+          advisor_id: string | null
           approval_state: string | null
           assigned_tech: string | null
           created_at: string | null
@@ -10757,6 +10758,7 @@ export type Database = {
           vehicle_year: number | null
         }
         Insert: {
+          advisor_id?: string | null
           approval_state?: string | null
           assigned_tech?: string | null
           created_at?: string | null
@@ -10822,6 +10824,7 @@ export type Database = {
           vehicle_year?: number | null
         }
         Update: {
+          advisor_id?: string | null
           approval_state?: string | null
           assigned_tech?: string | null
           created_at?: string | null
@@ -10887,6 +10890,13 @@ export type Database = {
           vehicle_year?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "work_orders_advisor_id_fkey"
+            columns: ["advisor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_orders_assigned_tech_fkey"
             columns: ["assigned_tech"]
@@ -12280,87 +12290,172 @@ export type Database = {
         }
         Returns: string
       }
-      create_work_order_with_custom_id: {
-        Args: {
-          p_customer_id: string
-          p_is_waiter: boolean
-          p_notes: string
-          p_priority: number
-          p_shop_id: string
-          p_vehicle_id: string
-        }
-        Returns: {
-          approval_state: string | null
-          assigned_tech: string | null
-          created_at: string | null
-          created_by: string | null
-          custom_id: string | null
-          customer_agreed_at: string | null
-          customer_approval_at: string | null
-          customer_approval_signature_path: string | null
-          customer_approval_signature_url: string | null
-          customer_approved_by: string | null
-          customer_id: string | null
-          customer_name: string | null
-          customer_signature_url: string | null
-          external_id: string | null
-          id: string
-          import_confidence: number | null
-          import_notes: string | null
-          inspection_id: string | null
-          inspection_pdf_url: string | null
-          inspection_type: string | null
-          intake_json: Json | null
-          intake_status: string | null
-          intake_submitted_at: string | null
-          intake_submitted_by: string | null
-          invoice_last_sent_to: string | null
-          invoice_pdf_url: string | null
-          invoice_sent_at: string | null
-          invoice_total: number | null
-          invoice_url: string | null
-          is_waiter: boolean
-          labor_total: number | null
-          notes: string | null
-          odometer_km: number | null
-          parts_total: number | null
-          portal_submitted_at: string | null
-          priority: number | null
-          quote: Json | null
-          quote_url: string | null
-          shop_id: string | null
-          source_fleet_program_id: string | null
-          source_fleet_service_request_id: string | null
-          source_intake_id: string | null
-          source_row_id: string | null
-          status: string | null
-          type: string | null
-          updated_at: string | null
-          user_id: string | null
-          vehicle_color: string | null
-          vehicle_drivetrain: string | null
-          vehicle_engine: string | null
-          vehicle_engine_hours: number | null
-          vehicle_fuel_type: string | null
-          vehicle_id: string | null
-          vehicle_info: string | null
-          vehicle_license_plate: string | null
-          vehicle_make: string | null
-          vehicle_mileage: number | null
-          vehicle_model: string | null
-          vehicle_submodel: string | null
-          vehicle_transmission: string | null
-          vehicle_unit_number: string | null
-          vehicle_vin: string | null
-          vehicle_year: number | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "work_orders"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
+      create_work_order_with_custom_id:
+        | {
+            Args: {
+              p_advisor_id?: string
+              p_customer_id: string
+              p_is_waiter?: boolean
+              p_notes?: string
+              p_priority?: number
+              p_shop_id: string
+              p_vehicle_id: string
+            }
+            Returns: {
+              advisor_id: string | null
+              approval_state: string | null
+              assigned_tech: string | null
+              created_at: string | null
+              created_by: string | null
+              custom_id: string | null
+              customer_agreed_at: string | null
+              customer_approval_at: string | null
+              customer_approval_signature_path: string | null
+              customer_approval_signature_url: string | null
+              customer_approved_by: string | null
+              customer_id: string | null
+              customer_name: string | null
+              customer_signature_url: string | null
+              external_id: string | null
+              id: string
+              import_confidence: number | null
+              import_notes: string | null
+              inspection_id: string | null
+              inspection_pdf_url: string | null
+              inspection_type: string | null
+              intake_json: Json | null
+              intake_status: string | null
+              intake_submitted_at: string | null
+              intake_submitted_by: string | null
+              invoice_last_sent_to: string | null
+              invoice_pdf_url: string | null
+              invoice_sent_at: string | null
+              invoice_total: number | null
+              invoice_url: string | null
+              is_waiter: boolean
+              labor_total: number | null
+              notes: string | null
+              odometer_km: number | null
+              parts_total: number | null
+              portal_submitted_at: string | null
+              priority: number | null
+              quote: Json | null
+              quote_url: string | null
+              shop_id: string | null
+              source_fleet_program_id: string | null
+              source_fleet_service_request_id: string | null
+              source_intake_id: string | null
+              source_row_id: string | null
+              status: string | null
+              type: string | null
+              updated_at: string | null
+              user_id: string | null
+              vehicle_color: string | null
+              vehicle_drivetrain: string | null
+              vehicle_engine: string | null
+              vehicle_engine_hours: number | null
+              vehicle_fuel_type: string | null
+              vehicle_id: string | null
+              vehicle_info: string | null
+              vehicle_license_plate: string | null
+              vehicle_make: string | null
+              vehicle_mileage: number | null
+              vehicle_model: string | null
+              vehicle_submodel: string | null
+              vehicle_transmission: string | null
+              vehicle_unit_number: string | null
+              vehicle_vin: string | null
+              vehicle_year: number | null
+            }
+            SetofOptions: {
+              from: "*"
+              to: "work_orders"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_customer_id: string
+              p_is_waiter: boolean
+              p_notes: string
+              p_priority: number
+              p_shop_id: string
+              p_vehicle_id: string
+            }
+            Returns: {
+              advisor_id: string | null
+              approval_state: string | null
+              assigned_tech: string | null
+              created_at: string | null
+              created_by: string | null
+              custom_id: string | null
+              customer_agreed_at: string | null
+              customer_approval_at: string | null
+              customer_approval_signature_path: string | null
+              customer_approval_signature_url: string | null
+              customer_approved_by: string | null
+              customer_id: string | null
+              customer_name: string | null
+              customer_signature_url: string | null
+              external_id: string | null
+              id: string
+              import_confidence: number | null
+              import_notes: string | null
+              inspection_id: string | null
+              inspection_pdf_url: string | null
+              inspection_type: string | null
+              intake_json: Json | null
+              intake_status: string | null
+              intake_submitted_at: string | null
+              intake_submitted_by: string | null
+              invoice_last_sent_to: string | null
+              invoice_pdf_url: string | null
+              invoice_sent_at: string | null
+              invoice_total: number | null
+              invoice_url: string | null
+              is_waiter: boolean
+              labor_total: number | null
+              notes: string | null
+              odometer_km: number | null
+              parts_total: number | null
+              portal_submitted_at: string | null
+              priority: number | null
+              quote: Json | null
+              quote_url: string | null
+              shop_id: string | null
+              source_fleet_program_id: string | null
+              source_fleet_service_request_id: string | null
+              source_intake_id: string | null
+              source_row_id: string | null
+              status: string | null
+              type: string | null
+              updated_at: string | null
+              user_id: string | null
+              vehicle_color: string | null
+              vehicle_drivetrain: string | null
+              vehicle_engine: string | null
+              vehicle_engine_hours: number | null
+              vehicle_fuel_type: string | null
+              vehicle_id: string | null
+              vehicle_info: string | null
+              vehicle_license_plate: string | null
+              vehicle_make: string | null
+              vehicle_mileage: number | null
+              vehicle_model: string | null
+              vehicle_submodel: string | null
+              vehicle_transmission: string | null
+              vehicle_unit_number: string | null
+              vehicle_vin: string | null
+              vehicle_year: number | null
+            }
+            SetofOptions: {
+              from: "*"
+              to: "work_orders"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
       current_shop_id: { Args: never; Returns: string }
       delete_part_request: { Args: { p_request_id: string }; Returns: string }
       ensure_same_shop_policies: {
