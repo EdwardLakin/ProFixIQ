@@ -10,6 +10,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import ShopBoostWidget from "@/features/shared/components/ui/ShopBoostWidget";
+import OwnerReportsWidget from "@/features/owner/reports/OwnerReportsWidget";
 import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
 // (If alias doesn't resolve, use:)
@@ -351,8 +352,12 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Shop Boost / Health Snapshot (owner/admin/manager only) */}
-      <ShopBoostWidget shopId={shopId} canViewShopHealth={showShopHealth} />
+      {/* Owner reports / health snapshot */}
+      {showShopHealth ? (
+        <OwnerReportsWidget canView={showShopHealth} />
+      ) : (
+        <ShopBoostWidget shopId={shopId} canViewShopHealth={showShopHealth} />
+      )}
 
       {/* active job pill – only for tech/mechanic roles */}
       {tech && (
