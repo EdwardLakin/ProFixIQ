@@ -1,5 +1,3 @@
-//app/dashboard/page.tsx
-
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -9,7 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
 
-import OwnerReportsWidget from "@/features/owner/reports/OwnerReportsWidget";
+import ReportsPerformanceWidget from "@/features/owner/reports/ReportsPerformanceWidget";
 import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
 // (If alias doesn't resolve, use:)
@@ -46,7 +44,7 @@ function isTechRole(role: string | null): boolean {
   return r === "tech" || r === "mechanic" || r === "technician";
 }
 
-// ✅ Only owners/admin/managers can view Shop Health / owner reports
+// ✅ Only owners/admin/managers can view owner reports widget
 function canViewShopHealth(role: string | null): boolean {
   const r = (role ?? "").toLowerCase();
   return r === "owner" || r === "admin" || r === "manager";
@@ -351,10 +349,12 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Owner reports widget */}
-        showShopHealth && (
-          <OwnerReportsWidget canView={showShopHealth} />
-        )
+      {/* Reports performance widget */}
+      {!tech && showShopHealth && (
+        <section>
+          <ReportsPerformanceWidget />
+        </section>
+      )}
 
       {/* active job pill – only for tech/mechanic roles */}
       {tech && (
@@ -378,7 +378,6 @@ export default function DashboardPage() {
               href="/tech/queue"
             />
 
-            {/* ✅ Performance tiles */}
             <OverviewCard
               title="Hours worked"
               value={workedText}
@@ -419,7 +418,7 @@ export default function DashboardPage() {
             <OverviewCard title="Team chat" value="Open" href="/chat" />
           </>
         )}
-            </section>
+      </section>
 
       {/* Work Order Board (shop widget) */}
       {!tech && (
@@ -446,7 +445,7 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* ✅ Advisor Queue Widget (advisor/manager/admin/owner) */}
+      {/* Advisor Queue Widget */}
       {!tech && (
         <section>
           <AdvisorQueueWidget />
@@ -539,7 +538,6 @@ function ActiveJobCard({
 
   const woLabel = workOrder.custom_id || workOrder.id.slice(0, 8);
 
-  // always use the UUID id route
   const href = `/work-orders/${workOrder.id}?focus=${job.id}&mode=tech`;
 
   return (
