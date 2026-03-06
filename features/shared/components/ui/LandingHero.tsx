@@ -120,6 +120,7 @@ export default function LandingHero() {
         <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
           {/* LEFT */}
           <div className="relative">
+            {/* subtle “premium” label (less shouty, more crisp) */}
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
               <SignalDot />
               <span style={{ color: COPPER_LIGHT }}>
@@ -131,7 +132,7 @@ export default function LandingHero() {
               </span>
             </div>
 
-            {/* ✅ AGREED HERO WORDING */}
+            {/* ✅ Category creator headline, with emphasis trick on “operating system” */}
             <h1
               className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
               style={{
@@ -139,13 +140,28 @@ export default function LandingHero() {
                 textShadow: "0 0 46px rgba(0,0,0,0.85)",
               }}
             >
-              The operating system for modern repair shops.
+              <span className="block">The</span>
+              <span
+                className="block"
+                style={{
+                  color: COPPER_LIGHT,
+                  textShadow: "0 0 30px rgba(197,122,74,0.22)",
+                }}
+              >
+                operating system
+              </span>
+              <span className="block">for modern repair shops.</span>
             </h1>
 
-            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-neutral-200 sm:text-base md:text-lg">
-              Voice inspections, technician-built repairs, automated approvals,
-              parts workflows, and fleet transparency — all connected in one
-              system.
+            {/* ✅ Credibility line (quick “this is for you” confirmation) */}
+            <p className="mt-4 max-w-2xl text-sm font-semibold text-neutral-200 sm:text-base">
+              Built for heavy-duty, automotive, and fleet repair operations.
+            </p>
+
+            {/* ✅ Outcome-forward supporting copy (less feature list, more flow truth) */}
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-neutral-300 sm:text-base md:text-lg">
+              Technicians capture evidence once. Quotes build automatically.
+              Customers approve instantly. Parts and invoices stay in sync.
             </p>
 
             <div
@@ -181,16 +197,16 @@ export default function LandingHero() {
               </Link>
             </div>
 
-            {/* Proof bullets */}
+            {/* Proof bullets (rewritten more “outcome / no re-entry / speed”) */}
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
               <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Voice inspections
+                    Evidence-first inspections
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Fail/recommend fast. Evidence stays attached.
+                    Photos + notes + measurements stay attached.
                   </div>
                 </div>
               </div>
@@ -199,10 +215,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Tech-built repairs
+                    Build the job once
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Parts + labor added once — no re-entry.
+                    Parts + labor flow forward — no re-entry.
                   </div>
                 </div>
               </div>
@@ -211,10 +227,10 @@ export default function LandingHero() {
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
-                    Automated approvals
+                    Approvals that move work
                   </div>
                   <div className="mt-0.5 text-xs text-neutral-300">
-                    Portal decisions move jobs forward instantly.
+                    Portal decisions trigger the next step.
                   </div>
                 </div>
               </div>
@@ -342,12 +358,12 @@ export default function LandingHero() {
                 </div>
               </div>
 
-              {/* Included highlights */}
+              {/* Included highlights (copy tightened) */}
               <div className="mt-5 grid gap-2">
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
                     <SignalDot />
-                    Day-one onboarding from uploads
+                    Onboard from uploads, day one
                   </div>
                   <span className="text-[11px] text-neutral-400">
                     Day-one ready
@@ -357,7 +373,7 @@ export default function LandingHero() {
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
                     <SignalDot />
-                    Voice + evidence captured once
+                    Capture once, reuse everywhere
                   </div>
                   <span className="text-[11px] text-neutral-400">
                     Less typing
@@ -367,7 +383,7 @@ export default function LandingHero() {
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
                     <SignalDot />
-                    Approvals → parts → invoice automation
+                    Approvals trigger parts + invoice
                   </div>
                   <span className="text-[11px] text-neutral-400">
                     One truth
