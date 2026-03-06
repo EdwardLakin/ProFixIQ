@@ -5,6 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import FleetSummaryCards from "./FleetSummaryCards";
 import FleetIssueTables from "./FleetIssueTables";
 import FleetAISummary from "./FleetAISummary";
+import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
+// or: import WorkOrderBoardWidget from "@/features/shared/components/workboard/WorkOrderBoardWidget";
+import Link from "next/link";
 
 export type FleetUnitStatus = "in_service" | "limited" | "oos";
 
@@ -206,6 +209,29 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
           </span>
         </div>
       </header>
+
+            {/* Fleet Work Order Board (widget) */}
+      <div className="metal-card rounded-3xl p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              Work board
+            </div>
+            <div className="mt-1 text-sm font-semibold text-neutral-100">
+              Fleet jobs in progress
+            </div>
+          </div>
+
+          <Link
+            href="/portal/fleet/board"
+            className="text-xs text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
+          >
+            Open full board →
+          </Link>
+        </div>
+
+        <WorkOrderBoardWidget variant="fleet" href="/portal/fleet/board" />
+      </div>
 
       {/* Error / loading states */}
       {error && (

@@ -1,3 +1,5 @@
+//app/dashboard/page.tsx
+
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -9,6 +11,9 @@ import type { Database } from "@shared/types/types/supabase";
 
 import ShopBoostWidget from "@/features/shared/components/ui/ShopBoostWidget";
 import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
+import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
+// (If alias doesn't resolve, use:)
+// import WorkOrderBoardWidget from "@/features/shared/components/workboard/WorkOrderBoardWidget";
 
 // ✅ Pull tech performance using your existing stats helper
 import type { TimeRange } from "@shared/lib/stats/getShopStats";
@@ -412,7 +417,32 @@ export default function DashboardPage() {
             <OverviewCard title="Team chat" value="Open" href="/chat" />
           </>
         )}
-      </section>
+            </section>
+
+      {/* Work Order Board (shop widget) */}
+      {!tech && (
+        <section className="metal-card rounded-3xl p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+                Work board
+              </div>
+              <div className="mt-1 text-sm font-semibold text-neutral-100">
+                Live shop status
+              </div>
+            </div>
+
+            <Link
+              href="/work-orders/board"
+              className="text-xs text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
+            >
+              Open full board →
+            </Link>
+          </div>
+
+          <WorkOrderBoardWidget variant="shop" href="/work-orders/board" />
+        </section>
+      )}
 
       {/* ✅ Advisor Queue Widget (advisor/manager/admin/owner) */}
       {!tech && (

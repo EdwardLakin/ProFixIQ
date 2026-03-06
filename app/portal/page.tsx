@@ -7,6 +7,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
+// or: import WorkOrderBoardWidget from "@/features/shared/components/workboard/WorkOrderBoardWidget";
 
 import { resolvePortalMode } from "@/features/portal/lib/resolvePortalMode";
 
@@ -277,6 +279,30 @@ export default function PortalHomePage() {
           value={activeReqValue}
           sub={activeWo?.status ? `Status: ${activeWo.status}` : "No open requests"}
         />
+      </div>
+
+            {/* Live status board (customer portal) */}
+      <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              Live status
+            </div>
+            <div className="mt-1 text-sm font-semibold text-neutral-100">
+              Your active work
+            </div>
+          </div>
+
+          <Link
+            href="/portal/status"
+            className="text-xs text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
+            style={{ textDecorationColor: "rgba(197,122,74,0.65)" }}
+          >
+            Details →
+          </Link>
+        </div>
+
+        <WorkOrderBoardWidget variant="portal" href="/portal/status" />
       </div>
 
       {/* Primary actions */}
