@@ -9,7 +9,6 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
 
-import ShopBoostWidget from "@/features/shared/components/ui/ShopBoostWidget";
 import OwnerReportsWidget from "@/features/owner/reports/OwnerReportsWidget";
 import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
@@ -352,12 +351,10 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Owner reports / health snapshot */}
-      {showShopHealth ? (
-        <OwnerReportsWidget canView={showShopHealth} />
-      ) : (
-        <ShopBoostWidget shopId={shopId} canViewShopHealth={showShopHealth} />
-      )}
+      {/* Owner reports widget */}
+        showShopHealth && (
+          <OwnerReportsWidget canView={showShopHealth} />
+        )
 
       {/* active job pill – only for tech/mechanic roles */}
       {tech && (
