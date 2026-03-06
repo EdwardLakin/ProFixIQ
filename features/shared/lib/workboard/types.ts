@@ -9,16 +9,12 @@ export type WorkOrderBoardStage =
 
 export type WorkOrderBoardRisk = "none" | "warn" | "danger";
 
-export type WorkOrderBoardPriority = 1 | 2 | 3 | 4;
-
 export type WorkOrderBoardRow = {
   work_order_id: string;
   custom_id: string | null;
-
   shop_id?: string | null;
   customer_id?: string | null;
   vehicle_id?: string | null;
-
   fleet_id?: string | null;
   fleet_name?: string | null;
 
@@ -46,14 +42,17 @@ export type WorkOrderBoardRow = {
   portal_status_note?: string | null;
   fleet_stage_label?: string | null;
 
-  priority?: WorkOrderBoardPriority | null;
+  // ✅ new board display fields
+  priority?: number | null;
   is_waiter?: boolean | null;
-
   advisor_id?: string | null;
   advisor_name?: string | null;
-
   first_tech_name?: string | null;
   tech_names?: string[] | null;
+
+  jobs_open?: number;
+  jobs_blocked?: number;
+  jobs_waiting_parts?: number;
 };
 
 export type WorkOrderBoardVariant = "shop" | "fleet" | "portal";

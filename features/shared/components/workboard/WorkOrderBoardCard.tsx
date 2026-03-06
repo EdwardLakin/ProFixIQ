@@ -49,6 +49,11 @@ export default function WorkOrderBoardCard(props: {
   const progressWidth = Math.max(0, Math.min(100, row.progress_pct));
   const priority = priorityLabel(row.priority);
 
+  const techLabel =
+    row.tech_names && row.tech_names.length > 0
+      ? row.tech_names.join(", ")
+      : row.first_tech_name ?? null;
+
   const content = (
     <div
       className={[
@@ -103,16 +108,16 @@ export default function WorkOrderBoardCard(props: {
             ) : null}
           </div>
 
-          {variant !== "portal" && (row.advisor_name || row.first_tech_name) ? (
+          {variant !== "portal" && (row.advisor_name || techLabel) ? (
             <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-neutral-400">
               {row.advisor_name ? (
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
                   Advisor: {row.advisor_name}
                 </span>
               ) : null}
-              {row.first_tech_name ? (
+              {techLabel ? (
                 <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
-                  Tech: {row.first_tech_name}
+                  Tech: {techLabel}
                 </span>
               ) : null}
             </div>
@@ -153,6 +158,23 @@ export default function WorkOrderBoardCard(props: {
           />
         </div>
       </div>
+
+      {variant !== "portal" &&
+      (row.jobs_open != null ||
+        row.jobs_blocked != null ||
+        row.jobs_waiting_parts != null) ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200">
+            Open {row.jobs_open ?? 0}
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200">
+            Blocked {row.jobs_blocked ?? 0}
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200">
+            Waiting parts {row.jobs_waiting_parts ?? 0}
+          </span>
+        </div>
+      ) : null}
 
       {blockers.length > 0 ? (
         <div className="mt-4 flex flex-wrap gap-2">

@@ -11853,23 +11853,34 @@ export type Database = {
       v_work_order_board_cards_fleet: {
         Row: {
           activity_at: string | null
+          advisor_id: string | null
+          advisor_name: string | null
           assigned_summary: string | null
           assigned_tech_count: number | null
           custom_id: string | null
           customer_id: string | null
           display_name: string | null
+          first_tech_name: string | null
           fleet_id: string | null
           fleet_name: string | null
           fleet_stage_label: string | null
           has_waiting_parts: boolean | null
+          is_waiter: boolean | null
+          jobs_blocked: number | null
           jobs_completed: number | null
+          jobs_open: number | null
           jobs_total: number | null
+          jobs_waiting_parts: number | null
           overall_stage: string | null
           parts_blocker_count: number | null
+          portal_stage_label: string | null
+          portal_status_note: string | null
+          priority: number | null
           progress_pct: number | null
           risk_level: string | null
           risk_reason: string | null
           shop_id: string | null
+          tech_names: string[] | null
           time_in_stage_seconds: number | null
           unit_label: string | null
           vehicle_id: string | null
@@ -11882,6 +11893,13 @@ export type Database = {
             columns: ["fleet_id"]
             isOneToOne: false
             referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_advisor_id_fkey"
+            columns: ["advisor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -11917,14 +11935,35 @@ export type Database = {
       v_work_order_board_cards_portal: {
         Row: {
           activity_at: string | null
+          advisor_id: string | null
+          advisor_name: string | null
+          assigned_summary: string | null
+          assigned_tech_count: number | null
           custom_id: string | null
           customer_id: string | null
           display_name: string | null
+          first_tech_name: string | null
+          fleet_id: string | null
+          fleet_name: string | null
+          fleet_stage_label: string | null
+          has_waiting_parts: boolean | null
+          is_waiter: boolean | null
+          jobs_blocked: number | null
           jobs_completed: number | null
+          jobs_open: number | null
           jobs_total: number | null
+          jobs_waiting_parts: number | null
+          overall_stage: string | null
+          parts_blocker_count: number | null
           portal_stage_label: string | null
           portal_status_note: string | null
+          priority: number | null
           progress_pct: number | null
+          risk_level: string | null
+          risk_reason: string | null
+          shop_id: string | null
+          tech_names: string[] | null
+          time_in_stage_seconds: number | null
           unit_label: string | null
           vehicle_id: string | null
           vehicle_label: string | null
@@ -11932,10 +11971,31 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "work_orders_advisor_id_fkey"
+            columns: ["advisor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "work_orders_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
           {
@@ -11950,20 +12010,32 @@ export type Database = {
       v_work_order_board_cards_shop: {
         Row: {
           activity_at: string | null
+          advisor_id: string | null
+          advisor_name: string | null
           assigned_summary: string | null
           assigned_tech_count: number | null
           custom_id: string | null
           customer_id: string | null
           display_name: string | null
+          first_tech_name: string | null
+          fleet_stage_label: string | null
           has_waiting_parts: boolean | null
+          is_waiter: boolean | null
+          jobs_blocked: number | null
           jobs_completed: number | null
+          jobs_open: number | null
           jobs_total: number | null
+          jobs_waiting_parts: number | null
           overall_stage: string | null
           parts_blocker_count: number | null
+          portal_stage_label: string | null
+          portal_status_note: string | null
+          priority: number | null
           progress_pct: number | null
           risk_level: string | null
           risk_reason: string | null
           shop_id: string | null
+          tech_names: string[] | null
           time_in_stage_seconds: number | null
           unit_label: string | null
           vehicle_id: string | null
@@ -11971,6 +12043,13 @@ export type Database = {
           work_order_id: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "work_orders_advisor_id_fkey"
+            columns: ["advisor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_orders_customer_id_fkey"
             columns: ["customer_id"]
