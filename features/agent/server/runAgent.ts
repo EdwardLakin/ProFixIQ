@@ -1,5 +1,3 @@
-//features/agent/server/runAgent.ts
-
 import { appendEvent } from "./log";
 import { getUserAndShopId } from "./supabase";
 import { runSimplePlan } from "../lib/plannerSimple";
@@ -7,8 +5,12 @@ import { runOpenAIPlanner } from "../lib/plannerOpenAI";
 import { runFleetPlanner } from "../lib/plannerFleet";
 import { runApprovalPlanner } from "../lib/plannerApprovals";
 
-/** All planner modes that can be selected from the UI */
-export type PlannerName = "simple" | "openai" | "fleet" | "approvals";
+export type PlannerName =
+  | "simple"
+  | "openai"
+  | "ops"
+  | "fleet"
+  | "approvals";
 
 export type StartAgentOptions = {
   goal: string;
@@ -17,36 +19,75 @@ export type StartAgentOptions = {
   planner?: PlannerName;
 };
 
-function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+type PlannerRuntimeContext = {
+  shopId: string;
+  userId: string;
+};
+
+type AgentEvent = {
+  kind: string;
+  [key: string]: unknown;
+};
+
+function errMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeContext(
+  goal: string,
+  rawContext: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    source: "ops-assistant",
+    requestedAt: new Date().toISOString(),
+    goal,
+    ...rawContext,
+  };
 }
 
 export async function startAgent(opts: StartAgentOptions) {
   const { goal, context, idempotencyKey = null, planner } = opts;
 
   const defaultPlanner: PlannerName =
-    process.env.OPENAI_API_KEY ? "openai" : "simple";
+    process.env.OPENAI_API_KEY ? "ops" : "simple";
 
-  // normalize/resolve planner selection, including new modes
   const effectivePlanner: PlannerName = planner ?? defaultPlanner;
 
   const { supabase, user, shopId } = await getUserAndShopId();
 
-  const { data: ok } = await supabase.rpc("agent_can_start");
-  if (!ok) throw new Error("Too many requests, try again in a moment.");
+  const { data: ok, error: canStartError } = await supabase.rpc("agent_can_start");
+  if (canStartError) {
+    throw new Error(canStartError.message);
+  }
+  if (!ok) {
+    throw new Error("Too many requests, try again in a moment.");
+  }
 
   let existing: { id: string } | null = null;
+
   if (idempotencyKey) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("agent_runs")
       .select("id,status")
       .eq("shop_id", shopId)
       .eq("user_id", user.id)
       .eq("idempotency_key", idempotencyKey)
       .maybeSingle();
-    if (data) existing = { id: data.id };
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (data) {
+      existing = { id: data.id };
+    }
   }
-  if (existing) return { runId: existing.id, alreadyExists: true as const };
+
+  if (existing) {
+    return { runId: existing.id, alreadyExists: true as const };
+  }
+
+  const normalizedContext = normalizeContext(goal, context);
 
   const { data: run, error } = await supabase
     .from("agent_runs")
@@ -65,64 +106,78 @@ export async function startAgent(opts: StartAgentOptions) {
   }
 
   let step = 1;
-  const onEvent = async (evt: { kind: string; [k: string]: unknown }) => {
-    await appendEvent(run.id, step++, evt.kind, { ...evt, goal });
+
+  const runtimeContext: PlannerRuntimeContext = {
+    shopId,
+    userId: user.id,
+  };
+
+  const onEvent = async (event: AgentEvent) => {
+    await appendEvent(run.id, step++, event.kind, {
+      ...event,
+      goal,
+      planner: effectivePlanner,
+    });
   };
 
   try {
-    if (effectivePlanner === "simple") {
-      // Always available deterministic path
-      await runSimplePlan(goal, context, { shopId, userId: user.id }, onEvent);
-    } else if (effectivePlanner === "fleet") {
-      // Fleet PM planner (build fleet schedules + WOs)
-      await runFleetPlanner(goal, context, { shopId, userId: user.id }, onEvent);
-    } else if (effectivePlanner === "approvals") {
-      // Advisor approvals / notification planner
-      await runApprovalPlanner(
-        goal,
-        context,
-        { shopId, userId: user.id },
-        onEvent,
-      );
-    } else {
-      // effectivePlanner === "openai"
-      if (!process.env.OPENAI_API_KEY) {
-        // No key → graceful fallback to simple
-        await runSimplePlan(
-          goal,
-          context,
-          { shopId, userId: user.id },
-          onEvent,
-        );
-      } else {
-        // Pass through mode so the OpenAI planner can specialize if needed
-        const enrichedContext = {
-          ...context,
-          plannerKind: effectivePlanner,
-          mode: effectivePlanner,
-        };
+    await onEvent({
+      kind: "planner_selected",
+      planner: effectivePlanner,
+    });
 
-        await runOpenAIPlanner(
-          goal,
-          enrichedContext,
-          { shopId, userId: user.id },
-          onEvent,
-        );
+    if (effectivePlanner === "simple") {
+      await runSimplePlan(goal, normalizedContext, runtimeContext, onEvent);
+    } else if (effectivePlanner === "fleet") {
+      await runFleetPlanner(goal, normalizedContext, runtimeContext, onEvent);
+    } else if (effectivePlanner === "approvals") {
+      await runApprovalPlanner(goal, normalizedContext, runtimeContext, onEvent);
+    } else {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error("OPENAI_API_KEY is required for ops/openai planner");
       }
+
+      await runOpenAIPlanner(goal, normalizedContext, runtimeContext, onEvent);
     }
 
-    await supabase
+    const { error: doneError } = await supabase
       .from("agent_runs")
-      .update({ status: "succeeded", updated_at: new Date().toISOString() })
+      .update({
+        status: "completed",
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", run.id);
 
-    return { runId: run.id, alreadyExists: false as const };
-  } catch (e: unknown) {
-    await appendEvent(run.id, step++, "error", { message: errMsg(e) });
+    if (doneError) {
+      throw new Error(doneError.message);
+    }
+
+    await onEvent({
+      kind: "planner_completed",
+      planner: effectivePlanner,
+    });
+
+    return {
+      runId: run.id,
+      alreadyExists: false as const,
+    };
+  } catch (error) {
+    const message = errMsg(error);
+
     await supabase
       .from("agent_runs")
-      .update({ status: "failed", updated_at: new Date().toISOString() })
+      .update({
+        status: "failed",
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", run.id);
-    throw e;
+
+    await onEvent({
+      kind: "planner_failed",
+      planner: effectivePlanner,
+      error: message,
+    });
+
+    throw new Error(message);
   }
 }

@@ -1,80 +1,102 @@
-// app/api/planner/run/route.ts
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { z } from "zod";
 
+import type { Database } from "@shared/types/types/supabase";
 import type { ToolContext } from "@/features/agent/lib/toolTypes";
-import type { PlannerEvent } from "@/features/agent/lib/plannerSimple";
 import { runSimplePlan } from "@/features/agent/lib/plannerSimple";
 import { runOpenAIPlanner } from "@/features/agent/lib/plannerOpenAI";
 import { runFleetPlanner } from "@/features/agent/lib/plannerFleet";
 import { runApprovalPlanner } from "@/features/agent/lib/plannerApprovals";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+type DB = Database;
 
-type PlannerKind = "simple" | "openai" | "fleet" | "approvals";
+type PlannerKind = "simple" | "openai" | "ops" | "fleet" | "approvals";
 
-type Body = {
-  goal?: string;
-  planner?: PlannerKind;
-  context?: Record<string, unknown>;
-  idempotencyKey?: string | null;
+type PlannerEvent = {
+  kind: string;
+  [key: string]: unknown;
 };
 
+const BodySchema = z.object({
+  goal: z.string().min(1, "Goal is required"),
+  planner: z
+    .enum(["simple", "openai", "ops", "fleet", "approvals"])
+    .optional(),
+  context: z.record(z.string(), z.unknown()).default({}),
+  idempotencyKey: z.string().optional().nullable(),
+});
+
 function toMsg(e: unknown): string {
-  if (typeof e === "string") return e;
-  if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string") {
-    return (e as { message: string }).message;
-  }
-  try {
-    return JSON.stringify(e);
-  } catch {
-    return "Unknown error";
-  }
+  return e instanceof Error ? e.message : String(e);
 }
 
-async function getShopId(supabase: ReturnType<typeof createRouteHandlerClient<Database>>, userId: string) {
+async function requireUser(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+) {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) return null;
+  return user;
+}
+
+async function resolveShopId(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  userId: string,
+): Promise<string | null> {
   const { data, error } = await supabase
     .from("profiles")
     .select("shop_id")
     .eq("id", userId)
     .maybeSingle();
 
-  if (error || !data?.shop_id) return null;
-  return data.shop_id as string;
+  if (error) return null;
+  return data?.shop_id ?? null;
 }
 
-export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const { data: userRes, error: userErr } = await supabase.auth.getUser();
-  const user = userRes?.user;
+  const user = await requireUser(supabase);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  if (userErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const shopId = await resolveShopId(supabase, user.id);
+  if (!shopId) {
+    return NextResponse.json({ error: "No shop found for user" }, { status: 400 });
+  }
 
-  const body = (await req.json().catch(() => null)) as Body | null;
-  const goal = (body?.goal ?? "").trim();
-  if (!goal) return NextResponse.json({ error: "goal required" }, { status: 400 });
+  const raw = await req.json().catch(() => null);
+  const parsed = BodySchema.safeParse(raw);
 
-  const planner: PlannerKind = (body?.planner ?? "openai") as PlannerKind;
-  const context = (body?.context ?? {}) as Record<string, unknown>;
-  const idempotencyKey = body?.idempotencyKey ?? null;
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: parsed.error.issues[0]?.message ?? "Invalid request body",
+      },
+      { status: 400 },
+    );
+  }
 
-  const shopId = await getShopId(supabase, user.id);
-  if (!shopId) return NextResponse.json({ error: "Unable to resolve shop for this account." }, { status: 400 });
+  const { goal, context, idempotencyKey = null } = parsed.data;
 
-  // Idempotency: reuse existing run for same user + key
+  const defaultPlanner: PlannerKind =
+    process.env.OPENAI_API_KEY ? "ops" : "simple";
+
+  const planner: PlannerKind = parsed.data.planner ?? defaultPlanner;
+
   if (idempotencyKey) {
     const { data: existing } = await supabase
       .from("planner_runs")
-      .select("id,status")
+      .select("id")
+      .eq("shop_id", shopId)
       .eq("user_id", user.id)
       .eq("idempotency_key", idempotencyKey)
-      .order("created_at", { ascending: false })
-      .limit(1)
       .maybeSingle();
 
     if (existing?.id) {
@@ -82,7 +104,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Create run
   const { data: runRow, error: runErr } = await supabase
     .from("planner_runs")
     .insert({
@@ -98,7 +119,10 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (runErr || !runRow?.id) {
-    return NextResponse.json({ error: "Failed to create planner run" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create planner run" },
+      { status: 500 },
+    );
   }
 
   const runId = runRow.id as string;
@@ -108,27 +132,37 @@ export async function POST(req: NextRequest) {
 
   const emit = async (e: PlannerEvent) => {
     step += 1;
+
     const { error } = await supabase.from("planner_events").insert({
       run_id: runId,
       step,
       kind: e.kind,
-      content: e as unknown as Record<string, unknown>,
+      content: e as Record<string, unknown>,
     });
+
     if (error) {
-      // Don’t throw (we don’t want event logging failure to kill the plan)
       // eslint-disable-next-line no-console
       console.error("[planner/run] event insert error", error);
     }
   };
 
-  // Run the planner (synchronously)
   try {
-    await emit({ kind: "plan", text: `Started ${planner} planner` });
+    await emit({
+      kind: "plan",
+      text: `Started ${planner} planner`,
+      planner,
+      goal,
+    });
 
-    if (planner === "simple") await runSimplePlan(goal, context, ctx, emit);
-    else if (planner === "fleet") await runFleetPlanner(goal, context, ctx, emit);
-    else if (planner === "approvals") await runApprovalPlanner(goal, context, ctx, emit);
-    else await runOpenAIPlanner(goal, context, ctx, emit);
+    if (planner === "simple") {
+      await runSimplePlan(goal, context, ctx, emit);
+    } else if (planner === "fleet") {
+      await runFleetPlanner(goal, context, ctx, emit);
+    } else if (planner === "approvals") {
+      await runApprovalPlanner(goal, context, ctx, emit);
+    } else {
+      await runOpenAIPlanner(goal, context, ctx, emit);
+    }
 
     await emit({ kind: "final", text: "Planner finished." });
 
@@ -137,7 +171,10 @@ export async function POST(req: NextRequest) {
       .update({ status: "succeeded" })
       .eq("id", runId);
 
-    return NextResponse.json({ runId, alreadyExists: false });
+    return NextResponse.json({
+      runId,
+      alreadyExists: false,
+    });
   } catch (err) {
     await emit({ kind: "final", text: `Planner failed: ${toMsg(err)}` });
 
@@ -146,6 +183,13 @@ export async function POST(req: NextRequest) {
       .update({ status: "failed" })
       .eq("id", runId);
 
-    return NextResponse.json({ runId, alreadyExists: false, error: toMsg(err) }, { status: 200 });
+    return NextResponse.json(
+      {
+        runId,
+        alreadyExists: false,
+        error: toMsg(err),
+      },
+      { status: 200 },
+    );
   }
 }

@@ -1,124 +1,121 @@
-// app/api/planner/events/route.ts
-import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { z } from "zod";
+
 import type { Database } from "@shared/types/types/supabase";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+type DB = Database;
 
-type EventRow = {
-  step: number;
-  kind: string;
-  content: unknown;
-  created_at: string;
-  id: string;
-};
+const QuerySchema = z.object({
+  runId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
+async function requireUser(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+) {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) return null;
+  return user;
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const runId = searchParams.get("runId");
-  if (!runId) return new Response("runId required", { status: 400 });
+async function resolveShopId(
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", userId)
+    .maybeSingle();
 
-  const supabase = createRouteHandlerClient<Database>({ cookies });
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) return new Response("Unauthorized", { status: 401 });
+  if (error) return null;
+  return data?.shop_id ?? null;
+}
 
-  const lastEventId = Number(req.headers.get("last-event-id") ?? "0");
+export async function GET(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let step = lastEventId || 0;
-      const encoder = new TextEncoder();
+  const user = await requireUser(supabase);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-      const write = (chunk: string) => controller.enqueue(encoder.encode(chunk));
-      const push = (id: number, data: unknown) => {
-        write(`id: ${id}\n`);
-        write(`data: ${JSON.stringify(data)}\n\n`);
-      };
+  const shopId = await resolveShopId(supabase, user.id);
+  if (!shopId) {
+    return NextResponse.json({ error: "No shop found for user" }, { status: 400 });
+  }
 
-      // Backfill
-      const initial = await supabase
-        .from("planner_events")
-        .select("step, kind, content, created_at, id")
-        .eq("run_id", runId)
-        .gt("step", step)
-        .order("step", { ascending: true });
-
-      if (initial.error) {
-        write(`event: error\ndata: ${JSON.stringify({ message: initial.error.message })}\n\n`);
-        controller.close();
-        return;
-      }
-
-      for (const raw of (initial.data ?? []) as unknown[]) {
-        if (!isRecord(raw)) continue;
-        const row: EventRow = {
-          step: typeof raw.step === "number" ? raw.step : step,
-          kind: typeof raw.kind === "string" ? raw.kind : "unknown",
-          content: raw.content,
-          created_at: typeof raw.created_at === "string" ? raw.created_at : "",
-          id: typeof raw.id === "string" ? raw.id : "",
-        };
-        step = row.step;
-        push(step, isRecord(row.content) ? row.content : { kind: row.kind, content: row.content });
-      }
-
-      async function loop() {
-        try {
-          const statusRes = await supabase
-            .from("planner_runs")
-            .select("status")
-            .eq("id", runId)
-            .single();
-
-          if (statusRes.error) throw statusRes.error;
-          const status = statusRes.data?.status;
-
-          const more = await supabase
-            .from("planner_events")
-            .select("step, kind, content, created_at, id")
-            .eq("run_id", runId)
-            .gt("step", step)
-            .order("step", { ascending: true });
-
-          if (more.error) throw more.error;
-
-          for (const raw of (more.data ?? []) as unknown[]) {
-            if (!isRecord(raw)) continue;
-            const row: EventRow = {
-              step: typeof raw.step === "number" ? raw.step : step,
-              kind: typeof raw.kind === "string" ? raw.kind : "unknown",
-              content: raw.content,
-              created_at: typeof raw.created_at === "string" ? raw.created_at : "",
-              id: typeof raw.id === "string" ? raw.id : "",
-            };
-            step = row.step;
-            push(step, isRecord(row.content) ? row.content : { kind: row.kind, content: row.content });
-          }
-
-          if (status === "running") setTimeout(loop, 900);
-          else controller.close();
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Unknown error";
-          write(`event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`);
-          controller.close();
-        }
-      }
-
-      loop();
-    },
+  const url = new URL(req.url);
+  const parsed = QuerySchema.safeParse({
+    runId: url.searchParams.get("runId") ?? undefined,
+    limit: url.searchParams.get("limit") ?? undefined,
   });
 
-  return new Response(stream, {
-    headers: {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache, no-transform",
-      connection: "keep-alive",
-    },
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid query" },
+      { status: 400 },
+    );
+  }
+
+  const { runId, limit } = parsed.data;
+
+  let runIds: string[] = [];
+
+  if (runId) {
+    const { data: run, error: runError } = await supabase
+      .from("planner_runs")
+      .select("id, shop_id, user_id")
+      .eq("id", runId)
+      .eq("shop_id", shopId)
+      .maybeSingle();
+
+    if (runError) {
+      return NextResponse.json({ error: runError.message }, { status: 500 });
+    }
+
+    if (!run?.id) {
+      return NextResponse.json({ events: [] });
+    }
+
+    runIds = [run.id];
+  } else {
+    const { data: runs, error: runsError } = await supabase
+      .from("planner_runs")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (runsError) {
+      return NextResponse.json({ error: runsError.message }, { status: 500 });
+    }
+
+    runIds = (runs ?? []).map((row) => row.id).filter(Boolean);
+    if (runIds.length === 0) {
+      return NextResponse.json({ events: [] });
+    }
+  }
+
+  const { data: events, error: eventsError } = await supabase
+    .from("planner_events")
+    .select("id, run_id, step, kind, content, created_at")
+    .in("run_id", runIds)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (eventsError) {
+    return NextResponse.json({ error: eventsError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    events: events ?? [],
   });
 }
