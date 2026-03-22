@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
-import { syncAssistantNotifications } from "@/features/agent/server/syncAssistantNotifications";
+import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
 
 type DB = Database;
 
@@ -56,25 +56,44 @@ export async function GET() {
   }
 
   try {
-    const notifications = await syncAssistantNotifications({
+    const result = await getRoleDailySummary({
       shopId: profile.shopId,
       userId: user.id,
       role: profile.role,
     });
 
+    const today = new Date().toISOString().slice(0, 10);
+
+    const { error: upsertError } = await supabase
+      .from("assistant_daily_summaries")
+      .upsert(
+        {
+          shop_id: profile.shopId,
+          user_id: user.id,
+          role: result.role,
+          summary_date: today,
+          summary_text: result.summaryText,
+          action_items: result.actionItems,
+          links: result.links,
+          notifications: result.notifications,
+          source_snapshot: result.sourceSnapshot,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "shop_id,user_id,role,summary_date",
+        },
+      );
+
+    if (upsertError) {
+      throw new Error(upsertError.message);
+    }
+
     return NextResponse.json({
-      notifications: notifications.map((item) => ({
-        id: item.id,
-        level: item.level,
-        code: item.code,
-        title: item.title,
-        message: item.message,
-        href: item.href ?? undefined,
-        entityType: item.entity_type ?? undefined,
-        entityId: item.entity_id ?? undefined,
-        createdAt: item.last_seen_at,
-        status: item.status,
-      })),
+      role: result.role,
+      summaryText: result.summaryText,
+      actionItems: result.actionItems,
+      links: result.links,
+      notifications: result.notifications,
     });
   } catch (error: unknown) {
     return NextResponse.json(
@@ -82,7 +101,7 @@ export async function GET() {
         error:
           error instanceof Error
             ? error.message
-            : "Failed to load notifications",
+            : "Failed to build daily summary",
       },
       { status: 500 },
     );
