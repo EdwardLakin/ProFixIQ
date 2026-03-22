@@ -1,4 +1,3 @@
-// app/agent/planner/page.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -27,15 +26,15 @@ type OcrFields = {
   email?: string | null;
 };
 
-type PlannerKind = "simple" | "openai" | "fleet" | "approvals";
+type PlannerKind = "simple" | "openai" | "ops" | "fleet" | "approvals";
 
-type AgentStartOut = { runId: string; alreadyExists: boolean };
+type PlannerStartOut = {
+  runId: string;
+  alreadyExists: boolean;
+  error?: string;
+};
 
-type AgentEvent = Record<string, unknown> & { kind?: string };
-
-/* -------------------------------------------------------------------------- */
-/* Safe helpers to read unknown-shaped events                                 */
-/* -------------------------------------------------------------------------- */
+type PlannerEvent = Record<string, unknown> & { kind?: string };
 
 type AnyObj = Record<string, unknown>;
 
@@ -57,10 +56,11 @@ function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
+
 function toMsg(e: unknown): string {
   if (typeof e === "string") return e;
   if (isObj(e)) {
-    const m = asString((e as AnyObj).message);
+    const m = asString(e.message);
     if (m) return m;
   }
   try {
@@ -70,51 +70,79 @@ function toMsg(e: unknown): string {
   }
 }
 
-function extractToolName(evt: AgentEvent): string | null {
-  const direct =
+function extractToolName(evt: PlannerEvent): string | null {
+  return (
     asString(getField(evt, "name")) ??
     asString(getField(evt, "tool_name")) ??
     asString(getField(evt, "toolName")) ??
     asString(getNested(evt, ["tool", "name"])) ??
-    asString(getNested(evt, ["tool", "tool_name"])) ??
-    asString(getNested(evt, ["call", "name"])) ??
-    asString(getNested(evt, ["toolCall", "name"]));
-
-  return direct ?? null;
+    asString(getNested(evt, ["call", "name"]))
+  );
 }
 
-function extractWorkOrderId(evt: AgentEvent): string | null {
+function extractWorkOrderId(evt: PlannerEvent): string | null {
   const direct =
     asString(getField(evt, "work_order_id")) ??
     asString(getField(evt, "workOrderId")) ??
     asString(getField(evt, "wo_id")) ??
+    asString(getField(evt, "entityId")) ??
     asString(getField(evt, "id"));
 
   if (direct) return direct;
 
-  const out = getField(evt, "output");
-  if (isObj(out)) {
+  const output = getField(evt, "output");
+  if (isObj(output)) {
     const nested =
-      asString((out as AnyObj).workOrderId) ??
-      asString((out as AnyObj).work_order_id) ??
-      asString((out as AnyObj).id);
+      asString(output.workOrderId) ??
+      asString(output.work_order_id) ??
+      asString(output.id);
     if (nested) return nested;
   }
 
   const result = getField(evt, "result");
   if (isObj(result)) {
     const nested =
-      asString((result as AnyObj).workOrderId) ??
-      asString((result as AnyObj).work_order_id) ??
-      asString((result as AnyObj).id);
+      asString(result.workOrderId) ??
+      asString(result.work_order_id) ??
+      asString(result.id);
     if (nested) return nested;
   }
 
   return null;
 }
 
-function labelFor(evt: AgentEvent): string | null {
-  const k = (evt.kind ?? "").toString();
+function extractNotifications(evt: PlannerEvent): Array<{
+  level?: string;
+  title?: string;
+  message?: string;
+  href?: string;
+}> {
+  const items = getField(evt, "items");
+  if (!Array.isArray(items)) return [];
+
+  const out: Array<{
+    level?: string;
+    title?: string;
+    message?: string;
+    href?: string;
+  }> = [];
+
+  for (const item of items) {
+    if (!isObj(item)) continue;
+
+    out.push({
+      level: asString(item.level) ?? undefined,
+      title: asString(item.title) ?? undefined,
+      message: asString(item.message) ?? undefined,
+      href: asString(item.href) ?? undefined,
+    });
+  }
+
+  return out;
+}
+
+function labelFor(evt: PlannerEvent): string | null {
+  const kind = (evt.kind ?? "").toString();
   const toolName = extractToolName(evt);
   const woId = extractWorkOrderId(evt);
 
@@ -123,14 +151,9 @@ function labelFor(evt: AgentEvent): string | null {
     asString(getField(evt, "message")) ??
     asString(getField(evt, "error"));
 
-  switch (k) {
-    case "run.started":
-      return "Started plan…";
-    case "run.resumed":
-      return "Resumed previous run…";
-
+  switch (kind) {
     case "plan":
-      return text ? `Plan: ${text}` : "Plan…";
+      return text ? `Plan: ${text}` : "Planning…";
 
     case "tool_call":
       return `Tool call: ${toolName ?? "unknown"}`;
@@ -140,19 +163,6 @@ function labelFor(evt: AgentEvent): string | null {
         return `Created work order (${woId.slice(0, 8)})`;
       }
       return `Tool result: ${toolName ?? "unknown"}`;
-
-    case "vin.decoded": {
-      const vin = asString(getField(evt, "vin"));
-      return `Decoded VIN${vin ? ` ${vin}` : ""}`;
-    }
-
-    case "customer.matched": {
-      const name = asString(getField(evt, "customer_name"));
-      return `Matched customer${name ? ` ${name}` : ""}`;
-    }
-
-    case "vehicle.attached":
-      return "Attached vehicle";
 
     case "wo.created":
     case "work_order.created":
@@ -164,48 +174,48 @@ function labelFor(evt: AgentEvent): string | null {
       return `Added job line${desc ? ` — ${desc.slice(0, 80)}` : ""}`;
     }
 
-    case "email.sent":
-    case "invoice.emailed":
-      return "Emailed invoice";
-
-    case "invoice.created":
-      return "Generated invoice";
+    case "notifications": {
+      const items = extractNotifications(evt);
+      if (items.length === 0) return "New alerts";
+      return items
+        .slice(0, 2)
+        .map((item) => item.title ?? item.message ?? "Alert")
+        .join(" • ");
+    }
 
     case "final":
       return text ? `Final: ${text}` : "Final";
 
-    case "run.completed":
-      return "Completed";
-
-    case "run.error":
-      return `Error: ${text ?? "unknown"}`;
-
     default:
-      if (!k) return null;
-      return k.replaceAll("_", " ");
+      return kind ? kind.replaceAll("_", " ") : null;
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Component                                                                  */
-/* -------------------------------------------------------------------------- */
-
 export default function PlannerPage() {
   const [goal, setGoal] = useState("");
-  const [planner, setPlanner] = useState<PlannerKind>("openai");
+  const [planner, setPlanner] = useState<PlannerKind>("ops");
 
-  // NEW: default to existing DB mode (no auto-creation)
   const [allowCreate, setAllowCreate] = useState(false);
 
   const [customerQuery, setCustomerQuery] = useState("");
   const [plateOrVin, setPlateOrVin] = useState("");
   const [emailInvoiceTo, setEmailInvoiceTo] = useState("");
+  const [bookingId, setBookingId] = useState("");
+  const [workOrderId, setWorkOrderId] = useState("");
 
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const [steps, setSteps] = useState<string[]>([]);
-  const [, setLog] = useState<string[]>([]);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<
+    Array<{
+      level?: string;
+      title?: string;
+      message?: string;
+      href?: string;
+    }>
+  >([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
@@ -227,12 +237,13 @@ export default function PlannerPage() {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth
-      .getUser()
-      .then(({ data }) => mounted && setUserId(data.user?.id ?? null));
-    return () => void (mounted = false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    supabase.auth.getUser().then(({ data }) => {
+      if (mounted) setUserId(data.user?.id ?? null);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [supabase]);
 
   useEffect(() => {
     return () => {
@@ -245,10 +256,10 @@ export default function PlannerPage() {
   useEffect(() => {
     const v = (draft?.vehicle?.vin ?? "").trim();
     if (v && !plateOrVin) setPlateOrVin(v);
+
     const em = (draft?.customer?.email ?? "").trim();
     if (em && !emailInvoiceTo) setEmailInvoiceTo(em);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [draft, emailInvoiceTo, plateOrVin]);
 
   function onPickPhoto(file: File | null) {
     setPhoto(file);
@@ -267,10 +278,12 @@ export default function PlannerPage() {
       cacheControl: "3600",
       upsert: false,
     });
+
     if (up.error) throw new Error(`Upload failed: ${up.error.message}`);
 
     const pub = supabase.storage.from("agent-uploads").getPublicUrl(path);
     if (!pub.data?.publicUrl) throw new Error("Could not resolve public URL");
+
     return pub.data.publicUrl;
   }
 
@@ -279,11 +292,14 @@ export default function PlannerPage() {
     setCustomerQuery("");
     setPlateOrVin("");
     setEmailInvoiceTo("");
+    setBookingId("");
+    setWorkOrderId("");
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhoto(null);
     setPhotoPreview(null);
     setSteps([]);
-    setLog([]);
+    setSummary(null);
+    setNotifications([]);
     setRunId(null);
     setPreviewWoId(null);
     setPreviewOpen(false);
@@ -292,39 +308,36 @@ export default function PlannerPage() {
     setRunning(false);
   }
 
-  const appendStep = (s: string) =>
-    setSteps((arr) => (arr.includes(s) ? arr : [...arr, s]));
-  const appendLog = (l: string) => setLog((arr) => [...arr, l]);
+  function appendStep(step: string) {
+    setSteps((arr) => (arr.includes(step) ? arr : [...arr, step]));
+  }
 
   async function start() {
     setRunning(true);
     setSteps([]);
-    setLog([]);
+    setSummary(null);
+    setNotifications([]);
     esRef.current?.close();
     esRef.current = null;
 
     try {
-      // existing-db mode sanity: don’t even start if missing both key selectors
       if (!allowCreate) {
-        const hasCustomer = customerQuery.trim().length > 0;
+        const hasCustomer = customerQuery.trim().length > 0 || Boolean(workOrderId.trim());
         const hasPlateVin =
-          plateOrVin.trim().length > 0 || (draft?.vehicle?.vin ?? "").trim().length > 0;
+          plateOrVin.trim().length > 0 ||
+          (draft?.vehicle?.vin ?? "").trim().length > 0 ||
+          Boolean(workOrderId.trim()) ||
+          Boolean(bookingId.trim());
 
-        if (!hasCustomer || !hasPlateVin) {
-          const missing: string[] = [];
-          if (!hasCustomer) missing.push("Customer");
-          if (!hasPlateVin) missing.push("Plate/VIN");
-          appendStep(
-            `Missing required fields (${missing.join(
-              " + ",
-            )}). Existing DB mode won’t auto-create records.`,
-          );
+        if (!hasCustomer && !hasPlateVin && !goal.trim()) {
+          appendStep("Missing enough context to run in Existing DB mode.");
           setRunning(false);
           return;
         }
       }
 
       const imageUrl = await uploadPhotoIfAny();
+
       if (imageUrl && photoPreview) URL.revokeObjectURL(photoPreview);
       if (imageUrl) {
         setPhoto(null);
@@ -332,8 +345,10 @@ export default function PlannerPage() {
       }
 
       let ocrFields: OcrFields | null = null;
+
       if (imageUrl) {
         appendStep("Uploading photo…");
+
         try {
           const res = await fetch("/api/ocr/registration", {
             method: "POST",
@@ -362,8 +377,13 @@ export default function PlannerPage() {
               email: f.email ?? undefined,
             });
 
-            if (!plateOrVin && (f.vin || f.plate)) setPlateOrVin(f.vin || f.plate || "");
-            if (!emailInvoiceTo && f.email) setEmailInvoiceTo(f.email || "");
+            if (!plateOrVin && (f.vin || f.plate)) {
+              setPlateOrVin(f.vin || f.plate || "");
+            }
+
+            if (!emailInvoiceTo && f.email) {
+              setEmailInvoiceTo(f.email || "");
+            }
 
             const quickBits = [
               f.vin ? `VIN ${String(f.vin).slice(0, 8)}…` : null,
@@ -378,7 +398,7 @@ export default function PlannerPage() {
           } else {
             appendStep(`OCR failed (HTTP ${res.status})`);
           }
-        } catch (err) {
+        } catch (err: unknown) {
           appendStep(`OCR error: ${toMsg(err)}`);
         }
       }
@@ -401,25 +421,27 @@ export default function PlannerPage() {
             }
           : undefined;
 
-      // NEW: include allowCreate flag so plannerOpenAI behaves in “existing DB mode”
       const ctx = {
         allowCreate,
 
         customerQuery: customerQuery || undefined,
         plateOrVin: plateOrVin || vinFromDraft || undefined,
         emailInvoiceTo: emailInvoiceTo || undefined,
+        bookingId: bookingId || undefined,
+        workOrderId: workOrderId || undefined,
 
         imageUrl,
         vin: vinFromDraft || (plateOrVin?.length === 17 ? plateOrVin : undefined),
         decodedVehicle,
         ocr: ocrFields || undefined,
 
-        lineDescription: goal?.trim() || undefined,
+        lineDescription: goal.trim() || undefined,
         jobType: "repair" as const,
         laborHours: 1,
-      } as Record<string, unknown>;
+        plannerKind: planner,
+      } satisfies Record<string, unknown>;
 
-      const res = await fetch("/api/agent", {
+      const res = await fetch("/api/planner", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -430,16 +452,16 @@ export default function PlannerPage() {
         }),
       });
 
+      const out = (await res.json().catch(() => ({}))) as PlannerStartOut;
+
       if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: unknown };
-        throw new Error(typeof j?.error === "string" ? j.error : `HTTP ${res.status}`);
+        throw new Error(out.error ?? `HTTP ${res.status}`);
       }
 
-      const out = (await res.json()) as AgentStartOut;
       setRunId(out.runId);
       appendStep(out.alreadyExists ? "Resumed previous run…" : "Started plan…");
 
-      const url = `/api/agent/events?runId=${encodeURIComponent(out.runId)}`;
+      const url = `/api/planner/events?runId=${encodeURIComponent(out.runId)}`;
       const es = new EventSource(url);
       esRef.current = es;
 
@@ -447,7 +469,7 @@ export default function PlannerPage() {
         if (!ev.data || ev.data === ":ok" || ev.data === "[DONE]") return;
 
         try {
-          const data = JSON.parse(ev.data) as AgentEvent;
+          const data = JSON.parse(ev.data) as PlannerEvent;
           const label = labelFor(data);
           if (label) appendStep(label);
 
@@ -464,15 +486,27 @@ export default function PlannerPage() {
             setPreviewOpen(true);
           }
 
-          appendLog(ev.data);
+          if (data.kind === "final") {
+            const text =
+              asString(getField(data, "text")) ??
+              asString(getField(data, "message"));
+            if (text) setSummary(text);
+          }
 
-          if (data.kind === "run.completed" || data.kind === "run.error" || data.kind === "final") {
+          if (data.kind === "notifications") {
+            const items = extractNotifications(data);
+            if (items.length > 0) {
+              setNotifications((prev) => [...prev, ...items]);
+            }
+          }
+
+          if (data.kind === "final") {
             es.close();
             esRef.current = null;
             setRunning(false);
           }
         } catch {
-          appendLog(ev.data);
+          appendStep(ev.data);
         }
       };
 
@@ -484,13 +518,14 @@ export default function PlannerPage() {
           setRunning(false);
         }
       };
-    } catch (e) {
+    } catch (e: unknown) {
       appendStep(`Error: ${toMsg(e)}`);
       setRunning(false);
     }
   }
 
   const plannerModes: { id: PlannerKind; label: string }[] = [
+    { id: "ops", label: "Ops Assistant" },
     { id: "openai", label: "OpenAI (rich)" },
     { id: "simple", label: "Simple (rules)" },
     { id: "fleet", label: "Fleet PM" },
@@ -500,7 +535,7 @@ export default function PlannerPage() {
   return (
     <PageShell
       title="AI Planner"
-      description="Describe what you want done — we'll create the work order, add lines, attach photos, and optionally email the invoice."
+      description="Ask operational questions, create work orders, move bookings, summarize history, and surface shop alerts."
     >
       <div className="metal-card rounded-3xl p-5 shadow-[0_12px_35px_rgba(0,0,0,0.85)]">
         <div className="flex flex-wrap gap-2">
@@ -522,7 +557,6 @@ export default function PlannerPage() {
           ))}
         </div>
 
-        {/* NEW: existing-db mode toggle */}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
           <div className="min-w-[220px]">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
@@ -543,7 +577,6 @@ export default function PlannerPage() {
               }
               onClick={() => setAllowCreate(false)}
               disabled={running}
-              title="Require existing customer + vehicle (no auto-create)"
             >
               Existing DB
             </Button>
@@ -556,7 +589,6 @@ export default function PlannerPage() {
               }
               onClick={() => setAllowCreate(true)}
               disabled={running}
-              title="Allow the planner to create missing customer/vehicle"
             >
               Setup
             </Button>
@@ -564,7 +596,7 @@ export default function PlannerPage() {
 
           {!allowCreate ? (
             <div className="w-full text-xs text-neutral-400">
-              Tip: Existing DB mode requires a customer query + plate/VIN so the planner can match records.
+              Existing DB mode is best for history lookups, bookings, status questions, and live shop summaries.
             </div>
           ) : null}
         </div>
@@ -572,8 +604,8 @@ export default function PlannerPage() {
         <textarea
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
-          placeholder="e.g. Find John Smith, create inspection WO, add note, email invoice"
-          className="mt-3 w-full min-h-[120px] rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+          placeholder='e.g. "When was the last time John Smith visited?" or "What is Mike working on?" or "Reschedule booking 123 to tomorrow at 10am"'
+          className="mt-3 min-h-[120px] w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
         />
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -605,7 +637,6 @@ export default function PlannerPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setVinOpen(true)}
-                title="Open VIN capture"
                 disabled={!userId}
               >
                 Scan VIN
@@ -629,6 +660,26 @@ export default function PlannerPage() {
 
           <label className="block">
             <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Booking ID / Work Order ID
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <input
+                value={bookingId}
+                onChange={(e) => setBookingId(e.target.value)}
+                className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+                placeholder="Booking ID"
+              />
+              <input
+                value={workOrderId}
+                onChange={(e) => setWorkOrderId(e.target.value)}
+                className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+                placeholder="Work Order ID"
+              />
+            </div>
+          </label>
+
+          <label className="block">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
               Photo (DL / Registration)
             </div>
             <input
@@ -648,14 +699,49 @@ export default function PlannerPage() {
           </label>
         </div>
 
-        {runId && (
+        {runId ? (
           <div className="mt-4 text-xs text-neutral-400">
             Run ID:{" "}
             <code className="rounded bg-black/40 px-2 py-1 text-[11px] text-neutral-200">
               {runId}
             </code>
           </div>
-        )}
+        ) : null}
+
+        {summary ? (
+          <div className="mt-4 rounded-3xl border border-orange-400/20 bg-orange-500/10 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-300">
+              Summary
+            </div>
+            <div className="text-sm text-neutral-100">{summary}</div>
+          </div>
+        ) : null}
+
+        {notifications.length > 0 ? (
+          <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Alerts
+            </div>
+            <div className="space-y-2">
+              {notifications.map((item, index) => (
+                <div
+                  key={`${item.title ?? "alert"}-${index}`}
+                  className="rounded-2xl border border-white/10 bg-black/40 p-3"
+                >
+                  <div className="text-sm font-semibold text-white">
+                    {item.title ?? "Alert"}
+                  </div>
+                  <div className="mt-1 text-xs text-neutral-300">
+                    {item.message ?? ""}
+                  </div>
+                  {item.href ? (
+                    <div className="mt-2 text-xs text-orange-300">{item.href}</div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
           <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
@@ -699,13 +785,13 @@ export default function PlannerPage() {
         </div>
       </div>
 
-      {previewWoId && (
+      {previewWoId ? (
         <div className="mt-6">
           <WorkOrderPreviewTrigger open={previewOpen} onOpenChange={setPreviewOpen}>
             <WorkOrderPreview woId={previewWoId} />
           </WorkOrderPreviewTrigger>
         </div>
-      )}
+      ) : null}
 
       {userId ? (
         <VinCaptureModal
@@ -725,33 +811,26 @@ export default function PlannerPage() {
             setToast("VIN decoded and recalls queued ✅");
             window.setTimeout(() => setToast(null), 4000);
 
-            setVehicleDraft({
-              vin: d.vin,
-              year: d.year,
-              make: d.make,
-              model: d.model,
-              trim: d.trim,
-              engine: d.engine,
-            });
             setCustomerDraft({
               first_name: undefined,
               last_name: undefined,
               email: emailInvoiceTo || undefined,
               phone: undefined,
             });
+
             router.push("/work-orders/create?source=ai");
           }}
         />
       ) : null}
 
-      {toast && (
+      {toast ? (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/80 px-4 py-2 shadow-[0_16px_50px_rgba(0,0,0,0.85)]">
           <div className="flex items-center gap-2 text-sm text-neutral-100">
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" />
             {toast}
           </div>
         </div>
-      )}
+      ) : null}
     </PageShell>
   );
 }
