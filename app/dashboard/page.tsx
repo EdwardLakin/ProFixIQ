@@ -8,6 +8,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import DailySummaryCard from "@/features/shared/components/DailySummaryCard";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 import ReportsPerformanceWidget from "@/features/owner/reports/ReportsPerformanceWidget";
 import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
@@ -353,6 +354,10 @@ export default function DashboardPage() {
 
       <div className="mb-6">
         <DailySummaryCard />
+      </div>
+
+      <div className="mb-6">
+        <SuggestedActionsPanel />
       </div>
       <div className="relative space-y-8 fade-in">
       {/* soft gradient background for this page (extra metal wash) */}
