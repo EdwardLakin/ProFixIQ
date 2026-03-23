@@ -37,10 +37,13 @@ async function resolveProfile(
   };
 }
 
-export async function POST(
-  _request: Request,
-  context: { params: { id: string } },
-) {
+type RouteContext = {
+  params: Promise<{
+    id: string;
+  }>;
+};
+
+export async function POST(_request: Request, context: RouteContext) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
   const user = await requireUser(supabase);
@@ -56,7 +59,8 @@ export async function POST(
     );
   }
 
-  const notificationId = context.params.id;
+  const { id: notificationId } = await context.params;
+
   if (!notificationId) {
     return NextResponse.json(
       { error: "Notification id is required" },
@@ -80,10 +84,7 @@ export async function POST(
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   if (!data) {
