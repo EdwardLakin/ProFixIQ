@@ -1,12 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import type { AssistantContext } from "../types/assistant";
 import { buildAssistantHref } from "../lib/buildAssistantHref";
 import { buildPlannerHref } from "../lib/buildPlannerHref";
+import { useAssistant } from "../hooks/useAssistant";
+import AssistantResponseCard from "./AssistantResponseCard";
+
+import { Button } from "@shared/components/ui/Button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@shared/components/ui/dialog";
 
 type Props = {
   mobile?: boolean;
@@ -123,15 +134,29 @@ function getPlannerGoal(context: AssistantContext): string {
   }
 }
 
+function getDefaultPrompt(context: AssistantContext): string {
+  switch (context.pageType) {
+    case "work_order":
+      return "What should I do next on this work order?";
+    case "customer":
+      return "What should I do next for this customer?";
+    case "vehicle":
+      return "What should I know about this vehicle?";
+    case "booking":
+      return "What should I do next for this booking?";
+    default:
+      return "";
+  }
+}
+
 export default function AskAssistantEntry({
   mobile = false,
   placement = "floating",
 }: Props) {
   const pathname = usePathname();
-
   const context = useMemo(() => deriveContextFromPath(pathname), [pathname]);
-  const assistantHref = useMemo(() => buildAssistantHref(context), [context]);
 
+  const assistantHref = useMemo(() => buildAssistantHref(context), [context]);
   const plannerHref = useMemo(
     () =>
       buildPlannerHref({
@@ -147,18 +172,25 @@ export default function AskAssistantEntry({
   const assistantLabel = useMemo(() => getAssistantLabel(context), [context]);
   const plannerLabel = useMemo(() => getPlannerLabel(context), [context]);
 
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const { ask, loading, data } = useAssistant();
+
+  const effectiveQuery = query.trim() || getDefaultPrompt(context);
+
   if (placement === "header") {
     return (
       <>
-        <Link
-          href={assistantHref}
+        <button
+          type="button"
           title={assistantLabel}
+          onClick={() => setOpen(true)}
           className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
         >
           <span aria-hidden>✨</span>
-          <span className="hidden lg:inline">{assistantLabel}</span>
+          <span className="hidden lg:inline">Assistant</span>
           <span className="lg:hidden">Assistant</span>
-        </Link>
+        </button>
 
         <Link
           href={plannerHref}
@@ -166,9 +198,64 @@ export default function AskAssistantEntry({
           className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
         >
           <span aria-hidden>⚡</span>
-          <span className="hidden lg:inline">{plannerLabel}</span>
+          <span className="hidden lg:inline">Planner</span>
           <span className="lg:hidden">Planner</span>
         </Link>
+
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="max-w-3xl border-[color:var(--metal-border-soft,#1f2937)] bg-neutral-950/95 text-white shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
+            <DialogHeader>
+              <DialogTitle
+                className="text-[color:var(--accent-copper,#c1663b)]"
+                style={{ fontFamily: "Black Ops One, var(--font-blackops), system-ui" }}
+              >
+                AI Assistant
+              </DialogTitle>
+              <DialogDescription>
+                Ask about the current page context without opening a new tab.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-4 space-y-4">
+              <textarea
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={getDefaultPrompt(context) || "Ask anything about your shop..."}
+                className="min-h-[140px] w-full rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent-copper-soft,#fdba74)]"
+              />
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-neutral-500">
+                  {context.pageTitle ? `Context: ${context.pageTitle}` : "General shop context"}
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setQuery("");
+                    }}
+                    disabled={loading}
+                  >
+                    Clear
+                  </Button>
+
+                  <Button
+                    type="button"
+                    onClick={() => ask(effectiveQuery, context)}
+                    isLoading={loading}
+                    disabled={!effectiveQuery.trim()}
+                  >
+                    Ask Assistant
+                  </Button>
+                </div>
+              </div>
+
+              <AssistantResponseCard data={data} />
+            </div>
+          </DialogContent>
+        </Dialog>
       </>
     );
   }
