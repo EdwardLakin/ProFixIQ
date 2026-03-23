@@ -3,11 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
-import { answerAssistant } from "@/features/agent/assistant/server/answerAssistant";
-import type {
-  AssistantAskRequest,
-  AssistantAskResponse,
-} from "@/features/agent/assistant/types";
+import { runAssistant } from "@/features/assistant/server/runAssistant";
 
 type DB = Database;
 
@@ -43,62 +39,47 @@ async function resolveProfile(
   };
 }
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
   const user = await requireUser(supabase);
   if (!user) {
-    return NextResponse.json<AssistantAskResponse>(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const profile = await resolveProfile(supabase, user.id);
   if (!profile.shopId) {
-    return NextResponse.json<AssistantAskResponse>(
-      { ok: false, error: "No shop found for user" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "No shop found" }, { status: 400 });
   }
 
-  let body: AssistantAskRequest;
-  try {
-    body = (await request.json()) as AssistantAskRequest;
-  } catch {
-    return NextResponse.json<AssistantAskResponse>(
-      { ok: false, error: "Invalid JSON body" },
-      { status: 400 },
-    );
-  }
+  const body = (await req.json().catch(() => ({}))) as {
+    query?: unknown;
+  };
 
-  if (!body.question?.trim()) {
-    return NextResponse.json<AssistantAskResponse>(
-      { ok: false, error: "Question is required" },
+  const query =
+    typeof body.query === "string" ? body.query.trim() : "";
+
+  if (!query) {
+    return NextResponse.json(
+      { error: "Query is required" },
       { status: 400 },
     );
   }
 
   try {
-    const answer = await answerAssistant({
+    const result = await runAssistant({
       shopId: profile.shopId,
       userId: user.id,
       role: profile.role,
-      request: body,
+      query,
     });
 
-    return NextResponse.json<AssistantAskResponse>({
-      ok: true,
-      answer,
-    });
+    return NextResponse.json(result);
   } catch (error: unknown) {
-    return NextResponse.json<AssistantAskResponse>(
+    return NextResponse.json(
       {
-        ok: false,
         error:
-          error instanceof Error
-            ? error.message
-            : "Failed to answer assistant question",
+          error instanceof Error ? error.message : "Assistant failed",
       },
       { status: 500 },
     );
