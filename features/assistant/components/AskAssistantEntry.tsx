@@ -77,25 +77,71 @@ function deriveContextFromPath(pathname: string): AssistantContext {
   return context;
 }
 
+function getAssistantLabel(context: AssistantContext): string {
+  switch (context.pageType) {
+    case "work_order":
+      return "Ask about this WO";
+    case "customer":
+      return "Ask about this customer";
+    case "vehicle":
+      return "Ask about this vehicle";
+    case "booking":
+      return "Ask about this booking";
+    default:
+      return "Ask Assistant";
+  }
+}
+
+function getPlannerLabel(context: AssistantContext): string {
+  switch (context.pageType) {
+    case "work_order":
+      return "Fix this WO";
+    case "customer":
+      return "Plan for this customer";
+    case "vehicle":
+      return "Plan for this vehicle";
+    case "booking":
+      return "Plan this booking";
+    default:
+      return "Open Planner";
+  }
+}
+
+function getPlannerGoal(context: AssistantContext): string {
+  switch (context.pageType) {
+    case "work_order":
+      return "Help me review and take action on this work order";
+    case "customer":
+      return "Help me take action for this customer";
+    case "vehicle":
+      return "Help me take action for this vehicle";
+    case "booking":
+      return "Help me review and reschedule or act on this booking";
+    default:
+      return "Help me take action";
+  }
+}
+
 export default function AskAssistantEntry({ mobile = false }: Props) {
   const pathname = usePathname();
 
   const context = useMemo(() => deriveContextFromPath(pathname), [pathname]);
   const assistantHref = useMemo(() => buildAssistantHref(context), [context]);
+
   const plannerHref = useMemo(
     () =>
       buildPlannerHref({
         planner: "ops",
         allowCreate: false,
-        goal:
-          context.pageType && context.pageTitle
-            ? `Help me take action for this ${context.pageTitle.toLowerCase()}`
-            : "Help me take action",
+        goal: getPlannerGoal(context),
         workOrderId: context.workOrderId,
         bookingId: context.bookingId,
       }),
     [context],
   );
+
+  const assistantLabel = useMemo(() => getAssistantLabel(context), [context]);
+  const plannerLabel = useMemo(() => getPlannerLabel(context), [context]);
 
   if (mobile) {
     return (
@@ -104,13 +150,13 @@ export default function AskAssistantEntry({ mobile = false }: Props) {
           href={assistantHref}
           className="rounded-full border border-orange-400/50 bg-black/85 px-4 py-3 text-sm font-semibold text-orange-300 shadow-[0_16px_40px_rgba(0,0,0,0.55)] backdrop-blur-md"
         >
-          Ask AI
+          {assistantLabel}
         </Link>
         <Link
           href={plannerHref}
           className="rounded-full border border-white/10 bg-black/80 px-4 py-2 text-xs text-neutral-200 shadow-[0_12px_30px_rgba(0,0,0,0.45)] backdrop-blur-md"
         >
-          Planner
+          {plannerLabel}
         </Link>
       </div>
     );
@@ -122,13 +168,13 @@ export default function AskAssistantEntry({ mobile = false }: Props) {
         href={assistantHref}
         className="rounded-full border border-orange-400/50 bg-black/85 px-5 py-3 text-sm font-semibold text-orange-300 shadow-[0_18px_45px_rgba(0,0,0,0.6)] backdrop-blur-md"
       >
-        Ask Assistant
+        {assistantLabel}
       </Link>
       <Link
         href={plannerHref}
         className="rounded-full border border-white/10 bg-black/80 px-4 py-2 text-xs text-neutral-200 shadow-[0_12px_30px_rgba(0,0,0,0.45)] backdrop-blur-md"
       >
-        Open Planner
+        {plannerLabel}
       </Link>
     </div>
   );
