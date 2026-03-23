@@ -1,4 +1,4 @@
-// app/work-orders/view/page.tsx
+// features/work-orders/app/work-orders/view/page.tsx
 // ✅ FULL FILE REPLACEMENT
 // - Adds "Tech rollup" (derived from work_order_lines statuses) so view page matches queue logic
 // - Treats WO.status="completed" as the invoice-review stage
@@ -19,6 +19,7 @@ import { WorkOrderAssignedSummary } from "@/features/work-orders/components/Work
 import StatusPickerModal, {
   type WorkOrderStatus,
 } from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -580,7 +581,21 @@ export default function WorkOrdersView(): JSX.Element {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/assistant?pageType=work_orders&pageTitle=Work%20Orders"
+              className="inline-flex items-center justify-center rounded-full border border-orange-400/40 bg-orange-500/10 px-3.5 py-1.5 text-sm font-semibold text-orange-200 shadow-[0_0_26px_rgba(0,0,0,0.9)] transition hover:bg-orange-500/15"
+            >
+              Ask Assistant
+            </Link>
+
+            <Link
+              href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20current%20work%20order%20queue%20and%20suggest%20the%20best%20next%20actions"
+              className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-sm font-semibold text-neutral-100 shadow-[0_0_26px_rgba(0,0,0,0.9)] transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+            >
+              Open Planner
+            </Link>
+
             <Link
               href="/work-orders/create"
               className="inline-flex items-center justify-center rounded-full bg-[var(--accent-copper)] px-3.5 py-1.5 text-sm font-semibold text-black shadow-[0_0_26px_rgba(0,0,0,0.9)] transition hover:opacity-90"
@@ -667,6 +682,15 @@ export default function WorkOrdersView(): JSX.Element {
           {err}
         </div>
       )}
+
+      <SuggestedActionsPanel
+        context={{
+          pageType: "work_orders",
+          pageTitle: "Work Orders",
+        }}
+        title="Suggested Actions for Work Orders"
+        description="Recommended next actions for the active queue, approvals, and invoice-ready work"
+      />
 
       {loading ? (
         <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-300 shadow-[0_0_40px_rgba(0,0,0,0.7)]">

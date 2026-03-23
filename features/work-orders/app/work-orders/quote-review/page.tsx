@@ -1,7 +1,4 @@
-// app/work-orders/quote-review/page.tsx (FULL FILE REPLACEMENT)
-// Advisor-facing: list of WOs needing approval.
-// Opens the editable detail view at: /quote-review/[id]
-// Theme: metal card, thin borders/dividers, copper accents
+//features/work-orders/app/work-orders/quote-review/page.tsx (FULL FILE REPLACEMENT)
 
 "use client";
 
@@ -10,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -350,6 +348,17 @@ export default function QuoteReviewIndexPage(): JSX.Element {
           <p className="mt-1 text-sm text-neutral-400">
             Work orders waiting for advisor + customer approval
           </p>
+        </div>
+
+        <div className="mt-4">
+          <SuggestedActionsPanel
+            context={{
+              pageType: "quote_review",
+              pageTitle: "Quote Review",
+            }}
+            title="Suggested Actions for Approvals"
+            description="Recommended next actions for pending approvals, quotes, and blocked work orders"
+          />
         </div>
 
         <ApprovalsList />

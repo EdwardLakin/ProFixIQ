@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -353,6 +354,15 @@ export default function MobileTechQueuePage() {
             <MiniStat label="On hold" value={counts.on_hold} />
           </div>
         </section>
+
+        <SuggestedActionsPanel
+          context={{
+            pageType: "mobile_tech_queue",
+            pageTitle: "Mobile Tech Queue",
+          }}
+          title="Suggested Actions"
+          description="Recommended next actions for your assigned jobs"
+        />
 
         {/* FILTER CARDS (desktop-style vibes) */}
         <section className="grid grid-cols-2 gap-3 text-xs">

@@ -1,3 +1,5 @@
+//features/shared/components/JobQueue.tsx
+
 "use client";
 
 import JobQueueCard from "./JobQueueCard";

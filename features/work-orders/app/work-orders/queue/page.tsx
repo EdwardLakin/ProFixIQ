@@ -1,3 +1,5 @@
+//features/work-orders/app/work-orders/queue/page.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -5,6 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
 import PageShell from "@/features/shared/components/PageShell";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -277,6 +280,15 @@ export default function QueuePage() {
       description="Live view of active work orders for your shop. This is separate from the shop appointments calendar."
     >
       <div className="space-y-6">
+        <SuggestedActionsPanel
+          context={{
+            pageType: "work_order_queue",
+            pageTitle: "Work Order Queue",
+          }}
+          title="Suggested Actions for the Queue"
+          description="Recommended next actions for active work orders, stalled jobs, and technician flow"
+        />
+
         {/* Header row / top summary */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-2 text-xs text-neutral-300">
@@ -303,13 +315,29 @@ export default function QueuePage() {
             </label>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowDebug((v) => !v)}
-            className="ml-auto rounded border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-[11px] text-neutral-300 hover:border-orange-400 hover:text-orange-300"
-          >
-            {showDebug ? "Hide debug" : "Show debug"}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <Link
+              href="/assistant?pageType=work_order_queue&pageTitle=Work%20Order%20Queue"
+              className="rounded border border-orange-400/40 bg-orange-500/10 px-3 py-1.5 text-[11px] text-orange-200 hover:bg-orange-500/15"
+            >
+              Ask Assistant
+            </Link>
+
+            <Link
+              href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20current%20work%20order%20queue%20and%20suggest%20the%20best%20next%20actions"
+              className="rounded border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-[11px] text-neutral-300 hover:border-orange-400 hover:text-orange-300"
+            >
+              Open Planner
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => setShowDebug((v) => !v)}
+              className="rounded border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-[11px] text-neutral-300 hover:border-orange-400 hover:text-orange-300"
+            >
+              {showDebug ? "Hide debug" : "Show debug"}
+            </button>
+          </div>
         </div>
 
         {/* Optional debug block */}
