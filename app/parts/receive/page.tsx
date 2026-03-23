@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveScannedCode } from "@/features/parts/server/scanActions";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
+import Link from "next/link";
 
 type QuaggaResult = { codeResult?: { code?: string | null } | null };
 
@@ -248,7 +250,33 @@ export default function ReceivePage(): JSX.Element {
 
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold text-white">Scan to Receive</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-white">Scan to Receive</h1>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/assistant?pageType=scan_receive&pageTitle=Scan%20to%20Receive"
+            className="rounded border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-sm text-orange-200 hover:bg-orange-500/15"
+          >
+            Ask Assistant
+          </Link>
+          <Link
+            href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20scan-to-receive%20workflow%20and%20suggest%20the%20best%20next%20actions"
+            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:border-orange-400 hover:text-orange-300"
+          >
+            Open Planner
+          </Link>
+        </div>
+      </div>
+
+      <SuggestedActionsPanel
+        context={{
+          pageType: "scan_receive",
+          pageTitle: "Scan to Receive",
+        }}
+        title="Suggested Actions for Receiving"
+        description="Recommended next actions for barcode receiving, PO attribution, and stock updates"
+      />
 
       <div className="text-xs text-neutral-500">
         Shop: <span className="text-neutral-300">{shopId ? shopId.slice(0, 8) : "—"}</span>

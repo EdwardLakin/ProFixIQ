@@ -1,4 +1,4 @@
-// app/dashboard/parts/page.tsx
+// features/dashboard/app/dashboard/parts/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -8,6 +8,8 @@ import type { Database } from "@shared/types/types/supabase";
 import clsx from "clsx";
 import { toast } from "sonner";
 import PartsRequestChat from "@parts/components/PartsRequestChat";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
+import Link from "next/link";
 
 type PartsRequest = Database["public"]["Tables"]["parts_requests"]["Row"];
 
@@ -89,7 +91,33 @@ export default function PartsDashboard() {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto text-white font-blackops">
-      <h1 className="text-3xl text-orange-500 mb-6">Parts Requests</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl text-orange-500">Parts Requests</h1>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/assistant?pageType=parts_dashboard&pageTitle=Parts%20Dashboard"
+            className="rounded border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-sm text-orange-200 hover:bg-orange-500/15"
+          >
+            Ask Assistant
+          </Link>
+          <Link
+            href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20parts%20dashboard%20and%20suggest%20the%20best%20next%20actions"
+            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:border-orange-400 hover:text-orange-300"
+          >
+            Open Planner
+          </Link>
+        </div>
+      </div>
+
+      <SuggestedActionsPanel
+        context={{
+          pageType: "parts_dashboard",
+          pageTitle: "Parts Dashboard",
+        }}
+        title="Suggested Actions for Parts"
+        description="Recommended next actions for active requests, fulfillment, and parts coordination"
+      />
 
       <div className="flex gap-4 mb-6">
         <button

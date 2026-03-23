@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -87,6 +88,15 @@ export default function ReceiveFromPOPage(): JSX.Element {
           Refresh
         </button>
       </div>
+
+      <SuggestedActionsPanel
+        context={{
+          pageType: "po_receive",
+          pageTitle: "Receive from PO",
+        }}
+        title="Suggested Actions for PO Receiving"
+        description="Recommended next actions for purchase orders, partial receiving, and allocation follow-up"
+      />
 
       {/* Errors */}
       {err ? (

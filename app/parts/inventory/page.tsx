@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
+import Link from "next/link";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -712,6 +714,10 @@ export default function InventoryPage(): JSX.Element {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <Link href="/assistant?pageType=parts_inventory&pageTitle=Parts%20Inventory" className={btnCopper}>
+                Ask Assistant
+              </Link>
+
               <input
                 className={`${inputBase} w-72`}
                 placeholder="Search name / SKU / category"
@@ -730,6 +736,15 @@ export default function InventoryPage(): JSX.Element {
           </div>
         </div>
       </div>
+
+      <SuggestedActionsPanel
+        context={{
+          pageType: "parts_inventory",
+          pageTitle: "Parts Inventory",
+        }}
+        title="Suggested Actions for Inventory"
+        description="Recommended next actions for stock cleanup, receiving, low-stock follow-up, and inventory maintenance"
+      />
 
       {loading ? (
         <div className={`${glassCard} p-4 text-sm text-neutral-300`}>Loading…</div>

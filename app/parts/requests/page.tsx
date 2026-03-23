@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -418,6 +419,15 @@ export default function PartsRequestsPage(): JSX.Element {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Link href="/assistant?pageType=parts_requests&pageTitle=Parts%20Requests" className={BTN_COPPER}>
+            Ask Assistant
+          </Link>
+          <Link
+            href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20parts%20requests%20and%20suggest%20the%20best%20next%20actions"
+            className={BTN_GHOST}
+          >
+            Open Planner
+          </Link>
           <Link href="/parts" className={BTN_COPPER}>
             Parts Dashboard
           </Link>
@@ -426,6 +436,15 @@ export default function PartsRequestsPage(): JSX.Element {
           </button>
         </div>
       </div>
+
+      <SuggestedActionsPanel
+        context={{
+          pageType: "parts_requests",
+          pageTitle: "Parts Requests",
+        }}
+        title="Suggested Actions for Parts Requests"
+        description="Recommended next actions for quoting, approvals, fulfillment, and work-order-linked parts demand"
+      />
 
       <div className={`${CARD_PAD} mb-4 space-y-3`}>
         <div className="grid gap-3 md:grid-cols-12 md:items-center">

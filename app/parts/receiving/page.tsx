@@ -3,6 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
+import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -232,13 +234,30 @@ export default function ReceivingInboxPage(): JSX.Element {
           <div className="text-sm text-neutral-400">Receive against a specific request item (supports partial receiving).</div>
         </div>
 
-        <button
-          onClick={() => void load()}
-          className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/70"
-        >
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/assistant?pageType=receiving_inbox&pageTitle=Receiving%20Inbox"
+            className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 hover:border-[color:var(--accent-copper-light,#fed7aa)]"
+          >
+            Ask Assistant
+          </Link>
+          <button
+            onClick={() => void load()}
+            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/70"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
+
+      <SuggestedActionsPanel
+        context={{
+          pageType: "receiving_inbox",
+          pageTitle: "Receiving Inbox",
+        }}
+        title="Suggested Actions for Receiving Inbox"
+        description="Recommended next actions for outstanding receive items, partial receipts, and PO-linked receiving"
+      />
 
       {/* Controls */}
       <div className={`${card} p-4`}>
