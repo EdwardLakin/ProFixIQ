@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "12.2.3 (519615d)"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -3227,15 +3247,11 @@ export type Database = {
         Row: {
           created_at: string | null
           created_by: string | null
-          detected_profile: Json | null
           error: string | null
           error_message: string | null
           extracted_text: string | null
           id: string
-          mapped_sections: Json | null
           original_filename: string | null
-          page_count: number | null
-          parse_version: string | null
           parsed_sections: Json | null
           status: string
           storage_path: string
@@ -3244,15 +3260,11 @@ export type Database = {
         Insert: {
           created_at?: string | null
           created_by?: string | null
-          detected_profile?: Json | null
           error?: string | null
           error_message?: string | null
           extracted_text?: string | null
           id?: string
-          mapped_sections?: Json | null
           original_filename?: string | null
-          page_count?: number | null
-          parse_version?: string | null
           parsed_sections?: Json | null
           status?: string
           storage_path: string
@@ -3261,15 +3273,11 @@ export type Database = {
         Update: {
           created_at?: string | null
           created_by?: string | null
-          detected_profile?: Json | null
           error?: string | null
           error_message?: string | null
           extracted_text?: string | null
           id?: string
-          mapped_sections?: Json | null
           original_filename?: string | null
-          page_count?: number | null
-          parse_version?: string | null
           parsed_sections?: Json | null
           status?: string
           storage_path?: string
@@ -15599,6 +15607,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       agent_action_risk: ["low", "medium", "high"],
@@ -15813,3 +15824,4 @@ export const Constants = {
     },
   },
 } as const
+

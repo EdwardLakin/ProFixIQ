@@ -1,4 +1,3 @@
-// app/api/fleet/forms/upload/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -21,6 +20,18 @@ type FleetParseResult = {
 };
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+function guessMimeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".heic")) return "image/heic";
+  if (lower.endsWith(".heif")) return "image/heif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".tif") || lower.endsWith(".tiff")) return "image/tiff";
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  return "application/octet-stream";
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,8 +60,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Size guardrails
-    const maxSizeBytes = 25 * 1024 * 1024; // 25 MB
+    const vehicleType = String(formData.get("vehicleType") || "").trim();
+    const dutyClass = String(formData.get("dutyClass") || "").trim();
+    const titleHint = String(formData.get("titleHint") || "").trim();
+
+    const maxSizeBytes = 25 * 1024 * 1024;
     if (file.size === 0) {
       return NextResponse.json({ error: "Empty file" }, { status: 400 });
     }
@@ -66,7 +80,6 @@ export async function POST(req: NextRequest) {
     const timestamp = Date.now();
     const mime = file.type || guessMimeFromName(originalName);
 
-    // ✅ Image-only mode (no PDF support)
     const isPdf =
       mime === "application/pdf" || originalName.toLowerCase().endsWith(".pdf");
     if (isPdf) {
@@ -92,23 +105,11 @@ export async function POST(req: NextRequest) {
 
     const storagePath = `${user.id}/${timestamp}-${safeName}`;
 
-    // eslint-disable-next-line no-console
-    console.log("[fleet forms] image upload:", {
-      originalName,
-      mime,
-      size: file.size,
-      storagePath,
-    });
-
-    // 1) Upload to storage (let Supabase sniff)
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
       .upload(storagePath, file);
 
     if (uploadError) {
-      // eslint-disable-next-line no-console
-      console.error("fleet-form upload error:", uploadError);
-
       return NextResponse.json(
         {
           error: `Storage upload failed: ${uploadError.message ?? "unknown error"}`,
@@ -118,7 +119,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2) Register DB row via RPC (user-scoped)
     const { data: rpcData, error: rpcError } = await supabase.rpc(
       "create_fleet_form_upload",
       {
@@ -128,8 +128,6 @@ export async function POST(req: NextRequest) {
     );
 
     if (rpcError || !rpcData) {
-      // eslint-disable-next-line no-console
-      console.error("create_fleet_form_upload error:", rpcError);
       return NextResponse.json(
         { error: "Failed to register fleet form upload", details: rpcError },
         { status: 500 },
@@ -138,18 +136,11 @@ export async function POST(req: NextRequest) {
 
     const uploadId = rpcData as string;
 
-    // 3) Mark processing (service-role)
-    const { error: statusErr } = await admin
+    await admin
       .from("fleet_form_uploads")
       .update({ status: "processing" })
       .eq("id", uploadId);
 
-    if (statusErr) {
-      // eslint-disable-next-line no-console
-      console.error("fleet_form_uploads status update error:", statusErr);
-    }
-
-    // 4) OCR + parsing (Vision image)
     let parsed: FleetParseResult | null = null;
     let extractedText = "";
 
@@ -158,38 +149,44 @@ export async function POST(req: NextRequest) {
       const buffer = Buffer.from(arrayBuffer);
       const base64 = buffer.toString("base64");
 
-      const systemPrompt =
-        "You are an expert OCR and form parser for vehicle/fleet inspection forms. " +
-        "You always respond with STRICT JSON and nothing else.";
+      const systemPrompt = [
+        "You are an expert OCR and fleet inspection form parser.",
+        "Return STRICT JSON only.",
+        "Do not summarize.",
+        "Do not omit sections just because they are long.",
+        "Preserve the original form structure as completely as possible.",
+      ].join(" ");
 
       const userPrompt = [
-        "You are given a photo of a FLEET VEHICLE INSPECTION FORM.",
+        "You are given ONE PAGE from a multi-page fleet vehicle inspection form.",
+        "Your job is OCR plus structure extraction for ALL visible sections and rows on this page.",
         "",
-        "1. Perform OCR on the entire page(s).",
-        "2. Detect the inspection SECTIONS and the individual LINE ITEMS under each section.",
-        "3. For each line item, capture the label text as `item`.",
-        "4. If the label clearly implies a measurement unit (e.g. 'Tread Depth (mm)', 'Tire Pressure (psi)', 'Push Rod Travel (in)'),",
-        "   set `unit` accordingly (mm, in, psi, kPa, ft·lb, etc.). Otherwise, unit may be null.",
-        "",
-        "Return STRICT JSON with this shape:",
-        "",
+        "Return strict JSON with this shape:",
         "{",
-        '  "extracted_text": "full OCR text of the form",',
+        '  "extracted_text": "full OCR text from this page",',
         '  "sections": [',
         "    {",
-        '      "title": "Section title as it appears on the form",',
+        '      "title": "section title exactly from the page",',
         '      "items": [',
-        '        { "item": "LF Tread Depth", "unit": "mm" },',
-        '        { "item": "RF Tire Pressure", "unit": "psi" }',
+        '        { "item": "line item label", "unit": null }',
         "      ]",
         "    }",
         "  ]",
         "}",
         "",
-        "Important:",
-        "- Keep `sections` and `items` in the same order as the original form where possible.",
-        "- Do not invent extra fields that are not clearly present.",
-        "- DO NOT wrap the JSON in markdown. Return raw JSON only.",
+        "Rules:",
+        "- Capture every visible inspection row you can read.",
+        "- Preserve page order.",
+        "- Use the printed section headers from the form.",
+        "- If a page contains a large table with grouped headers, output each group as its own section.",
+        "- If an item is a measurement row like tire pressure or tread depth, set unit when obvious.",
+        "- If a field is a fill-in blank like VIN, date, mileage, technician name, include it as an item.",
+        "- Do not collapse many rows into 2 or 3 generic lines.",
+        "- Do not invent items not visible on the page.",
+        "",
+        `Vehicle type hint: ${vehicleType || "unknown"}`,
+        `Duty class hint: ${dutyClass || "unknown"}`,
+        `Title hint: ${titleHint || "unknown"}`,
       ].join("\n");
 
       const completion = await openai.chat.completions.create({
@@ -215,19 +212,9 @@ export async function POST(req: NextRequest) {
       const content = completion.choices[0]?.message?.content;
       if (!content) throw new Error("No content from OpenAI");
 
-      let obj: FleetParseResult;
-      try {
-        obj = JSON.parse(content) as FleetParseResult;
-      } catch {
-        throw new Error("Failed to parse OpenAI JSON response");
-      }
-
-      parsed = obj;
-      extractedText = (obj.extracted_text ?? "").toString();
+      parsed = JSON.parse(content) as FleetParseResult;
+      extractedText = (parsed.extracted_text ?? "").toString();
     } catch (scanError: unknown) {
-      // eslint-disable-next-line no-console
-      console.error("fleet form scan error:", scanError);
-
       const errorMessage =
         scanError instanceof Error
           ? scanError.message
@@ -252,7 +239,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5) Persist result
     const safeSections: FleetParseSection[] = Array.isArray(parsed?.sections)
       ? parsed.sections ?? []
       : [];
@@ -275,23 +261,10 @@ export async function POST(req: NextRequest) {
       { status: 200 },
     );
   } catch (err: unknown) {
-    // eslint-disable-next-line no-console
     console.error("fleet forms upload route fatal error:", err);
     return NextResponse.json(
       { error: "Unexpected error uploading fleet form" },
       { status: 500 },
     );
   }
-}
-
-function guessMimeFromName(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".heic")) return "image/heic";
-  if (lower.endsWith(".heif")) return "image/heif";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".tif") || lower.endsWith(".tiff")) return "image/tiff";
-  if (lower.endsWith(".pdf")) return "application/pdf";
-  return "application/octet-stream";
 }

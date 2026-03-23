@@ -1,5 +1,3 @@
-//app/inspections/fleet-review/page.tsx
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -15,8 +13,6 @@ type FleetFormUpload = DB["public"]["Tables"]["fleet_form_uploads"]["Row"];
 
 type EditableItem = { item: string; unit?: string | null };
 type EditableSection = { title: string; items: EditableItem[] };
-
-/* ------------------------ parsed_sections normalizer ------------------------ */
 
 function normalizeParsedSections(parsed: FleetFormUpload["parsed_sections"]): EditableSection[] {
   if (!Array.isArray(parsed)) return [];
@@ -55,7 +51,7 @@ function normalizeParsedSections(parsed: FleetFormUpload["parsed_sections"]): Ed
       const rawUnit = itemCandidate.unit;
       let unit: string | null = null;
       if (typeof rawUnit === "string" && rawUnit.trim().length > 0) {
-        unit = rawUnit;
+        unit = rawUnit.trim();
       }
 
       items.push({ item: label, unit });
@@ -72,29 +68,30 @@ function normalizeParsedSections(parsed: FleetFormUpload["parsed_sections"]): Ed
   return sections;
 }
 
-/* -------------------------------------------------------------------------- */
-
 export default function FleetFormReviewPage() {
   const router = useRouter();
   const sp = useSearchParams();
-  const supabase = useMemo(
-    () => createClientComponentClient<DB>(),
-    [],
-  );
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const uploadId = sp.get("uploadId");
+  const uploadIds = sp.get("uploadIds");
   const vehicleTypeParam = sp.get("vehicleType") || "";
   const dutyClassParam = sp.get("dutyClass") as DutyClass | "" | null;
   const titleHintParam = sp.get("titleHint") || "";
 
   const [loading, setLoading] = useState(true);
-  const [upload, setUpload] = useState<FleetFormUpload | null>(null);
+  const [uploads, setUploads] = useState<FleetFormUpload[]>([]);
   const [sections, setSections] = useState<EditableSection[]>([]);
   const [templateTitle, setTemplateTitle] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!uploadId) {
+    const ids = (uploadIds || uploadId || "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    if (ids.length === 0) {
       setErrorMsg("Missing uploadId.");
       setLoading(false);
       return;
@@ -107,38 +104,55 @@ export default function FleetFormReviewPage() {
       const { data, error } = await supabase
         .from("fleet_form_uploads")
         .select("*")
-        .eq("id", uploadId)
-        .maybeSingle<FleetFormUpload>();
+        .in("id", ids);
 
-      if (error || !data) {
-        // eslint-disable-next-line no-console
+      if (error || !data || data.length === 0) {
         console.error("fleet_form_upload fetch error:", error);
         setErrorMsg("Unable to load fleet form.");
         setLoading(false);
         return;
       }
 
-      setUpload(data);
+      const ordered = ids
+        .map((id) => data.find((row) => row.id === id))
+        .filter((row): row is FleetFormUpload => Boolean(row));
 
-      const editable = normalizeParsedSections(data.parsed_sections);
-      setSections(editable);
+      setUploads(ordered);
+
+      const merged: EditableSection[] = [];
+      for (const row of ordered) {
+        const normalized = normalizeParsedSections(row.parsed_sections);
+        merged.push(...normalized);
+      }
+
+      setSections(merged);
 
       const defaultTitle =
         titleHintParam ||
-        data.original_filename?.replace(/\.[^.]+$/, "") ||
+        ordered[0]?.original_filename?.replace(/\.[^.]+$/, "") ||
         "Fleet Inspection Template";
 
       setTemplateTitle(defaultTitle);
-
       setLoading(false);
     })();
-  }, [uploadId, supabase, titleHintParam]);
+  }, [uploadId, uploadIds, supabase, titleHintParam]);
 
   const statusChip = useMemo(() => {
-    const s = upload?.status || "";
-    if (!s) return "Unknown";
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  }, [upload]);
+    if (uploads.length === 0) return "Unknown";
+    const statuses = Array.from(new Set(uploads.map((u) => u.status || ""))).filter(Boolean);
+    return statuses.join(", ");
+  }, [uploads]);
+
+  const combinedExtractedText = useMemo(() => {
+    return uploads
+      .map((u, index) => {
+        const text = u.extracted_text?.trim() || "";
+        if (!text) return "";
+        return uploads.length > 1 ? `--- PAGE ${index + 1} ---\n${text}` : text;
+      })
+      .filter(Boolean)
+      .join("\n\n");
+  }, [uploads]);
 
   const dutyClass: DutyClass | "" = dutyClassParam || "";
 
@@ -161,18 +175,11 @@ export default function FleetFormReviewPage() {
       const sec = next[sectionIndex];
       const items = [...sec.items];
 
-      const updated: EditableItem =
+      items[itemIndex] =
         field === "item"
-          ? {
-              ...items[itemIndex],
-              item: value,
-            }
-          : {
-              ...items[itemIndex],
-              unit: value || null,
-            };
+          ? { ...items[itemIndex], item: value }
+          : { ...items[itemIndex], unit: value || null };
 
-      items[itemIndex] = updated;
       next[sectionIndex] = { ...sec, items };
       return next;
     });
@@ -209,7 +216,7 @@ export default function FleetFormReviewPage() {
         items: s.items
           .map<EditableItem>((it) => ({
             item: (it.item || "").trim(),
-            unit: it.unit && it.unit.trim().length > 0 ? it.unit : null,
+            unit: it.unit && it.unit.trim().length > 0 ? it.unit.trim() : null,
           }))
           .filter((it) => it.item.length > 0),
       }))
@@ -245,20 +252,19 @@ export default function FleetFormReviewPage() {
     if (vehicleTypeParam) qs.set("vehicleType", vehicleTypeParam);
     if (dutyClass) qs.set("dutyClass", dutyClass);
     qs.set("source", "fleet-import");
-    if (uploadId) qs.set("fleetUploadId", uploadId);
+    if (uploadIds) qs.set("fleetUploadIds", uploadIds);
+    else if (uploadId) qs.set("fleetUploadId", uploadId);
 
     router.push(`/inspections/custom-draft?${qs.toString()}`);
   };
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 text-white">
-      {/* metallic / copper wash */}
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
 
-      {/* Header + chips */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
@@ -276,6 +282,14 @@ export default function FleetFormReviewPage() {
               {statusChip}
             </span>
           </span>
+          {uploads.length > 1 && (
+            <span className="rounded-full border border-neutral-600 bg-black/60 px-2 py-1 text-neutral-300">
+              Pages:{" "}
+              <span className="font-semibold text-neutral-100">
+                {uploads.length}
+              </span>
+            </span>
+          )}
           {vehicleTypeParam && (
             <span className="rounded-full border border-neutral-600 bg-black/60 px-2 py-1 text-neutral-300">
               Vehicle:{" "}
@@ -305,19 +319,13 @@ export default function FleetFormReviewPage() {
         <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-6 text-sm text-neutral-300 shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
           Loading fleet form…
         </div>
-      ) : !upload ? (
+      ) : uploads.length === 0 ? (
         <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-6 text-sm text-neutral-300 shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
           No fleet form found for that id.
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr),minmax(0,1.4fr)]">
-          {/* Left: OCR text */}
-          <section
-            className="
-              relative rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)]
-              bg-black/70 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl
-            "
-          >
+          <section className="relative rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-neutral-400">
@@ -333,8 +341,8 @@ export default function FleetFormReviewPage() {
             </div>
 
             <div className="h-[320px] overflow-auto rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-3 text-xs text-neutral-200">
-              {upload.extracted_text?.trim() ? (
-                upload.extracted_text.split("\n").map((line, idx) => (
+              {combinedExtractedText.trim() ? (
+                combinedExtractedText.split("\n").map((line, idx) => (
                   <p key={idx} className="whitespace-pre-wrap">
                     {line}
                   </p>
@@ -347,18 +355,11 @@ export default function FleetFormReviewPage() {
             </div>
 
             <p className="mt-2 text-[10px] text-neutral-500">
-              Use this as a reference if any sections or items look off on the
-              right-hand side.
+              Use this as a reference if any sections or items look off on the right-hand side.
             </p>
           </section>
 
-          {/* Right: sections + mapping */}
-          <section
-            className="
-              relative rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)]
-              bg-black/70 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl
-            "
-          >
+          <section className="relative rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl">
             <div className="mb-3">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-neutral-400">
@@ -374,10 +375,7 @@ export default function FleetFormReviewPage() {
                 <input
                   value={templateTitle}
                   onChange={(e) => setTemplateTitle(e.target.value)}
-                  className="
-                    rounded-xl border border-[color:var(--metal-border-soft,#374151)]
-                    bg-black/75 px-3 py-2 text-xs text-white placeholder:text-neutral-500
-                  "
+                  className="rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/75 px-3 py-2 text-xs text-white placeholder:text-neutral-500"
                   placeholder="ABC Logistics – Daily Truck Inspection"
                 />
               </label>
@@ -403,10 +401,7 @@ export default function FleetFormReviewPage() {
                           onChange={(e) =>
                             handleSectionTitleChange(i, e.target.value)
                           }
-                          className="
-                            rounded-lg border border-[color:var(--metal-border-soft,#374151)]
-                            bg-black/75 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500
-                          "
+                          className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/75 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500"
                           placeholder="Section title"
                         />
                       </label>
@@ -426,10 +421,7 @@ export default function FleetFormReviewPage() {
                             onChange={(e) =>
                               handleItemChange(i, j, "item", e.target.value)
                             }
-                            className="
-                              rounded-lg border border-[color:var(--metal-border-soft,#374151)]
-                              bg-black/80 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500
-                            "
+                            className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/80 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500"
                             placeholder="Item label"
                           />
                           <input
@@ -437,11 +429,8 @@ export default function FleetFormReviewPage() {
                             onChange={(e) =>
                               handleItemChange(i, j, "unit", e.target.value)
                             }
-                            className="
-                              rounded-lg border border-[color:var(--metal-border-soft,#374151)]
-                              bg-black/80 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500
-                            "
-                            placeholder="Unit (mm, psi, in, kPa, ft·lb…)"
+                            className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/80 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500"
+                            placeholder="Unit"
                           />
                         </div>
                       ))}
@@ -451,11 +440,7 @@ export default function FleetFormReviewPage() {
                       <button
                         type="button"
                         onClick={() => handleAddItem(i)}
-                        className="
-                          rounded-full border border-[color:var(--metal-border-soft,#374151)]
-                          bg-black/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]
-                          text-neutral-200 hover:bg-black/80
-                        "
+                        className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-black/80"
                       >
                         + Add item
                       </button>
@@ -469,11 +454,7 @@ export default function FleetFormReviewPage() {
               <button
                 type="button"
                 onClick={handleAddSection}
-                className="
-                  rounded-full border border-[color:var(--metal-border-soft,#374151)]
-                  bg-black/70 px-3 py-1.5 text-[10px] font-semibold uppercase
-                  tracking-[0.16em] text-neutral-200 hover:bg-black/80
-                "
+                className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-black/80"
               >
                 + Add Section
               </button>
@@ -481,11 +462,7 @@ export default function FleetFormReviewPage() {
               <Button
                 type="button"
                 onClick={handleUseInDraft}
-                className="
-                  rounded-full border border-[color:var(--metal-border-soft,#374151)]
-                  bg-black/70 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em]
-                  text-neutral-100 hover:bg-black/80 hover:border-neutral-500
-                "
+                className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/80 hover:border-neutral-500"
               >
                 Use in Custom Draft
               </Button>
