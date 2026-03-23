@@ -85,6 +85,18 @@ export async function POST(req: Request) {
 
   const { goal, context, idempotencyKey = null } = parsed.data;
 
+  // 🔥 Normalize context so planner always has usable inputs
+  const normalizedContext = {
+    ...context,
+    customerQuery: context.customerQuery ?? context.customer ?? undefined,
+    plateOrVin: context.plateOrVin ?? context.vin ?? context.plate ?? undefined,
+    workOrderId: context.workOrderId ?? context.id ?? undefined,
+    allowCreate:
+      context.allowCreate === true ||
+      context.allow_create === true,
+  };
+
+
   const defaultPlanner: PlannerKind =
     process.env.OPENAI_API_KEY ? "ops" : "simple";
 
@@ -155,13 +167,13 @@ export async function POST(req: Request) {
     });
 
     if (planner === "simple") {
-      await runSimplePlan(goal, context, ctx, emit);
+      await runSimplePlan(goal, normalizedContext, ctx, emit);
     } else if (planner === "fleet") {
-      await runFleetPlanner(goal, context, ctx, emit);
+      await runFleetPlanner(goal, normalizedContext, ctx, emit);
     } else if (planner === "approvals") {
-      await runApprovalPlanner(goal, context, ctx, emit);
+      await runApprovalPlanner(goal, normalizedContext, ctx, emit);
     } else {
-      await runOpenAIPlanner(goal, context, ctx, emit);
+      await runOpenAIPlanner(goal, normalizedContext, ctx, emit);
     }
 
     await emit({ kind: "final", text: "Planner finished." });

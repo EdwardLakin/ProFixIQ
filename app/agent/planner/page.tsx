@@ -266,6 +266,9 @@ export default function PlannerPage() {
   useEffect(() => {
     const plannerParam = searchParams.get("planner");
     const goalParam = searchParams.get("goal");
+    const titleParam = searchParams.get("title");
+    const descriptionParam = searchParams.get("description");
+    const lineDescriptionParam = searchParams.get("lineDescription");
     const customerParam = searchParams.get("customerQuery");
     const plateParam = searchParams.get("plateOrVin");
     const emailParam = searchParams.get("emailInvoiceTo");
@@ -283,7 +286,16 @@ export default function PlannerPage() {
       setPlanner(plannerParam);
     }
 
-    if (goalParam) setGoal(goalParam);
+    const synthesizedGoal =
+      goalParam ||
+      lineDescriptionParam ||
+      (titleParam && descriptionParam
+        ? `Resolve this issue: ${titleParam}. ${descriptionParam}`
+        : titleParam
+          ? `Resolve this issue: ${titleParam}`
+          : descriptionParam || "");
+
+    if (synthesizedGoal) setGoal(synthesizedGoal);
     if (customerParam) setCustomerQuery(customerParam);
     if (plateParam) setPlateOrVin(plateParam);
     if (emailParam) setEmailInvoiceTo(emailParam);
@@ -565,6 +577,31 @@ export default function PlannerPage() {
     { id: "approvals", label: "Advisor approvals" },
   ];
 
+  const plannerActionLabel =
+    planner === "fleet"
+      ? "Run Fleet Plan"
+      : planner === "approvals"
+        ? "Run Approval Plan"
+        : planner === "simple"
+          ? "Run Simple Plan"
+          : "Run Assistant";
+
+  const hasPlannerContext =
+    !!goal.trim() ||
+    !!customerQuery.trim() ||
+    !!plateOrVin.trim() ||
+    !!workOrderId.trim() ||
+    !!bookingId.trim();
+
+  const autofillSummary = [
+    customerQuery.trim() ? `Customer: ${customerQuery.trim()}` : null,
+    plateOrVin.trim() ? `Plate/VIN: ${plateOrVin.trim()}` : null,
+    workOrderId.trim() ? `WO: ${workOrderId.trim()}` : null,
+    bookingId.trim() ? `Booking: ${bookingId.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
+
   return (
     <PageShell
       title="AI Planner"
@@ -634,10 +671,25 @@ export default function PlannerPage() {
           ) : null}
         </div>
 
+        <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            What to do here
+          </div>
+          <div className="mt-1 text-sm text-neutral-300">
+            Type the result you want, not the steps. Examples: “Resolve this held job line”,
+            “Show me what this customer approved last visit”, or “Create a work order for this vehicle”.
+          </div>
+          {autofillSummary ? (
+            <div className="mt-2 text-xs text-orange-300">
+              Autofilled context: {autofillSummary}
+            </div>
+          ) : null}
+        </div>
+
         <textarea
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
-          placeholder='e.g. "When was the last time John Smith visited?" or "What is Mike working on?" or "Reschedule booking 123 to tomorrow at 10am"'
+          placeholder='e.g. "Resolve this held line", "When was the last time John Smith visited?", or "Create a work order for this VIN"'
           className="mt-3 min-h-[120px] w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
         />
 
@@ -804,10 +856,17 @@ export default function PlannerPage() {
             variant="outline"
             size="md"
             isLoading={running}
-            disabled={!goal.trim() || running}
-            className="min-w-[140px]"
+            disabled={
+              running ||
+              (!goal.trim() &&
+                !customerQuery.trim() &&
+                !plateOrVin.trim() &&
+                !workOrderId.trim() &&
+                !bookingId.trim())
+            }
+            className="min-w-[160px]"
           >
-            Run Plan
+            {plannerActionLabel}
           </Button>
 
           <Button
@@ -820,6 +879,12 @@ export default function PlannerPage() {
             Clear
           </Button>
         </div>
+
+        {!hasPlannerContext ? (
+          <div className="mt-3 text-center text-xs text-neutral-500">
+            Add a goal or let a Suggested Action prefill this page.
+          </div>
+        ) : null}
       </div>
 
       {previewWoId ? (

@@ -158,6 +158,18 @@ function getPlannerMode(context: Record<string, unknown>): PlannerMode {
   return "openai";
 }
 
+
+
+function extractCustomerFromGoal(goal: string): string | undefined {
+  const match = goal.match(/([A-Z][a-z]+\s[A-Z][a-z]+)/);
+  return match ? match[1] : undefined;
+}
+
+function extractWorkOrderFromGoal(goal: string): string | undefined {
+  const match = goal.match(/WO[#\s]*([A-Za-z0-9\-]+)/i);
+  return match ? match[1] : undefined;
+}
+
 function extractPlateOrVinFromGoal(goal: string): string | undefined {
   const vinLike = goal.match(/\b[A-HJ-NPR-Z0-9]{11,17}\b/i)?.[0];
   if (vinLike) return vinLike.toUpperCase();
@@ -285,7 +297,12 @@ export async function runOpenAIPlanner(
 
   const lowerGoal = goal.toLowerCase();
 
-  const customerQuery =
+  // 🔥 Extract structured hints from goal
+  const inferredCustomer = extractCustomerFromGoal(goal);
+  const inferredWO = extractWorkOrderFromGoal(goal);
+
+
+  const customerQuery = inferredCustomer ??
     normalizeText(parsed.customerQuery) ??
     normalizeText(get<string>(context, "customerQuery"));
 
@@ -300,7 +317,7 @@ export async function runOpenAIPlanner(
   const vehicleId =
     normalizeText(parsed.vehicleId) ?? normalizeText(get<string>(context, "vehicleId"));
 
-  const workOrderId =
+  const workOrderId = inferredWO ??
     normalizeText(parsed.workOrderId) ??
     normalizeText(get<string>(context, "workOrderId")) ??
     normalizeText(get<string>(context, "id"));
