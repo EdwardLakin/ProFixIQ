@@ -1,6 +1,11 @@
 import OpenAI from "openai";
 
-import type { AssistantResponse } from "../types/assistant";
+import type {
+  AssistantAction,
+  AssistantNotification,
+  AssistantResponse,
+  PlannerPayload,
+} from "../types/assistant";
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
 
 type RunAssistantParams = {
@@ -10,13 +15,22 @@ type RunAssistantParams = {
   query: string;
 };
 
+type LlmAssistantAction =
+  | {
+      kind?: "link";
+      label?: string;
+      href?: string;
+    }
+  | {
+      kind?: "planner";
+      label?: string;
+      plannerPayload?: PlannerPayload;
+    };
+
 type LlmAssistantResponse = {
   summary: string;
   bullets?: string[];
-  actions?: Array<{
-    label: string;
-    href: string;
-  }>;
+  actions?: LlmAssistantAction[];
 };
 
 function getOpenAIClient(): OpenAI | null {
@@ -25,8 +39,60 @@ function getOpenAIClient(): OpenAI | null {
   return new OpenAI({ apiKey });
 }
 
+function extractPlannerPayloadFromNotification(
+  item: AssistantNotification,
+): PlannerPayload {
+  const payload: PlannerPayload = {
+    planner: "ops",
+    allowCreate: false,
+    goal: `Fix this issue: ${item.title}. ${item.message}`,
+  };
+
+  if (item.entityType === "work_order" && item.entityId) {
+    payload.workOrderId = item.entityId;
+  }
+
+  const href = item.href ?? "";
+
+  const bookingMatch = href.match(/bookings\/([^/?#]+)/i);
+  if (bookingMatch?.[1]) {
+    payload.bookingId = bookingMatch[1];
+  }
+
+  const workOrderMatch =
+    href.match(/work-orders\/([^/?#]+)/i) ??
+    href.match(/quote-review\/([^/?#]+)/i);
+
+  if (workOrderMatch?.[1]) {
+    payload.workOrderId = workOrderMatch[1];
+  }
+
+  return payload;
+}
+
+function buildFallbackActions(
+  links: Array<{ label: string; href: string }>,
+  notifications: AssistantNotification[],
+): AssistantAction[] {
+  const actions: AssistantAction[] = links.slice(0, 4).map((item) => ({
+    kind: "link",
+    label: item.label,
+    href: item.href,
+  }));
+
+  const topAlert = notifications[0];
+  if (topAlert) {
+    actions.unshift({
+      kind: "planner",
+      label: "Fix in Planner",
+      plannerPayload: extractPlannerPayloadFromNotification(topAlert),
+    });
+  }
+
+  return actions.slice(0, 6);
+}
+
 function buildFallbackResponse(params: {
-  query: string;
   summary: Awaited<ReturnType<typeof getRoleDailySummary>>;
 }): AssistantResponse {
   const { summary } = params;
@@ -34,7 +100,18 @@ function buildFallbackResponse(params: {
   return {
     summary: summary.summaryText,
     bullets: summary.actionItems.slice(0, 5),
-    actions: summary.links.slice(0, 6),
+    actions: buildFallbackActions(summary.links, summary.notifications.slice(0, 4).map((item) => ({
+      level:
+        item.level === "urgent" || item.level === "warning"
+          ? item.level
+          : "info",
+      code: item.code,
+      title: item.title,
+      message: item.message,
+      href: item.href,
+      entityType: item.entityType,
+      entityId: item.entityId,
+    }))),
     notifications: summary.notifications.slice(0, 4).map((item) => ({
       level:
         item.level === "urgent" || item.level === "warning"
@@ -50,10 +127,62 @@ function buildFallbackResponse(params: {
   };
 }
 
+function normalizeAction(
+  action: LlmAssistantAction,
+): AssistantAction | null {
+  if (!action || typeof action !== "object") return null;
+
+  if (action.kind === "planner") {
+    const label =
+      "label" in action && typeof action.label === "string"
+        ? action.label.trim()
+        : "";
+    const plannerPayload =
+      "plannerPayload" in action &&
+      action.plannerPayload &&
+      typeof action.plannerPayload === "object"
+        ? action.plannerPayload
+        : null;
+
+    if (!label || !plannerPayload) return null;
+
+    return {
+      kind: "planner",
+      label,
+      plannerPayload,
+    };
+  }
+
+  if (
+    "label" in action &&
+    typeof action.label === "string" &&
+    "href" in action &&
+    typeof action.href === "string" &&
+    action.label.trim() &&
+    action.href.trim()
+  ) {
+    return {
+      kind: "link",
+      label: action.label.trim(),
+      href: action.href.trim(),
+    };
+  }
+
+  return null;
+}
+
 function normalizeLlmResponse(
   raw: LlmAssistantResponse,
   fallback: AssistantResponse,
 ): AssistantResponse {
+  const actions =
+    Array.isArray(raw.actions) && raw.actions.length > 0
+      ? raw.actions
+          .map(normalizeAction)
+          .filter((item): item is AssistantAction => Boolean(item))
+          .slice(0, 6)
+      : fallback.actions;
+
   return {
     summary: raw.summary?.trim() || fallback.summary,
     bullets:
@@ -63,25 +192,7 @@ function normalizeLlmResponse(
             .filter((item): item is string => Boolean(item))
             .slice(0, 5)
         : fallback.bullets,
-    actions:
-      Array.isArray(raw.actions) && raw.actions.length > 0
-        ? raw.actions
-            .filter(
-              (item): item is { label: string; href: string } =>
-                Boolean(
-                  item &&
-                    typeof item.label === "string" &&
-                    item.label.trim() &&
-                    typeof item.href === "string" &&
-                    item.href.trim(),
-                ),
-            )
-            .map((item) => ({
-              label: item.label.trim(),
-              href: item.href.trim(),
-            }))
-            .slice(0, 6)
-        : fallback.actions,
+    actions,
     notifications: fallback.notifications,
   };
 }
@@ -96,7 +207,6 @@ export async function runAssistant(
   });
 
   const fallback = buildFallbackResponse({
-    query: params.query,
     summary: dailySummary,
   });
 
@@ -112,7 +222,10 @@ export async function runAssistant(
     "Keep the answer concise and operational.",
     "Return JSON with keys: summary, bullets, actions.",
     "bullets should be 0-5 short strings.",
-    "actions should be 0-6 items with label and href.",
+    "actions should be 0-6 items.",
+    'A link action format is: {"kind":"link","label":"Open work order","href":"/work-orders/123"}',
+    'A planner action format is: {"kind":"planner","label":"Fix in Planner","plannerPayload":{"goal":"Fix this issue","workOrderId":"123","planner":"ops","allowCreate":false}}',
+    "Use planner actions when the user is asking to fix, resolve, follow up, reschedule, create, or take action.",
     "",
     `Role: ${dailySummary.role}`,
     `User question: ${params.query}`,

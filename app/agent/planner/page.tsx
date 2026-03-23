@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -235,6 +235,7 @@ export default function PlannerPage() {
   const setVehicleDraft = useWorkOrderDraft((s) => s.setVehicle);
   const setCustomerDraft = useWorkOrderDraft((s) => s.setCustomer);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     let mounted = true;
@@ -261,6 +262,37 @@ export default function PlannerPage() {
     const em = (draft?.customer?.email ?? "").trim();
     if (em && !emailInvoiceTo) setEmailInvoiceTo(em);
   }, [draft, emailInvoiceTo, plateOrVin]);
+
+  useEffect(() => {
+    const plannerParam = searchParams.get("planner");
+    const goalParam = searchParams.get("goal");
+    const customerParam = searchParams.get("customerQuery");
+    const plateParam = searchParams.get("plateOrVin");
+    const emailParam = searchParams.get("emailInvoiceTo");
+    const bookingParam = searchParams.get("bookingId");
+    const workOrderParam = searchParams.get("workOrderId");
+    const allowCreateParam = searchParams.get("allowCreate");
+
+    if (
+      plannerParam === "ops" ||
+      plannerParam === "openai" ||
+      plannerParam === "simple" ||
+      plannerParam === "fleet" ||
+      plannerParam === "approvals"
+    ) {
+      setPlanner(plannerParam);
+    }
+
+    if (goalParam) setGoal(goalParam);
+    if (customerParam) setCustomerQuery(customerParam);
+    if (plateParam) setPlateOrVin(plateParam);
+    if (emailParam) setEmailInvoiceTo(emailParam);
+    if (bookingParam) setBookingId(bookingParam);
+    if (workOrderParam) setWorkOrderId(workOrderParam);
+    if (allowCreateParam === "1") setAllowCreate(true);
+    if (allowCreateParam === "0") setAllowCreate(false);
+  }, [searchParams]);
+
 
   function onPickPhoto(file: File | null) {
     setPhoto(file);

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { AssistantResponse } from "../types/assistant";
+import { buildPlannerHref } from "../lib/buildPlannerHref";
 
 type Props = {
   data: AssistantResponse | { error: string } | null;
@@ -42,15 +43,25 @@ export default function AssistantResponseCard({ data }: Props) {
 
       {data.actions.length > 0 ? (
         <div className="mt-4 flex flex-wrap gap-2">
-          {data.actions.map((action, i) => (
-            <Link
-              key={`${action.href}-${i}`}
-              href={action.href}
-              className="rounded-full border border-orange-400/40 px-3 py-1 text-xs text-orange-300"
-            >
-              {action.label}
-            </Link>
-          ))}
+          {data.actions.map((action, i) =>
+            action.kind === "planner" ? (
+              <Link
+                key={`${action.label}-${i}`}
+                href={buildPlannerHref(action.plannerPayload)}
+                className="rounded-full border border-orange-400/40 bg-orange-500/10 px-3 py-1 text-xs text-orange-300"
+              >
+                {action.label}
+              </Link>
+            ) : (
+              <Link
+                key={`${action.href}-${i}`}
+                href={action.href}
+                className="rounded-full border border-orange-400/40 px-3 py-1 text-xs text-orange-300"
+              >
+                {action.label}
+              </Link>
+            ),
+          )}
         </div>
       ) : null}
 

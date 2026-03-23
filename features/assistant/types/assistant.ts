@@ -1,7 +1,25 @@
-export type AssistantAction = {
-  label: string;
-  href: string;
+export type PlannerPayload = {
+  goal?: string;
+  customerQuery?: string;
+  plateOrVin?: string;
+  emailInvoiceTo?: string;
+  bookingId?: string;
+  workOrderId?: string;
+  allowCreate?: boolean;
+  planner?: "ops" | "openai" | "simple" | "fleet" | "approvals";
 };
+
+export type AssistantAction =
+  | {
+      kind: "link";
+      label: string;
+      href: string;
+    }
+  | {
+      kind: "planner";
+      label: string;
+      plannerPayload: PlannerPayload;
+    };
 
 export type AssistantNotification = {
   level: "info" | "warning" | "urgent";
