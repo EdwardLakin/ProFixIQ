@@ -57,7 +57,6 @@ function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
-
 function toMsg(e: unknown): string {
   if (typeof e === "string") return e;
   if (isObj(e)) {
@@ -221,6 +220,7 @@ export default function PlannerPage() {
   const [running, setRunning] = useState(false);
 
   const esRef = useRef<EventSource | null>(null);
+  const autoRanRef = useRef(false);
 
   const [previewWoId, setPreviewWoId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -266,10 +266,9 @@ export default function PlannerPage() {
   useEffect(() => {
     const plannerParam = searchParams.get("planner");
     const goalParam = searchParams.get("goal");
-    const titleParam = searchParams.get("title");
-    const descriptionParam = searchParams.get("description");
-    const lineDescriptionParam = searchParams.get("lineDescription");
     const customerParam = searchParams.get("customerQuery");
+    const customerIdParam = searchParams.get("customerId");
+    const vehicleIdParam = searchParams.get("vehicleId");
     const plateParam = searchParams.get("plateOrVin");
     const emailParam = searchParams.get("emailInvoiceTo");
     const bookingParam = searchParams.get("bookingId");
@@ -286,18 +285,11 @@ export default function PlannerPage() {
       setPlanner(plannerParam);
     }
 
-    const synthesizedGoal =
-      goalParam ||
-      lineDescriptionParam ||
-      (titleParam && descriptionParam
-        ? `Resolve this issue: ${titleParam}. ${descriptionParam}`
-        : titleParam
-          ? `Resolve this issue: ${titleParam}`
-          : descriptionParam || "");
-
-    if (synthesizedGoal) setGoal(synthesizedGoal);
+    if (goalParam) setGoal(goalParam);
     if (customerParam) setCustomerQuery(customerParam);
+    if (!customerParam && customerIdParam) setCustomerQuery(customerIdParam);
     if (plateParam) setPlateOrVin(plateParam);
+    if (!plateParam && vehicleIdParam) setPlateOrVin(vehicleIdParam);
     if (emailParam) setEmailInvoiceTo(emailParam);
     if (bookingParam) setBookingId(bookingParam);
     if (workOrderParam) setWorkOrderId(workOrderParam);
@@ -305,6 +297,132 @@ export default function PlannerPage() {
     if (allowCreateParam === "0") setAllowCreate(false);
   }, [searchParams]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateFromContext() {
+      const customerIdParam = searchParams.get("customerId");
+      const vehicleIdParam = searchParams.get("vehicleId");
+      const workOrderIdParam = searchParams.get("workOrderId");
+
+      let resolvedCustomerId = customerIdParam;
+      let resolvedVehicleId = vehicleIdParam;
+
+      if (workOrderIdParam) {
+        const { data: wo } = await supabase
+          .from("work_orders")
+          .select("id, customer_id, vehicle_id")
+          .eq("id", workOrderIdParam)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (wo?.customer_id && !resolvedCustomerId) {
+          resolvedCustomerId = wo.customer_id;
+        }
+        if (wo?.vehicle_id && !resolvedVehicleId) {
+          resolvedVehicleId = wo.vehicle_id;
+        }
+      }
+
+      if (resolvedCustomerId) {
+        const { data: customer } = await supabase
+          .from("customers")
+          .select("id, first_name, last_name, business_name, email")
+          .eq("id", resolvedCustomerId)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        const businessName =
+          typeof customer?.business_name === "string"
+            ? customer.business_name.trim()
+            : "";
+        const fullName = [customer?.first_name ?? "", customer?.last_name ?? ""]
+          .map((v) => (typeof v === "string" ? v.trim() : ""))
+          .filter(Boolean)
+          .join(" ");
+
+        const displayName = businessName || fullName;
+
+        if (displayName && !customerQuery.trim()) {
+          setCustomerQuery(displayName);
+        }
+
+        if (
+          typeof customer?.email === "string" &&
+          customer.email.trim() &&
+          !emailInvoiceTo.trim()
+        ) {
+          setEmailInvoiceTo(customer.email.trim());
+        }
+
+        setCustomerDraft({
+          first_name:
+            typeof customer?.first_name === "string"
+              ? customer.first_name
+              : undefined,
+          last_name:
+            typeof customer?.last_name === "string"
+              ? customer.last_name
+              : undefined,
+          email:
+            typeof customer?.email === "string" ? customer.email : undefined,
+          phone: undefined,
+        });
+      }
+
+      if (resolvedVehicleId) {
+        const { data: vehicle } = await supabase
+          .from("vehicles")
+          .select("id, vin, license_plate, year, make, model, trim, engine")
+          .eq("id", resolvedVehicleId)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        const preferred =
+          typeof vehicle?.vin === "string" && vehicle.vin.trim()
+            ? vehicle.vin.trim()
+            : typeof vehicle?.license_plate === "string" &&
+                vehicle.license_plate.trim()
+              ? vehicle.license_plate.trim()
+              : "";
+
+        if (preferred && !plateOrVin.trim()) {
+          setPlateOrVin(preferred);
+        }
+
+        setVehicleDraft({
+          vin: typeof vehicle?.vin === "string" ? vehicle.vin : undefined,
+          plate:
+            typeof vehicle?.license_plate === "string"
+              ? vehicle.license_plate
+              : undefined,
+          year: typeof vehicle?.year === "string" ? vehicle.year : undefined,
+          make: typeof vehicle?.make === "string" ? vehicle.make : undefined,
+          model: typeof vehicle?.model === "string" ? vehicle.model : undefined,
+          trim: typeof vehicle?.trim === "string" ? vehicle.trim : undefined,
+          engine:
+            typeof vehicle?.engine === "string" ? vehicle.engine : undefined,
+        });
+      }
+    }
+
+    void hydrateFromContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    supabase,
+    searchParams,
+    customerQuery,
+    emailInvoiceTo,
+    plateOrVin,
+    setCustomerDraft,
+    setVehicleDraft,
+  ]);
 
   function onPickPhoto(file: File | null) {
     setPhoto(file);
@@ -317,7 +435,7 @@ export default function PlannerPage() {
 
     const path = `agent-uploads/${crypto
       .randomUUID()
-      .replace(/-/g, "")}-${photo.name.replace(/[^a-zA-Z0-9.\-_]/g, "_")}`;
+      .replace(/-/g, "")}-${photo.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
 
     const up = await supabase.storage.from("agent-uploads").upload(path, photo, {
       cacheControl: "3600",
@@ -351,6 +469,7 @@ export default function PlannerPage() {
     esRef.current?.close();
     esRef.current = null;
     setRunning(false);
+    autoRanRef.current = false;
   }
 
   function appendStep(step: string) {
@@ -367,7 +486,8 @@ export default function PlannerPage() {
 
     try {
       if (!allowCreate) {
-        const hasCustomer = customerQuery.trim().length > 0 || Boolean(workOrderId.trim());
+        const hasCustomer =
+          customerQuery.trim().length > 0 || Boolean(workOrderId.trim());
         const hasPlateVin =
           plateOrVin.trim().length > 0 ||
           (draft?.vehicle?.vin ?? "").trim().length > 0 ||
@@ -466,17 +586,23 @@ export default function PlannerPage() {
             }
           : undefined;
 
+      const customerIdParam = searchParams.get("customerId") ?? undefined;
+      const vehicleIdParam = searchParams.get("vehicleId") ?? undefined;
+
       const ctx = {
         allowCreate,
 
         customerQuery: customerQuery || undefined,
+        customerId: customerIdParam,
+        vehicleId: vehicleIdParam,
         plateOrVin: plateOrVin || vinFromDraft || undefined,
         emailInvoiceTo: emailInvoiceTo || undefined,
         bookingId: bookingId || undefined,
         workOrderId: workOrderId || undefined,
 
         imageUrl,
-        vin: vinFromDraft || (plateOrVin?.length === 17 ? plateOrVin : undefined),
+        vin:
+          vinFromDraft || (plateOrVin?.length === 17 ? plateOrVin : undefined),
         decodedVehicle,
         ocr: ocrFields || undefined,
 
@@ -569,6 +695,31 @@ export default function PlannerPage() {
     }
   }
 
+  useEffect(() => {
+    const shouldAutorun = searchParams.get("autorun") === "1";
+    if (!shouldAutorun || autoRanRef.current || running) return;
+
+    const hasEnough =
+      goal.trim() ||
+      customerQuery.trim() ||
+      plateOrVin.trim() ||
+      workOrderId.trim() ||
+      bookingId.trim();
+
+    if (!hasEnough) return;
+
+    autoRanRef.current = true;
+    void start();
+  }, [
+    searchParams,
+    running,
+    goal,
+    customerQuery,
+    plateOrVin,
+    workOrderId,
+    bookingId,
+  ]);
+
   const plannerModes: { id: PlannerKind; label: string }[] = [
     { id: "ops", label: "Ops Assistant" },
     { id: "openai", label: "OpenAI (rich)" },
@@ -576,31 +727,6 @@ export default function PlannerPage() {
     { id: "fleet", label: "Fleet PM" },
     { id: "approvals", label: "Advisor approvals" },
   ];
-
-  const plannerActionLabel =
-    planner === "fleet"
-      ? "Run Fleet Plan"
-      : planner === "approvals"
-        ? "Run Approval Plan"
-        : planner === "simple"
-          ? "Run Simple Plan"
-          : "Run Assistant";
-
-  const hasPlannerContext =
-    !!goal.trim() ||
-    !!customerQuery.trim() ||
-    !!plateOrVin.trim() ||
-    !!workOrderId.trim() ||
-    !!bookingId.trim();
-
-  const autofillSummary = [
-    customerQuery.trim() ? `Customer: ${customerQuery.trim()}` : null,
-    plateOrVin.trim() ? `Plate/VIN: ${plateOrVin.trim()}` : null,
-    workOrderId.trim() ? `WO: ${workOrderId.trim()}` : null,
-    bookingId.trim() ? `Booking: ${bookingId.trim()}` : null,
-  ]
-    .filter(Boolean)
-    .join(" • ");
 
   return (
     <PageShell
@@ -633,7 +759,9 @@ export default function PlannerPage() {
               Data mode
             </div>
             <div className="mt-1 text-sm text-neutral-100">
-              {allowCreate ? "Setup mode (allow auto-create)" : "Existing DB mode (no auto-create)"}
+              {allowCreate
+                ? "Setup mode (allow auto-create)"
+                : "Existing DB mode (no auto-create)"}
             </div>
           </div>
 
@@ -643,7 +771,9 @@ export default function PlannerPage() {
               size="sm"
               variant={allowCreate ? "ghost" : "outline"}
               className={
-                allowCreate ? "opacity-80 hover:opacity-100" : "ring-2 ring-orange-400/60 bg-orange-500/10"
+                allowCreate
+                  ? "opacity-80 hover:opacity-100"
+                  : "ring-2 ring-orange-400/60 bg-orange-500/10"
               }
               onClick={() => setAllowCreate(false)}
               disabled={running}
@@ -655,7 +785,9 @@ export default function PlannerPage() {
               size="sm"
               variant={allowCreate ? "outline" : "ghost"}
               className={
-                allowCreate ? "ring-2 ring-orange-400/60 bg-orange-500/10" : "opacity-80 hover:opacity-100"
+                allowCreate
+                  ? "ring-2 ring-orange-400/60 bg-orange-500/10"
+                  : "opacity-80 hover:opacity-100"
               }
               onClick={() => setAllowCreate(true)}
               disabled={running}
@@ -666,30 +798,25 @@ export default function PlannerPage() {
 
           {!allowCreate ? (
             <div className="w-full text-xs text-neutral-400">
-              Existing DB mode is best for history lookups, bookings, status questions, and live shop summaries.
+              Existing DB mode is best for history lookups, bookings, status
+              questions, and live shop summaries.
             </div>
           ) : null}
         </div>
 
-        <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3">
+        <div className="mt-3 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
             What to do here
           </div>
-          <div className="mt-1 text-sm text-neutral-300">
-            Type the result you want, not the steps. Examples: “Resolve this held job line”,
-            “Show me what this customer approved last visit”, or “Create a work order for this vehicle”.
+          <div className="mt-2 text-sm leading-7 text-neutral-200">
+            Type the result you want, not the steps. Examples: “Resolve this hold job line”, “Show me what this customer approved last visit”, or “Create a work order for this vehicle”.
           </div>
-          {autofillSummary ? (
-            <div className="mt-2 text-xs text-orange-300">
-              Autofilled context: {autofillSummary}
-            </div>
-          ) : null}
         </div>
 
         <textarea
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
-          placeholder='e.g. "Resolve this held line", "When was the last time John Smith visited?", or "Create a work order for this VIN"'
+          placeholder='e.g. "When was the last time John Smith visited?" or "What is Mike working on?" or "Reschedule booking 123 to tomorrow at 10am"'
           className="mt-3 min-h-[120px] w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
         />
 
@@ -824,7 +951,9 @@ export default function PlannerPage() {
                     {item.message ?? ""}
                   </div>
                   {item.href ? (
-                    <div className="mt-2 text-xs text-orange-300">{item.href}</div>
+                    <div className="mt-2 text-xs text-orange-300">
+                      {item.href}
+                    </div>
                   ) : null}
                 </div>
               ))}
@@ -864,9 +993,9 @@ export default function PlannerPage() {
                 !workOrderId.trim() &&
                 !bookingId.trim())
             }
-            className="min-w-[160px]"
+            className="min-w-[140px]"
           >
-            {plannerActionLabel}
+            Run Assistant
           </Button>
 
           <Button
@@ -879,17 +1008,14 @@ export default function PlannerPage() {
             Clear
           </Button>
         </div>
-
-        {!hasPlannerContext ? (
-          <div className="mt-3 text-center text-xs text-neutral-500">
-            Add a goal or let a Suggested Action prefill this page.
-          </div>
-        ) : null}
       </div>
 
       {previewWoId ? (
         <div className="mt-6">
-          <WorkOrderPreviewTrigger open={previewOpen} onOpenChange={setPreviewOpen}>
+          <WorkOrderPreviewTrigger
+            open={previewOpen}
+            onOpenChange={setPreviewOpen}
+          >
             <WorkOrderPreview woId={previewWoId} />
           </WorkOrderPreviewTrigger>
         </div>

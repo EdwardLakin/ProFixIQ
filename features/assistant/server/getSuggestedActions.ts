@@ -66,7 +66,10 @@ function buildContextItems(
       plannerHref: buildPlannerHref({
         planner: "ops",
         allowCreate: false,
+        autorun: true,
         workOrderId: context.workOrderId,
+        customerId: context.customerId,
+        vehicleId: context.vehicleId,
         goal: "Review this work order and suggest next actions",
       }),
       sourceType: "context",
@@ -84,7 +87,10 @@ function buildContextItems(
       plannerHref: buildPlannerHref({
         planner: "ops",
         allowCreate: false,
+        autorun: true,
         workOrderId: context.workOrderId,
+        customerId: context.customerId,
+        vehicleId: context.vehicleId,
         goal: "Check why this work order is blocked and suggest the best next step",
       }),
       sourceType: "context",
@@ -103,8 +109,12 @@ function buildContextItems(
       plannerHref: buildPlannerHref({
         planner: "ops",
         allowCreate: false,
+        autorun: true,
         goal: "Review this customer history and suggest next actions",
+        customerId: context.customerId,
         customerQuery: context.customerId,
+        vehicleId: context.vehicleId,
+        workOrderId: context.workOrderId,
       }),
       sourceType: "context",
       entityType: "customer",
@@ -120,8 +130,12 @@ function buildContextItems(
       plannerHref: buildPlannerHref({
         planner: "ops",
         allowCreate: false,
+        autorun: true,
         goal: "Plan the best next follow-up for this customer",
+        customerId: context.customerId,
         customerQuery: context.customerId,
+        vehicleId: context.vehicleId,
+        workOrderId: context.workOrderId,
       }),
       sourceType: "context",
       entityType: "customer",
@@ -139,7 +153,11 @@ function buildContextItems(
       plannerHref: buildPlannerHref({
         planner: "ops",
         allowCreate: false,
+        autorun: true,
         goal: "Review this vehicle history and suggest next actions",
+        vehicleId: context.vehicleId,
+        customerId: context.customerId,
+        workOrderId: context.workOrderId,
       }),
       sourceType: "context",
       entityType: "vehicle",
@@ -157,7 +175,11 @@ function buildContextItems(
       plannerHref: buildPlannerHref({
         planner: "ops",
         allowCreate: false,
+        autorun: true,
         bookingId: context.bookingId,
+        customerId: context.customerId,
+        vehicleId: context.vehicleId,
+        workOrderId: context.workOrderId,
         goal: "Review this booking and recommend the best next action",
       }),
       sourceType: "context",
@@ -183,18 +205,37 @@ export async function getSuggestedActions(
   const items: SuggestedActionItem[] = [...buildContextItems(params.context)];
 
   for (const notification of summary.notifications) {
+    const entityType =
+      notification.entityType === "work_order" ||
+      notification.entityType === "booking" ||
+      notification.entityType === "customer" ||
+      notification.entityType === "vehicle"
+        ? notification.entityType
+        : undefined;
+
+    const entityId = notification.entityId;
+
     const plannerHref = buildPlannerHref({
       planner: "ops",
       allowCreate: false,
+      autorun: true,
       goal: `Resolve this issue: ${notification.title}. ${notification.message}`,
       workOrderId:
-        notification.entityType === "work_order"
-          ? notification.entityId
+        entityType === "work_order"
+          ? entityId
           : params.context?.workOrderId,
       bookingId:
-        notification.entityType === "booking"
-          ? notification.entityId
+        entityType === "booking"
+          ? entityId
           : params.context?.bookingId,
+      customerId:
+        entityType === "customer"
+          ? entityId
+          : params.context?.customerId,
+      vehicleId:
+        entityType === "vehicle"
+          ? entityId
+          : params.context?.vehicleId,
     });
 
     items.push({
@@ -208,14 +249,8 @@ export async function getSuggestedActions(
       href: notification.href ?? "/agent/planner",
       plannerHref,
       sourceType: "notification",
-      entityType:
-        notification.entityType === "work_order" ||
-        notification.entityType === "booking" ||
-        notification.entityType === "customer" ||
-        notification.entityType === "vehicle"
-          ? notification.entityType
-          : undefined,
-      entityId: notification.entityId,
+      entityType,
+      entityId,
     });
   }
 
