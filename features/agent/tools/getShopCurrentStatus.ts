@@ -33,7 +33,7 @@ function getWorkOrder(workOrder: WorkOrderRef) {
   return Array.isArray(workOrder) ? workOrder[0] ?? null : workOrder;
 }
 
-export async function runGetShopCurrentStatus(_: {}, ctx: ToolContext) {
+export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
   const supabase = getServerSupabase();
 
   const [{ data: lines, error: linesError }, { data: profiles, error: profilesError }] =

@@ -1,7 +1,7 @@
 import { getServerSupabase } from "../server/supabase";
 import type { ToolContext } from "../lib/toolTypes";
 
-export async function runGetStalledWorkOrders(_: {}, ctx: ToolContext) {
+export async function runGetStalledWorkOrders(_: object, ctx: ToolContext) {
   const supabase = getServerSupabase();
 
   const { data, error } = await supabase

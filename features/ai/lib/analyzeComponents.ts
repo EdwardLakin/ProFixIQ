@@ -27,7 +27,7 @@ export async function analyzeImage(
 
     const data = await res.json();
     return data;
-  } catch (err) {
+  } catch (_err) {
     return { error: "Image analysis failed" };
   }
 }

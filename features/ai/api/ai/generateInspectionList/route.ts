@@ -31,7 +31,7 @@ export async function POST(req: Request) {
 
   try {
     return NextResponse.json(JSON.parse(json!));
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to parse response from OpenAI", raw: json },
       { status: 500 },

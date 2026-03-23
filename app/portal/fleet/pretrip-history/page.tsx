@@ -6,6 +6,7 @@ import FleetShell from "app/portal/fleet/FleetShell";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 const COPPER = "#C57A4A";
 
@@ -183,6 +184,15 @@ export default function PortalFleetPretripHistoryPage() {
                 </div>
               </div>
             </div>
+
+            <SuggestedActionsPanel
+              context={{
+                pageType: "fleet_pretrip_history",
+                pageTitle: "Fleet Pre-Trip History",
+              }}
+              title="Suggested Actions for Pre-Trip History"
+              description="Review defect trends, identify repeat issues, and surface AI-guided follow-up actions for fleet compliance"
+            />
 
             {/* Filters + table */}
             <div className={glassCard}>

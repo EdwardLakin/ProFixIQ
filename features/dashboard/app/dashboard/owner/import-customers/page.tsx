@@ -83,7 +83,7 @@ export default function ImportCustomersPage() {
           } else {
             toast.error("AI mapping failed.");
           }
-        } catch (err) {
+        } catch (_err) {
           toast.error("AI mapping error.");
         }
       },

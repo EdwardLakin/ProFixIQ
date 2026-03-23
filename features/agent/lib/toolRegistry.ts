@@ -326,12 +326,12 @@ export const runGetVehicleHistory = (
 ) => runGetVehicleHistoryTool(input, ctx);
 
 export const runGetShopCurrentStatus = (
-  input: {},
+  input: object,
   ctx: ToolContext,
 ) => runGetShopCurrentStatusTool(input, ctx);
 
 export const runGetStalledWorkOrders = (
-  input: {},
+  input: object,
   ctx: ToolContext,
 ) => runGetStalledWorkOrdersTool(input, ctx);
 

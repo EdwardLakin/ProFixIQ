@@ -8,6 +8,7 @@ import type { Database } from "@shared/types/types/supabase";
 import Container from "@shared/components/ui/Container";
 
 import FleetShell from "./FleetShell";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 import FleetPortalDashboard from "@/features/fleet/components/FleetPortalDashboard";
 import type {
   DispatchAssignment,
@@ -245,6 +246,17 @@ export default function FleetPortalPage() {
                 {contactName ? `Signed in as ${contactName}` : "\u00A0"}
               </div>
             </div>
+
+            {!loading && (
+              <SuggestedActionsPanel
+                context={{
+                  pageType: "fleet_portal_dashboard",
+                  pageTitle: "Fleet Portal Dashboard",
+                }}
+                title="Suggested Actions for Fleet Portal"
+                description="Review fleet status, spot service bottlenecks, and get AI-guided next steps for dispatch and unit follow-up"
+              />
+            )}
 
             {loading ? (
               <div className={CARD + " text-sm text-neutral-400"}>
