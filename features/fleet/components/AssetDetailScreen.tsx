@@ -1,4 +1,3 @@
-// features/fleet/components/AssetDetailScreen.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -62,7 +61,6 @@ export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
           setStats(body.stats ?? null);
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error("[AssetDetailScreen] fetch error:", err);
         if (!cancelled) setError("Failed to load fleet asset detail.");
       } finally {
@@ -106,7 +104,6 @@ export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
 
   return (
     <section className="space-y-6">
-      {/* Top band: unit identity + status */}
       <header className="metal-card rounded-3xl p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -135,15 +132,11 @@ export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
               </div>
               <div>
                 <span className="text-neutral-500">Class:</span>{" "}
-                <span className="text-neutral-100">
-                  {unit.class ?? "—"}
-                </span>
+                <span className="text-neutral-100">{unit.class ?? "—"}</span>
               </div>
               <div>
                 <span className="text-neutral-500">Location:</span>{" "}
-                <span className="text-neutral-100">
-                  {unit.location ?? "—"}
-                </span>
+                <span className="text-neutral-100">{unit.location ?? "—"}</span>
               </div>
             </div>
           </div>
@@ -180,9 +173,7 @@ export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
         </div>
       </header>
 
-      {/* Two-column layout */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1.8fr)]">
-        {/* Left column: Issues + inspection summary */}
         <section className="metal-card rounded-3xl p-4">
           <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:var(--metal-border-soft)] pb-2">
             <div>
@@ -232,7 +223,7 @@ export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
                     Create work order
                   </Link>
                   <Link
-                    href={`/fleet`}
+                    href="/fleet"
                     className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold text-neutral-200 hover:bg-neutral-900/50"
                   >
                     Send to dispatch
@@ -243,7 +234,6 @@ export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
           </div>
         </section>
 
-        {/* Right column: History & cost snapshot (real data) */}
         <section className="metal-card rounded-3xl p-4">
           <header className="mb-3 border-b border-[color:var(--metal-border-soft)] pb-2">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
@@ -257,17 +247,11 @@ export default function AssetDetailScreen({ unitId }: AssetDetailScreenProps) {
           <div className="grid gap-3 text-xs sm:grid-cols-2">
             <StatBlock
               label="Lifetime WOs"
-              value={
-                stats ? String(stats.lifetimeWorkOrders) : "–"
-              }
+              value={stats ? String(stats.lifetimeWorkOrders) : "–"}
             />
             <StatBlock
               label="Last 12 months spend"
-              value={
-                stats
-                  ? formatCurrency(stats.last12MonthsSpend || 0)
-                  : "–"
-              }
+              value={stats ? formatCurrency(stats.last12MonthsSpend || 0) : "–"}
             />
             <StatBlock
               label="Days since last OOS"
@@ -341,18 +325,15 @@ function SeverityChip({ severity }: { severity: FleetIssue["severity"] }) {
   > = {
     safety: {
       label: "Safety",
-      className:
-        "border-red-500/60 bg-red-500/10 text-red-300",
+      className: "border-red-500/60 bg-red-500/10 text-red-300",
     },
     compliance: {
       label: "Compliance",
-      className:
-        "border-amber-400/60 bg-amber-500/10 text-amber-200",
+      className: "border-amber-400/60 bg-amber-500/10 text-amber-200",
     },
     recommend: {
       label: "Recommend",
-      className:
-        "border-sky-400/60 bg-sky-500/10 text-sky-200",
+      className: "border-sky-400/60 bg-sky-500/10 text-sky-200",
     },
   };
 
