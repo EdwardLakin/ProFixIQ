@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type OpsNotification = {
+  id: string;
   level: "info" | "warning" | "urgent";
   code:
     | "quote_waiting"
@@ -16,6 +17,7 @@ export type OpsNotification = {
   entityType?: string;
   entityId?: string;
   createdAt?: string;
+  status?: "active" | "acknowledged" | "resolved";
 };
 
 type UseOpsNotificationsOptions = {
@@ -36,6 +38,7 @@ export function useOpsNotifications(
   const [items, setItems] = useState<OpsNotification[]>([]);
   const [loading, setLoading] = useState<boolean>(enabled);
   const [error, setError] = useState<string | null>(null);
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     if (!enabled) return;
@@ -64,6 +67,39 @@ export function useOpsNotifications(
       setLoading(false);
     }
   }, [enabled]);
+
+  const acknowledge = useCallback(
+    async (id: string): Promise<void> => {
+      try {
+        setAcknowledgingId(id);
+        setError(null);
+
+        const res = await fetch(`/api/planner/notifications/${id}/ack`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+        });
+
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+
+        if (!res.ok) {
+          throw new Error(data.error ?? "Failed to acknowledge notification");
+        }
+
+        setItems((prev) => prev.filter((item) => item.id !== id));
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to acknowledge notification",
+        );
+      } finally {
+        setAcknowledgingId(null);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void load();
@@ -106,5 +142,7 @@ export function useOpsNotifications(
     error,
     counts,
     reload: load,
+    acknowledge,
+    acknowledgingId,
   };
 }
