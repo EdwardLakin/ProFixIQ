@@ -1,4 +1,3 @@
-// features/fleet/components/FleetPortalDashboard.tsx
 "use client";
 
 import Link from "next/link";
@@ -9,7 +8,6 @@ import type {
 } from "./FleetControlTower";
 
 type Props = {
-  // Optional overrides if you want to pass real data later
   fleetName?: string | null;
   contactName?: string | null;
   units?: FleetUnit[];
@@ -24,7 +22,6 @@ export default function FleetPortalDashboard({
   issues,
   assignments,
 }: Props) {
-  // 🔹 Use real units if provided, otherwise fall back to demo
   const demoUnits: FleetUnit[] =
     units ??
     [
@@ -88,7 +85,6 @@ export default function FleetPortalDashboard({
 
   return (
     <section className="space-y-6">
-      {/* Top header */}
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
@@ -104,7 +100,6 @@ export default function FleetPortalDashboard({
             See your assigned units, submit pre-trips, and track open service
             requests. What your drivers see, your shop and dispatch can see too.
           </p>
-          {/* ✅ uses demoUnits so TS stops complaining */}
           <p className="mt-1 text-[11px] text-neutral-500">
             {demoUnits.length} active units visible in this portal.
           </p>
@@ -117,7 +112,6 @@ export default function FleetPortalDashboard({
         </div>
       </header>
 
-      {/* Assigned units / Start pre-trip */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 metal-card rounded-3xl p-4">
           <div className="flex items-center justify-between gap-3">
@@ -154,8 +148,7 @@ export default function FleetPortalDashboard({
                     )}
                   </div>
                   <div className="text-neutral-300">
-                    Driver:{" "}
-                    <span className="font-medium">{assign.driverName}</span>
+                    Driver: <span className="font-medium">{assign.driverName}</span>
                   </div>
                   {assign.nextPreTripDue && (
                     <div className="text-neutral-500">
@@ -172,8 +165,8 @@ export default function FleetPortalDashboard({
                     {assign.state === "pretrip_due"
                       ? "Pre-trip required"
                       : assign.state === "en_route"
-                      ? "En route"
-                      : "In shop"}
+                        ? "En route"
+                        : "In shop"}
                   </span>
 
                   <Link
@@ -191,7 +184,6 @@ export default function FleetPortalDashboard({
           </div>
         </div>
 
-        {/* Quick health snapshot for the portal side */}
         <div className="metal-card rounded-3xl p-4 text-xs">
           <h2 className="text-sm font-semibold text-neutral-100">
             Fleet health snapshot
@@ -202,7 +194,7 @@ export default function FleetPortalDashboard({
           </p>
 
           <div className="mt-4 space-y-3">
-            { (issues ?? demoIssues).map((issue) => (
+            {(issues ?? demoIssues).map((issue) => (
               <div
                 key={issue.id}
                 className="rounded-2xl border border-white/10 bg-black/40 p-3"
@@ -215,14 +207,13 @@ export default function FleetPortalDashboard({
                     {issue.severity === "safety"
                       ? "Safety"
                       : issue.severity === "compliance"
-                      ? "Compliance"
-                      : "Recommend"}
+                        ? "Compliance"
+                        : "Recommend"}
                   </span>
                 </div>
                 <p className="mt-2 text-neutral-200">{issue.summary}</p>
                 <p className="mt-1 text-[10px] text-neutral-500">
-                  Status:{" "}
-                  <span className="text-neutral-300">{issue.status}</span>
+                  Status: <span className="text-neutral-300">{issue.status}</span>
                 </p>
               </div>
             ))}
@@ -243,7 +234,6 @@ export default function FleetPortalDashboard({
         </div>
       </div>
 
-      {/* Pre-trip history placeholder */}
       <div className="metal-card mt-4 rounded-3xl p-4 text-xs">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>

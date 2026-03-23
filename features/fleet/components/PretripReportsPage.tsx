@@ -1,4 +1,3 @@
-// features/fleet/components/PretripReportsPage.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -69,7 +68,6 @@ export default function PretripReportsPage() {
           setReports(Array.isArray(body.reports) ? body.reports : []);
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error("[PretripReportsPage] fetch error:", err);
         if (!cancelled) setError("Failed to load pre-trip reports.");
       } finally {
@@ -96,12 +94,7 @@ export default function PretripReportsPage() {
 
       if (!q) return true;
 
-      const haystack = [
-        r.unit_label,
-        r.plate,
-        r.driver_name,
-        r.status,
-      ]
+      const haystack = [r.unit_label, r.plate, r.driver_name, r.status]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -113,18 +106,12 @@ export default function PretripReportsPage() {
   return (
     <div className="px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-6xl space-y-5">
-        {/* Copper wash */}
         <div
           aria-hidden
           className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
         />
 
-        {/* Header */}
-        <div
-          className={
-            card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
-          }
-        >
+        <div className={card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),transparent_65%)]"
@@ -138,8 +125,7 @@ export default function PretripReportsPage() {
                 Pre-trip Reports
               </h1>
               <p className="mt-1 text-xs text-neutral-300">
-                View and audit daily DVIR / pre-trip reports coming in from
-                drivers.
+                View and audit daily DVIR / pre-trip reports coming in from drivers.
               </p>
             </div>
 
@@ -153,7 +139,6 @@ export default function PretripReportsPage() {
             </div>
           </div>
 
-          {/* Search + helper text */}
           <div className="relative mt-4 flex flex-col gap-2 md:flex-row md:items-center">
             <div className="relative flex-1">
               <input
@@ -177,9 +162,7 @@ export default function PretripReportsPage() {
           </div>
         </div>
 
-        {/* Filters + table */}
         <div className={card + " px-4 py-4 md:px-6 md:py-5"}>
-          {/* Filter row */}
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap gap-2 text-[11px]">
               {(["all", "open", "reviewed", "archived"] as const).map((st) => (
@@ -241,7 +224,6 @@ export default function PretripReportsPage() {
             </div>
           </div>
 
-          {/* Error / loading */}
           {error && (
             <div className="mb-3 rounded-xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
               {error}
@@ -254,20 +236,17 @@ export default function PretripReportsPage() {
             </div>
           )}
 
-          {/* Empty */}
           {!loading && !error && filteredReports.length === 0 && (
             <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-6 text-center text-sm text-neutral-300">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                 No pre-trip reports
               </div>
               <p className="mt-2 text-xs text-neutral-400">
-                Once drivers start submitting pre-trips from mobile, they will
-                show up here for review.
+                Once drivers start submitting pre-trips from mobile, they will show up here for review.
               </p>
             </div>
           )}
 
-          {/* Table */}
           {!loading && !error && filteredReports.length > 0 && (
             <div className="overflow-x-auto">
               <table className="min-w-full border-separate border-spacing-y-1 text-xs">
@@ -318,9 +297,7 @@ export default function PretripReportsPage() {
                       <td className="px-3 py-1.5 text-right text-[11px]">
                         {r.unit_id && (
                           <Link
-                            href={`/fleet/assets/${encodeURIComponent(
-                              r.unit_id,
-                            )}`}
+                            href={`/fleet/assets/${encodeURIComponent(r.unit_id)}`}
                             className="mr-2 text-[color:var(--accent-copper)] underline-offset-4 hover:underline"
                           >
                             Open unit
@@ -328,9 +305,7 @@ export default function PretripReportsPage() {
                         )}
 
                         <Link
-                          href={`/fleet/service-requests?pretripId=${encodeURIComponent(
-                            r.id,
-                          )}`}
+                          href={`/fleet/service-requests?pretripId=${encodeURIComponent(r.id)}`}
                           className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
                         >
                           New request

@@ -1,4 +1,3 @@
-// features/fleet/components/FleetDispatchBoard.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -34,7 +33,7 @@ export default function FleetDispatchBoard() {
         const res = await fetch("/api/fleet/tower", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shopId: null }), // server will resolve from auth
+          body: JSON.stringify({ shopId: null }),
         });
 
         if (!res.ok) {
@@ -58,7 +57,6 @@ export default function FleetDispatchBoard() {
           });
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error("[FleetDispatchBoard] fetch error:", err);
         if (!cancelled) {
           setError("Failed to load dispatch data.");
@@ -82,12 +80,7 @@ export default function FleetDispatchBoard() {
 
       if (!q) return true;
 
-      const haystack = [
-        a.driverName,
-        a.unitLabel,
-        a.routeLabel ?? "",
-        a.state,
-      ]
+      const haystack = [a.driverName, a.unitLabel, a.routeLabel ?? "", a.state]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -109,12 +102,7 @@ export default function FleetDispatchBoard() {
           className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
         />
 
-        {/* Header card */}
-        <div
-          className={
-            card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
-          }
-        >
+        <div className={card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),transparent_65%)]"
@@ -123,9 +111,7 @@ export default function FleetDispatchBoard() {
             <div>
               <h1
                 className="text-xl font-bold tracking-[0.22em] text-[rgba(248,113,22,0.9)] md:text-2xl uppercase"
-                style={{
-                  fontFamily: "Black Ops One, system-ui, sans-serif",
-                }}
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
               >
                 Dispatch Board
               </h1>
@@ -138,59 +124,47 @@ export default function FleetDispatchBoard() {
             <div className="flex flex-col gap-2 text-right text-[11px] text-neutral-400 md:items-end">
               <span>
                 Total assignments:{" "}
-                <span className="font-semibold text-neutral-100">
-                  {total}
-                </span>
+                <span className="font-semibold text-neutral-100">{total}</span>
               </span>
               <span>
                 Pre-trip due:{" "}
-                <span className="font-semibold text-amber-300">
-                  {pretripDue}
-                </span>
+                <span className="font-semibold text-amber-300">{pretripDue}</span>
               </span>
               <span>
                 En route:{" "}
-                <span className="font-semibold text-sky-300">
-                  {enRoute}
-                </span>
+                <span className="font-semibold text-sky-300">{enRoute}</span>
               </span>
               <span>
                 In shop:{" "}
-                <span className="font-semibold text-emerald-300">
-                  {inShop}
-                </span>
+                <span className="font-semibold text-emerald-300">{inShop}</span>
               </span>
             </div>
           </div>
         </div>
 
-        {/* Controls + table */}
         <div className={card + " px-4 py-4 md:px-6 md:py-5"}>
-          {/* Filters */}
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap gap-2 text-[11px]">
-              {(["all", "pretrip_due", "en_route", "in_shop"] as const).map(
-                (f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setStateFilter(f)}
-                    className={`rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.16em] transition ${
-                      stateFilter === f
-                        ? "bg-[color:var(--accent-copper)] text-black shadow-[0_0_16px_rgba(193,102,59,0.7)]"
-                        : "border border-neutral-700 bg-black/60 text-neutral-300 hover:bg-neutral-900"
-                    }`}
-                  >
-                    {f === "all"
-                      ? "All"
-                      : f === "pretrip_due"
-                        ? "Pre-trip due"
-                        : f === "en_route"
-                          ? "En route"
-                          : "In shop"}
-                  </button>
-                ),
-              )}
+              {(["all", "pretrip_due", "en_route", "in_shop"] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setStateFilter(f)}
+                  className={`rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.16em] transition ${
+                    stateFilter === f
+                      ? "bg-[color:var(--accent-copper)] text-black shadow-[0_0_16px_rgba(193,102,59,0.7)]"
+                      : "border border-neutral-700 bg-black/60 text-neutral-300 hover:bg-neutral-900"
+                  }`}
+                >
+                  {f === "all"
+                    ? "All"
+                    : f === "pretrip_due"
+                      ? "Pre-trip due"
+                      : f === "en_route"
+                        ? "En route"
+                        : "In shop"}
+                </button>
+              ))}
             </div>
 
             <div className="flex items-center gap-2">
@@ -203,7 +177,6 @@ export default function FleetDispatchBoard() {
             </div>
           </div>
 
-          {/* Error / loading */}
           {error && (
             <div className="mb-3 rounded-xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
               {error}
@@ -216,7 +189,6 @@ export default function FleetDispatchBoard() {
             </div>
           )}
 
-          {/* Empty state */}
           {!loading && !error && filteredAssignments.length === 0 && (
             <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-6 text-center text-sm text-neutral-300">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
@@ -229,7 +201,6 @@ export default function FleetDispatchBoard() {
             </div>
           )}
 
-          {/* Table */}
           {!loading && !error && filteredAssignments.length > 0 && (
             <div className="overflow-x-auto">
               <table className="min-w-full border-separate border-spacing-y-1 text-xs">
@@ -271,9 +242,7 @@ export default function FleetDispatchBoard() {
                           Open unit
                         </Link>
                         <Link
-                          href={`/work-orders/create?unitId=${encodeURIComponent(
-                            a.unitId,
-                          )}`}
+                          href={`/work-orders/create?unitId=${encodeURIComponent(a.unitId)}`}
                           className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
                         >
                           New WO
@@ -302,8 +271,7 @@ function DispatchStatePill({
   > = {
     pretrip_due: {
       label: "Pre-trip due",
-      className:
-        "border-amber-400/70 bg-amber-500/10 text-amber-200",
+      className: "border-amber-400/70 bg-amber-500/10 text-amber-200",
     },
     en_route: {
       label: "En route",
@@ -311,8 +279,7 @@ function DispatchStatePill({
     },
     in_shop: {
       label: "In shop",
-      className:
-        "border-emerald-400/70 bg-emerald-500/10 text-emerald-200",
+      className: "border-emerald-400/70 bg-emerald-500/10 text-emerald-200",
     },
   };
 

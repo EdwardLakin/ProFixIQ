@@ -1,4 +1,3 @@
-// features/fleet/components/FleetControlTower.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -6,7 +5,6 @@ import FleetSummaryCards from "./FleetSummaryCards";
 import FleetIssueTables from "./FleetIssueTables";
 import FleetAISummary from "./FleetAISummary";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
-// or: import WorkOrderBoardWidget from "@/features/shared/components/workboard/WorkOrderBoardWidget";
 import Link from "next/link";
 
 export type FleetUnitStatus = "in_service" | "limited" | "oos";
@@ -60,11 +58,17 @@ function isDueInNextDays(nextInspectionDate?: string | null, days = 30) {
   if (!nextInspectionDate) return false;
 
   const today = new Date();
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
 
   const next = new Date(nextInspectionDate);
   const msPerDay = 1000 * 60 * 60 * 24;
-  const diffDays = Math.floor((next.getTime() - startOfToday.getTime()) / msPerDay);
+  const diffDays = Math.floor(
+    (next.getTime() - startOfToday.getTime()) / msPerDay,
+  );
 
   return diffDays >= 0 && diffDays <= days;
 }
@@ -106,7 +110,6 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
           setData(body);
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error("[FleetControlTower] fetch error:", err);
         if (!cancelled) {
           setError("Failed to load fleet data.");
@@ -125,7 +128,6 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
   const issues = data?.issues ?? [];
   const assignments = data?.assignments ?? [];
 
-  // Regions are inferred from unit.location when present
   const regions = useMemo(() => {
     const set = new Set<string>();
     for (const u of units) {
@@ -151,12 +153,13 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
   }, [units, regionFilter, focusFilter]);
 
   const handleInspectionWindowClick = () => {
-    setFocusFilter((prev) => (prev === "inspection_due_30" ? "all" : "inspection_due_30"));
+    setFocusFilter((prev) =>
+      prev === "inspection_due_30" ? "all" : "inspection_due_30",
+    );
   };
 
   return (
     <section className="space-y-6">
-      {/* Top header */}
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
@@ -176,7 +179,10 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
 
           {focusFilter === "inspection_due_30" && (
             <p className="mt-2 text-[11px] text-neutral-400">
-              Filter: <span className="text-neutral-200">Inspections due in next 30 days</span>{" "}
+              Filter:{" "}
+              <span className="text-neutral-200">
+                Inspections due in next 30 days
+              </span>{" "}
               <button
                 type="button"
                 onClick={() => setFocusFilter("all")}
@@ -210,7 +216,6 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
         </div>
       </header>
 
-            {/* Fleet Work Order Board (widget) */}
       <div className="metal-card rounded-3xl p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
@@ -233,7 +238,6 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
         <WorkOrderBoardWidget variant="fleet" href="/portal/fleet/board" />
       </div>
 
-      {/* Error / loading states */}
       {error && (
         <div className="rounded-2xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
           {error}
@@ -248,12 +252,10 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
 
       {!loading && !error && (
         <>
-          {/* AI fleet health summary */}
           <div className="metal-card rounded-3xl p-4">
             <FleetAISummary shopId={shopId ?? null} />
           </div>
 
-          {/* Summary cards */}
           <FleetSummaryCards
             units={filteredUnits}
             issues={issues}
@@ -262,7 +264,6 @@ export default function FleetControlTower({ shopName, shopId }: Props) {
             inspectionWindowActive={focusFilter === "inspection_due_30"}
           />
 
-          {/* Issues + dispatch tables */}
           <FleetIssueTables
             units={filteredUnits}
             issues={issues}
