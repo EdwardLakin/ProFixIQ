@@ -202,6 +202,9 @@ export default function PlannerPage() {
   const [emailInvoiceTo, setEmailInvoiceTo] = useState("");
   const [bookingId, setBookingId] = useState("");
   const [workOrderId, setWorkOrderId] = useState("");
+  const [resolvedCustomerId, setResolvedCustomerId] = useState<string | null>(null);
+  const [resolvedVehicleId, setResolvedVehicleId] = useState<string | null>(null);
+  const [hydratingContext, setHydratingContext] = useState(false);
 
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -288,8 +291,10 @@ export default function PlannerPage() {
     if (goalParam) setGoal(goalParam);
     if (customerParam) setCustomerQuery(customerParam);
     if (!customerParam && customerIdParam) setCustomerQuery(customerIdParam);
+    if (customerIdParam) setResolvedCustomerId(customerIdParam);
     if (plateParam) setPlateOrVin(plateParam);
     if (!plateParam && vehicleIdParam) setPlateOrVin(vehicleIdParam);
+    if (vehicleIdParam) setResolvedVehicleId(vehicleIdParam);
     if (emailParam) setEmailInvoiceTo(emailParam);
     if (bookingParam) setBookingId(bookingParam);
     if (workOrderParam) setWorkOrderId(workOrderParam);
@@ -305,107 +310,118 @@ export default function PlannerPage() {
       const vehicleIdParam = searchParams.get("vehicleId");
       const workOrderIdParam = searchParams.get("workOrderId");
 
-      let resolvedCustomerId = customerIdParam;
-      let resolvedVehicleId = vehicleIdParam;
-
-      if (workOrderIdParam) {
-        const { data: wo } = await supabase
-          .from("work_orders")
-          .select("id, customer_id, vehicle_id")
-          .eq("id", workOrderIdParam)
-          .maybeSingle();
-
-        if (cancelled) return;
-
-        if (wo?.customer_id && !resolvedCustomerId) {
-          resolvedCustomerId = wo.customer_id;
-        }
-        if (wo?.vehicle_id && !resolvedVehicleId) {
-          resolvedVehicleId = wo.vehicle_id;
-        }
+      if (!customerIdParam && !vehicleIdParam && !workOrderIdParam) {
+        setHydratingContext(false);
+        return;
       }
 
-      if (resolvedCustomerId) {
-        const { data: customer } = await supabase
-          .from("customers")
-          .select("id, first_name, last_name, business_name, email")
-          .eq("id", resolvedCustomerId)
-          .maybeSingle();
+      setHydratingContext(true);
 
-        if (cancelled) return;
+      let nextCustomerId: string | null = customerIdParam;
+      let nextVehicleId: string | null = vehicleIdParam;
 
-        const businessName =
-          typeof customer?.business_name === "string"
-            ? customer.business_name.trim()
-            : "";
-        const fullName = [customer?.first_name ?? "", customer?.last_name ?? ""]
-          .map((v) => (typeof v === "string" ? v.trim() : ""))
-          .filter(Boolean)
-          .join(" ");
+      try {
+        if (workOrderIdParam) {
+          const { data: wo } = await supabase
+            .from("work_orders")
+            .select("id, customer_id, vehicle_id")
+            .eq("id", workOrderIdParam)
+            .maybeSingle();
 
-        const displayName = businessName || fullName;
+          if (cancelled) return;
 
-        if (displayName && !customerQuery.trim()) {
-          setCustomerQuery(displayName);
+          if (wo?.customer_id && !nextCustomerId) nextCustomerId = wo.customer_id;
+          if (wo?.vehicle_id && !nextVehicleId) nextVehicleId = wo.vehicle_id;
         }
 
-        if (
-          typeof customer?.email === "string" &&
-          customer.email.trim() &&
-          !emailInvoiceTo.trim()
-        ) {
-          setEmailInvoiceTo(customer.email.trim());
+        if (nextCustomerId) {
+          setResolvedCustomerId(nextCustomerId);
+
+          const { data: customer } = await supabase
+            .from("customers")
+            .select("id, first_name, last_name, business_name, email")
+            .eq("id", nextCustomerId)
+            .maybeSingle();
+
+          if (cancelled) return;
+
+          const businessName =
+            typeof customer?.business_name === "string"
+              ? customer.business_name.trim()
+              : "";
+          const fullName = [customer?.first_name ?? "", customer?.last_name ?? ""]
+            .map((v) => (typeof v === "string" ? v.trim() : ""))
+            .filter(Boolean)
+            .join(" ");
+
+          const displayName = businessName || fullName;
+
+          if (displayName && !customerQuery.trim()) {
+            setCustomerQuery(displayName);
+          }
+
+          if (
+            typeof customer?.email === "string" &&
+            customer.email.trim() &&
+            !emailInvoiceTo.trim()
+          ) {
+            setEmailInvoiceTo(customer.email.trim());
+          }
+
+          setCustomerDraft({
+            first_name:
+              typeof customer?.first_name === "string"
+                ? customer.first_name
+                : undefined,
+            last_name:
+              typeof customer?.last_name === "string"
+                ? customer.last_name
+                : undefined,
+            email:
+              typeof customer?.email === "string" ? customer.email : undefined,
+            phone: undefined,
+          });
         }
 
-        setCustomerDraft({
-          first_name:
-            typeof customer?.first_name === "string"
-              ? customer.first_name
-              : undefined,
-          last_name:
-            typeof customer?.last_name === "string"
-              ? customer.last_name
-              : undefined,
-          email:
-            typeof customer?.email === "string" ? customer.email : undefined,
-          phone: undefined,
-        });
-      }
+        if (nextVehicleId) {
+          setResolvedVehicleId(nextVehicleId);
 
-      if (resolvedVehicleId) {
-        const { data: vehicle } = await supabase
-          .from("vehicles")
-          .select("id, vin, license_plate, year, make, model, trim, engine")
-          .eq("id", resolvedVehicleId)
-          .maybeSingle();
+          const { data: vehicle } = await supabase
+            .from("vehicles")
+            .select("id, vin, license_plate, year, make, model, trim, engine")
+            .eq("id", nextVehicleId)
+            .maybeSingle();
 
-        if (cancelled) return;
+          if (cancelled) return;
 
-        const preferred =
-          typeof vehicle?.vin === "string" && vehicle.vin.trim()
-            ? vehicle.vin.trim()
-            : typeof vehicle?.license_plate === "string" &&
+          const preferred =
+            typeof vehicle?.vin === "string" && vehicle.vin.trim()
+              ? vehicle.vin.trim()
+              : typeof vehicle?.license_plate === "string" &&
                 vehicle.license_plate.trim()
               ? vehicle.license_plate.trim()
               : "";
 
-        if (preferred && !plateOrVin.trim()) {
-          setPlateOrVin(preferred);
-        }
+          if (preferred && !plateOrVin.trim()) {
+            setPlateOrVin(preferred);
+          }
 
-        setVehicleDraft({
-          vin: typeof vehicle?.vin === "string" ? vehicle.vin : undefined,
-          plate:
-            typeof vehicle?.license_plate === "string"
-              ? vehicle.license_plate
-              : undefined,
-          year: typeof vehicle?.year === "string" ? vehicle.year : undefined,
-          make: typeof vehicle?.make === "string" ? vehicle.make : undefined,
-          model: typeof vehicle?.model === "string" ? vehicle.model : undefined,
-          trim: typeof vehicle?.trim === "string" ? vehicle.trim : undefined,
-          engine:
-            typeof vehicle?.engine === "string" ? vehicle.engine : undefined,
-        });
+          setVehicleDraft({
+            vin: typeof vehicle?.vin === "string" ? vehicle.vin : undefined,
+            plate:
+              typeof vehicle?.license_plate === "string"
+                ? vehicle.license_plate
+                : undefined,
+            year: typeof vehicle?.year === "string" ? vehicle.year : undefined,
+            make: typeof vehicle?.make === "string" ? vehicle.make : undefined,
+            model: typeof vehicle?.model === "string" ? vehicle.model : undefined,
+            trim: typeof vehicle?.trim === "string" ? vehicle.trim : undefined,
+            engine:
+              typeof vehicle?.engine === "string" ? vehicle.engine : undefined,
+          });
+        }
+      } finally {
+        if (!cancelled) setHydratingContext(false);
       }
     }
 
@@ -586,15 +602,12 @@ export default function PlannerPage() {
             }
           : undefined;
 
-      const customerIdParam = searchParams.get("customerId") ?? undefined;
-      const vehicleIdParam = searchParams.get("vehicleId") ?? undefined;
-
       const ctx = {
         allowCreate,
 
         customerQuery: customerQuery || undefined,
-        customerId: customerIdParam,
-        vehicleId: vehicleIdParam,
+        customerId: resolvedCustomerId ?? undefined,
+        vehicleId: resolvedVehicleId ?? undefined,
         plateOrVin: plateOrVin || vinFromDraft || undefined,
         emailInvoiceTo: emailInvoiceTo || undefined,
         bookingId: bookingId || undefined,
@@ -697,7 +710,7 @@ export default function PlannerPage() {
 
   useEffect(() => {
     const shouldAutorun = searchParams.get("autorun") === "1";
-    if (!shouldAutorun || autoRanRef.current || running) return;
+    if (!shouldAutorun || autoRanRef.current || running || hydratingContext) return;
 
     const hasEnough =
       goal.trim() ||
@@ -713,6 +726,7 @@ export default function PlannerPage() {
   }, [
     searchParams,
     running,
+    hydratingContext,
     goal,
     customerQuery,
     plateOrVin,
@@ -819,6 +833,14 @@ export default function PlannerPage() {
           placeholder='e.g. "When was the last time John Smith visited?" or "What is Mike working on?" or "Reschedule booking 123 to tomorrow at 10am"'
           className="mt-3 min-h-[120px] w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
         />
+
+        {(hydratingContext || resolvedCustomerId || resolvedVehicleId) ? (
+          <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-neutral-300">
+            {hydratingContext
+              ? "Loading customer and vehicle context…"
+              : "Context linked from suggested action / record."}
+          </div>
+        ) : null}
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <label className="block">
