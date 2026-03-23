@@ -1,3 +1,5 @@
+/// AppShell: wraps all "app" routes (dashboard, portal) with shared UI like sidebar, header, modals, and message subscription.
+//features/shared/components/AppShell.tsx
 "use client";
 
 import Link from "next/link";
@@ -427,6 +429,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </ActionButton>
               )}
 
+              <AskAssistantEntry placement="header" />
+
               {userId && canSeeAgentConsole && (
                 <ActionButton
                   onClick={() => router.push("/agent")}
@@ -520,7 +524,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <Toaster closeButton richColors position="top-right" theme="dark" />
-      <AskAssistantEntry />
+      <div className="md:hidden">
+        <AskAssistantEntry mobile />
+      </div>
 </>
   );
 }

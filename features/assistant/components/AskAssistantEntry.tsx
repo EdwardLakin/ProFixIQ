@@ -10,6 +10,7 @@ import { buildPlannerHref } from "../lib/buildPlannerHref";
 
 type Props = {
   mobile?: boolean;
+  placement?: "floating" | "header";
 };
 
 function deriveContextFromPath(pathname: string): AssistantContext {
@@ -122,7 +123,10 @@ function getPlannerGoal(context: AssistantContext): string {
   }
 }
 
-export default function AskAssistantEntry({ mobile = false }: Props) {
+export default function AskAssistantEntry({
+  mobile = false,
+  placement = "floating",
+}: Props) {
   const pathname = usePathname();
 
   const context = useMemo(() => deriveContextFromPath(pathname), [pathname]);
@@ -142,6 +146,32 @@ export default function AskAssistantEntry({ mobile = false }: Props) {
 
   const assistantLabel = useMemo(() => getAssistantLabel(context), [context]);
   const plannerLabel = useMemo(() => getPlannerLabel(context), [context]);
+
+  if (placement === "header") {
+    return (
+      <>
+        <Link
+          href={assistantHref}
+          title={assistantLabel}
+          className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
+        >
+          <span aria-hidden>✨</span>
+          <span className="hidden lg:inline">{assistantLabel}</span>
+          <span className="lg:hidden">Assistant</span>
+        </Link>
+
+        <Link
+          href={plannerHref}
+          title={plannerLabel}
+          className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
+        >
+          <span aria-hidden>⚡</span>
+          <span className="hidden lg:inline">{plannerLabel}</span>
+          <span className="lg:hidden">Planner</span>
+        </Link>
+      </>
+    );
+  }
 
   if (mobile) {
     return (
