@@ -1,3 +1,5 @@
+//features/assistant/types/suggested-actions.ts
+
 export type SuggestedActionLevel = "info" | "warning" | "urgent";
 
 export type SuggestedActionContext = {

@@ -14,9 +14,16 @@ function levelClasses(level: "info" | "warning" | "urgent"): string {
   return "border-sky-500/30 bg-sky-500/10 text-sky-200";
 }
 
-function withAutoRun(href: string): string {
-  if (!href) return href;
-  return href.includes("?") ? `${href}&autorun=1` : `${href}?autorun=1`;
+function withAutorun(href: string): string {
+  try {
+    const url = new URL(href, "http://local");
+    url.searchParams.set("autorun", "1");
+    const qs = url.searchParams.toString();
+    return url.pathname + (qs ? `?${qs}` : "");
+  } catch {
+    const joiner = href.includes("?") ? "&" : "?";
+    return `${href}${joiner}autorun=1`;
+  }
 }
 
 type Props = {
@@ -65,55 +72,48 @@ export default function SuggestedActionsPanel({
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          {data.items.map((item) => {
-            const plannerHref = item.plannerHref ? withAutoRun(item.plannerHref) : null;
-
-            return (
-              <div
-                key={item.id}
-                className="rounded-2xl border border-white/10 bg-black/35 p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-sm font-semibold text-white">
-                        {item.title}
-                      </div>
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${levelClasses(
-                          item.level,
-                        )}`}
-                      >
-                        {item.level}
-                      </span>
+          {data.items.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-2xl border border-white/10 bg-black/35 p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm font-semibold text-white">
+                      {item.title}
                     </div>
-
-                    <div className="mt-1 text-xs text-neutral-300">
-                      {item.description}
-                    </div>
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${levelClasses(item.level)}`}
+                    >
+                      {item.level}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-neutral-300">
+                    {item.description}
                   </div>
                 </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Link
-                    href={item.href}
-                    className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-xs text-neutral-200 hover:bg-black/60"
-                  >
-                    Open
-                  </Link>
-
-                  {plannerHref ? (
-                    <Link
-                      href={plannerHref}
-                      className="rounded-full border border-orange-400/40 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-300 hover:bg-orange-500/15"
-                    >
-                      Fix Issue
-                    </Link>
-                  ) : null}
-                </div>
               </div>
-            );
-          })}
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href={item.href}
+                  className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-xs text-neutral-200 hover:bg-black/60"
+                >
+                  Open
+                </Link>
+
+                {item.plannerHref ? (
+                  <Link
+                    href={withAutorun(item.plannerHref)}
+                    className="rounded-full border border-orange-400/40 bg-orange-500/10 px-3 py-1 text-xs text-orange-300 hover:bg-orange-500/15"
+                  >
+                    Fix Now
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </section>

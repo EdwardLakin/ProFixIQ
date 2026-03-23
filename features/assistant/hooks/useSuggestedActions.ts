@@ -1,3 +1,5 @@
+//features/assistant/hooks/useSuggestedActions.ts
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
