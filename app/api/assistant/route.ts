@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 import type { Database } from "@shared/types/types/supabase";
+import type { AssistantContext } from "@/features/assistant/types/assistant";
 import { runAssistant } from "@/features/assistant/server/runAssistant";
 
 type DB = Database;
@@ -54,6 +55,7 @@ export async function POST(req: Request) {
 
   const body = (await req.json().catch(() => ({}))) as {
     query?: unknown;
+    context?: AssistantContext;
   };
 
   const query =
@@ -72,6 +74,7 @@ export async function POST(req: Request) {
       userId: user.id,
       role: profile.role,
       query,
+      context: body.context,
     });
 
     return NextResponse.json(result);

@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { AssistantResponse } from "../types/assistant";
+import type {
+  AssistantContext,
+  AssistantResponse,
+} from "../types/assistant";
 
 type AssistantError = {
   error: string;
@@ -11,7 +14,7 @@ export function useAssistant() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<AssistantResponse | AssistantError | null>(null);
 
-  async function ask(query: string) {
+  async function ask(query: string, context?: AssistantContext) {
     setLoading(true);
     setData(null);
 
@@ -19,7 +22,7 @@ export function useAssistant() {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, context }),
       });
 
       const json = (await res.json()) as AssistantResponse | AssistantError;

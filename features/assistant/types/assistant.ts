@@ -9,6 +9,15 @@ export type PlannerPayload = {
   planner?: "ops" | "openai" | "simple" | "fleet" | "approvals";
 };
 
+export type AssistantContext = {
+  workOrderId?: string;
+  vehicleId?: string;
+  customerId?: string;
+  bookingId?: string;
+  pageType?: string;
+  pageTitle?: string;
+};
+
 export type AssistantAction =
   | {
       kind: "link";

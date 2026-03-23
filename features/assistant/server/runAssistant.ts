@@ -2,6 +2,7 @@ import OpenAI from "openai";
 
 import type {
   AssistantAction,
+  AssistantContext,
   AssistantNotification,
   AssistantResponse,
   PlannerPayload,
@@ -13,6 +14,7 @@ type RunAssistantParams = {
   userId: string;
   role: string | null;
   query: string;
+  context?: AssistantContext;
 };
 
 type LlmAssistantAction =
@@ -41,6 +43,7 @@ function getOpenAIClient(): OpenAI | null {
 
 function extractPlannerPayloadFromNotification(
   item: AssistantNotification,
+  context?: AssistantContext,
 ): PlannerPayload {
   const payload: PlannerPayload = {
     planner: "ops",
@@ -50,6 +53,14 @@ function extractPlannerPayloadFromNotification(
 
   if (item.entityType === "work_order" && item.entityId) {
     payload.workOrderId = item.entityId;
+  }
+
+  if (!payload.workOrderId && context?.workOrderId) {
+    payload.workOrderId = context.workOrderId;
+  }
+
+  if (!payload.bookingId && context?.bookingId) {
+    payload.bookingId = context.bookingId;
   }
 
   const href = item.href ?? "";
@@ -73,6 +84,7 @@ function extractPlannerPayloadFromNotification(
 function buildFallbackActions(
   links: Array<{ label: string; href: string }>,
   notifications: AssistantNotification[],
+  context?: AssistantContext,
 ): AssistantAction[] {
   const actions: AssistantAction[] = links.slice(0, 4).map((item) => ({
     kind: "link",
@@ -85,7 +97,18 @@ function buildFallbackActions(
     actions.unshift({
       kind: "planner",
       label: "Fix in Planner",
-      plannerPayload: extractPlannerPayloadFromNotification(topAlert),
+      plannerPayload: extractPlannerPayloadFromNotification(topAlert, context),
+    });
+  } else if (context?.workOrderId) {
+    actions.unshift({
+      kind: "planner",
+      label: "Open this in Planner",
+      plannerPayload: {
+        planner: "ops",
+        allowCreate: false,
+        workOrderId: context.workOrderId,
+        goal: "Review and fix this work order",
+      },
     });
   }
 
@@ -94,42 +117,34 @@ function buildFallbackActions(
 
 function buildFallbackResponse(params: {
   summary: Awaited<ReturnType<typeof getRoleDailySummary>>;
+  context?: AssistantContext;
 }): AssistantResponse {
-  const { summary } = params;
+  const { summary, context } = params;
+
+  const notifications: AssistantNotification[] = summary.notifications
+    .slice(0, 4)
+    .map((item) => ({
+      level:
+        item.level === "urgent" || item.level === "warning"
+          ? item.level
+          : "info",
+      code: item.code,
+      title: item.title,
+      message: item.message,
+      href: item.href,
+      entityType: item.entityType,
+      entityId: item.entityId,
+    }));
 
   return {
     summary: summary.summaryText,
     bullets: summary.actionItems.slice(0, 5),
-    actions: buildFallbackActions(summary.links, summary.notifications.slice(0, 4).map((item) => ({
-      level:
-        item.level === "urgent" || item.level === "warning"
-          ? item.level
-          : "info",
-      code: item.code,
-      title: item.title,
-      message: item.message,
-      href: item.href,
-      entityType: item.entityType,
-      entityId: item.entityId,
-    }))),
-    notifications: summary.notifications.slice(0, 4).map((item) => ({
-      level:
-        item.level === "urgent" || item.level === "warning"
-          ? item.level
-          : "info",
-      code: item.code,
-      title: item.title,
-      message: item.message,
-      href: item.href,
-      entityType: item.entityType,
-      entityId: item.entityId,
-    })),
+    actions: buildFallbackActions(summary.links, notifications, context),
+    notifications,
   };
 }
 
-function normalizeAction(
-  action: LlmAssistantAction,
-): AssistantAction | null {
+function normalizeAction(action: LlmAssistantAction): AssistantAction | null {
   if (!action || typeof action !== "object") return null;
 
   if (action.kind === "planner") {
@@ -197,6 +212,20 @@ function normalizeLlmResponse(
   };
 }
 
+function buildContextBlock(context?: AssistantContext): string {
+  if (!context) return "No page context provided.";
+
+  const lines: string[] = [];
+  if (context.pageType) lines.push(`Page type: ${context.pageType}`);
+  if (context.pageTitle) lines.push(`Page title: ${context.pageTitle}`);
+  if (context.workOrderId) lines.push(`Current work order id: ${context.workOrderId}`);
+  if (context.vehicleId) lines.push(`Current vehicle id: ${context.vehicleId}`);
+  if (context.customerId) lines.push(`Current customer id: ${context.customerId}`);
+  if (context.bookingId) lines.push(`Current booking id: ${context.bookingId}`);
+
+  return lines.length > 0 ? lines.join("\n") : "No page context provided.";
+}
+
 export async function runAssistant(
   params: RunAssistantParams,
 ): Promise<AssistantResponse> {
@@ -208,6 +237,7 @@ export async function runAssistant(
 
   const fallback = buildFallbackResponse({
     summary: dailySummary,
+    context: params.context,
   });
 
   const client = getOpenAIClient();
@@ -219,6 +249,7 @@ export async function runAssistant(
     "You are the ProFixIQ AI Assistant for an automotive repair shop.",
     "Answer using ONLY the provided shop context.",
     "Do not invent customers, work orders, bookings, vehicles, or statuses.",
+    'If the user says "this vehicle", "this work order", "this customer", or "this booking", use the provided page context.',
     "Keep the answer concise and operational.",
     "Return JSON with keys: summary, bullets, actions.",
     "bullets should be 0-5 short strings.",
@@ -229,6 +260,9 @@ export async function runAssistant(
     "",
     `Role: ${dailySummary.role}`,
     `User question: ${params.query}`,
+    "",
+    "Current page context:",
+    buildContextBlock(params.context),
     "",
     "Daily summary context:",
     dailySummary.summaryText,
