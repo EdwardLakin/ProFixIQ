@@ -14,6 +14,7 @@ import AgentRequestModal from "@/features/agent/components/AgentRequestModal";
 import { cn } from "@/features/shared/utils/cn";
 import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
+import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 
 const NON_APP_ROUTES = [
   "/",
@@ -519,6 +520,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <Toaster closeButton richColors position="top-right" theme="dark" />
-    </>
+      <AskAssistantEntry />
+</>
   );
 }

@@ -8,6 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { MobileBottomNav } from "./MobileBottomNav";
+import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 
 type DB = Database;
 
@@ -73,6 +74,7 @@ export function MobileShell({ children, title }: Props) {
               <span className="h-[2px] w-[14px] rounded-full bg-white" />
               <span className="h-[2px] w-[14px] rounded-full bg-white" />
             </div>
+      <AskAssistantEntry mobile />
           </button>
 
           <span className="text-[0.75rem] font-medium text-neutral-100">
