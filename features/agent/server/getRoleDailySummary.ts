@@ -43,10 +43,11 @@ function dedupeStrings(values: string[], limit: number): string[] {
   const out: string[] = [];
 
   for (const value of values) {
-    const key = value.trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
+    const trimmed = value.trim();
+    const key = trimmed.toLowerCase();
+    if (!trimmed || seen.has(key)) continue;
     seen.add(key);
-    out.push(value.trim());
+    out.push(trimmed);
     if (out.length >= limit) break;
   }
 
@@ -54,17 +55,24 @@ function dedupeStrings(values: string[], limit: number): string[] {
 }
 
 function dedupeLinks(values: SummaryLink[], limit: number): SummaryLink[] {
-  const seen = new Set<string>();
+  const seenHref = new Set<string>();
+  const seenLabel = new Set<string>();
   const out: SummaryLink[] = [];
 
   for (const value of values) {
-    const key = `${value.label.trim().toLowerCase()}::${value.href}`;
-    if (!value.label.trim() || !value.href.trim() || seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      label: value.label.trim(),
-      href: value.href.trim(),
-    });
+    const label = value.label.trim();
+    const href = value.href.trim();
+    if (!label || !href) continue;
+
+    const hrefKey = href.toLowerCase();
+    const labelKey = label.toLowerCase();
+
+    if (seenHref.has(hrefKey) || seenLabel.has(labelKey)) continue;
+
+    seenHref.add(hrefKey);
+    seenLabel.add(labelKey);
+    out.push({ label, href });
+
     if (out.length >= limit) break;
   }
 
@@ -79,22 +87,37 @@ function parseHoursFromMessage(message: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function looksLikeUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
 function extractWorkOrderLabel(value: {
   title: string;
   message: string;
   href?: string;
-  entityId?: string;
 }): string | null {
-  const hrefMatch = value.href?.match(/work-orders\/([^/?#]+)/i);
-  if (hrefMatch?.[1]) return hrefMatch[1];
-
   const messageMatch = value.message.match(/WO\s+#?([A-Z0-9-]+)/i);
-  if (messageMatch?.[1]) return messageMatch[1];
+  if (messageMatch?.[1] && !looksLikeUuid(messageMatch[1])) {
+    return messageMatch[1];
+  }
 
   const titleMatch = value.title.match(/WO\s+#?([A-Z0-9-]+)/i);
-  if (titleMatch?.[1]) return titleMatch[1];
+  if (titleMatch?.[1] && !looksLikeUuid(titleMatch[1])) {
+    return titleMatch[1];
+  }
 
-  return value.entityId ?? null;
+  const hrefCustomIdMatch =
+    value.href?.match(/woId=([A-Z0-9-]+)/i) ??
+    value.href?.match(/work-orders\/([A-Z]{1,4}\d{3,})/i) ??
+    value.href?.match(/quote-review\/([A-Z]{1,4}\d{3,})/i);
+
+  if (hrefCustomIdMatch?.[1] && !looksLikeUuid(hrefCustomIdMatch[1])) {
+    return hrefCustomIdMatch[1];
+  }
+
+  return null;
 }
 
 function topUrgentAlerts(
@@ -193,7 +216,7 @@ function buildAdvisorSummary(params: {
 
   const lines: string[] = [];
   lines.push("Advisor snapshot for today.");
-  if (params.bookingsSummary?.trim()) {
+  if (params.bookingsSummary.trim()) {
     lines.push("");
     lines.push(params.bookingsSummary.trim());
   }
@@ -216,7 +239,7 @@ function buildManagerSummary(params: {
 
   lines.push("Manager snapshot for today.");
 
-  if (params.shopStatusSummary?.trim()) {
+  if (params.shopStatusSummary.trim()) {
     lines.push("");
     lines.push(params.shopStatusSummary.trim());
   }
@@ -251,13 +274,8 @@ function buildTechSummary(params: {
 
   lines.push("Tech snapshot for today.");
 
-  if (params.techWorkSummary?.trim()) {
-    lines.push("");
-    lines.push(params.techWorkSummary.trim());
-  } else {
-    lines.push("");
-    lines.push("No assigned active work found.");
-  }
+  lines.push("");
+  lines.push(params.techWorkSummary?.trim() || "No assigned active work found.");
 
   const items: string[] = [];
   if ((counts.work_order_on_hold_too_long ?? 0) > 0) {
@@ -353,7 +371,9 @@ export async function getRoleDailySummary(params: {
       ...notifications
         .filter((item) => Boolean(item.href))
         .map((item) => ({
-          label: item.title,
+          label: extractWorkOrderLabel(item)
+            ? `WO #${extractWorkOrderLabel(item)} • ${item.title}`
+            : item.title,
           href: item.href as string,
         })),
       ...((Array.isArray(stalled.citations)

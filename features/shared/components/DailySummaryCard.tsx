@@ -47,7 +47,7 @@ export default function DailySummaryCard() {
             <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">
               {data.role}
             </div>
-            <p className="mt-2 text-sm text-neutral-100">{data.summaryText}</p>
+            <p className="mt-2 whitespace-pre-line text-sm text-neutral-100">{data.summaryText}</p>
           </div>
 
           {data.actionItems.length > 0 ? (
