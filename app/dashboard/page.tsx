@@ -339,16 +339,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      <div className="mb-6">
-        <DailySummaryCard />
-      </div>
-      <div className="relative space-y-8 fade-in">
-      {/* soft gradient background for this page (extra metal wash) */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
-      />
-
       {/* welcome panel */}
       <section className="flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/80 via-slate-950/90 to-black/80 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
         <div>
@@ -360,6 +350,16 @@ export default function DashboardPage() {
           </p>
         </div>
       </section>
+
+      <div className="mb-6">
+        <DailySummaryCard />
+      </div>
+      <div className="relative space-y-8 fade-in">
+      {/* soft gradient background for this page (extra metal wash) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+      />
 
       {/* Owner / manager AI widget stack */}
       {!tech && showOwnerDashboard && shopId && (
