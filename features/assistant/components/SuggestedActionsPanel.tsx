@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { SuggestedActionContext } from "../types/suggested-actions";
 import { useSuggestedActions } from "../hooks/useSuggestedActions";
 
 function levelClasses(level: "info" | "warning" | "urgent"): string {
@@ -13,18 +14,28 @@ function levelClasses(level: "info" | "warning" | "urgent"): string {
   return "border-sky-500/30 bg-sky-500/10 text-sky-200";
 }
 
-export default function SuggestedActionsPanel() {
-  const { loading, data, reload } = useSuggestedActions(true);
+type Props = {
+  context?: SuggestedActionContext;
+  title?: string;
+  description?: string;
+};
+
+export default function SuggestedActionsPanel({
+  context,
+  title = "Suggested Actions",
+  description = "Highest-value next steps for the shop",
+}: Props) {
+  const { loading, data, reload } = useSuggestedActions(true, context);
 
   return (
     <section className="rounded-2xl border border-white/10 bg-black/40 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.45)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
-            Suggested Actions
+            {title}
           </div>
           <div className="mt-1 text-sm text-neutral-300">
-            Highest-value next steps for the shop
+            {description}
           </div>
         </div>
 

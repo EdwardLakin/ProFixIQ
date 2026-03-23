@@ -1,4 +1,4 @@
-// /app/work-orders/[id]/client.tsx (FULL FILE REPLACEMENT)
+// /app/work-orders/[id]/Client.tsx (FULL FILE REPLACEMENT)
 
 "use client";
 
@@ -24,6 +24,7 @@ import AssignTechModal from "@/features/work-orders/components/workorders/extras
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import { WorkOrderSuggestionsPanel } from "@/features/work-orders/components/WorkOrderSuggestionsPanel";
 import { useWorkOrderActions } from "@/features/work-orders/hooks/useWorkOrderActions";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -1293,6 +1294,20 @@ export default function WorkOrderIdClient(): JSX.Element {
                   )}
                 </div>
               </div>
+            </div>
+
+            <div className="mb-6">
+              <SuggestedActionsPanel
+                context={{
+                  workOrderId: wo.id,
+                  customerId: customer?.id ?? undefined,
+                  vehicleId: vehicle?.id ?? undefined,
+                  pageType: "work_order",
+                  pageTitle: "Work Order",
+                }}
+                title="Suggested Actions for this Work Order"
+                description="Recommended next actions for this work order, customer, and vehicle"
+              />
             </div>
 
             {/* Vehicle & Customer */}

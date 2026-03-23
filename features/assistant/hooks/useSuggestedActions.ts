@@ -1,13 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { SuggestedActionsResponse } from "../types/suggested-actions";
+import type {
+  SuggestedActionContext,
+  SuggestedActionsResponse,
+} from "../types/suggested-actions";
 
 type ErrorState = {
   error: string;
 };
 
-export function useSuggestedActions(enabled = true) {
+export function useSuggestedActions(
+  enabled = true,
+  context?: SuggestedActionContext,
+) {
   const [loading, setLoading] = useState(enabled);
   const [data, setData] = useState<SuggestedActionsResponse | ErrorState | null>(
     null,
@@ -18,9 +24,20 @@ export function useSuggestedActions(enabled = true) {
 
     setLoading(true);
     try {
+      const usePost =
+        Boolean(context?.workOrderId) ||
+        Boolean(context?.customerId) ||
+        Boolean(context?.vehicleId) ||
+        Boolean(context?.bookingId) ||
+        Boolean(context?.pageType);
+
       const res = await fetch("/api/assistant/suggested-actions", {
-        method: "GET",
+        method: usePost ? "POST" : "GET",
         cache: "no-store",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: usePost ? JSON.stringify({ context }) : undefined,
       });
 
       const json = (await res.json()) as SuggestedActionsResponse | ErrorState;
@@ -30,7 +47,7 @@ export function useSuggestedActions(enabled = true) {
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, context]);
 
   useEffect(() => {
     void load();

@@ -1,6 +1,7 @@
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
 import { buildPlannerHref } from "../lib/buildPlannerHref";
 import type {
+  SuggestedActionContext,
   SuggestedActionItem,
   SuggestedActionsResponse,
 } from "../types/suggested-actions";
@@ -9,6 +10,7 @@ type Params = {
   shopId: string;
   userId: string;
   role: string | null;
+  context?: SuggestedActionContext;
 };
 
 function normalizeRole(role: string | null | undefined): string {
@@ -36,6 +38,7 @@ function dedupe(items: SuggestedActionItem[]): SuggestedActionItem[] {
       item.entityType ?? "",
       item.entityId ?? "",
       item.href,
+      item.plannerHref ?? "",
     ].join("::");
 
     if (seen.has(key)) continue;
@@ -44,6 +47,126 @@ function dedupe(items: SuggestedActionItem[]): SuggestedActionItem[] {
   }
 
   return out;
+}
+
+function buildContextItems(
+  context?: SuggestedActionContext,
+): SuggestedActionItem[] {
+  if (!context) return [];
+
+  const items: SuggestedActionItem[] = [];
+
+  if (context.workOrderId) {
+    items.push({
+      id: `context:wo:${context.workOrderId}:review`,
+      level: "warning",
+      title: "Review this work order",
+      description: "Open this work order in Planner with record context.",
+      href: `/work-orders/${context.workOrderId}`,
+      plannerHref: buildPlannerHref({
+        planner: "ops",
+        allowCreate: false,
+        workOrderId: context.workOrderId,
+        goal: "Review this work order and suggest next actions",
+      }),
+      sourceType: "context",
+      entityType: "work_order",
+      entityId: context.workOrderId,
+    });
+
+    items.push({
+      id: `context:wo:${context.workOrderId}:approval`,
+      level: "info",
+      title: "Check approval blockers",
+      description:
+        "Review whether this work order is blocked by approval, hold status, or parts.",
+      href: `/work-orders/${context.workOrderId}`,
+      plannerHref: buildPlannerHref({
+        planner: "ops",
+        allowCreate: false,
+        workOrderId: context.workOrderId,
+        goal: "Check why this work order is blocked and suggest the best next step",
+      }),
+      sourceType: "context",
+      entityType: "work_order",
+      entityId: context.workOrderId,
+    });
+  }
+
+  if (context.customerId) {
+    items.push({
+      id: `context:customer:${context.customerId}:history`,
+      level: "info",
+      title: "Review this customer's history",
+      description: "Ask Assistant for prior visits, approvals, and recent work.",
+      href: `/assistant?customerId=${encodeURIComponent(context.customerId)}&pageType=customer&pageTitle=Customer`,
+      plannerHref: buildPlannerHref({
+        planner: "ops",
+        allowCreate: false,
+        goal: "Review this customer history and suggest next actions",
+        customerQuery: context.customerId,
+      }),
+      sourceType: "context",
+      entityType: "customer",
+      entityId: context.customerId,
+    });
+
+    items.push({
+      id: `context:customer:${context.customerId}:followup`,
+      level: "warning",
+      title: "Plan customer follow-up",
+      description: "Decide whether this customer needs booking follow-up, quote follow-up, or outreach.",
+      href: `/customers/${context.customerId}`,
+      plannerHref: buildPlannerHref({
+        planner: "ops",
+        allowCreate: false,
+        goal: "Plan the best next follow-up for this customer",
+        customerQuery: context.customerId,
+      }),
+      sourceType: "context",
+      entityType: "customer",
+      entityId: context.customerId,
+    });
+  }
+
+  if (context.vehicleId) {
+    items.push({
+      id: `context:vehicle:${context.vehicleId}:history`,
+      level: "info",
+      title: "Review this vehicle history",
+      description: "See prior work, repeated issues, and likely next service actions.",
+      href: `/assistant?vehicleId=${encodeURIComponent(context.vehicleId)}&pageType=vehicle&pageTitle=Vehicle`,
+      plannerHref: buildPlannerHref({
+        planner: "ops",
+        allowCreate: false,
+        goal: "Review this vehicle history and suggest next actions",
+      }),
+      sourceType: "context",
+      entityType: "vehicle",
+      entityId: context.vehicleId,
+    });
+  }
+
+  if (context.bookingId) {
+    items.push({
+      id: `context:booking:${context.bookingId}:review`,
+      level: "info",
+      title: "Review this booking",
+      description: "Check whether this booking should be confirmed, moved, or converted into shop work.",
+      href: `/assistant?bookingId=${encodeURIComponent(context.bookingId)}&pageType=booking&pageTitle=Booking`,
+      plannerHref: buildPlannerHref({
+        planner: "ops",
+        allowCreate: false,
+        bookingId: context.bookingId,
+        goal: "Review this booking and recommend the best next action",
+      }),
+      sourceType: "context",
+      entityType: "booking",
+      entityId: context.bookingId,
+    });
+  }
+
+  return items;
 }
 
 export async function getSuggestedActions(
@@ -57,7 +180,7 @@ export async function getSuggestedActions(
     role,
   });
 
-  const items: SuggestedActionItem[] = [];
+  const items: SuggestedActionItem[] = [...buildContextItems(params.context)];
 
   for (const notification of summary.notifications) {
     const plannerHref = buildPlannerHref({
@@ -67,7 +190,11 @@ export async function getSuggestedActions(
       workOrderId:
         notification.entityType === "work_order"
           ? notification.entityId
-          : undefined,
+          : params.context?.workOrderId,
+      bookingId:
+        notification.entityType === "booking"
+          ? notification.entityId
+          : params.context?.bookingId,
     });
 
     items.push({
