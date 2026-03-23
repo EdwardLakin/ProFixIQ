@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -690,11 +691,15 @@ export default function PlannerPage() {
               className="block w-full text-sm text-neutral-100 file:mr-4 file:rounded-xl file:border file:border-[color:var(--metal-border-soft)] file:bg-black/40 file:px-3 file:py-2 file:text-xs file:font-semibold file:uppercase file:tracking-[0.18em] file:text-neutral-100 hover:file:bg-black/60"
             />
             {photoPreview ? (
-              <img
-                src={photoPreview}
-                alt="Preview"
-                className="mt-2 max-h-40 rounded-2xl border border-[color:var(--metal-border-soft)] object-contain"
-              />
+              <div className="relative mt-2 h-40 w-full overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft)]">
+                <Image
+                  src={photoPreview}
+                  alt="Preview"
+                  fill
+                  unoptimized
+                  className="object-contain"
+                />
+              </div>
             ) : null}
           </label>
         </div>

@@ -3,7 +3,6 @@
 import { 
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -48,7 +47,6 @@ type Props = {
   children?: React.ReactNode;
   /** server route that upserts (defaults to /api/vin) */
   action?: string;
-  triggerClassName?: string;
 };
 
 type DecodeVinResponse = Awaited<ReturnType<typeof decodeVin>>;
@@ -256,7 +254,6 @@ export default function VinCaptureModal({
   onOpenChange,
   children,
   action = "/api/vin",
-  triggerClassName,
 }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isDecoding, setIsDecoding] = useState(false);
@@ -373,22 +370,6 @@ export default function VinCaptureModal({
     [userId, setVehicleDraft, router, setOpen, isDecoding],
   );
 
-  const defaultTrigger = useMemo(
-    () => (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={
-          triggerClassName ??
-          "rounded border border-orange-400 bg-neutral-950 px-3 py-1.5 text-sm font-semibold text-white hover:bg-neutral-900"
-        }
-        title="Open VIN capture"
-      >
-        Add by VIN / Scan
-      </button>
-    ),
-    [setOpen, triggerClassName],
-  );
 
   return (
     <>
@@ -400,9 +381,7 @@ export default function VinCaptureModal({
         >
           {children}
         </span>
-      ) : (
-        defaultTrigger
-      )}
+      ) : null}
 
       <ModalShell
         isOpen={isOpen}
