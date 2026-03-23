@@ -8,6 +8,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -353,7 +354,15 @@ export default function FleetShell({
         )}
 
         {/* Content */}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 space-y-4">
+          <SuggestedActionsPanel
+            context={{
+              pageType: "fleet_portal",
+              pageTitle: title,
+            }}
+            title="Suggested Actions for Fleet Portal"
+            description="Quick actions for dispatch, pre-trips, service requests, and fleet follow-up"
+          />
           <div className={ShellCard}>{children}</div>
         </div>
       </div>
