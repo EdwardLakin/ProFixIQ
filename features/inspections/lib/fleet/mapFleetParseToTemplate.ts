@@ -1,4 +1,4 @@
-import { masterInspectionList } from "@/features/inspections/lib/masterInspectionList";
+import { masterInspectionList } from "@/features/inspections/lib/inspection/masterInspectionList";
 import type { FleetFormProfile } from "./inferFleetFormProfile";
 import type { FleetParseSection } from "./normalizeFleetParse";
 
