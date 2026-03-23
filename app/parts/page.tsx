@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
@@ -262,6 +263,15 @@ export default function PartsDashboardPage(): JSX.Element {
           </p>
         </div>
       </section>
+
+      <SuggestedActionsPanel
+        context={{
+          pageType: "parts_dashboard",
+          pageTitle: "Parts Dashboard",
+        }}
+        title="Suggested Actions for Parts"
+        description="Inventory insights, restocking suggestions, request follow-ups, and procurement optimization"
+      />
 
       {/* overview cards */}
       <section className="grid gap-4 md:grid-cols-4">
