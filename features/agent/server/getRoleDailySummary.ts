@@ -1,3 +1,5 @@
+// features/agent/server/getRoleDailySummary.ts
+
 import type { ToolContext } from "../lib/toolTypes";
 import { syncAssistantNotifications } from "./syncAssistantNotifications";
 import { runGetBookings } from "../tools/getBookings";

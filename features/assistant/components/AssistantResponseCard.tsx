@@ -1,3 +1,5 @@
+// features/assistant/components/AssistantResponseCard.tsx
+
 "use client";
 
 import Link from "next/link";

@@ -1,3 +1,5 @@
+// features/assistant/types/assistant.ts
+
 export type PlannerPayload = {
   goal?: string;
   customerQuery?: string;

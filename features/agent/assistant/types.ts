@@ -1,3 +1,5 @@
+// features/agent/assistant/types.ts
+
 export type AssistantEntityType =
   | "work_order"
   | "vehicle"
