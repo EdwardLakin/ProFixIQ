@@ -18,8 +18,20 @@ type FindingRow = {
   item: InspectionItem;
 };
 
+type DraftUiState = Record<
+  string,
+  {
+    laborHoursText: string;
+    partsText: string;
+  }
+>;
+
 function norm(input: string | null | undefined): string {
   return String(input ?? "").trim().toLowerCase();
+}
+
+function findingKey(sectionIndex: number, itemIndex: number): string {
+  return `${sectionIndex}:${itemIndex}`;
 }
 
 function inspectionDraftKey(args: {
@@ -123,6 +135,40 @@ function collectFindings(session: InspectionSession): FindingRow[] {
   return rows;
 }
 
+function partsToText(parts: InspectionItem["parts"] | undefined): string {
+  return (parts ?? []).map((p) => `${p.qty}x ${p.description}`).join("\n");
+}
+
+function parsePartsText(input: string): Array<{ description: string; qty: number }> {
+  return input
+    .split("\n")
+    .map((line) => line.replace(/\r/g, ""))
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      const trimmed = line.trim();
+      const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*x?\s+(.+)$/i);
+
+      if (match?.[1] && match?.[2]) {
+        const qty = Number(match[1]);
+        return {
+          qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+          description: match[2].trim(),
+        };
+      }
+
+      return {
+        qty: 1,
+        description: trimmed,
+      };
+    })
+    .filter((p) => p.description.length > 0);
+}
+
+function laborHoursToText(value: number | null | undefined): string {
+  if (typeof value !== "number" || Number.isNaN(value)) return "";
+  return String(value);
+}
+
 export default function InspectionFindingsPage(): JSX.Element {
   const router = useRouter();
   const sp = useSearchParams();
@@ -145,6 +191,7 @@ export default function InspectionFindingsPage(): JSX.Element {
 
   const [session, setSession] = useState<InspectionSession | null>(null);
   const [busy, setBusy] = useState(false);
+  const [draftUi, setDraftUi] = useState<DraftUiState>({});
 
   useEffect(() => {
     const loaded = readDraftSession(draftKey);
@@ -155,6 +202,17 @@ export default function InspectionFindingsPage(): JSX.Element {
     () => (session ? collectFindings(session) : []),
     [session],
   );
+
+  useEffect(() => {
+    const nextUi: DraftUiState = {};
+    for (const row of findings) {
+      nextUi[findingKey(row.sectionIndex, row.itemIndex)] = {
+        laborHoursText: laborHoursToText(row.item.laborHours),
+        partsText: partsToText(row.item.parts),
+      };
+    }
+    setDraftUi(nextUi);
+  }, [findings]);
 
   const updateFinding = (
     sectionIndex: number,
@@ -180,6 +238,22 @@ export default function InspectionFindingsPage(): JSX.Element {
       writeDraftSession(draftKey, next);
       return next;
     });
+  };
+
+  const updateUiDraft = (
+    sectionIndex: number,
+    itemIndex: number,
+    patch: Partial<{ laborHoursText: string; partsText: string }>,
+  ): void => {
+    const key = findingKey(sectionIndex, itemIndex);
+    setDraftUi((prev) => ({
+      ...prev,
+      [key]: {
+        laborHoursText: prev[key]?.laborHoursText ?? "",
+        partsText: prev[key]?.partsText ?? "",
+        ...patch,
+      },
+    }));
   };
 
   const markReviewed = (row: FindingRow): void => {
@@ -292,18 +366,19 @@ export default function InspectionFindingsPage(): JSX.Element {
           </div>
         ) : (
           findings.map((row) => {
+            const key = findingKey(row.sectionIndex, row.itemIndex);
             const itemLabel = String(row.item.item ?? row.item.name ?? "Item");
             const status = String(
               row.item.status ?? "",
             ).toLowerCase() as InspectionItemStatus;
             const photos = row.item.photoUrls ?? [];
-            const parts = row.item.parts ?? [];
-            const laborHours = row.item.laborHours ?? null;
             const reviewed = row.item.findingReviewed === true;
+            const laborHoursText = draftUi[key]?.laborHoursText ?? "";
+            const partsText = draftUi[key]?.partsText ?? "";
 
             return (
               <div
-                key={`${row.sectionIndex}:${row.itemIndex}`}
+                key={key}
                 className="rounded-2xl border border-white/10 bg-black/60 p-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -349,16 +424,46 @@ export default function InspectionFindingsPage(): JSX.Element {
                         Labor hours
                       </div>
                       <input
+                        type="text"
+                        inputMode="decimal"
                         className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
-                        value={laborHours ?? ""}
-                        onChange={(e) =>
+                        value={laborHoursText}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (/^\d*\.?\d*$/.test(raw)) {
+                            updateUiDraft(row.sectionIndex, row.itemIndex, {
+                              laborHoursText: raw,
+                            });
+                          }
+                        }}
+                        onBlur={() => {
+                          const raw = laborHoursText.trim();
+
+                          if (raw === "") {
+                            updateUiDraft(row.sectionIndex, row.itemIndex, {
+                              laborHoursText: "",
+                            });
+                            updateFinding(row.sectionIndex, row.itemIndex, {
+                              laborHours: null,
+                            });
+                            return;
+                          }
+
+                          const parsed = Number(raw);
+                          if (!Number.isFinite(parsed)) {
+                            updateUiDraft(row.sectionIndex, row.itemIndex, {
+                              laborHoursText: laborHoursToText(row.item.laborHours),
+                            });
+                            return;
+                          }
+
+                          updateUiDraft(row.sectionIndex, row.itemIndex, {
+                            laborHoursText: String(parsed),
+                          });
                           updateFinding(row.sectionIndex, row.itemIndex, {
-                            laborHours:
-                              e.target.value.trim() === ""
-                                ? null
-                                : Number(e.target.value),
-                          })
-                        }
+                            laborHours: parsed,
+                          });
+                        }}
                       />
                     </label>
 
@@ -368,27 +473,15 @@ export default function InspectionFindingsPage(): JSX.Element {
                       </div>
                       <textarea
                         className="min-h-[110px] w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
-                        value={parts
-                          .map((p) => `${p.qty}x ${p.description}`)
-                          .join("\n")}
+                        value={partsText}
                         onChange={(e) => {
-                          const nextParts = e.target.value
-                            .split("\n")
-                            .map((line) => line.trim())
-                            .filter(Boolean)
-                            .map((line) => {
-                              const m = line.match(/^(\d+)\s*x?\s+(.+)$/i);
-                              if (m?.[1] && m?.[2]) {
-                                return {
-                                  qty: Number(m[1]),
-                                  description: m[2].trim(),
-                                };
-                              }
-                              return { qty: 1, description: line };
-                            });
-
+                          updateUiDraft(row.sectionIndex, row.itemIndex, {
+                            partsText: e.target.value,
+                          });
+                        }}
+                        onBlur={() => {
                           updateFinding(row.sectionIndex, row.itemIndex, {
-                            parts: nextParts,
+                            parts: parsePartsText(partsText),
                           });
                         }}
                       />
