@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
+import { replaceFleetTireSectionWithGrid } from "@/features/inspections/lib/fleet/replaceFleetTireSectionWithGrid";
 
 type DB = Database;
 type DutyClass = "light" | "medium" | "heavy";
@@ -14,7 +15,9 @@ type FleetFormUpload = DB["public"]["Tables"]["fleet_form_uploads"]["Row"];
 type EditableItem = { item: string; unit?: string | null };
 type EditableSection = { title: string; items: EditableItem[] };
 
-function normalizeParsedSections(parsed: FleetFormUpload["parsed_sections"]): EditableSection[] {
+function normalizeParsedSections(
+  parsed: FleetFormUpload["parsed_sections"],
+): EditableSection[] {
   if (!Array.isArray(parsed)) return [];
 
   const sections: EditableSection[] = [];
@@ -125,7 +128,13 @@ export default function FleetFormReviewPage() {
         merged.push(...normalized);
       }
 
-      setSections(merged);
+      const mapped = replaceFleetTireSectionWithGrid({
+        sections: merged,
+        vehicleType: vehicleTypeParam,
+        dutyClass: dutyClassParam || "",
+      });
+
+      setSections(mapped);
 
       const defaultTitle =
         titleHintParam ||
@@ -135,11 +144,20 @@ export default function FleetFormReviewPage() {
       setTemplateTitle(defaultTitle);
       setLoading(false);
     })();
-  }, [uploadId, uploadIds, supabase, titleHintParam]);
+  }, [
+    uploadId,
+    uploadIds,
+    supabase,
+    titleHintParam,
+    vehicleTypeParam,
+    dutyClassParam,
+  ]);
 
   const statusChip = useMemo(() => {
     if (uploads.length === 0) return "Unknown";
-    const statuses = Array.from(new Set(uploads.map((u) => u.status || ""))).filter(Boolean);
+    const statuses = Array.from(
+      new Set(uploads.map((u) => u.status || "")),
+    ).filter(Boolean);
     return statuses.join(", ");
   }, [uploads]);
 
@@ -228,9 +246,7 @@ export default function FleetFormReviewPage() {
     }
 
     const title =
-      templateTitle.trim() ||
-      titleHintParam ||
-      "Imported Fleet Inspection";
+      templateTitle.trim() || titleHintParam || "Imported Fleet Inspection";
 
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem(
@@ -278,9 +294,7 @@ export default function FleetFormReviewPage() {
         <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em]">
           <span className="rounded-full border border-neutral-600 bg-black/60 px-2 py-1 text-neutral-300">
             Status:{" "}
-            <span className="font-semibold text-neutral-100">
-              {statusChip}
-            </span>
+            <span className="font-semibold text-neutral-100">{statusChip}</span>
           </span>
           {uploads.length > 1 && (
             <span className="rounded-full border border-neutral-600 bg-black/60 px-2 py-1 text-neutral-300">
@@ -355,7 +369,8 @@ export default function FleetFormReviewPage() {
             </div>
 
             <p className="mt-2 text-[10px] text-neutral-500">
-              Use this as a reference if any sections or items look off on the right-hand side.
+              Use this as a reference if any sections or items look off on the
+              right-hand side.
             </p>
           </section>
 
