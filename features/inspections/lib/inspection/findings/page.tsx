@@ -139,7 +139,9 @@ function partsToText(parts: InspectionItem["parts"] | undefined): string {
   return (parts ?? []).map((p) => `${p.qty}x ${p.description}`).join("\n");
 }
 
-function parsePartsText(input: string): Array<{ description: string; qty: number }> {
+function parsePartsText(
+  input: string,
+): Array<{ description: string; qty: number }> {
   return input
     .split("\n")
     .map((line) => line.replace(/\r/g, ""))
@@ -204,14 +206,19 @@ export default function InspectionFindingsPage(): JSX.Element {
   );
 
   useEffect(() => {
-    const nextUi: DraftUiState = {};
-    for (const row of findings) {
-      nextUi[findingKey(row.sectionIndex, row.itemIndex)] = {
-        laborHoursText: laborHoursToText(row.item.laborHours),
-        partsText: partsToText(row.item.parts),
-      };
-    }
-    setDraftUi(nextUi);
+    setDraftUi((prev) => {
+      const nextUi: DraftUiState = { ...prev };
+
+      for (const row of findings) {
+        const key = findingKey(row.sectionIndex, row.itemIndex);
+        nextUi[key] ??= {
+          laborHoursText: laborHoursToText(row.item.laborHours),
+          partsText: partsToText(row.item.parts),
+        };
+      }
+
+      return nextUi;
+    });
   }, [findings]);
 
   const updateFinding = (
@@ -452,7 +459,9 @@ export default function InspectionFindingsPage(): JSX.Element {
                           const parsed = Number(raw);
                           if (!Number.isFinite(parsed)) {
                             updateUiDraft(row.sectionIndex, row.itemIndex, {
-                              laborHoursText: laborHoursToText(row.item.laborHours),
+                              laborHoursText: laborHoursToText(
+                                row.item.laborHours,
+                              ),
                             });
                             return;
                           }
@@ -532,7 +541,10 @@ export default function InspectionFindingsPage(): JSX.Element {
           <div className="text-sm text-neutral-300">
             Reviewed findings:{" "}
             <span className="font-semibold text-white">
-              {findings.filter((row) => row.item.findingReviewed === true).length}
+              {
+                findings.filter((row) => row.item.findingReviewed === true)
+                  .length
+              }
             </span>
             {" / "}
             <span className="font-semibold text-white">{findings.length}</span>
