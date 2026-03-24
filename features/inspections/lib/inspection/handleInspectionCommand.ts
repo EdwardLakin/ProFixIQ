@@ -1,4 +1,3 @@
-// features/inspections/lib/inspection/handleInspectionCommand.ts
 import type { InspectionCommand, InspectionSession } from "./types";
 import { resolveSynonym } from "./synonyms";
 
@@ -7,7 +6,28 @@ export default function handleInspectionCommand(
   command: InspectionCommand,
 ): InspectionSession {
   const sectionName = resolveSynonym(command.section || "");
-  const itemName = resolveSynonym(command.item || "");
+
+  if (command.type === "section_status") {
+    const updatedSections = session.sections.map((section) => {
+      if (resolveSynonym(section.title ?? "") !== sectionName) return section;
+
+      return {
+        ...section,
+        items: section.items.map((item) => ({
+          ...item,
+          status: command.status,
+        })),
+      };
+    });
+
+    return {
+      ...session,
+      sections: updatedSections,
+    };
+  }
+
+  const itemName =
+    "item" in command ? resolveSynonym(command.item || "") : "";
 
   const updatedSections = session.sections.map((section) => {
     if (resolveSynonym(section.title ?? "") !== sectionName) return section;
@@ -22,11 +42,8 @@ export default function handleInspectionCommand(
         case "add":
           return { ...item, notes: command.note };
 
-        case "recommend": {
-          // Narrow to the recommend variant of the union (has `note`)
-          const { note } = command as Extract<InspectionCommand, { type: "recommend" }>;
-          return { ...item, notes: note };
-        }
+        case "recommend":
+          return { ...item, notes: command.note };
 
         case "measurement":
           return {
@@ -34,6 +51,9 @@ export default function handleInspectionCommand(
             value: command.value,
             unit: command.unit,
           };
+
+        case "pause":
+          return item;
 
         default:
           return item;
