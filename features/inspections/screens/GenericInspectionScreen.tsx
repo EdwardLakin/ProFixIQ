@@ -17,6 +17,7 @@ import { interpretCommand } from "@inspections/components/inspection/interpretCo
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
+import { buildVoiceBrainFeedback } from "@inspections/lib/inspection/voice/voiceBrain";
 
 import type {
   ParsedCommand,
@@ -1389,17 +1390,48 @@ export default function GenericInspectionScreen(
           }
         }
       } else {
-        // ✅ Arm follow-up prompt when FAIL/REC + note occurs
-        if (sawFailOrRec && sawNote && lastAppliedTarget) {
+        const feedback = buildVoiceBrainFeedback({
+          rawSpeech: text,
+          parsed: commands,
+          applied,
+        });
+
+        if (feedback.toast) {
+          toast.success(feedback.toast);
+        }
+
+        if (spokenSummary) {
+          speakLocal(spokenSummary);
+        } else if (feedback.spoken) {
+          speakLocal(feedback.spoken);
+        }
+
+        if (feedback.followUp.kind === "photo_prompt" && lastAppliedTarget) {
+          setFollowUp({
+            kind: "photo_prompt",
+            sectionIndex: lastAppliedTarget.sectionIndex,
+            itemIndex: lastAppliedTarget.itemIndex,
+          });
+        } else if (
+          feedback.followUp.kind === "parts_labor" &&
+          lastAppliedTarget
+        ) {
+          setFollowUp({
+            kind: "parts_labor",
+            sectionIndex: lastAppliedTarget.sectionIndex,
+            itemIndex: lastAppliedTarget.itemIndex,
+            stage: "await_followup",
+          });
+        } else if (sawFailOrRec && sawNote && lastAppliedTarget) {
           const targetRow =
-            sess.sections[lastAppliedTarget.sectionIndex]?.items?.[lastAppliedTarget.itemIndex];
-          const existingPhotos = Array.isArray((targetRow as { photoUrls?: unknown })?.photoUrls)
+            sess.sections[lastAppliedTarget.sectionIndex]?.items?.[
+              lastAppliedTarget.itemIndex
+            ];
+          const existingPhotos = Array.isArray(
+            (targetRow as { photoUrls?: unknown })?.photoUrls,
+          )
             ? ((targetRow as { photoUrls?: string[] }).photoUrls?.length ?? 0)
             : 0;
-
-          if (spokenSummary) {
-            speakLocal(spokenSummary);
-          }
 
           if (existingPhotos === 0) {
             setFollowUp({
@@ -1421,8 +1453,6 @@ export default function GenericInspectionScreen(
               speakLocal("Would you like to add parts and labor? Say follow up.");
             }, 350);
           }
-        } else if (spokenSummary) {
-          speakLocal(spokenSummary);
         }
       }
 

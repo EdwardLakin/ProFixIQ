@@ -7,25 +7,6 @@ export default function handleInspectionCommand(
 ): InspectionSession {
   const sectionName = resolveSynonym(command.section || "");
 
-  if (command.type === "section_status") {
-    const updatedSections = session.sections.map((section) => {
-      if (resolveSynonym(section.title ?? "") !== sectionName) return section;
-
-      return {
-        ...section,
-        items: section.items.map((item) => ({
-          ...item,
-          status: command.status,
-        })),
-      };
-    });
-
-    return {
-      ...session,
-      sections: updatedSections,
-    };
-  }
-
   const itemName =
     "item" in command ? resolveSynonym(command.item || "") : "";
 
@@ -33,17 +14,28 @@ export default function handleInspectionCommand(
     if (resolveSynonym(section.title ?? "") !== sectionName) return section;
 
     const updatedItems = section.items.map((item) => {
-      if (resolveSynonym(item.item ?? "") !== itemName) return item;
+      if ("item" in command && resolveSynonym(item.item ?? "") !== itemName) {
+        return item;
+      }
 
       switch (command.type) {
         case "status":
-          return { ...item, status: command.status };
+          return {
+            ...item,
+            status: command.status,
+          };
 
         case "add":
-          return { ...item, notes: command.note };
+          return {
+            ...item,
+            notes: command.note,
+          };
 
         case "recommend":
-          return { ...item, notes: command.note };
+          return {
+            ...item,
+            notes: command.note,
+          };
 
         case "measurement":
           return {

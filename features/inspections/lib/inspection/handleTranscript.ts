@@ -829,6 +829,22 @@ async function applySingleCommand(args: {
     status = fromSpeech ?? fromItem ?? fromNote;
   }
 
+  const findingCandidate = command as unknown as Partial<ParsedInspectionFindingCommand>;
+  if (findingCandidate.type === "inspection_finding") {
+    const finding = findingCandidate as ParsedInspectionFindingCommand;
+
+    if (!status) status = finding.status;
+    if (!item && finding.item) item = finding.item;
+    if (!note && finding.note) note = finding.note;
+    if (!parts && Array.isArray(finding.parts)) parts = finding.parts;
+    if (
+      laborHours === undefined &&
+      (typeof finding.laborHours === "number" || finding.laborHours === null)
+    ) {
+      laborHours = finding.laborHours;
+    }
+  }
+
   const cleanedItem = item ? stripStatusWords(item) : "";
   if (cleanedItem && cleanedItem !== norm(item ?? "")) {
     item = cleanedItem;

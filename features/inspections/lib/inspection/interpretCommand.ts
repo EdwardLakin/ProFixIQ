@@ -59,10 +59,10 @@ function mergeParsedCommands(chunks: ParsedCommand[][]): ParsedCommand[] {
 }
 
 function pickCommandsFromResponse(data: InterpretResponse): ParsedCommand[] {
-  if (Array.isArray(data)) return data as ParsedCommand[];
+  if (Array.isArray(data)) return data;
 
   if (isRecord(data)) {
-    const cmds = (data as { commands?: unknown }).commands;
+    const cmds = data.commands;
     if (Array.isArray(cmds)) return cmds as ParsedCommand[];
   }
 
@@ -148,16 +148,27 @@ function inferUnit(raw: string): string | undefined {
 
 function detectStatus(raw: string): LocalStatus | null {
   const t = norm(raw);
-  if (/\b(ok|okay|okey|pass|passed|good|looks good|all good|fine)\b/.test(t)) return "ok";
-  if (/\b(fail|failed|bad|not ok|not okay|leak|leaking|broken)\b/.test(t)) return "fail";
-  if (/\b(n\/a|na|not applicable|not app|doesn t apply|does not apply)\b/.test(t)) return "na";
-  if (/\b(rec|recommend|recommended|suggest)\b/.test(t)) return "recommend";
+  if (/\b(ok|okay|okey|pass|passed|good|looks good|all good|fine)\b/.test(t)) {
+    return "ok";
+  }
+  if (/\b(fail|failed|bad|not ok|not okay|leak|leaking|broken)\b/.test(t)) {
+    return "fail";
+  }
+  if (/\b(n\/a|na|not applicable|not app|doesn t apply|does not apply)\b/.test(t)) {
+    return "na";
+  }
+  if (/\b(rec|recommend|recommended|suggest)\b/.test(t)) {
+    return "recommend";
+  }
   return null;
 }
 
 function stripStatusWords(raw: string): string {
   return raw
-    .replace(/\b(ok|okay|pass|passed|good|fine|fail|failed|na|n\/a|not applicable|rec|recommend|recommended)\b/gi, " ")
+    .replace(
+      /\b(ok|okay|pass|passed|good|fine|fail|failed|na|n\/a|not applicable|rec|recommend|recommended)\b/gi,
+      " ",
+    )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -165,7 +176,10 @@ function stripStatusWords(raw: string): string {
 function stripNumberAndUnitWords(raw: string): string {
   return raw
     .replace(/-?\d+(?:\.\d+)?/g, " ")
-    .replace(/\b(mm|millimet(er|re)s?|psi|kpa|inch|inches|\bin\b|ft\s*lb|ftlb|ft-lb|cca|volts?\b|\bv\b|mil|mils)\b/gi, " ")
+    .replace(
+      /\b(mm|millimet(er|re)s?|psi|kpa|inch|inches|\bin\b|ft\s*lb|ftlb|ft-lb|cca|volts?\b|\bv\b|mil|mils)\b/gi,
+      " ",
+    )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -177,32 +191,47 @@ function scoreItemLabel(label: string, hint: string): number {
 
   const labelSet = new Set(lt);
   let score = 0;
+  const labelNorm = norm(label);
+  const hintNorm = norm(hint);
 
   for (const tok of ht) {
     if (tok === "lf" || tok === "rf" || tok === "lr" || tok === "rr") {
-      if (labelSet.has(tok) || norm(label).includes(tok)) score += 90;
+      if (labelSet.has(tok) || labelNorm.includes(tok)) score += 90;
       continue;
     }
     if (tok === "steer" || tok === "drive" || tok === "tag" || tok === "trailer") {
-      if (norm(label).includes(tok)) score += 45;
+      if (labelNorm.includes(tok)) score += 45;
       continue;
     }
     if (tok === "left" || tok === "right" || tok === "front" || tok === "rear") {
-      if (labelSet.has(tok) || norm(label).includes(tok)) score += 22;
+      if (labelSet.has(tok) || labelNorm.includes(tok)) score += 22;
       continue;
     }
-    if (tok === "tread" || tok === "pressure" || tok === "pad" || tok === "lining" || tok === "shoe" || tok === "rod" || tok === "tie") {
-      if (norm(label).includes(tok)) score += 22;
+    if (
+      tok === "tread" ||
+      tok === "pressure" ||
+      tok === "pad" ||
+      tok === "lining" ||
+      tok === "shoe" ||
+      tok === "rod" ||
+      tok === "tie"
+    ) {
+      if (labelNorm.includes(tok)) score += 22;
       continue;
     }
-    if (tok.length >= 3 && norm(label).includes(tok)) score += 4;
+    if (tok.length >= 3 && labelNorm.includes(tok)) score += 4;
   }
 
-  const h = norm(hint);
-  const l = norm(label);
-  if (h.includes("tread") && h.includes("depth") && l.includes("tread") && l.includes("depth")) score += 20;
-  if (h.includes("tie rod") && l.includes("tie rod")) score += 30;
-  if (h.includes("brake chamber") && l.includes("brake chamber")) score += 30;
+  if (
+    hintNorm.includes("tread") &&
+    hintNorm.includes("depth") &&
+    labelNorm.includes("tread") &&
+    labelNorm.includes("depth")
+  ) {
+    score += 20;
+  }
+  if (hintNorm.includes("tie rod") && labelNorm.includes("tie rod")) score += 30;
+  if (hintNorm.includes("brake chamber") && labelNorm.includes("brake chamber")) score += 30;
 
   return score;
 }
@@ -237,6 +266,9 @@ function extractParts(raw: string): Array<{ description: string; qty: number }> 
     /\badd\s+(.+?)\s+to\s+request\b/i,
     /\badd\s+(.+?)\s+to\s+quote\b/i,
     /\brequest\s+(.+?)\b/i,
+    /\bneeds?\s+(.+?)\b/i,
+    /\breplace\s+(.+?)\b/i,
+    /\bwith\s+(.+?)\b/i,
   ];
 
   let partChunk = "";
@@ -258,24 +290,35 @@ function extractParts(raw: string): Array<{ description: string; qty: number }> 
   return pieces.map((description) => {
     const qtyMatch = description.match(/^(\d+)\s+(.+)$/);
     if (qtyMatch?.[1] && qtyMatch?.[2]) {
-      return { qty: Number(qtyMatch[1]), description: qtyMatch[2].trim() };
+      return {
+        qty: Number(qtyMatch[1]),
+        description: qtyMatch[2].trim(),
+      };
     }
     return { qty: 1, description };
   });
 }
 
-function extractNote(raw: string, resolvedItem: string | null, status: LocalStatus | null): string | undefined {
+function extractNote(
+  raw: string,
+  resolvedItem: string | null,
+  status: LocalStatus | null,
+): string | undefined {
   if (!status || (status !== "fail" && status !== "recommend")) return undefined;
 
   let t = raw.trim();
 
   if (resolvedItem) {
-    const re = new RegExp(resolvedItem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const escaped = resolvedItem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(escaped, "i");
     t = t.replace(re, " ").trim();
   }
 
   t = t
-    .replace(/\b(ok|okay|pass|passed|good|fine|fail|failed|na|n\/a|not applicable|rec|recommend|recommended)\b/gi, " ")
+    .replace(
+      /\b(ok|okay|pass|passed|good|fine|fail|failed|na|n\/a|not applicable|rec|recommend|recommended)\b/gi,
+      " ",
+    )
     .replace(/\badd\b.+$/i, " ")
     .replace(/\b\d+(?:\.\d+)?\s*(?:hr|hrs|hour|hours|h)\b/gi, " ")
     .replace(/\s+/g, " ")
@@ -315,7 +358,7 @@ function localParseInspectionFinding(
       item: best.item,
       status,
       note,
-      parts: parts.length ? parts : undefined,
+      parts: parts.length > 0 ? parts : undefined,
       laborHours,
       openPhotoCapture: status === "fail" || status === "recommend",
     },
@@ -324,21 +367,11 @@ function localParseInspectionFinding(
 
 type LocalParse =
   | { kind: "status"; status: LocalStatus; itemHint: string }
-  | { kind: "measurement"; value: number; unit?: string; itemHint: string }
-  | { kind: "section_status"; status: LocalStatus; sectionHint: string };
+  | { kind: "measurement"; value: number; unit?: string; itemHint: string };
 
 function localParseUtterance(raw: string): LocalParse | null {
   const text = normalizeString(raw);
   if (!text) return null;
-
-  const t = norm(text);
-
-  const secMatch = t.match(/\b(.+?)\s+(section|sections)\s+(ok|okay|pass|fail|failed|na|n\/a|recommend|rec)\b/);
-  if (secMatch) {
-    const sectionHint = String(secMatch[1] ?? "").trim();
-    const st = detectStatus(secMatch[0] ?? "");
-    if (sectionHint && st) return { kind: "section_status", sectionHint, status: st };
-  }
 
   const num = extractFirstNumber(text);
   const unit = inferUnit(text);
@@ -361,52 +394,11 @@ function localParseUtterance(raw: string): LocalParse | null {
   return null;
 }
 
-function resolveBestSection(sectionTitles: string[], hint: string): string | null {
-  const h = norm(hint);
-  if (!h) return null;
-
-  let best: { title: string; score: number } | null = null;
-
-  for (const title of sectionTitles) {
-    const t = norm(title);
-    if (!t) continue;
-
-    const tt = new Set(tokens(t));
-    let score = 0;
-    for (const tok of tokens(h)) {
-      if (tok.length >= 3 && tt.has(tok)) score += 6;
-    }
-
-    if (t.includes("brake") && h.includes("brake")) score += 10;
-    if (t.includes("tire") && h.includes("tire")) score += 10;
-    if (t.includes("battery") && h.includes("battery")) score += 10;
-    if (t.includes("air") && h.includes("air")) score += 8;
-
-    if (score > 0 && (!best || score > best.score)) best = { title, score };
-  }
-
-  if (!best || best.score < 10) return null;
-  return best.title;
-}
-
 function buildParsedFromLocal(
   parsed: LocalParse,
-  context: { sectionTitles: string[]; items: string[] } | null,
+  context: { items: string[] } | null,
 ): ParsedCommand[] {
   if (!context) return [];
-
-  if (parsed.kind === "section_status") {
-    const section = resolveBestSection(context.sectionTitles, parsed.sectionHint);
-    if (!section) return [];
-
-    return [
-      {
-        type: "section_status",
-        section,
-        status: parsed.status,
-      } as ParsedCommand,
-    ];
-  }
 
   const best = resolveBestItem(context.items, parsed.itemHint);
   if (!best) return [];
@@ -415,19 +407,21 @@ function buildParsedFromLocal(
     return [
       {
         type: "status",
+        section: "",
         item: best.item,
         status: parsed.status,
-      } as ParsedCommand,
+      },
     ];
   }
 
   return [
     {
       type: "measurement",
+      section: "",
       item: best.item,
       value: parsed.value,
       unit: parsed.unit,
-    } as ParsedCommand,
+    },
   ];
 }
 
@@ -445,13 +439,15 @@ export async function interpretCommand(
     const p = normalizeString(part);
     if (!p) return [];
 
-    const findingCmds = localParseInspectionFinding(p, context ? { items: context.items } : null);
+    const findingCmds = localParseInspectionFinding(
+      p,
+      context ? { items: context.items } : null,
+    );
     if (findingCmds.length > 0) return findingCmds;
 
     const lp = localParseUtterance(p);
     if (lp && context) {
       const localCmds = buildParsedFromLocal(lp, {
-        sectionTitles: context.sectionTitles,
         items: context.items,
       });
       if (localCmds.length > 0) return localCmds;
