@@ -1,3 +1,530 @@
+===== FILE: features/inspections/lib/inspection/types.ts =====
+/** ---------- Item / Section ---------- */
+export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
+export type BrakeType = "air" | "hydraulic";
+
+export type VoiceCommandApplyResult = {
+  command: string;
+  ok: boolean;
+  reason?: string;
+};
+
+export type VoiceTraceEvent = {
+  id: string;
+  ts: number;
+  rawFinal: string;
+  wakeCommand: string | null;
+  parsed: ParsedCommand[];
+  applied: VoiceCommandApplyResult[];
+};
+
+export type ParsedInspectionFindingCommand = {
+  type: "inspection_finding";
+  section?: string;
+  item?: string;
+  status: InspectionItemStatus;
+  note?: string;
+  parts?: Array<{ description: string; qty: number }>;
+  laborHours?: number | null;
+  openPhotoCapture?: boolean;
+};
+
+export type VoiceFollowUp =
+  | {
+      kind: "parts_labor";
+      sectionIndex: number;
+      itemIndex: number;
+      stage: "await_followup" | "await_confirm";
+      draft?: {
+        laborHours: number | null;
+        parts: Array<{ description: string; qty: number }>;
+      };
+    }
+  | {
+      kind: "photo_prompt";
+      sectionIndex: number;
+      itemIndex: number;
+    };
+
+export type VoiceMeta = {
+  linesAddedToWorkOrder: number;
+
+  /**
+   * Voice follow-up state (2-turn flow after fail/recommend).
+   * Used by GenericInspectionScreen to:
+   *  - arm follow-up after a FAIL/REC + note
+   *  - optionally ask for photos
+   *  - parse labor/parts on the next utterance
+   *  - require "confirm" to submit
+   */
+  followUp?:
+    | {
+        kind: "parts_labor";
+        sectionIndex: number;
+        itemIndex: number;
+        stage: "await_followup" | "await_confirm";
+        draft?: {
+          laborHours?: number | null;
+          parts?: Array<{ description: string; qty: number }>;
+        };
+      }
+    | {
+        kind: "photo_prompt";
+        sectionIndex: number;
+        itemIndex: number;
+      }
+    | null;
+};
+
+export type AppliedTarget = { sectionIndex: number; itemIndex: number };
+
+export type HandleTranscriptResult = {
+  appliedTarget: AppliedTarget | null;
+};
+
+export interface InspectionItem {
+  item?: string;
+  name?: string;
+  status?: InspectionItemStatus;
+  notes?: string;
+  note?: string;
+  value?: string | number | null;
+  unit?: string | null;
+  photoUrls?: string[];
+  recommend?: string[];
+  parts?: Array<{
+    description: string;
+    qty: number;
+  }>;
+  laborHours?: number | null;
+  estimateSubmitted?: boolean;
+  estimateSubmittedAt?: string | null;
+}
+
+export interface InspectionCategory {
+  title: string;
+  items: InspectionItem[];
+}
+
+export type InspectionSection = InspectionCategory;
+
+/** ---------- Parsed voice/AI commands ---------- */
+export type ParsedCommandNameBased =
+  | {
+      type: "status";
+      section: string;
+      item: string;
+      status: InspectionItemStatus;
+    }
+  | { type: "add"; section: string; item: string; note: string }
+  | { type: "recommend"; section: string; item: string; note: string }
+  | {
+      type: "measurement";
+      section: string;
+      item: string;
+      value: number | string;
+      unit?: string;
+    };
+
+export type ParsedCommandIndexed = {
+  command:
+    | "update_status"
+    | "update_value"
+    | "add_note"
+    | "recommend"
+    | "complete_item"
+    | "skip_item"
+    | "pause_inspection"
+    | "finish_inspection";
+  sectionIndex?: number;
+  itemIndex?: number;
+  status?: InspectionItemStatus;
+  value?: string | number;
+  unit?: string;
+  notes?: string;
+  recommend?: string;
+};
+
+export type ParsedCommand =
+  | ParsedCommandNameBased
+  | ParsedCommandIndexed
+  | ParsedInspectionFindingCommand;
+
+export type InspectionCommand =
+  | ParsedCommandNameBased
+  | { type: "pause"; section?: string; item?: string };
+
+export type Command =
+  | {
+      type: "update_status";
+      sectionIndex: number;
+      itemIndex: number;
+      status: InspectionItemStatus;
+    }
+  | {
+      type: "update_value";
+      sectionIndex: number;
+      itemIndex: number;
+      value: string | number;
+      unit?: string;
+    }
+  | {
+      type: "add_note";
+      sectionIndex: number;
+      itemIndex: number;
+      notes: string;
+    }
+  | {
+      type: "recommend";
+      sectionIndex: number;
+      itemIndex: number;
+      recommendation: string;
+    }
+  | {
+      type: "complete";
+      sectionIndex: number;
+      itemIndex: number;
+    }
+  | {
+      type: "skip";
+      sectionIndex: number;
+      itemIndex: number;
+    }
+  | { type: "pause" }
+  | { type: "finish" };
+
+export type QuoteSource = "inspection" | "manual" | string;
+
+export interface QuoteLine {
+  description: string;
+  id?: string;
+  source?: QuoteSource;
+  item?: string;
+  name?: string;
+  inspectionItem?: string;
+  status?: InspectionItemStatus;
+  notes?: string;
+  hours?: number;
+  rate?: number;
+  total?: number;
+  laborHours?: number | null;
+  laborTime?: number;
+  laborRate?: number;
+  parts?: Array<{
+    name?: string;
+    number?: string;
+    price?: number;
+    type?: string;
+  }>;
+  partNumber?: string | null;
+  partName?: string;
+  unitPrice?: number | null;
+  qty?: number;
+  price?: number;
+  totalCost?: number;
+}
+
+export interface QuoteLineItem {
+  id: string;
+  item?: string;
+  name?: string;
+  description: string;
+  status: InspectionItemStatus;
+  notes?: string;
+  price: number;
+  laborHours?: number;
+  laborTime?: number;
+  laborRate?: number;
+  value?: string | number | null;
+  part?: { name: string; price: number };
+  partName?: string;
+  partPrice?: number | null;
+  qty?: number;
+  unitPrice?: number | null;
+  photoUrls?: string[];
+  editable?: boolean;
+  source?: QuoteSource;
+  parts?: Array<{ name?: string; number?: string; price?: number }>;
+  totalCost?: number;
+  inspectionItem?: string;
+  ai?: {
+    summary: string;
+    confidence?: string;
+    parts?: { name: string; qty?: number; cost?: number; notes?: string }[];
+  };
+  aiState?: "idle" | "loading" | "done" | "error";
+}
+
+export interface SummaryItem {
+  section: string;
+  item: string;
+  status: InspectionItemStatus;
+  note?: string;
+  value?: string | number | null;
+  unit?: string | null;
+  photoUrls?: string[];
+  recommend?: string[];
+}
+
+export interface InspectionSummary {
+  templateName?: string | null;
+  date: string;
+  items: SummaryItem[];
+  summaryText: string;
+}
+
+export interface SessionCustomer {
+  business_name?: string | null;
+  name?: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
+}
+
+export interface SessionVehicle {
+  year: string | null;
+  make: string | null;
+  model: string | null;
+  vin: string | null;
+  license_plate: string | null;
+  mileage: string | null;
+  color: string | null;
+  unit_number?: string | null;
+  engine_hours?: string | null;
+  engine?: string | null;
+  transmission?: string | null;
+  fuel_type?: string | null;
+  drivetrain?: string | null;
+}
+
+export type InspectionStatus =
+  | "not_started"
+  | "in_progress"
+  | "paused"
+  | "completed";
+
+export interface InspectionSession {
+  id?: string;
+  customerId?: string | null;
+  vehicleId?: string | null;
+  workOrderId?: string | null;
+  templateId?: string | null;
+  templateName?: string | null;
+  templateitem?: string | null;
+  brakeType?: BrakeType;
+  location?: string | null;
+  currentSectionIndex: number;
+  currentItemIndex: number;
+  transcript?: string;
+  isListening: boolean;
+  voiceTrace?: VoiceTraceEvent[];
+  voiceMeta?: VoiceMeta;
+  status: InspectionStatus;
+  started: boolean;
+  completed: boolean;
+  isPaused: boolean;
+  lastUpdated?: string;
+  customer?: SessionCustomer | null;
+  vehicle?: SessionVehicle | null;
+  sections: InspectionCategory[];
+  quote?: Array<QuoteLine | QuoteLineItem>;
+}
+
+===== FILE: features/inspections/lib/inspection/voice/voiceBrain.ts =====
+import type {
+  InspectionItemStatus,
+  ParsedCommand,
+  VoiceCommandApplyResult,
+} from "@inspections/lib/inspection/types";
+
+type PartsDraft = Array<{ description: string; qty: number }>;
+
+export type VoiceBrainFollowUpDecision =
+  | { kind: "none" }
+  | { kind: "photo_prompt"; prompt: string };
+
+export type VoiceBrainFeedback = {
+  spoken: string;
+  toast: string;
+  followUp: VoiceBrainFollowUpDecision;
+};
+
+function norm(input: string | null | undefined): string {
+  return String(input ?? "").trim().toLowerCase();
+}
+
+function titleCase(input: string | null | undefined): string {
+  const s = String(input ?? "").trim();
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function getCommandType(command: ParsedCommand): string {
+  const rec = command as Record<string, unknown>;
+  if (typeof rec.command === "string") return rec.command;
+  if (typeof rec.type === "string") return rec.type;
+  return "command";
+}
+
+function getCommandStatus(command: ParsedCommand): InspectionItemStatus | null {
+  const rec = command as Record<string, unknown>;
+  const raw = norm(typeof rec.status === "string" ? rec.status : null);
+
+  if (raw === "ok" || raw === "fail" || raw === "na" || raw === "recommend") {
+    return raw;
+  }
+  if (raw === "pass" || raw === "okay") return "ok";
+  if (raw === "rec") return "recommend";
+  return null;
+}
+
+function getCommandItem(command: ParsedCommand): string {
+  const rec = command as Record<string, unknown>;
+  return typeof rec.item === "string" ? rec.item.trim() : "";
+}
+
+function getCommandParts(command: ParsedCommand): PartsDraft {
+  const rec = command as Record<string, unknown>;
+  if (!Array.isArray(rec.parts)) return [];
+
+  return rec.parts
+    .map((row) => {
+      const part = row as { description?: unknown; qty?: unknown };
+      const description = String(part.description ?? "").trim();
+      const qty = Number(part.qty ?? 1);
+      return {
+        description,
+        qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+      };
+    })
+    .filter((p) => p.description.length > 0);
+}
+
+function getCommandLaborHours(command: ParsedCommand): number | null {
+  const rec = command as Record<string, unknown>;
+  return typeof rec.laborHours === "number" && Number.isFinite(rec.laborHours)
+    ? rec.laborHours
+    : null;
+}
+
+function firstSuccessful(
+  applied: VoiceCommandApplyResult[],
+): VoiceCommandApplyResult | null {
+  for (const row of applied) {
+    if (row.ok) return row;
+  }
+  return null;
+}
+
+function buildPartsLaborSummary(
+  parts: PartsDraft,
+  laborHours: number | null,
+): string {
+  const pieces: string[] = [];
+
+  if (laborHours != null) {
+    pieces.push(`${laborHours} hour${laborHours === 1 ? "" : "s"} labor`);
+  }
+
+  if (parts.length > 0) {
+    pieces.push(
+      parts.map((p) => `${p.qty} ${p.description}`).join(", "),
+    );
+  }
+
+  return pieces.join(" and ");
+}
+
+export function buildVoiceBrainFeedback(args: {
+  rawSpeech: string;
+  parsed: ParsedCommand[];
+  applied: VoiceCommandApplyResult[];
+}): VoiceBrainFeedback {
+  const { parsed, applied } = args;
+
+  const firstOk = firstSuccessful(applied);
+  if (!firstOk || parsed.length === 0) {
+    return {
+      spoken: "I didn’t catch a usable inspection update.",
+      toast: "No inspection update applied.",
+      followUp: { kind: "none" },
+    };
+  }
+
+  const primary = parsed[0];
+  const type = getCommandType(primary);
+  const status = getCommandStatus(primary);
+  const item = titleCase(getCommandItem(primary)) || "Item";
+  const parts = getCommandParts(primary);
+  const laborHours = getCommandLaborHours(primary);
+
+  if ((type === "status" || type === "update_status") && status === "ok") {
+    return {
+      spoken: `${item} marked okay.`,
+      toast: `${item} marked OK`,
+      followUp: { kind: "none" },
+    };
+  }
+
+  if ((type === "status" || type === "update_status") && status === "na") {
+    return {
+      spoken: `${item} marked not applicable.`,
+      toast: `${item} marked NA`,
+      followUp: { kind: "none" },
+    };
+  }
+
+  if ((type === "status" || type === "update_status") && status === "fail") {
+    const summary = buildPartsLaborSummary(parts, laborHours);
+
+    return {
+      spoken: summary
+        ? `${item} failed. ${summary} added. Would you like to add a photo?`
+        : `${item} failed. Would you like to add a photo?`,
+      toast: summary ? `${item} failed • ${summary}` : `${item} failed`,
+      followUp: {
+        kind: "photo_prompt",
+        prompt: "Would you like to add a photo?",
+      },
+    };
+  }
+
+  if ((type === "status" || type === "update_status") && status === "recommend") {
+    const summary = buildPartsLaborSummary(parts, laborHours);
+
+    return {
+      spoken: summary
+        ? `${item} recommended. ${summary} added. Would you like to add a photo?`
+        : `${item} recommended. Would you like to add a photo?`,
+      toast: summary ? `${item} recommended • ${summary}` : `${item} recommended`,
+      followUp: {
+        kind: "photo_prompt",
+        prompt: "Would you like to add a photo?",
+      },
+    };
+  }
+
+  if (type === "measurement" || type === "update_value") {
+    return {
+      spoken: `${item} updated.`,
+      toast: `${item} value updated`,
+      followUp: { kind: "none" },
+    };
+  }
+
+  return {
+    spoken: "Inspection updated.",
+    toast: "Inspection updated",
+    followUp: { kind: "none" },
+  };
+}
+
+===== FILE: features/inspections/screens/GenericInspectionScreen.tsx =====
 // features/inspections/screens/GenericInspectionScreen.tsx (FULL FILE REPLACEMENT)
 "use client";
 
@@ -477,6 +1004,71 @@ function speakLocal(text: string): void {
   } catch {
     // ignore
   }
+}
+
+function splitOnFollowUp(raw: string): { head: string; tail: string | null } {
+  const n = normalizeSpeech(raw);
+  const idx = n.indexOf("follow up");
+  if (idx < 0) {
+    const idx2 = n.indexOf("followup");
+    if (idx2 < 0) return { head: raw, tail: null };
+    const head = raw.slice(0, idx2).trim();
+    const tail = raw.slice(idx2 + "followup".length).trim();
+    return { head, tail: tail || null };
+  }
+  const head = raw.slice(0, idx).trim();
+  const tail = raw.slice(idx + "follow up".length).trim();
+  return { head, tail: tail || null };
+}
+
+function parseFollowUpPayload(raw: string): {
+  laborHours: number | null;
+  parts: Array<{ description: string; qty: number }>;
+  wantsConfirm: boolean;
+  wantsCancel: boolean;
+} {
+  const n = normalizeSpeech(raw);
+  const wantsConfirm = /\b(confirm|submit|yes)\b/.test(n);
+  const wantsCancel = /\b(cancel|nevermind|never mind|clear)\b/.test(n);
+
+  const hrMatch =
+    n.match(/\b(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours)\b/) ??
+    n.match(/\b(\d+(?:\.\d+)?)\s*h\b/);
+
+  const laborHours = hrMatch && hrMatch[1] ? Number(hrMatch[1]) : null;
+
+  let remainder = raw;
+  if (hrMatch && hrMatch[0]) {
+    const idx = remainder.toLowerCase().indexOf(hrMatch[0]);
+    if (idx >= 0) {
+      remainder = (
+        remainder.slice(0, idx) +
+        " " +
+        remainder.slice(idx + hrMatch[0].length)
+      ).trim();
+    }
+  }
+
+  remainder = remainder
+    .replace(/\b(confirm|submit|yes|cancel|nevermind|never mind|clear)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const partsText = remainder
+    .replace(/\b(parts?|labor)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const rawParts = partsText
+    ? partsText
+        .split(/,| and /i)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  const parts = rawParts.map((description) => ({ description, qty: 1 }));
+
+  return { laborHours, parts, wantsConfirm, wantsCancel };
 }
 
 /* ---------------------- section picker for strict_context (NO FOCUS) ---------------------- */
@@ -963,14 +1555,12 @@ export default function GenericInspectionScreen(
 
     const followUp = sess.voiceMeta?.followUp ?? null;
 
+    // 1) If we are mid-follow-up, interpret this utterance as follow-up payload first
     if (followUp && followUp.kind === "photo_prompt") {
       const answer = normalizeSpeech(text);
 
       if (/\b(yes|yeah|yep|open|photo|photos|add photos)\b/.test(answer)) {
         clearFollowUp();
-        updateItem(followUp.sectionIndex, followUp.itemIndex, {
-          photoRequested: true,
-        } as ItemPatch);
         toast.success("Open photo capture from the item card.");
         speakLocal("Open photo capture.");
         appendVoiceTrace({
@@ -984,11 +1574,7 @@ export default function GenericInspectionScreen(
 
       if (/\b(no|nope|skip|later)\b/.test(answer)) {
         clearFollowUp();
-        updateItem(followUp.sectionIndex, followUp.itemIndex, {
-          photoRequested: false,
-          findingReviewed: false,
-        } as ItemPatch);
-        toast.success("Okay, skipping photos for now.");
+        toast.success("Okay, skipping photos.");
         speakLocal("Okay.");
         appendVoiceTrace({
           rawFinal: text,
@@ -1000,7 +1586,122 @@ export default function GenericInspectionScreen(
       }
     }
 
-    const mainText = text;
+    if (followUp && followUp.kind === "parts_labor") {
+      const parsed = parseFollowUpPayload(text);
+
+      if (parsed.wantsCancel) {
+        clearFollowUp();
+        toast.success("Follow-up cleared.");
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [{ command: "follow_up_cancel", ok: true }],
+        });
+        return;
+      }
+
+      // apply draft (labor/parts) to the targeted item
+      const targetSec = followUp.sectionIndex;
+      const targetItem = followUp.itemIndex;
+
+      const it = sess.sections[targetSec]?.items?.[targetItem];
+      if (!it) {
+        clearFollowUp();
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [
+            { command: "follow_up", ok: false, reason: "Missing target item" },
+          ],
+        });
+        return;
+      }
+
+      const status = String(it.status ?? "").toLowerCase();
+      const isFailOrRec = status === "fail" || status === "recommend";
+
+      if (!isFailOrRec) {
+        // if tech changed it away, stop follow-up
+        clearFollowUp();
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [
+            {
+              command: "follow_up",
+              ok: false,
+              reason: "Target no longer FAIL/REC",
+            },
+          ],
+        });
+        return;
+      }
+
+      const nextParts =
+        parsed.parts.length > 0 ? parsed.parts : (followUp.draft?.parts ?? []);
+      const nextLabor =
+        parsed.laborHours !== null
+          ? parsed.laborHours
+          : (followUp.draft?.laborHours ?? null);
+
+      updateItem(targetSec, targetItem, {
+        parts: nextParts,
+        laborHours: nextLabor,
+      } as ItemPatch);
+
+      const label = String(it.item ?? it.name ?? "Item");
+      const partsSummary =
+        nextParts.length > 0
+          ? nextParts.map((p) => `${p.qty}× ${p.description}`).join(", ")
+          : "no parts";
+      const laborSummary = nextLabor != null ? `${nextLabor} hr` : "no labor";
+
+      if (parsed.wantsConfirm || normalizeSpeech(text).includes("confirm")) {
+        // submit immediately
+        clearFollowUp();
+        toast.success(`Submitting: ${label} • ${laborSummary} • ${partsSummary}`);
+        speakLocal("Confirmed. Submitting.");
+        void submitAIForItem(targetSec, targetItem);
+
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [{ command: "follow_up_confirm_submit", ok: true }],
+        });
+        return;
+      }
+
+      // otherwise move to await_confirm
+      setFollowUp({
+        kind: "parts_labor",
+        sectionIndex: targetSec,
+        itemIndex: targetItem,
+        stage: "await_confirm",
+        draft: { laborHours: nextLabor, parts: nextParts },
+      });
+
+      toast.success(
+        `Follow-up captured. ${label}: ${laborSummary}, ${partsSummary}. Say "confirm" to submit.`,
+      );
+      speakLocal("Got it. Say confirm to submit.");
+
+      appendVoiceTrace({
+        rawFinal: text,
+        wakeCommand: text,
+        parsed: [],
+        applied: [{ command: "follow_up_capture", ok: true }],
+      });
+      return;
+    }
+
+    // 2) Multi-command support in one message:
+    const split = splitOnFollowUp(text);
+    const mainText = split.tail ? split.head : text;
+    const followTail = split.tail;
 
     const fallbackIdx =
       typeof sess.currentSectionIndex === "number"
@@ -1116,33 +1817,95 @@ export default function GenericInspectionScreen(
         }
       }
 
-      const feedback =
-        primaryFeedback ??
-        buildVoiceBrainFeedback({
-          rawSpeech: text,
-          parsed: commands,
-          applied,
-        });
+      // ✅ If follow-up tail exists in same utterance, apply to the resolver target
+      if (followTail && lastAppliedTarget) {
+        const parsedFU = parseFollowUpPayload(followTail);
 
-      if (feedback.toast) {
-        toast.success(feedback.toast);
-      }
+        if (parsedFU.wantsCancel) {
+          clearFollowUp();
+          applied.push({ command: "follow_up_cancel", ok: true });
+        } else {
+          const nextParts = parsedFU.parts;
+          const nextLabor = parsedFU.laborHours;
 
-      if (feedback.spoken) {
-        speakLocal(feedback.spoken);
-      }
+          updateItem(lastAppliedTarget.sectionIndex, lastAppliedTarget.itemIndex, {
+            parts: nextParts,
+            laborHours: nextLabor,
+          } as ItemPatch);
 
-      if (feedback.followUp.kind === "photo_prompt" && lastAppliedTarget) {
-        updateItem(lastAppliedTarget.sectionIndex, lastAppliedTarget.itemIndex, {
-          photoRequested: true,
-        } as ItemPatch);
-        setFollowUp({
-          kind: "photo_prompt",
-          sectionIndex: lastAppliedTarget.sectionIndex,
-          itemIndex: lastAppliedTarget.itemIndex,
-        });
+          const it =
+            sess.sections[lastAppliedTarget.sectionIndex]?.items?.[
+              lastAppliedTarget.itemIndex
+            ];
+          const label = String(it?.item ?? it?.name ?? "Item");
+          const partsSummary =
+            nextParts.length > 0
+              ? nextParts.map((p) => `${p.qty}× ${p.description}`).join(", ")
+              : "no parts";
+          const laborSummary = nextLabor != null ? `${nextLabor} hr` : "no labor";
+
+          if (parsedFU.wantsConfirm) {
+            clearFollowUp();
+            speakLocal("Confirmed. Submitting.");
+            void submitAIForItem(
+              lastAppliedTarget.sectionIndex,
+              lastAppliedTarget.itemIndex,
+            );
+            applied.push({ command: "follow_up_confirm_submit", ok: true });
+            toast.success(
+              `Submitting: ${label} • ${laborSummary} • ${partsSummary}`,
+            );
+          } else {
+            setFollowUp({
+              kind: "parts_labor",
+              sectionIndex: lastAppliedTarget.sectionIndex,
+              itemIndex: lastAppliedTarget.itemIndex,
+              stage: "await_confirm",
+              draft: { laborHours: nextLabor, parts: nextParts },
+            });
+            applied.push({ command: "follow_up_capture", ok: true });
+            toast.success(
+              `Follow-up captured. ${label}: ${laborSummary}, ${partsSummary}. Say "confirm" to submit.`,
+            );
+            speakLocal("Got it. Say confirm to submit.");
+          }
+        }
       } else {
-        clearFollowUp();
+        const feedback =
+          primaryFeedback ??
+          buildVoiceBrainFeedback({
+            rawSpeech: text,
+            parsed: commands,
+            applied,
+          });
+
+        if (feedback.toast) {
+          toast.success(feedback.toast);
+        }
+
+        if (feedback.spoken) {
+          speakLocal(feedback.spoken);
+        }
+
+        if (feedback.followUp.kind === "photo_prompt" && lastAppliedTarget) {
+          setFollowUp({
+            kind: "photo_prompt",
+            sectionIndex: lastAppliedTarget.sectionIndex,
+            itemIndex: lastAppliedTarget.itemIndex,
+          });
+        } else if (
+          feedback.followUp.kind === "parts_labor" &&
+          lastAppliedTarget
+        ) {
+          setFollowUp({
+            kind: "parts_labor",
+            sectionIndex: lastAppliedTarget.sectionIndex,
+            itemIndex: lastAppliedTarget.itemIndex,
+            stage: "await_followup",
+          });
+        } else if (!feedback.followUp || feedback.followUp.kind === "none") {
+          clearFollowUp();
+        }
       }
 
       appendVoiceTrace({

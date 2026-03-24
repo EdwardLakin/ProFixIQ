@@ -8,7 +8,6 @@ type PartsDraft = Array<{ description: string; qty: number }>;
 
 export type VoiceBrainFollowUpDecision =
   | { kind: "none" }
-  | { kind: "parts_labor"; prompt: string }
   | { kind: "photo_prompt"; prompt: string };
 
 export type VoiceBrainFeedback = {
@@ -28,14 +27,14 @@ function titleCase(input: string | null | undefined): string {
 }
 
 function getCommandType(command: ParsedCommand): string {
-  const rec = command as unknown as Record<string, unknown>;
+  const rec = command as Record<string, unknown>;
   if (typeof rec.command === "string") return rec.command;
   if (typeof rec.type === "string") return rec.type;
   return "command";
 }
 
 function getCommandStatus(command: ParsedCommand): InspectionItemStatus | null {
-  const rec = command as unknown as Record<string, unknown>;
+  const rec = command as Record<string, unknown>;
   const raw = norm(typeof rec.status === "string" ? rec.status : null);
 
   if (raw === "ok" || raw === "fail" || raw === "na" || raw === "recommend") {
@@ -47,24 +46,12 @@ function getCommandStatus(command: ParsedCommand): InspectionItemStatus | null {
 }
 
 function getCommandItem(command: ParsedCommand): string {
-  const rec = command as unknown as Record<string, unknown>;
+  const rec = command as Record<string, unknown>;
   return typeof rec.item === "string" ? rec.item.trim() : "";
 }
 
-function getCommandNote(command: ParsedCommand): string {
-  const rec = command as unknown as Record<string, unknown>;
-  if (typeof rec.note === "string" && rec.note.trim()) return rec.note.trim();
-  if (typeof rec.notes === "string" && rec.notes.trim()) return rec.notes.trim();
-  return "";
-}
-
-function getCommandOpenPhotoCapture(command: ParsedCommand): boolean {
-  const rec = command as unknown as Record<string, unknown>;
-  return rec.openPhotoCapture === true;
-}
-
 function getCommandParts(command: ParsedCommand): PartsDraft {
-  const rec = command as unknown as Record<string, unknown>;
+  const rec = command as Record<string, unknown>;
   if (!Array.isArray(rec.parts)) return [];
 
   return rec.parts
@@ -81,7 +68,7 @@ function getCommandParts(command: ParsedCommand): PartsDraft {
 }
 
 function getCommandLaborHours(command: ParsedCommand): number | null {
-  const rec = command as unknown as Record<string, unknown>;
+  const rec = command as Record<string, unknown>;
   return typeof rec.laborHours === "number" && Number.isFinite(rec.laborHours)
     ? rec.laborHours
     : null;
@@ -100,17 +87,17 @@ function buildPartsLaborSummary(
   parts: PartsDraft,
   laborHours: number | null,
 ): string {
-  const partsText =
-    parts.length > 0
-      ? parts.map((p) => `${p.qty} ${p.description}`).join(", ")
-      : "no parts";
+  const pieces: string[] = [];
 
-  const laborText =
-    laborHours != null
-      ? `${laborHours} hour${laborHours === 1 ? "" : "s"}`
-      : "no labor";
+  if (laborHours != null) {
+    pieces.push(`${laborHours} hour${laborHours === 1 ? "" : "s"} labor`);
+  }
 
-  return `${laborText}, ${partsText}`;
+  if (parts.length > 0) {
+    pieces.push(parts.map((p) => `${p.qty} ${p.description}`).join(", "));
+  }
+
+  return pieces.join(" and ");
 }
 
 export function buildVoiceBrainFeedback(args: {
@@ -133,10 +120,8 @@ export function buildVoiceBrainFeedback(args: {
   const type = getCommandType(primary);
   const status = getCommandStatus(primary);
   const item = titleCase(getCommandItem(primary)) || "Item";
-  const note = getCommandNote(primary);
   const parts = getCommandParts(primary);
   const laborHours = getCommandLaborHours(primary);
-  const wantsPhoto = getCommandOpenPhotoCapture(primary);
 
   if ((type === "status" || type === "update_status") && status === "ok") {
     return {
@@ -155,86 +140,32 @@ export function buildVoiceBrainFeedback(args: {
   }
 
   if ((type === "status" || type === "update_status") && status === "fail") {
-    if (parts.length > 0 || laborHours != null) {
-      const summary = buildPartsLaborSummary(parts, laborHours);
-      return {
-        spoken: `${item} failed. Added ${summary}. Say confirm to submit.`,
-        toast: `${item} failed • ${summary}`,
-        followUp: {
-          kind: "parts_labor",
-          prompt: "Say confirm to submit, or follow up to change parts and labor.",
-        },
-      };
-    }
-
-    if (wantsPhoto) {
-      return {
-        spoken: `${item} failed. Would you like to add photos now?`,
-        toast: `${item} failed`,
-        followUp: {
-          kind: "photo_prompt",
-          prompt: "Would you like to add photos now?",
-        },
-      };
-    }
-
-    if (note) {
-      return {
-        spoken: `${item} failed. Would you like to add parts and labor? Say follow up.`,
-        toast: `${item} failed`,
-        followUp: {
-          kind: "parts_labor",
-          prompt: "Would you like to add parts and labor? Say follow up.",
-        },
-      };
-    }
+    const summary = buildPartsLaborSummary(parts, laborHours);
 
     return {
-      spoken: `${item} marked failed.`,
-      toast: `${item} marked fail`,
-      followUp: { kind: "none" },
+      spoken: summary
+        ? `${item} failed. ${summary} added. Would you like to add a photo?`
+        : `${item} failed. Would you like to add a photo?`,
+      toast: summary ? `${item} failed • ${summary}` : `${item} failed`,
+      followUp: {
+        kind: "photo_prompt",
+        prompt: "Would you like to add a photo?",
+      },
     };
   }
 
   if ((type === "status" || type === "update_status") && status === "recommend") {
-    if (parts.length > 0 || laborHours != null) {
-      const summary = buildPartsLaborSummary(parts, laborHours);
-      return {
-        spoken: `${item} recommended. Added ${summary}. Say confirm to submit.`,
-        toast: `${item} recommended • ${summary}`,
-        followUp: {
-          kind: "parts_labor",
-          prompt: "Say confirm to submit, or follow up to change parts and labor.",
-        },
-      };
-    }
-
-    if (wantsPhoto) {
-      return {
-        spoken: `${item} recommended. Would you like to add photos now?`,
-        toast: `${item} recommended`,
-        followUp: {
-          kind: "photo_prompt",
-          prompt: "Would you like to add photos now?",
-        },
-      };
-    }
-
-    if (note) {
-      return {
-        spoken: `${item} recommended. Would you like to add parts and labor? Say follow up.`,
-        toast: `${item} recommended`,
-        followUp: {
-          kind: "parts_labor",
-          prompt: "Would you like to add parts and labor? Say follow up.",
-        },
-      };
-    }
+    const summary = buildPartsLaborSummary(parts, laborHours);
 
     return {
-      spoken: `${item} marked recommended.`,
-      toast: `${item} marked recommend`,
-      followUp: { kind: "none" },
+      spoken: summary
+        ? `${item} recommended. ${summary} added. Would you like to add a photo?`
+        : `${item} recommended. Would you like to add a photo?`,
+      toast: summary ? `${item} recommended • ${summary}` : `${item} recommended`,
+      followUp: {
+        kind: "photo_prompt",
+        prompt: "Would you like to add a photo?",
+      },
     };
   }
 
