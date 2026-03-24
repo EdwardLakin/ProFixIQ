@@ -28,15 +28,51 @@ export type ParsedInspectionFindingCommand = {
   openPhotoCapture?: boolean;
 };
 
-export type VoiceFollowUp = {
-  kind: "photo_prompt";
-  sectionIndex: number;
-  itemIndex: number;
-};
+export type VoiceFollowUp =
+  | {
+      kind: "parts_labor";
+      sectionIndex: number;
+      itemIndex: number;
+      stage: "await_followup" | "await_confirm";
+      draft?: {
+        laborHours: number | null;
+        parts: Array<{ description: string; qty: number }>;
+      };
+    }
+  | {
+      kind: "photo_prompt";
+      sectionIndex: number;
+      itemIndex: number;
+    };
 
 export type VoiceMeta = {
   linesAddedToWorkOrder: number;
-  followUp?: VoiceFollowUp | null;
+
+  /**
+   * Voice follow-up state (2-turn flow after fail/recommend).
+   * Used by GenericInspectionScreen to:
+   *  - arm follow-up after a FAIL/REC + note
+   *  - optionally ask for photos
+   *  - parse labor/parts on the next utterance
+   *  - require "confirm" to submit
+   */
+  followUp?:
+    | {
+        kind: "parts_labor";
+        sectionIndex: number;
+        itemIndex: number;
+        stage: "await_followup" | "await_confirm";
+        draft?: {
+          laborHours?: number | null;
+          parts?: Array<{ description: string; qty: number }>;
+        };
+      }
+    | {
+        kind: "photo_prompt";
+        sectionIndex: number;
+        itemIndex: number;
+      }
+    | null;
 };
 
 export type AppliedTarget = { sectionIndex: number; itemIndex: number };
