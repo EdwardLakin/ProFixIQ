@@ -1229,9 +1229,7 @@ export default function GenericInspectionScreen(
         return;
       }
 
-      let sawFailOrRec = false;
-      let sawNote = false;
-      let spokenSummary: string | null = null;
+      let primaryFeedback: ReturnType<typeof buildVoiceBrainFeedback> | null = null;
 
       // ✅ Track the item the resolver actually applied to (NO manual focus assumptions)
       let lastAppliedTarget:
@@ -1240,42 +1238,6 @@ export default function GenericInspectionScreen(
 
       for (const command of commands) {
         // lightweight detection from parsed shape
-        const anyC = command as unknown as Record<string, unknown>;
-        const cmdType =
-          typeof anyC.command === "string"
-            ? String(anyC.command)
-            : typeof anyC.type === "string"
-              ? String(anyC.type)
-              : "";
-
-        if (cmdType === "status" || cmdType === "update_status") {
-          const st = String(
-            (anyC as { status?: unknown }).status ?? "",
-          ).toLowerCase();
-          if (st === "fail" || st === "recommend") sawFailOrRec = true;
-        }
-        if (cmdType === "add" || cmdType === "add_note") {
-          const nt = String(
-            (anyC as { note?: unknown; notes?: unknown }).note ??
-              (anyC as { notes?: unknown }).notes ??
-              "",
-          ).trim();
-          if (nt.length > 0) sawNote = true;
-        }
-        if (cmdType === "recommend") {
-          const nt = String(
-            (anyC as { note?: unknown; notes?: unknown; recommend?: unknown })
-              .note ??
-              (anyC as { notes?: unknown }).notes ??
-              (anyC as { recommend?: unknown }).recommend ??
-              "",
-          ).trim();
-          if (nt.length > 0) {
-            sawFailOrRec = true;
-            sawNote = true;
-          }
-        }
-
         try {
           const result = await handleTranscriptFn({
             command,
@@ -1295,29 +1257,21 @@ export default function GenericInspectionScreen(
           if (r?.appliedTarget) {
             lastAppliedTarget = r.appliedTarget;
 
-            const row =
-              sess.sections[r.appliedTarget.sectionIndex]?.items?.[r.appliedTarget.itemIndex];
-            const label = String(row?.item ?? row?.name ?? "Item");
-            const statusText = String(row?.status ?? "").toLowerCase();
-            const partsCount = Array.isArray((row as { parts?: unknown })?.parts)
-              ? ((row as { parts?: Array<unknown> }).parts?.length ?? 0)
-              : 0;
-            const laborHours =
-              typeof (row as { laborHours?: unknown })?.laborHours === "number"
-                ? ((row as { laborHours?: number }).laborHours ?? null)
-                : null;
+            const okResult: VoiceCommandApplyResult = {
+              command: commandLabel(command),
+              ok: true,
+            };
 
-            if (statusText === "fail" || statusText === "recommend") {
-              const partsPhrase =
-                partsCount > 0 ? ` ${partsCount} part${partsCount === 1 ? "" : "s"} added.` : "";
-              const laborPhrase =
-                laborHours != null ? ` ${laborHours} hour labor added.` : "";
-              spokenSummary = `${label} marked ${statusText}.${laborPhrase}${partsPhrase}`.trim();
-            } else if (statusText === "ok" || statusText === "na") {
-              spokenSummary = `${label} marked ${statusText}.`;
+            applied.push(okResult);
+
+            if (!primaryFeedback) {
+              primaryFeedback = buildVoiceBrainFeedback({
+                rawSpeech: text,
+                parsed: [command],
+                applied: [okResult],
+              });
             }
 
-            applied.push({ command: commandLabel(command), ok: true });
           } else {
             applied.push({
               command: commandLabel(command),
@@ -1390,19 +1344,19 @@ export default function GenericInspectionScreen(
           }
         }
       } else {
-        const feedback = buildVoiceBrainFeedback({
-          rawSpeech: text,
-          parsed: commands,
-          applied,
-        });
+        const feedback =
+          primaryFeedback ??
+          buildVoiceBrainFeedback({
+            rawSpeech: text,
+            parsed: commands,
+            applied,
+          });
 
         if (feedback.toast) {
           toast.success(feedback.toast);
         }
 
-        if (spokenSummary) {
-          speakLocal(spokenSummary);
-        } else if (feedback.spoken) {
+        if (feedback.spoken) {
           speakLocal(feedback.spoken);
         }
 
@@ -1422,37 +1376,8 @@ export default function GenericInspectionScreen(
             itemIndex: lastAppliedTarget.itemIndex,
             stage: "await_followup",
           });
-        } else if (sawFailOrRec && sawNote && lastAppliedTarget) {
-          const targetRow =
-            sess.sections[lastAppliedTarget.sectionIndex]?.items?.[
-              lastAppliedTarget.itemIndex
-            ];
-          const existingPhotos = Array.isArray(
-            (targetRow as { photoUrls?: unknown })?.photoUrls,
-          )
-            ? ((targetRow as { photoUrls?: string[] }).photoUrls?.length ?? 0)
-            : 0;
-
-          if (existingPhotos === 0) {
-            setFollowUp({
-              kind: "photo_prompt",
-              sectionIndex: lastAppliedTarget.sectionIndex,
-              itemIndex: lastAppliedTarget.itemIndex,
-            });
-            window.setTimeout(() => {
-              speakLocal("Add photos now?");
-            }, 350);
-          } else {
-            setFollowUp({
-              kind: "parts_labor",
-              sectionIndex: lastAppliedTarget.sectionIndex,
-              itemIndex: lastAppliedTarget.itemIndex,
-              stage: "await_followup",
-            });
-            window.setTimeout(() => {
-              speakLocal("Would you like to add parts and labor? Say follow up.");
-            }, 350);
-          }
+        } else if (!feedback.followUp || feedback.followUp.kind === "none") {
+          clearFollowUp();
         }
       }
 

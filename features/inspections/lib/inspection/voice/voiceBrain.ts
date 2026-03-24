@@ -106,7 +106,9 @@ function buildPartsLaborSummary(
       : "no parts";
 
   const laborText =
-    laborHours != null ? `${laborHours} hour${laborHours === 1 ? "" : "s"}` : "no labor";
+    laborHours != null
+      ? `${laborHours} hour${laborHours === 1 ? "" : "s"}`
+      : "no labor";
 
   return `${laborText}, ${partsText}`;
 }
