@@ -1,3 +1,5 @@
+//features/inspections/lib/inspection/SectionDisplay.tsx
+
 "use client";
 
 import type React from "react";

@@ -1,3 +1,5 @@
+//features/inspections/lib/inspection/ui/AirCornerGrid.tsx
+
 "use client";
 
 import { useMemo, useState } from "react";

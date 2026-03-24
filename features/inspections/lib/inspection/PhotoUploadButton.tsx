@@ -1,3 +1,5 @@
+//features/inspections/lib/inspection/PhotoUploadButton.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";

@@ -1,9 +1,9 @@
-// GenericInspectionScreen.tsx (FULL FILE REPLACEMENT)
+// features/inspections/screens/GenericInspectionScreen.tsx (FULL FILE REPLACEMENT)
 "use client";
 
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
 
@@ -598,7 +598,7 @@ function buildInterpretCtxForSpeech(args: {
   speech: string;
   session: InspectionSession;
   fallbackSectionIndex: number;
-}): { sectionTitle: string; items: string[] } | null {
+}): { sectionTitle: string; sectionTitles: string[]; items: string[] } | null {
   const { speech, session, fallbackSectionIndex } = args;
   const sections = session.sections ?? [];
   if (!sections.length) return null;
@@ -610,24 +610,19 @@ function buildInterpretCtxForSpeech(args: {
   );
 
   const section = sections[chosenIdx];
-  const items = (section?.items ?? [])
+
+  const sectionTitles = sections
+    .map((s) => String(s.title ?? "").trim())
+    .filter((v) => v.length > 0);
+
+  const items = sections
+    .flatMap((s) => s.items ?? [])
     .map((it) => String(it.item ?? it.name ?? "").trim())
-    .filter(Boolean);
-
-  if (items.length === 0) {
-    const all = sections
-      .flatMap((s) => s.items ?? [])
-      .map((it) => String(it.item ?? it.name ?? "").trim())
-      .filter(Boolean);
-
-    return {
-      sectionTitle: String(section?.title ?? ""),
-      items: all,
-    };
-  }
+    .filter((v) => v.length > 0);
 
   return {
     sectionTitle: String(section?.title ?? ""),
+    sectionTitles,
     items,
   };
 }
@@ -640,6 +635,7 @@ export default function GenericInspectionScreen(
   _props: GenericInspectionScreenProps,
 ): JSX.Element {
   const routeSp = useSearchParams();
+  const router = useRouter();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   type ItemPatch = Partial<InspectionSection["items"][number]>;
@@ -1161,9 +1157,13 @@ export default function GenericInspectionScreen(
         fallbackSectionIndex: fallbackIdx,
       }) ?? {
         sectionTitle: String(sess.sections?.[fallbackIdx]?.title ?? ""),
-        items: (sess.sections?.[fallbackIdx]?.items ?? [])
+        sectionTitles: (sess.sections ?? [])
+          .map((s) => String(s.title ?? "").trim())
+          .filter((v) => v.length > 0),
+        items: (sess.sections ?? [])
+          .flatMap((s) => s.items ?? [])
           .map((it) => String(it.item ?? it.name ?? "").trim())
-          .filter(Boolean),
+          .filter((v) => v.length > 0),
       };
 
     let commands: ParsedCommand[] = [];
@@ -2131,16 +2131,41 @@ export default function GenericInspectionScreen(
   const hint =
     "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
 
-  // Bottom bar: ONLY Save progress + Finish inspection
+
+  const findingsHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("inspectionId", inspectionId);
+
+    if (workOrderId) params.set("workOrderId", workOrderId);
+    if (workOrderLineId) params.set("workOrderLineId", workOrderLineId);
+    if (templateName) params.set("template", templateName);
+
+    return `/inspections/findings?${params.toString()}`;
+  }, [inspectionId, workOrderId, workOrderLineId, templateName]);
+
+
   const actions = (
     <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="font-medium border-[rgba(184,115,51,0.75)] text-[11px] tracking-[0.16em] uppercase"
+        onClick={() => router.push(findingsHref)}
+      >
+        Review findings
+      </Button>
+
       <SaveInspectionButton
         session={session}
         workOrderLineId={workOrderLineId}
       />
 
       {workOrderLineId && (
-        <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
+        <FinishInspectionButton
+          session={session}
+          workOrderLineId={workOrderLineId}
+        />
       )}
     </>
   );
