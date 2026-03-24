@@ -1,45 +1,25 @@
-//features/inspections/lib/inspection/findings/page.tsx
-
 "use client";
 
-import Link from "next/link";
-import { useMemo } from "react";
-import { useSearchParams } from "next/navigation";
-import PageShell from "@/features/shared/components/PageShell";
-import { Button } from "@shared/components/ui/Button";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import type {
+  InspectionItem,
   InspectionItemStatus,
   InspectionSession,
 } from "@inspections/lib/inspection/types";
+import PageShell from "@/features/shared/components/PageShell";
+import { Button } from "@shared/components/ui/Button";
 
-type FindingStatus = "fail" | "recommend";
-
-type FindingCard = {
-  key: string;
+type FindingRow = {
   sectionIndex: number;
   itemIndex: number;
   sectionTitle: string;
-  itemLabel: string;
-  status: FindingStatus;
-  notes: string;
-  photoUrls: string[];
-  parts: Array<{ description: string; qty: number }>;
-  laborHours: number | null;
-  estimateSubmitted: boolean;
-  estimateSubmittedAt: string | null;
-  estimateWorkOrderLineId: string | null;
-  estimateQuoteLineId: string | null;
+  item: InspectionItem;
 };
 
-function readJson<T>(key: string): T | null {
-  try {
-    if (typeof window === "undefined") return null;
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
+function norm(input: string | null | undefined): string {
+  return String(input ?? "").trim().toLowerCase();
 }
 
 function inspectionDraftKey(args: {
@@ -58,455 +38,422 @@ function inspectionDraftKey(args: {
   return `inspection-draft:template:${t}:${args.inspectionId}`;
 }
 
-function asStatus(value: unknown): InspectionItemStatus | "" {
-  const s = String(value ?? "").toLowerCase().trim();
-  if (s === "ok" || s === "fail" || s === "na" || s === "recommend") {
-    return s;
+function isFindingStatus(status: unknown): status is "fail" | "recommend" {
+  const s = norm(String(status ?? ""));
+  return s === "fail" || s === "recommend";
+}
+
+function readDraftSession(key: string): InspectionSession | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as InspectionSession;
+  } catch {
+    return null;
   }
-  if (s === "pass" || s === "okay") return "ok";
-  if (s === "rec") return "recommend";
-  return "";
 }
 
-function getItemLabel(item: unknown): string {
-  const rec = item as {
-    item?: unknown;
-    name?: unknown;
-    description?: unknown;
-    title?: unknown;
+function writeDraftSession(key: string, session: InspectionSession): void {
+  try {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(key, JSON.stringify(session));
+  } catch {
+    // ignore
+  }
+}
+
+function summarizeFromSections(session: InspectionSession): {
+  cause: string;
+  correction: string;
+} {
+  const failed: string[] = [];
+  const recommended: string[] = [];
+
+  for (const sec of session.sections ?? []) {
+    const sectionTitle = String(sec.title ?? "").trim();
+    for (const item of sec.items ?? []) {
+      const status = String(item.status ?? "").toLowerCase();
+      if (status !== "fail" && status !== "recommend") continue;
+
+      const label = String(item.item ?? item.name ?? "Item").trim();
+      const note = String(item.notes ?? "").trim();
+      const line = note
+        ? `${sectionTitle ? `${sectionTitle}: ` : ""}${label} — ${note}`
+        : `${sectionTitle ? `${sectionTitle}: ` : ""}${label}`;
+
+      if (status === "fail") failed.push(line);
+      if (status === "recommend") recommended.push(line);
+    }
+  }
+
+  if (failed.length === 0 && recommended.length === 0) {
+    return {
+      cause: "Inspection completed.",
+      correction:
+        "Inspection completed. No failed or recommended items were recorded.",
+    };
+  }
+
+  const parts: string[] = [];
+  if (failed.length) parts.push(`Failed: ${failed.join("; ")}.`);
+  if (recommended.length) parts.push(`Recommended: ${recommended.join("; ")}.`);
+
+  return {
+    cause: "Inspection found items requiring attention.",
+    correction: parts.join(" "),
   };
-  return String(
-    rec?.item ?? rec?.name ?? rec?.description ?? rec?.title ?? "Item",
-  ).trim();
 }
 
-function getNotes(item: unknown): string {
-  const rec = item as { notes?: unknown; note?: unknown };
-  return String(rec?.notes ?? rec?.note ?? "").trim();
-}
-
-function getPhotoUrls(item: unknown): string[] {
-  const rec = item as { photoUrls?: unknown };
-  if (!Array.isArray(rec?.photoUrls)) return [];
-  return rec.photoUrls
-    .map((x) => String(x ?? "").trim())
-    .filter((x) => x.length > 0);
-}
-
-function getParts(
-  item: unknown,
-): Array<{ description: string; qty: number }> {
-  const rec = item as { parts?: unknown };
-  if (!Array.isArray(rec?.parts)) return [];
-  return rec.parts
-    .map((row) => {
-      const part = row as { description?: unknown; qty?: unknown };
-      const description = String(part?.description ?? "").trim();
-      const qtyNum = Number(part?.qty ?? 0);
-      return {
-        description,
-        qty: Number.isFinite(qtyNum) ? qtyNum : 0,
-      };
-    })
-    .filter((p) => p.description.length > 0 || p.qty > 0);
-}
-
-function getLaborHours(item: unknown): number | null {
-  const rec = item as { laborHours?: unknown };
-  return typeof rec?.laborHours === "number" && Number.isFinite(rec.laborHours)
-    ? rec.laborHours
-    : null;
-}
-
-function getFindingCards(session: InspectionSession | null): FindingCard[] {
-  if (!session?.sections?.length) return [];
-
-  const cards: FindingCard[] = [];
-
-  session.sections.forEach((section, sectionIndex) => {
-    const sectionTitle = String(section?.title ?? "Section").trim() || "Section";
-    const items = Array.isArray(section?.items) ? section.items : [];
-
-    items.forEach((item, itemIndex) => {
-      const status = asStatus((item as { status?: unknown }).status);
-      if (status !== "fail" && status !== "recommend") return;
-
-      const ext = item as {
-        estimateSubmitted?: unknown;
-        estimateSubmittedAt?: unknown;
-        estimateWorkOrderLineId?: unknown;
-        estimateQuoteLineId?: unknown;
-      };
-
-      cards.push({
-        key: `${sectionIndex}:${itemIndex}:${getItemLabel(item)}`,
-        sectionIndex,
-        itemIndex,
-        sectionTitle,
-        itemLabel: getItemLabel(item),
-        status,
-        notes: getNotes(item),
-        photoUrls: getPhotoUrls(item),
-        parts: getParts(item),
-        laborHours: getLaborHours(item),
-        estimateSubmitted: ext.estimateSubmitted === true,
-        estimateSubmittedAt:
-          typeof ext.estimateSubmittedAt === "string"
-            ? ext.estimateSubmittedAt
-            : null,
-        estimateWorkOrderLineId:
-          typeof ext.estimateWorkOrderLineId === "string"
-            ? ext.estimateWorkOrderLineId
-            : null,
-        estimateQuoteLineId:
-          typeof ext.estimateQuoteLineId === "string"
-            ? ext.estimateQuoteLineId
-            : null,
+function collectFindings(session: InspectionSession): FindingRow[] {
+  const rows: FindingRow[] = [];
+  for (let s = 0; s < session.sections.length; s += 1) {
+    const sec = session.sections[s];
+    for (let i = 0; i < (sec.items ?? []).length; i += 1) {
+      const item = sec.items[i];
+      if (!isFindingStatus(item.status)) continue;
+      rows.push({
+        sectionIndex: s,
+        itemIndex: i,
+        sectionTitle: String(sec.title ?? ""),
+        item,
       });
-    });
-  });
-
-  return cards;
+    }
+  }
+  return rows;
 }
 
-function buildRunHref(args: {
-  templateName: string;
-  inspectionId: string;
-  workOrderId: string | null;
-  workOrderLineId: string | null;
-}) {
-  const qs = new URLSearchParams();
-  if (args.templateName) qs.set("template", args.templateName);
-  if (args.inspectionId) qs.set("inspectionId", args.inspectionId);
-  if (args.workOrderId) qs.set("workOrderId", args.workOrderId);
-  if (args.workOrderLineId) qs.set("workOrderLineId", args.workOrderLineId);
-  return `/inspection/run?${qs.toString()}`;
-}
-
-export default function InspectionFindingsPage() {
+export default function InspectionFindingsPage(): JSX.Element {
+  const router = useRouter();
   const sp = useSearchParams();
 
   const inspectionId = sp.get("inspectionId") || "";
-  const workOrderId = sp.get("workOrderId");
-  const workOrderLineId = sp.get("workOrderLineId");
-  const templateName =
-    sp.get("template") ||
-    (typeof window !== "undefined"
-      ? window.sessionStorage.getItem("inspection:title")
-      : null) ||
-    "Inspection";
+  const workOrderId = sp.get("workOrderId") || "";
+  const workOrderLineId = sp.get("workOrderLineId") || "";
+  const templateName = sp.get("template") || "Inspection";
 
   const draftKey = useMemo(
     () =>
       inspectionDraftKey({
         inspectionId,
-        workOrderId,
-        workOrderLineId,
+        workOrderId: workOrderId || null,
+        workOrderLineId: workOrderLineId || null,
         templateName,
       }),
     [inspectionId, workOrderId, workOrderLineId, templateName],
   );
 
-  const session = useMemo(
-    () => readJson<InspectionSession>(draftKey),
-    [draftKey],
+  const [session, setSession] = useState<InspectionSession | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const loaded = readDraftSession(draftKey);
+    setSession(loaded);
+  }, [draftKey]);
+
+  const findings = useMemo(
+    () => (session ? collectFindings(session) : []),
+    [session],
   );
 
-  const findings = useMemo(() => getFindingCards(session), [session]);
+  const updateFinding = (
+    sectionIndex: number,
+    itemIndex: number,
+    patch: Partial<InspectionItem>,
+  ): void => {
+    setSession((prev) => {
+      if (!prev) return prev;
 
-  const failed = findings.filter((x) => x.status === "fail");
-  const recommended = findings.filter((x) => x.status === "recommend");
+      const next: InspectionSession = {
+        ...prev,
+        sections: prev.sections.map((sec, sIdx) => {
+          if (sIdx !== sectionIndex) return sec;
+          return {
+            ...sec,
+            items: (sec.items ?? []).map((it, iIdx) =>
+              iIdx === itemIndex ? { ...it, ...patch } : it,
+            ),
+          };
+        }),
+      };
 
-  const runHref = buildRunHref({
-    templateName,
-    inspectionId,
-    workOrderId,
-    workOrderLineId,
-  });
+      writeDraftSession(draftKey, next);
+      return next;
+    });
+  };
+
+  const markReviewed = (row: FindingRow): void => {
+    updateFinding(row.sectionIndex, row.itemIndex, {
+      findingReviewed: true,
+      photoReviewed:
+        (row.item.photoUrls?.length ?? 0) > 0 ? true : row.item.photoReviewed,
+    });
+  };
+
+  const handleSubmitReviewed = async (): Promise<void> => {
+    if (!session) return;
+    if (!workOrderLineId) {
+      toast.error("Missing work order line id.");
+      return;
+    }
+
+    const pending = collectFindings(session).filter(
+      (row) => row.item.findingReviewed !== true,
+    );
+
+    if (pending.length > 0) {
+      toast.error("Review every finding before submitting.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      writeDraftSession(draftKey, session);
+
+      const payload = summarizeFromSections(session);
+
+      const finishRes = await fetch(
+        `/api/work-orders/lines/${workOrderLineId}/finish`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const finishJson = (await finishRes.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+
+      if (!finishRes.ok) {
+        throw new Error(finishJson?.error || "Failed to finish inspection");
+      }
+
+      const pdfRes = await fetch(`/api/inspections/finalize/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workOrderLineId }),
+      });
+
+      const pdfJson = (await pdfRes.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+
+      if (!pdfRes.ok || !pdfJson?.ok) {
+        toast.error(
+          pdfJson?.error || "Inspection finished, but PDF finalize failed.",
+        );
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("inspection:completed", {
+          detail: {
+            workOrderLineId,
+            cause: payload.cause,
+            correction: payload.correction,
+          },
+        }),
+      );
+
+      window.dispatchEvent(new CustomEvent("inspection:close"));
+      toast.success("Inspection findings submitted.");
+      router.back();
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Unable to submit findings";
+      toast.error(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!session) {
+    return (
+      <PageShell
+        title="Inspection findings"
+        description="Review findings before submission."
+      >
+        <div className="rounded-2xl border border-white/10 bg-black/50 p-4 text-sm text-neutral-300">
+          Loading findings…
+        </div>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell
-      title="Inspection Findings"
-      description="Review failed and recommended items before finalizing the inspection."
+      title="Inspection findings"
+      description="Review failed and recommended findings before final submission."
     >
-      <div className="mx-auto w-full max-w-6xl px-3 py-4 md:px-4 md:py-6">
-        <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 px-4 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                Review Flow
-              </div>
-              <h1 className="mt-1 text-lg font-semibold text-neutral-50 md:text-xl">
-                {templateName || "Inspection"}
-              </h1>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                {workOrderId ? (
-                  <span className="rounded-full border border-white/10 bg-black/40 px-2 py-1">
-                    Work Order Attached
-                  </span>
-                ) : null}
-                {workOrderLineId ? (
-                  <span className="rounded-full border border-white/10 bg-black/40 px-2 py-1">
-                    Line Attached
-                  </span>
-                ) : null}
-                {inspectionId ? (
-                  <span className="rounded-full border border-white/10 bg-black/40 px-2 py-1">
-                    Inspection Active
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href={runHref}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="text-[11px] uppercase tracking-[0.16em]"
-                >
-                  Back to inspection
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {!session ? (
-          <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 px-4 py-6 text-sm text-neutral-300 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-            No active inspection draft was found for this route.
-          </div>
-        ) : findings.length === 0 ? (
-          <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 px-4 py-6 text-sm text-neutral-300 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl">
+      <div className="mx-auto max-w-5xl space-y-4">
+        {findings.length === 0 ? (
+          <div className="rounded-2xl border border-white/10 bg-black/50 p-4 text-sm text-neutral-300">
             No failed or recommended findings to review.
           </div>
         ) : (
-          <div className="space-y-5">
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-red-200">
-                  Failed Items ({failed.length})
-                </h2>
-              </div>
+          findings.map((row) => {
+            const itemLabel = String(row.item.item ?? row.item.name ?? "Item");
+            const status = String(
+              row.item.status ?? "",
+            ).toLowerCase() as InspectionItemStatus;
+            const photos = row.item.photoUrls ?? [];
+            const parts = row.item.parts ?? [];
+            const laborHours = row.item.laborHours ?? null;
+            const reviewed = row.item.findingReviewed === true;
 
-              {failed.length === 0 ? (
-                <div className="rounded-xl border border-white/10 bg-black/45 px-4 py-3 text-sm text-neutral-400">
-                  No failed items.
-                </div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {failed.map((card) => (
-                    <div
-                      key={card.key}
-                      className="rounded-2xl border border-red-500/20 bg-black/60 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                            {card.sectionTitle}
-                          </div>
-                          <div className="mt-1 text-base font-semibold text-neutral-100">
-                            {card.itemLabel}
-                          </div>
-                        </div>
-
-                        <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200">
-                          Fail
-                        </span>
-                      </div>
-
-                      <div className="mt-3 space-y-3 text-sm text-neutral-300">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                            Notes
-                          </div>
-                          <div className="mt-1 rounded-lg border border-white/10 bg-black/35 px-3 py-2">
-                            {card.notes || "No notes added yet."}
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                              Photos
-                            </div>
-                            <div className="mt-1 rounded-lg border border-white/10 bg-black/35 px-3 py-2">
-                              {card.photoUrls.length}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                              Labor Hours
-                            </div>
-                            <div className="mt-1 rounded-lg border border-white/10 bg-black/35 px-3 py-2">
-                              {card.laborHours ?? "—"}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                            Parts
-                          </div>
-                          <div className="mt-1 rounded-lg border border-white/10 bg-black/35 px-3 py-2">
-                            {card.parts.length === 0 ? (
-                              <span className="text-neutral-500">
-                                No parts added yet.
-                              </span>
-                            ) : (
-                              <ul className="space-y-1">
-                                {card.parts.map((p, idx) => (
-                                  <li key={`${card.key}-part-${idx}`}>
-                                    {p.qty > 0 ? `${p.qty}× ` : ""}
-                                    {p.description || "Part"}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          <span
-                            className={[
-                              "rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
-                              card.estimateSubmitted
-                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                                : "border-amber-500/30 bg-amber-500/10 text-amber-200",
-                            ].join(" ")}
-                          >
-                            {card.estimateSubmitted
-                              ? "Estimate submitted"
-                              : "Needs estimate review"}
-                          </span>
-
-                          {card.estimateSubmittedAt ? (
-                            <span className="text-[10px] text-neutral-500">
-                              {new Date(card.estimateSubmittedAt).toLocaleString()}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
+            return (
+              <div
+                key={`${row.sectionIndex}:${row.itemIndex}`}
+                className="rounded-2xl border border-white/10 bg-black/60 p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                      {row.sectionTitle}
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-amber-200">
-                  Recommended Items ({recommended.length})
-                </h2>
-              </div>
-
-              {recommended.length === 0 ? (
-                <div className="rounded-xl border border-white/10 bg-black/45 px-4 py-3 text-sm text-neutral-400">
-                  No recommended items.
-                </div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {recommended.map((card) => (
-                    <div
-                      key={card.key}
-                      className="rounded-2xl border border-amber-500/20 bg-black/60 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                            {card.sectionTitle}
-                          </div>
-                          <div className="mt-1 text-base font-semibold text-neutral-100">
-                            {card.itemLabel}
-                          </div>
-                        </div>
-
-                        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200">
-                          Recommend
-                        </span>
-                      </div>
-
-                      <div className="mt-3 space-y-3 text-sm text-neutral-300">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                            Notes
-                          </div>
-                          <div className="mt-1 rounded-lg border border-white/10 bg-black/35 px-3 py-2">
-                            {card.notes || "No notes added yet."}
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                              Photos
-                            </div>
-                            <div className="mt-1 rounded-lg border border-white/10 bg-black/35 px-3 py-2">
-                              {card.photoUrls.length}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                              Labor Hours
-                            </div>
-                            <div className="mt-1 rounded-lg border border-white/10 bg-black/35 px-3 py-2">
-                              {card.laborHours ?? "—"}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                            Parts
-                          </div>
-                          <div className="mt-1 rounded-lg border border-white/10 bg-black/35 px-3 py-2">
-                            {card.parts.length === 0 ? (
-                              <span className="text-neutral-500">
-                                No parts added yet.
-                              </span>
-                            ) : (
-                              <ul className="space-y-1">
-                                {card.parts.map((p, idx) => (
-                                  <li key={`${card.key}-part-${idx}`}>
-                                    {p.qty > 0 ? `${p.qty}× ` : ""}
-                                    {p.description || "Part"}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          <span
-                            className={[
-                              "rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
-                              card.estimateSubmitted
-                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                                : "border-amber-500/30 bg-amber-500/10 text-amber-200",
-                            ].join(" ")}
-                          >
-                            {card.estimateSubmitted
-                              ? "Estimate submitted"
-                              : "Needs estimate review"}
-                          </span>
-
-                          {card.estimateSubmittedAt ? (
-                            <span className="text-[10px] text-neutral-500">
-                              {new Date(card.estimateSubmittedAt).toLocaleString()}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
+                    <div className="text-lg font-semibold text-neutral-100">
+                      {itemLabel}
                     </div>
-                  ))}
+                  </div>
+                  <div
+                    className={[
+                      "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
+                      status === "fail"
+                        ? "border border-red-500/40 bg-red-500/15 text-red-200"
+                        : "border border-amber-500/40 bg-amber-500/15 text-amber-200",
+                    ].join(" ")}
+                  >
+                    {status}
+                  </div>
                 </div>
-              )}
-            </section>
-          </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label className="space-y-1">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                      Note
+                    </div>
+                    <textarea
+                      className="min-h-[110px] w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
+                      value={String(row.item.notes ?? "")}
+                      onChange={(e) =>
+                        updateFinding(row.sectionIndex, row.itemIndex, {
+                          notes: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+
+                  <div className="space-y-3">
+                    <label className="space-y-1">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                        Labor hours
+                      </div>
+                      <input
+                        className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
+                        value={laborHours ?? ""}
+                        onChange={(e) =>
+                          updateFinding(row.sectionIndex, row.itemIndex, {
+                            laborHours:
+                              e.target.value.trim() === ""
+                                ? null
+                                : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+
+                    <label className="space-y-1">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                        Parts
+                      </div>
+                      <textarea
+                        className="min-h-[110px] w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
+                        value={parts
+                          .map((p) => `${p.qty}x ${p.description}`)
+                          .join("\n")}
+                        onChange={(e) => {
+                          const nextParts = e.target.value
+                            .split("\n")
+                            .map((line) => line.trim())
+                            .filter(Boolean)
+                            .map((line) => {
+                              const m = line.match(/^(\d+)\s*x?\s+(.+)$/i);
+                              if (m?.[1] && m?.[2]) {
+                                return {
+                                  qty: Number(m[1]),
+                                  description: m[2].trim(),
+                                };
+                              }
+                              return { qty: 1, description: line };
+                            });
+
+                          updateFinding(row.sectionIndex, row.itemIndex, {
+                            parts: nextParts,
+                          });
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
+                  <span className="rounded-full border border-white/10 px-3 py-1">
+                    Photos: {photos.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5"
+                    onClick={() =>
+                      updateFinding(row.sectionIndex, row.itemIndex, {
+                        photoRequested: true,
+                      })
+                    }
+                  >
+                    Mark photo requested
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5"
+                    onClick={() =>
+                      updateFinding(row.sectionIndex, row.itemIndex, {
+                        photoReviewed: true,
+                      })
+                    }
+                  >
+                    Mark photo reviewed
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full border border-emerald-500/30 px-3 py-1 text-emerald-200 hover:bg-emerald-500/10"
+                    onClick={() => markReviewed(row)}
+                  >
+                    {reviewed ? "Reviewed" : "Mark reviewed"}
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/60 p-4">
+          <div className="text-sm text-neutral-300">
+            Reviewed findings:{" "}
+            <span className="font-semibold text-white">
+              {findings.filter((row) => row.item.findingReviewed === true).length}
+            </span>
+            {" / "}
+            <span className="font-semibold text-white">{findings.length}</span>
+          </div>
+
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Back
+            </Button>
+            <Button type="button" onClick={handleSubmitReviewed} isLoading={busy}>
+              {busy ? "Submitting…" : "Submit reviewed findings"}
+            </Button>
+          </div>
+        </div>
       </div>
     </PageShell>
   );
