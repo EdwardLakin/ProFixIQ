@@ -16,44 +16,25 @@ function normalize(value: string): string {
   return (value || "").trim().toLowerCase();
 }
 
-function isTireLikeTitle(title: string): boolean {
+function isExplicitTireSectionTitle(title: string): boolean {
   const t = normalize(title);
   return (
+    t === "tire tread depth & pressure" ||
+    t === "tire tread depth and pressure" ||
+    t === "tire pressure & tread depth" ||
+    t === "tire pressure and tread depth" ||
+    t === "tires & wheels" ||
+    t === "tires and wheels" ||
+    t === "tire inspection" ||
+    t === "tire checks" ||
+    t === "wheel & tire inspection" ||
     t.includes("tire tread") ||
     t.includes("tyre tread") ||
-    t.includes("tread depth") ||
-    t.includes("tire pressure") ||
-    t.includes("tyre pressure") ||
     (t.includes("tire") && t.includes("pressure")) ||
-    (t.includes("tire") && t.includes("tread"))
+    (t.includes("tire") && t.includes("tread")) ||
+    (t.includes("tyre") && t.includes("pressure")) ||
+    (t.includes("tyre") && t.includes("tread"))
   );
-}
-
-function isTireLikeItem(label: string): boolean {
-  const l = normalize(label);
-  return (
-    l.includes("tire pressure") ||
-    l.includes("tyre pressure") ||
-    l.includes("pressure") ||
-    l.includes("tread depth") ||
-    l.includes("tread") ||
-    l.includes("sidewall") ||
-    l.includes("wheel hub") ||
-    l.includes("wheel rim") ||
-    l.includes("wheel fasteners") ||
-    l.includes("psi") ||
-    l.includes("/32")
-  );
-}
-
-function isRawImportedTireSection(section: FleetEditableSection): boolean {
-  if (isTireLikeTitle(section.title)) return true;
-
-  const tireHits = (section.items ?? []).filter((item) =>
-    isTireLikeItem(item.item || ""),
-  ).length;
-
-  return tireHits >= 2;
 }
 
 function findCanonicalTireGridSection(
@@ -86,18 +67,6 @@ function hasCanonicalTireGrid(sections: FleetEditableSection[]): boolean {
   return sections.some((section) => normalize(section.title).includes("tire grid"));
 }
 
-function findInsertIndex(sections: FleetEditableSection[]): number {
-  const tiresAndWheelsIndex = sections.findIndex(
-    (section) => normalize(section.title) === "tires & wheels",
-  );
-  if (tiresAndWheelsIndex >= 0) return tiresAndWheelsIndex;
-
-  const firstRawTireIndex = sections.findIndex(isRawImportedTireSection);
-  if (firstRawTireIndex >= 0) return firstRawTireIndex;
-
-  return 0;
-}
-
 export function replaceFleetTireSectionWithGrid(params: {
   sections: FleetEditableSection[];
   vehicleType?: string;
@@ -116,18 +85,15 @@ export function replaceFleetTireSectionWithGrid(params: {
   );
   if (!canonical) return source;
 
-  const withoutRawTireSections = source.filter(
-    (section) => !isRawImportedTireSection(section),
+  const explicitTireIndex = source.findIndex((section) =>
+    isExplicitTireSectionTitle(section.title),
   );
 
-  const insertAt = Math.min(
-    findInsertIndex(source),
-    withoutRawTireSections.length,
-  );
+  if (explicitTireIndex === -1) {
+    return source;
+  }
 
-  return [
-    ...withoutRawTireSections.slice(0, insertAt),
-    canonical,
-    ...withoutRawTireSections.slice(insertAt),
-  ];
+  const next = [...source];
+  next.splice(explicitTireIndex, 1, canonical);
+  return next;
 }
