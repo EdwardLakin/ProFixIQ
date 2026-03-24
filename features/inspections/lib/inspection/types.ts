@@ -17,28 +17,37 @@ export type VoiceTraceEvent = {
   applied: VoiceCommandApplyResult[];
 };
 
+export type ParsedInspectionFindingCommand = {
+  type: "inspection_finding";
+  section?: string;
+  item?: string;
+  status: InspectionItemStatus;
+  note?: string;
+  parts?: Array<{ description: string; qty: number }>;
+  laborHours?: number | null;
+  openPhotoCapture?: boolean;
+};
+
+export type VoiceFollowUp =
+  | {
+      kind: "parts_labor";
+      sectionIndex: number;
+      itemIndex: number;
+      stage: "await_followup" | "await_confirm";
+      draft?: {
+        laborHours: number | null;
+        parts: Array<{ description: string; qty: number }>;
+      };
+    }
+  | {
+      kind: "photo_prompt";
+      sectionIndex: number;
+      itemIndex: number;
+    };
+
 export type VoiceMeta = {
   linesAddedToWorkOrder: number;
-
-  /**
-   * Voice follow-up state (2-turn flow after fail/recommend).
-   * Used by GenericInspectionScreen to:
-   *  - arm follow-up after a FAIL/REC + note
-   *  - parse labor/parts on the next utterance
-   *  - require "confirm" to submit
-   */
-  followUp?:
-    | {
-        kind: "parts_labor";
-        sectionIndex: number;
-        itemIndex: number;
-        stage: "await_followup" | "await_confirm";
-        draft?: {
-          laborHours?: number | null;
-          parts?: Array<{ description: string; qty: number }>;
-        };
-      }
-    | null;
+  followUp?: VoiceFollowUp | null;
 };
 
 export type AppliedTarget = { sectionIndex: number; itemIndex: number };
@@ -74,6 +83,9 @@ export interface InspectionItem {
 
   estimateSubmitted?: boolean;
   estimateSubmittedAt?: string | null;
+  estimateLastUpdatedAt?: string | null;
+  estimateWorkOrderLineId?: string | null;
+  estimateQuoteLineId?: string | null;
 }
 
 export interface InspectionCategory {
@@ -93,14 +105,29 @@ export type ParsedCommandNameBased =
       item: string;
       status: InspectionItemStatus;
     }
-  | { type: "add"; section: string; item: string; note: string }
-  | { type: "recommend"; section: string; item: string; note: string }
+  | {
+      type: "add";
+      section: string;
+      item: string;
+      note: string;
+    }
+  | {
+      type: "recommend";
+      section: string;
+      item: string;
+      note: string;
+    }
   | {
       type: "measurement";
       section: string;
       item: string;
       value: number | string;
       unit?: string;
+    }
+  | {
+      type: "section_status";
+      section: string;
+      status: InspectionItemStatus;
     };
 
 /** Newer, index-based command shape used by convertParsedCommands.ts */
@@ -121,10 +148,18 @@ export type ParsedCommandIndexed = {
   unit?: string;
   notes?: string;
   recommend?: string;
+  section?: string;
+  item?: string;
+  note?: string;
+  parts?: Array<{ description: string; qty: number }>;
+  laborHours?: number | null;
 };
 
-/** Unified ParsedCommand covering both shapes */
-export type ParsedCommand = ParsedCommandNameBased | ParsedCommandIndexed;
+/** Unified ParsedCommand covering all supported shapes */
+export type ParsedCommand =
+  | ParsedCommandNameBased
+  | ParsedCommandIndexed
+  | ParsedInspectionFindingCommand;
 
 /**
  * Commands consumed by dispatchCommand (older name-based shape),

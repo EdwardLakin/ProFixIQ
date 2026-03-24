@@ -1028,6 +1028,36 @@ export default function GenericInspectionScreen(
     const followUp = sess.voiceMeta?.followUp ?? null;
 
     // 1) If we are mid-follow-up, interpret this utterance as follow-up payload first
+    if (followUp && followUp.kind === "photo_prompt") {
+      const answer = normalizeSpeech(text);
+
+      if (/\b(yes|yeah|yep|open|photo|photos|add photos)\b/.test(answer)) {
+        clearFollowUp();
+        toast.success("Open photo capture from the item card.");
+        speakLocal("Open photo capture.");
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [{ command: "photo_prompt_yes", ok: true }],
+        });
+        return;
+      }
+
+      if (/\b(no|nope|skip|later)\b/.test(answer)) {
+        clearFollowUp();
+        toast.success("Okay, skipping photos.");
+        speakLocal("Okay.");
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [{ command: "photo_prompt_no", ok: true }],
+        });
+        return;
+      }
+    }
+
     if (followUp && followUp.kind === "parts_labor") {
       const parsed = parseFollowUpPayload(text);
 
@@ -1200,6 +1230,7 @@ export default function GenericInspectionScreen(
 
       let sawFailOrRec = false;
       let sawNote = false;
+      let spokenSummary: string | null = null;
 
       // ✅ Track the item the resolver actually applied to (NO manual focus assumptions)
       let lastAppliedTarget:
@@ -1262,6 +1293,29 @@ export default function GenericInspectionScreen(
 
           if (r?.appliedTarget) {
             lastAppliedTarget = r.appliedTarget;
+
+            const row =
+              sess.sections[r.appliedTarget.sectionIndex]?.items?.[r.appliedTarget.itemIndex];
+            const label = String(row?.item ?? row?.name ?? "Item");
+            const statusText = String(row?.status ?? "").toLowerCase();
+            const partsCount = Array.isArray((row as { parts?: unknown })?.parts)
+              ? ((row as { parts?: Array<unknown> }).parts?.length ?? 0)
+              : 0;
+            const laborHours =
+              typeof (row as { laborHours?: unknown })?.laborHours === "number"
+                ? ((row as { laborHours?: number }).laborHours ?? null)
+                : null;
+
+            if (statusText === "fail" || statusText === "recommend") {
+              const partsPhrase =
+                partsCount > 0 ? ` ${partsCount} part${partsCount === 1 ? "" : "s"} added.` : "";
+              const laborPhrase =
+                laborHours != null ? ` ${laborHours} hour labor added.` : "";
+              spokenSummary = `${label} marked ${statusText}.${laborPhrase}${partsPhrase}`.trim();
+            } else if (statusText === "ok" || statusText === "na") {
+              spokenSummary = `${label} marked ${statusText}.`;
+            }
+
             applied.push({ command: commandLabel(command), ok: true });
           } else {
             applied.push({
@@ -1337,13 +1391,38 @@ export default function GenericInspectionScreen(
       } else {
         // ✅ Arm follow-up prompt when FAIL/REC + note occurs
         if (sawFailOrRec && sawNote && lastAppliedTarget) {
-          setFollowUp({
-            kind: "parts_labor",
-            sectionIndex: lastAppliedTarget.sectionIndex,
-            itemIndex: lastAppliedTarget.itemIndex,
-            stage: "await_followup",
-          });
-          speakLocal("Would you like to add parts and labor? Say follow up.");
+          const targetRow =
+            sess.sections[lastAppliedTarget.sectionIndex]?.items?.[lastAppliedTarget.itemIndex];
+          const existingPhotos = Array.isArray((targetRow as { photoUrls?: unknown })?.photoUrls)
+            ? ((targetRow as { photoUrls?: string[] }).photoUrls?.length ?? 0)
+            : 0;
+
+          if (spokenSummary) {
+            speakLocal(spokenSummary);
+          }
+
+          if (existingPhotos === 0) {
+            setFollowUp({
+              kind: "photo_prompt",
+              sectionIndex: lastAppliedTarget.sectionIndex,
+              itemIndex: lastAppliedTarget.itemIndex,
+            });
+            window.setTimeout(() => {
+              speakLocal("Add photos now?");
+            }, 350);
+          } else {
+            setFollowUp({
+              kind: "parts_labor",
+              sectionIndex: lastAppliedTarget.sectionIndex,
+              itemIndex: lastAppliedTarget.itemIndex,
+              stage: "await_followup",
+            });
+            window.setTimeout(() => {
+              speakLocal("Would you like to add parts and labor? Say follow up.");
+            }, 350);
+          }
+        } else if (spokenSummary) {
+          speakLocal(spokenSummary);
         }
       }
 

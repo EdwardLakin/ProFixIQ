@@ -1,55 +1,10 @@
-// /features/inspections/lib/inspection/handleTranscript.ts (FULL FILE REPLACEMENT)
-//
-// ✅ NO MANUAL FOCUS
-// - This file NEVER uses currentItemIndex.
-// - For SECTION-wide actions, we may use currentSectionIndex as a SAFE fallback
-//   when the model says "this/current section" or gives no usable section name.
-//
-// ✅ Fix goals covered
-// 1) Stronger resolver for tire + air axle phrases (steer/drive/tag/trailer + #, left/right, inner/outer, rear/front)
-// 2) Battery rating synonyms (“rated/rating/tested/test/cca/volts”) + battery-field mapping (cca/voltage)
-// 3) Section-wide status commands work even if server returns odd shapes OR "this section"
-//    - including update_status + section + no item
-// 4) Unit inference from speech ("mil/mils" => "mm") + numeric coercion safety
-// 5) Higher confidence threshold to reduce wrong-field writes
-// 6) ✅ Pushrod travel split:
-//    - "pushrod travel 2.5 inches" => allow grid targets (measurement)
-//    - "pushrod travel ok" => prefer SECTION item (status, no numeric)
-// 7) ✅ Don't overwrite existing measurements (unless empty)
-//
-// ✅ FIX (critical):
-// - When server returns {command:"update_status", item:"...", status:"ok"} WITHOUT indices,
-//   we now ALSO read section/item/note from the command record so target resolution works.
-//
-// ✅ "__auto__" section support (from local fallback commands):
-// - If a command arrives with section === "__auto__", we treat it like "no explicit section".
-//
-// ✅ NEW: Gate items vs grids
-// - If speech has NO numeric AND NO corner/axle specificity,
-//   do NOT allow grid-like labels to be selected.
-//   (Prevents generic “seatbelts ok / brake shoes ok / pushrod travel ok” from hitting a grid row.)
-//
-// ✅ NEW: Status inference
-// - If status/update_status has no `status` field, infer from rawSpeech/item/note
-//   so “brake shoe linings okay” marks OK.
-//
-// ✅ NEW (fixes your screenshot issue):
-// - Strip status words from speech BEFORE scoring (so "engine oil level ok" matches "engine oil level")
-// - Add a strong phrase-match boost in scoreLabel (direct label ↔ speech match)
-// - Lower min score threshold slightly (30 -> 20) so general items resolve reliably
-//
-// ✅ NEW (your request):
-// - One-shot FAIL/RECOMMEND + NOTE support (no follow-up required)
-//   - If command already carries note/notes => apply with status
-//   - Else infer note from rawSpeech (everything after "item + fail/recommend")
-//   - Merge notes (append) instead of overwriting
-//
-// No `any`.
+//features/inspections/lib/inspection/handleTranscript.ts
 
 import {
   ParsedCommand,
   ParsedCommandIndexed,
   ParsedCommandNameBased,
+  ParsedInspectionFindingCommand,
   InspectionItemStatus,
   InspectionSession,
 } from "@inspections/lib/inspection/types";
@@ -831,23 +786,28 @@ async function applySingleCommand(args: {
       laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
     }
   } else {
-    const c = command as ParsedCommandNameBased;
-    mode = c.type;
+  const c = command as ParsedCommandNameBased | ParsedInspectionFindingCommand;
+  mode = c.type;
 
+  if ("section" in c && typeof c.section === "string") {
     section = c.section;
-    item = c.item;
-
-    if ("status" in c) status = normalizeStatusMaybe(c.status);
-    if ("note" in c) note = c.note;
-    if ("value" in c) value = c.value;
-    if ("unit" in c) unit = c.unit;
-
-    const rec = c as unknown;
-    if (isRecord(rec)) {
-      parts = coercePartsFromUnknown(rec.parts);
-      laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
-    }
   }
+
+  if ("item" in c && typeof c.item === "string") {
+    item = c.item;
+  }
+
+  if ("status" in c) status = normalizeStatusMaybe(c.status);
+  if ("note" in c && typeof c.note === "string") note = c.note;
+  if ("value" in c) value = c.value;
+  if ("unit" in c && typeof c.unit === "string") unit = c.unit;
+
+  const rec = c as unknown;
+  if (isRecord(rec)) {
+    parts = coercePartsFromUnknown(rec.parts);
+    laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
+  }
+}
 
   if (section && norm(section) === "__auto__") section = undefined;
 
@@ -925,6 +885,60 @@ async function applySingleCommand(args: {
     );
 
     switch (mode) {
+    case "inspection_finding": {
+      const finding = command as unknown as ParsedInspectionFindingCommand;
+
+      const findingTarget = resolveTargetFromSpeech({
+        speech: [finding.section, finding.item, finding.note].filter(Boolean).join(" "),
+        sections: session.sections,
+        explicitSectionName: finding.section,
+        mode: "update_status",
+      });
+
+      if (!findingTarget) {
+        return null;
+      }
+
+      const safeFindingTarget = clampTargetToSession(session, findingTarget);
+      const existingRow =
+        session.sections[safeFindingTarget.sectionIndex]?.items?.[safeFindingTarget.itemIndex] ??
+        ({} as Record<string, unknown>);
+
+      const findingUpdates: Partial<InspectionSession["sections"][number]["items"][number]> = {
+        status: finding.status,
+      };
+
+      if (finding.note && finding.note.trim()) {
+        findingUpdates.notes = mergeNotes(
+          (existingRow as { notes?: unknown }).notes,
+          finding.note.trim(),
+        );
+      }
+
+      if (Array.isArray(finding.parts) && finding.parts.length > 0) {
+        findingUpdates.parts = finding.parts.map((part) => ({
+          description: String(part.description ?? "").trim(),
+          qty:
+            typeof part.qty === "number" && Number.isFinite(part.qty) && part.qty > 0
+              ? part.qty
+              : 1,
+        }));
+      }
+
+      if (finding.laborHours !== undefined) {
+        findingUpdates.laborHours = finding.laborHours;
+      }
+
+      updateItem(
+        safeFindingTarget.sectionIndex,
+        safeFindingTarget.itemIndex,
+        findingUpdates,
+      );
+
+      return safeFindingTarget;
+    }
+
+
       case "update_status":
       case "status": {
         if (status) itemUpdates.status = status;
