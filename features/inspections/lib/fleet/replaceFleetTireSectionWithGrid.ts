@@ -1,4 +1,4 @@
-import { masterInspectionList } from "@/features/inspections/lib/masterInspectionList";
+import { masterInspectionList } from "@/features/inspections/lib/inspection/masterInspectionList";
 
 export type FleetEditableItem = {
   item: string;
