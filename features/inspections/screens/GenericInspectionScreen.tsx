@@ -2665,13 +2665,15 @@ export default function GenericInspectionScreen(
                         )
                       ) : (
                         <>
-                          <SectionDisplay
+                                                    <SectionDisplay
                             title={section.title}
                             section={{ ...section, items: itemsWithHints }}
                             sectionIndex={sectionIndex}
                             showNotes
                             showPhotos
-                            inspectionId={inspectionId} /* ✅ REQUIRED FOR PHOTO UPLOADS */
+                            inspectionId={inspectionId}
+                            workOrderId={workOrderId}
+                            workOrderLineId={workOrderLineId || null}
                             onUpdateStatus={(
                               secIdx: number,
                               itemIdx: number,

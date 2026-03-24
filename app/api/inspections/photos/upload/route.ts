@@ -1,4 +1,3 @@
-// /app/api/inspections/photos/upload/route.ts (FULL FILE REPLACEMENT)
 import "server-only";
 
 export const runtime = "nodejs";
@@ -49,13 +48,13 @@ async function resolveShopId(args: {
     }>();
 
   if (inspErr) {
-    // eslint-disable-next-line no-console
     console.error("[inspections/photos/upload] inspections lookup failed", inspErr);
   }
 
-  if (insp?.shop_id) return { shopId: insp.shop_id, source: "inspections.shop_id" };
+  if (insp?.shop_id) {
+    return { shopId: insp.shop_id, source: "inspections.shop_id" };
+  }
 
-  // Prefer values from inspection row if present
   const woId = insp?.work_order_id ?? workOrderId ?? null;
   const wolId = insp?.work_order_line_id ?? workOrderLineId ?? null;
 
@@ -68,11 +67,12 @@ async function resolveShopId(args: {
       .maybeSingle<{ id: string; work_orders: { shop_id: string | null } | null }>();
 
     if (error) {
-      // eslint-disable-next-line no-console
       console.error("[inspections/photos/upload] wol->wo lookup failed", error);
     } else {
       const shopId = data?.work_orders?.shop_id ?? null;
-      if (shopId) return { shopId, source: "work_order_lines.work_order_id.shop_id" };
+      if (shopId) {
+        return { shopId, source: "work_order_lines.work_order_id.shop_id" };
+      }
     }
   }
 
@@ -80,41 +80,108 @@ async function resolveShopId(args: {
   if (woId) {
     const { data, error } = await supabase
       .from("work_orders")
-      .select("id, shop_id")
+      .select("id, shop_id, vehicle_id")
       .eq("id", woId)
-      .maybeSingle<{ id: string; shop_id: string | null }>();
+      .maybeSingle<{ id: string; shop_id: string | null; vehicle_id: string | null }>();
 
     if (error) {
-      // eslint-disable-next-line no-console
       console.error("[inspections/photos/upload] wo lookup failed", error);
     } else {
       const shopId = data?.shop_id ?? null;
-      if (shopId) return { shopId, source: "work_orders.shop_id" };
+      if (shopId) {
+        return { shopId, source: "work_orders.shop_id" };
+      }
     }
   }
 
-  // 4) fallback: profiles.shop_id (support both id and user_id shapes)
+  // 4) fallback: profiles.shop_id
   const { data: profById } = await supabase
     .from("profiles")
     .select("shop_id")
     .eq("id", userId)
     .maybeSingle<{ shop_id: string | null }>();
-  if (profById?.shop_id) return { shopId: profById.shop_id, source: "profiles.id.shop_id" };
+
+  if (profById?.shop_id) {
+    return { shopId: profById.shop_id, source: "profiles.id.shop_id" };
+  }
 
   const { data: profByUserId } = await supabase
     .from("profiles")
     .select("shop_id")
     .eq("user_id", userId)
     .maybeSingle<{ shop_id: string | null }>();
-  if (profByUserId?.shop_id) return { shopId: profByUserId.shop_id, source: "profiles.user_id.shop_id" };
+
+  if (profByUserId?.shop_id) {
+    return { shopId: profByUserId.shop_id, source: "profiles.user_id.shop_id" };
+  }
 
   return { shopId: null, source: "none" };
+}
+
+async function ensureInspectionRow(args: {
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+  inspectionId: string;
+  shopId: string;
+  workOrderId: string | null;
+  workOrderLineId: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { supabase, inspectionId, shopId, workOrderId, workOrderLineId } = args;
+
+  const { data: existing, error: existingErr } = await supabase
+    .from("inspections")
+    .select("id")
+    .eq("id", inspectionId)
+    .maybeSingle<{ id: string }>();
+
+  if (existingErr) {
+    console.error("[inspections/photos/upload] inspection exists check failed", existingErr);
+    return { ok: false, error: existingErr.message };
+  }
+
+  if (existing?.id) {
+    return { ok: true };
+  }
+
+  let vehicleId: string | null = null;
+
+  if (workOrderId) {
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("id, vehicle_id")
+      .eq("id", workOrderId)
+      .maybeSingle<{ id: string; vehicle_id: string | null }>();
+
+    if (woErr) {
+      console.error("[inspections/photos/upload] work order vehicle lookup failed", woErr);
+    }
+
+    vehicleId = wo?.vehicle_id ?? null;
+  }
+
+  const insertPayload: Database["public"]["Tables"]["inspections"]["Insert"] = {
+    id: inspectionId,
+    shop_id: shopId,
+    work_order_id: workOrderId,
+    work_order_line_id: workOrderLineId,
+    vehicle_id: vehicleId,
+    status: "in_progress",
+  };
+
+  const { error: insertErr } = await supabase
+    .from("inspections")
+    .insert(insertPayload);
+
+  if (insertErr) {
+    console.error("[inspections/photos/upload] inspection bootstrap insert failed", insertErr);
+    return { ok: false, error: insertErr.message };
+  }
+
+  return { ok: true };
 }
 
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  // auth
   const {
     data: { user },
     error: userErr,
@@ -124,7 +191,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // parse multipart
   const form = await req.formData().catch(() => null);
   if (!form) {
     return NextResponse.json(
@@ -136,7 +202,6 @@ export async function POST(req: NextRequest) {
   const inspectionId = asString(form.get("inspectionId"));
   const workOrderId = asString(form.get("workOrderId"));
   const workOrderLineId = asString(form.get("workOrderLineId"));
-
   const itemName = asString(form.get("itemName"));
   const notes = asString(form.get("notes"));
   const file = form.get("file");
@@ -144,11 +209,11 @@ export async function POST(req: NextRequest) {
   if (!inspectionId) {
     return NextResponse.json({ error: "Missing inspectionId" }, { status: 400 });
   }
+
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Missing file" }, { status: 400 });
   }
 
-  // resolve shop_id for policy + path
   const resolved = await resolveShopId({
     supabase,
     inspectionId,
@@ -161,32 +226,23 @@ export async function POST(req: NextRequest) {
   if (!shopId) {
     return NextResponse.json(
       {
-        error: "Inspection missing shop_id",
-        hint:
-          "Include workOrderId or workOrderLineId in the upload form-data, or ensure the inspection/work order is linked and has shop_id.",
-        debug: { source: resolved.source, inspectionId, workOrderId, workOrderLineId },
+        error: "Unable to resolve shop for inspection photo upload",
+        debug: {
+          source: resolved.source,
+          inspectionId,
+          workOrderId,
+          workOrderLineId,
+        },
       },
       { status: 400 },
     );
   }
 
-  // best-effort: backfill inspections.shop_id (ignore failure if RLS blocks it)
-  try {
-    await supabase
-      .from("inspections")
-      .update({ shop_id: shopId })
-      .eq("id", inspectionId)
-      .is("shop_id", null);
-  } catch {
-    // ignore
-  }
-
-  // ensure storage policy that depends on current_shop_id() can evaluate
   const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
     p_shop_id: shopId,
   });
+
   if (ctxErr) {
-    // eslint-disable-next-line no-console
     console.error("[inspections/photos/upload] set_current_shop_id failed", ctxErr);
     return NextResponse.json(
       { error: "Failed to set shop context" },
@@ -194,7 +250,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // build storage path
+  const ensure = await ensureInspectionRow({
+    supabase,
+    inspectionId,
+    shopId,
+    workOrderId,
+    workOrderLineId,
+  });
+
+  if (!ensure.ok) {
+    return NextResponse.json(
+      { error: `Failed to bootstrap inspection row: ${ensure.error}` },
+      { status: 500 },
+    );
+  }
+
   const bucket = "inspection_photos";
   const shopPart = safeFilePart(shopId);
   const inspPart = safeFilePart(inspectionId);
@@ -202,7 +272,6 @@ export async function POST(req: NextRequest) {
   const ext = extFromMime(file.type);
 
   const path = `shops/${shopPart}/inspections/${inspPart}/${idPart}.${ext}`;
-
   const bytes = Buffer.from(await file.arrayBuffer());
 
   const { error: upErr } = await supabase.storage.from(bucket).upload(path, bytes, {
@@ -211,18 +280,15 @@ export async function POST(req: NextRequest) {
   });
 
   if (upErr) {
-    // eslint-disable-next-line no-console
     console.error("[inspections/photos/upload] storage upload failed", upErr);
     return NextResponse.json({ error: upErr.message }, { status: 500 });
   }
 
-  // signed url for UI/PDF (30 days)
   const { data: signed, error: signErr } = await supabase.storage
     .from(bucket)
     .createSignedUrl(path, 60 * 60 * 24 * 30);
 
   if (signErr || !signed?.signedUrl) {
-    // eslint-disable-next-line no-console
     console.warn("[inspections/photos/upload] createSignedUrl failed", signErr);
   }
 
@@ -241,7 +307,6 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (insErr) {
-    // eslint-disable-next-line no-console
     console.error("[inspections/photos/upload] inspection_photos insert failed", insErr);
     return NextResponse.json({ error: insErr.message }, { status: 500 });
   }

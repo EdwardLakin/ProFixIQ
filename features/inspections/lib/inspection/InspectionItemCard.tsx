@@ -1,4 +1,3 @@
-// features/inspections/lib/inspection/InspectionItemCard.tsx ✅ FULL FILE REPLACEMENT (NO any)
 "use client";
 
 import type React from "react";
@@ -17,10 +16,9 @@ interface InspectionItemCardProps {
   itemIndex: number;
   showNotes: boolean;
   showPhotos: boolean;
-
-  /** ✅ required for uploading photos */
   inspectionId: string;
-
+  workOrderId?: string | null;
+  workOrderLineId?: string | null;
   onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
   onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
   onUpdateStatus: (
@@ -30,8 +28,6 @@ interface InspectionItemCardProps {
   ) => void;
   onUpdateValue?: (sectionIndex: number, itemIndex: number, value: string) => void;
   onUpdateUnit?: (sectionIndex: number, itemIndex: number, unit: string) => void;
-
-  /** UI only: render as compact row */
   variant?: "card" | "row";
 }
 
@@ -49,7 +45,6 @@ function getItemLabel(raw: InspectionItem): string {
   ).trim();
 }
 
-/** ✅ unify legacy note vs notes */
 function getNotesValue(raw: InspectionItem): string {
   const it = raw as unknown as { notes?: unknown; note?: unknown };
   const v = it.notes ?? it.note ?? "";
@@ -68,6 +63,8 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     showNotes,
     showPhotos,
     inspectionId,
+    workOrderId,
+    workOrderLineId,
     onUpdateNote,
     onUpload,
     onUpdateStatus,
@@ -95,7 +92,6 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
       ? "shadow-[0_0_0_1px_rgba(245,158,11,0.15)]"
       : "";
 
-  // ✅ expand-in-place only when truncated
   const labelRef = useRef<HTMLSpanElement | null>(null);
   const [expandEnabled, setExpandEnabled] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -111,7 +107,6 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     const compute = () => {
       const truncated = isTruncated(el);
       setExpandEnabled(truncated && label.trim().length > 0);
-      // if it becomes not-truncated, collapse
       if (!truncated) setExpanded(false);
     };
 
@@ -154,18 +149,13 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     return (
       <div className={["grid gap-2", rowGlow].join(" ")}>
         <div className="grid items-start gap-2 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-3">
-          {/* Item */}
           <div className="min-w-0">
             <div className="text-[15px] font-semibold text-white">
               <span
                 ref={labelRef}
                 className={[
                   "block min-w-0",
-                  // default: compact (your current layout)
-                  expanded
-                    ? "whitespace-normal break-words"
-                    : "line-clamp-2 lg:truncate",
-                  // small visual hint when it can expand
+                  expanded ? "whitespace-normal break-words" : "line-clamp-2 lg:truncate",
                   expandEnabled && !expanded ? "cursor-help" : "",
                 ].join(" ")}
                 onMouseEnter={onMouseEnter}
@@ -173,14 +163,13 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
                 onTouchCancel={onTouchEnd}
-                title={expandEnabled ? label : undefined} // fallback for desktop
+                title={expandEnabled ? label : undefined}
               >
                 {label || "—"}
               </span>
             </div>
           </div>
 
-          {/* Checkboxes / Measurement */}
           <div className="min-w-0">
             {isMeasurementItem ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -214,8 +203,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                   itmIdx: number,
                   updates: Partial<InspectionItem>,
                 ) => {
-                  if (updates.status)
-                    onUpdateStatus(secIdx, itmIdx, updates.status);
+                  if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
                 }}
                 onStatusChange={(s: InspectionItemStatus) =>
                   onUpdateStatus(sectionIndex, itemIndex, s)
@@ -231,11 +219,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
           <div className="min-w-0">
             <textarea
               rows={1}
-              className={[
-                "h-9 w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2",
-                "text-[12px] text-white outline-none placeholder:text-neutral-500",
-                "focus:border-accent focus:ring-2 focus:ring-accent/60",
-              ].join(" ")}
+              className="h-9 w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2 text-[12px] text-white outline-none placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/60"
               placeholder="Notes…"
               value={getNotesValue(item)}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -255,6 +239,8 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
 
                 <PhotoUploadButton
                   inspectionId={inspectionId}
+                  workOrderId={workOrderId}
+                  workOrderLineId={workOrderLineId}
                   itemName={label || null}
                   photoUrls={item.photoUrls ?? []}
                   onChange={(urls: string[]) => {
@@ -278,7 +264,6 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     );
   }
 
-  // Card variant (optional: keep simple truncate; uses browser title on hover)
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">
@@ -332,12 +317,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
       {showNotes && (
         <div className="mt-2">
           <textarea
-            className={[
-              "w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2",
-              "text-[12px] text-white outline-none placeholder:text-neutral-500",
-              "focus:border-accent focus:ring-2 focus:ring-accent/60",
-              "h-[44px]",
-            ].join(" ")}
+            className="h-[44px] w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2 text-[12px] text-white outline-none placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/60"
             placeholder="Enter notes..."
             value={getNotesValue(item)}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -356,6 +336,8 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
               </div>
               <PhotoUploadButton
                 inspectionId={inspectionId}
+                workOrderId={workOrderId}
+                workOrderLineId={workOrderLineId}
                 itemName={label || null}
                 photoUrls={item.photoUrls ?? []}
                 onChange={(urls: string[]) => {

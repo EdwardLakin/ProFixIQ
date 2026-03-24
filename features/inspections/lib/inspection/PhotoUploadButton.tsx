@@ -1,7 +1,3 @@
-// /features/inspections/lib/inspection/PhotoUploadButton.tsx ✅ FULL FILE REPLACEMENT (NO any)
-// Fixes Vercel build: makes inspectionId optional (callers may omit it)
-// Upload is blocked until inspectionId is present.
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,16 +7,10 @@ import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 type PhotoUploadButtonProps = {
   photoUrls: string[];
   onChange: (urls: string[]) => void;
-
-  /**
-   * ✅ Optional so older callers (InspectionMenuClient / InspectionItemCard)
-   * don't hard-fail TypeScript builds.
-   *
-   * Upload is disabled if missing.
-   */
   inspectionId?: string;
-
   itemName?: string | null;
+  workOrderId?: string | null;
+  workOrderLineId?: string | null;
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -36,6 +26,8 @@ export default function PhotoUploadButton({
   onChange,
   inspectionId,
   itemName,
+  workOrderId,
+  workOrderLineId,
 }: PhotoUploadButtonProps) {
   const [urls, setUrls] = useState<string[]>(photoUrls ?? []);
   const [uploading, setUploading] = useState(false);
@@ -58,6 +50,12 @@ export default function PhotoUploadButton({
 
     const safeItem = getString(itemName);
     if (safeItem) fd.set("itemName", safeItem);
+
+    const safeWo = getString(workOrderId);
+    if (safeWo) fd.set("workOrderId", safeWo);
+
+    const safeWol = getString(workOrderLineId);
+    if (safeWol) fd.set("workOrderLineId", safeWol);
 
     fd.set("file", file);
 
@@ -139,9 +137,7 @@ export default function PhotoUploadButton({
         accept="image/*"
         onChange={handleFileChange}
         disabled={uploading || !canUpload}
-        className="mt-2 block text-sm text-gray-300 file:rounded-full file:border-0
-        file:bg-orange-700 file:text-sm file:font-semibold file:text-white
-        hover:file:bg-orange-600 disabled:opacity-60"
+        className="mt-2 block text-sm text-gray-300 file:rounded-full file:border-0 file:bg-orange-700 file:text-sm file:font-semibold file:text-white hover:file:bg-orange-600 disabled:opacity-60"
       />
 
       {!canUpload && (

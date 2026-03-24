@@ -18,6 +18,8 @@ interface SectionDisplayProps {
 
   /** ✅ required for photo uploads (InspectionItemCard + /api/inspections/photos/upload) */
   inspectionId: string;
+  workOrderId?: string | null;
+  workOrderLineId?: string | null;
 
   onUpdateStatus: (
     sectionIndex: number,
@@ -106,13 +108,15 @@ function submittedAt(item: ItemExtended): string | null {
 }
 
 export default function SectionDisplay(props: SectionDisplayProps) {
-  const {
+    const {
     title,
     section,
     sectionIndex,
     showNotes = false,
     showPhotos = true,
     inspectionId,
+    workOrderId,
+    workOrderLineId,
     onUpdateStatus,
     onUpdateNote,
     onUpload,
@@ -392,6 +396,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         showNotes={showNotes && isFailOrRec}
                         showPhotos={showPhotos}
                         inspectionId={inspectionId}
+                        workOrderId={workOrderId}
+                        workOrderLineId={workOrderLineId}
                         onUpdateStatus={onUpdateStatus}
                         onUpdateNote={onUpdateNote}
                         onUpload={onUpload}
