@@ -398,8 +398,8 @@ function localFallbackCommands(text: string): ParsedCommand[] {
   const corner =
     lf ? "Steer 1 Left"
     : rf ? "Steer 1 Right"
-    : lr ? "Drive 1 Left"
-    : rr ? "Drive 1 Right"
+    : lr ? "Rear 1 Left"
+    : rr ? "Rear 1 Right"
     : "";
 
   const numMatch = n.match(/\b(\d+(?:\.\d+)?)\b/);

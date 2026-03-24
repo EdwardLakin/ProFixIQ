@@ -681,12 +681,7 @@ function isBatteryLikeLabel(label: string): boolean {
   );
 }
 
-function hasExistingMeasurement(v: unknown): boolean {
-  if (v === null || v === undefined) return false;
-  if (typeof v === "number") return Number.isFinite(v);
-  const s = String(v).trim();
-  return s.length > 0;
-}
+
 
 function findItemIndexByNamePreferNonGrid(params: {
   items: InspectionSession["sections"][number]["items"];
@@ -1011,8 +1006,7 @@ async function applySingleCommand(args: {
 
       case "update_value":
       case "measurement": {
-        const existing = (targetRow as { value?: unknown }).value;
-        if (value !== undefined && !hasExistingMeasurement(existing)) {
+        if (value !== undefined) {
           if (isBatteryLikeLabel(targetLabel)) {
             if ((unit ?? "").toUpperCase() === "CCA") {
               (itemUpdates as Record<string, unknown>).cca = value;
@@ -1183,8 +1177,7 @@ async function applySingleCommand(args: {
 
     case "update_value":
     case "measurement": {
-      const existing = (targetRow as { value?: unknown }).value;
-      if (value !== undefined && !hasExistingMeasurement(existing)) {
+      if (value !== undefined) {
         if (isBatteryLikeLabel(targetLabel)) {
           if ((unit ?? "").toUpperCase() === "CCA") {
             (itemUpdates as Record<string, unknown>).cca = value;
