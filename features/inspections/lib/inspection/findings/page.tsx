@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import type {
@@ -197,10 +197,54 @@ export default function InspectionFindingsPage(): JSX.Element {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  useEffect(() => {
+  const syncFromDraft = useCallback(() => {
     const loaded = readDraftSession(draftKey);
-    setSession(loaded);
+    if (loaded) {
+      setSession(loaded);
+    }
   }, [draftKey]);
+
+  useEffect(() => {
+    syncFromDraft();
+  }, [syncFromDraft]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleFocus = () => syncFromDraft();
+    const handlePageShow = () => syncFromDraft();
+
+    // fires for other tabs/windows; not same-tab writes
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === draftKey) syncFromDraft();
+    };
+
+    // custom same-tab sync event
+    const handleInspectionDraftUpdated = (e: Event) => {
+      const custom = e as CustomEvent<{ draftKey?: string }>;
+      if (!custom.detail?.draftKey || custom.detail.draftKey === draftKey) {
+        syncFromDraft();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(
+      "inspection:draft-updated",
+      handleInspectionDraftUpdated as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(
+        "inspection:draft-updated",
+        handleInspectionDraftUpdated as EventListener,
+      );
+    };
+  }, [draftKey, syncFromDraft]);
 
   const findings = useMemo(
     () => (session ? collectFindings(session) : []),
@@ -245,6 +289,15 @@ export default function InspectionFindingsPage(): JSX.Element {
       };
 
       writeDraftSession(draftKey, next);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("inspection:draft-updated", {
+            detail: { draftKey },
+          }),
+        );
+      }
+
       return next;
     });
   };
@@ -349,6 +402,14 @@ export default function InspectionFindingsPage(): JSX.Element {
     setBusy(true);
     try {
       writeDraftSession(draftKey, session);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("inspection:draft-updated", {
+            detail: { draftKey },
+          }),
+        );
+      }
 
       const payload = summarizeFromSections(session);
 
@@ -579,7 +640,7 @@ export default function InspectionFindingsPage(): JSX.Element {
 
                   <button
                     type="button"
-                    className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5"
+                    className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5 disabled:opacity-60"
                     onClick={() => fileInputRefs.current[key]?.click()}
                     disabled={isUploading}
                   >
