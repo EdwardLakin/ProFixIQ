@@ -11,6 +11,8 @@ import type { Database, TablesInsert } from "@shared/types/types/supabase";
 import type { InspectionItem } from "@/features/inspections/lib/inspection/types";
 import { generateQuoteFromInspection } from "@quotes/lib/quote/generateQuoteFromInspection";
 import { normalizeQuoteLine } from "@quotes/lib/quote/normalizeQuoteLine";
+import { buildInspectionCompletedEvent, buildInspectionFlaggedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
+import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 
 type DB = Database;
 type QuoteLinesInsert = TablesInsert<"quote_lines">;
@@ -169,7 +171,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6) Done
+    // 6) Best-effort ShopReel sync
+    const templateName =
+      typeof body.templateName === "string" && body.templateName.trim().length > 0
+        ? body.templateName.trim()
+        : null;
+
+    const inspectionCompletedEvent = await buildInspectionCompletedEvent({
+      workOrderId,
+      workOrderLineId,
+      results,
+      templateName,
+    });
+
+    const inspectionFlaggedEvent = await buildInspectionFlaggedEvent({
+      workOrderId,
+      results,
+    });
+
+    await Promise.allSettled(
+      [inspectionCompletedEvent, inspectionFlaggedEvent]
+        .filter((event): event is NonNullable<typeof event> => Boolean(event))
+        .map((event) =>
+          postStoryEventToShopReel(event).catch((error: unknown) => {
+            console.error("[shopreel] failed to sync inspection event", error);
+          })
+        )
+    );
+
+    // 7) Done
     return NextResponse.json({
       ok: true,
       workOrderId,

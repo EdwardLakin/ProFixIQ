@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
+import { buildWorkOrderCompletedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
+import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 
 type DB = Database;
 
@@ -39,6 +41,14 @@ export async function POST(req: Request) {
       .update({ status: "ready_to_invoice" })
       .eq("id", woId);
     if (updErr) throw updErr;
+
+    const event = await buildWorkOrderCompletedEvent(woId);
+
+    if (event) {
+      await postStoryEventToShopReel(event).catch((error: unknown) => {
+        console.error("[shopreel] failed to sync completed work order", error);
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {

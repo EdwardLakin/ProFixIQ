@@ -4,6 +4,8 @@ import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { buildWorkOrderApprovedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
+import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 
 export const runtime = "nodejs";
 
@@ -109,6 +111,16 @@ export async function POST(req: NextRequest) {
       { error: updErr.message },
       { status: 400 },
     );
+  }
+
+  if (nextApproval === "approved") {
+    const event = await buildWorkOrderApprovedEvent(workOrderId);
+
+    if (event) {
+      await postStoryEventToShopReel(event).catch((error: unknown) => {
+        console.error("[shopreel] failed to sync approved work order", error);
+      });
+    }
   }
 
   return NextResponse.json({

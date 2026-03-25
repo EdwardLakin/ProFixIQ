@@ -9169,6 +9169,162 @@ export type Database = {
           },
         ]
       }
+      shopreel_event_deliveries: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          delivered_at: string | null
+          error_message: string | null
+          event_key: string
+          event_type: string
+          http_status: number | null
+          id: string
+          integration_id: string | null
+          payload: Json
+          request_url: string
+          response_body: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          event_key: string
+          event_type: string
+          http_status?: number | null
+          id?: string
+          integration_id?: string | null
+          payload?: Json
+          request_url: string
+          response_body?: string | null
+          shop_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          event_key?: string
+          event_type?: string
+          http_status?: number | null
+          id?: string
+          integration_id?: string | null
+          payload?: Json
+          request_url?: string
+          response_body?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopreel_event_deliveries_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "shopreel_integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_event_deliveries_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_event_deliveries_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shopreel_integrations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          enabled_event_types: string[]
+          id: string
+          last_error_at: string | null
+          last_error_message: string | null
+          last_success_at: string | null
+          last_tested_at: string | null
+          remote_shop_id: string | null
+          shop_id: string
+          shopreel_base_url: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          enabled_event_types?: string[]
+          id?: string
+          last_error_at?: string | null
+          last_error_message?: string | null
+          last_success_at?: string | null
+          last_tested_at?: string | null
+          remote_shop_id?: string | null
+          shop_id: string
+          shopreel_base_url?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          enabled_event_types?: string[]
+          id?: string
+          last_error_at?: string | null
+          last_error_message?: string | null
+          last_success_at?: string | null
+          last_tested_at?: string | null
+          remote_shop_id?: string | null
+          shop_id?: string
+          shopreel_base_url?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopreel_integrations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_integrations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_integrations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_integrations_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shopreel_manual_asset_files: {
         Row: {
           created_at: string
