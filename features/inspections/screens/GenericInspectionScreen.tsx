@@ -832,11 +832,21 @@ export default function GenericInspectionScreen(
   }, [session, bootSections, updateInspection]);
 
   useEffect(() => {
-    if (!session) return;
-    try {
-      localStorage.setItem(draftKey, JSON.stringify(session));
-    } catch {}
-  }, [session, draftKey]);
+  if (!session) return;
+
+  try {
+    localStorage.setItem(draftKey, JSON.stringify(session));
+
+    // ✅ ADD THIS — broadcast update to findings page
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("inspection:draft-updated", {
+          detail: { draftKey },
+        }),
+      );
+    }
+  } catch {}
+}, [session, draftKey]);
 
   useEffect(() => {
     const persistNow = () => {
