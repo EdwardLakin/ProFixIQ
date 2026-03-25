@@ -3,18 +3,21 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { v4 as uuidv4 } from "uuid";
+
 import type {
   InspectionItem,
   InspectionItemStatus,
   InspectionSession,
+  QuoteLineItem,
+  VoiceMeta,
 } from "@inspections/lib/inspection/types";
-import type { QuoteLineItem, VoiceMeta } from "@inspections/lib/inspection/types";
+
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
-import { v4 as uuidv4 } from "uuid";
 
 type FindingRow = {
   sectionIndex: number;
@@ -232,12 +235,10 @@ export default function InspectionFindingsPage(): JSX.Element {
     const handleFocus = () => syncFromDraft();
     const handlePageShow = () => syncFromDraft();
 
-    // fires for other tabs/windows; not same-tab writes
     const handleStorage = (e: StorageEvent) => {
       if (e.key === draftKey) syncFromDraft();
     };
 
-    // custom same-tab sync event
     const handleInspectionDraftUpdated = (e: Event) => {
       const custom = e as CustomEvent<{ draftKey?: string }>;
       if (!custom.detail?.draftKey || custom.detail.draftKey === draftKey) {
@@ -401,11 +402,16 @@ export default function InspectionFindingsPage(): JSX.Element {
     }
   };
 
-    const handleSubmitReviewed = async (): Promise<void> => {
+  const handleSubmitReviewed = async (): Promise<void> => {
     if (!session) return;
 
     if (!workOrderId) {
       toast.error("Missing work order id.");
+      return;
+    }
+
+    if (!workOrderLineId) {
+      toast.error("Missing work order line id.");
       return;
     }
 
@@ -415,6 +421,34 @@ export default function InspectionFindingsPage(): JSX.Element {
 
     if (pending.length > 0) {
       toast.error("Review every finding before submitting.");
+      return;
+    }
+
+    const actionable = findings.filter((row) => {
+      const item = row.item as InspectionItem & {
+        estimateSubmitted?: boolean;
+        estimateWorkOrderLineId?: string | null;
+      };
+
+      const status = String(item.status ?? "").toLowerCase();
+      if (status !== "fail" && status !== "recommend") return false;
+
+      const note = String(item.notes ?? "").trim();
+      if (!note) return false;
+
+      if (
+        item.estimateSubmitted === true &&
+        typeof item.estimateWorkOrderLineId === "string" &&
+        item.estimateWorkOrderLineId.trim().length > 0
+      ) {
+        return true;
+      }
+
+      return true;
+    });
+
+    if (actionable.length === 0) {
+      toast.error("No reviewed findings are ready to submit.");
       return;
     }
 
@@ -451,20 +485,30 @@ export default function InspectionFindingsPage(): JSX.Element {
 
         const existingLineId =
           typeof itemExt.estimateWorkOrderLineId === "string" &&
-          itemExt.estimateWorkOrderLineId
-            ? itemExt.estimateWorkOrderLineId
+          itemExt.estimateWorkOrderLineId.trim().length > 0
+            ? itemExt.estimateWorkOrderLineId.trim()
             : null;
 
         const existingQuoteId =
           typeof itemExt.estimateQuoteLineId === "string" &&
-          itemExt.estimateQuoteLineId
-            ? itemExt.estimateQuoteLineId
+          itemExt.estimateQuoteLineId.trim().length > 0
+            ? itemExt.estimateQuoteLineId.trim()
             : null;
+
+        const alreadySubmitted = itemExt.estimateSubmitted === true;
+
+        if (alreadySubmitted && !existingLineId) {
+          continue;
+        }
 
         const quoteId = existingQuoteId ?? uuidv4();
         const nowIso = new Date().toISOString();
 
-        if (!existingQuoteId) {
+        const quoteAlreadyExists = (nextSession.quote ?? []).some(
+          (line) => line.id === quoteId,
+        );
+
+        if (!existingQuoteId && !quoteAlreadyExists) {
           const placeholder: QuoteLineItem = {
             id: quoteId,
             description: desc,
@@ -635,7 +679,10 @@ export default function InspectionFindingsPage(): JSX.Element {
         });
 
         const createdId = (created as unknown as { id?: unknown })?.id;
-        const createdJobId = createdId ? String(createdId) : null;
+        const createdJobId =
+          createdId && String(createdId).trim().length > 0
+            ? String(createdId).trim()
+            : null;
 
         if (cleanParts.length > 0 && createdJobId) {
           const res = await fetch("/api/parts/requests/create", {
@@ -659,7 +706,8 @@ export default function InspectionFindingsPage(): JSX.Element {
         nextSession = {
           ...nextSession,
           voiceMeta: {
-            ...(nextSession.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } as VoiceMeta)),
+            ...(nextSession.voiceMeta ??
+              ({ linesAddedToWorkOrder: 0 } as VoiceMeta)),
             linesAddedToWorkOrder:
               (nextSession.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
           },
@@ -963,13 +1011,14 @@ export default function InspectionFindingsPage(): JSX.Element {
                     {reviewed ? "Reviewed" : "Mark reviewed"}
                   </button>
                 </div>
-                  {photos.length > 0 && (
-                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                      {photos.map((url, i) => (
-                        <PhotoThumbnail key={`${url}-${i}`} url={url} />
-                      ))}
+
+                {photos.length > 0 && (
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                    {photos.map((url, i) => (
+                      <PhotoThumbnail key={`${url}-${i}`} url={url} />
+                    ))}
                   </div>
-                  )}
+                )}
               </div>
             );
           })
