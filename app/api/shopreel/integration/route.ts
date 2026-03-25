@@ -71,6 +71,7 @@ export async function GET() {
       enabledEventTypes: data?.enabled_event_types ?? [
         "inspection.completed",
         "inspection.finding.flagged",
+        "inspection.media.captured",
         "workorder.approved",
         "workorder.completed",
         "media.before_after.added",
@@ -107,6 +108,7 @@ export async function POST(request: NextRequest) {
     : [
         "inspection.completed",
         "inspection.finding.flagged",
+        "inspection.media.captured",
         "workorder.approved",
         "workorder.completed",
         "media.before_after.added",

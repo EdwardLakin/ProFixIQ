@@ -347,3 +347,62 @@ export async function buildWorkOrderCompletedEvent(
     },
   };
 }
+
+
+export async function buildInspectionMediaCapturedEvent(args: {
+  shopId: string;
+  inspectionId: string;
+  workOrderId?: string | null;
+  itemName?: string | null;
+  notes?: string | null;
+  mediaUrl: string;
+  vehicleLabel?: string | null;
+}): Promise<ProFixIQStoryEvent> {
+  return {
+    eventId: crypto.randomUUID(),
+    eventType: "inspection.media.captured",
+    occurredAt: new Date().toISOString(),
+    source: {
+      app: "profixiq",
+      shopId: args.shopId,
+      locationId: null,
+    },
+    subject: {
+      workOrderId: args.workOrderId ?? null,
+      workOrderNumber: null,
+      inspectionId: args.inspectionId,
+      vehicleId: null,
+      customerLabel: "Customer",
+      vehicleLabel: args.vehicleLabel ?? null,
+    },
+    storyData: {
+      headline: args.itemName
+        ? `Inspection media captured: ${args.itemName}`
+        : "Inspection media captured",
+      summary: args.notes?.trim() || "Inspection photo captured.",
+      findings: [],
+      services: args.itemName
+        ? [
+            {
+              label: args.itemName,
+              kind: "inspection",
+            },
+          ]
+        : [],
+      media: [
+        {
+          url: args.mediaUrl,
+          kind: "image",
+          role: "inspection",
+          title: args.itemName ?? null,
+        },
+      ],
+      approvalStatus: null,
+      technicianSummary: args.notes?.trim() || null,
+    },
+    privacy: {
+      containsSensitiveData: false,
+      redactionsApplied: [],
+    },
+  };
+}

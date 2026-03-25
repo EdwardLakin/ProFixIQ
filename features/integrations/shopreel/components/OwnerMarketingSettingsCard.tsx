@@ -18,6 +18,7 @@ type IntegrationState = {
 const DEFAULT_EVENT_TYPES = [
   "inspection.completed",
   "inspection.finding.flagged",
+  "inspection.media.captured",
   "workorder.approved",
   "workorder.completed",
   "media.before_after.added",

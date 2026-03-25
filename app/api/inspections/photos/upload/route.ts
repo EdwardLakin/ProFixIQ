@@ -7,6 +7,8 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import crypto from "crypto";
+import { buildInspectionMediaCapturedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
+import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 
 type DB = Database;
 
@@ -334,6 +336,36 @@ export async function POST(req: NextRequest) {
     console.error("[inspections/photos/upload] inspection_photos insert failed", insErr);
     return NextResponse.json({ error: insErr.message }, { status: 500 });
   }
+    // Best-effort ShopReel media sync
+    try {
+      const uploadPath =
+        typeof uploadData?.path === "string" && uploadData.path.trim().length > 0 ? uploadData.path.trim() : null;
+
+      const publicBaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const mediaUrl =
+        uploadPath && publicBaseUrl
+          ? `${publicBaseUrl.replace(/\/$/, "")}/storage/v1/object/public/inspections/${uploadPath}`
+          : null;
+
+      if (shopId && mediaUrl) {
+        const mediaEvent = await buildInspectionMediaCapturedEvent({
+          shopId,
+          inspectionId: requestedInspectionId,
+          workOrderId,
+          itemName,
+          notes,
+          mediaUrl,
+        });
+
+        await postStoryEventToShopReel(mediaEvent).catch((error: unknown) => {
+          console.error("[shopreel] failed to sync inspection media", error);
+        });
+      }
+    } catch (error) {
+      console.error("[shopreel] inspection media event error", error);
+    }
+
+
 
   return NextResponse.json({
     ok: true,

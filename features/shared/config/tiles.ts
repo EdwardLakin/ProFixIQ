@@ -365,6 +365,14 @@ export const TILES: Tile[] = [
     section: "Admin",
   },
   {
+    href: "/dashboard/marketing",
+    title: "Marketing",
+    subtitle: "ShopReel sync & activity",
+    roles: ["owner", "admin"],
+    scopes: ["management", "all"],
+    section: "Admin",
+  },
+  {
     href: "/dashboard/admin/scheduling",
     title: "Scheduling",
     subtitle: "Calendar & bookings",
