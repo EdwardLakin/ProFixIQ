@@ -69,6 +69,7 @@ export default async function OwnerMarketingPage() {
             enabledEventTypes: integration?.enabled_event_types ?? [
               "inspection.completed",
               "inspection.finding.flagged",
+              "inspection.media.captured",
               "workorder.approved",
               "workorder.completed",
               "media.before_after.added",

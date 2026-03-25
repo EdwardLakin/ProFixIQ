@@ -338,14 +338,7 @@ export async function POST(req: NextRequest) {
   }
     // Best-effort ShopReel media sync
     try {
-      const uploadPath =
-        typeof uploadData?.path === "string" && uploadData.path.trim().length > 0 ? uploadData.path.trim() : null;
-
-      const publicBaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const mediaUrl =
-        uploadPath && publicBaseUrl
-          ? `${publicBaseUrl.replace(/\/$/, "")}/storage/v1/object/public/inspections/${uploadPath}`
-          : null;
+      const mediaUrl = row?.image_url ?? imageUrl ?? path ?? null;
 
       if (shopId && mediaUrl) {
         const mediaEvent = await buildInspectionMediaCapturedEvent({

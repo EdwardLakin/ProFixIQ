@@ -1,0 +1,1998 @@
+===== app/api/inspections/photos/upload/route.ts =====
+import "server-only";
+
+export const runtime = "nodejs";
+
+import { NextResponse, type NextRequest } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import crypto from "crypto";
+import { buildInspectionMediaCapturedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
+import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
+
+type DB = Database;
+
+function asString(v: FormDataEntryValue | null): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length ? t : null;
+}
+
+function safeFilePart(x: string): string {
+  return x.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function extFromMime(mime: string | null): "jpg" | "png" {
+  const m = (mime ?? "").toLowerCase();
+  if (m.includes("png")) return "png";
+  return "jpg";
+}
+
+async function resolveShopId(args: {
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+  inspectionId: string;
+  workOrderId: string | null;
+  workOrderLineId: string | null;
+  userId: string;
+}): Promise<{ shopId: string | null; source: string }> {
+  const { supabase, inspectionId, workOrderId, workOrderLineId, userId } = args;
+
+  const { data: insp, error: inspErr } = await supabase
+    .from("inspections")
+    .select("id, shop_id, work_order_id, work_order_line_id")
+    .eq("id", inspectionId)
+    .maybeSingle<{
+      id: string;
+      shop_id: string | null;
+      work_order_id: string | null;
+      work_order_line_id: string | null;
+    }>();
+
+  if (inspErr) {
+    console.error("[inspections/photos/upload] inspections lookup failed", inspErr);
+  }
+
+  if (insp?.shop_id) {
+    return { shopId: insp.shop_id, source: "inspections.shop_id" };
+  }
+
+  const woId = insp?.work_order_id ?? workOrderId ?? null;
+  const wolId = insp?.work_order_line_id ?? workOrderLineId ?? null;
+
+  if (wolId) {
+    const { data, error } = await supabase
+      .from("work_order_lines")
+      .select("id, work_orders:work_order_id ( shop_id )")
+      .eq("id", wolId)
+      .maybeSingle<{ id: string; work_orders: { shop_id: string | null } | null }>();
+
+    if (error) {
+      console.error("[inspections/photos/upload] wol->wo lookup failed", error);
+    } else {
+      const shopId = data?.work_orders?.shop_id ?? null;
+      if (shopId) {
+        return { shopId, source: "work_order_lines.work_order_id.shop_id" };
+      }
+    }
+  }
+
+  if (woId) {
+    const { data, error } = await supabase
+      .from("work_orders")
+      .select("id, shop_id, vehicle_id")
+      .eq("id", woId)
+      .maybeSingle<{ id: string; shop_id: string | null; vehicle_id: string | null }>();
+
+    if (error) {
+      console.error("[inspections/photos/upload] wo lookup failed", error);
+    } else {
+      const shopId = data?.shop_id ?? null;
+      if (shopId) {
+        return { shopId, source: "work_orders.shop_id" };
+      }
+    }
+  }
+
+  const { data: profById } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", userId)
+    .maybeSingle<{ shop_id: string | null }>();
+
+  if (profById?.shop_id) {
+    return { shopId: profById.shop_id, source: "profiles.id.shop_id" };
+  }
+
+  const { data: profByUserId } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("user_id", userId)
+    .maybeSingle<{ shop_id: string | null }>();
+
+  if (profByUserId?.shop_id) {
+    return { shopId: profByUserId.shop_id, source: "profiles.user_id.shop_id" };
+  }
+
+  return { shopId: null, source: "none" };
+}
+
+async function ensureInspectionRow(args: {
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+  inspectionId: string;
+  shopId: string;
+  workOrderId: string | null;
+  workOrderLineId: string | null;
+}): Promise<
+  | { ok: true; inspectionId: string }
+  | { ok: false; error: string }
+> {
+  const { supabase, inspectionId, shopId, workOrderId, workOrderLineId } = args;
+
+  const { data: existingById, error: existingByIdErr } = await supabase
+    .from("inspections")
+    .select("id")
+    .eq("id", inspectionId)
+    .maybeSingle<{ id: string }>();
+
+  if (existingByIdErr) {
+    console.error(
+      "[inspections/photos/upload] inspection exists check by id failed",
+      existingByIdErr,
+    );
+    return { ok: false, error: existingByIdErr.message };
+  }
+
+  if (existingById?.id) {
+    return { ok: true, inspectionId: existingById.id };
+  }
+
+  if (workOrderLineId) {
+    const { data: existingByLine, error: existingByLineErr } = await supabase
+      .from("inspections")
+      .select("id")
+      .eq("work_order_line_id", workOrderLineId)
+      .maybeSingle<{ id: string }>();
+
+    if (existingByLineErr) {
+      console.error(
+        "[inspections/photos/upload] inspection exists check by work_order_line_id failed",
+        existingByLineErr,
+      );
+      return { ok: false, error: existingByLineErr.message };
+    }
+
+    if (existingByLine?.id) {
+      return { ok: true, inspectionId: existingByLine.id };
+    }
+  }
+
+  let vehicleId: string | null = null;
+
+  if (workOrderId) {
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("id, vehicle_id")
+      .eq("id", workOrderId)
+      .maybeSingle<{ id: string; vehicle_id: string | null }>();
+
+    if (woErr) {
+      console.error("[inspections/photos/upload] work order vehicle lookup failed", woErr);
+    }
+
+    vehicleId = wo?.vehicle_id ?? null;
+  }
+
+  const insertPayload: Database["public"]["Tables"]["inspections"]["Insert"] = {
+    id: inspectionId,
+    shop_id: shopId,
+    work_order_id: workOrderId,
+    work_order_line_id: workOrderLineId,
+    vehicle_id: vehicleId,
+    status: "in_progress",
+  };
+
+  const { error: insertErr } = await supabase
+    .from("inspections")
+    .insert(insertPayload);
+
+  if (insertErr) {
+    console.error("[inspections/photos/upload] inspection bootstrap insert failed", insertErr);
+    return { ok: false, error: insertErr.message };
+  }
+
+  return { ok: true, inspectionId };
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
+  if (userErr || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const form = await req.formData().catch(() => null);
+  if (!form) {
+    return NextResponse.json(
+      { error: "Expected multipart/form-data" },
+      { status: 400 },
+    );
+  }
+
+  const requestedInspectionId = asString(form.get("inspectionId"));
+  const workOrderId = asString(form.get("workOrderId"));
+  const workOrderLineId = asString(form.get("workOrderLineId"));
+  const itemName = asString(form.get("itemName"));
+  const notes = asString(form.get("notes"));
+  const file = form.get("file");
+
+  if (!requestedInspectionId) {
+    return NextResponse.json({ error: "Missing inspectionId" }, { status: 400 });
+  }
+
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "Missing file" }, { status: 400 });
+  }
+
+  const resolved = await resolveShopId({
+    supabase,
+    inspectionId: requestedInspectionId,
+    workOrderId,
+    workOrderLineId,
+    userId: user.id,
+  });
+
+  const shopId = resolved.shopId;
+  if (!shopId) {
+    return NextResponse.json(
+      {
+        error: "Unable to resolve shop for inspection photo upload",
+        debug: {
+          source: resolved.source,
+          inspectionId: requestedInspectionId,
+          workOrderId,
+          workOrderLineId,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
+    p_shop_id: shopId,
+  });
+
+  if (ctxErr) {
+    console.error("[inspections/photos/upload] set_current_shop_id failed", ctxErr);
+    return NextResponse.json(
+      { error: "Failed to set shop context" },
+      { status: 500 },
+    );
+  }
+
+  const ensure = await ensureInspectionRow({
+    supabase,
+    inspectionId: requestedInspectionId,
+    shopId,
+    workOrderId,
+    workOrderLineId,
+  });
+
+  if (!ensure.ok) {
+    return NextResponse.json(
+      { error: `Failed to bootstrap inspection row: ${ensure.error}` },
+      { status: 500 },
+    );
+  }
+
+  const resolvedInspectionId = ensure.inspectionId;
+
+  const bucket = "inspection_photos";
+  const shopPart = safeFilePart(shopId);
+  const inspPart = safeFilePart(resolvedInspectionId);
+  const idPart = crypto.randomUUID();
+  const ext = extFromMime(file.type);
+
+  const path = `shops/${shopPart}/inspections/${inspPart}/${idPart}.${ext}`;
+  const bytes = Buffer.from(await file.arrayBuffer());
+
+  const { error: upErr } = await supabase.storage.from(bucket).upload(path, bytes, {
+    contentType: file.type || (ext === "png" ? "image/png" : "image/jpeg"),
+    upsert: false,
+  });
+
+  if (upErr) {
+    console.error("[inspections/photos/upload] storage upload failed", upErr);
+    return NextResponse.json({ error: upErr.message }, { status: 500 });
+  }
+
+  const { data: signed, error: signErr } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, 60 * 60 * 24 * 30);
+
+  if (signErr || !signed?.signedUrl) {
+    console.warn("[inspections/photos/upload] createSignedUrl failed", signErr);
+  }
+
+  const imageUrl = signed?.signedUrl ?? null;
+
+  const { data: row, error: insErr } = await supabase
+    .from("inspection_photos")
+    .insert({
+      inspection_id: resolvedInspectionId,
+      item_name: itemName,
+      image_url: imageUrl ?? path,
+      notes: notes ?? null,
+      user_id: user.id,
+    })
+    .select("id, image_url, item_name")
+    .single();
+
+  if (insErr) {
+    console.error("[inspections/photos/upload] inspection_photos insert failed", insErr);
+    return NextResponse.json({ error: insErr.message }, { status: 500 });
+  }
+    // Best-effort ShopReel media sync
+    try {
+      const uploadPath =
+        typeof uploadData?.path === "string" && uploadData.path.trim().length > 0 ? uploadData.path.trim() : null;
+
+      const publicBaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const mediaUrl =
+        uploadPath && publicBaseUrl
+          ? `${publicBaseUrl.replace(/\/$/, "")}/storage/v1/object/public/inspections/${uploadPath}`
+          : null;
+
+      if (shopId && mediaUrl) {
+        const mediaEvent = await buildInspectionMediaCapturedEvent({
+          shopId,
+          inspectionId: requestedInspectionId,
+          workOrderId,
+          itemName,
+          notes,
+          mediaUrl,
+        });
+
+        await postStoryEventToShopReel(mediaEvent).catch((error: unknown) => {
+          console.error("[shopreel] failed to sync inspection media", error);
+        });
+      }
+    } catch (error) {
+      console.error("[shopreel] inspection media event error", error);
+    }
+
+
+
+  return NextResponse.json({
+    ok: true,
+    bucket,
+    path,
+    inspectionId: resolvedInspectionId,
+    requestedInspectionId,
+    workOrderId,
+    workOrderLineId,
+    itemName,
+    url: row?.image_url ?? imageUrl,
+    photo: row,
+  });
+}
+===== features/integrations/shopreel/server/buildProFixIQStoryEvents.ts =====
+import crypto from "crypto";
+import type { InspectionItem } from "@/features/inspections/lib/inspection/types";
+import type { ProFixIQStoryEvent, ProFixIQStoryFinding, ProFixIQStoryService } from "../types";
+import { createAdminClient } from "./createAdminClient";
+
+type WorkOrderContext = {
+  shopId: string;
+  approvalStatus: "pending" | "approved" | "declined" | "deferred" | null;
+  vehicleLabel: string | null;
+  services: ProFixIQStoryService[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readString(record: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function normalizeApprovalStatus(
+  value: string | null | undefined
+): "pending" | "approved" | "declined" | "deferred" | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === "approved") return "approved";
+  if (normalized === "declined") return "declined";
+  if (normalized === "deferred") return "deferred";
+  if (normalized === "pending") return "pending";
+
+  return null;
+}
+
+function normalizeFindingStatus(
+  value: string | null | undefined
+): "failed" | "recommended" | "pass" | "info" | undefined {
+  if (!value) return undefined;
+
+  const normalized = value.trim().toLowerCase();
+
+  if (["fail", "failed", "bad", "red"].includes(normalized)) return "failed";
+  if (["recommend", "recommended", "advisory", "yellow"].includes(normalized)) return "recommended";
+  if (["pass", "passed", "ok", "good", "green"].includes(normalized)) return "pass";
+  if (["info", "note", "observed"].includes(normalized)) return "info";
+
+  return undefined;
+}
+
+function extractFindings(results: InspectionItem[]): ProFixIQStoryFinding[] {
+  const findings: ProFixIQStoryFinding[] = [];
+
+  for (const item of results) {
+    const record = isRecord(item) ? item : null;
+    if (!record) continue;
+
+    const label =
+      readString(record, ["label", "title", "name", "item", "description"]) ?? "Inspection finding";
+
+    const status = normalizeFindingStatus(
+      readString(record, ["status", "result", "state", "condition"])
+    );
+
+    const category = readString(record, ["category", "group", "section"]);
+
+    const finding: ProFixIQStoryFinding = {
+      label,
+      category,
+    };
+
+    if (status) {
+      finding.status = status;
+    }
+
+    findings.push(finding);
+  }
+
+  return findings;
+}
+
+function summarizeFindings(findings: ProFixIQStoryFinding[]): string | null {
+  if (!findings.length) return null;
+  return findings
+    .slice(0, 5)
+    .map((finding) => {
+      const prefix = finding.status ? `${finding.status.toUpperCase()}: ` : "";
+      return `${prefix}${finding.label}`;
+    })
+    .join(" | ");
+}
+
+async function loadWorkOrderContext(workOrderId: string): Promise<WorkOrderContext | null> {
+  const supabase = createAdminClient();
+
+  const { data: workOrder, error: workOrderError } = await supabase
+    .from("work_orders")
+    .select("id, shop_id, vehicle_id, approval_state")
+    .eq("id", workOrderId)
+    .maybeSingle<{
+      id: string;
+      shop_id: string | null;
+      vehicle_id: string | null;
+      approval_state: string | null;
+    }>();
+
+  if (workOrderError || !workOrder?.shop_id) {
+    return null;
+  }
+
+  let vehicleLabel: string | null = null;
+
+  if (workOrder.vehicle_id) {
+    const { data: vehicle } = await supabase
+      .from("vehicles")
+      .select("year, make, model")
+      .eq("id", workOrder.vehicle_id)
+      .maybeSingle<{
+        year: number | string | null;
+        make: string | null;
+        model: string | null;
+      }>();
+
+    const parts = [vehicle?.year, vehicle?.make, vehicle?.model]
+      .map((value) => (value == null ? null : String(value).trim()))
+      .filter((value): value is string => Boolean(value));
+
+    vehicleLabel = parts.length ? parts.join(" ") : null;
+  }
+
+  const { data: lineRows } = await supabase
+    .from("work_order_lines")
+    .select("description, item, name, title")
+    .eq("work_order_id", workOrderId)
+    .returns<Array<{
+      description: string | null;
+      item: string | null;
+      name: string | null;
+      title: string | null;
+    }>>();
+
+  const services: ProFixIQStoryService[] = [];
+
+  for (const line of lineRows ?? []) {
+    const label =
+      line.title?.trim() ||
+      line.name?.trim() ||
+      line.item?.trim() ||
+      line.description?.trim() ||
+      null;
+
+    if (!label) continue;
+
+    services.push({
+      label,
+      kind: "repair",
+    });
+  }
+
+  return {
+    shopId: workOrder.shop_id,
+    approvalStatus: normalizeApprovalStatus(workOrder.approval_state),
+    vehicleLabel,
+    services,
+  };
+}
+
+export async function buildInspectionCompletedEvent(args: {
+  workOrderId: string;
+  workOrderLineId: string;
+  results: InspectionItem[];
+  templateName?: string | null;
+}): Promise<ProFixIQStoryEvent | null> {
+  const context = await loadWorkOrderContext(args.workOrderId);
+  if (!context) return null;
+
+  const findings = extractFindings(args.results);
+  const summary =
+    summarizeFindings(findings) ??
+    (args.templateName ? `Inspection completed for ${args.templateName}.` : "Inspection completed.");
+
+  return {
+    eventId: crypto.randomUUID(),
+    eventType: "inspection.completed",
+    occurredAt: new Date().toISOString(),
+    source: {
+      app: "profixiq",
+      shopId: context.shopId,
+      locationId: null,
+    },
+    subject: {
+      workOrderId: args.workOrderId,
+      workOrderNumber: null,
+      inspectionId: null,
+      vehicleId: null,
+      customerLabel: "Customer",
+      vehicleLabel: context.vehicleLabel,
+    },
+    storyData: {
+      headline: args.templateName
+        ? `${args.templateName} inspection completed`
+        : "Inspection completed",
+      summary,
+      findings,
+      services: context.services,
+      media: [],
+      approvalStatus: context.approvalStatus,
+      technicianSummary: summary,
+    },
+    privacy: {
+      containsSensitiveData: false,
+      redactionsApplied: [],
+    },
+  };
+}
+
+export async function buildInspectionFlaggedEvent(args: {
+  workOrderId: string;
+  results: InspectionItem[];
+}): Promise<ProFixIQStoryEvent | null> {
+  const context = await loadWorkOrderContext(args.workOrderId);
+  if (!context) return null;
+
+  const findings = extractFindings(args.results).filter(
+    (finding) => finding.status === "failed" || finding.status === "recommended"
+  );
+
+  if (!findings.length) {
+    return null;
+  }
+
+  const summary =
+    summarizeFindings(findings) ?? "Flagged findings were identified during inspection.";
+
+  return {
+    eventId: crypto.randomUUID(),
+    eventType: "inspection.finding.flagged",
+    occurredAt: new Date().toISOString(),
+    source: {
+      app: "profixiq",
+      shopId: context.shopId,
+      locationId: null,
+    },
+    subject: {
+      workOrderId: args.workOrderId,
+      workOrderNumber: null,
+      inspectionId: null,
+      vehicleId: null,
+      customerLabel: "Customer",
+      vehicleLabel: context.vehicleLabel,
+    },
+    storyData: {
+      headline: "Flagged inspection findings identified",
+      summary,
+      findings,
+      services: context.services,
+      media: [],
+      approvalStatus: context.approvalStatus,
+      technicianSummary: summary,
+    },
+    privacy: {
+      containsSensitiveData: false,
+      redactionsApplied: [],
+    },
+  };
+}
+
+export async function buildWorkOrderApprovedEvent(
+  workOrderId: string
+): Promise<ProFixIQStoryEvent | null> {
+  const context = await loadWorkOrderContext(workOrderId);
+  if (!context) return null;
+
+  return {
+    eventId: crypto.randomUUID(),
+    eventType: "workorder.approved",
+    occurredAt: new Date().toISOString(),
+    source: {
+      app: "profixiq",
+      shopId: context.shopId,
+      locationId: null,
+    },
+    subject: {
+      workOrderId,
+      workOrderNumber: null,
+      inspectionId: null,
+      vehicleId: null,
+      customerLabel: "Customer",
+      vehicleLabel: context.vehicleLabel,
+    },
+    storyData: {
+      headline: "Work order approved",
+      summary: "Customer approved the recommended work.",
+      findings: [],
+      services: context.services,
+      media: [],
+      approvalStatus: "approved",
+      technicianSummary: "Customer approval received.",
+    },
+    privacy: {
+      containsSensitiveData: false,
+      redactionsApplied: [],
+    },
+  };
+}
+
+export async function buildWorkOrderCompletedEvent(
+  workOrderId: string
+): Promise<ProFixIQStoryEvent | null> {
+  const context = await loadWorkOrderContext(workOrderId);
+  if (!context) return null;
+
+  return {
+    eventId: crypto.randomUUID(),
+    eventType: "workorder.completed",
+    occurredAt: new Date().toISOString(),
+    source: {
+      app: "profixiq",
+      shopId: context.shopId,
+      locationId: null,
+    },
+    subject: {
+      workOrderId,
+      workOrderNumber: null,
+      inspectionId: null,
+      vehicleId: null,
+      customerLabel: "Customer",
+      vehicleLabel: context.vehicleLabel,
+    },
+    storyData: {
+      headline: "Work order completed",
+      summary: "Repair work was completed and is ready to invoice.",
+      findings: [],
+      services: context.services,
+      media: [],
+      approvalStatus: context.approvalStatus,
+      technicianSummary: "Repair completed and marked ready to invoice.",
+    },
+    privacy: {
+      containsSensitiveData: false,
+      redactionsApplied: [],
+    },
+  };
+}
+
+
+export async function buildInspectionMediaCapturedEvent(args: {
+  shopId: string;
+  inspectionId: string;
+  workOrderId?: string | null;
+  itemName?: string | null;
+  notes?: string | null;
+  mediaUrl: string;
+  vehicleLabel?: string | null;
+}): Promise<ProFixIQStoryEvent> {
+  return {
+    eventId: crypto.randomUUID(),
+    eventType: "inspection.media.captured",
+    occurredAt: new Date().toISOString(),
+    source: {
+      app: "profixiq",
+      shopId: args.shopId,
+      locationId: null,
+    },
+    subject: {
+      workOrderId: args.workOrderId ?? null,
+      workOrderNumber: null,
+      inspectionId: args.inspectionId,
+      vehicleId: null,
+      customerLabel: "Customer",
+      vehicleLabel: args.vehicleLabel ?? null,
+    },
+    storyData: {
+      headline: args.itemName
+        ? `Inspection media captured: ${args.itemName}`
+        : "Inspection media captured",
+      summary: args.notes?.trim() || "Inspection photo captured.",
+      findings: [],
+      services: args.itemName
+        ? [
+            {
+              label: args.itemName,
+              kind: "inspection",
+            },
+          ]
+        : [],
+      media: [
+        {
+          url: args.mediaUrl,
+          kind: "image",
+          role: "inspection",
+          title: args.itemName ?? null,
+        },
+      ],
+      approvalStatus: null,
+      technicianSummary: args.notes?.trim() || null,
+    },
+    privacy: {
+      containsSensitiveData: false,
+      redactionsApplied: [],
+    },
+  };
+}
+
+===== features/integrations/shopreel/types.ts =====
+export type ProFixIQStoryEventType =
+  | "inspection.completed"
+  | "inspection.finding.flagged"
+  | "inspection.media.captured"
+  | "workorder.approved"
+  | "workorder.completed"
+  | "media.before_after.added";
+
+export type ProFixIQStoryFinding = {
+  label: string;
+  status?: "failed" | "recommended" | "pass" | "info";
+  category?: string | null;
+};
+
+export type ProFixIQStoryService = {
+  label: string;
+  kind?: "repair" | "maintenance" | "inspection" | "diagnostic";
+};
+
+export type ProFixIQStoryMedia = {
+  url: string;
+  kind: "image" | "video";
+  role?: "before" | "after" | "inspection" | "general";
+  title?: string | null;
+  takenAt?: string | null;
+};
+
+export type ProFixIQStoryEvent = {
+  eventId: string;
+  eventType: ProFixIQStoryEventType;
+  occurredAt: string;
+  source: {
+    app: "profixiq";
+    shopId: string;
+    locationId?: string | null;
+  };
+  subject: {
+    workOrderId?: string | null;
+    workOrderNumber?: string | null;
+    inspectionId?: string | null;
+    vehicleId?: string | null;
+    customerLabel?: string | null;
+    vehicleLabel?: string | null;
+  };
+  storyData: {
+    headline?: string | null;
+    summary?: string | null;
+    findings?: ProFixIQStoryFinding[];
+    services?: ProFixIQStoryService[];
+    media?: ProFixIQStoryMedia[];
+    approvalStatus?: "pending" | "approved" | "declined" | "deferred" | null;
+    technicianSummary?: string | null;
+  };
+  privacy: {
+    containsSensitiveData: false;
+    redactionsApplied: string[];
+  };
+};
+
+export type ShopReelIntegrationRow = {
+  id: string;
+  shop_id: string;
+  enabled: boolean;
+  shopreel_base_url: string;
+  remote_shop_id: string | null;
+  enabled_event_types: string[];
+  last_tested_at: string | null;
+  last_success_at: string | null;
+  last_error_at: string | null;
+  last_error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+};
+
+===== features/shared/config/tiles.ts =====
+export type Role =
+  | "owner"
+  | "admin"
+  | "manager"
+  | "advisor"
+  | "mechanic"
+  | "parts"
+  | "dispatcher"
+  | "driver"
+  | "fleet_manager";
+
+export type Scope =
+  | "work_orders"
+  | "inspections"
+  | "parts"
+  | "tech"
+  | "management"
+  | "settings"
+  | "appointments"
+  | "all";
+
+export type Tile = {
+  href: string;
+  title: string;
+  subtitle?: string;
+  cta?: string;
+  roles: Role[];
+  scopes: Scope[];
+  section?: string; // sidebar grouping label
+};
+
+export const TILES: Tile[] = [
+  /* ---------------------------------------------------------------------- */
+  /* TECH (mechanic)                                                        */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/dashboard",
+    title: "Dashboard",
+    subtitle: "Today at a glance",
+    roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver"],
+    scopes: ["all"],
+    section: "Tech",
+  },
+  {
+    href: "/tech/queue",
+    title: "Tech Job Queue",
+    subtitle: "My assigned work",
+    roles: ["mechanic", "manager", "owner", "admin"],
+    scopes: ["tech", "all"],
+    section: "Tech",
+  },
+  {
+    href: "/parts/requests?mine=1",
+    title: "My Parts Requests",
+    subtitle: "Requests involving me",
+    roles: ["mechanic", "manager", "owner", "admin"],
+    scopes: ["parts", "tech", "all"],
+    section: "Tech",
+  },
+  {
+    href: "/chat",
+    title: "Team Chat",
+    subtitle: "Messages & updates",
+    roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver"],
+    scopes: ["all"],
+    section: "Tech",
+  },
+  {
+    href: "/dashboard/tech/settings",
+    title: "Tech Settings",
+    subtitle: "Profile & preferences",
+    roles: ["mechanic", "manager", "owner", "admin"],
+    scopes: ["settings", "tech", "all"],
+    section: "Tech",
+  },
+
+  /* ---------------------------------------------------------------------- */
+  /* OPERATIONS (work orders / advisors)                                     */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/work-orders/create?autostart=1",
+    title: "Create Work Order",
+    subtitle: "Start a new job",
+    cta: "+",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["work_orders", "all"],
+    section: "Operations",
+  },
+  {
+    href: "/work-orders/view",
+    title: "View Work Orders",
+    subtitle: "Browse & manage",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["work_orders", "all"],
+    section: "Operations",
+  },
+  {
+    href: "/work-orders/quote-review",
+    title: "Quote Review",
+    subtitle: "Review & send estimates",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["work_orders", "all"],
+    section: "Operations",
+  },
+  {
+  href: "/customers/search",
+  title: "Customers",
+  subtitle: "Search customer files",
+  roles: ["advisor", "manager", "owner", "admin"],
+  scopes: ["work_orders", "all"],
+  section: "Operations",
+  },
+  {
+    href: "/billing",
+    title: "Billing",
+    subtitle: "Ready to invoice",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["work_orders", "all"],
+    section: "Operations",
+  },
+  {
+    href: "/work-orders/history",
+    title: "History",
+    subtitle: "Completed work",
+    roles: ["owner", "admin", "manager", "advisor", "mechanic"],
+    scopes: ["work_orders", "all"],
+    section: "Operations",
+  },
+    /* ---------------------------------------------------------------------- */
+  /* MENU (owner/advisor)                                                    */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/menu",
+    title: "Menu Builder",
+    subtitle: "Create and manage menu items",
+    roles: ["owner", "admin", "manager", "advisor"],
+    scopes: ["management", "settings", "all"],
+    section: "Tools",
+  },
+
+  /* ---------------------------------------------------------------------- */
+  /* APPOINTMENTS                                                            */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/dashboard/appointments",
+    title: "Appointments",
+    subtitle: "Schedule & manage",
+    roles: ["owner", "admin", "manager", "advisor"],
+    scopes: ["appointments", "management", "all"],
+    section: "Operations",
+  },
+
+    /* ---------------------------------------------------------------------- */
+  /* INSPECTIONS (no mechanic/tech sidebar access)                           */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/inspections/custom-inspection",
+    title: "Inspection Builder", // ✅ renamed from "Custom Builder"
+    subtitle: "Design your own",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["inspections", "all"],
+    section: "Tools",
+  },
+  {
+    href: "/inspections/templates",
+    title: "Inspection Templates",
+    subtitle: "View and edit",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["inspections", "all"],
+    section: "Tools",
+  },
+  {
+    href: "/inspections/fleet-import",
+    title: "Fleet Form Import",
+    subtitle: "Scan & convert fleet sheets",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["inspections", "all"],
+    section: "Tools",
+  },
+  {
+    href: "/inspections/saved",
+    title: "Saved Inspections",
+    subtitle: "Recent & drafts",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["inspections", "all"],
+    section: "Tools",
+  },
+
+  /* ---------------------------------------------------------------------- */
+/* PARTS                                                                   */
+/* ---------------------------------------------------------------------- */
+{
+  href: "/parts",
+  title: "Parts Dashboard",
+  subtitle: "Orders & receiving",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/requests",
+  title: "Requests",
+  subtitle: "View requests",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/receiving",
+  title: "Receiving Inbox",
+  subtitle: "Partial receive & allocations",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/receive",
+  title: "Scan to Receive",
+  subtitle: "Barcode receiving",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/inventory",
+  title: "Inventory",
+  subtitle: "On-hand stock",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/po",
+  title: "Purchase Orders",
+  subtitle: "Create & manage POs",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+
+// Optional: if you create a “choose PO then receive” landing page.
+// If you don’t plan to build /parts/po/receive, delete this tile.
+{
+  href: "/parts/po/receive",
+  title: "Receive from PO",
+  subtitle: "Receive + auto-allocate",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+
+{
+  href: "/parts/movements",
+  title: "Stock Movements",
+  subtitle: "Inventory ledger",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/allocations",
+  title: "Allocations",
+  subtitle: "Parts used on jobs",
+  roles: ["parts", "manager", "owner", "admin"],
+  scopes: ["parts", "all"],
+  section: "Parts",
+},
+{
+  href: "/parts/vendors",
+  title: "Vendor Integrations",
+  subtitle: "API keys for suppliers",
+  roles: ["owner", "admin", "manager", "parts"],
+  scopes: ["parts", "settings", "all"],
+  section: "Parts",
+},
+  /* ---------------------------------------------------------------------- */
+  /* FLEET                                                                   */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/fleet/tower",
+    title: "Fleet Control Tower",
+    subtitle: "HD units, issues & health",
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    scopes: ["management", "work_orders", "inspections", "all"],
+    section: "Fleet",
+  },
+  {
+    href: "/fleet/dispatch",
+    title: "Dispatch Board",
+    subtitle: "Assign units & routes",
+    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    scopes: ["management", "work_orders", "all"],
+    section: "Fleet",
+  },
+  {
+    href: "/fleet/units",
+    title: "Fleet Units",
+    subtitle: "Tractors, trailers, buses",
+    roles: ["owner", "admin", "manager", "fleet_manager"],
+    scopes: ["management", "all"],
+    section: "Fleet",
+  },
+  {
+    href: "/fleet/units/new",
+    title: "Add Fleet Unit",
+    subtitle: "Enroll units into programs",
+    roles: ["owner", "admin", "manager", "fleet_manager"],
+    scopes: ["management", "inspections", "all"],
+    section: "Fleet",
+  },
+  {
+    href: "/fleet/programs",
+    title: "Fleet Programs",
+    subtitle: "Groups, contacts & notes",
+    roles: ["owner", "admin", "manager", "fleet_manager"],
+    scopes: ["management", "settings", "all"],
+    section: "Fleet",
+  },
+
+  /* ---------------------------------------------------------------------- */
+
+===== app/dashboard/marketing/page.tsx =====
+import MarketingDashboardPage from "@/features/integrations/shopreel/components/MarketingDashboardPage";
+
+export default function DashboardMarketingPage() {
+  return <MarketingDashboardPage />;
+}
+
+===== features/integrations/shopreel/components/MarketingDashboardPage.tsx =====
+import Link from "next/link";
+import PageShell from "@/features/shared/components/PageShell";
+import { getMarketingDashboardData } from "../server/getMarketingDashboardData";
+
+function formatDate(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+export default async function MarketingDashboardPage() {
+  const data = await getMarketingDashboardData();
+
+  if (!data.authorized) {
+    return (
+      <PageShell title="Marketing">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          {data.reason}
+        </div>
+      </PageShell>
+    );
+  }
+
+  const { integration, deliveries } = data;
+
+  return (
+    <PageShell title="Marketing">
+      <div className="space-y-6">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold">Marketing</h1>
+              <p className="mt-2 text-sm text-white/70">
+                Monitor ProFixIQ → ShopReel automation for your shop.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Link
+                href="/dashboard/owner/marketing"
+                className="rounded-md border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/5"
+              >
+                Manage settings
+              </Link>
+              <a
+                href={integration.shopreelBaseUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black"
+              >
+                View in ShopReel
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
+            <div className="text-sm text-white/60">Integration</div>
+            <div className="mt-2 text-lg font-semibold">
+              {integration.enabled ? "Enabled" : "Disabled"}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
+            <div className="text-sm text-white/60">Last success</div>
+            <div className="mt-2 text-sm font-medium">
+              {formatDate(integration.lastSuccessAt)}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
+            <div className="text-sm text-white/60">Last test</div>
+            <div className="mt-2 text-sm font-medium">
+              {formatDate(integration.lastTestedAt)}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
+            <div className="text-sm text-white/60">Last error</div>
+            <div className="mt-2 text-sm font-medium">
+              {formatDate(integration.lastErrorAt)}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          <h2 className="text-lg font-semibold">Recent events sent</h2>
+          <p className="mt-1 text-sm text-white/60">
+            Latest delivery attempts from ProFixIQ into ShopReel.
+          </p>
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-white/60">
+                <tr className="border-b border-white/10">
+                  <th className="py-3 pr-4">Event</th>
+                  <th className="py-3 pr-4">Status</th>
+                  <th className="py-3 pr-4">HTTP</th>
+                  <th className="py-3 pr-4">Created</th>
+                  <th className="py-3 pr-4">Delivered</th>
+                  <th className="py-3 pr-4">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveries.length ? (
+                  deliveries.map((delivery) => (
+                    <tr key={delivery.id} className="border-b border-white/5 align-top">
+                      <td className="py-3 pr-4">
+                        <div className="font-medium text-white">{delivery.eventType}</div>
+                        <div className="text-xs text-white/50">{delivery.eventKey}</div>
+                      </td>
+                      <td className="py-3 pr-4">{delivery.status}</td>
+                      <td className="py-3 pr-4">{delivery.httpStatus ?? "—"}</td>
+                      <td className="py-3 pr-4">{formatDate(delivery.createdAt)}</td>
+                      <td className="py-3 pr-4">{formatDate(delivery.deliveredAt)}</td>
+                      <td className="py-3 pr-4 text-xs text-white/60">
+                        {delivery.errorMessage ?? "—"}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-white/50">
+                      No ShopReel delivery attempts yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          <h2 className="text-lg font-semibold">Sync status</h2>
+          <div className="mt-3 space-y-2 text-sm text-white/70">
+            <div>Base URL: {integration.shopreelBaseUrl}</div>
+            <div>Remote Shop ID: {integration.remoteShopId ?? "Not set"}</div>
+            <div>
+              Enabled event types:{" "}
+              {integration.enabledEventTypes.length
+                ? integration.enabledEventTypes.join(", ")
+                : "None selected"}
+            </div>
+            <div>Last error message: {integration.lastErrorMessage ?? "None"}</div>
+          </div>
+        </div>
+      </div>
+    </PageShell>
+  );
+}
+
+===== features/integrations/shopreel/server/getMarketingDashboardData.ts =====
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+export async function getMarketingDashboardData() {
+  const supabase = createServerComponentClient<DB>({ cookies });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      authorized: false,
+      reason: "You must be signed in.",
+    } as const;
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("shop_members")
+    .select("shop_id, role")
+    .eq("user_id", user.id)
+    .eq("role", "owner")
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.shop_id) {
+    return {
+      authorized: false,
+      reason: "Owner access is required.",
+    } as const;
+  }
+
+  const shopId = membership.shop_id;
+
+  const [{ data: integration }, { data: deliveries }] = await Promise.all([
+    supabase
+      .from("shopreel_integrations")
+      .select("*")
+      .eq("shop_id", shopId)
+      .maybeSingle(),
+    supabase
+      .from("shopreel_event_deliveries")
+      .select("id, event_key, event_type, status, http_status, delivered_at, error_message, created_at")
+      .eq("shop_id", shopId)
+      .order("created_at", { ascending: false })
+      .limit(15),
+  ]);
+
+  return {
+    authorized: true,
+    shopId,
+    integration: integration
+      ? {
+          enabled: integration.enabled,
+          shopreelBaseUrl: integration.shopreel_base_url,
+          remoteShopId: integration.remote_shop_id,
+          lastTestedAt: integration.last_tested_at,
+          lastSuccessAt: integration.last_success_at,
+          lastErrorAt: integration.last_error_at,
+          lastErrorMessage: integration.last_error_message,
+          enabledEventTypes: integration.enabled_event_types ?? [],
+        }
+      : {
+          enabled: false,
+          shopreelBaseUrl:
+            process.env.SHOPREEL_BASE_URL ?? "https://shopreel.profixiq.com",
+          remoteShopId: null,
+          lastTestedAt: null,
+          lastSuccessAt: null,
+          lastErrorAt: null,
+          lastErrorMessage: null,
+          enabledEventTypes: [],
+        },
+    deliveries:
+      deliveries?.map((delivery) => ({
+        id: delivery.id,
+        eventKey: delivery.event_key,
+        eventType: delivery.event_type,
+        status: delivery.status,
+        httpStatus: delivery.http_status,
+        deliveredAt: delivery.delivered_at,
+        errorMessage: delivery.error_message,
+        createdAt: delivery.created_at,
+      })) ?? [],
+  } as const;
+}
+
+===== features/integrations/shopreel/components/OwnerMarketingSettingsCard.tsx =====
+"use client";
+
+import { useEffect, useState } from "react";
+import { Button } from "@shared/components/ui/Button";
+
+type IntegrationState = {
+  shopId: string;
+  enabled: boolean;
+  remoteShopId: string | null;
+  shopreelBaseUrl: string;
+  enabledEventTypes: string[];
+  lastTestedAt: string | null;
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastErrorMessage: string | null;
+};
+
+const DEFAULT_EVENT_TYPES = [
+  "inspection.completed",
+  "inspection.finding.flagged",
+  "inspection.media.captured",
+  "workorder.approved",
+  "workorder.completed",
+  "media.before_after.added",
+];
+
+export default function OwnerMarketingSettingsCard({
+  initialState,
+}: {
+  initialState: IntegrationState;
+}) {
+  const [state, setState] = useState<IntegrationState>(initialState);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setState(initialState);
+  }, [initialState]);
+
+  async function saveSettings() {
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/shopreel/integration", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          shopId: state.shopId,
+          enabled: state.enabled,
+          remoteShopId: state.remoteShopId,
+          shopreelBaseUrl: state.shopreelBaseUrl,
+          enabledEventTypes: state.enabledEventTypes,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to save Marketing settings.");
+      }
+
+      setState(result.integration);
+      setMessage("Marketing settings saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to save settings.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function sendTest() {
+    setTesting(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/shopreel/integration", {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          shopId: state.shopId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to send test event.");
+      }
+
+      setMessage(result?.message || "Test event sent.");
+      setState((current) => ({
+        ...current,
+        lastTestedAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to send test event.");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  function toggleEventType(eventType: string) {
+    setState((current) => {
+      const exists = current.enabledEventTypes.includes(eventType);
+      return {
+        ...current,
+        enabledEventTypes: exists
+          ? current.enabledEventTypes.filter((value) => value !== eventType)
+          : [...current.enabledEventTypes, eventType],
+      };
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-5 space-y-5">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-white">ShopReel Marketing Sync</h2>
+        <p className="text-sm text-white/70">
+          Owner-only controls for automated ProFixIQ → ShopReel story syncing.
+        </p>
+      </div>
+
+      <label className="flex items-center justify-between rounded-lg border border-white/10 px-4 py-3">
+        <div>
+          <div className="font-medium text-white">Enable marketing automation</div>
+          <div className="text-sm text-white/60">
+            Allow ProFixIQ to send sanitized story events to ShopReel.
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          checked={state.enabled}
+          onChange={(event) =>
+            setState((current) => ({
+              ...current,
+              enabled: event.target.checked,
+            }))
+          }
+        />
+      </label>
+
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-white">ShopReel base URL</label>
+        <input
+          className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+          value={state.shopreelBaseUrl}
+          onChange={(event) =>
+            setState((current) => ({
+              ...current,
+              shopreelBaseUrl: event.target.value,
+            }))
+          }
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-white">Remote ShopReel shop ID</label>
+        <input
+          className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+          placeholder="Optional until ShopReel mapping is wired"
+          value={state.remoteShopId ?? ""}
+          onChange={(event) =>
+            setState((current) => ({
+              ...current,
+              remoteShopId: event.target.value.trim() || null,
+            }))
+          }
+        />
+      </div>
+
+      <div className="space-y-2">
+        <div className="text-sm font-medium text-white">Enabled event types</div>
+        <div className="grid gap-2">
+          {DEFAULT_EVENT_TYPES.map((eventType) => (
+            <label
+              key={eventType}
+              className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2 text-sm text-white"
+            >
+              <span>{eventType}</span>
+              <input
+                type="checkbox"
+                checked={state.enabledEventTypes.includes(eventType)}
+                onChange={() => toggleEventType(eventType)}
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-2 text-sm text-white/70">
+        <div>Last tested: {state.lastTestedAt ?? "Never"}</div>
+        <div>Last success: {state.lastSuccessAt ?? "Never"}</div>
+        <div>Last error: {state.lastErrorAt ?? "None"}</div>
+        <div>Error message: {state.lastErrorMessage ?? "None"}</div>
+      </div>
+
+      {message ? (
+        <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80">
+          {message}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={saveSettings} disabled={saving}>
+          {saving ? "Saving..." : "Save settings"}
+        </Button>
+        <Button onClick={sendTest} disabled={testing || !state.enabled}>
+          {testing ? "Sending..." : "Send test event"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+===== app/api/shopreel/integration/route.ts =====
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
+
+type DB = Database;
+
+async function getOwnerShopContext() {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { error: "Unauthorized", status: 401 as const };
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("shop_members")
+    .select("shop_id, role")
+    .eq("user_id", user.id)
+    .eq("role", "owner")
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError) {
+    return { error: membershipError.message, status: 500 as const };
+  }
+
+  if (!membership?.shop_id) {
+    return { error: "Owner shop membership not found.", status: 403 as const };
+  }
+
+  return {
+    supabase,
+    user,
+    shopId: membership.shop_id as string,
+  };
+}
+
+export async function GET() {
+  const context = await getOwnerShopContext();
+
+  if ("error" in context) {
+    return NextResponse.json({ error: context.error }, { status: context.status });
+  }
+
+  const { supabase, shopId } = context;
+
+  const { data, error } = await supabase
+    .from("shopreel_integrations")
+    .select("*")
+    .eq("shop_id", shopId)
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    integration: {
+      shopId,
+      enabled: data?.enabled ?? false,
+      remoteShopId: data?.remote_shop_id ?? null,
+      shopreelBaseUrl:
+        data?.shopreel_base_url ??
+        process.env.SHOPREEL_BASE_URL ??
+        "https://shopreel.profixiq.com",
+      enabledEventTypes: data?.enabled_event_types ?? [
+        "inspection.completed",
+        "inspection.finding.flagged",
+        "inspection.media.captured",
+        "workorder.approved",
+        "workorder.completed",
+        "media.before_after.added",
+      ],
+      lastTestedAt: data?.last_tested_at ?? null,
+      lastSuccessAt: data?.last_success_at ?? null,
+      lastErrorAt: data?.last_error_at ?? null,
+      lastErrorMessage: data?.last_error_message ?? null,
+    },
+  });
+}
+
+export async function POST(request: NextRequest) {
+  const context = await getOwnerShopContext();
+
+  if ("error" in context) {
+    return NextResponse.json({ error: context.error }, { status: context.status });
+  }
+
+  const { supabase, user, shopId } = context;
+  const body = await request.json();
+
+  const enabled = Boolean(body?.enabled);
+  const remoteShopId =
+    typeof body?.remoteShopId === "string" && body.remoteShopId.trim().length
+      ? body.remoteShopId.trim()
+      : null;
+  const shopreelBaseUrl =
+    typeof body?.shopreelBaseUrl === "string" && body.shopreelBaseUrl.trim().length
+      ? body.shopreelBaseUrl.trim()
+      : process.env.SHOPREEL_BASE_URL ?? "https://shopreel.profixiq.com";
+  const enabledEventTypes = Array.isArray(body?.enabledEventTypes)
+    ? body.enabledEventTypes.filter((value: unknown): value is string => typeof value === "string")
+    : [
+        "inspection.completed",
+        "inspection.finding.flagged",
+        "inspection.media.captured",
+        "workorder.approved",
+        "workorder.completed",
+        "media.before_after.added",
+      ];
+
+  const { data, error } = await supabase
+    .from("shopreel_integrations")
+    .upsert(
+      {
+        shop_id: shopId,
+        enabled,
+        remote_shop_id: remoteShopId,
+        shopreel_base_url: shopreelBaseUrl,
+        enabled_event_types: enabledEventTypes,
+        updated_by: user.id,
+        created_by: user.id,
+      },
+      { onConflict: "shop_id" }
+    )
+    .select("*")
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    integration: {
+      shopId,
+      enabled: data.enabled,
+      remoteShopId: data.remote_shop_id,
+      shopreelBaseUrl: data.shopreel_base_url,
+      enabledEventTypes: data.enabled_event_types,
+      lastTestedAt: data.last_tested_at,
+      lastSuccessAt: data.last_success_at,
+      lastErrorAt: data.last_error_at,
+      lastErrorMessage: data.last_error_message,
+    },
+  });
+}
+
+export async function PUT() {
+  const context = await getOwnerShopContext();
+
+  if ("error" in context) {
+    return NextResponse.json({ error: context.error }, { status: context.status });
+  }
+
+  const { supabase, shopId } = context;
+
+  const { data: integration, error: integrationError } = await supabase
+    .from("shopreel_integrations")
+    .select("*")
+    .eq("shop_id", shopId)
+    .maybeSingle();
+
+  if (integrationError) {
+    return NextResponse.json({ error: integrationError.message }, { status: 500 });
+  }
+
+  if (!integration?.enabled) {
+    return NextResponse.json(
+      { error: "Enable the ShopReel integration before sending a test event." },
+      { status: 400 }
+    );
+  }
+
+  const testEvent = {
+    eventId: crypto.randomUUID(),
+    eventType: "workorder.completed" as const,
+    occurredAt: new Date().toISOString(),
+    source: {
+      app: "profixiq" as const,
+      shopId,
+      locationId: null,
+    },
+    subject: {
+      workOrderId: null,
+      workOrderNumber: "TEST-WO",
+      inspectionId: null,
+      vehicleId: null,
+      customerLabel: "Customer",
+      vehicleLabel: "2020 Ford F-150",
+    },
+    storyData: {
+      headline: "Test completed repair story",
+      summary: "Test event from ProFixIQ Marketing settings.",
+      findings: [
+        {
+          label: "Brake wear identified and resolved",
+          status: "failed" as const,
+          category: "brakes",
+        },
+      ],
+      services: [
+        {
+          label: "Front brake service",
+          kind: "repair" as const,
+        },
+      ],
+      media: [],
+      approvalStatus: "approved" as const,
+      technicianSummary: "Vehicle repaired and test drive completed.",
+    },
+    privacy: {
+      containsSensitiveData: false as const,
+      redactionsApplied: [],
+    },
+  };
+
+  try {
+    const result = await postStoryEventToShopReel(testEvent);
+
+    await supabase
+      .from("shopreel_integrations")
+      .update({
+        last_tested_at: new Date().toISOString(),
+      })
+      .eq("shop_id", shopId);
+
+    return NextResponse.json({
+      ok: true,
+      message: result.message ?? "Test event sent.",
+      result,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Failed to send test event.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+===== app/dashboard/owner/marketing/page.tsx =====
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import PageShell from "@/features/shared/components/PageShell";
+import OwnerMarketingSettingsCard from "@/features/integrations/shopreel/components/OwnerMarketingSettingsCard";
+
+type DB = Database;
+
+export default async function OwnerMarketingPage() {
+  const supabase = createServerComponentClient<DB>({ cookies });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return (
+      <PageShell title="Marketing">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          You must be signed in.
+        </div>
+      </PageShell>
+    );
+  }
+
+  const { data: membership } = await supabase
+    .from("shop_members")
+    .select("shop_id, role")
+    .eq("user_id", user.id)
+    .eq("role", "owner")
+    .limit(1)
+    .maybeSingle();
+
+  if (!membership?.shop_id) {
+    return (
+      <PageShell title="Marketing">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          Owner access is required.
+        </div>
+      </PageShell>
+    );
+  }
+
+  const { data: integration } = await supabase
+    .from("shopreel_integrations")
+    .select("*")
+    .eq("shop_id", membership.shop_id)
+    .maybeSingle();
+
+  return (
+    <PageShell title="Marketing">
+      <div className="space-y-6">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          <h1 className="text-2xl font-semibold">Marketing</h1>
+          <p className="mt-2 text-sm text-white/70">
+            Connect ProFixIQ to ShopReel and control automated story syncing.
+          </p>
+        </div>
+
+        <OwnerMarketingSettingsCard
+          initialState={{
+            shopId: membership.shop_id,
+            enabled: integration?.enabled ?? false,
+            remoteShopId: integration?.remote_shop_id ?? null,
+            shopreelBaseUrl:
+              integration?.shopreel_base_url ??
+              process.env.SHOPREEL_BASE_URL ??
+              "https://shopreel.profixiq.com",
+            enabledEventTypes: integration?.enabled_event_types ?? [
+              "inspection.completed",
+              "inspection.finding.flagged",
+              "workorder.approved",
+              "workorder.completed",
+              "media.before_after.added",
+            ],
+            lastTestedAt: integration?.last_tested_at ?? null,
+            lastSuccessAt: integration?.last_success_at ?? null,
+            lastErrorAt: integration?.last_error_at ?? null,
+            lastErrorMessage: integration?.last_error_message ?? null,
+          }}
+        />
+      </div>
+    </PageShell>
+  );
+}
