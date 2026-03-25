@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import type {
@@ -194,6 +194,8 @@ export default function InspectionFindingsPage(): JSX.Element {
   const [session, setSession] = useState<InspectionSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [draftUi, setDraftUi] = useState<DraftUiState>({});
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     const loaded = readDraftSession(draftKey);
@@ -269,6 +271,63 @@ export default function InspectionFindingsPage(): JSX.Element {
       photoReviewed:
         (row.item.photoUrls?.length ?? 0) > 0 ? true : row.item.photoReviewed,
     });
+  };
+
+  const handleUploadPhoto = async (
+    row: FindingRow,
+    file: File,
+  ): Promise<void> => {
+    if (!inspectionId) {
+      toast.error("Missing inspection id.");
+      return;
+    }
+
+    const key = findingKey(row.sectionIndex, row.itemIndex);
+    const itemLabel = String(row.item.item ?? row.item.name ?? "Item");
+
+    setUploadingKey(key);
+
+    try {
+      const form = new FormData();
+      form.append("inspectionId", inspectionId);
+      if (workOrderId) form.append("workOrderId", workOrderId);
+      if (workOrderLineId) form.append("workOrderLineId", workOrderLineId);
+      form.append("itemName", itemLabel);
+      form.append("notes", String(row.item.notes ?? ""));
+      form.append("file", file);
+
+      const res = await fetch("/api/inspections/photos/upload", {
+        method: "POST",
+        body: form,
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | { error?: string; url?: string | null }
+        | null;
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to upload photo");
+      }
+
+      const nextUrl = json?.url ?? null;
+      const current = row.item.photoUrls ?? [];
+      const nextPhotoUrls = nextUrl ? [...current, nextUrl] : current;
+
+      updateFinding(row.sectionIndex, row.itemIndex, {
+        photoUrls: nextPhotoUrls,
+        photoRequested: false,
+      });
+
+      toast.success("Photo uploaded.");
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Failed to upload photo";
+      toast.error(message);
+    } finally {
+      setUploadingKey(null);
+      const input = fileInputRefs.current[key];
+      if (input) input.value = "";
+    }
   };
 
   const handleSubmitReviewed = async (): Promise<void> => {
@@ -382,6 +441,7 @@ export default function InspectionFindingsPage(): JSX.Element {
             const reviewed = row.item.findingReviewed === true;
             const laborHoursText = draftUi[key]?.laborHoursText ?? "";
             const partsText = draftUi[key]?.partsText ?? "";
+            const isUploading = uploadingKey === key;
 
             return (
               <div
@@ -502,6 +562,30 @@ export default function InspectionFindingsPage(): JSX.Element {
                   <span className="rounded-full border border-white/10 px-3 py-1">
                     Photos: {photos.length}
                   </span>
+
+                  <input
+                    ref={(el) => {
+                      fileInputRefs.current[key] = el;
+                    }}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      void handleUploadPhoto(row, file);
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5"
+                    onClick={() => fileInputRefs.current[key]?.click()}
+                    disabled={isUploading}
+                  >
+                    {isUploading ? "Uploading photo..." : "Add photo"}
+                  </button>
+
                   <button
                     type="button"
                     className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5"
@@ -513,6 +597,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                   >
                     Mark photo requested
                   </button>
+
                   <button
                     type="button"
                     className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5"
@@ -524,6 +609,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                   >
                     Mark photo reviewed
                   </button>
+
                   <button
                     type="button"
                     className="rounded-full border border-emerald-500/30 px-3 py-1 text-emerald-200 hover:bg-emerald-500/10"
