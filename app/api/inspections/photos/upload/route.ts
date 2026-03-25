@@ -358,8 +358,6 @@ export async function POST(req: NextRequest) {
       console.error("[shopreel] inspection media event error", error);
     }
 
-
-
   return NextResponse.json({
     ok: true,
     bucket,
