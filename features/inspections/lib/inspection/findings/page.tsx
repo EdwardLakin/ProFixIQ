@@ -8,9 +8,13 @@ import type {
   InspectionItemStatus,
   InspectionSession,
 } from "@inspections/lib/inspection/types";
+import type { QuoteLineItem, VoiceMeta } from "@inspections/lib/inspection/types";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
+import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
+import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
+import { v4 as uuidv4 } from "uuid";
 
 type FindingRow = {
   sectionIndex: number;
@@ -170,6 +174,19 @@ function parsePartsText(
 function laborHoursToText(value: number | null | undefined): string {
   if (typeof value !== "number" || Number.isNaN(value)) return "";
   return String(value);
+}
+
+function updateQuoteLineInSession(
+  session: InspectionSession,
+  id: string,
+  patch: Partial<QuoteLineItem>,
+): InspectionSession {
+  const current = Array.isArray(session.quote) ? session.quote : [];
+
+  return {
+    ...session,
+    quote: current.map((line) => (line.id === id ? { ...line, ...patch } : line)),
+  };
 }
 
 export default function InspectionFindingsPage(): JSX.Element {
@@ -384,10 +401,11 @@ export default function InspectionFindingsPage(): JSX.Element {
     }
   };
 
-  const handleSubmitReviewed = async (): Promise<void> => {
+    const handleSubmitReviewed = async (): Promise<void> => {
     if (!session) return;
-    if (!workOrderLineId) {
-      toast.error("Missing work order line id.");
+
+    if (!workOrderId) {
+      toast.error("Missing work order id.");
       return;
     }
 
@@ -401,8 +419,273 @@ export default function InspectionFindingsPage(): JSX.Element {
     }
 
     setBusy(true);
+
     try {
-      writeDraftSession(draftKey, session);
+      let nextSession: InspectionSession = { ...session };
+
+      for (const row of findings) {
+        const item = row.item;
+        const status = String(item.status ?? "").toLowerCase();
+
+        if (status !== "fail" && status !== "recommend") continue;
+
+        const desc = String(item.item ?? item.name ?? "Item").trim();
+        const note = String(item.notes ?? "").trim();
+
+        if (!desc || !note) continue;
+
+        const itemExt = item as InspectionItem & {
+          estimateSubmitted?: boolean;
+          estimateSubmittedAt?: string | null;
+          estimateLastUpdatedAt?: string | null;
+          estimateWorkOrderLineId?: string | null;
+          estimateQuoteLineId?: string | null;
+          laborHours?: number | null;
+          parts?: { description: string; qty: number }[];
+          value?: string | number | null;
+        };
+
+        const manualParts = Array.isArray(itemExt.parts) ? itemExt.parts : [];
+        const manualLaborHours =
+          typeof itemExt.laborHours === "number" ? itemExt.laborHours : null;
+
+        const existingLineId =
+          typeof itemExt.estimateWorkOrderLineId === "string" &&
+          itemExt.estimateWorkOrderLineId
+            ? itemExt.estimateWorkOrderLineId
+            : null;
+
+        const existingQuoteId =
+          typeof itemExt.estimateQuoteLineId === "string" &&
+          itemExt.estimateQuoteLineId
+            ? itemExt.estimateQuoteLineId
+            : null;
+
+        const quoteId = existingQuoteId ?? uuidv4();
+        const nowIso = new Date().toISOString();
+
+        if (!existingQuoteId) {
+          const placeholder: QuoteLineItem = {
+            id: quoteId,
+            description: desc,
+            item: desc,
+            name: desc,
+            status: status as "fail" | "recommend",
+            notes: note,
+            price: 0,
+            laborTime: 0.5,
+            laborRate: 0,
+            editable: true,
+            source: "inspection",
+            value: itemExt.value,
+            photoUrls: item.photoUrls ?? [],
+            aiState: "loading",
+          };
+
+          nextSession = {
+            ...nextSession,
+            quote: [...(nextSession.quote ?? []), placeholder],
+          };
+        } else {
+          nextSession = updateQuoteLineInSession(nextSession, quoteId, {
+            aiState: "loading",
+          });
+        }
+
+        const suggestion = await requestQuoteSuggestion({
+          item: desc,
+          notes: note,
+          section: row.sectionTitle,
+          status,
+          vehicle: nextSession.vehicle ?? undefined,
+        });
+
+        if (!suggestion) {
+          nextSession = updateQuoteLineInSession(nextSession, quoteId, {
+            aiState: "error",
+          });
+          continue;
+        }
+
+        const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
+          ...((suggestion.parts ?? []) as Array<{
+            name: string;
+            qty: number;
+            cost?: number;
+          }>),
+          ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
+        ];
+
+        const laborTime =
+          manualLaborHours != null && !Number.isNaN(manualLaborHours)
+            ? manualLaborHours
+            : (suggestion.laborHours ?? 0.5);
+
+        const laborRate = suggestion.laborRate ?? 0;
+
+        const partsTotal =
+          mergedParts.reduce(
+            (sum, p) => sum + (typeof p.cost === "number" ? p.cost : 0),
+            0,
+          ) ?? 0;
+
+        const price = Math.max(0, partsTotal + laborRate * laborTime);
+
+        nextSession = updateQuoteLineInSession(nextSession, quoteId, {
+          price,
+          laborTime,
+          laborRate,
+          ai: {
+            summary: suggestion.summary,
+            confidence: suggestion.confidence,
+            parts: mergedParts,
+          },
+          aiState: "done",
+        });
+
+        const cleanParts = manualParts
+          .map((p) => ({
+            description: String(p.description ?? "").trim(),
+            qty: Number(p.qty ?? 0),
+          }))
+          .filter((p) => p.description.length > 0 && p.qty > 0);
+
+        if (existingLineId) {
+          const updateRes = await fetch(
+            "/api/work-orders/lines/update-from-inspection",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workOrderId,
+                workOrderLineId: existingLineId,
+                laborHours: laborTime,
+                complaint: note || null,
+                notes: note || null,
+                aiSummary: suggestion.summary ?? null,
+              }),
+            },
+          );
+
+          if (!updateRes.ok) {
+            const body = (await updateRes.json().catch(() => null)) as unknown;
+            console.error("Update WO line error", body);
+            throw new Error("Could not update existing estimate line");
+          }
+
+          if (cleanParts.length > 0) {
+            const res = await fetch("/api/parts/requests/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workOrderId,
+                jobId: existingLineId,
+                notes: note || null,
+                items: cleanParts,
+              }),
+            });
+
+            if (!res.ok) {
+              const body = (await res.json().catch(() => null)) as unknown;
+              console.error("Parts request error", body);
+              throw new Error("Estimate updated, but parts request failed");
+            }
+          }
+
+          nextSession = {
+            ...nextSession,
+            sections: nextSession.sections.map((sec, sIdx) => {
+              if (sIdx !== row.sectionIndex) return sec;
+              return {
+                ...sec,
+                items: (sec.items ?? []).map((it, iIdx) =>
+                  iIdx === row.itemIndex
+                    ? {
+                        ...it,
+                        estimateSubmitted: true,
+                        estimateSubmittedAt:
+                          itemExt.estimateSubmittedAt ?? nowIso,
+                        estimateLastUpdatedAt: nowIso,
+                        estimateWorkOrderLineId: existingLineId,
+                        estimateQuoteLineId: quoteId,
+                      }
+                    : it,
+                ),
+              };
+            }),
+          };
+
+          continue;
+        }
+
+        const created = await addWorkOrderLineFromSuggestion({
+          workOrderId,
+          description: desc,
+          section: row.sectionTitle,
+          status: status as "fail" | "recommend",
+          complaint: note || null,
+          suggestion: {
+            ...suggestion,
+            parts: mergedParts,
+            laborHours: laborTime,
+            notes: note || undefined,
+          },
+          source: "inspection",
+          jobType: "repair",
+        });
+
+        const createdId = (created as unknown as { id?: unknown })?.id;
+        const createdJobId = createdId ? String(createdId) : null;
+
+        if (cleanParts.length > 0 && createdJobId) {
+          const res = await fetch("/api/parts/requests/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workOrderId,
+              jobId: createdJobId,
+              notes: note || null,
+              items: cleanParts,
+            }),
+          });
+
+          if (!res.ok) {
+            const body = (await res.json().catch(() => null)) as unknown;
+            console.error("Parts request error", body);
+            throw new Error("Line added, but parts request failed");
+          }
+        }
+
+        nextSession = {
+          ...nextSession,
+          voiceMeta: {
+            ...(nextSession.voiceMeta ?? ({ linesAddedToWorkOrder: 0 } as VoiceMeta)),
+            linesAddedToWorkOrder:
+              (nextSession.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
+          },
+          sections: nextSession.sections.map((sec, sIdx) => {
+            if (sIdx !== row.sectionIndex) return sec;
+            return {
+              ...sec,
+              items: (sec.items ?? []).map((it, iIdx) =>
+                iIdx === row.itemIndex
+                  ? {
+                      ...it,
+                      estimateSubmitted: true,
+                      estimateSubmittedAt: nowIso,
+                      estimateLastUpdatedAt: nowIso,
+                      estimateWorkOrderLineId: createdJobId,
+                      estimateQuoteLineId: quoteId,
+                    }
+                  : it,
+              ),
+            };
+          }),
+        };
+      }
+
+      setSession(nextSession);
+      writeDraftSession(draftKey, nextSession);
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(
@@ -412,7 +695,7 @@ export default function InspectionFindingsPage(): JSX.Element {
         );
       }
 
-      const payload = summarizeFromSections(session);
+      const payload = summarizeFromSections(nextSession);
 
       const finishRes = await fetch(
         `/api/work-orders/lines/${workOrderLineId}/finish`,
