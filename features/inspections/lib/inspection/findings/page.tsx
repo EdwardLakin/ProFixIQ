@@ -10,6 +10,7 @@ import type {
 } from "@inspections/lib/inspection/types";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
+import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 
 type FindingRow = {
   sectionIndex: number;
@@ -679,6 +680,13 @@ export default function InspectionFindingsPage(): JSX.Element {
                     {reviewed ? "Reviewed" : "Mark reviewed"}
                   </button>
                 </div>
+                  {photos.length > 0 && (
+                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                      {photos.map((url, i) => (
+                        <PhotoThumbnail key={`${url}-${i}`} url={url} />
+                      ))}
+                  </div>
+                  )}
               </div>
             );
           })
