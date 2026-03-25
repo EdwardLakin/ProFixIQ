@@ -35,7 +35,6 @@ async function resolveShopId(args: {
 }): Promise<{ shopId: string | null; source: string }> {
   const { supabase, inspectionId, workOrderId, workOrderLineId, userId } = args;
 
-  // 1) inspections.shop_id
   const { data: insp, error: inspErr } = await supabase
     .from("inspections")
     .select("id, shop_id, work_order_id, work_order_line_id")
@@ -58,7 +57,6 @@ async function resolveShopId(args: {
   const woId = insp?.work_order_id ?? workOrderId ?? null;
   const wolId = insp?.work_order_line_id ?? workOrderLineId ?? null;
 
-  // 2) work order line -> work order -> shop
   if (wolId) {
     const { data, error } = await supabase
       .from("work_order_lines")
@@ -76,7 +74,6 @@ async function resolveShopId(args: {
     }
   }
 
-  // 3) work order -> shop
   if (woId) {
     const { data, error } = await supabase
       .from("work_orders")
@@ -94,7 +91,6 @@ async function resolveShopId(args: {
     }
   }
 
-  // 4) fallback: profiles.shop_id
   const { data: profById } = await supabase
     .from("profiles")
     .select("shop_id")
@@ -124,22 +120,48 @@ async function ensureInspectionRow(args: {
   shopId: string;
   workOrderId: string | null;
   workOrderLineId: string | null;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<
+  | { ok: true; inspectionId: string }
+  | { ok: false; error: string }
+> {
   const { supabase, inspectionId, shopId, workOrderId, workOrderLineId } = args;
 
-  const { data: existing, error: existingErr } = await supabase
+  const { data: existingById, error: existingByIdErr } = await supabase
     .from("inspections")
     .select("id")
     .eq("id", inspectionId)
     .maybeSingle<{ id: string }>();
 
-  if (existingErr) {
-    console.error("[inspections/photos/upload] inspection exists check failed", existingErr);
-    return { ok: false, error: existingErr.message };
+  if (existingByIdErr) {
+    console.error(
+      "[inspections/photos/upload] inspection exists check by id failed",
+      existingByIdErr,
+    );
+    return { ok: false, error: existingByIdErr.message };
   }
 
-  if (existing?.id) {
-    return { ok: true };
+  if (existingById?.id) {
+    return { ok: true, inspectionId: existingById.id };
+  }
+
+  if (workOrderLineId) {
+    const { data: existingByLine, error: existingByLineErr } = await supabase
+      .from("inspections")
+      .select("id")
+      .eq("work_order_line_id", workOrderLineId)
+      .maybeSingle<{ id: string }>();
+
+    if (existingByLineErr) {
+      console.error(
+        "[inspections/photos/upload] inspection exists check by work_order_line_id failed",
+        existingByLineErr,
+      );
+      return { ok: false, error: existingByLineErr.message };
+    }
+
+    if (existingByLine?.id) {
+      return { ok: true, inspectionId: existingByLine.id };
+    }
   }
 
   let vehicleId: string | null = null;
@@ -176,7 +198,7 @@ async function ensureInspectionRow(args: {
     return { ok: false, error: insertErr.message };
   }
 
-  return { ok: true };
+  return { ok: true, inspectionId };
 }
 
 export async function POST(req: NextRequest) {
@@ -199,14 +221,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const inspectionId = asString(form.get("inspectionId"));
+  const requestedInspectionId = asString(form.get("inspectionId"));
   const workOrderId = asString(form.get("workOrderId"));
   const workOrderLineId = asString(form.get("workOrderLineId"));
   const itemName = asString(form.get("itemName"));
   const notes = asString(form.get("notes"));
   const file = form.get("file");
 
-  if (!inspectionId) {
+  if (!requestedInspectionId) {
     return NextResponse.json({ error: "Missing inspectionId" }, { status: 400 });
   }
 
@@ -216,7 +238,7 @@ export async function POST(req: NextRequest) {
 
   const resolved = await resolveShopId({
     supabase,
-    inspectionId,
+    inspectionId: requestedInspectionId,
     workOrderId,
     workOrderLineId,
     userId: user.id,
@@ -229,7 +251,7 @@ export async function POST(req: NextRequest) {
         error: "Unable to resolve shop for inspection photo upload",
         debug: {
           source: resolved.source,
-          inspectionId,
+          inspectionId: requestedInspectionId,
           workOrderId,
           workOrderLineId,
         },
@@ -252,7 +274,7 @@ export async function POST(req: NextRequest) {
 
   const ensure = await ensureInspectionRow({
     supabase,
-    inspectionId,
+    inspectionId: requestedInspectionId,
     shopId,
     workOrderId,
     workOrderLineId,
@@ -265,9 +287,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const resolvedInspectionId = ensure.inspectionId;
+
   const bucket = "inspection_photos";
   const shopPart = safeFilePart(shopId);
-  const inspPart = safeFilePart(inspectionId);
+  const inspPart = safeFilePart(resolvedInspectionId);
   const idPart = crypto.randomUUID();
   const ext = extFromMime(file.type);
 
@@ -297,7 +321,7 @@ export async function POST(req: NextRequest) {
   const { data: row, error: insErr } = await supabase
     .from("inspection_photos")
     .insert({
-      inspection_id: inspectionId,
+      inspection_id: resolvedInspectionId,
       item_name: itemName,
       image_url: imageUrl ?? path,
       notes: notes ?? null,
@@ -315,7 +339,8 @@ export async function POST(req: NextRequest) {
     ok: true,
     bucket,
     path,
-    inspectionId,
+    inspectionId: resolvedInspectionId,
+    requestedInspectionId,
     workOrderId,
     workOrderLineId,
     itemName,
