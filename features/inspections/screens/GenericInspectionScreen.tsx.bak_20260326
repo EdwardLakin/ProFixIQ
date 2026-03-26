@@ -18,7 +18,6 @@ import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
 import { buildVoiceBrainFeedback } from "@inspections/lib/inspection/voice/voiceBrain";
-import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
 import type {
   ParsedCommand,
@@ -647,31 +646,8 @@ export default function GenericInspectionScreen(
   );
 
   const bootSections = useMemo<InspectionSection[]>(() => {
-    const stagedParams = readStaged<Record<string, string>>("inspection:params") ?? {};
-
-    const vehicleType =
-      stagedParams.vehicleType ??
-      sp.get("vehicleType") ??
-      sp.get("vehicle_type") ??
-      "";
-
-    const gridParam =
-      stagedParams.grid ??
-      sp.get("grid") ??
-      null;
-
-    const finalize = (rawSections: InspectionSection[]): InspectionSection[] =>
-      prepareSectionsWithCornerGrid(
-        normalizeSections(rawSections) as unknown as Array<{
-          title: string;
-          items: Array<{ item: string; unit?: string | null }>;
-        }>,
-        vehicleType,
-        gridParam,
-      ) as unknown as InspectionSection[];
-
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length) return finalize(staged);
+    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
 
     try {
       const legacy =
@@ -680,11 +656,11 @@ export default function GenericInspectionScreen(
           : null;
       if (legacy) {
         const parsed = JSON.parse(legacy) as InspectionSection[];
-        return finalize(parsed);
+        return normalizeSections(parsed);
       }
     } catch {}
 
-    return finalize([
+    return [
       {
         title: "General",
         items: [
@@ -692,8 +668,8 @@ export default function GenericInspectionScreen(
           { item: "Record warning lights" },
         ],
       },
-    ]);
-  }, [sp]);
+    ];
+  }, []);
 
   const inspectionId = useMemo(() => {
     const fromUrl = sp.get("inspectionId");
@@ -1510,8 +1486,7 @@ export default function GenericInspectionScreen(
           }))
           .filter((p) => p.description.length > 0 && p.qty > 0);
 
-        let createdJobId: string | null = null;
-
+        // ✅ UPDATE existing estimate/job (no new WO line)
         if (existingLineId) {
           const updateRes = await fetch(
             "/api/work-orders/lines/update-from-inspection",
@@ -1522,8 +1497,13 @@ export default function GenericInspectionScreen(
                 workOrderId,
                 workOrderLineId: existingLineId,
                 laborHours: laborTime,
+
+                // ✅ complaint = inspection notes (what the customer/tech reports)
                 complaint: String(it.notes ?? "").trim() || null,
+
+                // keep notes too if your API already uses it for internal notes
                 notes: String(it.notes ?? "").trim() || null,
+
                 aiSummary: suggestion.summary ?? null,
               }),
             },
@@ -1537,15 +1517,13 @@ export default function GenericInspectionScreen(
             return;
           }
 
-          createdJobId = existingLineId;
-
           if (cleanParts.length > 0) {
             const res = await fetch("/api/parts/requests/create", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 workOrderId,
-                jobId: existingLineId,
+                jobId: existingLineId, // ✅ attach to same job
                 notes: String(it.notes ?? "") || null,
                 items: cleanParts,
               }),
@@ -1562,82 +1540,94 @@ export default function GenericInspectionScreen(
             }
           }
 
+          updateItem(secIdx, itemIdx, {
+            estimateSubmitted: true,
+            estimateSubmittedAt: itExt.estimateSubmittedAt ?? nowIso,
+            estimateLastUpdatedAt: nowIso,
+            estimateWorkOrderLineId: existingLineId,
+            estimateQuoteLineId: quoteId,
+          } as ItemPatch);
+
           toast.success("Estimate updated", { id: toastId });
-        } else {
-          const complaint = String(it.notes ?? "").trim() || null;
+          return;
+        }
 
-          const created = await addWorkOrderLineFromSuggestion({
-            workOrderId,
-            description: desc,
-            section: String(session.sections[secIdx]?.title ?? ""),
-            status: status as "fail" | "recommend",
-            complaint,
-            suggestion: {
-              ...suggestion,
-              parts: mergedParts,
-              laborHours: laborTime,
-              notes: complaint ?? undefined,
-            },
-            source: "inspection",
-            jobType: "repair",
-          });
+        // ✅ CREATE new estimate/job (first submit)
+        const complaint = String(it.notes ?? "").trim() || null;
 
-          const createdId = (created as unknown as { id?: unknown })?.id;
-          createdJobId =
-            (createdId ? String(createdId) : null) || workOrderLineId || null;
+            const created = await addWorkOrderLineFromSuggestion({
+              workOrderId,
+              description: desc,
+              section: String(session.sections[secIdx]?.title ?? ""),
+              status: status as "fail" | "recommend",
 
-          updateInspection({
-            voiceMeta: {
-              linesAddedToWorkOrder:
-                (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
-            } satisfies VoiceMeta,
-          });
+              // ✅ NEW: pass complaint explicitly
+              complaint,
 
-          if (cleanParts.length > 0) {
-            try {
-              const res = await fetch("/api/parts/requests/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  workOrderId,
-                  jobId: createdJobId,
-                  notes: String(it.notes ?? "") || null,
-                  items: cleanParts,
-                }),
-              });
+              suggestion: {
+                ...suggestion,
+                parts: mergedParts,
+                laborHours: laborTime,
 
-              if (!res.ok) {
-                const body = (await res.json().catch(() => null)) as unknown;
-                // eslint-disable-next-line no-console
-                console.error("Parts request error", body);
-                toast.error("Line added, but parts request failed", {
-                  id: toastId,
-                });
-                return;
-              }
+                // ✅ also set suggestion.notes so *either* side can use it
+                notes: complaint ?? undefined,
+              },
+              source: "inspection",
+              jobType: "repair",
+            });
 
-              toast.success("Line + parts request created from inspection", {
-                id: toastId,
-              });
-            } catch (err: unknown) {
+        const createdId = (created as unknown as { id?: unknown })?.id;
+        const createdJobId =
+          (createdId ? String(createdId) : null) || workOrderLineId || null;
+
+        // ✅ keep your counter for “lines added and sent for quote”
+        updateInspection({
+          voiceMeta: {
+            linesAddedToWorkOrder:
+              (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
+          } satisfies VoiceMeta,
+        });
+
+        if (cleanParts.length > 0) {
+          try {
+            const res = await fetch("/api/parts/requests/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workOrderId,
+                jobId: createdJobId,
+                notes: String(it.notes ?? "") || null,
+                items: cleanParts,
+              }),
+            });
+
+            if (!res.ok) {
+              const body = (await res.json().catch(() => null)) as unknown;
               // eslint-disable-next-line no-console
-              console.error("Parts request failed", err);
-              toast.error("Line added, but couldn't reach parts request service", {
-                id: toastId,
-              });
+              console.error("Parts request error", body);
+              toast.error("Line added, but parts request failed", { id: toastId });
               return;
             }
-          } else {
-            toast.success("Added to work order (no parts requested)", {
+
+            toast.success("Line + parts request created from inspection", {
               id: toastId,
             });
+          } catch (err: unknown) {
+            // eslint-disable-next-line no-console
+            console.error("Parts request failed", err);
+            toast.error("Line added, but couldn't reach parts request service", {
+              id: toastId,
+            });
+            return;
           }
+        } else {
+          toast.success("Added to work order (no parts requested)", { id: toastId });
         }
 
         if (createdJobId) {
           updateItem(secIdx, itemIdx, {
             estimateSubmitted: true,
-            estimateSubmittedAt: itExt.estimateSubmittedAt ?? nowIso,
+            estimateSubmittedAt: nowIso,
             estimateLastUpdatedAt: nowIso,
             estimateWorkOrderLineId: createdJobId,
             estimateQuoteLineId: quoteId,
@@ -1646,7 +1636,6 @@ export default function GenericInspectionScreen(
       } else {
         toast.error("Missing work order id — saved locally only", { id: toastId });
       }
-
       } catch (e: unknown) {
     // eslint-disable-next-line no-console
     console.error("Submit AI failed:", e);

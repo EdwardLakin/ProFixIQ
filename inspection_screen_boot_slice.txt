@@ -1,0 +1,507 @@
+===== GenericInspectionScreen boot / normalize slice =====
+147:function normalizeSections(input: unknown): InspectionSection[] {
+648:  const bootSections = useMemo<InspectionSection[]>(() => {
+830:      updateInspection({ sections: bootSections });
+
+// features/inspections/screens/GenericInspectionScreen.tsx (FULL FILE REPLACEMENT)
+"use client";
+
+import type React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { v4 as uuidv4 } from "uuid";
+import { toast } from "sonner";
+
+import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
+import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
+import ProgressTracker from "@inspections/lib/inspection/ProgressTracker";
+import useInspectionSession from "@inspections/hooks/useInspectionSession";
+
+import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
+import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
+import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
+import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
+import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
+import { buildVoiceBrainFeedback } from "@inspections/lib/inspection/voice/voiceBrain";
+
+import type {
+  ParsedCommand,
+  InspectionItemStatus,
+  InspectionStatus,
+  InspectionSection,
+  InspectionSession,
+  SessionCustomer,
+  SessionVehicle,
+  QuoteLineItem,
+  VoiceMeta,
+  VoiceTraceEvent,
+  VoiceCommandApplyResult,
+} from "@inspections/lib/inspection/types";
+
+import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
+import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
+import AirCornerGrid from "@inspections/lib/inspection/ui/AirCornerGrid";
+import TireGrid from "@inspections/lib/inspection/ui/TireCornerGrid";
+import TireGridHydraulic from "@inspections/lib/inspection/ui/TireGridHydraulic";
+import BatteryGrid from "@inspections/lib/inspection/ui/BatteryGrid";
+
+import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
+import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
+import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
+import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
+import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
+import PageShell from "@/features/shared/components/PageShell";
+import { Button } from "@shared/components/ui/Button";
+
+/* -------------------------- helpers -------------------------- */
+
+type GenericInspectionScreenProps = {
+  embed?: boolean;
+  template?: string | null;
+  params?: Record<string, string | number | boolean | null | undefined>;
+  onSpecHint?: (payload: {
+    source: "air_corner" | "corner" | "tire" | "item" | "battery" | "other";
+    label: string;
+    specCode?: string | null;
+    meta?: Record<string, string | number | boolean | null | undefined>;
+  }) => void;
+};
+
+function toHeaderCustomer(c?: SessionCustomer | null) {
+  return {
+    first_name: c?.first_name ?? "",
+    last_name: c?.last_name ?? "",
+    phone: c?.phone ?? "",
+    email: c?.email ?? "",
+    address: c?.address ?? "",
+    city: c?.city ?? "",
+    province: c?.province ?? "",
+    postal_code: c?.postal_code ?? "",
+  };
+}
+
+function toHeaderVehicle(v?: SessionVehicle | null) {
+  return {
+    year: v?.year ?? "",
+    make: v?.make ?? "",
+    model: v?.model ?? "",
+    vin: v?.vin ?? "",
+    license_plate: v?.license_plate ?? "",
+    mileage: v?.mileage ?? "",
+    color: v?.color ?? "",
+    unit_number: v?.unit_number ?? "",
+    engine_hours: v?.engine_hours ?? "",
+  };
+}
+
+function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
+  const l = (label || "").toLowerCase();
+
+  // ✅ pressure ALWAYS psi
+  if (l.includes("pressure")) return "psi";
+
+  // ✅ tread + thickness metrics follow toggle
+  if (l.includes("tread")) return mode === "metric" ? "mm" : "in";
+  if (l.includes("pad") || l.includes("lining") || l.includes("shoe"))
+    return mode === "metric" ? "mm" : "in";
+  if (l.includes("rotor") || l.includes("drum"))
+    return mode === "metric" ? "mm" : "in";
+  if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
+
+  // torque can still follow toggle (your call)
+  if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
+
+  // leak rate / gov cut can be whatever you want — leaving as-is
+  if (l.includes("leak rate")) return mode === "metric" ? "kPa/min" : "psi/min";
+  if (l.includes("gov cut") || l.includes("warning"))
+    return mode === "metric" ? "kPa" : "psi";
+
+  return "";
+}
+
+function readStaged<T>(key: string): T | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+type NormalizedItem = {
+  item: string;
+  unit: string | null;
+  status?: InspectionItemStatus;
+  notes?: string;
+  note?: string;
+  value?: string | number | null;
+  photoUrls?: string[];
+  recommend?: string[];
+  parts?: Array<{ description: string; qty: number }>;
+  laborHours?: number | null;
+
+  // ✅ estimate state (optional)
+  estimateSubmitted?: boolean;
+  estimateSubmittedAt?: string | null;
+  estimateLastUpdatedAt?: string | null;
+  estimateWorkOrderLineId?: string | null;
+  estimateQuoteLineId?: string | null;
+};
+
+function normalizeSections(input: unknown): InspectionSection[] {
+  try {
+    const arr = Array.isArray(input) ? input : [];
+    const byTitle = new Map<string, InspectionSection>();
+
+    for (const s of arr) {
+      const sObj = (s ?? {}) as { title?: unknown; items?: unknown };
+      const title = String(sObj.title ?? "").trim();
+      if (!title) continue;
+
+      const itemsRaw = Array.isArray(sObj.items) ? sObj.items : [];
+      const normalized: NormalizedItem[] = [];
+
+      for (const it of itemsRaw) {
+        const itObj = (it ?? {}) as Record<string, unknown>;
+        const label = String(itObj.item ?? itObj.name ?? "").trim();
+        if (!label) continue;
+
+        normalized.push({
+          ...(itObj as object),
+          item: label,
+          unit:
+            (itObj.unit as string | null | undefined) === undefined
+              ? null
+              : ((itObj.unit as string | null) ?? null),
+        } as NormalizedItem);
+      }
+
+      if (!byTitle.has(title)) {
+        byTitle.set(title, { title, items: [] });
+      }
+
+      const bucket = byTitle.get(title)!;
+      const existing = Array.isArray(bucket.items) ? bucket.items : [];
+
+      const seen = new Set<string>(
+        existing.map((x) =>
+          String((x as { item?: unknown }).item ?? "").toLowerCase(),
+        ),
+      );
+
+      const merged: Array<InspectionSection["items"][number]> = [...existing];
+
+      for (const it of normalized) {
+        const key = String(it.item ?? "").toLowerCase();
+        if (!key || seen.has(key)) continue;
+        merged.push(it);
+        seen.add(key);
+      }
+
+      bucket.items = merged;
+    }
+
+    return Array.from(byTitle.values()).filter(
+      (s) => (s.items?.length ?? 0) > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+/* -------- smarter grid detectors -------- */
+
+const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
+const HYD_FULL_RE =
+  /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const BRAKE_SIGNAL_RE = /(lining|shoe|pad|drum|rotor|push\s*rod|torque)/i;
+
+const BATTERY_SIGNAL_RE =
+  /(battery|voltage|v\b|cca|cranking|load\s*test|alternator|charging|charge\s*rate|state\s*of\s*charge|soc)/i;
+
+function isBatterySection(
+  title: string | undefined,
+  items: Array<{ item?: string | null; name?: string | null }> = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+  if (t.includes("battery grid")) return true;
+  if (t.includes("battery")) return true;
+
+  let hits = 0;
+  for (const it of items) {
+    const label = String(it.item ?? it.name ?? "").trim();
+    if (!label) continue;
+    if (BATTERY_SIGNAL_RE.test(label)) hits += 1;
+    if (hits >= 2) return true;
+  }
+
+  return false;
+}
+
+function isAirCornerSection(
+  title: string | undefined,
+  items: { item?: string | null }[] = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+
+  // Explicit titles always win
+  if (t.includes("air corner") || t.includes("air corner grid")) return true;
+  if (t.includes("tires & brakes") && t.includes("air")) return true;
+
+  // Otherwise: must look like an air layout AND contain brake-only metrics
+  const hasAirLayout = items.some((it) => AIR_RE.test(it.item ?? ""));
+  const hasBrakeMetric = items.some((it) => BRAKE_SIGNAL_RE.test(it.item ?? ""));
+
+  return hasAirLayout && hasBrakeMetric;
+}
+
+function isTireGridSection(
+  title: string | undefined,
+  items: { item?: string | null }[] = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+  if (t.includes("tire grid") || t.includes("tires grid")) return true;
+
+    if (title.includes("air") && n.includes("air")) score += 3;
+    if (title.includes("battery") && n.includes("battery")) score += 4;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+
+  if (wantsSection && bestIdx >= 0 && bestScore >= 2) return bestIdx;
+  return fallbackIndex;
+}
+
+function buildInterpretCtxForSpeech(args: {
+  speech: string;
+  session: InspectionSession;
+  fallbackSectionIndex: number;
+}): { sectionTitle: string; sectionTitles: string[]; items: string[] } | null {
+  const { speech, session, fallbackSectionIndex } = args;
+  const sections = session.sections ?? [];
+  if (!sections.length) return null;
+
+  const chosenIdx = pickBestSectionIndexFromSpeech(
+    speech,
+    sections,
+    fallbackSectionIndex,
+  );
+
+  const section = sections[chosenIdx];
+
+  const sectionTitles = sections
+    .map((s) => String(s.title ?? "").trim())
+    .filter((v) => v.length > 0);
+
+  const items = sections
+    .flatMap((s) => s.items ?? [])
+    .map((it) => String(it.item ?? it.name ?? "").trim())
+    .filter((v) => v.length > 0);
+
+  return {
+    sectionTitle: String(section?.title ?? ""),
+    sectionTitles,
+    items,
+  };
+}
+
+/* -------------------------------------------------------------------- */
+/* Component                                                            */
+/* -------------------------------------------------------------------- */
+
+export default function GenericInspectionScreen(
+  _props: GenericInspectionScreenProps,
+): JSX.Element {
+  const routeSp = useSearchParams();
+  const router = useRouter();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  type ItemPatch = Partial<InspectionSection["items"][number]>;
+
+  const sp = useMemo(() => {
+    const staged = readStaged<Record<string, string>>("inspection:params");
+
+    if (staged && Object.keys(staged).length > 0) {
+      const merged = new URLSearchParams();
+
+      // URL first
+      routeSp.forEach((value, key) => merged.set(key, value));
+
+      // staged second (wins)
+      Object.entries(staged).forEach(([key, value]) => {
+        if (value != null) merged.set(key, String(value));
+      });
+
+      return merged;
+    }
+
+    return routeSp;
+  }, [routeSp]);
+
+  const isEmbed = useMemo(
+    () =>
+      ["1", "true", "yes"].includes(
+        (sp.get("embed") || sp.get("compact") || "").toLowerCase(),
+      ),
+    [sp],
+  );
+
+  const workOrderId = sp.get("workOrderId") || null;
+  const workOrderLineId = sp.get("workOrderLineId") || "";
+
+  const showMissingLineWarning = isEmbed && !workOrderLineId;
+
+  const templateName =
+    (typeof window !== "undefined"
+      ? sessionStorage.getItem("inspection:title")
+      : null) ||
+    sp.get("template") ||
+    "Inspection";
+
+  const customer = useMemo<SessionCustomer>(
+    () => ({
+      first_name: sp.get("first_name") || "",
+      last_name: sp.get("last_name") || "",
+      phone: sp.get("phone") || "",
+      email: sp.get("email") || "",
+      address: sp.get("address") || "",
+      city: sp.get("city") || "",
+      province: sp.get("province") || "",
+      postal_code: sp.get("postal_code") || "",
+    }),
+    [sp],
+  );
+
+  const vehicle = useMemo<SessionVehicle>(
+    () => ({
+      year: sp.get("year") || "",
+      make: sp.get("make") || "",
+      model: sp.get("model") || "",
+      vin: sp.get("vin") || "",
+      license_plate: sp.get("license_plate") || "",
+      mileage: sp.get("mileage") || "",
+      color: sp.get("color") || "",
+      unit_number: sp.get("unit_number") || "",
+      engine_hours: sp.get("engine_hours") || "",
+    }),
+    [sp],
+  );
+
+  const bootSections = useMemo<InspectionSection[]>(() => {
+    const staged = readStaged<InspectionSection[]>("inspection:sections");
+    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
+
+    try {
+      const legacy =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("customInspection:sections")
+          : null;
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as InspectionSection[];
+        return normalizeSections(parsed);
+      }
+    } catch {}
+
+    return [
+      {
+        title: "General",
+        items: [
+          { item: "Visual walkaround" },
+          { item: "Record warning lights" },
+        ],
+      },
+    ];
+  }, []);
+
+  const inspectionId = useMemo(() => {
+    const fromUrl = sp.get("inspectionId");
+    if (fromUrl) return fromUrl;
+
+    if (typeof window === "undefined") return uuidv4();
+
+    const storageKey = workOrderLineId
+      ? `inspection:activeId:line:${workOrderLineId}`
+      : workOrderId
+        ? `inspection:activeId:wo:${workOrderId}:${templateName}`
+        : `inspection:activeId:template:${templateName}`;
+
+    const existing = sessionStorage.getItem(storageKey);
+    if (existing) return existing;
+
+    const created = uuidv4();
+    sessionStorage.setItem(storageKey, created);
+    return created;
+  }, [sp, workOrderLineId, workOrderId, templateName]);
+
+  const draftKey = useMemo(
+    () =>
+      inspectionDraftKey({
+        inspectionId,
+        workOrderLineId: workOrderLineId || null,
+        workOrderId,
+        templateName,
+      }),
+    [inspectionId, workOrderLineId, workOrderId, templateName],
+  );
+
+  const lockKey = `${draftKey}:locked`;
+
+  const persistedSession = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const raw = localStorage.getItem(draftKey);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as InspectionSession;
+    } catch {
+      return null;
+    }
+  }, [draftKey]);
+
+  const [unit, setUnit] = useState<"metric" | "imperial">("metric");
+
+  const [isPaused, setIsPaused] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+
+  const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>(
+    {},
+  );
+  const [newItemUnits, setNewItemUnits] = useState<Record<number, string>>({});
+
+  const [collapsedSections, setCollapsedSections] = useState<
+    Record<number, boolean>
+  >({});
+
+  const [wakeActive, setWakeActive] = useState(false);
+  // ✅ Use ref for logic to avoid React state race between transcripts
+  const wakeActiveRef = useRef<boolean>(false);
+  const wakeTimeoutRef = useRef<number | null>(null);
+
+  const [voiceState, setVoiceState] = useState<
+    "idle" | "connecting" | "listening" | "error"
+  >("idle");
+
+  const isListening =
+    voiceState === "listening" || voiceState === "connecting";
+
+  const [voicePulse, setVoicePulse] = useState(false);
+  const pulseTimerRef = useRef<number | null>(null);
+
+  const triggerVoicePulse = (): void => {
+    setVoicePulse(true);
+    if (pulseTimerRef.current) window.clearTimeout(pulseTimerRef.current);
+    pulseTimerRef.current = window.setTimeout(() => setVoicePulse(false), 700);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pulseTimerRef.current) window.clearTimeout(pulseTimerRef.current);
+      pulseTimerRef.current = null;
+    };
+  }, []);
+
+  const initialSession = useMemo<Partial<InspectionSession>>(

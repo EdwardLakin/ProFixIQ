@@ -1,0 +1,1043 @@
+===== features/inspections/lib/inspection/handleTranscript.ts (761-1200) =====
+  rawSpeech?: string;
+}): Promise<AppliedTarget | null> {
+  const { command, session, updateItem, rawSpeech } = args;
+
+  let section: string | undefined;
+  let item: string | undefined;
+  let status: InspectionItemStatus | undefined;
+  let note: string | undefined;
+  let value: string | number | undefined;
+  let unit: string | undefined;
+  let mode: string;
+
+  let parts: PartLine[] | undefined;
+  let laborHours: number | null | undefined;
+
+  let explicitSectionIndex: number | undefined;
+  let explicitItemIndex: number | undefined;
+
+  if ("command" in command) {
+    const c = command as ParsedCommandIndexed;
+    mode = c.command;
+
+    status = normalizeStatusMaybe((c as { status?: unknown }).status);
+    value = (c as { value?: unknown }).value as string | number | undefined;
+    unit = (c as { unit?: unknown }).unit as string | undefined;
+
+    if (typeof (c as { sectionIndex?: unknown }).sectionIndex === "number") {
+      explicitSectionIndex = (c as { sectionIndex: number }).sectionIndex;
+    }
+    if (typeof (c as { itemIndex?: unknown }).itemIndex === "number") {
+      explicitItemIndex = (c as { itemIndex: number }).itemIndex;
+    }
+
+    const rec = c as unknown;
+    if (isRecord(rec)) {
+      if (!section && typeof rec.section === "string") section = rec.section;
+      if (!item && typeof rec.item === "string") item = rec.item;
+
+      const noteCandidate =
+        (typeof rec.note === "string" && rec.note) ||
+        (typeof rec.notes === "string" && rec.notes) ||
+        "";
+      if (!note && noteCandidate) note = noteCandidate;
+
+      parts = coercePartsFromUnknown(rec.parts);
+      laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
+    }
+  } else {
+    const c = command as ParsedCommandNameBased | ParsedInspectionFindingCommand;
+    mode = c.type;
+
+    if ("section" in c && typeof c.section === "string") section = c.section;
+    if ("item" in c && typeof c.item === "string") item = c.item;
+
+    if ("status" in c) status = normalizeStatusMaybe(c.status);
+    if ("note" in c && typeof c.note === "string") note = c.note;
+    if ("value" in c) value = c.value;
+    if ("unit" in c && typeof c.unit === "string") unit = c.unit;
+
+    const rec = c as unknown;
+    if (isRecord(rec)) {
+      parts = coercePartsFromUnknown(rec.parts);
+      laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
+    }
+  }
+
+  if (section && norm(section) === "__auto__") section = undefined;
+
+  const inferredUnit = rawSpeech ? inferUnitFromSpeech(rawSpeech) : undefined;
+  if (!unit && inferredUnit) unit = inferredUnit;
+
+  const n = coerceNumericValue(value);
+  if (n !== undefined) value = n;
+
+  const numericInSpeech = rawSpeech ? hasNumericInSpeech(rawSpeech) : false;
+  const cornerSpecific = rawSpeech ? hasCornerSpecificityInSpeech(rawSpeech) : false;
+  const gateOutGridLabels = !numericInSpeech && !cornerSpecific;
+
+  const isStatusMode =
+    mode === "status" || mode === "update_status" || mode === "inspection_finding";
+  if (isStatusMode && !status) {
+    const fromSpeech = rawSpeech ? inferStatusFromText(rawSpeech) : undefined;
+    const fromItem = item ? inferStatusFromText(item) : undefined;
+    const fromNote = note ? inferStatusFromText(note) : undefined;
+    status = fromSpeech ?? fromItem ?? fromNote;
+  }
+
+  const findingCandidate = command as Partial<ParsedInspectionFindingCommand>;
+  if (findingCandidate.type === "inspection_finding") {
+    const finding = findingCandidate as ParsedInspectionFindingCommand;
+
+    if (!status) status = finding.status;
+    if (!item && finding.item) item = finding.item;
+    if (!note && finding.note) note = finding.note;
+    if (!parts && Array.isArray(finding.parts)) parts = finding.parts;
+    if (
+      laborHours === undefined &&
+      (typeof finding.laborHours === "number" || finding.laborHours === null)
+    ) {
+      laborHours = finding.laborHours;
+    }
+  }
+
+  const cleanedItem = item ? stripStatusWords(item) : "";
+  if (cleanedItem && cleanedItem !== norm(item ?? "")) {
+    item = cleanedItem;
+  }
+
+  if (
+    isStatusMode &&
+    (status === "fail" || status === "recommend") &&
+    (!note || !String(note).trim())
+  ) {
+    const inferred = inferNoteFromSpeech({ rawSpeech, item, section, status });
+    if (inferred) note = inferred;
+  }
+
+  const isSectionWide =
+    mode === "section_status" ||
+    mode === "mark_section" ||
+    mode === "set_section_status" ||
+    (mode === "update_status" && !!section && !item);
+
+  if (isSectionWide) {
+    const currentIdx = getSafeCurrentSectionIndex(session);
+
+    const sIdx =
+      typeof explicitSectionIndex === "number"
+        ? clampTargetToSession(session, {
+            sectionIndex: explicitSectionIndex,
+            itemIndex: 0,
+          }).sectionIndex
+        : isThisSectionName(section)
+          ? currentIdx
+          : section
+            ? (() => {
+                const byName = resolveSectionIndexByName(session, section);
+                return byName >= 0 ? byName : currentIdx;
+              })()
+            : currentIdx;
+
+    const st = status ?? normalizeStatusMaybe((command as Record<string, unknown>).status);
+    if (!st) return null;
+
+    const itemsLen = session.sections[sIdx]?.items?.length ?? 0;
+    for (let i = 0; i < itemsLen; i += 1) {
+      updateItem(sIdx, i, { status: st });
+    }
+
+    return itemsLen > 0 ? { sectionIndex: sIdx, itemIndex: 0 } : null;
+  }
+
+  if (
+    typeof explicitSectionIndex === "number" &&
+    typeof explicitItemIndex === "number"
+  ) {
+    const safe = clampTargetToSession(session, {
+      sectionIndex: explicitSectionIndex,
+      itemIndex: explicitItemIndex,
+    });
+
+    const itemUpdates: Partial<
+      InspectionSession["sections"][number]["items"][number]
+    > = {};
+    const targetRow =
+      session.sections[safe.sectionIndex]?.items?.[safe.itemIndex] ??
+      ({} as Record<string, unknown>);
+    const targetLabel = String(
+      (targetRow as { item?: unknown; name?: unknown }).item ??
+        (targetRow as { name?: unknown }).name ??
+        "",
+    );
+
+    switch (mode) {
+      case "inspection_finding": {
+        const finding = command as ParsedInspectionFindingCommand;
+
+        const findingTarget = resolveTargetFromSpeech({
+          speech: [finding.section, finding.item, finding.note]
+            .filter(Boolean)
+            .join(" "),
+          sections: session.sections,
+          explicitSectionName: finding.section,
+          mode: "update_status",
+        });
+
+        if (!findingTarget) {
+          return null;
+        }
+
+        const safeFindingTarget = clampTargetToSession(session, findingTarget);
+        const existingRow =
+          session.sections[safeFindingTarget.sectionIndex]?.items?.[
+            safeFindingTarget.itemIndex
+          ] ?? ({} as Record<string, unknown>);
+
+        const findingUpdates: Partial<
+          InspectionSession["sections"][number]["items"][number]
+        > = {
+          status: finding.status,
+        };
+
+        if (finding.note && finding.note.trim()) {
+          findingUpdates.notes = mergeNotes(
+            (existingRow as { notes?: unknown }).notes,
+            finding.note.trim(),
+          );
+        }
+
+        if (Array.isArray(finding.parts) && finding.parts.length > 0) {
+          findingUpdates.parts = finding.parts.map((part) => ({
+            description: String(part.description ?? "").trim(),
+            qty:
+              typeof part.qty === "number" &&
+              Number.isFinite(part.qty) &&
+              part.qty > 0
+                ? part.qty
+                : 1,
+          }));
+        }
+
+        if (finding.laborHours !== undefined) {
+          findingUpdates.laborHours = finding.laborHours;
+        }
+
+        updateItem(
+          safeFindingTarget.sectionIndex,
+          safeFindingTarget.itemIndex,
+          findingUpdates,
+        );
+
+        return safeFindingTarget;
+      }
+
+      case "update_status":
+      case "status": {
+        if (status) itemUpdates.status = status;
+        if ((status === "fail" || status === "recommend") && note) {
+          itemUpdates.notes = mergeNotes(
+            (targetRow as { notes?: unknown }).notes,
+            note,
+          );
+        }
+        break;
+      }
+
+      case "update_value":
+      case "measurement": {
+        if (value !== undefined) {
+          if (isBatteryLikeLabel(targetLabel)) {
+            if ((unit ?? "").toUpperCase() === "CCA") {
+              (itemUpdates as Record<string, unknown>).cca = value;
+            } else if ((unit ?? "").toUpperCase() === "V") {
+              (itemUpdates as Record<string, unknown>).voltage = value;
+            }
+            itemUpdates.value = value;
+          } else {
+            itemUpdates.value = value;
+          }
+        }
+        if (unit) itemUpdates.unit = unit;
+        break;
+      }
+
+      case "add_note":
+      case "add":
+        if (note) {
+          itemUpdates.notes = mergeNotes(
+            (targetRow as { notes?: unknown }).notes,
+            note,
+          );
+        }
+        break;
+
+      case "recommend":
+        if (note) {
+          itemUpdates.status = "recommend";
+          itemUpdates.notes = mergeNotes(
+            (targetRow as { notes?: unknown }).notes,
+            note,
+          );
+          itemUpdates.recommend = [note];
+        }
+        break;
+
+      default:
+        break;
+    }
+
+    if (parts) itemUpdates.parts = parts;
+    if (laborHours !== undefined) itemUpdates.laborHours = laborHours;
+
+    if (Object.keys(itemUpdates).length > 0) {
+      updateItem(safe.sectionIndex, safe.itemIndex, itemUpdates);
+    }
+
+    return Object.keys(itemUpdates).length > 0 ? safe : null;
+  }
+
+  const currentSectionIndex = getSafeCurrentSectionIndex(session);
+
+  const sectionIndexByName =
+    section && section.trim().length > 0 && !isThisSectionName(section)
+      ? session.sections.findIndex((sec) =>
+          String(sec.title ?? "").toLowerCase().includes(section.toLowerCase()),
+        )
+      : -1;
+
+  const itemIndexByName =
+    sectionIndexByName >= 0 && item && item.trim().length > 0
+      ? findItemIndexByNamePreferNonGrid({
+          items: session.sections[sectionIndexByName].items,
+          needle: item,
+          gateOutGridLabels: gateOutGridLabels && isStatusMode,
+        })
+      : -1;
+
+  const itemIndexInCurrent =
+    item && item.trim().length > 0
+      ? findItemIndexByNamePreferNonGrid({
+          items: session.sections[currentSectionIndex]?.items ?? [],
+          needle: item,
+          gateOutGridLabels: gateOutGridLabels && isStatusMode,
+        })
+      : -1;
+
+  let target: Target | null = null;
+
+  if (sectionIndexByName >= 0 && itemIndexByName >= 0) {
+    target = { sectionIndex: sectionIndexByName, itemIndex: itemIndexByName };
+  } else if (itemIndexInCurrent >= 0) {
+    target = { sectionIndex: currentSectionIndex, itemIndex: itemIndexInCurrent };
+  } else {
+    const explicitSectionName =
+      section &&
+      !isThisSectionName(section) &&
+      resolveSectionIndexByName(session, section) >= 0
+        ? section
+        : undefined;
+
+    const rawHint = String(rawSpeech ?? "").trim();
+
+    const parsedHint = buildSpeechHintFromCommand({
+      section,
+      item: item ? stripStatusWords(item) : undefined,
+      note,
+      unit,
+    });
+
+    const hint =
+      rawHint.length > 0
+        ? rawHint
+        : parsedHint.length > 0
+          ? parsedHint
+          : "";
+
+    if (hint) {
+      target = resolveTargetFromSpeech({
+        speech: hint,
+        sections: session.sections,
+        explicitSectionName,
+        mode,
+      });
+    }
+  }
+
+  if (!target) {
+    console.warn("[handleTranscript] Could not resolve target:", {
+      rawSpeech,
+      section,
+      item,
+      mode,
+      note,
+      value,
+      unit,
+    });
+    return null;
+  }
+
+  const safeTarget = clampTargetToSession(session, target);
+
+  const itemUpdates: Partial<
+    InspectionSession["sections"][number]["items"][number]
+  > = {};
+  const targetRow =
+    session.sections[safeTarget.sectionIndex]?.items?.[safeTarget.itemIndex] ??
+    ({} as Record<string, unknown>);
+  const targetLabel = String(
+    (targetRow as { item?: unknown; name?: unknown }).item ??
+      (targetRow as { name?: unknown }).name ??
+      "",
+  );
+
+  switch (mode) {
+    case "inspection_finding": {
+      if (status) itemUpdates.status = status;
+      if (note) {
+        itemUpdates.notes = mergeNotes(
+          (targetRow as { notes?: unknown }).notes,
+          note,
+        );
+      }
+      break;
+    }
+
+    case "update_status":
+    case "status": {
+      if (status) itemUpdates.status = status;
+      if ((status === "fail" || status === "recommend") && note) {
+        itemUpdates.notes = mergeNotes(
+          (targetRow as { notes?: unknown }).notes,
+          note,
+        );
+      }
+      break;
+    }
+
+    case "update_value":
+    case "measurement": {
+      if (value !== undefined) {
+        if (isBatteryLikeLabel(targetLabel)) {
+          if ((unit ?? "").toUpperCase() === "CCA") {
+            (itemUpdates as Record<string, unknown>).cca = value;
+          } else if ((unit ?? "").toUpperCase() === "V") {
+            (itemUpdates as Record<string, unknown>).voltage = value;
+          }
+          itemUpdates.value = value;
+        } else {
+          itemUpdates.value = value;
+        }
+      }
+      if (unit) itemUpdates.unit = unit;
+      break;
+    }
+
+    case "add_note":
+    case "add":
+      if (note) {
+        itemUpdates.notes = mergeNotes(
+          (targetRow as { notes?: unknown }).notes,
+
+===== features/inspections/screens/GenericInspectionScreen.tsx (1601-2200) =====
+              }),
+            });
+
+            if (!res.ok) {
+              const body = (await res.json().catch(() => null)) as unknown;
+              // eslint-disable-next-line no-console
+              console.error("Parts request error", body);
+              toast.error("Line added, but parts request failed", { id: toastId });
+              return;
+            }
+
+            toast.success("Line + parts request created from inspection", {
+              id: toastId,
+            });
+          } catch (err: unknown) {
+            // eslint-disable-next-line no-console
+            console.error("Parts request failed", err);
+            toast.error("Line added, but couldn't reach parts request service", {
+              id: toastId,
+            });
+            return;
+          }
+        } else {
+          toast.success("Added to work order (no parts requested)", { id: toastId });
+        }
+
+        if (createdJobId) {
+          updateItem(secIdx, itemIdx, {
+            estimateSubmitted: true,
+            estimateSubmittedAt: nowIso,
+            estimateLastUpdatedAt: nowIso,
+            estimateWorkOrderLineId: createdJobId,
+            estimateQuoteLineId: quoteId,
+          } as ItemPatch);
+        }
+      } else {
+        toast.error("Missing work order id — saved locally only", { id: toastId });
+      }
+      } catch (e: unknown) {
+    // eslint-disable-next-line no-console
+    console.error("Submit AI failed:", e);
+
+    // ✅ replace the loading toast if it exists
+    const msg = e instanceof Error ? e.message : "Couldn't add to work order";
+    if (toastId !== undefined) {
+      toast.error(msg, { id: toastId });
+    } else {
+      toast.error(msg);
+    }
+  } finally {
+    inFlightRef.current.delete(key);
+
+    // ✅ ALWAYS dismiss the loading toast so it can never get stuck
+    if (toastId !== undefined) {
+      toast.dismiss(toastId);
+    }
+  }
+};
+
+  useEffect(() => {
+    if (!isEmbed) return;
+
+    const root = rootRef.current;
+    if (!root) return;
+
+    const BAD = [
+      "h-screen",
+      "min-h-screen",
+      "max-h-screen",
+      "overflow-hidden",
+      "fixed",
+      "inset-0",
+      "w-screen",
+      "overscroll-contain",
+      "touch-pan-y",
+    ];
+
+    const scrub = (el: HTMLElement) => {
+      if (!el.className) return;
+
+      const classes = el.className.split(" ");
+      const filtered = classes.filter((c) => c && !BAD.includes(c));
+
+      if (filtered.length !== classes.length) {
+        el.className = filtered.join(" ");
+      }
+
+      if (el.style?.overflow === "hidden") {
+        el.style.overflow = "visible";
+      }
+    };
+
+    root.querySelectorAll<HTMLElement>("*").forEach(scrub);
+
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.type === "attributes" && m.target instanceof HTMLElement) {
+          scrub(m.target);
+        }
+        if (m.type === "childList") {
+          m.addedNodes.forEach((n) => {
+            if (n instanceof HTMLElement) {
+              scrub(n);
+              n.querySelectorAll?.("*")?.forEach((child) => {
+                if (child instanceof HTMLElement) scrub(child);
+              });
+            }
+          });
+        }
+      }
+    });
+
+    obs.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["class", "style"],
+    });
+
+    return () => obs.disconnect();
+  }, [isEmbed]);
+
+  const currentSectionIndex =
+    typeof session?.currentSectionIndex === "number"
+      ? session.currentSectionIndex
+      : 0;
+
+  const safeSectionIndex =
+    session &&
+    currentSectionIndex >= 0 &&
+    currentSectionIndex < session.sections.length
+      ? currentSectionIndex
+      : 0;
+
+  function autoAdvanceFrom(secIdx: number, itemIdx: number): void {
+    if (!session) return;
+    const sections = session.sections;
+    if (!sections || sections.length === 0) return;
+
+    let sIdx = secIdx;
+    let iIdx = itemIdx + 1;
+
+    while (sIdx < sections.length) {
+      const itemsLen = sections[sIdx].items?.length ?? 0;
+      if (iIdx < itemsLen) break;
+      sIdx += 1;
+      iIdx = 0;
+    }
+
+    if (sIdx >= sections.length) {
+      const lastSectionIndex = sections.length - 1;
+      const lastItems = sections[lastSectionIndex].items ?? [];
+      const lastItemIndex = Math.max(0, lastItems.length - 1);
+      updateInspection({
+        currentSectionIndex: lastSectionIndex,
+        currentItemIndex: lastItemIndex,
+      });
+      return;
+    }
+
+    updateInspection({
+      currentSectionIndex: sIdx,
+      currentItemIndex: iIdx,
+    });
+  }
+
+  function applyStatusToSection(
+    sectionIndex: number,
+    status: InspectionItemStatus,
+  ): void {
+    if (!session) return;
+    if (guardLocked()) return;
+
+    const section = session.sections[sectionIndex];
+    if (!section) return;
+
+    const nextItems = (section.items ?? []).map((it) => ({
+      ...it,
+      status,
+    }));
+
+    updateSection(sectionIndex, { ...section, items: nextItems });
+    updateInspection({
+      currentSectionIndex: sectionIndex,
+      currentItemIndex: 0,
+    });
+  }
+
+  function toggleSectionCollapsed(sectionIndex: number): void {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [sectionIndex]: !prev[sectionIndex],
+    }));
+  }
+
+  const handleAddCustomItem = (sectionIndex: number): void => {
+    if (!session) return;
+    if (guardLocked()) return;
+
+    const label = (newItemLabels[sectionIndex] || "").trim();
+    if (!label) {
+      toast.error("Enter a label for the new item.");
+      return;
+    }
+
+    const unitRaw = newItemUnits[sectionIndex] ?? "";
+    const unitValue = unitRaw || null;
+
+    const section = session.sections[sectionIndex];
+    if (!section) return;
+
+    const nextItems = [
+      ...(section.items ?? []),
+      { item: label, unit: unitValue, status: "na" as InspectionItemStatus },
+    ];
+
+    updateSection(sectionIndex, { ...section, items: nextItems });
+
+    // reset inputs for just this section
+    setNewItemLabels((prev) => ({ ...prev, [sectionIndex]: "" }));
+    setNewItemUnits((prev) => ({ ...prev, [sectionIndex]: "" }));
+  };
+
+  /** Add axle rows to an AIR corner grid section */
+  const handleAddAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
+    if (!session) return;
+    if (guardLocked()) return;
+
+    const section = session.sections[sectionIndex];
+    if (!section) return;
+
+    const existingItems = section.items ?? [];
+
+    const metrics: Array<{ label: string; unit: string | null }> = [
+      { label: "Lining/Shoe", unit: "mm" },
+      { label: "Drum/Rotor", unit: "mm" },
+      { label: "Push Rod Travel", unit: "in" },
+      { label: "Wheel Torque Outer", unit: "ft·lb" },
+      { label: "Wheel Torque Inner", unit: "ft·lb" },
+    ];
+
+    const sides: Array<"Left" | "Right"> = ["Left", "Right"];
+
+    const existingLabels = new Set(
+      existingItems.map((it) => String(it.item ?? "").toLowerCase()),
+    );
+
+    const nextItems = [...existingItems];
+
+    for (const side of sides) {
+      for (const m of metrics) {
+        const label = `${axleLabel} ${side} ${m.label}`;
+        const k = label.toLowerCase();
+        if (existingLabels.has(k)) continue;
+
+        nextItems.push({
+          item: label,
+          unit: m.unit,
+          status: "na" as InspectionItemStatus,
+        });
+        existingLabels.add(k);
+      }
+    }
+
+    updateSection(sectionIndex, { ...section, items: nextItems });
+  };
+
+  /** Add axle rows to a TIRE grid section (tires only) */
+  const handleAddTireAxleForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
+    if (!session) return;
+    if (guardLocked()) return;
+
+    const section = session.sections[sectionIndex];
+    if (!section) return;
+
+    const existingItems = section.items ?? [];
+
+    const metrics: Array<{ label: string; unit: string | null }> = [
+      { label: "Tire Pressure", unit: "psi" },
+      { label: "Tread Depth (Outer)", unit: "mm" },
+      { label: "Tread Depth (Inner)", unit: "mm" },
+      { label: "Wheel Torque", unit: "ft·lb" },
+    ];
+
+    const sides: Array<"Left" | "Right"> = ["Left", "Right"];
+
+    const existingLabels = new Set(
+      existingItems.map((it) => String(it.item ?? "").toLowerCase()),
+    );
+
+    const nextItems = [...existingItems];
+
+    for (const side of sides) {
+      for (const m of metrics) {
+        const label = `${axleLabel} ${side} ${m.label}`;
+        const k = label.toLowerCase();
+        if (existingLabels.has(k)) continue;
+
+        nextItems.push({
+          item: label,
+          unit: m.unit,
+          status: "na" as InspectionItemStatus,
+        });
+        existingLabels.add(k);
+      }
+    }
+
+    updateSection(sectionIndex, { ...section, items: nextItems });
+  };
+
+  const handleSigned = (): void => {
+    setIsLocked(true);
+    try {
+      localStorage.setItem(lockKey, "1");
+    } catch {}
+    toast.success("Inspection snapshot locked by signature.");
+  };
+
+  const shell = isEmbed
+    ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-36"
+    : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-40";
+
+  const cardBase =
+    "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
+    "bg-black/65 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+
+  const headerCard = `${cardBase} px-3 py-3 md:px-6 md:py-5 mb-4 md:mb-6`;
+  const sectionCard = `${cardBase} px-3 py-3 md:px-5 md:py-5 mb-4 md:mb-6`;
+
+  const sectionTitle =
+    "text-base md:text-xl font-semibold text-orange-300 text-center tracking-[0.16em] uppercase";
+
+  const hint =
+    "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
+
+
+  const findingsHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("inspectionId", inspectionId);
+
+    if (workOrderId) params.set("workOrderId", workOrderId);
+    if (workOrderLineId) params.set("workOrderLineId", workOrderLineId);
+    if (templateName) params.set("template", templateName);
+
+    return `/inspections/findings?${params.toString()}`;
+  }, [inspectionId, workOrderId, workOrderLineId, templateName]);
+
+
+  const actions = (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="font-medium border-[rgba(184,115,51,0.75)] text-[11px] tracking-[0.16em] uppercase"
+        onClick={() => router.push(findingsHref)}
+      >
+        Review findings
+      </Button>
+
+      <SaveInspectionButton
+        session={session}
+        workOrderLineId={workOrderLineId}
+      />
+
+      {workOrderLineId && (
+        <FinishInspectionButton
+          session={session}
+          workOrderLineId={workOrderLineId}
+        />
+      )}
+    </>
+  );
+
+  if (!session || (session.sections?.length ?? 0) === 0) {
+    return (
+      <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
+    );
+  }
+
+  const body = (
+    <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
+      {isEmbed && (
+        <style jsx global>{`
+          .inspection-embed,
+          .inspection-embed * {
+            overscroll-behavior: auto !important;
+          }
+        `}</style>
+      )}
+
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+      />
+
+      <div className="relative space-y-4">
+        <div className={headerCard}>
+          <div className="mb-3 border-b border-orange-300/40 pb-3 text-center">
+            <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
+              Inspection
+            </div>
+            <div className="mt-1 text-lg md:text-xl font-blackops text-neutral-50">
+              {session?.templateitem || templateName || "Inspection"}
+            </div>
+          </div>
+
+          <CustomerVehicleHeader
+            templateName=""
+            customer={toHeaderCustomer(session.customer ?? null)}
+            vehicle={toHeaderVehicle(session.vehicle ?? null)}
+          />
+        </div>
+
+        <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {!isLocked && (
+            <StartListeningButton
+              isListening={isListening}
+              onStart={startListening}
+            />
+          )}
+
+          {!isLocked && (isListening || isPaused) && (
+            <PauseResumeButton
+              isPaused={isPaused}
+              onPause={() => {
+                setIsPaused(true);
+                pauseSession();
+                stopListening();
+              }}
+              onResume={() => {
+                setIsPaused(false);
+                resumeSession();
+                void startListening();
+              }}
+            />
+          )}
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-center border-orange-300/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80"
+            onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
+          >
+            Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+          </Button>
+        </div>
+
+        <div className="mt-1 flex items-center justify-center gap-2">
+          <div
+            className={[
+              "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur",
+              voiceState === "listening"
+                ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
+                : voiceState === "connecting"
+                  ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
+                  : voiceState === "error"
+                    ? "border-red-500/50 bg-red-500/10 text-red-200"
+                    : "border-neutral-600/50 bg-black/40 text-neutral-300",
+              voicePulse ? "shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : "",
+            ].join(" ")}
+          >
+            <span
+              className={[
+                "h-2 w-2 rounded-full",
+                voiceState === "listening"
+                  ? "bg-emerald-400"
+                  : voiceState === "connecting"
+                    ? "bg-amber-400"
+                    : voiceState === "error"
+                      ? "bg-red-400"
+                      : "bg-neutral-500",
+                voiceState === "listening" ? "animate-pulse" : "",
+              ].join(" ")}
+            />
+            {voiceState === "listening"
+              ? "Listening…"
+              : voiceState === "connecting"
+                ? "Connecting…"
+                : voiceState === "error"
+                  ? "Voice error"
+                  : "Voice idle"}
+            {voicePulse && <span className="text-emerald-200/80">• audio</span>}
+          </div>
+
+          {/* ✅ visible wake indicator so you’re not relying on toast/beep */}
+          {wakeActive && (
+            <div className="rounded-full border border-orange-400/60 bg-orange-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-200">
+              Ready
+            </div>
+          )}
+        </div>
+
+        {/* ✅ UI ADDITION: Summary + Voice Log */}
+        {(() => {
+          const sections = session.sections ?? [];
+          const allItems = sections.flatMap((s) => s.items ?? []);
+
+          const failed = allItems.filter(
+            (it) => String(it.status ?? "").toLowerCase() === "fail",
+          );
+          const rec = allItems.filter(
+            (it) => String(it.status ?? "").toLowerCase() === "recommend",
+          );
+
+          const otherOkNa = allItems.filter((it) => {
+            const st = String(it.status ?? "").toLowerCase();
+            return st === "ok" || st === "na" || st === "" || st === "pass";
+          });
+
+          const linesAdded = session.voiceMeta?.linesAddedToWorkOrder ?? 0;
+
+          return (
+            <div className="mt-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2.5 md:px-4 md:py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
+                Inspection Summary
+              </div>
+
+              <ul className="mt-2 space-y-1 text-xs text-neutral-300">
+                <li className="text-neutral-200">
+                  • current{" "}
+                  <span className="font-semibold">
+                    {session.templateitem || templateName || "inspection"}
+                  </span>
+                  .
+                </li>
+
+                <li>
+                  • Failed items:{" "}
+                  <span
+                    className={
+                      failed.length
+                        ? "text-red-200 font-semibold"
+                        : "text-neutral-200"
+                    }
+                  >
+                    {failed.length}
+                  </span>
+                </li>
+                {failed.slice(0, 6).map((it, idx) => (
+                  <li key={`fail-${idx}`} className="ml-3 text-red-200/90">
+                    - {String(it.item ?? "Item")}
+                    {String(it.notes ?? "").trim()
+                      ? ` — ${String(it.notes).trim()}`
+                      : ""}
+                  </li>
+                ))}
+
+                <li className="mt-1">
+                  • Recommended items:{" "}
+                  <span
+                    className={
+                      rec.length
+                        ? "text-amber-200 font-semibold"
+                        : "text-neutral-200"
+                    }
+                  >
+                    {rec.length}
+                  </span>
+                </li>
+                {rec.slice(0, 6).map((it, idx) => (
+                  <li key={`rec-${idx}`} className="ml-3 text-amber-200/90">
+                    - {String(it.item ?? "Item")}
+                    {String(it.notes ?? "").trim()
+                      ? ` — ${String(it.notes).trim()}`
+                      : ""}
+                  </li>
+                ))}
+
+                <li className="mt-1 text-neutral-200">
+                  • All other inspection items OK/NA:{" "}
+                  <span className="font-semibold">{otherOkNa.length}</span>
+                </li>
+
+                <li className="text-neutral-200">
+                  • Lines added and sent for quote:{" "}
+                  <span
+                    className={
+                      linesAdded
+                        ? "font-semibold text-emerald-200"
+                        : "font-semibold text-neutral-200"
+                    }
+                  >
+                    {linesAdded}
+                  </span>
+                </li>
+              </ul>
+            </div>
+          );
+        })()}
+
+        {Array.isArray(session.voiceTrace) && session.voiceTrace.length > 0 ? (
+          <div className="mt-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/55 px-3 py-2.5 md:px-4 md:py-3 backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-2">

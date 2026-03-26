@@ -1,0 +1,1023 @@
+===== features/inspections/lib/inspection/handleTranscript.ts (361-760) =====
+      continue;
+    }
+    if (tok === "tested" || tok === "test") {
+      if (l.includes("tested") || l.includes("test")) score += 30;
+      continue;
+    }
+    if (tok === "voltage" || tok === "v") {
+      if (l.includes("voltage") || /\bv\b/.test(l)) score += 22;
+      continue;
+    }
+
+    if (tok === "psi" && l.includes("psi")) score += 14;
+    if (tok === "mm" && l.includes("mm")) score += 14;
+    if (tok === "in" && (l.includes(" in") || l.endsWith(" in"))) score += 14;
+
+    if (tok.length >= 3 && l.includes(tok)) score += 3;
+  }
+
+  const speechN = norm(rawSpeech);
+  const mentionsPushrod =
+    speechN.includes("pushrod") || (speechN.includes("push") && speechN.includes("rod"));
+  const numeric = hasNumericInSpeech(rawSpeech);
+
+  if (mentionsPushrod && (mode === "status" || mode === "update_status")) {
+    if (!numeric) {
+      if (isPlainPushrodLabel(label)) score += 140;
+      if (isGridLikeLabel(label)) score -= 90;
+    }
+  }
+
+  if (mentionsPushrod && (mode === "measurement" || mode === "update_value")) {
+    if (numeric) {
+      if (isGridLikeLabel(label)) score += 60;
+      if (isPlainPushrodLabel(label)) score -= 25;
+    }
+  }
+
+  return score;
+}
+
+function scoreSectionTitle(title: string, hintTokens: string[]): number {
+  const t = norm(title);
+  if (!t) return 0;
+
+  let score = 0;
+
+  for (const tok of hintTokens) {
+    if (!tok) continue;
+    if (tok.length >= 4 && t.includes(tok)) score += 8;
+  }
+
+  const wantsBattery =
+    hintTokens.includes("cca") ||
+    hintTokens.includes("cranking") ||
+    hintTokens.includes("voltage") ||
+    hintTokens.includes("soc");
+
+  const wantsTire =
+    hintTokens.includes("tread") ||
+    hintTokens.includes("pressure") ||
+    hintTokens.includes("tire pressure") ||
+    hintTokens.includes("tread depth") ||
+    hintTokens.includes("inner") ||
+    hintTokens.includes("outer");
+
+  const wantsBrake =
+    hintTokens.includes("pad") ||
+    hintTokens.includes("rotor") ||
+    hintTokens.includes("drum") ||
+    hintTokens.includes("pushrod") ||
+    hintTokens.includes("push rod") ||
+    hintTokens.includes("pushrod travel") ||
+    hintTokens.includes("slack") ||
+    hintTokens.includes("adjuster") ||
+    hintTokens.includes("slack adjuster") ||
+    hintTokens.includes("brake chamber") ||
+    hintTokens.includes("chamber") ||
+    hintTokens.includes("brake line") ||
+    hintTokens.includes("line") ||
+    hintTokens.includes("hose") ||
+    hintTokens.includes("air tank") ||
+    hintTokens.includes("tank");
+
+  if (t.includes("battery") && wantsBattery) score += 20;
+  if (t.includes("tire") && wantsTire) score += 20;
+  if (t.includes("brake") && wantsBrake) score += 20;
+  if (t.includes("air") && wantsBrake) score += 12;
+
+  const wantsAxle =
+    hintTokens.some((x) => /^(drive|steer|trailer)\s+\d+$/.test(x)) ||
+    hintTokens.includes("tag axle") ||
+    hintTokens.includes("drive") ||
+    hintTokens.includes("steer") ||
+    hintTokens.includes("trailer");
+
+  if (wantsAxle && (t.includes("tire") || t.includes("brake") || t.includes("corner"))) score += 8;
+
+  return score;
+}
+
+function resolveTargetFromSpeech(args: {
+  speech: string;
+  sections: InspectionSession["sections"];
+  explicitSectionName?: string;
+  mode: string;
+}): Target | null {
+  const { speech, sections, explicitSectionName, mode } = args;
+  if (!Array.isArray(sections) || sections.length === 0) return null;
+
+  const cleanedSpeech = stripStatusForMatch(speech);
+  const speechForHints = cleanedSpeech || speech;
+
+  const hints = extractHintTokens(speechForHints);
+  const explicitSection = explicitSectionName ? norm(explicitSectionName) : "";
+
+  const numeric = hasNumericInSpeech(speech);
+  const specific = hasCornerSpecificityInSpeech(speech);
+  const gateOutGridLabels = !numeric && !specific;
+
+  let best: { score: number; target: Target } | null = null;
+
+  for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+    const sec = sections[sIdx];
+    const secTitle = String(sec?.title ?? "");
+    const items = Array.isArray(sec?.items) ? sec.items : [];
+
+    if (explicitSection) {
+      const st = norm(secTitle);
+      if (!st.includes(explicitSection)) continue;
+    }
+
+    const secScore = scoreSectionTitle(secTitle, hints);
+
+    for (let iIdx = 0; iIdx < items.length; iIdx++) {
+      const label = String(items[iIdx]?.item ?? items[iIdx]?.name ?? "");
+      if (!label) continue;
+
+      if (gateOutGridLabels && isGridLikeLabel(label)) continue;
+
+      const ls = scoreLabel({
+        label,
+        hintTokens: hints,
+        mode,
+        rawSpeech: speechForHints,
+      });
+      const total = ls + secScore;
+
+      if (total <= 0) continue;
+
+      if (!best || total > best.score) {
+        best = { score: total, target: { sectionIndex: sIdx, itemIndex: iIdx } };
+      }
+    }
+  }
+
+  if (!best || best.score < 20) return null;
+  return best.target;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function buildSpeechHintFromCommand(params: {
+  section?: string;
+  item?: string;
+  note?: string;
+  unit?: string;
+}): string {
+  const parts: string[] = [];
+  if (params.section) parts.push(params.section);
+  if (params.item) parts.push(params.item);
+  if (params.note) parts.push(params.note);
+  if (params.unit) parts.push(params.unit);
+  return parts.join(" ").trim();
+}
+
+function clampTargetToSession(session: InspectionSession, t: Target): Target {
+  const sIdx =
+    typeof t.sectionIndex === "number" &&
+    t.sectionIndex >= 0 &&
+    t.sectionIndex < session.sections.length
+      ? t.sectionIndex
+      : 0;
+
+  const itemsLen = session.sections[sIdx]?.items?.length ?? 0;
+
+  const iIdx =
+    typeof t.itemIndex === "number" && t.itemIndex >= 0 && t.itemIndex < itemsLen
+      ? t.itemIndex
+      : 0;
+
+  return { sectionIndex: sIdx, itemIndex: iIdx };
+}
+
+function resolveSectionIndexByName(
+  session: InspectionSession,
+  sectionName: string,
+): number {
+  const needle = norm(sectionName);
+  if (!needle) return -1;
+
+  return session.sections.findIndex((sec) =>
+    norm(String(sec.title ?? "")).includes(needle),
+  );
+}
+
+function normalizeStatusMaybe(raw: unknown): InspectionItemStatus | undefined {
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (s === "ok" || s === "fail" || s === "na" || s === "recommend") {
+    return s as InspectionItemStatus;
+  }
+  if (s === "n/a" || s === "n a") return "na";
+  if (s === "okay" || s === "pass") return "ok";
+  if (s === "rec") return "recommend";
+  return undefined;
+}
+
+function inferStatusFromText(text: string): InspectionItemStatus | undefined {
+  const t = norm(text);
+  if (!t) return undefined;
+
+  const direct = normalizeStatusMaybe(t);
+  if (direct) return direct;
+
+  if (/\b(ok|okay|pass|passed|good)\b/.test(t)) return "ok";
+  if (/\b(fail|failed|bad|fails)\b/.test(t)) return "fail";
+  if (/\b(n\/?a|not\s*applicable)\b/.test(t)) return "na";
+  if (/\b(recommend|recommended|rec)\b/.test(t)) return "recommend";
+
+  return undefined;
+}
+
+function coerceNumericValue(raw: unknown): number | undefined {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : undefined;
+  const s = String(raw ?? "").trim();
+  if (!s) return undefined;
+  const m = s.match(/-?\d+(?:\.\d+)?/);
+  if (!m) return undefined;
+  const n = Number(m[0]);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function inferUnitFromSpeech(speech: string): string | undefined {
+  const t = norm(speech);
+  if (!t) return undefined;
+
+  if (/\bpsi\b/.test(t)) return "psi";
+  if (/\b(volts?|v)\b/.test(t)) return "V";
+  if (/\b(inch|inches|\bin\b)\b/.test(t)) return "in";
+  if (/\b(mm|millimeter|millimetre)\b/.test(t)) return "mm";
+  if (/\b(mil|mils)\b/.test(t)) return "mm";
+  if (/\bcca\b/.test(t)) return "CCA";
+
+  return undefined;
+}
+
+function coercePartsFromUnknown(v: unknown): PartLine[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+
+  const out: PartLine[] = [];
+  for (const row of v) {
+    if (!isRecord(row)) continue;
+    const description = String(row.description ?? "").trim();
+    const qtyRaw = row.qty;
+    const qty =
+      typeof qtyRaw === "number"
+        ? qtyRaw
+        : Number.isFinite(Number(qtyRaw))
+          ? Number(qtyRaw)
+          : 1;
+
+    if (!description) continue;
+    out.push({ description, qty: qty > 0 ? qty : 1 });
+  }
+
+  return out.length ? out : undefined;
+}
+
+function coerceLaborHoursFromUnknown(v: unknown): number | null | undefined {
+  if (v === null) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function isThisSectionName(sectionName: string | undefined): boolean {
+  const s = norm(sectionName ?? "");
+  if (!s) return true;
+  return (
+    s === "this" ||
+    s === "current" ||
+    s === "here" ||
+    s === "section" ||
+    s.includes("this section") ||
+    s.includes("current section")
+  );
+}
+
+function getSafeCurrentSectionIndex(session: InspectionSession): number {
+  const idx =
+    typeof session.currentSectionIndex === "number"
+      ? session.currentSectionIndex
+      : 0;
+  if (idx < 0) return 0;
+  if (idx >= session.sections.length) {
+    return Math.max(0, session.sections.length - 1);
+  }
+  return idx;
+}
+
+function isBatteryLikeLabel(label: string): boolean {
+  const l = norm(label);
+  return (
+    l.includes("battery") ||
+    l.includes("cca") ||
+    l.includes("cranking") ||
+    l.includes("voltage") ||
+    l.includes("state of charge") ||
+    l === "soc"
+  );
+}
+
+
+
+function findItemIndexByNamePreferNonGrid(params: {
+  items: InspectionSession["sections"][number]["items"];
+  needle: string;
+  gateOutGridLabels: boolean;
+}): number {
+  const { items, needle, gateOutGridLabels } = params;
+  const n = norm(needle);
+  if (!n) return -1;
+
+  if (gateOutGridLabels) {
+    const idx = items.findIndex((it) => {
+      const label = String(it.name ?? it.item ?? "");
+      return norm(label).includes(n) && !isGridLikeLabel(label);
+    });
+    if (idx >= 0) return idx;
+  }
+
+  return items.findIndex((it) =>
+    norm(String(it.name ?? it.item ?? "")).includes(n),
+  );
+}
+
+function mergeNotes(existing: unknown, incoming: string): string {
+  const ex = String(existing ?? "").trim();
+  const inc = String(incoming ?? "").trim();
+  if (!inc) return ex;
+  if (!ex) return inc;
+  if (norm(ex).includes(norm(inc))) return ex;
+  return `${ex}; ${inc}`;
+}
+
+function inferNoteFromSpeech(params: {
+  rawSpeech?: string;
+  item?: string;
+  section?: string;
+  status?: InspectionItemStatus;
+}): string | undefined {
+  const { rawSpeech, item, section, status } = params;
+  if (!rawSpeech) return undefined;
+  if (status !== "fail" && status !== "recommend") return undefined;
+
+  const speech = norm(rawSpeech);
+  if (!speech) return undefined;
+
+  const itemN = norm(item ?? "");
+  const sectionN = norm(section ?? "");
+
+  let tail = "";
+  if (itemN) {
+    const idx = speech.indexOf(itemN);
+    if (idx >= 0) tail = speech.slice(idx + itemN.length);
+  }
+
+  const candidateBase = tail || speech;
+
+  let candidate = candidateBase;
+  if (itemN) {
+    candidate = candidate.replace(new RegExp(`\\b${itemN}\\b`, "g"), " ");
+  }
+  if (sectionN) {
+    candidate = candidate.replace(new RegExp(`\\b${sectionN}\\b`, "g"), " ");
+  }
+
+  candidate = stripStatusWords(candidate).trim();
+
+  if (!candidate) return undefined;
+  if (itemN && norm(candidate) === itemN) return undefined;
+
+  return candidate;
+}
+
+async function applySingleCommand(args: {
+  command: ParsedCommand;
+  session: InspectionSession;
+  updateItem: UpdateItemFn;
+
+===== features/inspections/screens/GenericInspectionScreen.tsx (981-1600) =====
+        updateItem(followUp.sectionIndex, followUp.itemIndex, {
+          photoRequested: true,
+        } as ItemPatch);
+        toast.success("Open photo capture from the item card.");
+        speakLocal("Open photo capture.");
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [{ command: "photo_prompt_yes", ok: true }],
+        });
+        return;
+      }
+
+      if (/\b(no|nope|skip|later)\b/.test(answer)) {
+        clearFollowUp();
+        updateItem(followUp.sectionIndex, followUp.itemIndex, {
+          photoRequested: false,
+          findingReviewed: false,
+        } as ItemPatch);
+        toast.success("Okay, skipping photos for now.");
+        speakLocal("Okay.");
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [{ command: "photo_prompt_no", ok: true }],
+        });
+        return;
+      }
+    }
+
+    const mainText = text;
+
+    const fallbackIdx =
+      typeof sess.currentSectionIndex === "number"
+        ? sess.currentSectionIndex
+        : 0;
+
+    const ctx =
+      buildInterpretCtxForSpeech({
+        speech: mainText,
+        session: sess,
+        fallbackSectionIndex: fallbackIdx,
+      }) ?? {
+        sectionTitle: String(sess.sections?.[fallbackIdx]?.title ?? ""),
+        sectionTitles: (sess.sections ?? [])
+          .map((s) => String(s.title ?? "").trim())
+          .filter((v) => v.length > 0),
+        items: (sess.sections ?? [])
+          .flatMap((s) => s.items ?? [])
+          .map((it) => String(it.item ?? it.name ?? "").trim())
+          .filter((v) => v.length > 0),
+      };
+
+    let commands: ParsedCommand[] = [];
+    const applied: VoiceCommandApplyResult[] = [];
+
+    try {
+      commands = await interpretCommand(mainText, ctx);
+
+      // ✅ FALLBACK: if AI returns nothing, try local parsing
+      if (!commands.length) {
+        const fallback = localFallbackCommands(mainText);
+
+        // IMPORTANT: clear "__auto__" so handleTranscript resolver can do its job
+        for (const c of fallback) {
+          const rec = c as unknown as Record<string, unknown>;
+          if (rec.section === "__auto__") delete rec.section;
+        }
+
+        commands = fallback;
+      }
+
+      // If STILL nothing, log + stop
+      if (!commands.length) {
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [
+            { command: "interpret", ok: false, reason: "No commands returned" },
+          ],
+        });
+        return;
+      }
+
+      let primaryFeedback: ReturnType<typeof buildVoiceBrainFeedback> | null = null;
+
+      // ✅ Track the item the resolver actually applied to (NO manual focus assumptions)
+      let lastAppliedTarget:
+        | { sectionIndex: number; itemIndex: number }
+        | null = null;
+
+      for (const command of commands) {
+        // lightweight detection from parsed shape
+        try {
+          const result = await handleTranscriptFn({
+            command,
+            session: sess,
+            updateInspection,
+            updateItem,
+            updateSection,
+            finishSession,
+            rawSpeech: mainText,
+          });
+
+          // ✅ capture resolver-selected target (preferred)
+          const r = result as unknown as {
+            appliedTarget?: { sectionIndex: number; itemIndex: number };
+          };
+
+          if (r?.appliedTarget) {
+            lastAppliedTarget = r.appliedTarget;
+
+            const okResult: VoiceCommandApplyResult = {
+              command: commandLabel(command),
+              ok: true,
+            };
+
+            applied.push(okResult);
+
+            if (!primaryFeedback) {
+              primaryFeedback = buildVoiceBrainFeedback({
+                rawSpeech: text,
+                parsed: [command],
+                applied: [okResult],
+              });
+            }
+
+          } else {
+            applied.push({
+              command: commandLabel(command),
+              ok: false,
+              reason: "No target resolved",
+            });
+          }
+        } catch (err: unknown) {
+          // eslint-disable-next-line no-console
+          console.error("[voice] apply failed", err);
+          applied.push({
+            command: commandLabel(command),
+            ok: false,
+            reason: err instanceof Error ? err.message : "apply failed",
+          });
+        }
+      }
+
+      const feedback =
+        primaryFeedback ??
+        buildVoiceBrainFeedback({
+          rawSpeech: text,
+          parsed: commands,
+          applied,
+        });
+
+      if (feedback.toast) {
+        toast.success(feedback.toast);
+      }
+
+      if (feedback.spoken) {
+        speakLocal(feedback.spoken);
+      }
+
+      if (feedback.followUp.kind === "photo_prompt" && lastAppliedTarget) {
+        updateItem(lastAppliedTarget.sectionIndex, lastAppliedTarget.itemIndex, {
+          photoRequested: true,
+        } as ItemPatch);
+        setFollowUp({
+          kind: "photo_prompt",
+          sectionIndex: lastAppliedTarget.sectionIndex,
+          itemIndex: lastAppliedTarget.itemIndex,
+        });
+      } else {
+        clearFollowUp();
+      }
+
+      appendVoiceTrace({
+        rawFinal: text,
+        wakeCommand: text,
+        parsed: commands,
+        applied,
+      });
+    } catch (err: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("[voice] handleTranscript failed", err);
+
+      appendVoiceTrace({
+        rawFinal: text,
+        wakeCommand: text,
+        parsed: commands,
+        applied: [
+          {
+            command: "interpret",
+            ok: false,
+            reason: err instanceof Error ? err.message : "exception",
+          },
+        ],
+      });
+    }
+  };
+
+  function maybeHandleWakeWord(raw: string): string | null {
+    const normalized = raw
+      .toLowerCase()
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Include common STT variations
+    const WAKE_PREFIXES = ["hey profix", "hey pro fix", "hey buster"] as const;
+
+    const matchPrefixFrom = (
+      input: string,
+    ): { prefix: string; remainder: string } | null => {
+      for (const prefix of WAKE_PREFIXES) {
+        if (input === prefix) return { prefix, remainder: "" };
+        if (input.startsWith(prefix + " ")) {
+          return { prefix, remainder: input.slice(prefix.length).trimStart() };
+        }
+      }
+      return null;
+    };
+
+    const setWake = (on: boolean) => {
+      wakeActiveRef.current = on; // logic gate
+      setWakeActive(on); // UI badge
+    };
+
+    const bumpTimeout = () => {
+      if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
+      wakeTimeoutRef.current = window.setTimeout(() => setWake(false), 8000);
+    };
+
+    const beep = () => {
+      try {
+        type WebkitAudioWindow = Window & {
+          webkitAudioContext?: typeof AudioContext;
+        };
+        const AudioCtxCtor =
+          window.AudioContext ||
+          (window as WebkitAudioWindow).webkitAudioContext;
+
+        if (!AudioCtxCtor) return;
+
+        const ctx = new AudioCtxCtor();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.value = 880;
+        g.gain.value = 0.05;
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start();
+        window.setTimeout(() => {
+          o.stop();
+          void ctx.close();
+        }, 120);
+      } catch {
+        // ignore
+      }
+    };
+
+    const awake = wakeActiveRef.current;
+
+    if (!awake) {
+      const match = matchPrefixFrom(normalized);
+      if (!match) return null;
+
+      setWake(true);
+      bumpTimeout();
+
+      toast.success("READY", { duration: 1200 });
+      beep();
+
+      // Wake-only? arm but do NOT forward empty transcript
+      if (!match.remainder) return null;
+
+      return match.remainder;
+    }
+
+    // already awake: extend timeout and strip prefix if repeated
+    bumpTimeout();
+
+    const repeated = matchPrefixFrom(normalized);
+    if (repeated) {
+      // Wake-only while already awake => keep armed, no command to process
+      if (!repeated.remainder) return null;
+      return repeated.remainder;
+    }
+
+    // No repeated wake word; treat full phrase as the command
+    return normalized;
+  }
+
+  const voice = useRealtimeVoice(
+    async (text: string) => {
+      await handleTranscript(text);
+    },
+    (raw: string) => maybeHandleWakeWord(raw),
+    {
+      onStateChange: setVoiceState,
+      onPulse: triggerVoicePulse,
+      onError: (m) => {
+        // eslint-disable-next-line no-console
+        console.error("[Voice]", m);
+        setVoiceState("error");
+      },
+    },
+  );
+
+  const startListening = async (): Promise<void> => {
+    if (isListening) return;
+    if (guardLocked()) return;
+
+    try {
+      await voice.start();
+    } catch (e: unknown) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+      const msg = e instanceof Error ? e.message : "Unable to start voice";
+      toast.error(msg);
+      try {
+        voice.stop();
+      } catch {}
+    }
+  };
+
+  const stopListening = (): void => {
+    try {
+      voice.stop();
+    } catch {}
+
+    wakeActiveRef.current = false;
+    setWakeActive(false);
+
+    if (wakeTimeoutRef.current) {
+      window.clearTimeout(wakeTimeoutRef.current);
+      wakeTimeoutRef.current = null;
+    }
+  };
+
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
+    inFlightRef.current.has(`${secIdx}:${itemIdx}`);
+
+  const submitAIForItem = async (
+    secIdx: number,
+    itemIdx: number,
+  ): Promise<void> => {
+    if (!session) return;
+
+    if (isLocked) {
+      toast.error("Inspection is locked; AI suggestions are disabled.");
+      return;
+    }
+
+    const key = `${secIdx}:${itemIdx}`;
+    if (inFlightRef.current.has(key)) return;
+
+    const it = session.sections[secIdx]?.items?.[itemIdx];
+    if (!it) return;
+
+    const status = String(it.status ?? "").toLowerCase();
+    const note = String(it.notes ?? "").trim();
+
+    if (!(status === "fail" || status === "recommend")) return;
+
+    if (note.length === 0) {
+      toast.error("Add a note before submitting.");
+      return;
+    }
+
+    const itExt = it as unknown as {
+      parts?: { description: string; qty: number }[];
+      laborHours?: number | null;
+      name?: string | null;
+
+      // ✅ estimate state (persisted on the item)
+      estimateSubmitted?: boolean;
+      estimateSubmittedAt?: string | null;
+      estimateLastUpdatedAt?: string | null;
+
+      // ✅ links so we UPDATE instead of creating new
+      estimateWorkOrderLineId?: string | null;
+      estimateQuoteLineId?: string | null;
+    };
+
+    const manualParts: { description: string; qty: number }[] = Array.isArray(
+      itExt.parts,
+    )
+      ? itExt.parts
+      : [];
+
+    const manualLaborHours =
+      typeof itExt.laborHours === "number" ? itExt.laborHours : null;
+
+    inFlightRef.current.add(key);
+
+    let toastId: string | number | undefined;
+
+    try {
+      const desc = String(it.item ?? itExt.name ?? "Item");
+
+      const existingLineId =
+        typeof itExt.estimateWorkOrderLineId === "string" &&
+        itExt.estimateWorkOrderLineId
+          ? itExt.estimateWorkOrderLineId
+          : null;
+
+      const nowIso = new Date().toISOString();
+
+      // ✅ reuse quote line if already submitted (avoid duplicates)
+      const existingQuoteId =
+        typeof itExt.estimateQuoteLineId === "string" && itExt.estimateQuoteLineId
+          ? itExt.estimateQuoteLineId
+          : null;
+
+      const quoteId = existingQuoteId ?? uuidv4();
+
+      if (!existingQuoteId) {
+        const placeholder: QuoteLineItem = {
+          id: quoteId,
+          description: desc,
+          item: desc,
+          name: desc,
+          status: status as "fail" | "recommend",
+          notes: String(it.notes ?? ""),
+          price: 0,
+          laborTime: 0.5,
+          laborRate: 0,
+          editable: true,
+          source: "inspection",
+          value: (it as unknown as { value?: unknown }).value as
+            | string
+            | number
+            | null
+            | undefined,
+          photoUrls: (it as unknown as { photoUrls?: unknown }).photoUrls as
+            | string[]
+            | undefined,
+          aiState: "loading",
+        };
+        addQuoteLine(placeholder);
+      } else {
+        updateQuoteLine(quoteId, { aiState: "loading" });
+      }
+
+      toastId = toast.loading("Building estimate from inspection item…");
+
+      const suggestion = await requestQuoteSuggestion({
+        item: desc,
+        notes: String(it.notes ?? ""),
+        section: String(session.sections[secIdx]?.title ?? ""),
+        status,
+        vehicle: session.vehicle ?? undefined,
+      });
+
+      if (!suggestion) {
+        updateQuoteLine(quoteId, { aiState: "error" });
+        toast.error("No AI suggestion available", { id: toastId });
+        return;
+      }
+
+      const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
+        ...((suggestion.parts ?? []) as Array<{
+          name: string;
+          qty: number;
+          cost?: number;
+        }>),
+        ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
+      ];
+
+      const laborTime =
+        manualLaborHours != null && !Number.isNaN(manualLaborHours)
+          ? manualLaborHours
+          : (suggestion.laborHours ?? 0.5);
+
+      const laborRate = suggestion.laborRate ?? 0;
+
+      const partsTotal =
+        mergedParts.reduce(
+          (sum, p) => sum + (typeof p.cost === "number" ? p.cost : 0),
+          0,
+        ) ?? 0;
+
+      const price = Math.max(0, partsTotal + laborRate * laborTime);
+
+      updateQuoteLine(quoteId, {
+        price,
+        laborTime,
+        laborRate,
+        ai: {
+          summary: suggestion.summary,
+          confidence: suggestion.confidence,
+          parts: mergedParts,
+        },
+        aiState: "done",
+      });
+
+      if (workOrderId) {
+        const cleanParts = manualParts
+          .map((p) => ({
+            description: String(p.description ?? "").trim(),
+            qty: Number(p.qty ?? 0),
+          }))
+          .filter((p) => p.description.length > 0 && p.qty > 0);
+
+        // ✅ UPDATE existing estimate/job (no new WO line)
+        if (existingLineId) {
+          const updateRes = await fetch(
+            "/api/work-orders/lines/update-from-inspection",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workOrderId,
+                workOrderLineId: existingLineId,
+                laborHours: laborTime,
+
+                // ✅ complaint = inspection notes (what the customer/tech reports)
+                complaint: String(it.notes ?? "").trim() || null,
+
+                // keep notes too if your API already uses it for internal notes
+                notes: String(it.notes ?? "").trim() || null,
+
+                aiSummary: suggestion.summary ?? null,
+              }),
+            },
+          );
+
+          if (!updateRes.ok) {
+            const body = (await updateRes.json().catch(() => null)) as unknown;
+            // eslint-disable-next-line no-console
+            console.error("Update WO line error", body);
+            toast.error("Could not update existing estimate line", { id: toastId });
+            return;
+          }
+
+          if (cleanParts.length > 0) {
+            const res = await fetch("/api/parts/requests/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workOrderId,
+                jobId: existingLineId, // ✅ attach to same job
+                notes: String(it.notes ?? "") || null,
+                items: cleanParts,
+              }),
+            });
+
+            if (!res.ok) {
+              const body = (await res.json().catch(() => null)) as unknown;
+              // eslint-disable-next-line no-console
+              console.error("Parts request error", body);
+              toast.error("Estimate updated, but parts request failed", {
+                id: toastId,
+              });
+              return;
+            }
+          }
+
+          updateItem(secIdx, itemIdx, {
+            estimateSubmitted: true,
+            estimateSubmittedAt: itExt.estimateSubmittedAt ?? nowIso,
+            estimateLastUpdatedAt: nowIso,
+            estimateWorkOrderLineId: existingLineId,
+            estimateQuoteLineId: quoteId,
+          } as ItemPatch);
+
+          toast.success("Estimate updated", { id: toastId });
+          return;
+        }
+
+        // ✅ CREATE new estimate/job (first submit)
+        const complaint = String(it.notes ?? "").trim() || null;
+
+            const created = await addWorkOrderLineFromSuggestion({
+              workOrderId,
+              description: desc,
+              section: String(session.sections[secIdx]?.title ?? ""),
+              status: status as "fail" | "recommend",
+
+              // ✅ NEW: pass complaint explicitly
+              complaint,
+
+              suggestion: {
+                ...suggestion,
+                parts: mergedParts,
+                laborHours: laborTime,
+
+                // ✅ also set suggestion.notes so *either* side can use it
+                notes: complaint ?? undefined,
+              },
+              source: "inspection",
+              jobType: "repair",
+            });
+
+        const createdId = (created as unknown as { id?: unknown })?.id;
+        const createdJobId =
+          (createdId ? String(createdId) : null) || workOrderLineId || null;
+
+        // ✅ keep your counter for “lines added and sent for quote”
+        updateInspection({
+          voiceMeta: {
+            linesAddedToWorkOrder:
+              (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
+          } satisfies VoiceMeta,
+        });
+
+        if (cleanParts.length > 0) {
+          try {
+            const res = await fetch("/api/parts/requests/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workOrderId,
+                jobId: createdJobId,
+                notes: String(it.notes ?? "") || null,
+                items: cleanParts,

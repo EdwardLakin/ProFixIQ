@@ -1,6 +1,6 @@
 // features/inspections/lib/inspection/prepareSectionsWithCornerGrid.ts
 
-export type CornerGridItem = { item: string; unit?: string | null };
+export type CornerGridItem = { item?: string; unit?: string | null; name?: string | null };
 export type CornerGridSection = { title: string; items: CornerGridItem[] };
 
 const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
