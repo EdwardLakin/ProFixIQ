@@ -1,0 +1,2328 @@
+
+
+===== app/api/work-orders/add-line/route.ts =====
+// /app/api/work-orders/add-line/route.ts (FULL FILE REPLACEMENT)
+import "server-only";
+
+import { NextResponse } from "next/server";
+import { createClient, type PostgrestError } from "@supabase/supabase-js";
+import type { Database, TablesInsert } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+type PartLine = { name: string; qty?: number; cost?: number; notes?: string };
+
+type AISuggestion = {
+  parts: PartLine[];
+  laborHours: number;
+  laborRate?: number;
+  summary: string;
+  confidence?: "low" | "medium" | "high";
+  price?: number;
+  notes?: string;
+  title?: string;
+};
+
+type JobType =
+  | "diagnosis"
+  | "inspection"
+  | "maintenance"
+  | "repair"
+  | "tech-suggested"
+  | null;
+
+type InspectionItemStatus = "recommend" | "fail";
+
+interface AddLineRequestBody {
+  workOrderId: string;
+  description: string;
+  section?: string;
+  status?: InspectionItemStatus;
+  suggestion: AISuggestion;
+  jobType?: Exclude<JobType, null>;
+
+  complaint?: string | null;
+  inspectionSessionId?: string | null;
+}
+
+function isValidBody(b: unknown): b is AddLineRequestBody {
+  if (typeof b !== "object" || b === null) return false;
+  const o = b as Record<string, unknown>;
+  return (
+    typeof o.workOrderId === "string" &&
+    typeof o.description === "string" &&
+    typeof o.suggestion === "object" &&
+    o.suggestion !== null
+  );
+}
+
+function toNullableTrimmedString(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length ? t : null;
+}
+
+function finiteNumberOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) && !Number.isNaN(v) ? v : null;
+}
+
+function normalizeParts(parts: PartLine[] | undefined): Array<{
+  name: string;
+  qty: number;
+  cost: number | null;
+  notes: string | null;
+}> {
+  const arr = Array.isArray(parts) ? parts : [];
+  return arr
+    .map((p) => ({
+      name: String(p?.name ?? "").trim(),
+      qty: typeof p?.qty === "number" && Number.isFinite(p.qty) && p.qty > 0 ? p.qty : 1,
+      cost: finiteNumberOrNull(p?.cost),
+      notes: toNullableTrimmedString(p?.notes),
+    }))
+    .filter((p) => p.name.length > 0);
+}
+
+function computePriceEstimate(args: {
+  parts: Array<{ qty: number; cost: number | null }>;
+  laborHours: number | null;
+  laborRate: number | null;
+  explicit: number | null;
+}): number | null {
+  const explicit = args.explicit;
+  if (explicit != null && explicit >= 0) return explicit;
+
+  const partsTotal = args.parts.reduce((sum, p) => {
+    const cost = typeof p.cost === "number" ? p.cost : 0;
+    const qty = typeof p.qty === "number" && p.qty > 0 ? p.qty : 1;
+    return sum + cost * qty;
+  }, 0);
+
+  const hrs = args.laborHours ?? null;
+  const rate = args.laborRate ?? null;
+
+  const hasPartsMoney = partsTotal > 0;
+  const hasLaborMoney = hrs != null && rate != null && hrs >= 0 && rate >= 0;
+
+  if (!hasPartsMoney && !hasLaborMoney) return null;
+
+  const laborTotal = hasLaborMoney ? (hrs as number) * (rate as number) : 0;
+  return Math.max(0, partsTotal + laborTotal);
+}
+
+type WoRow = DB["public"]["Tables"]["work_orders"]["Row"];
+type WoLineInsert = TablesInsert<"work_order_lines">;
+
+export async function POST(req: Request) {
+  try {
+    const bodyUnknown: unknown = await req.json();
+
+    if (!isValidBody(bodyUnknown)) {
+      return NextResponse.json(
+        { error: "Invalid body: require workOrderId, description, suggestion" },
+        { status: 400 },
+      );
+    }
+
+    const {
+      workOrderId,
+      description,
+      section,
+      status,
+      suggestion,
+      jobType = "inspection",
+      complaint: complaintFromClient,
+      inspectionSessionId,
+    } = bodyUnknown;
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !serviceKey) {
+      return NextResponse.json(
+        { error: "Server not configured for Supabase" },
+        { status: 500 },
+      );
+    }
+
+    const supabase = createClient<DB>(supabaseUrl, serviceKey);
+
+    // ✅ Always derive shop_id from the work order (keeps data consistent)
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("id, shop_id, vehicle_id")
+      .eq("id", workOrderId)
+      .maybeSingle<Pick<WoRow, "id" | "shop_id" | "vehicle_id">>();
+
+    if (woErr) {
+      const e = woErr as PostgrestError;
+      return NextResponse.json(
+        { error: e.message, details: e.details, hint: e.hint, code: e.code },
+        { status: 500 },
+      );
+    }
+    if (!wo) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+    }
+    if (!wo.shop_id) {
+      return NextResponse.json(
+        { error: "Work order missing shop_id (required for inserts)" },
+        { status: 400 },
+      );
+    }
+
+    const complaint =
+      toNullableTrimmedString(complaintFromClient) ??
+      toNullableTrimmedString(suggestion?.notes);
+
+    const notesParts: string[] = [];
+    if (section) notesParts.push(`Section: ${section}`);
+    if (status) notesParts.push(`From inspection: ${status.toUpperCase()}`);
+    if (suggestion.title?.trim()) notesParts.push(`Title: ${suggestion.title.trim()}`);
+    if (suggestion.summary?.trim()) notesParts.push(`AI: ${suggestion.summary.trim()}`);
+    const notes = notesParts.length ? notesParts.join(" • ") : null;
+
+    const laborTime: number | null = finiteNumberOrNull(suggestion?.laborHours);
+    const laborRate: number | null = finiteNumberOrNull(suggestion?.laborRate);
+    const parts = normalizeParts(suggestion?.parts);
+
+    const priceEstimate = computePriceEstimate({
+      parts,
+      laborHours: laborTime,
+      laborRate,
+      explicit: finiteNumberOrNull(suggestion?.price),
+    });
+
+    const partsNeededJson =
+      parts.length > 0
+        ? parts.map((p) => ({
+            name: p.name,
+            qty: p.qty,
+            cost: p.cost,
+            notes: p.notes,
+            source: "inspection_ai",
+          }))
+        : null;
+
+    // ✅ CRITICAL FIX:
+    // - work_order_lines.status has CHECK constraint and cannot be "fail"/"recommend".
+    // - Store inspection meaning in line_status instead.
+    const lineStatus: string | null =
+      status === "fail" ? "fail" : status === "recommend" ? "recommend" : null;
+
+    const insertPayload: WoLineInsert = {
+      work_order_id: workOrderId,
+      shop_id: wo.shop_id,
+      vehicle_id: wo.vehicle_id ?? null,
+
+      description,
+      job_type: (jobType as JobType) ?? "inspection",
+
+      // workflow status must be allowed by CHECK constraint
+      status: "awaiting_approval",
+      approval_state: "pending",
+      punchable: false,
+
+      // store inspection fail/recommend meaning here
+      line_status: lineStatus,
+
+      complaint,
+      notes,
+      labor_time: laborTime,
+
+      price_estimate: priceEstimate,
+
+      // typed safely (Json-like). If your generated type differs, this still compiles because it matches Json structure.
+      parts_needed: partsNeededJson as unknown as WoLineInsert["parts_needed"],
+
+      inspection_session_id: toNullableTrimmedString(inspectionSessionId),
+    };
+
+    const { data, error } = await supabase
+      .from("work_order_lines")
+      .insert(insertPayload)
+      .select("id")
+      .single();
+
+    if (error) {
+      const e = error as PostgrestError;
+      return NextResponse.json(
+        { error: e.message, details: e.details, hint: e.hint, code: e.code },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ id: (data as { id: string }).id });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+===== app/api/work-orders/add-suggested-lines/route.ts =====
+// app/api/work-orders/add-suggested-lines/route.ts
+import "server-only";
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+type JobType = "diagnosis" | "repair" | "maintenance" | "tech-suggested";
+
+type IncomingItem = {
+  description: string;
+  serviceCode?: string;
+  jobType?: JobType;
+  laborHours?: number | null;
+  notes?: string;
+  aiComplaint?: string;
+  aiCause?: string;
+  aiCorrection?: string;
+};
+
+function normalizeVehicleId(v?: string | null): string | null {
+  if (!v) return null;
+  const trimmed = v.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+// --- parts request types ---
+type PRInsert = DB["public"]["Tables"]["part_requests"]["Insert"];
+type PRIInsert = DB["public"]["Tables"]["part_request_items"]["Insert"];
+
+type PartRequestItemInsertWithExtras = PRIInsert & {
+  markup_pct: number;
+  work_order_line_id: string | null;
+};
+
+const DEFAULT_MARKUP = 30; // %
+
+type ProfileLite = {
+  id: string;
+  user_id: string | null;
+  shop_id: string | null;
+};
+
+export async function POST(req: Request) {
+  const supabase = createServerComponentClient<DB>({ cookies });
+
+  try {
+    const body = (await req.json()) as {
+      workOrderId: string;
+      vehicleId?: string | null;
+      odometerKm?: number | null;
+      items: IncomingItem[];
+    };
+
+    const { workOrderId, vehicleId, odometerKm, items } = body;
+
+    if (!workOrderId || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { error: "Missing workOrderId or items" },
+        { status: 400 },
+      );
+    }
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError) {
+      return NextResponse.json({ error: authError.message }, { status: 401 });
+    }
+    if (!user?.id) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
+    // Read the WO (RLS applies)
+    const { data: wo, error: woError } = await supabase
+      .from("work_orders")
+      .select("id, shop_id, odometer_km")
+      .eq("id", workOrderId)
+      .maybeSingle();
+
+    if (woError) {
+      return NextResponse.json({ error: woError.message }, { status: 500 });
+    }
+    if (!wo) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+    }
+
+    const woShopId = (wo.shop_id as string | null) ?? null;
+    if (!woShopId) {
+      return NextResponse.json(
+        {
+          error:
+            "Work order has no shop_id. This must be set before adding lines (RLS relies on it).",
+        },
+        { status: 409 },
+      );
+    }
+
+    // Verify we have a profile row for this user (either id or user_id mapping)
+    const { data: profileRow, error: profErr } = await supabase
+      .from("profiles")
+      .select("id, user_id, shop_id")
+      .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+      .maybeSingle();
+
+    if (profErr) {
+      return NextResponse.json({ error: profErr.message }, { status: 500 });
+    }
+
+    if (!profileRow) {
+      return NextResponse.json(
+        {
+          error:
+            "No profile row exists for this user. Create/restore profiles row (id=auth.uid or user_id=auth.uid) and link shop_id.",
+        },
+        { status: 403 },
+      );
+    }
+
+    const profile = profileRow as unknown as ProfileLite;
+
+    // Self-heal: if profile has no shop_id, attach them to this WO's shop
+    if (!profile.shop_id) {
+      const { error: updErr } = await supabase
+        .from("profiles")
+        .update({ shop_id: woShopId })
+        .or(`id.eq.${user.id},user_id.eq.${user.id}`);
+
+      if (updErr) {
+        return NextResponse.json(
+          {
+            error:
+              updErr.message ??
+              "Could not link your profile to this shop. Check profiles RLS.",
+          },
+          { status: 403 },
+        );
+      }
+    } else if (profile.shop_id !== woShopId) {
+      // Hard stop: if your profile is linked to a different shop, RLS insert will fail
+      return NextResponse.json(
+        {
+          error:
+            "Shop mismatch: your profile is linked to a different shop than this work order. Fix profiles.shop_id alignment.",
+          details: {
+            profile_shop_id: profile.shop_id,
+            work_order_shop_id: woShopId,
+          },
+        },
+        { status: 403 },
+      );
+    }
+
+    // Optional but helpful: set shop context (won't harm; helps other reads in this request)
+    // NOTE: this will only succeed if membership is aligned (which we ensured above)
+    await supabase.rpc("set_current_shop_id", { p_shop_id: woShopId });
+
+    const effectiveOdometerKm =
+      odometerKm ?? ((wo.odometer_km as number | null) ?? null);
+
+    const normalizedVehicleId = normalizeVehicleId(vehicleId ?? null);
+
+    // Insert work_order_lines
+    const lineRows = items.map((i) => ({
+      work_order_id: workOrderId,
+      vehicle_id: normalizedVehicleId,
+      // shop_id is not required for your INSERT policy (policy checks parent WO + profile),
+      // but keeping it consistent avoids future drift + helps SELECT policy patterns.
+      shop_id: woShopId,
+      description: (i.description ?? "").trim(),
+      job_type: i.jobType ?? "maintenance",
+      labor_time: typeof i.laborHours === "number" ? i.laborHours : 0,
+      complaint: i.aiComplaint ?? null,
+      cause: i.aiCause ?? null,
+      correction: i.aiCorrection ?? null,
+      status: "on_hold" as const,
+      approval_state: "pending" as const,
+      hold_reason: "Awaiting parts quote",
+      service_code: i.serviceCode ?? null,
+      odometer_km: effectiveOdometerKm,
+      notes: i.notes ?? null,
+    }));
+
+    // Guard against empty descriptions
+    if (lineRows.some((r) => !r.description)) {
+      return NextResponse.json(
+        { error: "One or more items had an empty description." },
+        { status: 400 },
+      );
+    }
+
+    const { data: insertedLines, error: insertError } = await supabase
+      .from("work_order_lines")
+      .insert(lineRows)
+      .select("id, description");
+
+    if (insertError || !insertedLines) {
+      const msg = insertError?.message ?? "Failed to insert lines";
+      // If this hits, it's almost always profile/shop misalignment or missing profile row.
+      return NextResponse.json({ error: msg }, { status: 403 });
+    }
+
+    // Create part_request + items
+    const header: PRInsert = {
+      work_order_id: workOrderId,
+      shop_id: woShopId,
+      requested_by: user.id,
+      status: "requested",
+      notes: "Auto-created from AI suggested services",
+    };
+
+    const { data: pr, error: prErr } = await supabase
+      .from("part_requests")
+      .insert(header)
+      .select("id")
+      .single();
+
+    if (prErr || !pr?.id) {
+      return NextResponse.json(
+        { error: prErr?.message ?? "Failed to create part request" },
+        { status: 500 },
+      );
+    }
+
+    const itemRows: PartRequestItemInsertWithExtras[] = insertedLines.map((ln) => ({
+      request_id: pr.id,
+      description: (ln.description ?? "Service").trim(),
+      qty: 1,
+      approved: false,
+      part_id: null,
+      quoted_price: null,
+      vendor: null,
+      markup_pct: DEFAULT_MARKUP,
+      work_order_line_id: ln.id,
+    }));
+
+    const { error: itemsErr } = await supabase
+      .from("part_request_items")
+      .insert(itemRows);
+
+    if (itemsErr) {
+      return NextResponse.json(
+        { error: itemsErr.message ?? "Failed to insert part request items" },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      inserted: lineRows.length,
+      partRequestId: pr.id,
+      partItems: itemRows.length,
+    });
+  } catch (e: unknown) {
+    console.error(e);
+    return NextResponse.json(
+      { error: "Failed to add suggested lines" },
+      { status: 500 },
+    );
+  }
+}
+
+===== app/api/work-orders/suggest-lines/route.ts =====
+// app/api/work-orders/suggest-lines/route.ts
+import "server-only";
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import { openai } from "lib/server/openai";
+
+export const runtime = "nodejs";
+
+type DB = Database;
+
+type VehicleLite = {
+  id: string | null;
+  year: string | null;
+  make: string | null;
+  model: string | null;
+};
+
+type ReqBody =
+  | { jobId: string; vehicleId?: VehicleLite | string | null }
+  | { workOrderId: string; vehicleId?: VehicleLite | string | null };
+
+type Suggestion = {
+  name: string;
+  laborHours: number;
+  jobType: "diagnosis" | "repair" | "maintenance" | "tech-suggested";
+  notes: string;
+  aiComplaint?: string;
+  aiCause?: string;
+  aiCorrection?: string;
+};
+
+function isVehicleLite(v: unknown): v is VehicleLite {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    "id" in o &&
+    "year" in o &&
+    "make" in o &&
+    "model" in o &&
+    (o.id === null || typeof o.id === "string") &&
+    (o.year === null || typeof o.year === "string") &&
+    (o.make === null || typeof o.make === "string") &&
+    (o.model === null || typeof o.model === "string")
+  );
+}
+
+function coerceSuggestion(u: unknown): Suggestion | null {
+  if (typeof u !== "object" || u === null) return null;
+  const o = u as Record<string, unknown>;
+
+  const name = typeof o.name === "string" ? o.name : null;
+  const laborHours =
+    typeof o.laborHours === "number" && Number.isFinite(o.laborHours)
+      ? o.laborHours
+      : null;
+  const jobType =
+    o.jobType === "diagnosis" ||
+    o.jobType === "repair" ||
+    o.jobType === "maintenance" ||
+    o.jobType === "tech-suggested"
+      ? o.jobType
+      : null;
+  const notes = typeof o.notes === "string" ? o.notes : "";
+
+  if (!name || laborHours === null || !jobType) return null;
+
+  const aiComplaint =
+    typeof o.aiComplaint === "string" ? o.aiComplaint : undefined;
+  const aiCause = typeof o.aiCause === "string" ? o.aiCause : undefined;
+  const aiCorrection =
+    typeof o.aiCorrection === "string" ? o.aiCorrection : undefined;
+
+  return { name, laborHours, jobType, notes, aiComplaint, aiCause, aiCorrection };
+}
+
+export async function POST(req: Request) {
+  const supabase = createServerComponentClient<DB>({ cookies });
+
+  try {
+    const body = (await req.json()) as ReqBody;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user?.id) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
+    // We’ll set shop context if we can determine a shop id from the WO (best effort).
+    // This reduces “RLS hidden” reads for work_order_lines in shops that rely on current_shop_id().
+    let shopIdForContext: string | null = null;
+
+    // Gather context
+    let complaint: string | null = null;
+    let vehicle: VehicleLite | null = null;
+
+    if ("jobId" in body) {
+      // Get WO shop_id for context
+      const { data: woJoin, error: woJoinErr } = await supabase
+        .from("work_order_lines")
+        .select("work_order_id, work_orders:work_order_id ( shop_id )")
+        .eq("id", body.jobId)
+        .maybeSingle();
+
+      if (woJoinErr) {
+        return NextResponse.json({ error: woJoinErr.message }, { status: 500 });
+      }
+
+      shopIdForContext =
+        (woJoin?.work_orders as unknown as { shop_id?: string | null })?.shop_id ??
+        null;
+
+      if (shopIdForContext) {
+        // If profile.shop_id is NULL, try to self-heal (same logic as add-suggested-lines)
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("shop_id")
+          .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+          .maybeSingle();
+
+        if (!prof?.shop_id) {
+          await supabase
+            .from("profiles")
+            .update({ shop_id: shopIdForContext })
+            .or(`id.eq.${user.id},user_id.eq.${user.id}`);
+        }
+
+        // Set session context (may still fail if user truly isn’t in that shop)
+        await supabase.rpc("set_current_shop_id", { p_shop_id: shopIdForContext });
+      }
+
+      const { data: line, error: lineErr } = await supabase
+        .from("work_order_lines")
+        .select("complaint, vehicle_id, vehicles:vehicle_id ( year, make, model )")
+        .eq("id", body.jobId)
+        .maybeSingle();
+
+      if (lineErr) {
+        return NextResponse.json({ error: lineErr.message }, { status: 500 });
+      }
+
+      if (line?.complaint) complaint = line.complaint;
+
+      // Prefer explicit vehicleId passed in the request, else derive from joined record
+      if (isVehicleLite(body.vehicleId)) {
+        vehicle = body.vehicleId;
+      } else if (line?.vehicles) {
+        const v = line.vehicles as unknown as {
+          year: number | null;
+          make: string | null;
+          model: string | null;
+        };
+        vehicle = {
+          id: (line as unknown as { vehicle_id: string | null }).vehicle_id ?? null,
+          year: v?.year != null ? String(v.year) : null,
+          make: v?.make ?? null,
+          model: v?.model ?? null,
+        };
+      }
+    } else if ("workOrderId" in body) {
+      // Fetch WO shop_id for context first
+      const { data: wo, error: woErr } = await supabase
+        .from("work_orders")
+        .select("id, shop_id")
+        .eq("id", body.workOrderId)
+        .maybeSingle();
+
+      if (woErr) {
+        return NextResponse.json({ error: woErr.message }, { status: 500 });
+      }
+      if (!wo?.id) {
+        return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+      }
+
+      shopIdForContext = (wo.shop_id as string | null) ?? null;
+
+      if (shopIdForContext) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("shop_id")
+          .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+          .maybeSingle();
+
+        if (!prof?.shop_id) {
+          await supabase
+            .from("profiles")
+            .update({ shop_id: shopIdForContext })
+            .or(`id.eq.${user.id},user_id.eq.${user.id}`);
+        }
+
+        await supabase.rpc("set_current_shop_id", { p_shop_id: shopIdForContext });
+      }
+
+      // Pull minimal context from first line
+      const { data: lines, error: linesErr } = await supabase
+        .from("work_order_lines")
+        .select("complaint, vehicle_id")
+        .eq("work_order_id", body.workOrderId)
+        .order("created_at", { ascending: true })
+        .limit(1);
+
+      if (linesErr) {
+        return NextResponse.json({ error: linesErr.message }, { status: 500 });
+      }
+
+      if (lines && lines.length > 0) {
+        complaint = lines[0]?.complaint ?? null;
+      }
+
+      if (isVehicleLite(body.vehicleId)) {
+        vehicle = body.vehicleId;
+      }
+    }
+
+    const vStr =
+      vehicle && (vehicle.make || vehicle.model || vehicle.year)
+        ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
+        : "Unknown vehicle";
+
+    const userContext =
+      [complaint ? `Complaint: ${complaint}` : null, `Vehicle: ${vStr}`]
+        .filter(Boolean)
+        .join("\n") || "No complaint provided. Vehicle unknown.";
+
+    const system = [
+      "You are a service advisor assistant for an auto shop.",
+      "Return a JSON array of 3-6 suggested jobs related to the complaint and vehicle.",
+      "Each item must have fields: name (string), laborHours (number), jobType ('diagnosis'|'repair'|'maintenance'|'tech-suggested'), notes (string).",
+      "When helpful, include aiComplaint, aiCause, aiCorrection to pre-fill story text.",
+      "Keep laborHours realistic; do not exceed 8 hours for a single item.",
+      "Only output raw JSON (no markdown).",
+    ].join(" ");
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.4,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userContext },
+      ],
+      max_tokens: 500,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "[]";
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = [];
+    }
+
+    const suggestions: Suggestion[] = Array.isArray(parsed)
+      ? parsed
+          .map(coerceSuggestion)
+          .filter((s): s is Suggestion => s !== null)
+          .slice(0, 6)
+      : [];
+
+    return NextResponse.json({ suggestions });
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to generate suggestions" },
+      { status: 500 },
+    );
+  }
+}
+
+===== app/api/work-orders/lines/update-from-inspection/route.ts =====
+// /app/api/work-orders/lines/update-from-inspection/route.ts (FULL FILE REPLACEMENT)
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+import "server-only";
+
+import { NextResponse } from "next/server";
+import { createClient, type PostgrestError } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+type Body = {
+  workOrderId: string;
+  workOrderLineId: string;
+
+  laborHours?: number | null;
+
+  // allow client to pass complaint explicitly
+  complaint?: string | null;
+
+  // inspection note (free text)
+  notes?: string | null;
+
+  // optional AI summary
+  aiSummary?: string | null;
+};
+
+function isValidBody(b: unknown): b is Body {
+  if (typeof b !== "object" || b === null) return false;
+  const o = b as Record<string, unknown>;
+  return typeof o.workOrderId === "string" && typeof o.workOrderLineId === "string";
+}
+
+function trimOrNull(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length ? t : null;
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && !Number.isNaN(v);
+}
+
+export async function POST(req: Request) {
+  try {
+    const bodyUnknown: unknown = await req.json();
+    if (!isValidBody(bodyUnknown)) {
+      return NextResponse.json(
+        { error: "Invalid body: require workOrderId, workOrderLineId" },
+        { status: 400 },
+      );
+    }
+
+    const { workOrderId, workOrderLineId, laborHours, complaint, notes, aiSummary } =
+      bodyUnknown;
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !serviceKey) {
+      return NextResponse.json(
+        { error: "Server not configured for Supabase" },
+        { status: 500 },
+      );
+    }
+
+    const supabase = createClient<DB>(supabaseUrl, serviceKey);
+
+    // Ensure line exists + belongs to WO (prevents cross-WO updates)
+    const { data: line, error: loadErr } = await supabase
+      .from("work_order_lines")
+      .select("id, work_order_id, status, approval_state, punchable")
+      .eq("id", workOrderLineId)
+      .maybeSingle();
+
+    if (loadErr) {
+      const e = loadErr as PostgrestError;
+      return NextResponse.json(
+        { error: e.message, details: e.details, hint: e.hint, code: e.code },
+        { status: 500 },
+      );
+    }
+    if (!line) {
+      return NextResponse.json({ error: "Work order line not found" }, { status: 404 });
+    }
+    if (String((line as { work_order_id?: unknown }).work_order_id) !== workOrderId) {
+      return NextResponse.json(
+        { error: "Work order line does not belong to the given work order" },
+        { status: 400 },
+      );
+    }
+
+    const update: Record<string, unknown> = {};
+
+    // labor_time is numeric in DB; supabase-js accepts number
+    if (laborHours === null) {
+      update.labor_time = null;
+    } else if (isFiniteNumber(laborHours)) {
+      update.labor_time = laborHours;
+    }
+
+    const complaintClean = trimOrNull(complaint);
+    const noteClean = trimOrNull(notes);
+    const summaryClean = trimOrNull(aiSummary);
+
+    // complaint precedence:
+    // 1) explicit complaint
+    // 2) notes
+    if (complaintClean) update.complaint = complaintClean;
+    else if (noteClean) update.complaint = noteClean;
+
+    // notes: store compact context
+    if (noteClean || summaryClean) {
+      const parts: string[] = [];
+      if (noteClean) parts.push(`From inspection: ${noteClean}`);
+      if (summaryClean) parts.push(`AI: ${summaryClean}`);
+      update.notes = parts.join(" • ");
+    }
+
+    // Keep it non-punchable until approved
+    update.status = "awaiting_approval";
+    update.approval_state = "pending";
+    update.punchable = false;
+
+    const { error: updErr } = await supabase
+      .from("work_order_lines")
+      .update(update)
+      .eq("id", workOrderLineId);
+
+    if (updErr) {
+      const e = updErr as PostgrestError;
+      return NextResponse.json(
+        { error: e.message, details: e.details, hint: e.hint, code: e.code },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ ok: true, updated: true });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+===== app/api/work-orders/lines/[id]/finish/route.ts =====
+// app/api/work-orders/lines/[id]/finish/route.ts
+export const runtime = "nodejs";
+
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+type Body = { cause?: string; correction?: string };
+
+function extractLineId(req: NextRequest): string | null {
+  // matches /api/work-orders/lines/<id>/finish
+  const m = req.nextUrl.pathname.match(
+    /\/api\/work-orders\/lines\/([^/]+)\/finish$/,
+  );
+  return m?.[1] ?? null;
+}
+
+function clean(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  return s.length ? s : null;
+}
+
+export async function POST(req: NextRequest) {
+  const id = extractLineId(req);
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
+  if (userErr) {
+    return NextResponse.json({ error: userErr.message }, { status: 500 });
+  }
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const nowIso = new Date().toISOString();
+  const body = (await req.json().catch(() => ({}))) as Body;
+
+  const cause = clean(body.cause);
+  const correction = clean(body.correction);
+
+  // 1) Update the WO line as completed
+  const updatePayload: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
+    status: "completed",
+    punched_out_at: nowIso,
+    ...(cause !== null ? { cause } : {}),
+    ...(correction !== null ? { correction } : {}),
+  };
+
+  const { data: line, error: lineErr } = await supabase
+    .from("work_order_lines")
+    .update(updatePayload)
+    .eq("id", id)
+    .select("id, status, punched_in_at, punched_out_at, cause, correction")
+    .single();
+
+  if (lineErr) {
+    return NextResponse.json({ error: lineErr.message }, { status: 400 });
+  }
+
+  // 2) Finalize the inspection row tied to THIS line (if it exists)
+  //    (This assumes you added inspections.work_order_line_id + unique index as discussed.)
+  const inspectionUpdate: DB["public"]["Tables"]["inspections"]["Update"] = {
+    completed: true,
+    is_draft: false,
+    locked: true,
+    status: "completed",
+    finalized_at: nowIso,
+    finalized_by: user.id,
+    updated_at: nowIso,
+  };
+
+  const { error: inspErr } = await supabase
+    .from("inspections")
+    .update(inspectionUpdate)
+    .eq("work_order_line_id", id);
+
+  // If there's no matching inspection yet, don't fail finishing the job
+  if (inspErr) {
+    // eslint-disable-next-line no-console
+    console.warn("[finish] inspections finalize failed:", inspErr.message);
+  }
+
+  // 3) Best-effort activity log — never fail the finish if logging fails
+  try {
+    await supabase.from("activity_logs").insert({
+      entity_type: "work_order_line",
+      entity_id: id,
+      action: "finish",
+      actor_id: user.id,
+      created_at: nowIso,
+    });
+  } catch (e) {
+    // ignore logging errors (RLS / table missing / etc.)
+    // eslint-disable-next-line no-console
+    console.warn("activity_logs insert failed", e);
+  }
+
+  return NextResponse.json({ success: true, line });
+}
+
+===== app/api/inspections/finalize/pdf/route.ts =====
+// app/api/inspections/finalize/pdf/route.ts ✅ FULL FILE REPLACEMENT
+import "server-only";
+
+export const runtime = "nodejs";
+
+import { NextResponse, type NextRequest } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database, Json } from "@shared/types/types/supabase";
+import { generateInspectionPDF } from "@/features/inspections/lib/inspection/pdf";
+import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+
+type DB = Database;
+
+type Body = { workOrderLineId?: string };
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+function asString(x: unknown): string | null {
+  return typeof x === "string" && x.trim().length ? x.trim() : null;
+}
+
+function safeFilePart(x: string): string {
+  return x.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  // 1) Parse body
+  const raw = (await req.json().catch(() => null)) as unknown;
+  if (!isRecord(raw)) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const workOrderLineId = asString((raw as Body).workOrderLineId);
+  if (!workOrderLineId) {
+    return NextResponse.json({ error: "Missing workOrderLineId" }, { status: 400 });
+  }
+
+  // 2) Auth
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
+  if (userErr || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 3) Resolve WO + shop from the line
+  const { data: line, error: lineErr } = await supabase
+    .from("work_order_lines")
+    .select("id, work_order_id, work_orders!inner(shop_id)")
+    .eq("id", workOrderLineId)
+    .maybeSingle<{
+      id: string;
+      work_order_id: string | null;
+      work_orders: { shop_id: string | null };
+    }>();
+
+  if (lineErr) {
+    // eslint-disable-next-line no-console
+    console.error("[inspections/finalize/pdf] line lookup failed", lineErr);
+    return NextResponse.json({ error: "Failed to look up work order line" }, { status: 500 });
+  }
+
+  const workOrderId = asString(line?.work_order_id);
+  const shopId = asString(line?.work_orders?.shop_id);
+
+  if (!workOrderId) {
+    return NextResponse.json({ error: "Work order line missing work_order_id" }, { status: 400 });
+  }
+  if (!shopId) {
+    return NextResponse.json({ error: "Work order line missing shop_id" }, { status: 400 });
+  }
+
+  // ✅ Ensure Storage policy can evaluate current_shop_id()
+  // If your policy uses current_shop_id(), this MUST be set server-side.
+  const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
+  if (ctxErr) {
+    // eslint-disable-next-line no-console
+    console.error("[inspections/finalize/pdf] set_current_shop_id failed", ctxErr);
+    return NextResponse.json(
+      { error: ctxErr.message || "Failed to set shop context" },
+      { status: 500 },
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+
+  // 4) Load inspection summary + ensure canonical inspections row exists
+  //    - First try inspections.summary
+  //    - Fallback to inspection_sessions.state
+  //    - If inspections row doesn't exist, UPSERT it (draft first, then finalize below)
+
+  const { data: insp, error: inspErr } = await supabase
+    .from("inspections")
+    .select("id, work_order_id, work_order_line_id, summary, pdf_storage_path")
+    .eq("work_order_line_id", workOrderLineId)
+    .maybeSingle<
+      Pick<
+        DB["public"]["Tables"]["inspections"]["Row"],
+        "id" | "work_order_id" | "work_order_line_id" | "summary" | "pdf_storage_path"
+      >
+    >();
+
+  if (inspErr) {
+    // eslint-disable-next-line no-console
+    console.error("[inspections/finalize/pdf] inspections lookup failed", inspErr);
+    return NextResponse.json({ error: "Failed to load inspection" }, { status: 500 });
+  }
+
+  let summary = (insp?.summary ?? null) as unknown as InspectionSession | null;
+
+  if (!summary) {
+    const { data: sess, error: sessErr } = await supabase
+      .from("inspection_sessions")
+      .select("state")
+      .eq("work_order_line_id", workOrderLineId)
+      .maybeSingle<{ state: Json | null }>();
+
+    if (sessErr) {
+      // eslint-disable-next-line no-console
+      console.error("[inspections/finalize/pdf] session lookup failed", sessErr);
+      return NextResponse.json({ error: "Inspection session missing" }, { status: 404 });
+    }
+
+    summary = (sess?.state ?? null) as unknown as InspectionSession | null;
+  }
+
+  if (!summary || typeof summary !== "object") {
+    return NextResponse.json({ error: "Inspection summary missing/invalid" }, { status: 400 });
+  }
+
+  // ✅ Ensure inspections row exists (UPSERT by work_order_line_id)
+  // This makes finalize idempotent and guarantees invoice/email can attach.
+  const { data: ensured, error: ensureErr } = await supabase
+    .from("inspections")
+    .upsert(
+      {
+        work_order_id: workOrderId,
+        work_order_line_id: workOrderLineId,
+        shop_id: shopId,
+        user_id: user.id,
+        summary: summary as unknown as Json,
+        // keep it draft until PDF upload succeeds
+        is_draft: true,
+        completed: false,
+        locked: false,
+        status: "draft",
+        updated_at: nowIso,
+      } satisfies DB["public"]["Tables"]["inspections"]["Insert"],
+      { onConflict: "work_order_line_id" },
+    )
+    .select("id, pdf_storage_path")
+    .single<{ id: string; pdf_storage_path: string | null }>();
+
+  if (ensureErr || !ensured?.id) {
+    // eslint-disable-next-line no-console
+    console.error("[inspections/finalize/pdf] inspections upsert failed", ensureErr);
+    return NextResponse.json(
+      { error: ensureErr?.message ?? "Failed to create inspection record" },
+      { status: 500 },
+    );
+  }
+
+  const inspectionId = ensured.id;
+
+  // 5) Generate PDF
+  const pdfBytes = await generateInspectionPDF(summary);
+
+  // 6) Upload to storage (Policy-based: path includes shop id)
+  const bucket = "inspection_pdfs";
+  const shopPart = safeFilePart(shopId);
+  const woPart = safeFilePart(workOrderId);
+  const inspPart = safeFilePart(String(inspectionId));
+  const linePart = safeFilePart(workOrderLineId);
+
+  const path = `shops/${shopPart}/work_orders/${woPart}/inspections/${inspPart}/line_${linePart}.pdf`;
+
+  const { error: uploadErr } = await supabase.storage
+    .from(bucket)
+    .upload(path, Buffer.from(pdfBytes), { contentType: "application/pdf", upsert: true });
+
+  if (uploadErr) {
+    // eslint-disable-next-line no-console
+    console.error("[inspections/finalize/pdf] upload failed", {
+      message: uploadErr.message,
+      name: uploadErr.name,
+      cause: (uploadErr as unknown as { cause?: unknown })?.cause,
+      path,
+      bucket,
+      shopId,
+      workOrderId,
+      workOrderLineId,
+    });
+    return NextResponse.json(
+      {
+        error: uploadErr.message,
+        detail: {
+          bucket,
+          path,
+          hint: "Storage RLS likely blocked upload. Confirm policy matches shops/<shop_id>/... and current_shop_id() is set.",
+        },
+      },
+      { status: 500 },
+    );
+  }
+
+  // Optional: signed URL for quick-open in UI
+  const { data: signed, error: signedErr } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, 60 * 60 * 24 * 30);
+
+  if (signedErr) {
+    // eslint-disable-next-line no-console
+    console.warn("[inspections/finalize/pdf] createSignedUrl failed", signedErr);
+  }
+
+  const nowIso2 = new Date().toISOString();
+
+  // 7) Update inspections record (mark complete + store PDF path/url)
+  const { error: updErr } = await supabase
+    .from("inspections")
+    .update(
+      {
+        pdf_storage_path: path,
+        pdf_url: signed?.signedUrl ?? null,
+        locked: true,
+        completed: true,
+        is_draft: false,
+        finalized_at: nowIso2,
+        finalized_by: user.id,
+        updated_at: nowIso2,
+        status: "completed",
+      } satisfies DB["public"]["Tables"]["inspections"]["Update"],
+    )
+    .eq("id", inspectionId);
+
+  if (updErr) {
+    // eslint-disable-next-line no-console
+    console.error("[inspections/finalize/pdf] inspections update failed", updErr);
+    return NextResponse.json({ error: updErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    inspectionId,
+    workOrderId,
+    workOrderLineId,
+    bucket,
+    pdf_storage_path: path,
+    pdf_url: signed?.signedUrl ?? null,
+  });
+}
+
+===== app/api/inspections/photos/upload/route.ts =====
+import "server-only";
+
+export const runtime = "nodejs";
+
+import { NextResponse, type NextRequest } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import crypto from "crypto";
+import { buildInspectionMediaCapturedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
+import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
+
+type DB = Database;
+
+function asString(v: FormDataEntryValue | null): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length ? t : null;
+}
+
+function safeFilePart(x: string): string {
+  return x.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function extFromMime(mime: string | null): "jpg" | "png" {
+  const m = (mime ?? "").toLowerCase();
+  if (m.includes("png")) return "png";
+  return "jpg";
+}
+
+async function resolveShopId(args: {
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+  inspectionId: string;
+  workOrderId: string | null;
+  workOrderLineId: string | null;
+  userId: string;
+}): Promise<{ shopId: string | null; source: string }> {
+  const { supabase, inspectionId, workOrderId, workOrderLineId, userId } = args;
+
+  const { data: insp, error: inspErr } = await supabase
+    .from("inspections")
+    .select("id, shop_id, work_order_id, work_order_line_id")
+    .eq("id", inspectionId)
+    .maybeSingle<{
+      id: string;
+      shop_id: string | null;
+      work_order_id: string | null;
+      work_order_line_id: string | null;
+    }>();
+
+  if (inspErr) {
+    console.error("[inspections/photos/upload] inspections lookup failed", inspErr);
+  }
+
+  if (insp?.shop_id) {
+    return { shopId: insp.shop_id, source: "inspections.shop_id" };
+  }
+
+  const woId = insp?.work_order_id ?? workOrderId ?? null;
+  const wolId = insp?.work_order_line_id ?? workOrderLineId ?? null;
+
+  if (wolId) {
+    const { data, error } = await supabase
+      .from("work_order_lines")
+      .select("id, work_orders:work_order_id ( shop_id )")
+      .eq("id", wolId)
+      .maybeSingle<{ id: string; work_orders: { shop_id: string | null } | null }>();
+
+    if (error) {
+      console.error("[inspections/photos/upload] wol->wo lookup failed", error);
+    } else {
+      const shopId = data?.work_orders?.shop_id ?? null;
+      if (shopId) {
+        return { shopId, source: "work_order_lines.work_order_id.shop_id" };
+      }
+    }
+  }
+
+  if (woId) {
+    const { data, error } = await supabase
+      .from("work_orders")
+      .select("id, shop_id, vehicle_id")
+      .eq("id", woId)
+      .maybeSingle<{ id: string; shop_id: string | null; vehicle_id: string | null }>();
+
+    if (error) {
+      console.error("[inspections/photos/upload] wo lookup failed", error);
+    } else {
+      const shopId = data?.shop_id ?? null;
+      if (shopId) {
+        return { shopId, source: "work_orders.shop_id" };
+      }
+    }
+  }
+
+  const { data: profById } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", userId)
+    .maybeSingle<{ shop_id: string | null }>();
+
+  if (profById?.shop_id) {
+    return { shopId: profById.shop_id, source: "profiles.id.shop_id" };
+  }
+
+  const { data: profByUserId } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("user_id", userId)
+    .maybeSingle<{ shop_id: string | null }>();
+
+  if (profByUserId?.shop_id) {
+    return { shopId: profByUserId.shop_id, source: "profiles.user_id.shop_id" };
+  }
+
+  return { shopId: null, source: "none" };
+}
+
+async function ensureInspectionRow(args: {
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>;
+  inspectionId: string;
+  shopId: string;
+  workOrderId: string | null;
+  workOrderLineId: string | null;
+}): Promise<
+  | { ok: true; inspectionId: string }
+  | { ok: false; error: string }
+> {
+  const { supabase, inspectionId, shopId, workOrderId, workOrderLineId } = args;
+
+  const { data: existingById, error: existingByIdErr } = await supabase
+    .from("inspections")
+    .select("id")
+    .eq("id", inspectionId)
+    .maybeSingle<{ id: string }>();
+
+  if (existingByIdErr) {
+    console.error(
+      "[inspections/photos/upload] inspection exists check by id failed",
+      existingByIdErr,
+    );
+    return { ok: false, error: existingByIdErr.message };
+  }
+
+  if (existingById?.id) {
+    return { ok: true, inspectionId: existingById.id };
+  }
+
+  if (workOrderLineId) {
+    const { data: existingByLine, error: existingByLineErr } = await supabase
+      .from("inspections")
+      .select("id")
+      .eq("work_order_line_id", workOrderLineId)
+      .maybeSingle<{ id: string }>();
+
+    if (existingByLineErr) {
+      console.error(
+        "[inspections/photos/upload] inspection exists check by work_order_line_id failed",
+        existingByLineErr,
+      );
+      return { ok: false, error: existingByLineErr.message };
+    }
+
+    if (existingByLine?.id) {
+      return { ok: true, inspectionId: existingByLine.id };
+    }
+  }
+
+  let vehicleId: string | null = null;
+
+  if (workOrderId) {
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("id, vehicle_id")
+      .eq("id", workOrderId)
+      .maybeSingle<{ id: string; vehicle_id: string | null }>();
+
+    if (woErr) {
+      console.error("[inspections/photos/upload] work order vehicle lookup failed", woErr);
+    }
+
+    vehicleId = wo?.vehicle_id ?? null;
+  }
+
+  const insertPayload: Database["public"]["Tables"]["inspections"]["Insert"] = {
+    id: inspectionId,
+    shop_id: shopId,
+    work_order_id: workOrderId,
+    work_order_line_id: workOrderLineId,
+    vehicle_id: vehicleId,
+    status: "in_progress",
+  };
+
+  const { error: insertErr } = await supabase
+    .from("inspections")
+    .insert(insertPayload);
+
+  if (insertErr) {
+    console.error("[inspections/photos/upload] inspection bootstrap insert failed", insertErr);
+    return { ok: false, error: insertErr.message };
+  }
+
+  return { ok: true, inspectionId };
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
+  if (userErr || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const form = await req.formData().catch(() => null);
+  if (!form) {
+    return NextResponse.json(
+      { error: "Expected multipart/form-data" },
+      { status: 400 },
+    );
+  }
+
+  const requestedInspectionId = asString(form.get("inspectionId"));
+  const workOrderId = asString(form.get("workOrderId"));
+  const workOrderLineId = asString(form.get("workOrderLineId"));
+  const itemName = asString(form.get("itemName"));
+  const notes = asString(form.get("notes"));
+  const file = form.get("file");
+
+  if (!requestedInspectionId) {
+    return NextResponse.json({ error: "Missing inspectionId" }, { status: 400 });
+  }
+
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "Missing file" }, { status: 400 });
+  }
+
+  const resolved = await resolveShopId({
+    supabase,
+    inspectionId: requestedInspectionId,
+    workOrderId,
+    workOrderLineId,
+    userId: user.id,
+  });
+
+  const shopId = resolved.shopId;
+  if (!shopId) {
+    return NextResponse.json(
+      {
+        error: "Unable to resolve shop for inspection photo upload",
+        debug: {
+          source: resolved.source,
+          inspectionId: requestedInspectionId,
+          workOrderId,
+          workOrderLineId,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
+    p_shop_id: shopId,
+  });
+
+  if (ctxErr) {
+    console.error("[inspections/photos/upload] set_current_shop_id failed", ctxErr);
+    return NextResponse.json(
+      { error: "Failed to set shop context" },
+      { status: 500 },
+    );
+  }
+
+  const ensure = await ensureInspectionRow({
+    supabase,
+    inspectionId: requestedInspectionId,
+    shopId,
+    workOrderId,
+    workOrderLineId,
+  });
+
+  if (!ensure.ok) {
+    return NextResponse.json(
+      { error: `Failed to bootstrap inspection row: ${ensure.error}` },
+      { status: 500 },
+    );
+  }
+
+  const resolvedInspectionId = ensure.inspectionId;
+
+  const bucket = "inspection_photos";
+  const shopPart = safeFilePart(shopId);
+  const inspPart = safeFilePart(resolvedInspectionId);
+  const idPart = crypto.randomUUID();
+  const ext = extFromMime(file.type);
+
+  const path = `shops/${shopPart}/inspections/${inspPart}/${idPart}.${ext}`;
+  const bytes = Buffer.from(await file.arrayBuffer());
+
+  const { error: upErr } = await supabase.storage.from(bucket).upload(path, bytes, {
+    contentType: file.type || (ext === "png" ? "image/png" : "image/jpeg"),
+    upsert: false,
+  });
+
+  if (upErr) {
+    console.error("[inspections/photos/upload] storage upload failed", upErr);
+    return NextResponse.json({ error: upErr.message }, { status: 500 });
+  }
+
+  const { data: signed, error: signErr } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, 60 * 60 * 24 * 30);
+
+  if (signErr || !signed?.signedUrl) {
+    console.warn("[inspections/photos/upload] createSignedUrl failed", signErr);
+  }
+
+  const imageUrl = signed?.signedUrl ?? null;
+
+  const { data: row, error: insErr } = await supabase
+    .from("inspection_photos")
+    .insert({
+      inspection_id: resolvedInspectionId,
+      item_name: itemName,
+      image_url: imageUrl ?? path,
+      notes: notes ?? null,
+      user_id: user.id,
+    })
+    .select("id, image_url, item_name")
+    .single();
+
+  if (insErr) {
+    console.error("[inspections/photos/upload] inspection_photos insert failed", insErr);
+    return NextResponse.json({ error: insErr.message }, { status: 500 });
+  }
+    // Best-effort ShopReel media sync
+    try {
+      const mediaUrl = row?.image_url ?? imageUrl ?? path ?? null;
+
+      if (shopId && mediaUrl) {
+        const mediaEvent = await buildInspectionMediaCapturedEvent({
+          shopId,
+          inspectionId: requestedInspectionId,
+          workOrderId,
+          itemName,
+          notes,
+          mediaUrl,
+        });
+
+        await postStoryEventToShopReel(mediaEvent).catch((error: unknown) => {
+          console.error("[shopreel] failed to sync inspection media", error);
+        });
+      }
+    } catch (error) {
+      console.error("[shopreel] inspection media event error", error);
+    }
+
+  return NextResponse.json({
+    ok: true,
+    bucket,
+    path,
+    inspectionId: resolvedInspectionId,
+    requestedInspectionId,
+    workOrderId,
+    workOrderLineId,
+    itemName,
+    url: row?.image_url ?? imageUrl,
+    photo: row,
+  });
+}
+
+===== features/work-orders/intake/types.ts =====
+export type IntakeV1 = {
+  version: "1.0";
+
+  subject: {
+    customer_id: string;
+    contact_id?: string | null;
+    vehicle_id: string;
+    unit_number?: string | null;
+    odometer_km?: number | null;
+    engine_hours?: number | null;
+  };
+
+  concern: {
+    primary_text: string;
+    additional_text?: string | null;
+    started_at?: string | null; // ISO date/datetime
+    happened_before?: boolean | null;
+    recent_work?: string | null;
+  };
+
+  duplication: {
+    duplicable: "yes" | "no" | "unsure";
+    conditions?: {
+      temperature?: Array<"cold" | "hot" | "after_sitting" | "during_regen"> | null;
+      driving_state?: Array<
+        "idle" | "accel" | "decel" | "cruise" | "under_load" | "braking" | "turning"
+      > | null;
+      speed_kph_min?: number | null;
+      speed_kph_max?: number | null;
+      frequency?: "every_time" | "most_times" | "occasionally" | "once" | null;
+      notes?: string | null;
+    } | null;
+    last_occurred_at?: string | null;
+  };
+
+  symptoms: {
+    primary_system:
+      | "engine"
+      | "aftertreatment"
+      | "transmission"
+      | "drivetrain"
+      | "brakes"
+      | "suspension_steering"
+      | "electrical"
+      | "hvac"
+      | "tires_wheels"
+      | "body_chassis"
+      | "pm_service"
+      | "inspection_only"
+      | "other";
+    types: Array<
+      | "warning_light"
+      | "fault_code"
+      | "noise"
+      | "vibration"
+      | "leak"
+      | "performance"
+      | "starting"
+      | "overheating"
+      | "fuel_economy"
+      | "visual_damage"
+      | "other"
+    >;
+    warning_indicators?: {
+      mil?: boolean | null;
+      abs?: boolean | null;
+      def?: boolean | null;
+      dpf?: boolean | null;
+      oil_pressure?: boolean | null;
+      battery?: boolean | null;
+      other_text?: string | null;
+    } | null;
+    dtcs?: Array<{ code: string; description?: string | null }> | null;
+  };
+
+  operating_conditions?: {
+    environment?: Array<
+      "city" | "highway" | "gravel" | "off_road" | "extreme_cold" | "extreme_heat"
+    > | null;
+    occurs_when?: Array<
+      "cold_start" | "hot" | "under_load" | "highway_speed" | "idle" | "braking" | "turning"
+    > | null;
+  } | null;
+
+  context?: {
+    recent_events?: Array<
+      "breakdown" | "tow" | "accident" | "jump_start" | "fuel_contamination" | "regen_event"
+    > | null;
+    smells_smoke_sounds?: string | null;
+    parked_extended?: boolean | null;
+    last_service_note?: string | null;
+    previous_recommendations_declined?: boolean | null;
+  } | null;
+
+  authorization: {
+    diag_authorized: boolean;
+    diag_limit_amount?: number | null;
+    contact_before_repairs: boolean;
+    repair_limit_amount?: number | null;
+    priority: "down_urgent" | "can_wait" | "scheduled_pm";
+    preferred_contact?: "phone" | "text" | "email" | "portal" | null;
+  };
+
+  attachments?: Array<{
+    id: string;
+    kind: "photo" | "video" | "document";
+    label?: string | null;
+    created_at: string; // ISO
+  }> | null;
+
+  internal_notes?: {
+    advisor_note?: string | null;
+    assigned_tech_id?: string | null;
+    inspection_template_id?: string | null;
+  } | null;
+};
+
+export type IntakeMode = "portal" | "app" | "fleet";
+
+
+===== features/work-orders/intake/schema.zod.ts =====
+import { z } from "zod";
+import { normalizeDtcCode, clampNumber, trimOrNull } from "./utils/sanitize";
+
+const ISOish = z.string().min(4);
+
+export const IntakeV1Schema = z
+  .object({
+    version: z.literal("1.0"),
+
+    subject: z.object({
+      customer_id: z.string().min(1),
+      contact_id: z.string().min(1).nullable().optional(),
+      vehicle_id: z.string().min(1),
+      unit_number: z.string().nullable().optional(),
+      odometer_km: z.number().nonnegative().nullable().optional(),
+      engine_hours: z.number().nonnegative().nullable().optional(),
+    }),
+
+    concern: z.object({
+      primary_text: z.string().min(1),
+      additional_text: z.string().nullable().optional(),
+      started_at: ISOish.nullable().optional(),
+      happened_before: z.boolean().nullable().optional(),
+      recent_work: z.string().nullable().optional(),
+    }),
+
+    duplication: z.object({
+      duplicable: z.enum(["yes", "no", "unsure"]),
+      conditions: z
+        .object({
+          temperature: z
+            .array(z.enum(["cold", "hot", "after_sitting", "during_regen"]))
+            .nullable()
+            .optional(),
+          driving_state: z
+            .array(
+              z.enum([
+                "idle",
+                "accel",
+                "decel",
+                "cruise",
+                "under_load",
+                "braking",
+                "turning",
+              ]),
+            )
+            .nullable()
+            .optional(),
+          speed_kph_min: z.number().nonnegative().nullable().optional(),
+          speed_kph_max: z.number().nonnegative().nullable().optional(),
+          frequency: z
+            .enum(["every_time", "most_times", "occasionally", "once"])
+            .nullable()
+            .optional(),
+          notes: z.string().nullable().optional(),
+        })
+        .nullable()
+        .optional(),
+      last_occurred_at: ISOish.nullable().optional(),
+    }),
+
+    symptoms: z.object({
+      primary_system: z.enum([
+        "engine",
+        "aftertreatment",
+        "transmission",
+        "drivetrain",
+        "brakes",
+        "suspension_steering",
+        "electrical",
+        "hvac",
+        "tires_wheels",
+        "body_chassis",
+        "pm_service",
+        "inspection_only",
+        "other",
+      ]),
+      types: z
+        .array(
+          z.enum([
+            "warning_light",
+            "fault_code",
+            "noise",
+            "vibration",
+            "leak",
+            "performance",
+            "starting",
+            "overheating",
+            "fuel_economy",
+            "visual_damage",
+            "other",
+          ]),
+        )
+        .min(1),
+      warning_indicators: z
+        .object({
+          mil: z.boolean().nullable().optional(),
+          abs: z.boolean().nullable().optional(),
+          def: z.boolean().nullable().optional(),
+          dpf: z.boolean().nullable().optional(),
+          oil_pressure: z.boolean().nullable().optional(),
+          battery: z.boolean().nullable().optional(),
+          other_text: z.string().nullable().optional(),
+        })
+        .nullable()
+        .optional(),
+      dtcs: z
+        .array(
+          z.object({
+            code: z.string().min(1),
+            description: z.string().nullable().optional(),
+          }),
+        )
+        .nullable()
+        .optional(),
+    }),
+
+    operating_conditions: z
+      .object({
+        environment: z
+          .array(
+            z.enum([
+              "city",
+              "highway",
+              "gravel",
+              "off_road",
+              "extreme_cold",
+              "extreme_heat",
+            ]),
+          )
+          .nullable()
+          .optional(),
+        occurs_when: z
+          .array(
+            z.enum([
+              "cold_start",
+              "hot",
+              "under_load",
+              "highway_speed",
+              "idle",
+              "braking",
+              "turning",
+            ]),
+          )
+          .nullable()
+          .optional(),
+      })
+      .nullable()
+      .optional(),
+
+    context: z
+      .object({
+        recent_events: z
+          .array(
+            z.enum([
+              "breakdown",
+              "tow",
+              "accident",
+              "jump_start",
+              "fuel_contamination",
+              "regen_event",
+            ]),
+          )
+          .nullable()
+          .optional(),
+        smells_smoke_sounds: z.string().nullable().optional(),
+        parked_extended: z.boolean().nullable().optional(),
+        last_service_note: z.string().nullable().optional(),
+        previous_recommendations_declined: z.boolean().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+
+    authorization: z.object({
+      diag_authorized: z.boolean(),
+      diag_limit_amount: z.number().nonnegative().nullable().optional(),
+      contact_before_repairs: z.boolean(),
+      repair_limit_amount: z.number().nonnegative().nullable().optional(),
+      priority: z.enum(["down_urgent", "can_wait", "scheduled_pm"]),
+      preferred_contact: z.enum(["phone", "text", "email", "portal"]).nullable().optional(),
+    }),
+
+    attachments: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          kind: z.enum(["photo", "video", "document"]),
+          label: z.string().nullable().optional(),
+          created_at: ISOish,
+        }),
+      )
+      .nullable()
+      .optional(),
+
+    internal_notes: z
+      .object({
+        advisor_note: z.string().nullable().optional(),
+        assigned_tech_id: z.string().nullable().optional(),
+        inspection_template_id: z.string().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .transform((raw) => {
+    const cloned = structuredClone(raw);
+
+    cloned.subject.unit_number = trimOrNull(cloned.subject.unit_number) ?? null;
+
+    cloned.concern.additional_text = trimOrNull(cloned.concern.additional_text) ?? null;
+    cloned.concern.recent_work = trimOrNull(cloned.concern.recent_work) ?? null;
+
+    // keep JSON lean: only retain conditions if duplicable=yes
+    if (cloned.duplication.duplicable !== "yes") {
+      cloned.duplication.conditions = null;
+    } else if (cloned.duplication.conditions) {
+      const c = cloned.duplication.conditions;
+      c.speed_kph_min = clampNumber(c.speed_kph_min, 0, 250);
+      c.speed_kph_max = clampNumber(c.speed_kph_max, 0, 250);
+      c.notes = trimOrNull(c.notes) ?? null;
+    }
+
+    if (cloned.symptoms.dtcs) {
+      cloned.symptoms.dtcs = cloned.symptoms.dtcs
+        .map((d) => ({
+          ...d,
+          code: normalizeDtcCode(d.code),
+          description: trimOrNull(d.description) ?? null,
+        }))
+        .filter((d) => d.code.length > 0);
+      if (!cloned.symptoms.dtcs.length) cloned.symptoms.dtcs = null;
+    }
+
+    if (cloned.symptoms.warning_indicators?.other_text != null) {
+      cloned.symptoms.warning_indicators.other_text =
+        trimOrNull(cloned.symptoms.warning_indicators.other_text) ?? null;
+    }
+    if (cloned.context?.smells_smoke_sounds != null) {
+      cloned.context.smells_smoke_sounds = trimOrNull(cloned.context.smells_smoke_sounds) ?? null;
+    }
+    if (cloned.context?.last_service_note != null) {
+      cloned.context.last_service_note = trimOrNull(cloned.context.last_service_note) ?? null;
+    }
+    if (cloned.internal_notes?.advisor_note != null) {
+      cloned.internal_notes.advisor_note = trimOrNull(cloned.internal_notes.advisor_note) ?? null;
+    }
+
+    return cloned;
+  });
+
+export type IntakeV1Parsed = z.infer<typeof IntakeV1Schema>;
+
+
+===== features/work-orders/intake/mappers.ts =====
+import type { IntakeV1 } from "./types";
+import { makeIntakeDefaults } from "./defaults";
+
+export type CustomerProfile = {
+  customer_id: string;
+  contact_id?: string | null;
+  preferred_contact?: "phone" | "text" | "email" | "portal" | null;
+  vehicles: Array<{ vehicle_id: string; unit_number?: string | null; label?: string | null }>;
+};
+
+export function pickDefaultVehicleId(profile: CustomerProfile): string | null {
+  if (!profile.vehicles?.length) return null;
+  if (profile.vehicles.length === 1) return profile.vehicles[0].vehicle_id;
+  // If multiple, you can later prefer "last_used_vehicle_id" if you store it.
+  return null;
+}
+
+export function buildPrefilledIntake(params: {
+  profile: CustomerProfile;
+  selected_vehicle_id?: string | null;
+}): IntakeV1 {
+  const vehicle_id =
+    params.selected_vehicle_id ??
+    pickDefaultVehicleId(params.profile) ??
+    params.profile.vehicles?.[0]?.vehicle_id;
+
+  if (!vehicle_id) {
+    return makeIntakeDefaults({
+      customer_id: params.profile.customer_id,
+      vehicle_id: "MISSING_VEHICLE",
+      contact_id: params.profile.contact_id ?? null,
+      preferred_contact: params.profile.preferred_contact ?? null,
+    });
+  }
+
+  const vehicle = params.profile.vehicles.find((v) => v.vehicle_id === vehicle_id);
+
+  const intake = makeIntakeDefaults({
+    customer_id: params.profile.customer_id,
+    vehicle_id,
+    contact_id: params.profile.contact_id ?? null,
+    preferred_contact: params.profile.preferred_contact ?? null,
+  });
+
+  if (vehicle?.unit_number) intake.subject.unit_number = vehicle.unit_number;
+
+  // keep defaults simple; user will select
+  intake.symptoms.types = ["other"];
+  intake.symptoms.primary_system = "other";
+
+  return intake;
+}
+
+export function makeVehicleLabel(v: {
+  label?: string | null;
+  unit_number?: string | null;
+  vehicle_id: string;
+}) {
+  const parts: string[] = [];
+  if (v.label) parts.push(v.label);
+  if (v.unit_number) parts.push(`Unit ${v.unit_number}`);
+  if (!parts.length) parts.push(v.vehicle_id.slice(0, 8));
+  return parts.join(" • ");
+}
+
+
+===== features/work-orders/components/InspectionModal.tsx =====
+MISSING FILE
+
+
+===== app/inspections/run/page.tsx =====
+import RunPage from "@/features/inspections/app/inspection/run/page";
+export const dynamic = "force-dynamic";
+export default function Page() { return <RunPage />; }
+
+===== app/api/ai/quote-suggest/route.ts =====
+// /app/api/ai/quote-suggest/route.ts
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database, Json } from "@shared/types/types/supabase";
+import { ProFixAI, type QuoteEnginePart } from "@/features/integrations/ai";
+
+type DB = Database;
+
+type ConfidenceLevel = "low" | "medium" | "high";
+
+export type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate?: number;
+  summary: string;
+  confidence?: ConfidenceLevel;
+  price?: number;
+  notes?: string;
+  title?: string;
+};
+
+interface VehicleInput {
+  year?: string | number | null;
+  make?: string | null;
+  model?: string | null;
+  vin?: string | null;
+}
+
+interface RequestBody {
+  item: string;
+  notes?: string;
+  section: string;
+  status: string;
+  value?: string;
+  unit?: string;
+  vehicle?: VehicleInput | null;
+}
+
+function isRequestBody(value: unknown): value is RequestBody {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.item === "string" &&
+    typeof obj.section === "string" &&
+    typeof obj.status === "string"
+  );
+}
+
+function mapConfidence(score: number): ConfidenceLevel {
+  if (score >= 0.75) return "high";
+  if (score >= 0.5) return "medium";
+  return "low";
+}
+
+function buildVehicleYmm(vehicle?: VehicleInput | null): string | null {
+  if (!vehicle) return null;
+  const year = vehicle.year != null ? String(vehicle.year) : "";
+  const make = vehicle.make ?? "";
+  const model = vehicle.model ?? "";
+  const combined = [year, make, model].join(" ").trim();
+  return combined.length > 0 ? combined : null;
+}
+
+function buildComplaint(input: RequestBody): string {
+  const parts: string[] = [];
+  if (input.section) parts.push(`[${input.section}]`);
+  if (input.status) parts.push(`Status: ${input.status}`);
+  parts.push(input.item);
+
+  if (typeof input.notes === "string" && input.notes.trim().length > 0) {
+    parts.push(`Notes: ${input.notes.trim()}`);
+  }
+
+  if (input.value) {
+    const valuePart = input.unit ? `${input.value} ${input.unit}` : input.value;
+    parts.push(`Value: ${valuePart}`);
+  }
+
+  return parts.join(" | ");
+}
+
+export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  try {
+    const rawBody: unknown = await req.json();
+    if (!isRequestBody(rawBody)) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const body: RequestBody = rawBody;
+    const { item, notes, section, status, vehicle } = body;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Resolve shopId (best-effort)
+    let shopId: string | null = null;
+    if (user?.id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user.id)
+        .maybeSingle<{ shop_id: string | null }>();
+
+      shopId = profile?.shop_id ?? null;
+    }
+
+    const complaint = buildComplaint(body);
+    const vehicleYmm = buildVehicleYmm(vehicle);
+
+    const aiResult = await ProFixAI.suggestQuote({
+      shopId: shopId ?? "unknown_shop",
+      vehicleYmm,
+      complaint,
+    });
+
+    const baseSummary =
+      typeof notes === "string" && notes.trim().length > 0 ? notes.trim() : item;
+
+    const suggestion: AISuggestion = aiResult
+      ? {
+          parts: aiResult.parts.map((p: QuoteEnginePart) => ({
+            name: p.description || "Suggested part",
+            qty: p.qty,
+            cost: p.price,
+            notes: p.partId ? `Part ID: ${p.partId}` : undefined,
+          })),
+          laborHours: aiResult.laborHours,
+          summary: baseSummary,
+          confidence: mapConfidence(aiResult.confidence),
+        }
+      : {
+          parts: [],
+          laborHours: 0.5,
+          summary: baseSummary,
+          confidence: "low",
+        };
+
+    // ✅ Log using a VALID event_type to avoid 400s (your enum/check constraint)
+    if (shopId && user?.id) {
+      try {
+        const payload: Json = {
+          kind: "quote_suggest",
+          input: {
+            item,
+            notes: notes ?? null,
+            section,
+            status,
+            value: body.value ?? null,
+            unit: body.unit ?? null,
+            vehicle: vehicle ?? null,
+            complaint,
+          },
+          output: suggestion,
+        } as unknown as Json;
+
+        const { error: logErr } = await supabase.from("ai_events").insert({
+          event_type: "message", // ✅ valid in your allowed list
+          payload,
+          shop_id: shopId,
+          user_id: user.id,
+          entity_id: null,
+          entity_table: "inspection_results",
+        });
+
+        if (logErr) {
+          // eslint-disable-next-line no-console
+          console.warn("[AI] Failed to log quote-suggest event:", logErr);
+        }
+      } catch (logErr) {
+        // eslint-disable-next-line no-console
+        console.warn("[AI] Failed to log quote-suggest event:", logErr);
+      }
+    }
+
+    return NextResponse.json({ suggestion });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("quote-suggest error:", err);
+    return NextResponse.json({ error: "AI suggestion failed" }, { status: 500 });
+  }
+}

@@ -1117,7 +1117,6 @@ export default function CreateWorkOrderPage() {
     setIntakeSaving(true);
 
     try {
-      // 1) Save intake into work_orders.notes (non-breaking, no schema change)
       const intakeBlock = buildIntakeNotesBlock({
         concern,
         details: intakeDetails,
@@ -1137,40 +1136,82 @@ export default function CreateWorkOrderPage() {
       if (woErr) throw woErr;
       setWo(updatedWo as WorkOrderRow);
 
-      // 2) Auto-create diagnostic line (avoid duplicates)
-      const diagDesc = `Intake: ${concern}`;
+      const intakePayload = {
+        version: "1.0" as const,
+        subject: {
+          customer_id: customerId ?? "",
+          vehicle_id: vehicleIdProp ?? "",
+          contact_id: null,
+          unit_number: vehicle.unit_number ?? null,
+          odometer_km: intakeMileage.trim() ? Number(intakeMileage.replace(/,/g, "")) || null : null,
+          engine_hours: vehicle.engine_hours ? Number(vehicle.engine_hours) || null : null,
+        },
+        concern: {
+          primary_text: concern,
+          additional_text: intakeDetails.trim() || null,
+          started_at: null,
+          happened_before: null,
+          recent_work: null,
+        },
+        duplication: {
+          duplicable: "unsure" as const,
+          conditions: null,
+          last_occurred_at: null,
+        },
+        symptoms: {
+          primary_system: "other" as const,
+          types: ["other" as const],
+          warning_indicators: null,
+          dtcs: null,
+        },
+        operating_conditions: null,
+        context: null,
+        authorization: {
+          diag_authorized: true,
+          diag_limit_amount: null,
+          contact_before_repairs: true,
+          repair_limit_amount: null,
+          priority: "can_wait" as const,
+          preferred_contact:
+            intakeContactPref === "Email"
+              ? "email"
+              : intakeContactPref === "Text only"
+                ? "text"
+                : intakeContactPref === "Call only"
+                  ? "phone"
+                  : "phone",
+        },
+        attachments: null,
+        internal_notes: {
+          advisor_note: notes?.trim() || null,
+          assigned_tech_id: null,
+          inspection_template_id: null,
+        },
+      };
 
-      const { data: existingLines, error: lErr } = await supabase
-        .from("work_order_lines")
-        .select("id, description")
-        .eq("work_order_id", wo.id)
-        .order("created_at", { ascending: true });
+      const res = await fetch(`/api/work-orders/${wo.id}/intake?mode=app`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "app",
+          intake: intakePayload,
+        }),
+      });
 
-      if (lErr) throw lErr;
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; createdLines?: number; error?: string }
+        | null;
 
-      const already = (existingLines ?? []).some(
-        (l) => (l.description ?? "") === diagDesc,
-      );
-
-      if (!already) {
-        const insertLine: DB["public"]["Tables"]["work_order_lines"]["Insert"] = {
-          work_order_id: wo.id,
-          job_type: "diagnosis",
-          status: "awaiting",
-          complaint: concern,
-          description: diagDesc,
-          labor_time: 1.0,
-        };
-
-        const { error: insErr } = await supabase
-          .from("work_order_lines")
-          .insert(insertLine);
-
-        if (insErr) throw insErr;
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Failed to save intake");
       }
 
       await fetchLines();
-      toast.success("Intake saved and diagnostic line created.");
+      toast.success(
+        json.createdLines && json.createdLines > 0
+          ? `Intake saved and ${json.createdLines} suggested line${json.createdLines === 1 ? "" : "s"} created.`
+          : "Intake saved.",
+      );
       setIntakeOpen(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to save intake.";

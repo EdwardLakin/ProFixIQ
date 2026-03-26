@@ -1,0 +1,3324 @@
+
+
+===== app/api/work-orders/[id]/intake/route.ts =====
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+import { IntakeV1Schema } from "@/features/work-orders/intake/schema.zod";
+import type { IntakeMode, IntakeV1 } from "@/features/work-orders/intake/types";
+import { buildPrefilledIntake, makeVehicleLabel } from "@/features/work-orders/intake/mappers";
+
+type DB = Database;
+
+function json(data: unknown, status = 200) {
+  return NextResponse.json(data, { status });
+}
+
+function text(message: string, status = 400) {
+  return new NextResponse(message, { status });
+}
+
+function getMode(url: string): IntakeMode {
+  try {
+    const u = new URL(url);
+    const m = u.searchParams.get("mode");
+    if (m === "portal" || m === "app" || m === "fleet") return m;
+  } catch {}
+  return "portal";
+}
+
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const mode = getMode(req.url);
+
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  // best-effort auth (used for submitted_by later)
+  await supabase.auth.getUser();
+
+  // Work order
+  const { data: wo, error: woErr } = await supabase
+    .from("work_orders")
+    .select("id, customer_id, vehicle_id, intake_json")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (woErr) return text(woErr.message, 500);
+  if (!wo) return text("Work order not found.", 404);
+
+  // Customer display name (best-effort)
+  let displayName: string | null = null;
+  if (wo.customer_id) {
+    const { data: cust } = await supabase
+      .from("customers")
+      .select("id, name, business_name, first_name, last_name")
+      .eq("id", wo.customer_id)
+      .maybeSingle();
+
+    displayName =
+      cust?.business_name ??
+      cust?.name ??
+      (cust?.first_name || cust?.last_name
+        ? [cust?.first_name, cust?.last_name].filter(Boolean).join(" ")
+        : null) ??
+      null;
+  }
+
+  // Vehicles for selection
+  const vehicles: Array<{ vehicle_id: string; label?: string | null; unit_number?: string | null }> =
+    [];
+
+  if (wo.customer_id) {
+    const { data: vs } = await supabase
+      .from("vehicles")
+      .select("id, unit_number, year, make, model, vin")
+      .eq("customer_id", wo.customer_id)
+      .order("created_at", { ascending: false });
+
+    (vs ?? []).forEach((v) => {
+      const labelParts = [
+        v.year ? String(v.year) : null,
+        v.make ?? null,
+        v.model ?? null,
+        v.vin ? v.vin.slice(-6) : null,
+      ].filter(Boolean);
+
+      const label = labelParts.length ? labelParts.join(" ") : null;
+
+      vehicles.push({
+        vehicle_id: v.id,
+        unit_number: v.unit_number ?? null,
+        label: makeVehicleLabel({
+          vehicle_id: v.id,
+          unit_number: v.unit_number ?? null,
+          label,
+        }),
+      });
+    });
+  }
+
+  // Intake payload
+  let intake: IntakeV1;
+  const raw = (wo as any).intake_json as unknown;
+
+  if (raw && typeof raw === "object") {
+    intake = IntakeV1Schema.parse(raw);
+  } else {
+    const fallbackVehicleId =
+      wo.vehicle_id ??
+      (vehicles.length === 1 ? vehicles[0].vehicle_id : null) ??
+      (vehicles[0]?.vehicle_id ?? null);
+
+    intake = buildPrefilledIntake({
+      profile: {
+        customer_id: wo.customer_id ?? "",
+        vehicles: vehicles.map((v) => ({
+          vehicle_id: v.vehicle_id,
+          unit_number: v.unit_number ?? null,
+          label: v.label ?? null,
+        })),
+      },
+      selected_vehicle_id: fallbackVehicleId,
+    });
+
+    if (wo.vehicle_id) intake.subject.vehicle_id = wo.vehicle_id;
+    if (wo.customer_id) intake.subject.customer_id = wo.customer_id;
+  }
+
+  return json({
+    workOrderId: wo.id,
+    mode,
+    displayName,
+    vehicles,
+    intake,
+  });
+}
+
+export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  let body: { intake?: IntakeV1; mode?: IntakeMode } | null = null;
+  try {
+    body = (await req.json()) as any;
+  } catch {
+    return text("Invalid JSON.");
+  }
+
+  if (!body?.intake) return text("Missing intake.");
+  const parsed = IntakeV1Schema.parse(body.intake);
+
+  // Save draft: draft status + clear submission fields
+  const { error } = await supabase
+    .from("work_orders")
+    .update({
+      intake_json: parsed as any,
+      intake_status: "draft",
+      intake_submitted_at: null,
+      intake_submitted_by: null,
+    })
+    .eq("id", id);
+
+  if (error) return text(error.message, 500);
+  return json({ ok: true });
+}
+
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  let body: { intake?: IntakeV1; mode?: IntakeMode } | null = null;
+  try {
+    body = (await req.json()) as any;
+  } catch {
+    return text("Invalid JSON.");
+  }
+
+  if (!body?.intake) return text("Missing intake.");
+  const parsed = IntakeV1Schema.parse(body.intake);
+
+  const { data: auth, error: authErr } = await supabase.auth.getUser();
+  if (authErr) return text(authErr.message, 401);
+  if (!auth?.user?.id) return text("Not authenticated.", 401);
+
+  // Submit: submitted status + timestamp + submitted_by
+  const { error } = await supabase
+    .from("work_orders")
+    .update({
+      intake_json: parsed as any,
+      intake_status: "submitted",
+      intake_submitted_at: new Date().toISOString(),
+      intake_submitted_by: auth.user.id,
+    })
+    .eq("id", id);
+
+  if (error) return text(error.message, 500);
+  return json({ ok: true });
+}
+
+
+===== features/work-orders/components/AiSuggestModal.tsx =====
+"use client";
+
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import ModalShell from "@/features/shared/components/ModalShell";
+
+type JobType = "diagnosis" | "repair" | "maintenance" | "inspection" | "tech-suggested";
+
+type RawSuggestion = {
+  name: string;
+  laborHours: number;
+  jobType: JobType;
+  notes: string;
+  aiComplaint?: string;
+  aiCause?: string;
+  aiCorrection?: string;
+};
+
+type UiSuggestion = RawSuggestion & { id: string; selected: boolean };
+
+type AiSuggestModalProps = {
+  open: boolean;
+  onClose: () => void;
+  workOrderId: string;
+  vehicleId?: string | null;
+  vehicleLabel?: string | null;
+  initialComplaint?: string | null;
+  onAdded?: (count: number) => void;
+};
+
+function normalizeJobType(t: JobType): "diagnosis" | "repair" | "maintenance" | "inspection" {
+  if (t === "tech-suggested") return "diagnosis";
+  if (t === "diagnosis" || t === "repair" || t === "maintenance" || t === "inspection") return t;
+  return "diagnosis";
+}
+
+export function AiSuggestModal(props: AiSuggestModalProps) {
+  const {
+    open,
+    onClose,
+    workOrderId,
+    vehicleId,
+    vehicleLabel,
+    initialComplaint,
+    onAdded,
+  } = props;
+
+  const [complaint, setComplaint] = useState(initialComplaint ?? "");
+  const [step, setStep] = useState<"input" | "results">("input");
+  const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<UiSuggestion[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    setComplaint(initialComplaint ?? "");
+    setStep("input");
+    setSuggestions([]);
+    setLoading(false);
+  }, [open, initialComplaint]);
+
+  if (!open) return null;
+
+  const handleGetSuggestions = async () => {
+    if (!workOrderId) {
+      toast.error("Create and save the work order first.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const body: Record<string, unknown> = {
+        workOrderId,
+        complaint: complaint.trim() || null,
+      };
+
+      if (vehicleId) {
+        body.vehicleId = {
+          id: vehicleId,
+          year: null,
+          make: null,
+          model: null,
+        };
+      }
+
+      const res = await fetch("/api/work-orders/suggest-lines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const json = (await res.json()) as
+        | { suggestions?: RawSuggestion[]; error?: string }
+        | undefined;
+
+      if (!res.ok || !json?.suggestions) {
+        throw new Error(json?.error || "AI suggestions failed");
+      }
+
+      const ui: UiSuggestion[] = json.suggestions.map((s, idx) => ({
+        ...s,
+        id: `${idx}`,
+        selected: true,
+        jobType: normalizeJobType(s.jobType) as any,
+      }));
+
+      if (ui.length === 0) {
+        toast.info("No specific suggestions. Try adding a complaint first.");
+      }
+
+      setSuggestions(ui);
+      setStep("results");
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Could not get AI suggestions.";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddSelected = async () => {
+    const selected = suggestions.filter((s) => s.selected);
+    if (selected.length === 0) {
+      toast.info("Select at least one job to add.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const items = selected.map((s) => ({
+        description: s.name,
+        serviceCode: undefined,
+        jobType: normalizeJobType(s.jobType),
+        laborHours: s.laborHours,
+        notes: s.notes,
+        aiComplaint: s.aiComplaint ?? (complaint.trim() || undefined),
+        aiCause: s.aiCause,
+        aiCorrection: s.aiCorrection,
+      }));
+
+      const res = await fetch("/api/work-orders/add-suggested-lines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workOrderId,
+          vehicleId: vehicleId ?? null,
+          items,
+        }),
+      });
+
+      const json = (await res.json()) as
+        | { ok?: boolean; inserted?: number; error?: string }
+        | undefined;
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Failed to add suggested lines.");
+      }
+
+      const count = json.inserted ?? selected.length;
+      toast.success(`Added ${count} AI suggested job${count === 1 ? "" : "s"}.`);
+
+      onAdded?.(count);
+
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
+      onClose();
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Could not add suggested lines to work order.";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggle = (id: string) => {
+    setSuggestions((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, selected: !s.selected } : s)),
+    );
+  };
+
+  const btnLabel =
+    step === "input"
+      ? loading
+        ? "Thinking…"
+        : "Suggest Jobs"
+      : loading
+        ? "Adding…"
+        : "Add Selected";
+
+  const handlePrimary = async () => {
+    if (step === "input") await handleGetSuggestions();
+    else await handleAddSelected();
+  };
+
+  return (
+    <ModalShell
+      isOpen={open}
+      onClose={onClose}
+      title="AI: Suggest Services"
+      size="md"
+      onSubmit={handlePrimary}
+      submitText={btnLabel}
+      footerLeft={
+        step === "results" ? (
+          <button
+            type="button"
+            onClick={() => {
+              setStep("input");
+              setSuggestions([]);
+            }}
+            className="text-xs text-neutral-400 hover:text-neutral-200"
+          >
+            Start over
+          </button>
+        ) : null
+      }
+    >
+      <div className="space-y-3">
+        <div>
+          <p className="text-xs text-neutral-400">
+            Describe the concern. We’ll suggest jobs and add them as{" "}
+            <span className="font-semibold text-neutral-200">
+              quote lines (awaiting approval)
+            </span>
+            .
+          </p>
+          {vehicleLabel && (
+            <p className="mt-1 text-xs text-neutral-500">
+              Using context for:{" "}
+              <span className="font-mono text-neutral-100">{vehicleLabel}</span>
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+            Customer concern
+          </label>
+          <textarea
+            rows={3}
+            value={complaint}
+            onChange={(e) => setComplaint(e.target.value)}
+            placeholder="Example: Customer reports vibration at highway speeds, no dash lights on. Recently replaced front tires."
+            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+          />
+        </div>
+
+        {step === "results" && (
+          <div className="max-h-56 space-y-2 overflow-y-auto rounded border border-neutral-800 bg-neutral-950 p-2">
+            {suggestions.length === 0 ? (
+              <p className="text-xs text-neutral-500">
+                No suggestions yet. Try adjusting the complaint text.
+              </p>
+            ) : (
+              suggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => handleToggle(s.id)}
+                  className={`flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-xs ${
+                    s.selected
+                      ? "border border-orange-500/80 bg-orange-500/10"
+                      : "border border-neutral-800 bg-neutral-950"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={s.selected}
+                    onChange={() => handleToggle(s.id)}
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-900"
+                  />
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="font-medium text-neutral-100">
+                        {s.name}
+                      </span>
+                      <span className="rounded-full border border-neutral-600 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
+                        {normalizeJobType(s.jobType).replace("-", " ")}
+                      </span>
+                      <span className="text-[10px] text-neutral-400">
+                        ~{s.laborHours}h
+                      </span>
+                    </div>
+                    {s.notes && (
+                      <p className="mt-0.5 text-[11px] text-neutral-400">
+                        {s.notes}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
+===== features/work-orders/components/MenuQuickAdd.tsx =====
+// features/work-orders/components/MenuQuickAdd.tsx
+"use client";
+
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { toast } from "sonner";
+import type { Database, TablesInsert } from "@shared/types/types/supabase";
+import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
+import { calculateTax, type ProvinceCode } from "@/features/integrations/tax";
+
+type DB = Database;
+type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
+
+type JobType = "maintenance" | "repair" | "diagnosis" | "inspection";
+
+type PackageItem = {
+  description: string;
+  jobType?: JobType;
+  laborHours?: number | null;
+  notes?: string | null;
+};
+
+type PackageDef = {
+  id: string;
+  name: string;
+  summary: string;
+  jobType: "inspection" | "maintenance";
+  estLaborHours: number | null;
+  items: PackageItem[];
+};
+
+type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
+
+type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
+  labor_hours?: number | null;
+};
+
+type VehicleLite = {
+  id?: string | null;
+  year?: number | string | null;
+  make?: string | null;
+  model?: string | null;
+  submodel?: string | null;
+  engine_type?: string | null;
+  transmission_type?: string | null;
+  drivetrain?: string | null;
+  vin?: string | null;
+  license_plate?: string | null;
+};
+
+type CustomerLite = {
+  id?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+};
+
+type AddMenuParams =
+  | {
+      kind?: "normal";
+      name: string;
+      jobType: JobType;
+      laborHours?: number | null;
+      notes?: string | null;
+      source?: "single" | "package" | "menu_item" | "ai" | "inspection";
+      returnLineId?: boolean;
+
+      // ✅ persist linkage
+      menuItemId?: string | null;
+      inspectionTemplateId?: string | null;
+    }
+  | {
+      kind: "template";
+      template: TemplateRow;
+      name?: string;
+      laborHours?: number | null;
+    };
+
+type ShopDefaults = {
+  country: "US" | "CA";
+  province: string | null;
+  timezone: string | null;
+  labor_rate: number | null;
+  tax_rate: number | null; // percent in DB (e.g. 5 => 5%)
+};
+
+function normStr(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length ? t : null;
+}
+function normLower(v: unknown): string | null {
+  const s = normStr(v);
+  return s ? s.toLowerCase() : null;
+}
+function normYear(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number.parseInt(v.trim(), 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function getStringField(obj: unknown, key: string): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  const v = (obj as Record<string, unknown>)[key];
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length ? t : null;
+}
+
+function isGlobalMenuItem(mi: MenuItemRow): boolean {
+  const has =
+    mi.vehicle_year != null ||
+    !!normStr(mi.vehicle_make) ||
+    !!normStr(mi.vehicle_model) ||
+    !!normStr(mi.submodel) ||
+    !!normStr(mi.engine_type) ||
+    !!normStr(mi.transmission_type) ||
+    !!normStr(mi.drivetrain);
+  return !has;
+}
+
+function scoreMenuItemFit(args: { mi: MenuItemRow; vehicle: VehicleLite | null }): number {
+  const { mi, vehicle } = args;
+  if (!vehicle) return isGlobalMenuItem(mi) ? 5 : 0;
+
+  const vYear = normYear(vehicle.year);
+  const vMake = normLower(vehicle.make);
+  const vModel = normLower(vehicle.model);
+  const vSub = normLower(vehicle.submodel);
+  const vEng = normLower(vehicle.engine_type);
+  const vTrans = normLower(vehicle.transmission_type);
+  const vDrive = normLower(vehicle.drivetrain);
+
+  const miYear = mi.vehicle_year ?? null;
+  const miMake = normLower(mi.vehicle_make);
+  const miModel = normLower(mi.vehicle_model);
+  const miSub = normLower(mi.submodel);
+  const miEng = normLower(mi.engine_type);
+  const miTrans = normLower(mi.transmission_type);
+  const miDrive = normLower(mi.drivetrain);
+
+  if (miYear != null && vYear != null && miYear !== vYear) return 0;
+  if (miMake && vMake && miMake !== vMake) return 0;
+  if (miModel && vModel && miModel !== vModel) return 0;
+  if (miSub && vSub && miSub !== vSub) return 0;
+  if (miEng && vEng && miEng !== vEng) return 0;
+  if (miTrans && vTrans && miTrans !== vTrans) return 0;
+  if (miDrive && vDrive && miDrive !== vDrive) return 0;
+
+  let score = 0;
+
+  if (miYear != null && vYear != null && miYear === vYear) score += 30;
+  else if (miYear == null) score += 8;
+
+  if (miMake && vMake && miMake === vMake) score += 25;
+  else if (!miMake) score += 6;
+
+  if (miModel && vModel && miModel === vModel) score += 25;
+  else if (!miModel) score += 6;
+
+  if (miSub && vSub && miSub === vSub) score += 10;
+  else if (!miSub) score += 2;
+
+  if (miEng && vEng && miEng === vEng) score += 6;
+  else if (!miEng) score += 1;
+
+  if (miTrans && vTrans && miTrans === vTrans) score += 6;
+  else if (!miTrans) score += 1;
+
+  if (miDrive && vDrive && miDrive === vDrive) score += 6;
+  else if (!miDrive) score += 1;
+
+  return score;
+}
+
+function menuSearchHit(mi: MenuItemRow, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return true;
+
+  const hay = [
+    mi.name,
+    mi.description,
+    mi.category,
+    mi.service_key,
+    mi.complaint,
+    mi.cause,
+    mi.correction,
+  ]
+    .map((x) => (typeof x === "string" ? x : ""))
+    .join(" ")
+    .toLowerCase();
+
+  return hay.includes(needle);
+}
+
+function isProvinceCode(v: string): v is ProvinceCode {
+  return (
+    v === "AB" ||
+    v === "BC" ||
+    v === "MB" ||
+    v === "NB" ||
+    v === "NL" ||
+    v === "NS" ||
+    v === "NT" ||
+    v === "NU" ||
+    v === "ON" ||
+    v === "PE" ||
+    v === "QC" ||
+    v === "SK" ||
+    v === "YT"
+  );
+}
+
+function moneyLabel(currency: "CAD" | "USD", amount: number): string {
+  const rounded = Number.isFinite(amount) ? amount : 0;
+  return `${currency} $${rounded.toFixed(0)}`;
+}
+
+function calcMenuTotals(args: {
+  mi: MenuItemRow;
+  shop: ShopDefaults | null;
+}): {
+  laborHours: number;
+  laborRate: number;
+  laborTotal: number;
+  partsTotal: number;
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  taxLabel: string | null;
+} {
+  const { mi, shop } = args;
+
+  const laborHours =
+    typeof mi.labor_time === "number" && Number.isFinite(mi.labor_time) ? mi.labor_time : 0;
+
+  const partsTotal =
+    typeof mi.part_cost === "number" && Number.isFinite(mi.part_cost) ? mi.part_cost : 0;
+
+  const laborRate =
+    shop && typeof shop.labor_rate === "number" && Number.isFinite(shop.labor_rate)
+      ? shop.labor_rate
+      : 0;
+
+  const laborTotal = laborHours * laborRate;
+  const subtotal = partsTotal + laborTotal;
+
+  if (shop?.country === "CA") {
+    const prov = (shop.province ?? "").trim().toUpperCase();
+    if (isProvinceCode(prov)) {
+      const res = calculateTax(subtotal, prov);
+      const taxTotal = res.taxes.reduce((a, t) => a + t.amount, 0);
+      const taxLabel = res.taxes.map((t) => t.label).join("+") || null;
+      return {
+        laborHours,
+        laborRate,
+        laborTotal,
+        partsTotal,
+        subtotal,
+        taxTotal,
+        total: res.total,
+        taxLabel,
+      };
+    }
+  }
+
+  const pct =
+    shop && typeof shop.tax_rate === "number" && Number.isFinite(shop.tax_rate)
+      ? shop.tax_rate / 100
+      : 0;
+
+  const taxTotal = subtotal * pct;
+  return {
+    laborHours,
+    laborRate,
+    laborTotal,
+    partsTotal,
+    subtotal,
+    taxTotal,
+    total: subtotal + taxTotal,
+    taxLabel: pct > 0 ? "Tax" : null,
+  };
+}
+
+// ✅ Try to infer if a menu item represents a custom inspection
+function extractInspectionTemplateIdFromMenuItem(mi: MenuItemRow): string | null {
+  // common column names we’ve seen in ProFixIQ evolutions
+  return (
+    getStringField(mi, "inspection_template_id") ||
+    getStringField(mi, "template_id") ||
+    getStringField(mi, "inspectionTemplateId") ||
+    getStringField(mi, "inspection_template") ||
+    null
+  );
+}
+
+export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const router = useRouter();
+
+  const packages: PackageDef[] = [
+    {
+      id: "oil-gas",
+      name: "Oil Change – Gasoline",
+      jobType: "maintenance",
+      estLaborHours: 0.8,
+      summary: "Oil & filter, fluids, tire pressures, quick leak check.",
+      items: [],
+    },
+    {
+      id: "insp-gas",
+      name: "Multi-Point Inspection – Gas",
+      jobType: "inspection",
+      estLaborHours: 1.0,
+      summary: "Brakes, tires, suspension, battery, lights, codes scan.",
+      items: [],
+    },
+    {
+      id: "maintenance-50",
+      name: "Maintenance 50",
+      jobType: "inspection",
+      estLaborHours: 1.0,
+      summary: "50-point inspection checklist.",
+      items: [],
+    },
+    {
+      id: "maintenance-50-air",
+      name: "Maintenance 50 – Air",
+      jobType: "inspection",
+      estLaborHours: 1.0,
+      summary: "50-point inspection checklist (air systems focus).",
+      items: [],
+    },
+  ];
+
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [vehicle, setVehicle] = useState<VehicleLite | null>(null);
+  const [, setCustomer] = useState<CustomerLite | null>(null);
+  const [woLineCount, setWoLineCount] = useState<number | null>(null);
+
+  const [menuItemsAll, setMenuItemsAll] = useState<MenuItemRow[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
+  const [shopId, setShopId] = useState<string | null>(null);
+  const shopReady = !!shopId;
+  const vehicleId = vehicle?.id ?? null;
+
+  const [shopDefaults, setShopDefaults] = useState<ShopDefaults | null>(null);
+
+  const [aiOpen, setAiOpen] = useState(false);
+
+  const [menuQuery, setMenuQuery] = useState("");
+  const [includeGlobal, setIncludeGlobal] = useState(true);
+
+  const lastSetShopId = useRef<string | null>(null);
+
+  const ensureShopContext = useCallback(
+    async (id: string | null) => {
+      if (!id) return;
+      if (lastSetShopId.current === id) return;
+
+      const { error } = await supabase.rpc("set_current_shop_id", {
+        p_shop_id: id,
+      });
+
+      if (error) throw new Error(error.message || "Failed to set shop context");
+      lastSetShopId.current = id;
+    },
+    [supabase],
+  );
+
+  useEffect(() => {
+    void (async () => {
+      const { data: wo, error: woErr } = await supabase
+        .from("work_orders")
+        .select("id, vehicle_id, customer_id, shop_id")
+        .eq("id", workOrderId)
+        .maybeSingle();
+
+      if (woErr) {
+        toast.error(woErr.message);
+        return;
+      }
+
+      const sid = wo?.shop_id ?? null;
+      setShopId(sid);
+
+      if (sid) {
+        const { data: s, error: sErr } = await supabase
+          .from("shops")
+          .select("country, province, timezone, labor_rate, tax_rate")
+          .eq("id", sid)
+          .maybeSingle();
+
+        if (sErr) {
+          toast.message(sErr.message);
+          setShopDefaults(null);
+        } else {
+          const countrySafe: "US" | "CA" = s?.country === "CA" ? "CA" : "US";
+          setShopDefaults({
+            country: countrySafe,
+            province: typeof s?.province === "string" ? s.province : null,
+            timezone: typeof s?.timezone === "string" ? s.timezone : null,
+            labor_rate: typeof s?.labor_rate === "number" ? s.labor_rate : null,
+            tax_rate: typeof s?.tax_rate === "number" ? s.tax_rate : null,
+          });
+        }
+      } else {
+        setShopDefaults(null);
+      }
+
+      if (wo?.vehicle_id) {
+        const { data: v, error: vErr } = await supabase
+          .from("vehicles")
+          .select(
+            "id, year, make, model, submodel, engine_type, transmission_type, drivetrain, vin, license_plate",
+          )
+          .eq("id", wo.vehicle_id)
+          .maybeSingle();
+        if (vErr) toast.message(vErr.message);
+        setVehicle(v ? (v as VehicleLite) : null);
+      } else {
+        setVehicle(null);
+      }
+
+      if (wo?.customer_id) {
+        const { data: c, error: cErr } = await supabase
+          .from("customers")
+          .select("id, first_name, last_name, phone, email")
+          .eq("id", wo.customer_id)
+          .maybeSingle();
+        if (cErr) toast.message(cErr.message);
+        setCustomer(c ? (c as CustomerLite) : null);
+      } else {
+        setCustomer(null);
+      }
+
+      const { count, error: cntErr } = await supabase
+        .from("work_order_lines")
+        .select("*", { count: "exact", head: true })
+        .eq("work_order_id", workOrderId);
+
+      if (cntErr) toast.message(cntErr.message);
+      setWoLineCount(typeof count === "number" ? count : null);
+    })();
+  }, [supabase, workOrderId]);
+
+  const loadMenuItems = useCallback(async () => {
+    if (!shopId) return;
+
+    setMenuLoading(true);
+    try {
+      await ensureShopContext(shopId);
+
+      const { data, error } = await supabase
+        .from("menu_items")
+        .select("*")
+        .eq("shop_id", shopId)
+        .eq("is_active", true)
+        .order("created_at", { ascending: false })
+        .limit(400);
+
+      if (error) throw error;
+
+      setMenuItemsAll((data ?? []) as MenuItemRow[]);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to load menu items.";
+      toast.message(msg);
+      setMenuItemsAll([]);
+    } finally {
+      setMenuLoading(false);
+    }
+  }, [ensureShopContext, supabase, shopId]);
+
+  const loadTemplates = useCallback(async () => {
+    if (!shopId) return;
+
+    setTemplatesLoading(true);
+    try {
+      await ensureShopContext(shopId);
+
+      const [{ data: auth }, { data, error }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.from("inspection_templates").select("*").order("created_at", { ascending: false }),
+      ]);
+
+      if (error) throw error;
+
+      const uid = auth?.user?.id ?? null;
+      const rows = (data ?? []) as TemplateRow[];
+
+      const score = (t: TemplateRow): number => {
+        if (uid && t.user_id === uid) return 0;
+        if (t.shop_id && t.shop_id === shopId) return 1;
+        if (t.is_public) return 2;
+        return 3;
+      };
+
+      rows.sort((a, b) => score(a) - score(b));
+      setTemplates(rows);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to load templates.";
+      toast.message(msg);
+      setTemplates([]);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [ensureShopContext, supabase, shopId]);
+
+  useEffect(() => {
+    if (!shopId) return;
+    void loadMenuItems();
+    void loadTemplates();
+  }, [shopId, loadMenuItems, loadTemplates]);
+
+  async function addMenuItem(params: AddMenuParams): Promise<string | null> {
+    if (!shopReady || !shopId) return null;
+
+    setAddingId(params.kind === "template" ? params.template.id : params.name);
+
+    try {
+      await ensureShopContext(shopId);
+
+      if (params.kind === "template") {
+        const line: WorkOrderLineInsert & { inspection_template_id?: string | null } = {
+          work_order_id: workOrderId,
+          vehicle_id: vehicleId,
+          description: params.name ?? params.template.template_name ?? "Inspection",
+          job_type: "inspection",
+          labor_time:
+            params.laborHours ??
+            (typeof params.template.labor_hours === "number" ? params.template.labor_hours : null),
+          status: "awaiting",
+          priority: 3,
+          notes: params.template.description ?? null,
+          shop_id: shopId,
+          inspection_template_id: params.template.id,
+        };
+
+        const { data, error } = await supabase.from("work_order_lines").insert(line).select("id").single();
+        if (error) throw new Error(error.message);
+
+        window.dispatchEvent(new CustomEvent("wo:line-added"));
+        toast.success("Inspection added");
+        return data?.id ?? null;
+      }
+
+      const line: WorkOrderLineInsert & {
+        menu_item_id?: string | null;
+        inspection_template_id?: string | null;
+        template_id?: string | null;
+      } = {
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        description: params.name,
+        job_type: params.jobType,
+        labor_time: params.laborHours ?? null,
+        status: "awaiting",
+        priority: 3,
+        notes: params.notes ?? null,
+        shop_id: shopId,
+
+        // ✅ persist linkages that invoicing/attachment logic can rely on
+        menu_item_id: params.menuItemId ?? null,
+        inspection_template_id: params.inspectionTemplateId ?? null,
+
+        // optional legacy mirror (harmless if column exists)
+        template_id: params.inspectionTemplateId ?? null,
+      };
+
+      const { data, error } = await supabase.from("work_order_lines").insert(line).select("id").single();
+      if (error) throw new Error(error.message);
+
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
+      toast.success("Job added");
+
+      return params.returnLineId ? (data?.id ?? null) : null;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to add job.";
+      lastSetShopId.current = null;
+      toast.error(msg);
+      return null;
+    } finally {
+      setAddingId(null);
+    }
+  }
+
+  async function addPackage(pkg: PackageDef) {
+    await addMenuItem({
+      kind: "normal",
+      name: pkg.name,
+      jobType: pkg.jobType === "inspection" ? "inspection" : "maintenance",
+      laborHours: pkg.estLaborHours ?? null,
+      notes: pkg.summary,
+      source: "package",
+    });
+  }
+
+  async function addSavedMenuItem(mi: MenuItemRow) {
+    const templateId = extractInspectionTemplateIdFromMenuItem(mi);
+
+    await addMenuItem({
+      kind: "normal",
+      name: mi.name ?? "Service",
+
+      // ✅ if it has a template id, treat it as an inspection job
+      jobType: templateId ? "inspection" : "maintenance",
+
+      laborHours: typeof mi.labor_time === "number" ? mi.labor_time : null,
+      notes: mi.description ?? null,
+      source: "menu_item",
+      returnLineId: false,
+
+      // ✅ persist menu + inspection linkage
+      menuItemId: mi.id ?? null,
+      inspectionTemplateId: templateId,
+    });
+  }
+
+  async function addTemplateAsLine(t: TemplateRow) {
+    await addMenuItem({ kind: "template", template: t });
+  }
+
+  const vehicleLabel =
+    vehicle && (vehicle.year || vehicle.make || vehicle.model)
+      ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
+      : vehicle?.license_plate
+        ? `Plate ${vehicle.license_plate}`
+        : null;
+
+  const menuItemsDisplay = useMemo(() => {
+    const q = menuQuery.trim();
+    const scored = menuItemsAll
+      .filter((mi) => menuSearchHit(mi, q))
+      .map((mi) => ({
+        mi,
+        score: scoreMenuItemFit({ mi, vehicle }),
+        global: isGlobalMenuItem(mi),
+      }))
+      .filter((x) => (includeGlobal ? true : !x.global))
+      .filter((x) => {
+        if (!vehicle) return true;
+        if (x.global) return true;
+        return x.score > 0;
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        const aT = new Date(a.mi.created_at ?? 0).getTime();
+        const bT = new Date(b.mi.created_at ?? 0).getTime();
+        return bT - aT;
+      });
+
+    return scored.map((x) => x.mi);
+  }, [menuItemsAll, menuQuery, includeGlobal, vehicle]);
+
+  const currency: "CAD" | "USD" = shopDefaults?.country === "CA" ? "CAD" : "USD";
+
+  return (
+    <div className="space-y-5 text-white">
+      {/* header */}
+      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 sm:px-4 sm:py-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-orange-400">Quick Add Jobs</h3>
+              <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-mono text-neutral-300">
+                WO {workOrderId.slice(0, 8)}…
+              </span>
+              {shopDefaults?.labor_rate != null ? (
+                <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-300">
+                  Labor {shopDefaults.labor_rate.toFixed(0)}/{currency}/hr
+                </span>
+              ) : null}
+            </div>
+
+            {vehicleLabel ? (
+              <p className="text-[11px] text-neutral-400">
+                Vehicle:&nbsp;<span className="font-medium text-neutral-200">{vehicleLabel}</span>
+              </p>
+            ) : (
+              <p className="text-[11px] text-neutral-500">Add lines now — you can update vehicle details later.</p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => router.push(`/work-orders/quote-review?woId=${workOrderId}`)}
+              className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 hover:border-orange-500 hover:bg-neutral-800"
+            >
+              Review quote
+              {typeof woLineCount === "number" && woLineCount > 0 ? ` (${woLineCount})` : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAiOpen(true)}
+              className="rounded-md border border-blue-600 bg-neutral-950 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30"
+              title="Describe work and let AI suggest service lines"
+            >
+              AI Suggest
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* packages */}
+      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Packages</h4>
+          <p className="text-[10px] text-neutral-500">Common services with pre-set labor & notes.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {packages.map((p) => (
+            <button
+              type="button"
+              key={p.id}
+              onClick={() => void addPackage(p)}
+              disabled={addingId === p.id || !shopReady}
+              className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
+              title={p.summary}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-neutral-50">{p.name}</span>
+                <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
+                  {p.jobType}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-neutral-400">
+                {p.estLaborHours != null ? `~${p.estLaborHours.toFixed(1)}h` : "Labor TBD"}
+              </div>
+              <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">{p.summary}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* templates */}
+      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Inspection Templates</h4>
+          <p className="text-[10px] text-neutral-500">Saved/standard inspections you can attach as jobs.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {templatesLoading ? (
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">Loading templates…</div>
+          ) : templates.length ? (
+            templates.slice(0, 9).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => void addTemplateAsLine(t)}
+                disabled={addingId === t.id || !shopReady}
+                className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
+                title={t.description ?? undefined}
+              >
+                <span className="font-medium text-neutral-50">{t.template_name ?? "Inspection"}</span>
+                <div className="mt-1 text-xs text-neutral-400">
+                  inspection • {typeof t.labor_hours === "number" ? `${t.labor_hours.toFixed(1)}h` : "Labor TBD"}
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">No templates yet.</div>
+          )}
+        </div>
+      </div>
+
+      {/* menu items */}
+      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
+        <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">From My Menu</h4>
+            <p className="text-[10px] text-neutral-500">
+              Matches for this vehicle are shown first. Totals use shop labor + tax rules (province engine for CA).
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              value={menuQuery}
+              onChange={(e) => setMenuQuery(e.target.value)}
+              placeholder="Search menu items (e.g. brakes, alignment, oil)…"
+              className="w-full sm:w-[320px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            />
+            <label className="flex items-center gap-2 text-[11px] text-neutral-300">
+              <input
+                type="checkbox"
+                checked={includeGlobal}
+                onChange={(e) => setIncludeGlobal(e.target.checked)}
+                className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
+              />
+              Include global services
+            </label>
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {menuLoading ? (
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">Loading menu items…</div>
+          ) : menuItemsDisplay.length ? (
+            menuItemsDisplay.slice(0, 12).map((mi) => {
+              const p = calcMenuTotals({ mi, shop: shopDefaults });
+
+              const laborLabel = p.laborHours > 0 ? `${p.laborHours.toFixed(1)}h` : "Labor TBD";
+              const partsLabel = p.partsTotal > 0 ? `${moneyLabel(currency, p.partsTotal)} parts` : "No parts";
+              const totalLabel = p.total > 0 ? moneyLabel(currency, p.total) : "No total";
+              const taxLabel =
+                p.taxTotal > 0 ? `${p.taxLabel ?? "Tax"} ${moneyLabel(currency, p.taxTotal)}` : null;
+
+              return (
+                <button
+                  type="button"
+                  key={mi.id}
+                  onClick={() => void addSavedMenuItem(mi)}
+                  disabled={addingId === (mi.name ?? "") || !shopReady}
+                  className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
+                  title={mi.description ?? undefined}
+                >
+                  <span className="font-medium text-neutral-50">{mi.name}</span>
+
+                  <div className="mt-1 text-xs text-neutral-400">
+                    {laborLabel} • {partsLabel} • <span className="text-neutral-100">{totalLabel}</span>
+                    {taxLabel ? <span className="ml-1 text-neutral-500">• {taxLabel}</span> : null}
+
+                    {isGlobalMenuItem(mi) ? (
+                      <span className="ml-2 rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-300">
+                        GLOBAL
+                      </span>
+                    ) : (
+                      <span className="ml-2 rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-0.5 text-[10px] text-orange-200">
+                        FIT
+                      </span>
+                    )}
+                  </div>
+
+                  {mi.service_key ? (
+                    <div className="mt-1 font-mono text-[10px] text-neutral-500">{mi.service_key}</div>
+                  ) : null}
+                </button>
+              );
+            })
+          ) : (
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+              No menu items match this filter.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <AiSuggestModal
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        workOrderId={workOrderId}
+        vehicleId={vehicleId ?? null}
+        vehicleLabel={vehicleLabel ?? null}
+        onAdded={(count) => {
+          setWoLineCount((prev) => (typeof prev === "number" ? prev + count : prev));
+        }}
+      />
+    </div>
+  );
+}
+
+export default MenuQuickAdd;
+
+===== app/api/menu/save/route.ts =====
+// app/api/menu/save/route.ts
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+type MenuInsert = DB["public"]["Tables"]["menu_items"]["Insert"];
+type MenuItemPartInsert = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
+
+export const runtime = "nodejs";
+
+type IncomingBody =
+  | {
+      item: {
+        name: string;
+        description: string | null;
+        labor_time: number | null;
+        part_cost: number | null; // ignored (server computes)
+        total_price: number | null; // ignored (server computes)
+        inspection_template_id: string | null;
+        shop_id?: string | null;
+      };
+      parts?: {
+        name: string;
+        quantity: number;
+        unit_cost: number;
+        part_id?: string | null;
+      }[];
+    }
+  | null;
+
+function numOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function clampNonNeg(n: number): number {
+  return n < 0 ? 0 : n;
+}
+
+export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
+  if (userErr || !user) {
+    return NextResponse.json(
+      { ok: false, error: "auth_error", detail: userErr?.message ?? "Not signed in" },
+      { status: 401 },
+    );
+  }
+
+  const body = (await req.json().catch(() => null)) as IncomingBody;
+
+  const rawName = body?.item?.name;
+  const name = typeof rawName === "string" ? rawName.trim() : "";
+
+  if (!name) {
+    return NextResponse.json(
+      { ok: false, error: "bad_request", detail: "name is required" },
+      { status: 400 },
+    );
+  }
+
+  // Determine shop_id (RLS scoping)
+  let shopId: string | null =
+    typeof body?.item?.shop_id === "string" && body.item.shop_id.trim().length
+      ? body.item.shop_id.trim()
+      : null;
+
+  if (!shopId) {
+    const { data: prof, error: profErr } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profErr) {
+      console.warn("[API menu/save] profile lookup failed:", profErr.message);
+    } else {
+      shopId = (prof?.shop_id as string | null) ?? null;
+    }
+  }
+
+  if (!shopId) {
+    return NextResponse.json(
+      { ok: false, error: "missing_shop", detail: "Missing shop context (shop_id)." },
+      { status: 400 },
+    );
+  }
+
+  // Set session shop context for RLS policies that reference current_shop_id()
+  const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
+  if (ctxErr) {
+    return NextResponse.json(
+      { ok: false, error: "shop_context_failed", detail: ctxErr.message },
+      { status: 403 },
+    );
+  }
+
+  // Load shop defaults (labor_rate is the one we need here)
+  const { data: shop, error: shopErr } = await supabase
+    .from("shops")
+    .select("labor_rate")
+    .eq("id", shopId)
+    .maybeSingle();
+
+  if (shopErr) {
+    return NextResponse.json(
+      { ok: false, error: "shop_load_failed", detail: shopErr.message },
+      { status: 500 },
+    );
+  }
+
+  const laborRate =
+    typeof shop?.labor_rate === "number" && Number.isFinite(shop.labor_rate)
+      ? shop.labor_rate
+      : 0;
+
+  const laborHours = numOrNull(body?.item?.labor_time);
+  const safeLaborHours = laborHours != null ? clampNonNeg(laborHours) : null;
+
+  // Compute parts subtotal from payload (server truth)
+  const incomingParts = Array.isArray(body?.parts) ? body?.parts : [];
+  const cleanedParts = incomingParts
+    .map((p) => {
+      const partName = typeof p?.name === "string" ? p.name.trim() : "";
+      const qty = numOrNull(p?.quantity);
+      const unit = numOrNull(p?.unit_cost);
+      const partId =
+        typeof p?.part_id === "string" && p.part_id.trim().length ? p.part_id.trim() : null;
+
+      return {
+        name: partName,
+        quantity: qty != null ? clampNonNeg(qty) : 0,
+        unit_cost: unit != null ? clampNonNeg(unit) : 0,
+        part_id: partId,
+      };
+    })
+    .filter((p) => p.name.length > 0 && p.quantity > 0);
+
+  const partCost = cleanedParts.reduce((sum, p) => sum + p.quantity * p.unit_cost, 0);
+  const laborCost = (safeLaborHours ?? 0) * laborRate;
+
+  // Menu items store subtotal (no tax here)
+  const totalPrice = partCost + laborCost;
+
+  const desc =
+    typeof body?.item?.description === "string"
+      ? body.item.description.trim()
+      : body?.item?.description === null
+        ? null
+        : null;
+
+  const inspectionTemplateId =
+    typeof body?.item?.inspection_template_id === "string" && body.item.inspection_template_id
+      ? body.item.inspection_template_id
+      : null;
+
+  const itemInsert: MenuInsert = {
+    name,
+    description: desc && desc.length ? desc : null,
+    labor_time: safeLaborHours,
+    labor_hours: safeLaborHours, // keep consistent if column exists
+    part_cost: partCost,
+    total_price: totalPrice,
+    inspection_template_id: inspectionTemplateId,
+    user_id: user.id,
+    is_active: true,
+    shop_id: shopId,
+  };
+
+  const { data: created, error: itemErr } = await supabase
+    .from("menu_items")
+    .insert(itemInsert)
+    .select("id, shop_id")
+    .single();
+
+  if (itemErr || !created) {
+    return NextResponse.json(
+      { ok: false, error: "insert_failed", detail: itemErr?.message ?? "insert failed" },
+      { status: 400 },
+    );
+  }
+
+  // Insert parts (consistent schema: shop_id + part_id)
+  if (cleanedParts.length > 0) {
+    const partsInsert: MenuItemPartInsert[] = cleanedParts.map((p) => ({
+      menu_item_id: created.id,
+      name: p.name,
+      quantity: p.quantity,
+      unit_cost: p.unit_cost,
+      user_id: user.id,
+      shop_id: created.shop_id ?? shopId,
+      part_id: p.part_id ?? null,
+    }));
+
+    const { error: partsErr } = await supabase.from("menu_item_parts").insert(partsInsert);
+    if (partsErr) {
+      console.warn("[API menu/save] parts insert failed:", partsErr.message);
+      // Do not fail the whole request: menu item exists
+    }
+  }
+
+  return NextResponse.json({ ok: true, id: created.id });
+}
+
+===== features/work-orders/components/NewWorkOrderLineForm.tsx =====
+//features/work-orders/components/NewWorkOrderLineForm.tsx
+
+"use client";
+
+import { useMemo, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+type InsertLine = DB["public"]["Tables"]["work_order_lines"]["Insert"];
+
+// Keep in sync with your DB check constraint
+type WOJobType = "diagnosis" | "inspection" | "maintenance" | "repair";
+
+const ALLOWED_STATUS = [
+  "awaiting",
+  "in_progress",
+  "on_hold",
+  "paused",
+  "completed",
+] as const;
+type AllowedStatus = (typeof ALLOWED_STATUS)[number];
+
+export function NewWorkOrderLineForm(props: {
+  workOrderId: string;
+  vehicleId: string | null;
+  defaultJobType: WOJobType | null;
+  shopId?: string | null; // REQUIRED for your shop-based models
+  onCreated?: () => void;
+}) {
+  const { workOrderId, vehicleId, defaultJobType, shopId, onCreated } = props;
+
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
+  const [complaint, setComplaint] = useState("");
+  const [cause, setCause] = useState("");
+  const [correction, setCorrection] = useState("");
+  const [labor, setLabor] = useState<string>("");
+  const [status, setStatus] = useState<InsertLine["status"]>("awaiting");
+  const [jobType, setJobType] = useState<WOJobType | null>(
+    defaultJobType ?? null,
+  );
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const canSave = complaint.trim().length > 0 && !!workOrderId;
+
+  function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
+    const allowed: WOJobType[] = [
+      "diagnosis",
+      "inspection",
+      "maintenance",
+      "repair",
+    ];
+    return t && (allowed as string[]).includes(t)
+      ? (t as InsertLine["job_type"])
+      : null;
+  }
+
+  function normalizeStatus(
+    s: InsertLine["status"] | null | undefined,
+  ): AllowedStatus {
+    const v = (s ?? "awaiting") as string;
+    return (ALLOWED_STATUS as readonly string[]).includes(v)
+      ? (v as AllowedStatus)
+      : "awaiting";
+  }
+
+  async function addLine() {
+    if (!canSave) return;
+
+    // If shopId is missing, we don’t even try — this almost always turns into a 403 anyway.
+    if (!shopId) {
+      setErr(
+        "Missing shopId for this work order. Refresh the page and click “Save & Continue” first so the work order loads its shop context.",
+      );
+      return;
+    }
+
+    setBusy(true);
+    setErr(null);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const payload: InsertLine = {
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        user_id: user?.id ?? null,
+        complaint: complaint.trim() || null,
+        cause: cause.trim() || null,
+        correction: correction.trim() || null,
+        labor_time: labor ? Number(labor) : null,
+        status: normalizeStatus(status),
+        job_type: normalizeJobType(jobType),
+
+        // IMPORTANT: keep shop_id explicit so all RLS/shop triggers stay deterministic
+        shop_id: shopId,
+      };
+
+      const { data, error } = await supabase
+        .from("work_order_lines")
+        .insert(payload)
+        .select("id")
+        .single();
+
+      if (error) {
+        const msg = error.message || "Insert failed";
+
+        if (/(job_type).*check/i.test(msg)) {
+          setErr("This job type isn’t allowed by the database. Pick another type.");
+        } else if (/status.*check/i.test(msg)) {
+          setErr("This status isn’t allowed by the database. Try a different status.");
+        } else if (/row-level security/i.test(msg) || /permission/i.test(msg)) {
+          setErr(
+            `Permission blocked (RLS). workOrderId=${workOrderId} shopId=${shopId}. ${msg}`,
+          );
+        } else {
+          setErr(msg);
+        }
+        return;
+      }
+
+      if (!data?.id) {
+        setErr("Insert succeeded but no row was returned. Check PostgREST preferences.");
+        return;
+      }
+
+      setComplaint("");
+      setCause("");
+      setCorrection("");
+      setLabor("");
+      setStatus("awaiting");
+      setJobType(defaultJobType ?? null);
+
+      onCreated?.();
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
+    } catch (e: unknown) {
+      const msg = (e as Error)?.message ?? "Failed to add line.";
+      setErr(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 text-sm text-white space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-neutral-100">Add job line</h3>
+          <p className="text-[11px] text-neutral-400">
+            Complaint is required. Cause / correction can be filled in later.
+          </p>
+        </div>
+        <div className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-[10px] text-neutral-300">
+          Linked to WO:{" "}
+          <span className="font-mono">{workOrderId.slice(0, 8)}…</span>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2 space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">
+            Complaint <span className="text-red-400">*</span>
+          </label>
+          <textarea
+            value={complaint}
+            onChange={(e) => setComplaint(e.target.value)}
+            className="w-full min-h-[60px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            placeholder="Describe the issue / customer concern"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">Cause</label>
+          <textarea
+            value={cause}
+            onChange={(e) => setCause(e.target.value)}
+            className="w-full min-h-[48px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            placeholder="Root cause (optional)"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">Correction</label>
+          <textarea
+            value={correction}
+            onChange={(e) => setCorrection(e.target.value)}
+            className="w-full min-h-[48px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            placeholder="What to do / repair plan (optional)"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">Labor (hrs)</label>
+          <input
+            inputMode="decimal"
+            value={labor}
+            onChange={(e) => setLabor(e.target.value)}
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            placeholder="0.0"
+          />
+          <p className="text-[10px] text-neutral-500">
+            Flat-rate or estimated hours. Leave blank if unknown.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">Status</label>
+          <select
+            value={normalizeStatus(status)}
+            onChange={(e) => setStatus(e.target.value as InsertLine["status"])}
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+          >
+            <option value="awaiting">Awaiting</option>
+            <option value="in_progress">In progress</option>
+            <option value="on_hold">On hold</option>
+            <option value="paused">Paused</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">Job type</label>
+          <select
+            value={jobType ?? ""}
+            onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+          >
+            <option value="">Unspecified</option>
+            <option value="diagnosis">Diagnosis</option>
+            <option value="inspection">Inspection</option>
+            <option value="maintenance">Maintenance</option>
+            <option value="repair">Repair</option>
+          </select>
+        </div>
+      </div>
+
+      {err && (
+        <div className="rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          {err}
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <button
+          disabled={!canSave || busy}
+          onClick={addLine}
+          className="btn btn-orange px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
+        >
+          {busy ? "Adding…" : "Add line to work order"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default NewWorkOrderLineForm;
+
+===== features/inspections/components/inspection/InspectionItemCard.tsx =====
+MISSING FILE
+
+
+===== features/inspections/lib/inspection/SectionDisplay.tsx =====
+//features/inspections/lib/inspection/SectionDisplay.tsx
+
+"use client";
+
+import type React from "react";
+import { useState } from "react";
+import type {
+  InspectionSection,
+  InspectionItemStatus,
+} from "@inspections/lib/inspection/types";
+import InspectionItemCard from "./InspectionItemCard";
+import { Button } from "@shared/components/ui/Button";
+
+interface SectionDisplayProps {
+  title: string;
+  section: InspectionSection;
+  sectionIndex: number;
+  showNotes: boolean;
+  showPhotos: boolean;
+
+  /** ✅ required for photo uploads (InspectionItemCard + /api/inspections/photos/upload) */
+  inspectionId: string;
+  workOrderId?: string | null;
+  workOrderLineId?: string | null;
+
+  onUpdateStatus: (
+    sectionIndex: number,
+    itemIndex: number,
+    status: InspectionItemStatus,
+  ) => void;
+  onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
+  onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
+
+  requireNoteForAI?: boolean;
+  onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
+  isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
+
+  // ✅ keep DB/session shape strict: qty is number
+  onUpdateParts?: (
+    sectionIndex: number,
+    itemIndex: number,
+    parts: { description: string; qty: number }[],
+  ) => void;
+
+  onUpdateLaborHours?: (
+    sectionIndex: number,
+    itemIndex: number,
+    hours: number | null,
+  ) => void;
+
+  /** Optional external collapse control (used by sticky header). */
+  isCollapsed?: boolean;
+  onToggleCollapse?: (sectionIndex: number) => void;
+}
+
+type PartRow = { description: string; qty: number };
+
+type ItemExtended = InspectionSection["items"][number] & {
+  // legacy shape support
+  note?: string;
+  // estimate meta
+  estimateSubmitted?: boolean;
+  estimateSubmittedAt?: string | null;
+  // parts + labor
+  parts?: PartRow[];
+  laborHours?: number | null;
+};
+
+const COPPER = "var(--pfq-copper,#C57A4A)";
+
+function isGridSection(title: string): boolean {
+  const t = (title || "").toLowerCase();
+  return (
+    t.includes("corner grid") ||
+    t.includes("tire grid") ||
+    t.includes("battery grid")
+  );
+}
+
+function getNote(item: ItemExtended): string {
+  const raw = item.notes ?? item.note ?? "";
+  return typeof raw === "string" ? raw : String(raw ?? "");
+}
+
+function getParts(item: ItemExtended): PartRow[] {
+  const v = item.parts;
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((p) => ({
+      description: typeof p?.description === "string" ? p.description : "",
+      // ✅ allow "blank" qty behavior by storing 0 (UI will render as empty)
+      qty: typeof p?.qty === "number" && Number.isFinite(p.qty) ? p.qty : 0,
+    }))
+    // ✅ keep draft rows even if qty is 0
+    .filter((p) => p.description.length > 0 || p.qty >= 0);
+}
+
+function getLaborHours(item: ItemExtended): number | null {
+  const v = item.laborHours;
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function isSubmittedItem(item: ItemExtended): boolean {
+  return item.estimateSubmitted === true;
+}
+
+function submittedAt(item: ItemExtended): string | null {
+  const raw = item.estimateSubmittedAt;
+  return typeof raw === "string" && raw.trim() ? raw : null;
+}
+
+export default function SectionDisplay(props: SectionDisplayProps) {
+    const {
+    title,
+    section,
+    sectionIndex,
+    showNotes = false,
+    showPhotos = true,
+    inspectionId,
+    workOrderId,
+    workOrderLineId,
+    onUpdateStatus,
+    onUpdateNote,
+    onUpload,
+    requireNoteForAI,
+    onSubmitAI,
+    isSubmittingAI,
+    onUpdateParts,
+    onUpdateLaborHours,
+    isCollapsed,
+    onToggleCollapse,
+  } = props;
+
+  const items = (section.items ?? []) as ItemExtended[];
+
+  // ✅ never rely on callers passing title correctly
+  const resolvedTitle = (title || section.title || "").trim();
+  const gridSection = isGridSection(resolvedTitle);
+
+  // For grid sections, grids manage their own collapse internally.
+  const [internalOpen, setInternalOpen] = useState(true);
+  const isControlled = typeof isCollapsed === "boolean";
+  const open = gridSection ? true : isControlled ? !isCollapsed : internalOpen;
+
+  const toggleOpen = () => {
+    if (gridSection) return;
+    onToggleCollapse?.(sectionIndex);
+    if (!isControlled) setInternalOpen((v) => !v);
+  };
+
+  // ✅ derive stats every render (NO memo)
+  const total = items.length || 0;
+  const counts = { ok: 0, fail: 0, na: 0, recommend: 0, unset: 0 };
+
+  for (const it of items) {
+    const raw = String(it.status ?? "").toLowerCase();
+    const normalized: keyof typeof counts =
+      raw === "ok" || raw === "fail" || raw === "na" || raw === "recommend"
+        ? (raw as keyof typeof counts)
+        : raw === "pass"
+          ? "ok"
+          : "unset";
+    counts[normalized] += 1;
+  }
+
+  const stats = { total, ...counts };
+
+  const markAll = (status: InspectionItemStatus) => {
+    items.forEach((_item, idx) => onUpdateStatus(sectionIndex, idx, status));
+  };
+
+  const showBulkButtons = !gridSection;
+
+  const canEditPartsLabor =
+    typeof onUpdateParts === "function" ||
+    typeof onUpdateLaborHours === "function";
+
+  // ✅ per-item UI state: collapse + edit
+  const [partsOpenByKey, setPartsOpenByKey] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [editByKey, setEditByKey] = useState<Record<string, boolean>>({});
+
+  // ✅ Qty filler state (string) so it can be blank until typed
+  const [qtyDraftByKey, setQtyDraftByKey] = useState<Record<string, string>>(
+    {},
+  );
+
+  const setPartsOpen = (k: string, v: boolean) =>
+    setPartsOpenByKey((p) => ({ ...p, [k]: v }));
+  const setEditing = (k: string, v: boolean) =>
+    setEditByKey((p) => ({ ...p, [k]: v }));
+
+  const setQtyDraft = (k: string, v: string) =>
+    setQtyDraftByKey((p) => ({ ...p, [k]: v }));
+
+  const clearQtyDraftPrefix = (prefix: string) => {
+    setQtyDraftByKey((prev) => {
+      const next: Record<string, string> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (!k.startsWith(prefix)) next[k] = v;
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+        {gridSection ? (
+          <div
+            className="text-left text-lg font-semibold tracking-wide transition-opacity hover:opacity-80"
+            style={{
+              fontFamily: "Black Ops One, system-ui, sans-serif",
+              color: COPPER,
+            }}
+          >
+            {resolvedTitle}
+          </div>
+        ) : (
+          <button
+            onClick={toggleOpen}
+            className="text-left text-lg font-semibold tracking-wide transition-opacity hover:opacity-80"
+            style={{
+              fontFamily: "Black Ops One, system-ui, sans-serif",
+              color: COPPER,
+            }}
+            aria-expanded={open}
+            type="button"
+          >
+            {resolvedTitle}
+          </button>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="hidden text-[11px] uppercase tracking-wide text-neutral-400 md:inline"
+            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+          >
+            {stats.ok} OK · {stats.fail} FAIL · {stats.na} NA · {stats.recommend}{" "}
+            REC · {stats.unset} —
+          </span>
+
+          {showBulkButtons ? (
+            <div className="flex flex-wrap items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => markAll("ok")}
+                type="button"
+              >
+                All OK
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => markAll("fail")}
+                type="button"
+              >
+                All FAIL
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => markAll("na")}
+                type="button"
+              >
+                All NA
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => markAll("recommend")}
+                type="button"
+              >
+                All REC
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-1 h-7 px-2 text-[11px]"
+                onClick={toggleOpen}
+                aria-expanded={open}
+                type="button"
+              >
+                {open ? "Collapse" : "Expand"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Body */}
+      {open && (
+        <div className="pt-3">
+          {/* Grid sections render their own UI elsewhere */}
+          {gridSection ? (
+            <div />
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)]">
+              {/* Desktop header row — desktop only */}
+              <div className="hidden border-b border-white/10 bg-black/25 px-4 py-2 lg:block">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                    Item · Status · Notes
+                  </div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                    Item · Status · Notes
+                  </div>
+                </div>
+              </div>
+
+              {/* Mobile/Tablet: 1 col. Desktop: 2-up on lg+ */}
+              <div
+                className={[
+                  "grid gap-2 p-2",
+                  "lg:grid-cols-2 lg:gap-[2px] lg:bg-white/10 lg:p-[2px]",
+                  "[&>*]:rounded-lg",
+                  "[&>*]:border [&>*]:border-white/10",
+                  "[&>*]:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),rgba(0,0,0,0.72))]",
+                  "[&>*]:shadow-[0_12px_28px_rgba(0,0,0,0.60)]",
+                  "[&>*]:backdrop-blur-md",
+                  "[&>*]:relative [&>*]:overflow-hidden",
+                  "[&>*]:before:absolute [&>*]:before:inset-x-0 [&>*]:before:top-0 [&>*]:before:h-[2px] [&>*]:before:content-['']",
+                  "[&>*]:before:bg-[linear-gradient(90deg,transparent,rgba(197,122,74,0.85),transparent)]",
+                  "[&>*]:transition [&>*]:duration-150",
+                  "[&>*]:hover:-translate-y-[1px]",
+                  "[&>*]:hover:border-[rgba(197,122,74,0.45)]",
+                  "[&>*]:hover:shadow-[0_18px_38px_rgba(0,0,0,0.70)]",
+                  "[&>*]:hover:bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.14),rgba(0,0,0,0.74))]",
+                  "[&>*:nth-child(odd)]:brightness-[1.02]",
+                  "[&>*:nth-child(even)]:brightness-[0.98]",
+                  "lg:[&>*:nth-child(4n+1)]:brightness-[1.02] lg:[&>*:nth-child(4n+2)]:brightness-[1.02]",
+                  "lg:[&>*:nth-child(4n+3)]:brightness-[0.98] lg:[&>*:nth-child(4n+4)]:brightness-[0.98]",
+                ].join(" ")}
+              >
+                {items.map((item, itemIndex) => {
+                  const keyBase =
+                    (item.item ??
+                      item.name ??
+                      `item-${sectionIndex}-${itemIndex}`) + `-${itemIndex}`;
+
+                  const status = String(item.status ?? "").toLowerCase();
+                  const isFail = status === "fail";
+                  const isRec = status === "recommend";
+                  const isFailOrRec = isFail || isRec;
+
+                  const note = getNote(item).trim();
+
+                  const canShowSubmit =
+                    !!requireNoteForAI &&
+                    isFailOrRec &&
+                    note.length > 0 &&
+                    typeof onSubmitAI === "function";
+
+                  const submitting =
+                    isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
+
+                  const rail =
+                    isFail
+                      ? "before:bg-red-500/70"
+                      : isRec
+                        ? "before:bg-orange-500/70"
+                        : "before:bg-white/0";
+
+                  const submitted = isSubmittedItem(item);
+                  const k = `${sectionIndex}:${itemIndex}`;
+                  const isEditing = Boolean(editByKey[k]);
+
+                  const partsOpen =
+                    isEditing || (partsOpenByKey[k] ?? !submitted);
+
+                  const lockInputs = submitted && !isEditing;
+
+                  return (
+                    <div
+                      key={keyBase}
+                      className={[
+                        "relative px-3 py-3",
+                        "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
+                        rail,
+                        submitted ? "ring-1 ring-emerald-500/35" : "",
+                      ].join(" ")}
+                    >
+                      <InspectionItemCard
+                        item={{
+                          ...item,
+                          notes: getNote(item),
+                        }}
+                        sectionIndex={sectionIndex}
+                        itemIndex={itemIndex}
+                        showNotes={showNotes && isFailOrRec}
+                        showPhotos={showPhotos}
+                        inspectionId={inspectionId}
+                        workOrderId={workOrderId}
+                        workOrderLineId={workOrderLineId}
+                        onUpdateStatus={onUpdateStatus}
+                        onUpdateNote={onUpdateNote}
+                        onUpload={onUpload}
+                        variant="row"
+                      />
+
+                      {/* Parts + Labor UI (manual entry) */}
+                      {(() => {
+                        if (!isFailOrRec) return null;
+                        if (!canEditPartsLabor) return null;
+
+                        const currentParts = getParts(item);
+                        const currentLabor = getLaborHours(item);
+
+                        const handlePartsChange = (parts: PartRow[]) => {
+                          onUpdateParts?.(sectionIndex, itemIndex, parts);
+                        };
+
+                        const handleLaborChange = (hours: number | null) => {
+                          onUpdateLaborHours?.(sectionIndex, itemIndex, hours);
+                        };
+
+                        const addEmptyPart = () => {
+                          const nextIdx = currentParts.length;
+                          const draftKey = `${k}:part:${nextIdx}:qty`;
+                          setQtyDraft(draftKey, ""); // ✅ blank filler
+                          handlePartsChange([...currentParts, { description: "", qty: 0 }]);
+                        };
+
+                        const updatePart = (idx: number, patch: Partial<PartRow>) => {
+                          const next = currentParts.map((p, i) =>
+                            i === idx ? { ...p, ...patch } : p,
+                          );
+                          handlePartsChange(next);
+                        };
+
+                        const removePart = (idx: number) => {
+                          const next = currentParts.filter((_, i) => i !== idx);
+                          // clear drafts for this item (cheap + avoids stale)
+                          clearQtyDraftPrefix(`${k}:part:`);
+                          handlePartsChange(next);
+                        };
+
+                        const submittedStamp = submittedAt(item);
+
+                        return (
+                          <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[12px] font-semibold text-neutral-100">
+                                  Parts &amp; Labor
+                                </span>
+
+                                {submitted && (
+                                  <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                                    Submitted
+                                  </span>
+                                )}
+
+                                {submittedStamp && (
+                                  <span className="text-[10px] text-neutral-500">
+                                    {new Date(submittedStamp).toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {submitted && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:text-neutral-100"
+                                      onClick={() => setPartsOpen(k, !partsOpen)}
+                                    >
+                                      {partsOpen ? "Collapse" : "Expand"}
+                                    </button>
+
+                                    {!isEditing ? (
+                                      <button
+                                        type="button"
+                                        className="text-[10px] uppercase tracking-[0.16em] text-emerald-200 hover:text-emerald-100"
+                                        onClick={() => {
+                                          setEditing(k, true);
+                                          setPartsOpen(k, true);
+                                        }}
+                                      >
+                                        Edit
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:text-neutral-100"
+                                        onClick={() => {
+                                          setEditing(k, false);
+                                          setPartsOpen(k, false);
+                                        }}
+                                      >
+                                        Done
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {partsOpen && (
+                              <>
+                                <div className="space-y-2">
+                                  {currentParts.map((p, pIdx) => {
+                                    const qtyKey = `${k}:part:${pIdx}:qty`;
+                                    const draft = qtyDraftByKey[qtyKey];
+
+                                    // ✅ if user hasn't typed, show blank when qty is 0
+                                    const displayQty =
+                                      typeof draft === "string"
+                                        ? draft
+                                        : p.qty > 0
+                                          ? String(p.qty)
+                                          : "";
+
+                                    return (
+                                      <div
+                                        key={pIdx}
+                                        className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
+                                      >
+                                        <input
+                                          disabled={lockInputs}
+                                          className={[
+                                            "min-w-0 flex-1 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
+                                            "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
+                                            lockInputs
+                                              ? "opacity-60 cursor-not-allowed"
+                                              : "",
+                                          ].join(" ")}
+                                          placeholder="Part description"
+                                          value={p.description}
+                                          onChange={(e) =>
+                                            updatePart(pIdx, {
+                                              description: e.target.value,
+                                            })
+                                          }
+                                        />
+
+                                        {/* ✅ Qty filler (blank until typed) */}
+                                        <input
+                                          disabled={lockInputs}
+                                          className={[
+                                            "w-16 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
+                                            "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
+                                            lockInputs
+                                              ? "opacity-60 cursor-not-allowed"
+                                              : "",
+                                          ].join(" ")}
+                                          placeholder="Qty"
+                                          inputMode="numeric"
+                                          type="number"
+                                          min={0}
+                                          step={1}
+                                          value={displayQty}
+                                          onChange={(e) => {
+                                            const raw = e.target.value;
+
+                                            // keep the typed string so it can be blank
+                                            setQtyDraft(qtyKey, raw);
+
+                                            if (raw === "") {
+                                              // ✅ blank qty => store 0 (no default)
+                                              updatePart(pIdx, { qty: 0 });
+                                              return;
+                                            }
+
+                                            const n = Number(raw);
+                                            if (!Number.isFinite(n)) {
+                                              updatePart(pIdx, { qty: 0 });
+                                              return;
+                                            }
+
+                                            updatePart(pIdx, {
+                                              qty: Math.max(0, Math.floor(n)),
+                                            });
+                                          }}
+                                          onBlur={() => {
+                                            // If user typed a number, you can drop draft and rely on qty.
+                                            // If blank, keep draft "" so placeholder behavior remains.
+                                            const raw = qtyDraftByKey[qtyKey];
+                                            if (raw && raw.trim() !== "") {
+                                              setQtyDraft(qtyKey, "");
+                                              setQtyDraftByKey((prev) => {
+                                                const next = { ...prev };
+                                                delete next[qtyKey];
+                                                return next;
+                                              });
+                                            }
+                                          }}
+                                        />
+
+                                        <button
+                                          type="button"
+                                          className={[
+                                            "text-[11px] text-red-300 hover:text-red-200",
+                                            lockInputs
+                                              ? "opacity-40 pointer-events-none"
+                                              : "",
+                                          ].join(" ")}
+                                          onClick={() => removePart(pIdx)}
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+
+                                  <button
+                                    type="button"
+                                    disabled={lockInputs}
+                                    onClick={addEmptyPart}
+                                    className={[
+                                      "mt-1 inline-flex items-center rounded-full border border-white/20 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100",
+                                      "hover:border-accent/80 hover:text-accent",
+                                      lockInputs
+                                        ? "opacity-50 cursor-not-allowed hover:border-white/20 hover:text-neutral-100"
+                                        : "",
+                                    ].join(" ")}
+                                  >
+                                    + Add Part
+                                  </button>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <span className="text-[11px] text-neutral-400">
+                                    Labor hours
+                                  </span>
+                                  <input
+                                    disabled={lockInputs}
+                                    className={[
+                                      "w-20 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
+                                      "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
+                                      lockInputs
+                                        ? "opacity-60 cursor-not-allowed"
+                                        : "",
+                                    ].join(" ")}
+                                    placeholder="0.0"
+                                    type="number"
+                                    min={0}
+                                    step={0.1}
+                                    value={currentLabor ?? ""}
+                                    onChange={(e) =>
+                                      handleLaborChange(
+                                        e.target.value === ""
+                                          ? null
+                                          : Number(e.target.value) || 0,
+                                      )
+                                    }
+                                  />
+                                  <span className="text-[10px] text-neutral-500">
+                                    (rate + pricing handled later)
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {canShowSubmit && (
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          {(() => {
+                            if (!submitted) {
+                              return (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="px-3"
+                                  disabled={submitting}
+                                  onClick={() =>
+                                    onSubmitAI?.(sectionIndex, itemIndex)
+                                  }
+                                >
+                                  {submitting
+                                    ? "Submitting…"
+                                    : "Submit for estimate"}
+                                </Button>
+                              );
+                            }
+
+                            if (isEditing) {
+                              return (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="px-3"
+                                  disabled={submitting}
+                                  onClick={() =>
+                                    onSubmitAI?.(sectionIndex, itemIndex)
+                                  }
+                                >
+                                  {submitting ? "Updating…" : "Update estimate"}
+                                </Button>
+                              );
+                            }
+
+                            return (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="px-3 opacity-70"
+                                disabled
+                              >
+                                Submitted
+                              </Button>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+===== features/inspections/lib/inspection/addWorkOrderLine.ts =====
+// /features/inspections/lib/inspection/addWorkOrderLine.ts (FULL FILE REPLACEMENT)
+
+export type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate?: number;
+  summary: string;
+  confidence?: "low" | "medium" | "high";
+  price?: number;
+
+  /**
+   * IMPORTANT:
+   * When this suggestion originates from an inspection item,
+   * set this to the inspection item's notes (e.g. "Air governor leaking").
+   * We'll pass it through as the WO line complaint.
+   */
+  notes?: string;
+
+  title?: string;
+};
+
+type JobType =
+  | "diagnosis"
+  | "inspection"
+  | "maintenance"
+  | "repair"
+  | "tech-suggested";
+
+function safeTrim(x: unknown): string {
+  return typeof x === "string" ? x.trim() : "";
+}
+
+export async function addWorkOrderLineFromSuggestion(args: {
+  workOrderId: string;
+  description: string;
+  section?: string;
+  status?: "recommend" | "fail";
+  suggestion: AISuggestion;
+  source?: "inspection";
+  /** mark AI-added items clearly for UI rules like “not punchable until approved” */
+  jobType?: JobType; // default set server-side if omitted
+
+  /**
+   * Optional explicit complaint.
+   * If omitted, we default complaint from suggestion.notes (inspection notes).
+   */
+  complaint?: string | null;
+}) {
+  const derivedComplaint =
+    args.complaint != null ? safeTrim(args.complaint) : safeTrim(args.suggestion?.notes);
+
+  const payload = {
+    ...args,
+    // ✅ complaint becomes the inspection "notes" unless caller explicitly overrides it
+    complaint: derivedComplaint || null,
+  };
+
+  const res = await fetch("/api/work-orders/add-line", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const j = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(j?.error || "Failed to add work order line");
+  }
+
+  return (await res.json()) as { id: string };
+}
+
+===== features/inspections/lib/inspection/aiQuote.ts =====
+// features/inspections/lib/inspection/aiQuote.ts
+
+export type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate?: number;
+  summary: string;
+  confidence?: "low" | "medium" | "high";
+  price?: number;
+  notes?: string;
+  title?: string;
+};
+
+export type VehicleInput = {
+  year?: string | number | null;
+  make?: string | null;
+  model?: string | null;
+  vin?: string | null;
+};
+
+export async function requestQuoteSuggestion(args: {
+  item: string;
+  notes?: string;
+  section: string;
+  status: string;
+  value?: string;
+  unit?: string;
+  vehicle?: VehicleInput | null;
+}): Promise<AISuggestion | null> {
+  try {
+    const res = await fetch("/api/ai/quote-suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+
+    if (!res.ok) return null;
+
+    const data = (await res.json().catch(() => null)) as
+      | { suggestion?: AISuggestion }
+      | null;
+
+    return data?.suggestion ?? null;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("requestQuoteSuggestion error:", e);
+    return null;
+  }
+}
+
+===== features/inspections/app/inspection/run/page.tsx =====
+// features/inspections/app/inspection/run/page.tsx
+"use client";
+
+import { useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
+import type { Database } from "@shared/types/types/supabase";
+import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
+
+type DB = Database;
+type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
+
+type SectionItem = { item: string; unit?: string | null };
+type Section = { title: string; items: SectionItem[] };
+
+export default function RunInspectionPage() {
+  const sp = useSearchParams();
+  const router = useRouter();
+  const supabase = createClientComponentClient<DB>();
+
+  useEffect(() => {
+    const templateId = sp.get("templateId");
+    const gridOverride = sp.get("grid"); // 'air' | 'hyd' | 'none' | null
+
+    // ------------------- MODE 1: Staged (no templateId) -------------------
+    if (!templateId) {
+      if (typeof window === "undefined") {
+        router.replace("/inspections/templates");
+        return;
+      }
+
+      const stagedSectionsRaw =
+        sessionStorage.getItem("inspection:sections") ??
+        sessionStorage.getItem("customInspection:sections");
+      const stagedTitle =
+        sessionStorage.getItem("inspection:title") ??
+        sessionStorage.getItem("customInspection:title");
+
+      if (!stagedSectionsRaw || !stagedTitle) {
+        router.replace("/inspections/templates");
+        return;
+      }
+
+      let sections: Section[] = [];
+      try {
+        sections = JSON.parse(stagedSectionsRaw) as Section[];
+      } catch {
+        router.replace("/inspections/templates");
+        return;
+      }
+
+      const title = stagedTitle || "Inspection";
+
+      const currentParams: Record<string, string> = {};
+      sp.forEach((value, key) => {
+        currentParams[key] = value;
+      });
+
+      const stagedParamsRaw = sessionStorage.getItem("inspection:params");
+      const stagedParams: Record<string, string> = stagedParamsRaw
+        ? (JSON.parse(stagedParamsRaw) as Record<string, string>)
+        : {};
+
+      const mergedParams: Record<string, string> = {
+        ...stagedParams,
+        ...currentParams,
+      };
+
+      mergedParams.template = mergedParams.template || "generic";
+      mergedParams.mode = mergedParams.mode || "run";
+
+      const vt =
+        mergedParams.vehicleType ||
+        sessionStorage.getItem("inspection:vehicleType") ||
+        "";
+
+      const grid =
+        mergedParams.grid ||
+        gridOverride ||
+        sessionStorage.getItem("customInspection:gridMode");
+
+      // ✅ Single canonical normalizer (shared with other flows)
+      const normalizedSections = prepareSectionsWithCornerGrid(
+        sections,
+        vt,
+        grid || null,
+      ) as unknown as Section[];
+
+      sessionStorage.setItem(
+        "inspection:sections",
+        JSON.stringify(normalizedSections),
+      );
+      sessionStorage.setItem("inspection:title", title);
+      sessionStorage.setItem("inspection:template", mergedParams.template);
+      sessionStorage.setItem("inspection:params", JSON.stringify(mergedParams));
+
+      // Legacy keys
+      sessionStorage.setItem(
+        "customInspection:sections",
+        JSON.stringify(normalizedSections),
+      );
+      sessionStorage.setItem("customInspection:title", title);
+
+      const next = new URLSearchParams(mergedParams);
+      router.replace(`/inspections/fill?${next.toString()}`);
+      return;
+    }
+
+    // ------------------- MODE 2: DB template (with templateId) -------------------
+    (async () => {
+      const { data, error } = await supabase
+        .from("inspection_templates")
+        .select("id, template_name, sections, vehicle_type")
+        .eq("id", templateId)
+        .maybeSingle<TemplateRow>();
+
+      if (error || !data) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load inspection template:", error);
+        router.replace("/inspections/templates");
+        return;
+      }
+
+      const rawSections = (data.sections ?? []) as Section[];
+      const title = data.template_name ?? "Inspection";
+      const vehicleType = String(data.vehicle_type ?? "");
+
+      // ✅ Single canonical normalizer (shared with other flows)
+      const sections = prepareSectionsWithCornerGrid(
+        rawSections,
+        vehicleType,
+        gridOverride,
+      ) as unknown as Section[];
+
+      if (typeof window !== "undefined") {
+        const params: Record<string, string> = {};
+        sp.forEach((value, key) => {
+          params[key] = value;
+        });
+
+        params.templateId = data.id;
+        params.template = params.template || "generic";
+        params.vehicleType = vehicleType;
+        params.mode = params.mode || "run";
+
+        sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
+        sessionStorage.setItem("inspection:title", title);
+        sessionStorage.setItem("inspection:vehicleType", vehicleType);
+        sessionStorage.setItem("inspection:template", params.template);
+        sessionStorage.setItem("inspection:params", JSON.stringify(params));
+
+        // Legacy keys
+        sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
+        sessionStorage.setItem("customInspection:title", title);
+        sessionStorage.setItem("customInspection:includeOil", JSON.stringify(false));
+
+        const next = new URLSearchParams(params);
+        next.delete("templateId");
+        router.replace(`/inspections/fill?${next.toString()}`);
+      }
+    })();
+  }, [sp, router, supabase]);
+
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center bg-background px-3 py-4 text-foreground sm:px-6 lg:px-10 xl:px-16">
+      <div className="mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl px-4 py-3 text-sm text-muted-foreground">
+        <div className="rounded-xl border border-slate-700/60 bg-slate-950/80 px-4 py-3 text-sm">
+          Preparing inspection…
+        </div>
+      </div>
+    </div>
+  );
+}
+
+===== features/work-orders/intake/screens/AppIntakeScreen.tsx =====
+import React, { useMemo, useState } from "react";
+import type { IntakeV1 } from "../types";
+import { IntakeV1Schema } from "../schema.zod";
+import { appFlow } from "../flows/app.flow";
+import { IntakeShell } from "../components/IntakeShell";
+import { VehicleSelect } from "../components/subject/VehicleSelect";
+import { ProfileAutofillBanner } from "../components/subject/ProfileAutofillBanner";
+import { ConcernBlock } from "../components/blocks/ConcernBlock";
+import { SymptomsBlock } from "../components/blocks/SymptomsBlock";
+import { DuplicationBlock } from "../components/blocks/DuplicationBlock";
+import { ConditionsBlock } from "../components/blocks/ConditionsBlock";
+import { ContextBlock } from "../components/blocks/ContextBlock";
+import { AuthorizationBlock } from "../components/blocks/AuthorizationBlock";
+import { ReviewSubmitBlock } from "../components/blocks/ReviewSubmitBlock";
+import { makeVehicleLabel } from "../mappers";
+
+type Vehicle = { vehicle_id: string; label?: string | null; unit_number?: string | null };
+
+export function AppIntakeScreen(props: {
+  initialIntake: IntakeV1;
+  customerName?: string | null;
+  vehicles: Vehicle[];
+  onSaveDraft?: (intake: IntakeV1) => void;
+  onSave: (intake: IntakeV1) => void; // app saves rather than submits
+}) {
+  const [step, setStep] = useState(0);
+  const [intake, setIntake] = useState<IntakeV1>(props.initialIntake);
+
+  const stepDef = appFlow[step];
+  const stepCount = appFlow.length;
+
+  const vehicles = props.vehicles.map((v) => ({
+    vehicle_id: v.vehicle_id,
+    label: makeVehicleLabel({ ...v, vehicle_id: v.vehicle_id }),
+  }));
+
+  const selectedVehicleLabel =
+    vehicles.find((v) => v.vehicle_id === intake.subject.vehicle_id)?.label ?? null;
+
+  const persist = (next: IntakeV1) => {
+    setIntake(next);
+    props.onSaveDraft?.(next);
+  };
+
+  const nextDisabled = useMemo(() => {
+    if (stepDef.key === "vehicle") return !intake.subject.vehicle_id;
+    if (stepDef.key === "concern") return intake.concern.primary_text.trim().length === 0;
+    if (stepDef.key === "symptoms") return intake.symptoms.types.length === 0;
+    return false;
+  }, [stepDef.key, intake]);
+
+  const goNext = () => setStep((s) => Math.min(s + 1, stepCount - 1));
+  const goBack = () => setStep((s) => Math.max(s - 1, 0));
+
+  const onSave = () => {
+    const parsed = IntakeV1Schema.parse(intake);
+    props.onSave(parsed);
+  };
+
+  return (
+    <IntakeShell
+      title="WO Intake (App)"
+      stepTitle={stepDef.title}
+      stepIndex={step}
+      stepCount={stepCount}
+      onBack={step > 0 ? goBack : undefined}
+      onNext={step < stepCount - 1 ? goNext : onSave}
+      nextDisabled={step < stepCount - 1 ? nextDisabled : false}
+      primaryActionLabel={step < stepCount - 1 ? "Next" : "Save"}
+    >
+      <ProfileAutofillBanner
+        customerName={props.customerName ?? null}
+        vehicleLabel={selectedVehicleLabel}
+        onChangeVehicle={props.vehicles.length > 1 ? () => setStep(0) : undefined}
+      />
+
+      {stepDef.key === "vehicle" && (
+        <>
+          {props.vehicles.length <= 1 ? (
+            <div style={{ opacity: 0.75 }}>Vehicle auto-selected from profile.</div>
+          ) : (
+            <VehicleSelect
+              vehicles={vehicles}
+              value={intake.subject.vehicle_id ?? null}
+              onChange={(vehicle_id) =>
+                persist({ ...intake, subject: { ...intake.subject, vehicle_id } })
+              }
+            />
+          )}
+        </>
+      )}
+
+      {stepDef.key === "concern" && (
+        <ConcernBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, concern: { ...intake.concern, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "symptoms" && (
+        <SymptomsBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, symptoms: { ...intake.symptoms, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "duplication" && (
+        <DuplicationBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, duplication: { ...intake.duplication, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "conditions" && (
+        <ConditionsBlock
+          intake={intake}
+          onChange={(conditions) =>
+            persist({ ...intake, duplication: { ...intake.duplication, conditions } })
+          }
+        />
+      )}
+
+      {stepDef.key === "context" && (
+        <ContextBlock
+          intake={intake}
+          onChange={(ctx) => persist({ ...intake, context: ctx })}
+        />
+      )}
+
+      {stepDef.key === "authorization" && (
+        <AuthorizationBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, authorization: { ...intake.authorization, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "review" && (
+        <ReviewSubmitBlock intake={intake} submitLabel="Save intake" onSubmit={onSave} />
+      )}
+    </IntakeShell>
+  );
+}
+
+
+===== features/work-orders/intake/screens/PortalIntakeScreen.tsx =====
+import React, { useMemo, useState } from "react";
+import type { IntakeV1 } from "../types";
+import { IntakeV1Schema } from "../schema.zod";
+import { portalFlow } from "../flows/portal.flow";
+import { IntakeShell } from "../components/IntakeShell";
+import { VehicleSelect } from "../components/subject/VehicleSelect";
+import { ProfileAutofillBanner } from "../components/subject/ProfileAutofillBanner";
+import { ConcernBlock } from "../components/blocks/ConcernBlock";
+import { SymptomsBlock } from "../components/blocks/SymptomsBlock";
+import { DuplicationBlock } from "../components/blocks/DuplicationBlock";
+import { ConditionsBlock } from "../components/blocks/ConditionsBlock";
+import { AuthorizationBlock } from "../components/blocks/AuthorizationBlock";
+import { AttachmentsBlock } from "../components/blocks/AttachmentsBlock";
+import { ReviewSubmitBlock } from "../components/blocks/ReviewSubmitBlock";
+import { makeVehicleLabel } from "../mappers";
+
+type Vehicle = { vehicle_id: string; label?: string | null; unit_number?: string | null };
+
+export function PortalIntakeScreen(props: {
+  initialIntake: IntakeV1;
+  customerName?: string | null;
+  vehicles: Vehicle[];
+  onSaveDraft?: (intake: IntakeV1) => void;
+  onSubmit: (intake: IntakeV1) => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [intake, setIntake] = useState<IntakeV1>(props.initialIntake);
+
+  const stepDef = portalFlow[step];
+  const stepCount = portalFlow.length;
+
+  const vehicles = props.vehicles.map((v) => ({
+    vehicle_id: v.vehicle_id,
+    label: makeVehicleLabel({ ...v, vehicle_id: v.vehicle_id }),
+  }));
+
+  const selectedVehicleLabel =
+    vehicles.find((v) => v.vehicle_id === intake.subject.vehicle_id)?.label ?? null;
+
+  const persist = (next: IntakeV1) => {
+    setIntake(next);
+    props.onSaveDraft?.(next);
+  };
+
+  const nextDisabled = useMemo(() => {
+    if (stepDef.key === "vehicle") return !intake.subject.vehicle_id;
+    if (stepDef.key === "concern") return intake.concern.primary_text.trim().length === 0;
+    if (stepDef.key === "symptoms") return intake.symptoms.types.length === 0;
+    return false;
+  }, [stepDef.key, intake]);
+
+  const goNext = () => setStep((s) => Math.min(s + 1, stepCount - 1));
+  const goBack = () => setStep((s) => Math.max(s - 1, 0));
+
+  const onSubmit = () => {
+    const parsed = IntakeV1Schema.parse(intake);
+    props.onSubmit(parsed);
+  };
+
+  return (
+    <IntakeShell
+      title="Work Order Intake"
+      stepTitle={stepDef.title}
+      stepIndex={step}
+      stepCount={stepCount}
+      onBack={step > 0 ? goBack : undefined}
+      onNext={step < stepCount - 1 ? goNext : undefined}
+      nextDisabled={nextDisabled}
+      primaryActionLabel={step === stepCount - 1 ? "Done" : "Next"}
+    >
+      <ProfileAutofillBanner
+        customerName={props.customerName ?? null}
+        vehicleLabel={selectedVehicleLabel}
+        onChangeVehicle={props.vehicles.length > 1 ? () => setStep(0) : undefined}
+      />
+
+      {stepDef.key === "vehicle" && (
+        <>
+          {props.vehicles.length <= 1 ? (
+            <div style={{ opacity: 0.75 }}>Vehicle auto-selected from your profile.</div>
+          ) : (
+            <VehicleSelect
+              vehicles={vehicles}
+              value={intake.subject.vehicle_id ?? null}
+              onChange={(vehicle_id) =>
+                persist({ ...intake, subject: { ...intake.subject, vehicle_id } })
+              }
+            />
+          )}
+        </>
+      )}
+
+      {stepDef.key === "concern" && (
+        <ConcernBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, concern: { ...intake.concern, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "symptoms" && (
+        <SymptomsBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, symptoms: { ...intake.symptoms, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "duplication" && (
+        <DuplicationBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, duplication: { ...intake.duplication, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "conditions" && (
+        <ConditionsBlock
+          intake={intake}
+          onChange={(conditions) =>
+            persist({ ...intake, duplication: { ...intake.duplication, conditions } })
+          }
+        />
+      )}
+
+      {stepDef.key === "authorization" && (
+        <AuthorizationBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, authorization: { ...intake.authorization, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "review" && (
+        <div style={{ display: "grid", gap: 12 }}>
+          <AttachmentsBlock
+            intake={intake}
+            onChange={(attachments) => persist({ ...intake, attachments })}
+          />
+          <ReviewSubmitBlock intake={intake} submitLabel="Submit intake" onSubmit={onSubmit} />
+        </div>
+      )}
+    </IntakeShell>
+  );
+}
+
+
+===== features/work-orders/intake/screens/FleetIntakeScreen.tsx =====
+import React, { useMemo, useState } from "react";
+import type { IntakeV1 } from "../types";
+import { IntakeV1Schema } from "../schema.zod";
+import { fleetFlow } from "../flows/fleet.flow";
+import { IntakeShell } from "../components/IntakeShell";
+import { VehicleSelect } from "../components/subject/VehicleSelect";
+import { ProfileAutofillBanner } from "../components/subject/ProfileAutofillBanner";
+import { ConcernBlock } from "../components/blocks/ConcernBlock";
+import { SymptomsBlock } from "../components/blocks/SymptomsBlock";
+import { DuplicationBlock } from "../components/blocks/DuplicationBlock";
+import { AuthorizationBlock } from "../components/blocks/AuthorizationBlock";
+import { ReviewSubmitBlock } from "../components/blocks/ReviewSubmitBlock";
+import { makeVehicleLabel } from "../mappers";
+
+type Vehicle = { vehicle_id: string; label?: string | null; unit_number?: string | null };
+
+export function FleetIntakeScreen(props: {
+  initialIntake: IntakeV1;
+  fleetName?: string | null;
+  vehicles: Vehicle[];
+  onSaveDraft?: (intake: IntakeV1) => void;
+  onSubmit: (intake: IntakeV1) => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [intake, setIntake] = useState<IntakeV1>(props.initialIntake);
+
+  const stepDef = fleetFlow[step];
+  const stepCount = fleetFlow.length;
+
+  const vehicles = props.vehicles.map((v) => ({
+    vehicle_id: v.vehicle_id,
+    label: makeVehicleLabel({ ...v, vehicle_id: v.vehicle_id }),
+  }));
+
+  const selectedVehicleLabel =
+    vehicles.find((v) => v.vehicle_id === intake.subject.vehicle_id)?.label ?? null;
+
+  const persist = (next: IntakeV1) => {
+    setIntake(next);
+    props.onSaveDraft?.(next);
+  };
+
+  const nextDisabled = useMemo(() => {
+    if (stepDef.key === "vehicle") return !intake.subject.vehicle_id;
+    if (stepDef.key === "concern") return intake.concern.primary_text.trim().length === 0;
+    if (stepDef.key === "symptoms") return intake.symptoms.types.length === 0;
+    return false;
+  }, [stepDef.key, intake]);
+
+  const goNext = () => setStep((s) => Math.min(s + 1, stepCount - 1));
+  const goBack = () => setStep((s) => Math.max(s - 1, 0));
+
+  const onSubmit = () => {
+    const parsed = IntakeV1Schema.parse(intake);
+    props.onSubmit(parsed);
+  };
+
+  return (
+    <IntakeShell
+      title="Fleet Work Order Intake"
+      stepTitle={stepDef.title}
+      stepIndex={step}
+      stepCount={stepCount}
+      onBack={step > 0 ? goBack : undefined}
+      onNext={step < stepCount - 1 ? goNext : onSubmit}
+      nextDisabled={step < stepCount - 1 ? nextDisabled : false}
+      primaryActionLabel={step < stepCount - 1 ? "Next" : "Submit"}
+    >
+      <ProfileAutofillBanner
+        customerName={props.fleetName ?? null}
+        vehicleLabel={selectedVehicleLabel}
+        onChangeVehicle={props.vehicles.length > 1 ? () => setStep(0) : undefined}
+      />
+
+      {stepDef.key === "vehicle" && (
+        <>
+          {props.vehicles.length <= 1 ? (
+            <div style={{ opacity: 0.75 }}>Vehicle auto-selected from fleet profile.</div>
+          ) : (
+            <VehicleSelect
+              vehicles={vehicles}
+              value={intake.subject.vehicle_id ?? null}
+              onChange={(vehicle_id) =>
+                persist({ ...intake, subject: { ...intake.subject, vehicle_id } })
+              }
+            />
+          )}
+        </>
+      )}
+
+      {stepDef.key === "concern" && (
+        <ConcernBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, concern: { ...intake.concern, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "symptoms" && (
+        <SymptomsBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, symptoms: { ...intake.symptoms, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "duplication" && (
+        <DuplicationBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, duplication: { ...intake.duplication, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "authorization" && (
+        <AuthorizationBlock
+          intake={intake}
+          onChange={(patch) =>
+            persist({ ...intake, authorization: { ...intake.authorization, ...patch } })
+          }
+        />
+      )}
+
+      {stepDef.key === "review" && (
+        <ReviewSubmitBlock intake={intake} submitLabel="Submit intake" onSubmit={onSubmit} />
+      )}
+    </IntakeShell>
+  );
+}
