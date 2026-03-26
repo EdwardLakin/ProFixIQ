@@ -1,0 +1,783 @@
+===== features/inspections/lib/inspection/save.ts =====
+// features/inspections/lib/inspection/save.ts
+import type { InspectionSession } from "@inspections/lib/inspection/types";
+
+export async function saveInspectionSession(
+  session: InspectionSession,
+  workOrderLineId: string
+): Promise<void> {
+  if (!workOrderLineId) {
+    throw new Error("Missing workOrderLineId");
+  }
+
+  const res = await fetch("/api/inspections/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ workOrderLineId, session }),
+  });
+
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j?.error || "Save failed");
+  }
+}
+===== features/inspections/lib/inspection/findings/page.tsx =====
+"use client";
+
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+import { v4 as uuidv4 } from "uuid";
+
+import type {
+  InspectionItem,
+  InspectionItemStatus,
+  InspectionSession,
+  QuoteLineItem,
+  VoiceMeta,
+} from "@inspections/lib/inspection/types";
+
+import PageShell from "@/features/shared/components/PageShell";
+import { Button } from "@shared/components/ui/Button";
+import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
+import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
+import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
+
+type FindingRow = {
+  sectionIndex: number;
+  itemIndex: number;
+  sectionTitle: string;
+  item: InspectionItem;
+};
+
+type DraftUiState = Record<
+  string,
+  {
+    laborHoursText: string;
+    partsText: string;
+  }
+>;
+
+function norm(input: string | null | undefined): string {
+  return String(input ?? "").trim().toLowerCase();
+}
+
+function findingKey(sectionIndex: number, itemIndex: number): string {
+  return `${sectionIndex}:${itemIndex}`;
+}
+
+function inspectionDraftKey(args: {
+  inspectionId: string;
+  workOrderLineId?: string | null;
+  workOrderId?: string | null;
+  templateName?: string | null;
+}) {
+  const t = (args.templateName || "Inspection").toLowerCase().trim();
+  if (args.workOrderLineId) {
+    return `inspection-draft:line:${args.workOrderLineId}`;
+  }
+  if (args.workOrderId) {
+    return `inspection-draft:wo:${args.workOrderId}:${t}`;
+  }
+  return `inspection-draft:template:${t}:${args.inspectionId}`;
+}
+
+function isFindingStatus(status: unknown): status is "fail" | "recommend" {
+  const s = norm(String(status ?? ""));
+  return s === "fail" || s === "recommend";
+}
+
+function readDraftSession(key: string): InspectionSession | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as InspectionSession;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraftSession(key: string, session: InspectionSession): void {
+  try {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(key, JSON.stringify(session));
+  } catch {
+    // ignore
+  }
+}
+
+function summarizeFromSections(session: InspectionSession): {
+  cause: string;
+  correction: string;
+} {
+  const failed: string[] = [];
+  const recommended: string[] = [];
+
+  for (const sec of session.sections ?? []) {
+    const sectionTitle = String(sec.title ?? "").trim();
+    for (const item of sec.items ?? []) {
+      const status = String(item.status ?? "").toLowerCase();
+      if (status !== "fail" && status !== "recommend") continue;
+
+      const label = String(item.item ?? item.name ?? "Item").trim();
+      const note = String(item.notes ?? "").trim();
+      const line = note
+        ? `${sectionTitle ? `${sectionTitle}: ` : ""}${label} — ${note}`
+        : `${sectionTitle ? `${sectionTitle}: ` : ""}${label}`;
+
+      if (status === "fail") failed.push(line);
+      if (status === "recommend") recommended.push(line);
+    }
+  }
+
+  if (failed.length === 0 && recommended.length === 0) {
+    return {
+      cause: "Inspection completed.",
+      correction:
+        "Inspection completed. No failed or recommended items were recorded.",
+    };
+  }
+
+  const parts: string[] = [];
+  if (failed.length) parts.push(`Failed: ${failed.join("; ")}.`);
+  if (recommended.length) parts.push(`Recommended: ${recommended.join("; ")}.`);
+
+  return {
+    cause: "Inspection found items requiring attention.",
+    correction: parts.join(" "),
+  };
+}
+
+function collectFindings(session: InspectionSession): FindingRow[] {
+  const rows: FindingRow[] = [];
+  for (let s = 0; s < session.sections.length; s += 1) {
+    const sec = session.sections[s];
+    for (let i = 0; i < (sec.items ?? []).length; i += 1) {
+      const item = sec.items[i];
+      if (!isFindingStatus(item.status)) continue;
+      rows.push({
+        sectionIndex: s,
+        itemIndex: i,
+        sectionTitle: String(sec.title ?? ""),
+        item,
+      });
+    }
+  }
+  return rows;
+}
+
+function partsToText(parts: InspectionItem["parts"] | undefined): string {
+  return (parts ?? []).map((p) => `${p.qty}x ${p.description}`).join("\n");
+}
+
+function parsePartsText(
+  input: string,
+): Array<{ description: string; qty: number }> {
+  return input
+    .split("\n")
+    .map((line) => line.replace(/\r/g, ""))
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      const trimmed = line.trim();
+      const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*x?\s+(.+)$/i);
+
+      if (match?.[1] && match?.[2]) {
+        const qty = Number(match[1]);
+        return {
+          qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+          description: match[2].trim(),
+        };
+      }
+
+      return {
+        qty: 1,
+        description: trimmed,
+      };
+    })
+    .filter((p) => p.description.length > 0);
+}
+
+function laborHoursToText(value: number | null | undefined): string {
+  if (typeof value !== "number" || Number.isNaN(value)) return "";
+  return String(value);
+}
+
+function updateQuoteLineInSession(
+  session: InspectionSession,
+  id: string,
+  patch: Partial<QuoteLineItem>,
+): InspectionSession {
+  const current = Array.isArray(session.quote) ? session.quote : [];
+
+  return {
+    ...session,
+    quote: current.map((line) => (line.id === id ? { ...line, ...patch } : line)),
+  };
+}
+
+export default function InspectionFindingsPage(): JSX.Element {
+  const router = useRouter();
+  const sp = useSearchParams();
+
+  const inspectionId = sp.get("inspectionId") || "";
+  const workOrderId = sp.get("workOrderId") || "";
+  const workOrderLineId = sp.get("workOrderLineId") || "";
+  const templateName = sp.get("template") || "Inspection";
+
+  const draftKey = useMemo(
+    () =>
+      inspectionDraftKey({
+        inspectionId,
+        workOrderId: workOrderId || null,
+        workOrderLineId: workOrderLineId || null,
+        templateName,
+      }),
+    [inspectionId, workOrderId, workOrderLineId, templateName],
+  );
+
+  const [session, setSession] = useState<InspectionSession | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [draftUi, setDraftUi] = useState<DraftUiState>({});
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const syncFromDraft = useCallback(() => {
+    const loaded = readDraftSession(draftKey);
+    if (loaded) {
+      setSession(loaded);
+    }
+  }, [draftKey]);
+
+  useEffect(() => {
+    syncFromDraft();
+  }, [syncFromDraft]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleFocus = () => syncFromDraft();
+    const handlePageShow = () => syncFromDraft();
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === draftKey) syncFromDraft();
+    };
+
+    const handleInspectionDraftUpdated = (e: Event) => {
+      const custom = e as CustomEvent<{ draftKey?: string }>;
+      if (!custom.detail?.draftKey || custom.detail.draftKey === draftKey) {
+        syncFromDraft();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(
+      "inspection:draft-updated",
+      handleInspectionDraftUpdated as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(
+        "inspection:draft-updated",
+        handleInspectionDraftUpdated as EventListener,
+      );
+    };
+  }, [draftKey, syncFromDraft]);
+
+  const findings = useMemo(
+    () => (session ? collectFindings(session) : []),
+    [session],
+  );
+
+  useEffect(() => {
+    setDraftUi((prev) => {
+      const nextUi: DraftUiState = { ...prev };
+
+      for (const row of findings) {
+        const key = findingKey(row.sectionIndex, row.itemIndex);
+        nextUi[key] ??= {
+          laborHoursText: laborHoursToText(row.item.laborHours),
+          partsText: partsToText(row.item.parts),
+        };
+      }
+
+      return nextUi;
+    });
+  }, [findings]);
+
+  const updateFinding = (
+    sectionIndex: number,
+    itemIndex: number,
+    patch: Partial<InspectionItem>,
+  ): void => {
+    setSession((prev) => {
+      if (!prev) return prev;
+
+      const next: InspectionSession = {
+        ...prev,
+        sections: prev.sections.map((sec, sIdx) => {
+          if (sIdx !== sectionIndex) return sec;
+          return {
+            ...sec,
+            items: (sec.items ?? []).map((it, iIdx) =>
+              iIdx === itemIndex ? { ...it, ...patch } : it,
+            ),
+          };
+        }),
+      };
+
+      writeDraftSession(draftKey, next);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("inspection:draft-updated", {
+            detail: { draftKey },
+          }),
+        );
+      }
+
+      return next;
+    });
+  };
+
+  const updateUiDraft = (
+    sectionIndex: number,
+    itemIndex: number,
+    patch: Partial<{ laborHoursText: string; partsText: string }>,
+  ): void => {
+    const key = findingKey(sectionIndex, itemIndex);
+    setDraftUi((prev) => ({
+      ...prev,
+      [key]: {
+        laborHoursText: prev[key]?.laborHoursText ?? "",
+        partsText: prev[key]?.partsText ?? "",
+        ...patch,
+      },
+    }));
+  };
+
+  const markReviewed = (row: FindingRow): void => {
+    updateFinding(row.sectionIndex, row.itemIndex, {
+      findingReviewed: true,
+      photoReviewed:
+        (row.item.photoUrls?.length ?? 0) > 0 ? true : row.item.photoReviewed,
+    });
+  };
+
+  const handleUploadPhoto = async (
+    row: FindingRow,
+    file: File,
+  ): Promise<void> => {
+    if (!inspectionId) {
+      toast.error("Missing inspection id.");
+      return;
+    }
+
+    const key = findingKey(row.sectionIndex, row.itemIndex);
+    const itemLabel = String(row.item.item ?? row.item.name ?? "Item");
+
+    setUploadingKey(key);
+
+===== features/inspections/screens/GenericInspectionScreen.tsx =====
+// features/inspections/screens/GenericInspectionScreen.tsx (FULL FILE REPLACEMENT)
+"use client";
+
+import type React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { v4 as uuidv4 } from "uuid";
+import { toast } from "sonner";
+
+import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
+import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
+import ProgressTracker from "@inspections/lib/inspection/ProgressTracker";
+import useInspectionSession from "@inspections/hooks/useInspectionSession";
+
+import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
+import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
+import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
+import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
+import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
+import { buildVoiceBrainFeedback } from "@inspections/lib/inspection/voice/voiceBrain";
+import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
+
+import type {
+  ParsedCommand,
+  InspectionItemStatus,
+  InspectionStatus,
+  InspectionSection,
+  InspectionSession,
+  SessionCustomer,
+  SessionVehicle,
+  QuoteLineItem,
+  VoiceMeta,
+  VoiceTraceEvent,
+  VoiceCommandApplyResult,
+} from "@inspections/lib/inspection/types";
+
+import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
+import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
+import AirCornerGrid from "@inspections/lib/inspection/ui/AirCornerGrid";
+import TireGrid from "@inspections/lib/inspection/ui/TireCornerGrid";
+import TireGridHydraulic from "@inspections/lib/inspection/ui/TireGridHydraulic";
+import BatteryGrid from "@inspections/lib/inspection/ui/BatteryGrid";
+
+import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
+import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
+import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
+import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
+import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
+import PageShell from "@/features/shared/components/PageShell";
+import { Button } from "@shared/components/ui/Button";
+
+/* -------------------------- helpers -------------------------- */
+
+type GenericInspectionScreenProps = {
+  embed?: boolean;
+  template?: string | null;
+  params?: Record<string, string | number | boolean | null | undefined>;
+  onSpecHint?: (payload: {
+    source: "air_corner" | "corner" | "tire" | "item" | "battery" | "other";
+    label: string;
+    specCode?: string | null;
+    meta?: Record<string, string | number | boolean | null | undefined>;
+  }) => void;
+};
+
+function toHeaderCustomer(c?: SessionCustomer | null) {
+  return {
+    first_name: c?.first_name ?? "",
+    last_name: c?.last_name ?? "",
+    phone: c?.phone ?? "",
+    email: c?.email ?? "",
+    address: c?.address ?? "",
+    city: c?.city ?? "",
+    province: c?.province ?? "",
+    postal_code: c?.postal_code ?? "",
+  };
+}
+
+function toHeaderVehicle(v?: SessionVehicle | null) {
+  return {
+    year: v?.year ?? "",
+    make: v?.make ?? "",
+    model: v?.model ?? "",
+    vin: v?.vin ?? "",
+    license_plate: v?.license_plate ?? "",
+    mileage: v?.mileage ?? "",
+    color: v?.color ?? "",
+    unit_number: v?.unit_number ?? "",
+    engine_hours: v?.engine_hours ?? "",
+  };
+}
+
+function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
+  const l = (label || "").toLowerCase();
+
+  // ✅ pressure ALWAYS psi
+  if (l.includes("pressure")) return "psi";
+
+  // ✅ tread + thickness metrics follow toggle
+  if (l.includes("tread")) return mode === "metric" ? "mm" : "in";
+  if (l.includes("pad") || l.includes("lining") || l.includes("shoe"))
+    return mode === "metric" ? "mm" : "in";
+  if (l.includes("rotor") || l.includes("drum"))
+    return mode === "metric" ? "mm" : "in";
+  if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
+
+  // torque can still follow toggle (your call)
+  if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
+
+  // leak rate / gov cut can be whatever you want — leaving as-is
+  if (l.includes("leak rate")) return mode === "metric" ? "kPa/min" : "psi/min";
+  if (l.includes("gov cut") || l.includes("warning"))
+    return mode === "metric" ? "kPa" : "psi";
+
+  return "";
+}
+
+function readStaged<T>(key: string): T | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+type NormalizedItem = {
+  item: string;
+  unit: string | null;
+  status?: InspectionItemStatus;
+  notes?: string;
+  note?: string;
+  value?: string | number | null;
+  photoUrls?: string[];
+  recommend?: string[];
+  parts?: Array<{ description: string; qty: number }>;
+  laborHours?: number | null;
+
+  // ✅ estimate state (optional)
+  estimateSubmitted?: boolean;
+  estimateSubmittedAt?: string | null;
+  estimateLastUpdatedAt?: string | null;
+  estimateWorkOrderLineId?: string | null;
+  estimateQuoteLineId?: string | null;
+};
+
+function normalizeSections(input: unknown): InspectionSection[] {
+  try {
+    const arr = Array.isArray(input) ? input : [];
+    const byTitle = new Map<string, InspectionSection>();
+
+    for (const s of arr) {
+      const sObj = (s ?? {}) as { title?: unknown; items?: unknown };
+      const title = String(sObj.title ?? "").trim();
+      if (!title) continue;
+
+      const itemsRaw = Array.isArray(sObj.items) ? sObj.items : [];
+      const normalized: NormalizedItem[] = [];
+
+      for (const it of itemsRaw) {
+        const itObj = (it ?? {}) as Record<string, unknown>;
+        const label = String(itObj.item ?? itObj.name ?? "").trim();
+        if (!label) continue;
+
+        normalized.push({
+          ...(itObj as object),
+          item: label,
+          unit:
+            (itObj.unit as string | null | undefined) === undefined
+              ? null
+              : ((itObj.unit as string | null) ?? null),
+        } as NormalizedItem);
+      }
+
+      if (!byTitle.has(title)) {
+        byTitle.set(title, { title, items: [] });
+      }
+
+      const bucket = byTitle.get(title)!;
+      const existing = Array.isArray(bucket.items) ? bucket.items : [];
+
+      const seen = new Set<string>(
+        existing.map((x) =>
+          String((x as { item?: unknown }).item ?? "").toLowerCase(),
+        ),
+      );
+
+      const merged: Array<InspectionSection["items"][number]> = [...existing];
+
+      for (const it of normalized) {
+        const key = String(it.item ?? "").toLowerCase();
+        if (!key || seen.has(key)) continue;
+        merged.push(it);
+        seen.add(key);
+      }
+
+      bucket.items = merged;
+    }
+
+    return Array.from(byTitle.values()).filter(
+      (s) => (s.items?.length ?? 0) > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+/* -------- smarter grid detectors -------- */
+
+const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
+const HYD_FULL_RE =
+  /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const BRAKE_SIGNAL_RE = /(lining|shoe|pad|drum|rotor|push\s*rod|torque)/i;
+
+const BATTERY_SIGNAL_RE =
+  /(battery|voltage|v\b|cca|cranking|load\s*test|alternator|charging|charge\s*rate|state\s*of\s*charge|soc)/i;
+
+function isBatterySection(
+  title: string | undefined,
+  items: Array<{ item?: string | null; name?: string | null }> = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+  if (t.includes("battery grid")) return true;
+  if (t.includes("battery")) return true;
+
+  let hits = 0;
+  for (const it of items) {
+    const label = String(it.item ?? it.name ?? "").trim();
+    if (!label) continue;
+    if (BATTERY_SIGNAL_RE.test(label)) hits += 1;
+    if (hits >= 2) return true;
+  }
+
+  return false;
+}
+
+function isAirCornerSection(
+  title: string | undefined,
+  items: { item?: string | null }[] = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+
+  // Explicit titles always win
+  if (t.includes("air corner") || t.includes("air corner grid")) return true;
+  if (t.includes("tires & brakes") && t.includes("air")) return true;
+
+  // Otherwise: must look like an air layout AND contain brake-only metrics
+  const hasAirLayout = items.some((it) => AIR_RE.test(it.item ?? ""));
+  const hasBrakeMetric = items.some((it) => BRAKE_SIGNAL_RE.test(it.item ?? ""));
+
+  return hasAirLayout && hasBrakeMetric;
+}
+
+function isTireGridSection(
+  title: string | undefined,
+  items: { item?: string | null }[] = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+  if (t.includes("tire grid") || t.includes("tires grid")) return true;
+  if (t.includes("tires") && t.includes("corner")) return true;
+
+  const tireSignals = items.filter((it) => {
+    const l = (it.item ?? "").toLowerCase();
+    return (
+      l.includes("tire pressure") ||
+      l.includes("tire tread") ||
+      l.includes("tread depth")
+    );
+  });
+
+  if (tireSignals.length >= 2) {
+    return tireSignals.some(
+      (it) =>
+        AIR_RE.test(it.item ?? "") ||
+        HYD_ABBR_RE.test(it.item ?? "") ||
+        HYD_FULL_RE.test(it.item ?? ""),
+    );
+  }
+
+  return false;
+}
+
+function isHydraulicCornerSection(
+  title: string | undefined,
+  items: { item?: string | null }[] = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+
+  // IMPORTANT: if this is a Tire Grid section, it is NOT the hydraulic corner grid
+  if (isTireGridSection(title, items)) return false;
+
+  if (t.includes("corner grid") || t.includes("tires & brakes — truck"))
+    return true;
+  if (t.includes("axle grid")) return true;
+
+  if (!items || items.length < 4) return false;
+
+  return items.some((it) => {
+    const label = it.item ?? "";
+    return HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
+  });
+}
+
+/* --------------------------------- constants --------------------------------- */
+
+const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
+
+function inspectionDraftKey(args: {
+  inspectionId: string;
+  workOrderLineId?: string | null;
+  workOrderId?: string | null;
+  templateName?: string | null;
+}) {
+  const t = (args.templateName || "Inspection").toLowerCase().trim();
+  if (args.workOrderLineId)
+    return `inspection-draft:line:${args.workOrderLineId}`;
+  if (args.workOrderId) return `inspection-draft:wo:${args.workOrderId}:${t}`;
+  return `inspection-draft:template:${t}:${args.inspectionId}`;
+}
+
+function buildCauseCorrectionFromSession(s: unknown): {
+  cause: string;
+  correction: string;
+} {
+  const sess = s as { sections?: unknown };
+  const sections: unknown[] = Array.isArray(sess?.sections)
+    ? (sess.sections as unknown[])
+    : [];
+
+  const failed: string[] = [];
+  const rec: string[] = [];
+
+  for (const secRaw of sections) {
+    const sec = secRaw as { title?: unknown; items?: unknown };
+    const title = String(sec?.title ?? "").trim();
+    const items: unknown[] = Array.isArray(sec?.items)
+      ? (sec.items as unknown[])
+      : [];
+
+    for (const itRaw of items) {
+      const it = itRaw as Record<string, unknown>;
+      const st = String(it?.status ?? "").toLowerCase();
+      if (st !== "fail" && st !== "recommend") continue;
+
+      const label = String(
+        it?.item ?? it?.name ?? it?.description ?? "Item",
+      ).trim();
+      const note = String(it?.notes ?? "").trim();
+      const chunk = note ? `${label} — ${note}` : label;
+      const line = title ? `${title}: ${chunk}` : chunk;
+
+      if (st === "fail") failed.push(line);
+      if (st === "recommend") rec.push(line);
+    }
+  }
+
+  if (failed.length === 0 && rec.length === 0) {
+    return {
+
+===== find saved inspections related files =====
+./app/inspections/[id]/page.tsx
+./app/inspections/created/page.tsx
+./app/inspections/custom-draft/page.tsx
+./app/inspections/custom-inspection/page.tsx
+./app/inspections/customer-vehicle/page.tsx
+./app/inspections/fill/page.tsx
+./app/inspections/findings/page.tsx
+./app/inspections/fleet-import/page.tsx
+./app/inspections/fleet-review/page.tsx
+./app/inspections/genericInspection/page.tsx
+./app/inspections/maintenance50-air/page.tsx
+./app/inspections/maintenance50/page.tsx
+./app/inspections/page.tsx
+./app/inspections/run/page.tsx
+./app/inspections/saved/page.tsx
+./app/inspections/summary/page.tsx
+./app/inspections/templates/page.tsx
+./app/mobile/inspections/[id]/page.tsx
+./app/mobile/inspections/[id]/run/page.tsx
+./app/mobile/inspections/maintenance-50-air/page.tsx
+./app/mobile/inspections/maintenance-50/page.tsx
+./app/mobile/inspections/page.tsx
+./features/inspections/app/inspection/[id]/page.tsx
+./features/inspections/app/inspection/created/page.tsx
+./features/inspections/app/inspection/custom-draft/page.tsx
+./features/inspections/app/inspection/custom-inspection/page.tsx
+./features/inspections/app/inspection/customer-vehicle/page.tsx
+./features/inspections/app/inspection/fill/page.tsx
+./features/inspections/app/inspection/page.tsx
+./features/inspections/app/inspection/run/page.tsx
+./features/inspections/app/inspection/saved/page.tsx
+./features/inspections/app/inspection/summary/page.tsx
+./features/inspections/app/inspection/templates/page.tsx
+./features/inspections/lib/inspection/findings/page.tsx

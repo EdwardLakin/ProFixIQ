@@ -1,0 +1,94 @@
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database, Json } from "@shared/types/types/supabase";
+import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+
+type DB = Database;
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+export async function GET(req: NextRequest) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  const inspectionId = asString(req.nextUrl.searchParams.get("inspectionId"));
+  const workOrderLineId = asString(req.nextUrl.searchParams.get("workOrderLineId"));
+
+  if (!inspectionId && !workOrderLineId) {
+    return NextResponse.json(
+      { error: "Missing inspectionId or workOrderLineId" },
+      { status: 400 },
+    );
+  }
+
+  let inspectionRow:
+    | {
+        id: string;
+        work_order_id: string | null;
+        work_order_line_id: string | null;
+        summary: Json | null;
+      }
+    | null = null;
+
+  if (inspectionId) {
+    const { data, error } = await supabase
+      .from("inspections")
+      .select("id, work_order_id, work_order_line_id, summary")
+      .eq("id", inspectionId)
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    inspectionRow = data;
+  } else if (workOrderLineId) {
+    const { data, error } = await supabase
+      .from("inspections")
+      .select("id, work_order_id, work_order_line_id, summary")
+      .eq("work_order_line_id", workOrderLineId)
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    inspectionRow = data;
+  }
+
+  const resolvedWorkOrderLineId =
+    inspectionRow?.work_order_line_id ?? workOrderLineId ?? null;
+
+  let session =
+    (inspectionRow?.summary as unknown as InspectionSession | null) ?? null;
+
+  if (!session && resolvedWorkOrderLineId) {
+    const { data: sessionRow, error: sessionErr } = await supabase
+      .from("inspection_sessions")
+      .select("state")
+      .eq("work_order_line_id", resolvedWorkOrderLineId)
+      .maybeSingle();
+
+    if (sessionErr) {
+      return NextResponse.json({ error: sessionErr.message }, { status: 500 });
+    }
+
+    session =
+      (sessionRow?.state as unknown as InspectionSession | null) ?? null;
+  }
+
+  if (!session) {
+    return NextResponse.json({ session: null }, { status: 200 });
+  }
+
+  return NextResponse.json({
+    session,
+    inspectionId: inspectionRow?.id ?? inspectionId ?? session.id ?? null,
+    workOrderId: inspectionRow?.work_order_id ?? session.workOrderId ?? null,
+    workOrderLineId: resolvedWorkOrderLineId ?? null,
+  });
+}

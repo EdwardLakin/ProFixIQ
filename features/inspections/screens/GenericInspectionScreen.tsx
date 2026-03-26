@@ -767,6 +767,8 @@ export default function GenericInspectionScreen(
 
   const [voicePulse, setVoicePulse] = useState(false);
   const pulseTimerRef = useRef<number | null>(null);
+  const [serverBootLoaded, setServerBootLoaded] = useState(false);
+  const serverStartedRef = useRef<string | null>(null);
 
   const triggerVoicePulse = (): void => {
     setVoicePulse(true);
@@ -848,6 +850,67 @@ export default function GenericInspectionScreen(
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [persistedSession]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSavedInspection = async () => {
+      if (!inspectionId && !workOrderLineId) {
+        setServerBootLoaded(true);
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams();
+        if (inspectionId) params.set("inspectionId", inspectionId);
+        if (workOrderLineId) params.set("workOrderLineId", workOrderLineId);
+
+        const res = await fetch(`/api/inspections/load?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const data = (await res.json().catch(() => null)) as
+          | { session?: InspectionSession | null }
+          | null;
+
+        if (cancelled) return;
+
+        const loaded = data?.session ?? null;
+
+        if (
+          loaded &&
+          Array.isArray(loaded.sections) &&
+          loaded.sections.length > 0
+        ) {
+          startSession(loaded);
+
+          try {
+            localStorage.setItem(draftKey, JSON.stringify(loaded));
+          } catch {
+            // noop
+          }
+
+          serverStartedRef.current = String(
+            loaded.id ?? inspectionId ?? workOrderLineId ?? "loaded",
+          );
+        }
+      } catch (err) {
+        console.error("[inspection] failed to load saved inspection", err);
+      } finally {
+        if (!cancelled) {
+          setServerBootLoaded(true);
+        }
+      }
+    };
+
+    void loadSavedInspection();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inspectionId, workOrderLineId, draftKey, startSession]);
 
   useEffect(() => {
     if (session && (session.sections?.length ?? 0) === 0) {
@@ -1989,7 +2052,11 @@ export default function GenericInspectionScreen(
     </>
   );
 
-  if (!session || (session.sections?.length ?? 0) === 0) {
+  if (
+    !serverBootLoaded ||
+    !session ||
+    (session.sections?.length ?? 0) === 0
+  ) {
     return (
       <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
     );

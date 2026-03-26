@@ -218,31 +218,60 @@ export default function InspectionFindingsPage(): JSX.Element {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const syncFromDraft = useCallback(() => {
+  const syncFromDraft = useCallback(async () => {
     const loaded = readDraftSession(draftKey);
     if (loaded) {
       setSession(loaded);
+      return;
     }
-  }, [draftKey]);
+
+    if (!inspectionId && !workOrderLineId) {
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams();
+      if (inspectionId) params.set("inspectionId", inspectionId);
+      if (workOrderLineId) params.set("workOrderLineId", workOrderLineId);
+
+      const res = await fetch(`/api/inspections/load?${params.toString()}`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const data = (await res.json().catch(() => null)) as
+        | { session?: InspectionSession | null }
+        | null;
+
+      const serverSession = data?.session ?? null;
+      if (serverSession) {
+        writeDraftSession(draftKey, serverSession);
+        setSession(serverSession);
+      }
+    } catch (err) {
+      console.error("[inspection-findings] failed to load saved session", err);
+    }
+  }, [draftKey, inspectionId, workOrderLineId]);
 
   useEffect(() => {
-    syncFromDraft();
+    void syncFromDraft();
   }, [syncFromDraft]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const handleFocus = () => syncFromDraft();
-    const handlePageShow = () => syncFromDraft();
+    const handleFocus = () => { void syncFromDraft(); };
+    const handlePageShow = () => { void syncFromDraft(); };
 
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === draftKey) syncFromDraft();
+      if (e.key === draftKey) void syncFromDraft();
     };
 
     const handleInspectionDraftUpdated = (e: Event) => {
       const custom = e as CustomEvent<{ draftKey?: string }>;
       if (!custom.detail?.draftKey || custom.detail.draftKey === draftKey) {
-        syncFromDraft();
+        void syncFromDraft();
       }
     };
 
