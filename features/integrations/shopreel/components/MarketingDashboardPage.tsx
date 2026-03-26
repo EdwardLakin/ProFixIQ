@@ -1,6 +1,7 @@
 import Link from "next/link";
 import PageShell from "@/features/shared/components/PageShell";
 import { getMarketingDashboardData } from "../server/getMarketingDashboardData";
+import RetryDeliveryButton from "./RetryDeliveryButton";
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -101,6 +102,7 @@ export default async function MarketingDashboardPage() {
                   <th className="py-3 pr-4">Created</th>
                   <th className="py-3 pr-4">Delivered</th>
                   <th className="py-3 pr-4">Error</th>
+                  <th className="py-3 pr-4">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,11 +120,18 @@ export default async function MarketingDashboardPage() {
                       <td className="py-3 pr-4 text-xs text-white/60">
                         {delivery.errorMessage ?? "—"}
                       </td>
+                      <td className="py-3 pr-4">
+                        {delivery.status === "failed" ? (
+                          <RetryDeliveryButton deliveryId={delivery.id} />
+                        ) : (
+                          <span className="text-xs text-white/40">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="py-6 text-center text-white/50">
+                    <td colSpan={7} className="py-6 text-center text-white/50">
                       No ShopReel delivery attempts yet.
                     </td>
                   </tr>
