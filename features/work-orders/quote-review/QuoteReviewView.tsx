@@ -1,15 +1,6 @@
 // features/work-orders/quote-review/QuoteReviewView.tsx (FULL FILE REPLACEMENT)
 "use client";
 
-// QuoteReviewView.tsx
-// Shared Quote Review UI used both by:
-//  - /app/quote-review/[id] (standalone)
-//  - /app/work-orders/[id]/quote-review (split panel)
-//
-// IMPORTANT:
-// - Tailwind breakpoints (lg/xl) are based on viewport width, not panel width.
-// - When embedded in the right panel, we must FORCE a panel-friendly layout.
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -112,6 +103,154 @@ function deriveComplaintFromNotes(notes: unknown): string | null {
 type EditableLine = Line & { _dirty?: boolean };
 type EditableAlloc = AllocationWithPart & { _dirty?: boolean };
 
+type LearnedSuggestion = {
+  id: string;
+  lineId: string;
+  title: string;
+  summary: string;
+  laborHours: number | null;
+  parts: Array<{ name: string; qty: number }>;
+  sourceCount: number;
+  confidence: number | null;
+};
+
+function toFiniteNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function normalizeSuggestedParts(
+  raw: unknown,
+): Array<{ name: string; qty: number }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((part) => {
+      const obj = (part ?? {}) as {
+        name?: unknown;
+        description?: unknown;
+        item?: unknown;
+        qty?: unknown;
+        quantity?: unknown;
+      };
+
+      const name =
+        safeTrim(obj.name) ||
+        safeTrim(obj.description) ||
+        safeTrim(obj.item);
+
+      const qty =
+        toFiniteNumber(obj.qty) ??
+        toFiniteNumber(obj.quantity) ??
+        1;
+
+      if (!name) return null;
+
+      return {
+        name,
+        qty: qty && qty > 0 ? qty : 1,
+      };
+    })
+    .filter((x): x is { name: string; qty: number } => Boolean(x));
+}
+
+function coerceSuggestionsFromResponse(
+  raw: unknown,
+  lineId: string,
+): LearnedSuggestion[] {
+  const root = (raw ?? {}) as {
+    suggestions?: unknown;
+    items?: unknown;
+    templates?: unknown;
+    data?: {
+      suggestions?: unknown;
+      items?: unknown;
+      templates?: unknown;
+    } | null;
+  };
+
+  const pool =
+    root.suggestions ??
+    root.items ??
+    root.templates ??
+    root.data?.suggestions ??
+    root.data?.items ??
+    root.data?.templates ??
+    [];
+
+  if (!Array.isArray(pool)) return [];
+
+  return pool
+    .map((entry, index) => {
+      const obj = (entry ?? {}) as {
+        id?: unknown;
+        title?: unknown;
+        description?: unknown;
+        item?: unknown;
+        label?: unknown;
+        summary?: unknown;
+        notes?: unknown;
+        reason?: unknown;
+        laborHours?: unknown;
+        labor_hours?: unknown;
+        avgLaborHours?: unknown;
+        confidence?: unknown;
+        matchConfidence?: unknown;
+        sourceCount?: unknown;
+        usageCount?: unknown;
+        timesSeen?: unknown;
+        parts?: unknown;
+      };
+
+      const title =
+        safeTrim(obj.title) ||
+        safeTrim(obj.description) ||
+        safeTrim(obj.item) ||
+        safeTrim(obj.label);
+
+      if (!title) return null;
+
+      const summary =
+        safeTrim(obj.summary) ||
+        safeTrim(obj.notes) ||
+        safeTrim(obj.reason);
+
+      const laborHours =
+        toFiniteNumber(obj.laborHours) ??
+        toFiniteNumber(obj.labor_hours) ??
+        toFiniteNumber(obj.avgLaborHours);
+
+      const confidence =
+        toFiniteNumber(obj.confidence) ??
+        toFiniteNumber(obj.matchConfidence);
+
+      const sourceCount =
+        toFiniteNumber(obj.sourceCount) ??
+        toFiniteNumber(obj.usageCount) ??
+        toFiniteNumber(obj.timesSeen) ??
+        0;
+
+      return {
+        id: safeTrim(obj.id) || `${lineId}-${index}`,
+        lineId,
+        title,
+        summary,
+        laborHours,
+        parts: normalizeSuggestedParts(obj.parts),
+        sourceCount: sourceCount && sourceCount > 0 ? sourceCount : 0,
+        confidence,
+      } satisfies LearnedSuggestion;
+    })
+    .filter((x): x is LearnedSuggestion => Boolean(x));
+}
+
+function partsToPaste(parts: Array<{ name: string; qty: number }>): string {
+  return parts.map((p) => `${p.qty}x ${p.name}`).join("\n");
+}
+
 const card =
   "rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_70px_rgba(0,0,0,0.65)]";
 const divider = "border-white/10";
@@ -150,6 +289,10 @@ export default function QuoteReviewView(props: {
 
   // ✅ Restores original "editor" usage without killing the card UI
   const [openDetails, setOpenDetails] = useState<Record<string, boolean>>({});
+  const [learnedByLine, setLearnedByLine] = useState<
+    Record<string, LearnedSuggestion[]>
+  >({});
+  const [learnedLoading, setLearnedLoading] = useState(false);
 
   function openAddJobWithPrefill(prefill: {
     jobName?: string | null;
@@ -174,6 +317,85 @@ export default function QuoteReviewView(props: {
     setDelLineId(null);
     void reload();
   }
+
+  const trackSuggestionFeedback = useCallback(
+    async (suggestion: LearnedSuggestion, accepted: boolean) => {
+      try {
+        await fetch("/api/ai/suggestions/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderId: woId,
+            workOrderLineId: suggestion.lineId,
+            suggestionId: suggestion.id,
+            title: suggestion.title,
+            laborHours: suggestion.laborHours,
+            parts: suggestion.parts,
+            accepted,
+          }),
+        });
+      } catch {
+        // endpoint can be added next; UI should not fail without it
+      }
+    },
+    [woId],
+  );
+
+  const loadLearnedSuggestions = useCallback(async () => {
+    if (!woId || lines.length === 0) {
+      setLearnedByLine({});
+      return;
+    }
+
+    setLearnedLoading(true);
+    try {
+      const next: Record<string, LearnedSuggestion[]> = {};
+
+      await Promise.all(
+        lines.map(async (line) => {
+          const item =
+            safeTrim(line.description) ||
+            safeTrim(line.complaint) ||
+            safeTrim(line.correction) ||
+            safeTrim(line.notes);
+
+          if (!item) {
+            next[line.id] = [];
+            return;
+          }
+
+          try {
+            const res = await fetch("/api/ai/suggestions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                item,
+                notes:
+                  safeTrim(line.notes) ||
+                  safeTrim(line.cause) ||
+                  safeTrim(line.complaint),
+                section: safeTrim(line.job_type),
+              }),
+            });
+
+            const json = await res.json().catch(() => null);
+            if (!res.ok) {
+              next[line.id] = [];
+              return;
+            }
+
+            next[line.id] = coerceSuggestionsFromResponse(json, line.id);
+          } catch {
+            next[line.id] = [];
+          }
+        }),
+      );
+
+      setLearnedByLine(next);
+    } finally {
+      setLearnedLoading(false);
+    }
+  }, [lines, woId]);
 
   const reload = useCallback(async () => {
     if (!woId) return;
@@ -298,6 +520,10 @@ export default function QuoteReviewView(props: {
       alive = false;
     };
   }, [supabase]);
+
+  useEffect(() => {
+    void loadLearnedSuggestions();
+  }, [loadLearnedSuggestions]);
 
   const laborRate = useMemo(() => {
     const candidate = (shop as unknown as { labor_rate?: unknown } | null)
@@ -758,6 +984,127 @@ export default function QuoteReviewView(props: {
                         />
 
                         {/* ✅ Restored editor usage under the card (fixes “unused” lint + keeps ops tools) */}
+                        {(() => {
+                          const learned = learnedByLine[l.id] ?? [];
+                          if (learned.length === 0) return null;
+
+                          return (
+                            <div className="mt-3 space-y-2">
+                              {learned.slice(0, 2).map((suggestion) => (
+                                <div
+                                  key={suggestion.id}
+                                  className="rounded-2xl border border-[color:var(--copper)]/25 bg-[color:var(--copper)]/8 p-3"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <div className="text-sm font-semibold text-white">
+                                          {suggestion.title}
+                                        </div>
+                                        <span className="rounded-full border border-[color:var(--copper)]/35 bg-black/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--copper)]">
+                                          Based on previous jobs
+                                        </span>
+                                        {suggestion.sourceCount > 0 ? (
+                                          <span className="text-[11px] text-neutral-400">
+                                            {suggestion.sourceCount} similar
+                                          </span>
+                                        ) : null}
+                                      </div>
+
+                                      {suggestion.summary ? (
+                                        <div className="mt-1 text-xs text-neutral-300">
+                                          {suggestion.summary}
+                                        </div>
+                                      ) : null}
+
+                                      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-neutral-400">
+                                        {suggestion.laborHours != null ? (
+                                          <span>
+                                            Labor:{" "}
+                                            <span className="text-neutral-200">
+                                              {suggestion.laborHours} hr
+                                            </span>
+                                          </span>
+                                        ) : null}
+                                        {suggestion.parts.length > 0 ? (
+                                          <span>
+                                            Parts:{" "}
+                                            <span className="text-neutral-200">
+                                              {suggestion.parts
+                                                .map((p) => `${p.qty}x ${p.name}`)
+                                                .join(", ")}
+                                            </span>
+                                          </span>
+                                        ) : null}
+                                        {suggestion.confidence != null ? (
+                                          <span>
+                                            Confidence:{" "}
+                                            <span className="text-neutral-200">
+                                              {Math.round(suggestion.confidence * 100)}%
+                                            </span>
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                      {suggestion.laborHours != null ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setLineField(l.id, {
+                                              labor_time: suggestion.laborHours ?? l.labor_time,
+                                              description: l.description || suggestion.title,
+                                            });
+                                            toast.success("Applied learned labor suggestion.");
+                                            void trackSuggestionFeedback(suggestion, true);
+                                          }}
+                                          className="rounded-full border border-[color:var(--copper)]/45 bg-[color:var(--copper)]/12 px-3 py-1 text-xs font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/18"
+                                        >
+                                          Apply labor
+                                        </button>
+                                      ) : null}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          openAddJobWithPrefill({
+                                            jobName: suggestion.title,
+                                            notes: suggestion.summary || l.notes || "",
+                                            laborHours: suggestion.laborHours,
+                                            parts: suggestion.parts,
+                                            partsPaste: partsToPaste(suggestion.parts),
+                                          });
+                                          void trackSuggestionFeedback(suggestion, true);
+                                        }}
+                                        className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-xs font-semibold text-white hover:bg-black/60"
+                                      >
+                                        Add as job
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setLearnedByLine((prev) => ({
+                                            ...prev,
+                                            [l.id]: (prev[l.id] ?? []).filter(
+                                              (x) => x.id !== suggestion.id,
+                                            ),
+                                          }));
+                                          void trackSuggestionFeedback(suggestion, false);
+                                        }}
+                                        className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-xs text-neutral-300 hover:bg-black/50"
+                                      >
+                                        Dismiss
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+
                         <div className="mt-3">
                           <button
                             type="button"
@@ -955,7 +1302,7 @@ export default function QuoteReviewView(props: {
               <div
                 className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}
               >
-                Quick add job
+                Quick add job {learnedLoading ? "• loading learned suggestions…" : ""}
               </div>
               <div className={`${padX} py-4 text-sm text-neutral-400`}>
                 Add missing lines while reviewing the quote (ex: Alignment after tie rod ends).
