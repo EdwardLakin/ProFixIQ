@@ -19,7 +19,6 @@ import { WorkOrderAssignedSummary } from "@/features/work-orders/components/Work
 import StatusPickerModal, {
   type WorkOrderStatus,
 } from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -682,15 +681,6 @@ export default function WorkOrdersView(): JSX.Element {
           {err}
         </div>
       )}
-
-      <SuggestedActionsPanel
-        context={{
-          pageType: "work_orders",
-          pageTitle: "Work Orders",
-        }}
-        title="Suggested Actions for Work Orders"
-        description="Recommended next actions for the active queue, approvals, and invoice-ready work"
-       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {loading ? (
         <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-300 shadow-[0_0_40px_rgba(0,0,0,0.7)]">

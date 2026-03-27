@@ -6,7 +6,6 @@ import FleetShell from "app/portal/fleet/FleetShell";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 import type { PortalServiceRequest } from "app/api/fleet/service-requests/route";
 
 const COPPER = "#C57A4A";
@@ -192,15 +191,6 @@ export default function PortalFleetServiceRequestsPage() {
                 </div>
               </div>
             </div>
-
-            <SuggestedActionsPanel
-              context={{
-                pageType: "fleet_service_requests",
-                pageTitle: "Fleet Service Requests",
-              }}
-              title="Suggested Actions for Service Requests"
-              description="Prioritize safety issues, review request patterns, and get AI suggestions for next dispatch and repair actions"
-            />
 
             {/* Filters + table */}
             <div className={glassCard}>

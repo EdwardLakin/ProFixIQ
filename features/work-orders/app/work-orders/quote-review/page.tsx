@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -351,14 +350,6 @@ export default function QuoteReviewIndexPage(): JSX.Element {
         </div>
 
         <div className="mt-4">
-          <SuggestedActionsPanel
-            context={{
-              pageType: "quote_review",
-              pageTitle: "Quote Review",
-            }}
-            title="Suggested Actions for Approvals"
-            description="Recommended next actions for pending approvals, quotes, and blocked work orders"
-           compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
         </div>
 
         <ApprovalsList />

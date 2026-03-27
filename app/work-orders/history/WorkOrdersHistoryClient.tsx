@@ -6,7 +6,6 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
 import { format } from "date-fns";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -274,15 +273,6 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
             )}
           </div>
         </div>
-
-        <SuggestedActionsPanel
-          context={{
-            pageType: "work_order_history",
-            pageTitle: "Work Order History",
-          }}
-          title="Suggested Actions for Work Order History"
-          description="Recommended next actions for historical lookups, repeat work, invoicing follow-up, and customer history review"
-         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
         {/* Filters bar */}
         <div className="mb-5 rounded-2xl border border-[var(--metal-border-soft)] bg-black/60 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-4">

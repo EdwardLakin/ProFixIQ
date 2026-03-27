@@ -11,7 +11,6 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 const PartsDrawer = dynamic(() => import("@/features/parts/components/PartsDrawer"), {
   ssr: false,
@@ -367,14 +366,6 @@ export default function QuotingQueuePage(): JSX.Element {
       <VoiceContextSetter currentView="parts_quoting" />
 
       <div className={HEADER_BAR}>
-        <SuggestedActionsPanel
-          context={{
-            pageType: "parts_quoting",
-            pageTitle: "Quoting Queue",
-          }}
-          title="Suggested Actions for Quoting"
-          description="AI-assisted parts selection, pricing optimization, and faster quote completion"
-         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
         <div>
           <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Parts</div>
           <h1 className="text-2xl font-semibold text-white" style={{ fontFamily: "var(--font-blackops), system-ui" }}>

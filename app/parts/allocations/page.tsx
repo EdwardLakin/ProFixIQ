@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -197,15 +196,6 @@ export default function AllocationsPage(): JSX.Element {
           </Link>
         </div>
       </div>
-
-      <SuggestedActionsPanel
-        context={{
-          pageType: "parts_allocations",
-          pageTitle: "Parts Allocations",
-        }}
-        title="Suggested Actions for Allocations"
-        description="Spot misallocations, trace parts usage by work order, and catch inventory issues early"
-       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl shadow-[0_18px_40px_rgba(0,0,0,0.9)]">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

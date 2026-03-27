@@ -6,7 +6,6 @@ import { Button } from "@shared/components/ui/Button";
 import { Input } from "@shared/components/ui/input";
 import Card from "@shared/components/ui/Card";
 import { Textarea } from "@shared/components/ui/textarea";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type ChatResponse = {
   error?: string;
@@ -65,14 +64,6 @@ export default function TechBot(): JSX.Element {
 
   return (
     <div className="mx-auto mt-6 max-w-2xl space-y-4">
-      <SuggestedActionsPanel
-        context={{
-          pageType: "techbot",
-          pageTitle: "TechBot Diagnostic Assistant",
-        }}
-        title="Suggested Actions for TechBot"
-        description="Get AI-guided diagnostic next steps, troubleshooting ideas, and repair direction based on the current vehicle context"
-      />
 
       <Card className="space-y-4 border border-border bg-surface p-6 shadow-card">
         <h2 className="mb-2 text-xl font-header text-accent">

@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -114,15 +113,6 @@ export default function StockMovementsPage(): JSX.Element {
           Refresh
         </button>
       </div>
-
-      <SuggestedActionsPanel
-        context={{
-          pageType: "parts_movements",
-          pageTitle: "Stock Movements",
-        }}
-        title="Suggested Actions for Inventory Movements"
-        description="Detect anomalies, investigate shrinkage, and optimize stock flow"
-       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {err ? (
         <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">

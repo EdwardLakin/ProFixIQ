@@ -7,7 +7,6 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
 import PageShell from "@/features/shared/components/PageShell";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -280,14 +279,6 @@ export default function QueuePage() {
       description="Live view of active work orders for your shop. This is separate from the shop appointments calendar."
     >
       <div className="space-y-6">
-        <SuggestedActionsPanel
-          context={{
-            pageType: "work_order_queue",
-            pageTitle: "Work Order Queue",
-          }}
-          title="Suggested Actions for the Queue"
-          description="Recommended next actions for active work orders, stalled jobs, and technician flow"
-         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
         {/* Header row / top summary */}
         <div className="flex flex-wrap items-center gap-3">

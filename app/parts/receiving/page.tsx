@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -249,15 +248,6 @@ export default function ReceivingInboxPage(): JSX.Element {
           </button>
         </div>
       </div>
-
-      <SuggestedActionsPanel
-        context={{
-          pageType: "receiving_inbox",
-          pageTitle: "Receiving Inbox",
-        }}
-        title="Suggested Actions for Receiving Inbox"
-        description="Recommended next actions for outstanding receive items, partial receipts, and PO-linked receiving"
-       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {/* Controls */}
       <div className={`${card} p-4`}>

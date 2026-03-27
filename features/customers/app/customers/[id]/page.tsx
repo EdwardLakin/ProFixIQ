@@ -6,7 +6,6 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -1001,16 +1000,6 @@ export default function CustomerProfilePage(): JSX.Element {
       )}
 
       <div className="mb-6">
-        <SuggestedActionsPanel
-          context={{
-            customerId: effectiveCustomerId ?? undefined,
-            vehicleId: selectedVehicleId ?? undefined,
-            pageType: "customer",
-            pageTitle: "Customer",
-          }}
-          title="Suggested Actions for this Customer"
-          description="Recommended next actions for this customer and selected vehicle"
-         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
       </div>
 
       {loading ? (

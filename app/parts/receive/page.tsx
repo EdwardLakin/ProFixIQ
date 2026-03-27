@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveScannedCode } from "@/features/parts/server/scanActions";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 import Link from "next/link";
 
 type QuaggaResult = { codeResult?: { code?: string | null } | null };
@@ -268,15 +267,6 @@ export default function ReceivePage(): JSX.Element {
           </Link>
         </div>
       </div>
-
-      <SuggestedActionsPanel
-        context={{
-          pageType: "scan_receive",
-          pageTitle: "Scan to Receive",
-        }}
-        title="Suggested Actions for Receiving"
-        description="Recommended next actions for barcode receiving, PO attribution, and stock updates"
-       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       <div className="text-xs text-neutral-500">
         Shop: <span className="text-neutral-300">{shopId ? shopId.slice(0, 8) : "—"}</span>

@@ -9,7 +9,6 @@ import type { RepairLine } from "@ai/lib/parseRepairOutput";
 
 import CustomerPaymentButton from "@/features/stripe/components/CustomerPaymentButton";
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -849,18 +848,6 @@ export default function InvoicePreviewPageClient({
             ) : null}
           </div>
         </div>
-
-        <SuggestedActionsPanel
-          context={{
-            workOrderId,
-            customerId: wo?.customer_id ?? undefined,
-            vehicleId: wo?.vehicle_id ?? undefined,
-            pageType: "invoice",
-            pageTitle: "Invoice",
-          }}
-          title="Suggested Actions for this Invoice"
-          description="Recommended next actions for invoice completion, customer follow-up, payment collection, and final delivery"
-         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
         {/* Review issues panel */}
         {!reviewOk ? (
