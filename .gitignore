@@ -28,3 +28,7 @@ shared/types/types/*.tmp.ts
 !db/sql/
 !shared/types/types/
 .env.local.*
+
+# Debug / dump files
+inspection_*.txt
+tire-voice-debug.txt
