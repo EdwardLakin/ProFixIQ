@@ -219,7 +219,6 @@ export async function POST(req: Request) {
       // workflow status must be allowed by CHECK constraint
       status: "awaiting_approval",
       approval_state: "pending",
-      punchable: false,
 
       // store inspection fail/recommend meaning here
       line_status: lineStatus,
