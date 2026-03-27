@@ -1,4 +1,3 @@
-// app/parts/requests/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -12,7 +11,6 @@ type DB = Database;
 
 type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
 type PartRequestItem = DB["public"]["Tables"]["part_request_items"]["Row"];
-type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 
 type BucketStatus =
   | "needs_quote"
@@ -24,13 +22,30 @@ type BucketStatus =
 type WoBucket = {
   workOrderId: string;
   customId: string | null;
+  customerName: string | null;
+  vehicleLabel: string | null;
   status: BucketStatus;
   requests: PartRequest[];
   itemsCount: number;
-  completeCount: number; // items complete (part+qty+price)
-  completionPct: number; // 0..100
+  completeCount: number;
+  completionPct: number;
   latestAt: string | null;
-  searchBlob: string; // request ids + item descriptions for search
+  searchBlob: string;
+};
+
+type WorkOrderListRow = {
+  id: string;
+  custom_id: string | null;
+  customer_id: string | null;
+  vehicle_id: string | null;
+  customers:
+    | { first_name: string | null; last_name: string | null }
+    | { first_name: string | null; last_name: string | null }[]
+    | null;
+  vehicles:
+    | { year: string | number | null; make: string | null; model: string | null }
+    | { year: string | number | null; make: string | null; model: string | null }[]
+    | null;
 };
 
 const VISIBLE_STATUSES: PartRequest["status"][] = [
@@ -60,8 +75,29 @@ function isCompleteItem(
   const hasQty = qty > 0;
   const hasPrice =
     it.quoted_price != null && Number.isFinite(Number(it.quoted_price));
-  // description is helpful, but not required for “complete”
   return hasPart && hasQty && hasPrice;
+}
+
+function buildCustomerName(input: {
+  first_name?: string | null;
+  last_name?: string | null;
+} | null | undefined): string | null {
+  const first = String(input?.first_name ?? "").trim();
+  const last = String(input?.last_name ?? "").trim();
+  const full = [first, last].filter(Boolean).join(" ").trim();
+  return full || null;
+}
+
+function buildVehicleLabel(input: {
+  year?: string | number | null;
+  make?: string | null;
+  model?: string | null;
+} | null | undefined): string | null {
+  const year = String(input?.year ?? "").trim();
+  const make = String(input?.make ?? "").trim();
+  const model = String(input?.model ?? "").trim();
+  const label = [year, make, model].filter(Boolean).join(" ").trim();
+  return label || null;
 }
 
 export default function PartsRequestsPage(): JSX.Element {
@@ -76,7 +112,6 @@ export default function PartsRequestsPage(): JSX.Element {
   const [buckets, setBuckets] = useState<WoBucket[]>([]);
   const [deletingWoId, setDeletingWoId] = useState<string | null>(null);
 
-  // ---- Theme (glass + burnt copper / metallic; no orange-400/500) ----
   const COPPER_BORDER = "border-[#8b5a2b]/60";
   const COPPER_TEXT = "text-[#c88a4d]";
   const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
@@ -119,7 +154,9 @@ export default function PartsRequestsPage(): JSX.Element {
   }
 
   function computeBucketStatus(reqs: PartRequest[]): BucketStatus {
-    const statuses = reqs.map((r) => String(r.status ?? "requested").toLowerCase());
+    const statuses = reqs.map((r) =>
+      String(r.status ?? "requested").toLowerCase(),
+    );
     const uniq = Array.from(new Set(statuses));
 
     const hasRequested = uniq.includes("requested");
@@ -127,21 +164,13 @@ export default function PartsRequestsPage(): JSX.Element {
     const hasApproved = uniq.includes("approved");
     const hasFulfilled = uniq.includes("fulfilled");
 
-    // priority: requested -> needs_quote
     if (hasRequested) return "needs_quote";
-
-    // if all fulfilled
     if (hasFulfilled && !hasApproved && !hasQuoted) return "fulfilled";
     if (hasFulfilled && hasApproved && !hasQuoted) return "mixed";
     if (hasFulfilled && hasQuoted) return "mixed";
-
-    // if all approved (or mixture of approved+fulfilled will have returned mixed above)
     if (hasApproved && !hasQuoted) return "approved";
-
-    // quoted-only
     if (hasQuoted && !hasApproved && !hasFulfilled) return "quoted";
 
-    // fallback
     if (uniq.length === 1) {
       const only = uniq[0];
       if (only === "fulfilled") return "fulfilled";
@@ -156,7 +185,6 @@ export default function PartsRequestsPage(): JSX.Element {
   const reload = async (): Promise<void> => {
     setLoading(true);
 
-    // 1) load active-ish part_requests
     const { data: reqs, error } = await supabase
       .from("part_requests")
       .select("*")
@@ -164,7 +192,6 @@ export default function PartsRequestsPage(): JSX.Element {
       .order("created_at", { ascending: false });
 
     if (error) {
-      // eslint-disable-next-line no-console
       console.error("[parts/requests] load part_requests failed:", error);
       toast.error("Failed to load parts requests");
       setLoading(false);
@@ -173,7 +200,6 @@ export default function PartsRequestsPage(): JSX.Element {
 
     const requestList = (reqs ?? []) as PartRequest[];
 
-    // 2) load request items (counts + completion + search by description)
     const requestIds = requestList.map((r) => r.id);
     const itemsCountByRequest: Record<string, number> = {};
     const completeCountByRequest: Record<string, number> = {};
@@ -186,7 +212,6 @@ export default function PartsRequestsPage(): JSX.Element {
         .in("request_id", requestIds);
 
       if (itemsErr) {
-        // eslint-disable-next-line no-console
         console.error(
           "[parts/requests] load part_request_items failed:",
           itemsErr,
@@ -212,7 +237,6 @@ export default function PartsRequestsPage(): JSX.Element {
       }
     }
 
-    // 3) load work_orders for custom_id
     const woIds = Array.from(
       new Set(
         requestList
@@ -221,25 +245,38 @@ export default function PartsRequestsPage(): JSX.Element {
       ),
     );
 
-    const woById: Record<string, WorkOrder> = {};
+    const woById: Record<string, WorkOrderListRow> = {};
+
     if (woIds.length) {
       const { data: wos, error: woErr } = await supabase
         .from("work_orders")
-        .select("id, custom_id")
+        .select(`
+          id,
+          custom_id,
+          customer_id,
+          vehicle_id,
+          customers (
+            first_name,
+            last_name
+          ),
+          vehicles (
+            year,
+            make,
+            model
+          )
+        `)
         .in("id", woIds);
 
       if (woErr) {
-        // eslint-disable-next-line no-console
         console.error("[parts/requests] load work_orders failed:", woErr);
       } else {
         (wos ?? []).forEach((w) => {
-          const row = w as WorkOrder;
+          const row = w as WorkOrderListRow;
           woById[row.id] = row;
         });
       }
     }
 
-    // 4) group into 1 card per work order
     const byWo: Record<string, WoBucket> = {};
 
     for (const r of requestList) {
@@ -249,10 +286,23 @@ export default function PartsRequestsPage(): JSX.Element {
       const wo = woById[workOrderId];
       const customId = wo?.custom_id ?? null;
 
+      const customerRecord = Array.isArray(wo?.customers)
+        ? (wo.customers[0] ?? null)
+        : (wo?.customers ?? null);
+
+      const vehicleRecord = Array.isArray(wo?.vehicles)
+        ? (wo.vehicles[0] ?? null)
+        : (wo?.vehicles ?? null);
+
+      const customerName = buildCustomerName(customerRecord);
+      const vehicleLabel = buildVehicleLabel(vehicleRecord);
+
       if (!byWo[workOrderId]) {
         byWo[workOrderId] = {
           workOrderId,
           customId,
+          customerName,
+          vehicleLabel,
           status: "needs_quote",
           requests: [],
           itemsCount: 0,
@@ -273,8 +323,9 @@ export default function PartsRequestsPage(): JSX.Element {
 
       const createdAt = r.created_at ? String(r.created_at) : null;
       if (createdAt) {
-        if (!byWo[workOrderId].latestAt) byWo[workOrderId].latestAt = createdAt;
-        else if (
+        if (!byWo[workOrderId].latestAt) {
+          byWo[workOrderId].latestAt = createdAt;
+        } else if (
           new Date(createdAt).getTime() >
           new Date(byWo[workOrderId].latestAt!).getTime()
         ) {
@@ -283,12 +334,13 @@ export default function PartsRequestsPage(): JSX.Element {
       }
     }
 
-    // 5) compute bucket status + search blob + completion %
     Object.values(byWo).forEach((b) => {
       b.status = computeBucketStatus(b.requests);
 
       const pct =
-        b.itemsCount > 0 ? Math.round((b.completeCount / b.itemsCount) * 100) : 0;
+        b.itemsCount > 0
+          ? Math.round((b.completeCount / b.itemsCount) * 100)
+          : 0;
       b.completionPct = Math.max(0, Math.min(100, pct));
 
       const reqIdsBlob = b.requests.map((r) => r.id).join(" ");
@@ -296,7 +348,11 @@ export default function PartsRequestsPage(): JSX.Element {
         .flatMap((r) => descByRequest[r.id] ?? [])
         .join(" ");
       const woBlob = `${b.customId ?? ""} ${b.workOrderId}`;
-      b.searchBlob = `${woBlob} ${reqIdsBlob} ${descBlob}`.toLowerCase();
+      const customerBlob = b.customerName ?? "";
+      const vehicleBlob = b.vehicleLabel ?? "";
+
+      b.searchBlob =
+        `${woBlob} ${customerBlob} ${vehicleBlob} ${reqIdsBlob} ${descBlob}`.toLowerCase();
     });
 
     const list = Object.values(byWo).sort((a, b) => {
@@ -336,27 +392,23 @@ export default function PartsRequestsPage(): JSX.Element {
     const t = toast.loading("Deleting requests…");
 
     try {
-      // 1) delete request items first (FK safe)
       const { error: itemsErr } = await supabase
         .from("part_request_items")
         .delete()
         .in("request_id", requestIds);
 
       if (itemsErr) {
-        // eslint-disable-next-line no-console
         console.error("[parts/requests] delete items failed:", itemsErr);
         toast.error("Failed to delete request items", { id: t });
         return;
       }
 
-      // 2) delete requests
       const { error: reqErr } = await supabase
         .from("part_requests")
         .delete()
         .in("id", requestIds);
 
       if (reqErr) {
-        // eslint-disable-next-line no-console
         console.error("[parts/requests] delete requests failed:", reqErr);
         toast.error("Failed to delete requests", { id: t });
         return;
@@ -365,7 +417,6 @@ export default function PartsRequestsPage(): JSX.Element {
       toast.success("Deleted", { id: t });
       await reload();
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error("[parts/requests] deleteBucket exception:", e);
       toast.error("Delete failed", { id: t });
     } finally {
@@ -413,13 +464,16 @@ export default function PartsRequestsPage(): JSX.Element {
             Requests
           </h1>
           <p className="mt-1 text-sm text-neutral-400">
-            One card per Work Order. Completion % is based on items with part + qty
+            One card per work order. Completion % is based on items with part + qty
             + price.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Link href="/assistant?pageType=parts_requests&pageTitle=Parts%20Requests" className={BTN_COPPER}>
+          <Link
+            href="/assistant?pageType=parts_requests&pageTitle=Parts%20Requests"
+            className={BTN_COPPER}
+          >
             Ask Assistant
           </Link>
           <Link
@@ -431,7 +485,11 @@ export default function PartsRequestsPage(): JSX.Element {
           <Link href="/parts" className={BTN_COPPER}>
             Parts Dashboard
           </Link>
-          <button type="button" className={BTN_GHOST} onClick={() => void reload()}>
+          <button
+            type="button"
+            className={BTN_GHOST}
+            onClick={() => void reload()}
+          >
             Refresh
           </button>
         </div>
@@ -450,7 +508,7 @@ export default function PartsRequestsPage(): JSX.Element {
         <div className="grid gap-3 md:grid-cols-12 md:items-center">
           <div className="md:col-span-5">
             <div className="mb-1 text-xs text-neutral-400">
-              Search (WO#, request id, part description)
+              Search (WO#, customer, vehicle, request id, part description)
             </div>
             <input
               value={search}
@@ -502,9 +560,6 @@ export default function PartsRequestsPage(): JSX.Element {
                 ? `#${b.workOrderId.slice(0, 8)}`
                 : b.workOrderId);
 
-            // ✅ IMPORTANT:
-            // This page links to /parts/requests/[id] where [id] resolves a WORK ORDER
-            // by custom_id or uuid. So we pass customId if available, else wo id.
             const href = `/parts/requests/${encodeURIComponent(
               b.customId || b.workOrderId,
             )}`;
@@ -512,15 +567,29 @@ export default function PartsRequestsPage(): JSX.Element {
             const isDeleting = deletingWoId === b.workOrderId;
 
             return (
-              <div key={b.workOrderId} className={`${CARD_PAD}`}>
+              <div key={b.workOrderId} className={CARD_PAD}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-lg font-semibold tracking-wide text-white">
                       {woLabel}
                     </div>
-                    <div className="mt-1 text-xs text-neutral-400">
-                      {b.requests.length} request{b.requests.length === 1 ? "" : "s"} ·{" "}
-                      {b.itemsCount} item{b.itemsCount === 1 ? "" : "s"}
+
+                    {b.customerName && (
+                      <div className="mt-1 text-sm font-medium text-neutral-200">
+                        {b.customerName}
+                      </div>
+                    )}
+
+                    {b.vehicleLabel && (
+                      <div className="mt-1 text-xs text-neutral-500">
+                        {b.vehicleLabel}
+                      </div>
+                    )}
+
+                    <div className="mt-2 text-xs text-neutral-400">
+                      {b.requests.length} request
+                      {b.requests.length === 1 ? "" : "s"} · {b.itemsCount} item
+                      {b.itemsCount === 1 ? "" : "s"}
                       {b.itemsCount > 0 ? (
                         <>
                           <span className="mx-2 text-neutral-600">·</span>
@@ -533,7 +602,6 @@ export default function PartsRequestsPage(): JSX.Element {
                   <span className={pillFor(b.status)}>{labelFor(b.status)}</span>
                 </div>
 
-                {/* completion bar */}
                 <div className="mt-4">
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
                     <span>Completion</span>
