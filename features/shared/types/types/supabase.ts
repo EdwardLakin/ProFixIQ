@@ -814,6 +814,126 @@ export type Database = {
           },
         ]
       }
+      ai_suggestion_feedback: {
+        Row: {
+          accepted: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          labor_hours: number | null
+          parts: Json
+          shop_id: string
+          suggestion_id: string | null
+          title: string
+          work_order_id: string
+          work_order_line_id: string | null
+        }
+        Insert: {
+          accepted: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          labor_hours?: number | null
+          parts?: Json
+          shop_id: string
+          suggestion_id?: string | null
+          title: string
+          work_order_id: string
+          work_order_line_id?: string | null
+        }
+        Update: {
+          accepted?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          labor_hours?: number | null
+          parts?: Json
+          shop_id?: string
+          suggestion_id?: string | null
+          title?: string
+          work_order_id?: string
+          work_order_line_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_suggestion_feedback_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "ai_suggestion_feedback_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_training_data: {
         Row: {
           content: string
