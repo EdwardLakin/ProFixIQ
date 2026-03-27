@@ -12,6 +12,7 @@ import DeleteOrVoidLineModal from "@/features/work-orders/components/workorders/
 
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 import { QuoteLineCard } from "@/features/shared/quote/QuoteLineCard";
+import LearnedSuggestionCard from "@/features/work-orders/quote-review/LearnedSuggestionCard";
 import {
   calculateTax,
   getTaxAmount,
@@ -991,115 +992,54 @@ export default function QuoteReviewView(props: {
                           return (
                             <div className="mt-3 space-y-2">
                               {learned.slice(0, 2).map((suggestion) => (
-                                <div
+                                <LearnedSuggestionCard
                                   key={suggestion.id}
-                                  className="rounded-2xl border border-[color:var(--copper)]/25 bg-[color:var(--copper)]/8 p-3"
-                                >
-                                  <div className="flex flex-wrap items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <div className="text-sm font-semibold text-white">
-                                          {suggestion.title}
-                                        </div>
-                                        <span className="rounded-full border border-[color:var(--copper)]/35 bg-black/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--copper)]">
-                                          Based on previous jobs
-                                        </span>
-                                        {suggestion.sourceCount > 0 ? (
-                                          <span className="text-[11px] text-neutral-400">
-                                            {suggestion.sourceCount} similar
-                                          </span>
-                                        ) : null}
-                                      </div>
-
-                                      {suggestion.summary ? (
-                                        <div className="mt-1 text-xs text-neutral-300">
-                                          {suggestion.summary}
-                                        </div>
-                                      ) : null}
-
-                                      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-neutral-400">
-                                        {suggestion.laborHours != null ? (
-                                          <span>
-                                            Labor:{" "}
-                                            <span className="text-neutral-200">
-                                              {suggestion.laborHours} hr
-                                            </span>
-                                          </span>
-                                        ) : null}
-                                        {suggestion.parts.length > 0 ? (
-                                          <span>
-                                            Parts:{" "}
-                                            <span className="text-neutral-200">
-                                              {suggestion.parts
-                                                .map((p) => `${p.qty}x ${p.name}`)
-                                                .join(", ")}
-                                            </span>
-                                          </span>
-                                        ) : null}
-                                        {suggestion.confidence != null ? (
-                                          <span>
-                                            Confidence:{" "}
-                                            <span className="text-neutral-200">
-                                              {Math.round(suggestion.confidence * 100)}%
-                                            </span>
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-2">
-                                      {suggestion.laborHours != null ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setLineField(l.id, {
-                                              labor_time: suggestion.laborHours ?? l.labor_time,
-                                              description: l.description || suggestion.title,
-                                            });
-                                            toast.success("Applied learned labor suggestion.");
-                                            void trackSuggestionFeedback(suggestion, true);
-                                          }}
-                                          className="rounded-full border border-[color:var(--copper)]/45 bg-[color:var(--copper)]/12 px-3 py-1 text-xs font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/18"
-                                        >
-                                          Apply labor
-                                        </button>
-                                      ) : null}
-
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          openAddJobWithPrefill({
-                                            jobName: suggestion.title,
-                                            notes: suggestion.summary || l.notes || "",
-                                            laborHours: suggestion.laborHours,
-                                            parts: suggestion.parts,
-                                            partsPaste: partsToPaste(suggestion.parts),
+                                  suggestion={suggestion}
+                                  onApplyLabor={
+                                    suggestion.laborHours != null
+                                      ? () => {
+                                          setLineField(l.id, {
+                                            labor_time:
+                                              suggestion.laborHours ?? l.labor_time,
+                                            description:
+                                              l.description || suggestion.title,
                                           });
-                                          void trackSuggestionFeedback(suggestion, true);
-                                        }}
-                                        className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-xs font-semibold text-white hover:bg-black/60"
-                                      >
-                                        Add as job
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setLearnedByLine((prev) => ({
-                                            ...prev,
-                                            [l.id]: (prev[l.id] ?? []).filter(
-                                              (x) => x.id !== suggestion.id,
-                                            ),
-                                          }));
-                                          void trackSuggestionFeedback(suggestion, false);
-                                        }}
-                                        className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-xs text-neutral-300 hover:bg-black/50"
-                                      >
-                                        Dismiss
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
+                                          toast.success(
+                                            "Applied learned labor suggestion.",
+                                          );
+                                          void trackSuggestionFeedback(
+                                            suggestion,
+                                            true,
+                                          );
+                                        }
+                                      : undefined
+                                  }
+                                  onAddAsJob={() => {
+                                    openAddJobWithPrefill({
+                                      jobName: suggestion.title,
+                                      notes: suggestion.summary || l.notes || "",
+                                      laborHours: suggestion.laborHours,
+                                      parts: suggestion.parts,
+                                      partsPaste: partsToPaste(suggestion.parts),
+                                    });
+                                    void trackSuggestionFeedback(
+                                      suggestion,
+                                      true,
+                                    );
+                                  }}
+                                  onDismiss={() => {
+                                    setLearnedByLine((prev) => ({
+                                      ...prev,
+                                      [l.id]: (prev[l.id] ?? []).filter(
+                                        (x) => x.id !== suggestion.id,
+                                      ),
+                                    }));
+                                    void trackSuggestionFeedback(
+                                      suggestion,
+                                      false,
+                                    );
+                                  }}
+                                />
                               ))}
                             </div>
                           );
