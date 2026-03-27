@@ -85,10 +85,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ session: null }, { status: 200 });
   }
 
+  const hydratedSession = {
+    ...session,
+    id: inspectionRow?.id ?? session.id ?? inspectionId ?? "",
+    workOrderId:
+      inspectionRow?.work_order_id ??
+      (session as InspectionSession & { workOrderId?: string | null }).workOrderId ??
+      null,
+    workOrderLineId:
+      resolvedWorkOrderLineId ??
+      ((session as InspectionSession & { workOrderLineId?: string | null })
+        .workOrderLineId ?? null),
+  };
+
   return NextResponse.json({
-    session,
-    inspectionId: inspectionRow?.id ?? inspectionId ?? session.id ?? null,
-    workOrderId: inspectionRow?.work_order_id ?? session.workOrderId ?? null,
-    workOrderLineId: resolvedWorkOrderLineId ?? null,
+    session: hydratedSession,
+    inspectionId: hydratedSession.id ?? null,
+    workOrderId: hydratedSession.workOrderId ?? null,
+    workOrderLineId: hydratedSession.workOrderLineId ?? null,
   });
 }
