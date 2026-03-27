@@ -119,7 +119,7 @@ for (const [key, items] of groups.entries()) {
 
   const { error: upsertError } = await supabase
     .from("learned_job_templates")
-    .upsert(payload, { onConflict: "template_key" });
+    .upsert(payload, { onConflict: "shop_id,template_key" });
 
   if (upsertError) {
     console.error("Template upsert failed:", key, upsertError.message);
