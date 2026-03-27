@@ -1,3 +1,5 @@
+//features/inspections/lib/inspection/findings/page.tsx
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -218,6 +220,25 @@ export default function InspectionFindingsPage(): JSX.Element {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  const resolvedInspectionId =
+    inspectionId ||
+    (typeof session?.id === "string" ? session.id : "") ||
+    "";
+
+  const resolvedWorkOrderId =
+    workOrderId ||
+    (typeof session?.workOrderId === "string" ? session.workOrderId : "") ||
+    "";
+
+  const resolvedWorkOrderLineId =
+    workOrderLineId ||
+    (typeof (session as InspectionSession & { workOrderLineId?: string | null })
+      ?.workOrderLineId === "string"
+      ? ((session as InspectionSession & { workOrderLineId?: string | null })
+          .workOrderLineId ?? "")
+      : "") ||
+    "";
+
   const syncFromDraft = useCallback(async () => {
     const loaded = readDraftSession(draftKey);
     if (loaded) {
@@ -225,14 +246,16 @@ export default function InspectionFindingsPage(): JSX.Element {
       return;
     }
 
-    if (!inspectionId && !workOrderLineId) {
+    if (!inspectionId && !workOrderLineId && !resolvedWorkOrderLineId) {
       return;
     }
 
     try {
       const params = new URLSearchParams();
       if (inspectionId) params.set("inspectionId", inspectionId);
-      if (workOrderLineId) params.set("workOrderLineId", workOrderLineId);
+      if (resolvedWorkOrderLineId) {
+        params.set("workOrderLineId", resolvedWorkOrderLineId);
+      }
 
       const res = await fetch(`/api/inspections/load?${params.toString()}`, {
         method: "GET",
@@ -252,7 +275,7 @@ export default function InspectionFindingsPage(): JSX.Element {
     } catch (err) {
       console.error("[inspection-findings] failed to load saved session", err);
     }
-  }, [draftKey, inspectionId, workOrderLineId]);
+  }, [draftKey, inspectionId, workOrderLineId, resolvedWorkOrderLineId]);
 
   useEffect(() => {
     void syncFromDraft();
@@ -378,7 +401,7 @@ export default function InspectionFindingsPage(): JSX.Element {
     row: FindingRow,
     file: File,
   ): Promise<void> => {
-    if (!inspectionId) {
+    if (!resolvedInspectionId) {
       toast.error("Missing inspection id.");
       return;
     }
@@ -390,9 +413,11 @@ export default function InspectionFindingsPage(): JSX.Element {
 
     try {
       const form = new FormData();
-      form.append("inspectionId", inspectionId);
-      if (workOrderId) form.append("workOrderId", workOrderId);
-      if (workOrderLineId) form.append("workOrderLineId", workOrderLineId);
+      form.append("inspectionId", resolvedInspectionId);
+      if (resolvedWorkOrderId) form.append("workOrderId", resolvedWorkOrderId);
+      if (resolvedWorkOrderLineId) {
+        form.append("workOrderLineId", resolvedWorkOrderLineId);
+      }
       form.append("itemName", itemLabel);
       form.append("notes", String(row.item.notes ?? ""));
       form.append("file", file);
@@ -434,12 +459,12 @@ export default function InspectionFindingsPage(): JSX.Element {
   const handleSubmitReviewed = async (): Promise<void> => {
     if (!session) return;
 
-    if (!workOrderId) {
+    if (!resolvedWorkOrderId) {
       toast.error("Missing work order id.");
       return;
     }
 
-    if (!workOrderLineId) {
+    if (!resolvedWorkOrderLineId) {
       toast.error("Missing work order line id.");
       return;
     }
@@ -630,7 +655,7 @@ export default function InspectionFindingsPage(): JSX.Element {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                workOrderId,
+                workOrderId: resolvedWorkOrderId,
                 workOrderLineId: existingLineId,
                 laborHours: laborTime,
                 complaint: note || null,
@@ -651,7 +676,7 @@ export default function InspectionFindingsPage(): JSX.Element {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                workOrderId,
+                workOrderId: resolvedWorkOrderId,
                 jobId: existingLineId,
                 notes: note || null,
                 items: cleanParts,
@@ -692,7 +717,7 @@ export default function InspectionFindingsPage(): JSX.Element {
         }
 
         const created = await addWorkOrderLineFromSuggestion({
-          workOrderId,
+          workOrderId: resolvedWorkOrderId,
           description: desc,
           section: row.sectionTitle,
           status: status as "fail" | "recommend",
@@ -718,7 +743,7 @@ export default function InspectionFindingsPage(): JSX.Element {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              workOrderId,
+              workOrderId: resolvedWorkOrderId,
               jobId: createdJobId,
               notes: note || null,
               items: cleanParts,
@@ -775,7 +800,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       const payload = summarizeFromSections(nextSession);
 
       const finishRes = await fetch(
-        `/api/work-orders/lines/${workOrderLineId}/finish`,
+        `/api/work-orders/lines/${resolvedWorkOrderLineId}/finish`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -794,7 +819,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       const pdfRes = await fetch(`/api/inspections/finalize/pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workOrderLineId }),
+        body: JSON.stringify({ workOrderLineId: resolvedWorkOrderLineId }),
       });
 
       const pdfJson = (await pdfRes.json().catch(() => null)) as
@@ -810,7 +835,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       window.dispatchEvent(
         new CustomEvent("inspection:completed", {
           detail: {
-            workOrderLineId,
+            workOrderLineId: resolvedWorkOrderLineId,
             cause: payload.cause,
             correction: payload.correction,
           },
