@@ -83,13 +83,13 @@ create or replace function public.match_learned_job_templates(
 )
 returns table (
   id uuid,
-  title text,
-  complaint text,
-  correction text,
-  avg_labor_hours numeric,
-  suggested_parts jsonb,
+  label text,
+  job_category text,
+  default_labor_hours numeric,
+  default_parts jsonb,
   usage_count integer,
   confidence_score numeric,
+  tags jsonb,
   similarity float
 )
 language sql
@@ -97,13 +97,13 @@ stable
 as $$
   select
     ljt.id,
-    ljt.title,
-    ljt.complaint,
-    ljt.correction,
-    ljt.avg_labor_hours,
-    coalesce(ljt.suggested_parts, '[]'::jsonb),
+    ljt.label,
+    ljt.job_category,
+    ljt.default_labor_hours,
+    coalesce(ljt.default_parts, '[]'::jsonb),
     ljt.usage_count,
     ljt.confidence_score,
+    to_jsonb(ljt.tags),
     1 - (ljt.embedding <=> p_embedding) as similarity
   from public.learned_job_templates ljt
   where ljt.shop_id = p_shop_id
