@@ -28,8 +28,16 @@ function scoreMatch(input: string, candidate: string): number {
   const a = new Set(input.split(/\s+/).filter(Boolean));
   const b = new Set(candidate.split(/\s+/).filter(Boolean));
   let overlap = 0;
-  for (const token of a) if (b.has(token)) overlap += 1;
+  for (const token of a) {
+    if (b.has(token)) overlap += 1;
+  }
   return overlap * 10;
+}
+
+function confidenceFromScore(score: number): number {
+  if (score >= 80) return 0.9;
+  if (score >= 45) return 0.65;
+  return 0.35;
 }
 
 export async function POST(req: Request) {
@@ -47,11 +55,13 @@ export async function POST(req: Request) {
       : Number(body?.vehicle?.year ?? 0) || null;
 
   const queryText = [item, notes, section].filter(Boolean).join(" ").trim();
-  if (!queryText) return NextResponse.json({ suggestion: null });
+  if (!queryText) {
+    return NextResponse.json({ suggestions: [] });
+  }
 
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) {
-    return NextResponse.json({ suggestion: null }, { status: 401 });
+    return NextResponse.json({ suggestions: [] }, { status: 401 });
   }
 
   const { data: profile } = await supabase
@@ -60,7 +70,9 @@ export async function POST(req: Request) {
     .eq("id", auth.user.id)
     .maybeSingle();
 
-  if (!profile?.shop_id) return NextResponse.json({ suggestion: null });
+  if (!profile?.shop_id) {
+    return NextResponse.json({ suggestions: [] });
+  }
 
   const { data: rows, error } = await supabase
     .from("work_order_intelligence")
@@ -72,7 +84,10 @@ export async function POST(req: Request) {
     .limit(75);
 
   if (error) {
-    return NextResponse.json({ suggestion: null, error: error.message }, { status: 400 });
+    return NextResponse.json(
+      { suggestions: [], error: error.message },
+      { status: 400 },
+    );
   }
 
   const ranked = (rows ?? [])
@@ -101,51 +116,52 @@ export async function POST(req: Request) {
     .slice(0, 5);
 
   if (ranked.length === 0) {
-    return NextResponse.json({ suggestion: null });
+    return NextResponse.json({ suggestions: [] });
   }
 
-  const top = ranked[0].row;
-
-  const parts =
-    Array.isArray(top.parts)
-      ? top.parts
+  const suggestions = ranked.map(({ row, score }) => {
+    const parts = Array.isArray(row.parts)
+      ? row.parts
           .map((p) => {
             if (!p || typeof p !== "object") return null;
             const obj = p as Record<string, unknown>;
+
             const name =
               typeof obj.name === "string"
                 ? obj.name
                 : typeof obj.description === "string"
-                ? obj.description
-                : "Suggested part";
+                  ? obj.description
+                  : "Suggested part";
 
             const qty =
               typeof obj.qty === "number"
                 ? obj.qty
                 : typeof obj.quantity === "number"
-                ? obj.quantity
-                : 1;
+                  ? obj.quantity
+                  : 1;
 
             return { name, qty };
           })
-          .filter(Boolean)
+          .filter((x): x is { name: string; qty: number } => Boolean(x))
       : [];
 
-  return NextResponse.json({
-    suggestion: {
-      parts,
-      laborHours: typeof top.labor_time === "number" ? top.labor_time : 0.5,
+    return {
+      id: String(row.id),
+      title: row.job_category ?? row.complaint ?? "Learned suggestion",
       summary:
-        top.correction ??
-        top.cause ??
-        top.symptom ??
-        top.complaint ??
+        row.correction ??
+        row.cause ??
+        row.symptom ??
+        row.complaint ??
         "Learned from previous jobs",
-      confidence: ranked[0].score >= 80 ? "high" : ranked[0].score >= 45 ? "medium" : "low",
+      laborHours: typeof row.labor_time === "number" ? row.labor_time : 0.5,
+      confidence: confidenceFromScore(score),
+      sourceCount: ranked.length,
+      parts,
       notes: "Learned suggestion from prior completed work orders",
-      title: top.job_category ?? "Learned suggestion",
       learned: true,
-      learnedMatches: ranked.length,
-    },
+    };
   });
+
+  return NextResponse.json({ suggestions });
 }
