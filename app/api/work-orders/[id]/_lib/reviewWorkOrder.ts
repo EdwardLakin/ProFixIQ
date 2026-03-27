@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { recordWorkOrderTraining } from "@/features/integrations/ai";
+import { seedWorkOrderIntelligenceFromReview } from "@/features/ai/server/workOrderIntelligence";
 
 type DB = Database;
 
@@ -110,6 +111,30 @@ export async function reviewWorkOrder({
   }
 
   const ok = issues.length === 0;
+
+  if (ok) {
+    try {
+      let vehicle = null;
+      if (wo.vehicle_id) {
+        const { data: vehicleRow } = await supabase
+          .from("vehicles")
+          .select("id, year, make, model")
+          .eq("id", wo.vehicle_id)
+          .maybeSingle();
+        vehicle = vehicleRow ?? null;
+      }
+
+      await seedWorkOrderIntelligenceFromReview({
+        supabase,
+        workOrder: wo,
+        lines,
+        vehicle,
+        source: kind,
+      });
+    } catch (intelligenceErr) {
+      console.warn("[reviewWorkOrder] intelligence seed failed:", intelligenceErr);
+    }
+  }
 
   // Training hook (never block)
   if (wo.shop_id) {

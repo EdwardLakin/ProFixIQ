@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "12.2.3 (519615d)"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -3247,11 +3252,15 @@ export type Database = {
         Row: {
           created_at: string | null
           created_by: string | null
+          detected_profile: Json | null
           error: string | null
           error_message: string | null
           extracted_text: string | null
           id: string
+          mapped_sections: Json | null
           original_filename: string | null
+          page_count: number | null
+          parse_version: string | null
           parsed_sections: Json | null
           status: string
           storage_path: string
@@ -3260,11 +3269,15 @@ export type Database = {
         Insert: {
           created_at?: string | null
           created_by?: string | null
+          detected_profile?: Json | null
           error?: string | null
           error_message?: string | null
           extracted_text?: string | null
           id?: string
+          mapped_sections?: Json | null
           original_filename?: string | null
+          page_count?: number | null
+          parse_version?: string | null
           parsed_sections?: Json | null
           status?: string
           storage_path: string
@@ -3273,11 +3286,15 @@ export type Database = {
         Update: {
           created_at?: string | null
           created_by?: string | null
+          detected_profile?: Json | null
           error?: string | null
           error_message?: string | null
           extracted_text?: string | null
           id?: string
+          mapped_sections?: Json | null
           original_filename?: string | null
+          page_count?: number | null
+          parse_version?: string | null
           parsed_sections?: Json | null
           status?: string
           storage_path?: string
@@ -4728,6 +4745,110 @@ export type Database = {
           },
         ]
       }
+      intelligence_story_signals: {
+        Row: {
+          created_at: string
+          id: string
+          payload: Json
+          processed_at: string | null
+          shop_id: string
+          signal_type: string
+          work_order_id: string
+          work_order_line_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          shop_id: string
+          signal_type: string
+          work_order_id: string
+          work_order_line_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          shop_id?: string
+          signal_type?: string
+          work_order_id?: string
+          work_order_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_story_signals_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_story_signals_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_story_signals_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "intelligence_story_signals_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "intelligence_story_signals_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "intelligence_story_signals_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "intelligence_story_signals_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_story_signals_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_story_signals_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "intelligence_story_signals_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_documents: {
         Row: {
           created_at: string
@@ -4990,6 +5111,131 @@ export type Database = {
             columns: ["video_platform_post_id"]
             isOneToOne: false
             referencedRelation: "video_platform_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      learned_job_templates: {
+        Row: {
+          confidence_score: number | null
+          created_at: string
+          default_labor_hours: number | null
+          default_parts: Json
+          id: string
+          job_category: string | null
+          label: string
+          last_seen_at: string
+          shop_id: string
+          source_work_order_id: string | null
+          source_work_order_line_id: string | null
+          tags: string[]
+          template_key: string
+          updated_at: string
+          usage_count: number
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string
+          default_labor_hours?: number | null
+          default_parts?: Json
+          id?: string
+          job_category?: string | null
+          label: string
+          last_seen_at?: string
+          shop_id: string
+          source_work_order_id?: string | null
+          source_work_order_line_id?: string | null
+          tags?: string[]
+          template_key: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string
+          default_labor_hours?: number | null
+          default_parts?: Json
+          id?: string
+          job_category?: string | null
+          label?: string
+          last_seen_at?: string
+          shop_id?: string
+          source_work_order_id?: string | null
+          source_work_order_line_id?: string | null
+          tags?: string[]
+          template_key?: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "learned_job_templates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "learned_job_templates_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "learned_job_templates_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "learned_job_templates_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "learned_job_templates_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "learned_job_templates_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "learned_job_templates_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "learned_job_templates_source_work_order_line_id_fkey"
+            columns: ["source_work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "learned_job_templates_source_work_order_line_id_fkey"
+            columns: ["source_work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "learned_job_templates_source_work_order_line_id_fkey"
+            columns: ["source_work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
         ]
@@ -9177,6 +9423,162 @@ export type Database = {
           },
         ]
       }
+      shopreel_event_deliveries: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          delivered_at: string | null
+          error_message: string | null
+          event_key: string
+          event_type: string
+          http_status: number | null
+          id: string
+          integration_id: string | null
+          payload: Json
+          request_url: string
+          response_body: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          event_key: string
+          event_type: string
+          http_status?: number | null
+          id?: string
+          integration_id?: string | null
+          payload?: Json
+          request_url: string
+          response_body?: string | null
+          shop_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          event_key?: string
+          event_type?: string
+          http_status?: number | null
+          id?: string
+          integration_id?: string | null
+          payload?: Json
+          request_url?: string
+          response_body?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopreel_event_deliveries_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "shopreel_integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_event_deliveries_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_event_deliveries_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shopreel_integrations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          enabled_event_types: string[]
+          id: string
+          last_error_at: string | null
+          last_error_message: string | null
+          last_success_at: string | null
+          last_tested_at: string | null
+          remote_shop_id: string | null
+          shop_id: string
+          shopreel_base_url: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          enabled_event_types?: string[]
+          id?: string
+          last_error_at?: string | null
+          last_error_message?: string | null
+          last_success_at?: string | null
+          last_tested_at?: string | null
+          remote_shop_id?: string | null
+          shop_id: string
+          shopreel_base_url?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          enabled_event_types?: string[]
+          id?: string
+          last_error_at?: string | null
+          last_error_message?: string | null
+          last_success_at?: string | null
+          last_tested_at?: string | null
+          remote_shop_id?: string | null
+          shop_id?: string
+          shopreel_base_url?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopreel_integrations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_integrations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_integrations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopreel_integrations_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shopreel_manual_asset_files: {
         Row: {
           created_at: string
@@ -11977,6 +12379,166 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_intelligence: {
+        Row: {
+          cause: string | null
+          complaint: string | null
+          confidence_score: number | null
+          correction: string | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          job_category: string | null
+          labor_time: number | null
+          line_status: string | null
+          parts: Json
+          shop_id: string
+          source: string
+          symptom: string | null
+          tags: string[]
+          updated_at: string
+          vehicle_id: string | null
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_year: number | null
+          work_order_id: string
+          work_order_line_id: string
+        }
+        Insert: {
+          cause?: string | null
+          complaint?: string | null
+          confidence_score?: number | null
+          correction?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          job_category?: string | null
+          labor_time?: number | null
+          line_status?: string | null
+          parts?: Json
+          shop_id: string
+          source?: string
+          symptom?: string | null
+          tags?: string[]
+          updated_at?: string
+          vehicle_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+          work_order_id: string
+          work_order_line_id: string
+        }
+        Update: {
+          cause?: string | null
+          complaint?: string | null
+          confidence_score?: number | null
+          correction?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          job_category?: string | null
+          labor_time?: number | null
+          line_status?: string | null
+          parts?: Json
+          shop_id?: string
+          source?: string
+          symptom?: string | null
+          tags?: string[]
+          updated_at?: string
+          vehicle_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+          work_order_id?: string
+          work_order_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_intelligence_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: true
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: true
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: true
+            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
         ]
@@ -15035,6 +15597,10 @@ export type Database = {
         Args: { p_shop_id: string; p_user_id: string }
         Returns: string
       }
+      generate_work_order_custom_id: {
+        Args: { p_shop_id: string; p_work_order_id: string }
+        Returns: string
+      }
       get_default_stock_location: {
         Args: { p_shop_id: string }
         Returns: string
@@ -15824,4 +16390,3 @@ export const Constants = {
     },
   },
 } as const
-
