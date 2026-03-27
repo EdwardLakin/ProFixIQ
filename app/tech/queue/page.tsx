@@ -333,7 +333,7 @@ export default function TechQueuePage() {
         }}
         title="Suggested Actions for Your Queue"
         description="Recommended next actions for assigned jobs, holds, and parts blockers"
-      />
+       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-2xl font-blackops text-[color:var(--accent-copper,#f97316)]">

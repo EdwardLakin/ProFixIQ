@@ -96,7 +96,7 @@ export default function ReceiveFromPOPage(): JSX.Element {
         }}
         title="Suggested Actions for PO Receiving"
         description="Recommended next actions for purchase orders, partial receiving, and allocation follow-up"
-      />
+       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {/* Errors */}
       {err ? (

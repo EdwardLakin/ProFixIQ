@@ -362,7 +362,7 @@ export default function MobileTechQueuePage() {
           }}
           title="Suggested Actions"
           description="Recommended next actions for your assigned jobs"
-        />
+         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
         {/* FILTER CARDS (desktop-style vibes) */}
         <section className="grid grid-cols-2 gap-3 text-xs">

@@ -398,7 +398,7 @@ export default function TechPerformancePage() {
             }}
             title="Suggested Actions for Performance"
             description="Get coaching ideas, spot efficiency issues, and turn performance trends into concrete next steps"
-          />
+           compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
         )}
 
         {/* My stats */}

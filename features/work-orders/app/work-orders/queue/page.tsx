@@ -287,7 +287,7 @@ export default function QueuePage() {
           }}
           title="Suggested Actions for the Queue"
           description="Recommended next actions for active work orders, stalled jobs, and technician flow"
-        />
+         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
         {/* Header row / top summary */}
         <div className="flex flex-wrap items-center gap-3">

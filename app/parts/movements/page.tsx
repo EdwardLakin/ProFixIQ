@@ -122,7 +122,7 @@ export default function StockMovementsPage(): JSX.Element {
         }}
         title="Suggested Actions for Inventory Movements"
         description="Detect anomalies, investigate shrinkage, and optimize stock flow"
-      />
+       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {err ? (
         <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">

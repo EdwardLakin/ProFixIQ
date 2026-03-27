@@ -205,7 +205,7 @@ export default function AllocationsPage(): JSX.Element {
         }}
         title="Suggested Actions for Allocations"
         description="Spot misallocations, trace parts usage by work order, and catch inventory issues early"
-      />
+       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl shadow-[0_18px_40px_rgba(0,0,0,0.9)]">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

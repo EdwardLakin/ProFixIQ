@@ -860,7 +860,7 @@ export default function InvoicePreviewPageClient({
           }}
           title="Suggested Actions for this Invoice"
           description="Recommended next actions for invoice completion, customer follow-up, payment collection, and final delivery"
-        />
+         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
         {/* Review issues panel */}
         {!reviewOk ? (

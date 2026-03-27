@@ -276,7 +276,7 @@ export default function ReceivePage(): JSX.Element {
         }}
         title="Suggested Actions for Receiving"
         description="Recommended next actions for barcode receiving, PO attribution, and stock updates"
-      />
+       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       <div className="text-xs text-neutral-500">
         Shop: <span className="text-neutral-300">{shopId ? shopId.slice(0, 8) : "—"}</span>

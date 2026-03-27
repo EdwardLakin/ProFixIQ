@@ -744,7 +744,7 @@ export default function InventoryPage(): JSX.Element {
         }}
         title="Suggested Actions for Inventory"
         description="Recommended next actions for stock cleanup, receiving, low-stock follow-up, and inventory maintenance"
-      />
+       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {loading ? (
         <div className={`${glassCard} p-4 text-sm text-neutral-300`}>Loading…</div>

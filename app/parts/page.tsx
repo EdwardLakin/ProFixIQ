@@ -271,7 +271,7 @@ export default function PartsDashboardPage(): JSX.Element {
         }}
         title="Suggested Actions for Parts"
         description="Inventory insights, restocking suggestions, request follow-ups, and procurement optimization"
-      />
+       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {/* overview cards */}
       <section className="grid gap-4 md:grid-cols-4">

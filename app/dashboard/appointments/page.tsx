@@ -632,7 +632,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
         }}
         title="Suggested Actions for Appointments"
         description="Recommended next actions for pending requests, confirmations, reschedules, and booking follow-up"
-      />
+       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       {/* Main 2-column layout */}
       <div className="grid gap-6 lg:grid-cols-[1fr_420px]">

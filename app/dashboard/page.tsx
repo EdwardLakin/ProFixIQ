@@ -1,3 +1,5 @@
+// app/dashboard/page.tsx
+
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -356,8 +358,14 @@ export default function DashboardPage() {
         <DailySummaryCard />
       </div>
 
-      <div className="mb-6">
-        <SuggestedActionsPanel />
+      <div className="mb-4">
+        <SuggestedActionsPanel
+          compact
+          collapsible
+          maxItems={4}
+          hideDescription
+          title="Suggested Actions"
+        />
       </div>
       <div className="relative space-y-8 fade-in">
       {/* soft gradient background for this page (extra metal wash) */}

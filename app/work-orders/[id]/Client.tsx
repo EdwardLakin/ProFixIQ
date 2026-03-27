@@ -1307,7 +1307,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 }}
                 title="Suggested Actions for this Work Order"
                 description="Recommended next actions for this work order, customer, and vehicle"
-              />
+               compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
             </div>
 
             {/* Vehicle & Customer */}

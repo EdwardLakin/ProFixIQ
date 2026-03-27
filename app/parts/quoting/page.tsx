@@ -374,7 +374,7 @@ export default function QuotingQueuePage(): JSX.Element {
           }}
           title="Suggested Actions for Quoting"
           description="AI-assisted parts selection, pricing optimization, and faster quote completion"
-        />
+         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
         <div>
           <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Parts</div>
           <h1 className="text-2xl font-semibold text-white" style={{ fontFamily: "var(--font-blackops), system-ui" }}>

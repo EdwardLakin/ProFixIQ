@@ -282,7 +282,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
           }}
           title="Suggested Actions for Work Order History"
           description="Recommended next actions for historical lookups, repeat work, invoicing follow-up, and customer history review"
-        />
+         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
         {/* Filters bar */}
         <div className="mb-5 rounded-2xl border border-[var(--metal-border-soft)] bg-black/60 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-4">

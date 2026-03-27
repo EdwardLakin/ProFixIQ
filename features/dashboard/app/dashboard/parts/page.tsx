@@ -117,7 +117,7 @@ export default function PartsDashboard() {
         }}
         title="Suggested Actions for Parts"
         description="Recommended next actions for active requests, fulfillment, and parts coordination"
-      />
+       compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
 
       <div className="flex gap-4 mb-6">
         <button

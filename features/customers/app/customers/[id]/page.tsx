@@ -1010,7 +1010,7 @@ export default function CustomerProfilePage(): JSX.Element {
           }}
           title="Suggested Actions for this Customer"
           description="Recommended next actions for this customer and selected vehicle"
-        />
+         compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
       </div>
 
       {loading ? (

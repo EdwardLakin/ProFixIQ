@@ -358,7 +358,7 @@ export default function QuoteReviewIndexPage(): JSX.Element {
             }}
             title="Suggested Actions for Approvals"
             description="Recommended next actions for pending approvals, quotes, and blocked work orders"
-          />
+           compact collapsible defaultExpanded={false} maxItems={3} hideDescription />
         </div>
 
         <ApprovalsList />
