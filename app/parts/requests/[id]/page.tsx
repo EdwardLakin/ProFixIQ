@@ -186,7 +186,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
   const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
 
-  const pageWrap = "space-y-4 p-6 text-white";
+  const pageWrap = "space-y-3 p-4 text-white";
   const glassCard =
     "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const glassHeader =
@@ -990,7 +990,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       ) : (
         <>
           <div className={`${glassCard} overflow-hidden`}>
-            <div className={`${glassHeader} px-5 py-4`}>
+            <div className={`${glassHeader} px-4 py-3`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-xl font-semibold tracking-wide">
@@ -1049,7 +1049,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
                 return (
                   <div key={r.req.id} className={`${glassCard} overflow-hidden`}>
-                    <div className={`${glassHeader} px-5 py-4`}>
+                    <div className={`${glassHeader} px-4 py-3`}>
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-sm font-semibold">
@@ -1097,17 +1097,17 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                       </div>
                     </div>
 
-                    <div className="p-4">
+                    <div className="p-3">
                       <div className="overflow-hidden rounded-xl border border-white/10 bg-neutral-950/20">
                         <table className="w-full text-sm">
                           <thead className="bg-white/5 text-neutral-400">
                             <tr>
-                              <th className="p-3 text-left">Requested part</th>
-                              <th className="p-3 text-right">Qty</th>
-                              <th className="p-3 text-right">Price (unit)</th>
-                              <th className="p-3 text-left">PO</th>
-                              <th className="p-3 text-right">Line total</th>
-                              <th className="w-[260px] p-3" />
+                              <th className="px-3 py-2 text-left">Requested part</th>
+                              <th className="px-3 py-2 text-right">Qty</th>
+                              <th className="px-3 py-2 text-right">Price (unit)</th>
+                              <th className="px-3 py-2 text-left">PO</th>
+                              <th className="px-3 py-2 text-right">Line total</th>
+                              <th className="w-[220px] px-3 py-2" />
                             </tr>
                           </thead>
 
@@ -1160,10 +1160,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                     className="border-t border-white/10"
                                   >
                                     {/* ✅ Bigger request description ABOVE stock-part selector */}
-                                    <td className="p-3 align-top">
+                                    <td className="px-3 py-2 align-top">
                                       <div className="grid gap-2">
                                         <textarea
-                                          className={`${inputBase} w-full py-2 text-xs`}
+                                          className={`${inputBase} w-full py-1.5 text-xs`}
                                           value={it.description ?? ""}
                                           placeholder="Requested part / notes (ex: Front spring & spring attachment)"
                                           onChange={(e) =>
@@ -1176,7 +1176,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         />
 
                                         <select
-                                          className={`${selectBase} w-full`}
+                                          className={`${selectBase} w-full py-1.5`}
                                           value={it.ui_part_id ?? ""}
                                           onChange={(e) => {
                                             const nextPartId =
@@ -1243,7 +1243,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         type="number"
                                         min={1}
                                         step={1}
-                                        className={`${inputBase} w-20 py-2 text-right text-xs`}
+                                        className={`${inputBase} w-20 py-1.5 text-right text-xs`}
                                         value={
                                           Number.isFinite(it.ui_qty)
                                             ? String(it.ui_qty)
@@ -1270,7 +1270,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                       <input
                                         type="number"
                                         step={0.01}
-                                        className={`${inputBase} w-28 py-2 text-right text-xs`}
+                                        className={`${inputBase} w-28 py-1.5 text-right text-xs`}
                                         value={
                                           it.ui_price == null ? "" : String(it.ui_price)
                                         }
@@ -1286,10 +1286,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                     </td>
 
                                     {/* PO column */}
-                                    <td className="p-3 align-top">
+                                    <td className="px-3 py-2 align-top">
                                       <div className="grid gap-2">
                                         <select
-                                          className={`${selectBase} w-[260px]`}
+                                          className={`${selectBase} w-[220px] py-1.5`}
                                           value={uiPoId}
                                           onChange={(e) => {
                                             const next = e.target.value || "";
@@ -1362,7 +1362,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                             </div>
 
                                             <button
-                                              className={`${btnCopper} py-2 text-xs`}
+                                              className={`${btnCopper} py-1.5 text-xs`}
                                               type="button"
                                               disabled={rowBusy}
                                               onClick={async () => {
@@ -1423,10 +1423,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                       {lineTotal.toFixed(2)}
                                     </td>
 
-                                    <td className="p-3 align-top">
+                                    <td className="px-3 py-2 align-top">
                                       <div className="flex flex-col items-stretch gap-2">
                                         <button
-                                          className={`${btnCopper} py-2 text-xs`}
+                                          className={`${btnCopper} py-1.5 text-xs`}
                                           onClick={() =>
                                             void addAndAttach(r.req.id, String(it.id))
                                           }
@@ -1453,7 +1453,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                         </button>
 
                                         <button
-                                          className={`${btnDanger} py-2 text-xs`}
+                                          className={`${btnDanger} py-1.5 text-xs`}
                                           onClick={() =>
                                             void deleteLine(r.req.id, String(it.id))
                                           }

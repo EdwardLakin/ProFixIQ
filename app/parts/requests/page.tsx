@@ -5,7 +5,6 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
-import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
 
 type DB = Database;
 
@@ -117,10 +116,10 @@ export default function PartsRequestsPage(): JSX.Element {
   const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
   const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
 
-  const PAGE = "w-full px-3 py-6 text-white sm:px-6 lg:px-10 xl:px-16";
+  const PAGE = "w-full px-3 py-4 text-white sm:px-5 lg:px-8 xl:px-12";
   const CARD =
     "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
-  const CARD_PAD = `${CARD} p-4`;
+  const CARD_PAD = `${CARD} p-3`;
   const INPUT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${COPPER_FOCUS_RING}`;
   const SELECT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none ${COPPER_FOCUS_RING}`;
   const BTN_BASE =
@@ -452,7 +451,7 @@ export default function PartsRequestsPage(): JSX.Element {
 
   return (
     <div className={PAGE}>
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">
             Parts
@@ -470,18 +469,6 @@ export default function PartsRequestsPage(): JSX.Element {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Link
-            href="/assistant?pageType=parts_requests&pageTitle=Parts%20Requests"
-            className={BTN_COPPER}
-          >
-            Ask Assistant
-          </Link>
-          <Link
-            href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20parts%20requests%20and%20suggest%20the%20best%20next%20actions"
-            className={BTN_GHOST}
-          >
-            Open Planner
-          </Link>
           <Link href="/parts" className={BTN_COPPER}>
             Parts Dashboard
           </Link>
@@ -494,15 +481,6 @@ export default function PartsRequestsPage(): JSX.Element {
           </button>
         </div>
       </div>
-
-      <SuggestedActionsPanel
-        context={{
-          pageType: "parts_requests",
-          pageTitle: "Parts Requests",
-        }}
-        title="Suggested Actions for Parts Requests"
-        description="Recommended next actions for quoting, approvals, fulfillment, and work-order-linked parts demand"
-      />
 
       <div className={`${CARD_PAD} mb-4 space-y-3`}>
         <div className="grid gap-3 md:grid-cols-12 md:items-center">
@@ -552,7 +530,7 @@ export default function PartsRequestsPage(): JSX.Element {
           No active parts requests.
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {filtered.map((b) => {
             const woLabel =
               b.customId ||
@@ -602,7 +580,7 @@ export default function PartsRequestsPage(): JSX.Element {
                   <span className={pillFor(b.status)}>{labelFor(b.status)}</span>
                 </div>
 
-                <div className="mt-4">
+                <div className="mt-3">
                   <div className="flex items-center justify-between text-[11px] text-neutral-400">
                     <span>Completion</span>
                     <span className={COPPER_TEXT}>{b.completionPct}%</span>
@@ -616,7 +594,7 @@ export default function PartsRequestsPage(): JSX.Element {
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
                   <button
                     type="button"
                     className={BTN_DANGER}
