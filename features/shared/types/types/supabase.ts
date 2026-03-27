@@ -5237,14 +5237,19 @@ export type Database = {
       }
       learned_job_templates: {
         Row: {
+          accept_count: number
           confidence_score: number | null
           created_at: string
           default_labor_hours: number | null
           default_parts: Json
+          embedding: string | null
           id: string
           job_category: string | null
           label: string
           last_seen_at: string
+          last_used_at: string | null
+          normalized_text: string | null
+          reject_count: number
           shop_id: string
           source_work_order_id: string | null
           source_work_order_line_id: string | null
@@ -5254,14 +5259,19 @@ export type Database = {
           usage_count: number
         }
         Insert: {
+          accept_count?: number
           confidence_score?: number | null
           created_at?: string
           default_labor_hours?: number | null
           default_parts?: Json
+          embedding?: string | null
           id?: string
           job_category?: string | null
           label: string
           last_seen_at?: string
+          last_used_at?: string | null
+          normalized_text?: string | null
+          reject_count?: number
           shop_id: string
           source_work_order_id?: string | null
           source_work_order_line_id?: string | null
@@ -5271,14 +5281,19 @@ export type Database = {
           usage_count?: number
         }
         Update: {
+          accept_count?: number
           confidence_score?: number | null
           created_at?: string
           default_labor_hours?: number | null
           default_parts?: Json
+          embedding?: string | null
           id?: string
           job_category?: string | null
           label?: string
           last_seen_at?: string
+          last_used_at?: string | null
+          normalized_text?: string | null
+          reject_count?: number
           shop_id?: string
           source_work_order_id?: string | null
           source_work_order_line_id?: string | null
@@ -12506,20 +12521,24 @@ export type Database = {
       work_order_intelligence: {
         Row: {
           cause: string | null
+          cluster_key: string | null
           complaint: string | null
           confidence_score: number | null
           correction: string | null
           created_at: string
           customer_id: string | null
+          embedding: string | null
           id: string
           job_category: string | null
           labor_time: number | null
           line_status: string | null
+          normalized_text: string | null
           parts: Json
           shop_id: string
           source: string
           symptom: string | null
           tags: string[]
+          template_id: string | null
           updated_at: string
           vehicle_id: string | null
           vehicle_make: string | null
@@ -12530,20 +12549,24 @@ export type Database = {
         }
         Insert: {
           cause?: string | null
+          cluster_key?: string | null
           complaint?: string | null
           confidence_score?: number | null
           correction?: string | null
           created_at?: string
           customer_id?: string | null
+          embedding?: string | null
           id?: string
           job_category?: string | null
           labor_time?: number | null
           line_status?: string | null
+          normalized_text?: string | null
           parts?: Json
           shop_id: string
           source?: string
           symptom?: string | null
           tags?: string[]
+          template_id?: string | null
           updated_at?: string
           vehicle_id?: string | null
           vehicle_make?: string | null
@@ -12554,20 +12577,24 @@ export type Database = {
         }
         Update: {
           cause?: string | null
+          cluster_key?: string | null
           complaint?: string | null
           confidence_score?: number | null
           correction?: string | null
           created_at?: string
           customer_id?: string | null
+          embedding?: string | null
           id?: string
           job_category?: string | null
           labor_time?: number | null
           line_status?: string | null
+          normalized_text?: string | null
           parts?: Json
           shop_id?: string
           source?: string
           symptom?: string | null
           tags?: string[]
+          template_id?: string | null
           updated_at?: string
           vehicle_id?: string | null
           vehicle_make?: string | null
@@ -12596,6 +12623,13 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_intelligence_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "learned_job_templates"
             referencedColumns: ["id"]
           },
           {
@@ -15771,6 +15805,38 @@ export type Database = {
       is_shop_member_v2: { Args: { shop_id: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
       mark_active: { Args: never; Returns: undefined }
+      match_learned_job_templates: {
+        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
+        Returns: {
+          confidence_score: number
+          default_labor_hours: number
+          default_parts: Json
+          id: string
+          job_category: string
+          label: string
+          similarity: number
+          tags: Json
+          usage_count: number
+        }[]
+      }
+      match_work_order_intelligence: {
+        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
+        Returns: {
+          cause: string
+          complaint: string
+          correction: string
+          id: string
+          job_category: string
+          labor_time: number
+          parts: Json
+          similarity: number
+          symptom: string
+          tags: Json
+          vehicle_make: string
+          vehicle_model: string
+          vehicle_year: number
+        }[]
+      }
       maybe_release_line_hold_for_parts: {
         Args: { p_work_order_line_id: string }
         Returns: undefined
