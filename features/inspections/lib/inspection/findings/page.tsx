@@ -220,6 +220,7 @@ export default function InspectionFindingsPage(): JSX.Element {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+
   const resolvedInspectionId =
     inspectionId ||
     (typeof session?.id === "string" ? session.id : "") ||
@@ -241,8 +242,30 @@ export default function InspectionFindingsPage(): JSX.Element {
 
   const syncFromDraft = useCallback(async () => {
     const loaded = readDraftSession(draftKey);
+
+    const loadedWorkOrderId =
+      loaded && typeof loaded.workOrderId === "string"
+        ? loaded.workOrderId.trim()
+        : "";
+
+    const loadedWorkOrderLineId =
+      loaded &&
+      typeof (loaded as InspectionSession & { workOrderLineId?: string | null })
+        .workOrderLineId === "string"
+        ? String(
+            (loaded as InspectionSession & { workOrderLineId?: string | null })
+              .workOrderLineId ?? "",
+          ).trim()
+        : "";
+
     if (loaded) {
       setSession(loaded);
+    }
+
+    const needsBackfill =
+      !loaded || !loadedWorkOrderId || !loadedWorkOrderLineId;
+
+    if (!needsBackfill) {
       return;
     }
 
@@ -269,13 +292,59 @@ export default function InspectionFindingsPage(): JSX.Element {
 
       const serverSession = data?.session ?? null;
       if (serverSession) {
-        writeDraftSession(draftKey, serverSession);
-        setSession(serverSession);
+        const mergedSession = {
+          ...(loaded ?? {}),
+          ...serverSession,
+          workOrderId:
+            (typeof serverSession.workOrderId === "string" &&
+            serverSession.workOrderId.trim().length > 0
+              ? serverSession.workOrderId.trim()
+              : "") ||
+            loadedWorkOrderId ||
+            workOrderId ||
+            resolvedWorkOrderId ||
+            null,
+          workOrderLineId:
+            ((typeof (
+              serverSession as InspectionSession & {
+                workOrderLineId?: string | null;
+              }
+            ).workOrderLineId === "string" &&
+            String(
+              (
+                serverSession as InspectionSession & {
+                  workOrderLineId?: string | null;
+                }
+              ).workOrderLineId ?? "",
+            ).trim().length > 0
+              ? String(
+                  (
+                    serverSession as InspectionSession & {
+                      workOrderLineId?: string | null;
+                    }
+                  ).workOrderLineId ?? "",
+                ).trim()
+              : "") ||
+              loadedWorkOrderLineId ||
+              workOrderLineId ||
+              resolvedWorkOrderLineId ||
+              null),
+        } as InspectionSession;
+
+        writeDraftSession(draftKey, mergedSession);
+        setSession(mergedSession);
       }
     } catch (err) {
       console.error("[inspection-findings] failed to load saved session", err);
     }
-  }, [draftKey, inspectionId, workOrderLineId, resolvedWorkOrderLineId]);
+  }, [
+    draftKey,
+    inspectionId,
+    workOrderId,
+    workOrderLineId,
+    resolvedWorkOrderId,
+    resolvedWorkOrderLineId,
+  ]);
 
   useEffect(() => {
     void syncFromDraft();

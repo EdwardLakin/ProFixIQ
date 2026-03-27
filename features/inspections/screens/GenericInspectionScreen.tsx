@@ -787,6 +787,8 @@ export default function GenericInspectionScreen(
     () => ({
       id: inspectionId,
       templateitem: templateName,
+      workOrderId,
+      workOrderLineId: workOrderLineId || null,
       status: "not_started" as InspectionStatus,
       isPaused: false,
       transcript: "",
@@ -799,7 +801,7 @@ export default function GenericInspectionScreen(
       started: false,
       completed: false,
     }),
-    [inspectionId, templateName, customer, vehicle],
+    [inspectionId, templateName, workOrderId, workOrderLineId, customer, vehicle],
   );
 
   const {
@@ -842,14 +844,30 @@ export default function GenericInspectionScreen(
 
   /* ------------------------------ session boot ------------------------------ */
 
-  useEffect(() => {
+    useEffect(() => {
     if (persistedSession) {
-      startSession(persistedSession);
+      const hydratedSession: Partial<InspectionSession> & {
+        workOrderLineId?: string | null;
+      } = {
+        ...persistedSession,
+        workOrderId:
+          persistedSession.workOrderId ??
+          workOrderId ??
+          null,
+        workOrderLineId:
+          (persistedSession as InspectionSession & {
+            workOrderLineId?: string | null;
+          }).workOrderLineId ??
+          workOrderLineId ??
+          null,
+      };
+
+      startSession(hydratedSession);
     } else {
       startSession(initialSession);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persistedSession]);
+  }, [persistedSession, initialSession, workOrderId, workOrderLineId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -938,7 +956,20 @@ export default function GenericInspectionScreen(
   useEffect(() => {
     const persistNow = () => {
       try {
-        const payload = session ?? initialSession;
+        const payload = {
+          ...(session ?? initialSession),
+          workOrderId:
+            (session?.workOrderId ?? initialSession.workOrderId ?? workOrderId ?? null),
+          workOrderLineId:
+            (
+              (session as (InspectionSession & { workOrderLineId?: string | null }) | null)
+              ?.workOrderLineId ??
+              (initialSession as Partial<InspectionSession> & { workOrderLineId?: string | null })
+                .workOrderLineId ??
+              workOrderLineId ??
+              null
+            ),
+        };
         localStorage.setItem(draftKey, JSON.stringify(payload));
       } catch {}
     };
