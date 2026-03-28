@@ -531,6 +531,28 @@ function pickBestSectionIndexFromSpeech(
   return fallbackIndex;
 }
 
+
+function itemKey(sectionIndex: number, itemIndex: number): string {
+  return `${sectionIndex}:${itemIndex}`;
+}
+
+function safeTrimLocal(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function asVehicleForSmartMatch(v: SessionVehicle | null | undefined) {
+  if (!v) return null;
+  return {
+    year: (v as { year?: unknown }).year ?? null,
+    make: (v as { make?: unknown }).make ?? null,
+    model: (v as { model?: unknown }).model ?? null,
+    engine: (v as { engine?: unknown }).engine ?? null,
+    drivetrain: (v as { drivetrain?: unknown }).drivetrain ?? null,
+    transmission: (v as { transmission?: unknown }).transmission ?? null,
+    fuel_type: (v as { fuel_type?: unknown }).fuel_type ?? null,
+  };
+}
+
 function buildInterpretCtxForSpeech(args: {
   speech: string;
   session: InspectionSession;
@@ -577,6 +599,19 @@ export default function GenericInspectionScreen(
 
   type ItemPatch = Partial<InspectionSection["items"][number]>;
 
+type SmartMatchRow = {
+  id: string;
+  label: string;
+  complaint?: string | null;
+  correction?: string | null;
+  laborHours?: number | null;
+  parts?: Array<{ name: string; qty?: number }>;
+  score?: number | null;
+  confidence?: number | null;
+  menuItemId?: string | null;
+  menuRepairItemId?: string | null;
+};
+
   const sp = useMemo(() => {
     const staged = readStaged<Record<string, string>>("inspection:params");
 
@@ -609,6 +644,7 @@ export default function GenericInspectionScreen(
   const workOrderLineId = sp.get("workOrderLineId") || "";
 
   const showMissingLineWarning = isEmbed && !workOrderLineId;
+
 
   const templateName =
     (typeof window !== "undefined"
@@ -645,6 +681,9 @@ export default function GenericInspectionScreen(
     }),
     [sp],
   );
+
+
+
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const stagedParams = readStaged<Record<string, string>>("inspection:params") ?? {};
@@ -752,6 +791,13 @@ export default function GenericInspectionScreen(
   const [collapsedSections, setCollapsedSections] = useState<
     Record<number, boolean>
   >({});
+  const [smartMatchByKey, setSmartMatchByKey] = useState<
+    Record<string, SmartMatchRow | null>
+  >({});
+  const [smartMatchLoadingByKey, setSmartMatchLoadingByKey] = useState<
+    Record<string, boolean>
+  >({});
+  const smartMatchTimers = useRef<Record<string, number>>({});
 
   const [wakeActive, setWakeActive] = useState(false);
   // ✅ Use ref for logic to avoid React state race between transcripts
@@ -816,6 +862,217 @@ export default function GenericInspectionScreen(
     addQuoteLine,
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
+
+  const fetchSmartMatch = async (
+    sectionIndex: number,
+    itemIndex: number,
+  ): Promise<void> => {
+    const sec = session?.sections?.[sectionIndex];
+    const item = sec?.items?.[itemIndex];
+    const key = itemKey(sectionIndex, itemIndex);
+
+    const status = String(item?.status ?? "").toLowerCase();
+    const note = safeTrimLocal((item as { notes?: unknown } | undefined)?.notes);
+    const label = safeTrimLocal(
+      (item as { item?: unknown; name?: unknown } | undefined)?.item ??
+        (item as { item?: unknown; name?: unknown } | undefined)?.name,
+    );
+    const sectionTitle = safeTrimLocal(sec?.title);
+
+    if (!(status === "fail" || status === "recommend") || !note) {
+      setSmartMatchLoadingByKey((prev) => ({ ...prev, [key]: false }));
+      setSmartMatchByKey((prev) => ({ ...prev, [key]: null }));
+      return;
+    }
+
+    setSmartMatchLoadingByKey((prev) => ({ ...prev, [key]: true }));
+
+    try {
+      const res = await fetch("/api/inspections/smart-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item: label,
+          notes: note,
+          section: sectionTitle,
+          status,
+          vehicle: asVehicleForSmartMatch(vehicle),
+        }),
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | {
+            match?: {
+              id?: string;
+              label?: string;
+              complaint?: string | null;
+              correction?: string | null;
+              laborHours?: number | null;
+              parts?: Array<{ name: string; qty?: number }>;
+              score?: number | null;
+              confidence?: number | null;
+              menuItemId?: string | null;
+            } | null;
+          }
+        | null;
+
+      const match = json?.match ?? null;
+
+      const normalizedMatch: SmartMatchRow | null = match
+        ? {
+            id: String(match.id ?? `${sectionIndex}:${itemIndex}`),
+            label: String(match.label ?? label ?? "Matched repair"),
+            complaint: match.complaint ?? null,
+            correction: match.correction ?? null,
+            laborHours:
+              typeof match.laborHours === "number" ? match.laborHours : null,
+            parts: Array.isArray(match.parts)
+              ? match.parts.map((part: { name: string; qty?: number }) => ({
+                  name: String(part.name ?? "").trim(),
+                  qty:
+                    typeof part.qty === "number" && Number.isFinite(part.qty)
+                      ? part.qty
+                      : 1,
+                }))
+              : [],
+            score: typeof match.score === "number" ? match.score : null,
+            confidence:
+              typeof match.confidence === "number" ? match.confidence : null,
+            menuItemId: match.menuItemId ?? null,
+            menuRepairItemId: match.menuItemId ?? null,
+          }
+        : null;
+
+      setSmartMatchByKey((prev) => ({
+        ...prev,
+        [key]: normalizedMatch,
+      }));
+    } catch {
+      setSmartMatchByKey((prev) => ({ ...prev, [key]: null }));
+    } finally {
+      setSmartMatchLoadingByKey((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleUpdateNoteWithSmartMatch = (
+    secIdx: number,
+    itemIdx: number,
+    noteText: string,
+  ): void => {
+    if (guardLocked()) return;
+
+    updateItem(secIdx, itemIdx, {
+      notes: noteText,
+    } as ItemPatch);
+
+    const key = itemKey(secIdx, itemIdx);
+
+    if (typeof window !== "undefined" && smartMatchTimers.current[key]) {
+      window.clearTimeout(smartMatchTimers.current[key]);
+    }
+
+    if (typeof window !== "undefined") {
+      smartMatchTimers.current[key] = window.setTimeout(() => {
+        void fetchSmartMatch(secIdx, itemIdx);
+      }, 450);
+    }
+  };
+
+  const dismissSmartMatch = (
+    sectionIndex: number,
+    itemIndex: number,
+  ): void => {
+    const key = itemKey(sectionIndex, itemIndex);
+    setSmartMatchByKey((prev) => ({ ...prev, [key]: null }));
+    setSmartMatchLoadingByKey((prev) => ({ ...prev, [key]: false }));
+  };
+
+  const acceptSmartMatch = async (
+    sectionIndex: number,
+    itemIndex: number,
+  ): Promise<void> => {
+    const key = itemKey(sectionIndex, itemIndex);
+    const match = smartMatchByKey[key];
+    const sec = session?.sections?.[sectionIndex];
+    const item = sec?.items?.[itemIndex];
+
+    if (!match || !workOrderId || !item) return;
+
+    const note = safeTrimLocal((item as { notes?: unknown }).notes);
+    const label = safeTrimLocal(
+      (item as { item?: unknown; name?: unknown }).item ??
+        (item as { item?: unknown; name?: unknown }).name,
+    );
+
+    try {
+      if (match.menuRepairItemId) {
+        const res = await fetch("/api/work-orders/lines/add-from-menu-repair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderId,
+            menuRepairItemId: match.menuRepairItemId,
+            notes: note || null,
+            laborHours:
+              typeof match.laborHours === "number" ? match.laborHours : null,
+          }),
+        });
+
+        const json = (await res.json().catch(() => null)) as
+          | { ok?: boolean; error?: string }
+          | null;
+
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error || "Failed to add matched repair");
+        }
+      } else {
+        await addWorkOrderLineFromSuggestion({
+          workOrderId,
+          description: match.label || label || "Matched repair",
+          section: safeTrimLocal(sec?.title),
+          status:
+            String(item.status ?? "").toLowerCase() === "recommend"
+              ? "recommend"
+              : "fail",
+          complaint: note || null,
+          suggestion: {
+            title: match.label,
+            summary:
+              match.correction ||
+              match.complaint ||
+              "Matched from previous repair",
+            notes: note || undefined,
+            laborHours:
+              typeof match.laborHours === "number" ? match.laborHours : 0.5,
+            parts: Array.isArray(match.parts)
+              ? match.parts.map((part: { name: string; qty?: number }) => ({
+                  name: part.name,
+                  qty: part.qty ?? 1,
+                }))
+              : [],
+            confidence:
+              typeof match.confidence === "number"
+                ? match.confidence >= 0.75
+                  ? "high"
+                  : match.confidence >= 0.45
+                    ? "medium"
+                    : "low"
+                : "medium",
+          },
+          source: "inspection",
+          jobType: "repair",
+        });
+      }
+
+      toast.success("Matched repair added to work order.");
+      dismissSmartMatch(sectionIndex, itemIndex);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to add matched repair",
+      );
+    }
+  };
+
 
   // ✅ ensure voiceMeta exists for your UI + counters
   useEffect(() => {
@@ -2627,16 +2884,7 @@ export default function GenericInspectionScreen(
                               } as ItemPatch);
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
-                            onUpdateNote={(
-                              secIdx: number,
-                              itemIdx: number,
-                              noteText: string,
-                            ) => {
-                              if (guardLocked()) return;
-                              updateItem(secIdx, itemIdx, {
-                                notes: noteText,
-                              } as ItemPatch);
-                            }}
+                            onUpdateNote={handleUpdateNoteWithSmartMatch}
                             onUpload={(
                               photoUrl: string,
                               secIdx: number,
@@ -2675,6 +2923,12 @@ export default function GenericInspectionScreen(
                               void submitAIForItem(secIdx, itemIdx);
                             }}
                             isSubmittingAI={isSubmittingAI}
+                            smartMatchByKey={smartMatchByKey}
+                            smartMatchLoadingByKey={smartMatchLoadingByKey}
+                            onAcceptSmartMatch={(secIdx: number, itemIdx: number) => {
+                              void acceptSmartMatch(secIdx, itemIdx);
+                            }}
+                            onDismissSmartMatch={dismissSmartMatch}
                           />
 
                           <div className="mt-4 border-t border-white/10 pt-3">
