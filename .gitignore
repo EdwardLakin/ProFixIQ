@@ -32,3 +32,5 @@ shared/types/types/*.tmp.ts
 # Debug / dump files
 inspection_*.txt
 tire-voice-debug.txt
+profixiq-full-dump.txt
+*.txt
