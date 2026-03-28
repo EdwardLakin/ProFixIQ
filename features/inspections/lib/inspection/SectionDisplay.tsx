@@ -35,6 +35,11 @@ interface SectionDisplayProps {
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
   isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
 
+  smartMatchByKey?: Record<string, SmartInspectionMatch | null>;
+  smartMatchLoadingByKey?: Record<string, boolean>;
+  onAcceptSmartMatch?: (sectionIndex: number, itemIndex: number) => void;
+  onDismissSmartMatch?: (sectionIndex: number, itemIndex: number) => void;
+
   // ✅ keep DB/session shape strict: qty is number
   onUpdateParts?: (
     sectionIndex: number,
@@ -54,6 +59,19 @@ interface SectionDisplayProps {
 }
 
 type PartRow = { description: string; qty: number };
+
+type SmartInspectionMatch = {
+  id: string;
+  label: string;
+  complaint?: string | null;
+  correction?: string | null;
+  laborHours?: number | null;
+  parts?: Array<{ name: string; qty?: number }>;
+  score?: number | null;
+  confidence?: number | null;
+  menuItemId?: string | null;
+  menuRepairItemId?: string | null;
+};
 
 type ItemExtended = InspectionSection["items"][number] & {
   // legacy shape support
