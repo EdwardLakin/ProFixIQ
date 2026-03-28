@@ -316,18 +316,40 @@ export default function QuotingQueuePage(): JSX.Element {
       toast.loading("Marking as quoted…", { id: `quoted-${row.id}` });
 
       try {
-        const r = await fetch("/api/menu-items/upsert-from-line", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workOrderLineId: row.id }),
-        });
+        const [menuRes, repairRes] = await Promise.all([
+          fetch("/api/menu-items/upsert-from-line", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workOrderLineId: row.id }),
+          }),
+          fetch("/api/menu-repair-items/upsert-from-line", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workOrderLineId: row.id }),
+          }),
+        ]);
 
-        const raw = await safeText(r);
-        const body = tryParseJson<MenuUpsertResponse>(raw);
+        const menuRaw = await safeText(menuRes);
+        const menuBody = tryParseJson<MenuUpsertResponse>(menuRaw);
 
-        if (!r.ok || !body?.ok) {
-          const reason = body?.detail || body?.error || raw || `HTTP ${r.status}`;
-          toast.warning(`Quoted, but couldn’t save to menu items. ${reason}`, { id: `quoted-${row.id}` });
+        const repairRaw = await safeText(repairRes);
+        const repairBody = tryParseJson<{ ok?: boolean; detail?: string; error?: string }>(repairRaw);
+
+        if (!menuRes.ok || !menuBody?.ok) {
+          const reason =
+            menuBody?.detail || menuBody?.error || menuRaw || `HTTP ${menuRes.status}`;
+          toast.warning(`Quoted, but couldn’t save to menu items. ${reason}`, {
+            id: `quoted-${row.id}`,
+          });
+          return;
+        }
+
+        if (!repairRes.ok || !repairBody?.ok) {
+          const reason =
+            repairBody?.detail || repairBody?.error || repairRaw || `HTTP ${repairRes.status}`;
+          toast.warning(`Quoted, but couldn’t save to menu repair items. ${reason}`, {
+            id: `quoted-${row.id}`,
+          });
           return;
         }
 
@@ -350,7 +372,7 @@ export default function QuotingQueuePage(): JSX.Element {
             id: `quoted-${row.id}`,
           });
         } else {
-          toast.success("Marked as quoted (awaiting approval). Saved Menu updated.", { id: `quoted-${row.id}` });
+          toast.success("Marked as quoted (awaiting approval). Menu + repair memory updated.", { id: `quoted-${row.id}` });
         }
 
         await fetchQueue();
