@@ -5997,6 +5997,164 @@ export type Database = {
         }
         Relationships: []
       }
+      menu_repair_items: {
+        Row: {
+          cause: string | null
+          complaint: string | null
+          correction: string | null
+          created_at: string
+          drivetrain: string | null
+          engine: string | null
+          fuel_type: string | null
+          id: string
+          is_active: boolean
+          labor_hours: number | null
+          labor_rate: number | null
+          name: string
+          notes: string | null
+          parts: Json
+          price_estimate: number | null
+          shop_id: string
+          source_work_order_id: string | null
+          source_work_order_line_id: string | null
+          tags: string[]
+          template_key: string
+          transmission: string | null
+          updated_at: string
+          usage_count: number
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_year: number | null
+        }
+        Insert: {
+          cause?: string | null
+          complaint?: string | null
+          correction?: string | null
+          created_at?: string
+          drivetrain?: string | null
+          engine?: string | null
+          fuel_type?: string | null
+          id?: string
+          is_active?: boolean
+          labor_hours?: number | null
+          labor_rate?: number | null
+          name: string
+          notes?: string | null
+          parts?: Json
+          price_estimate?: number | null
+          shop_id: string
+          source_work_order_id?: string | null
+          source_work_order_line_id?: string | null
+          tags?: string[]
+          template_key: string
+          transmission?: string | null
+          updated_at?: string
+          usage_count?: number
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+        }
+        Update: {
+          cause?: string | null
+          complaint?: string | null
+          correction?: string | null
+          created_at?: string
+          drivetrain?: string | null
+          engine?: string | null
+          fuel_type?: string | null
+          id?: string
+          is_active?: boolean
+          labor_hours?: number | null
+          labor_rate?: number | null
+          name?: string
+          notes?: string | null
+          parts?: Json
+          price_estimate?: number | null
+          shop_id?: string
+          source_work_order_id?: string | null
+          source_work_order_line_id?: string | null
+          tags?: string[]
+          template_key?: string
+          transmission?: string | null
+          updated_at?: string
+          usage_count?: number
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_repair_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_items_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "menu_repair_items_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "menu_repair_items_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "menu_repair_items_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "menu_repair_items_source_work_order_id_fkey"
+            columns: ["source_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_items_source_work_order_line_id_fkey"
+            columns: ["source_work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_items_source_work_order_line_id_fkey"
+            columns: ["source_work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "menu_repair_items_source_work_order_line_id_fkey"
+            columns: ["source_work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_reads: {
         Row: {
           conversation_id: string

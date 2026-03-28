@@ -179,18 +179,22 @@ export async function POST(req: Request) {
 
     // 1) vehicle-specific / shop-specific menu repairs
     const { data: menuRows, error: menuError } = await supabase
-      .from("menu_items")
+      .from("menu_repair_items")
       .select([
         "id",
         "name",
-        "description",
         "complaint",
+        "cause",
         "correction",
         "vehicle_year",
         "vehicle_make",
         "vehicle_model",
+        "engine",
+        "drivetrain",
+        "transmission",
         "labor_hours",
-        "base_labor_hours",
+        "parts",
+        "usage_count",
         "is_active",
       ].join(","))
       .eq("shop_id", shopId)
