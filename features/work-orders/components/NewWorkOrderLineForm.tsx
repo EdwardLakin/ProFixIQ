@@ -38,6 +38,20 @@ type SmartRepairMatch = {
   acceptanceRate?: number | null;
 };
 
+
+function isTopRepairDefault(match: SmartRepairMatch | null): boolean {
+  if (!match?.menuRepairItemId) return false;
+
+  const accepted =
+    typeof match.acceptedCount === "number" ? match.acceptedCount : 0;
+  const rate =
+    typeof match.acceptanceRate === "number" ? match.acceptanceRate : 0;
+  const confidence =
+    typeof match.confidence === "number" ? match.confidence : 0;
+
+  return accepted >= 3 && rate >= 0.8 && confidence >= 0.85;
+}
+
 type VehicleLite = Pick<
   DB["public"]["Tables"]["vehicles"]["Row"],
   "id" | "year" | "make" | "model" | "engine" | "drivetrain" | "transmission"
@@ -72,6 +86,7 @@ export function NewWorkOrderLineForm(props: {
   const smartMatchTimer = useRef<number | null>(null);
 
   const canSave = complaint.trim().length > 0 && !!workOrderId;
+  const topRepairDefault = isTopRepairDefault(smartMatch);
 
   function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
     const allowed: WOJobType[] = [
@@ -417,6 +432,12 @@ export function NewWorkOrderLineForm(props: {
                   smartMatch.acceptanceRate > 0 ? (
                     <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
                       {Math.round(smartMatch.acceptanceRate * 100)}% win rate
+                    </span>
+                  ) : null}
+
+                  {topRepairDefault ? (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      default winner
                     </span>
                   ) : null}
                 </div>
