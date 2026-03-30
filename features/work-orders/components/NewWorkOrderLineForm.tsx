@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -20,6 +20,24 @@ const ALLOWED_STATUS = [
   "completed",
 ] as const;
 type AllowedStatus = (typeof ALLOWED_STATUS)[number];
+
+type SmartRepairMatch = {
+  id: string;
+  label: string;
+  complaint?: string | null;
+  correction?: string | null;
+  laborHours?: number | null;
+  parts?: Array<{ name: string; qty?: number }>;
+  score?: number | null;
+  confidence?: number | null;
+  menuItemId?: string | null;
+  menuRepairItemId?: string | null;
+};
+
+type VehicleLite = Pick<
+  DB["public"]["Tables"]["vehicles"]["Row"],
+  "id" | "year" | "make" | "model" | "engine" | "drivetrain" | "transmission"
+>;
 
 export function NewWorkOrderLineForm(props: {
   workOrderId: string;
@@ -42,6 +60,12 @@ export function NewWorkOrderLineForm(props: {
   );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const [vehicle, setVehicle] = useState<VehicleLite | null>(null);
+  const [smartMatch, setSmartMatch] = useState<SmartRepairMatch | null>(null);
+  const [smartMatchLoading, setSmartMatchLoading] = useState(false);
+
+  const smartMatchTimer = useRef<number | null>(null);
 
   const canSave = complaint.trim().length > 0 && !!workOrderId;
 
@@ -66,6 +90,112 @@ export function NewWorkOrderLineForm(props: {
       : "awaiting";
   }
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadVehicle() {
+      if (!vehicleId) {
+        setVehicle(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("vehicles")
+        .select("id, year, make, model, engine, drivetrain, transmission")
+        .eq("id", vehicleId)
+        .maybeSingle<VehicleLite>();
+
+      if (cancelled) return;
+      if (error || !data) {
+        setVehicle(null);
+        return;
+      }
+
+      setVehicle(data);
+    }
+
+    void loadVehicle();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, vehicleId]);
+
+  useEffect(() => {
+    const term = complaint.trim();
+
+    if (smartMatchTimer.current) {
+      window.clearTimeout(smartMatchTimer.current);
+      smartMatchTimer.current = null;
+    }
+
+    if (term.length < 5 || !workOrderId) {
+      setSmartMatch(null);
+      setSmartMatchLoading(false);
+      return;
+    }
+
+    smartMatchTimer.current = window.setTimeout(async () => {
+      setSmartMatchLoading(true);
+      try {
+        const res = await fetch("/api/work-orders/smart-repair-match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            item: term,
+            notes: term,
+            section: "create_work_order",
+            status: "draft",
+            vehicle: vehicle
+              ? {
+                  year: vehicle.year,
+                  make: vehicle.make,
+                  model: vehicle.model,
+                  engine: vehicle.engine,
+                  drivetrain: vehicle.drivetrain,
+                  transmission: vehicle.transmission,
+                }
+              : null,
+          }),
+        });
+
+        const json = (await res.json().catch(() => null)) as
+          | { match?: SmartRepairMatch | null }
+          | null;
+
+        if (!res.ok) {
+          setSmartMatch(null);
+          return;
+        }
+
+        setSmartMatch(json?.match ?? null);
+      } catch {
+        setSmartMatch(null);
+      } finally {
+        setSmartMatchLoading(false);
+      }
+    }, 550);
+
+    return () => {
+      if (smartMatchTimer.current) {
+        window.clearTimeout(smartMatchTimer.current);
+        smartMatchTimer.current = null;
+      }
+    };
+  }, [complaint, vehicle, workOrderId]);
+
+  function applySmartMatch(match: SmartRepairMatch) {
+    setComplaint(match.complaint?.trim() || match.label || "");
+    setCorrection(match.correction?.trim() || "");
+    if (
+      typeof match.laborHours === "number" &&
+      Number.isFinite(match.laborHours)
+    ) {
+      setLabor(String(match.laborHours));
+    }
+    setJobType("repair");
+  }
+
   async function addLine() {
     if (!canSave) return;
 
@@ -81,6 +211,41 @@ export function NewWorkOrderLineForm(props: {
     setErr(null);
 
     try {
+      // Prefer exact vehicle-specific repair if available
+      if (smartMatch?.menuRepairItemId) {
+        const repairRes = await fetch("/api/work-orders/lines/add-from-menu-repair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderId,
+            menuRepairItemId: smartMatch.menuRepairItemId,
+            notes: complaint.trim() || null,
+            laborHours: labor ? Number(labor) : smartMatch.laborHours ?? null,
+          }),
+        });
+
+        const repairJson = (await repairRes.json().catch(() => null)) as
+          | { ok?: boolean; error?: string }
+          | null;
+
+        if (!repairRes.ok || !repairJson?.ok) {
+          setErr(repairJson?.error || "Failed to add matched repair line.");
+          return;
+        }
+
+        setComplaint("");
+        setCause("");
+        setCorrection("");
+        setLabor("");
+        setStatus("awaiting");
+        setJobType(defaultJobType ?? null);
+        setSmartMatch(null);
+
+        onCreated?.();
+        window.dispatchEvent(new CustomEvent("wo:line-added"));
+        return;
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -134,6 +299,7 @@ export function NewWorkOrderLineForm(props: {
       setLabor("");
       setStatus("awaiting");
       setJobType(defaultJobType ?? null);
+      setSmartMatch(null);
 
       onCreated?.();
       window.dispatchEvent(new CustomEvent("wo:line-added"));
@@ -172,6 +338,64 @@ export function NewWorkOrderLineForm(props: {
             placeholder="Describe the issue / customer concern"
           />
         </div>
+
+        {smartMatchLoading ? (
+          <div className="sm:col-span-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-300">
+            Looking for a matching quoted repair…
+          </div>
+        ) : smartMatch ? (
+          <div className="sm:col-span-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs uppercase tracking-[0.16em] text-emerald-200/80">
+                  Smart repair match
+                </div>
+                <div className="mt-1 text-sm font-semibold text-emerald-100">
+                  {smartMatch.label}
+                </div>
+                {(smartMatch.correction || smartMatch.complaint) && (
+                  <div className="mt-1 text-xs text-emerald-50/85">
+                    {smartMatch.correction || smartMatch.complaint}
+                  </div>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-emerald-100/90">
+                  {typeof smartMatch.laborHours === "number" && (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      {smartMatch.laborHours} hr
+                    </span>
+                  )}
+                  {typeof smartMatch.confidence === "number" && (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      {Math.round(smartMatch.confidence * 100)}% confidence
+                    </span>
+                  )}
+                  {smartMatch.menuRepairItemId && (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      vehicle-specific repair
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => applySmartMatch(smartMatch)}
+                  className="rounded-md border border-emerald-400/40 bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-400/20"
+                >
+                  Use match
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSmartMatch(null)}
+                  className="rounded-md border border-neutral-600 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-800"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="space-y-1">
           <label className="mb-0.5 block text-xs text-neutral-300">Cause</label>
@@ -250,7 +474,11 @@ export function NewWorkOrderLineForm(props: {
           onClick={addLine}
           className="btn btn-orange px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
         >
-          {busy ? "Adding…" : "Add line to work order"}
+          {busy
+            ? "Adding…"
+            : smartMatch?.menuRepairItemId
+              ? "Add matched repair"
+              : "Add line to work order"}
         </button>
       </div>
     </div>
