@@ -2842,6 +2842,7 @@ type SmartMatchRow = {
                                 void acceptSmartMatch(secIdx, itemIdx);
                               }}
                               onDismissSmartMatch={dismissSmartMatch}
+                              onSmartMatchNoteChange={handleUpdateNoteWithSmartMatch}
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts } as ItemPatch);

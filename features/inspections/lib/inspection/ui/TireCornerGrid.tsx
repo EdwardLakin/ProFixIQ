@@ -38,6 +38,11 @@ type Props = {
   requireNoteForAI?: boolean;
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
   isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
+  onSmartMatchNoteChange?: (
+    sectionIndex: number,
+    itemIndex: number,
+    note: string,
+  ) => void;
 
   smartMatchByKey?: Record<string, SmartInspectionMatch | null>;
   smartMatchLoadingByKey?: Record<string, boolean>;
@@ -454,6 +459,7 @@ export default function TireGrid(props: Props) {
 
   const commitNotes = (idx: number, notes: string) => {
     updateItem(sectionIndex, idx, { notes });
+    props.onSmartMatchNoteChange?.(sectionIndex, idx, notes);
   };
 
   const commitParts = (idx: number, parts: PartLine[]) => {
