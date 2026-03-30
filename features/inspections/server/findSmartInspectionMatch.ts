@@ -191,16 +191,32 @@ export async function findSmartInspectionMatch(args: {
     .order("created_at", { ascending: false })
     .limit(200);
 
+  const feedback = (feedbackRows ?? []) as FeedbackRow[];
+
   const dismissedIds = new Set(
-    ((feedbackRows ?? []) as FeedbackRow[])
+    feedback
       .filter((r) => r.action === "dismissed")
       .map((r) => r.menu_repair_item_id ?? r.suggested_match_id ?? "")
       .filter(Boolean),
   );
 
   const dismissedLabels = new Set(
-    ((feedbackRows ?? []) as FeedbackRow[])
+    feedback
       .filter((r) => r.action === "dismissed")
+      .map((r) => txt(r.suggested_label))
+      .filter(Boolean),
+  );
+
+  const acceptedIds = new Set(
+    feedback
+      .filter((r) => r.action === "accepted")
+      .map((r) => r.menu_repair_item_id ?? r.suggested_match_id ?? "")
+      .filter(Boolean),
+  );
+
+  const acceptedLabels = new Set(
+    feedback
+      .filter((r) => r.action === "accepted")
       .map((r) => txt(r.suggested_label))
       .filter(Boolean),
   );
@@ -225,6 +241,10 @@ export async function findSmartInspectionMatch(args: {
 
       if (dismissedIds.has(row.id) || dismissedLabels.has(txt(row.name))) {
         score -= 0.35;
+      }
+
+      if (acceptedIds.has(row.id) || acceptedLabels.has(txt(row.name))) {
+        score += 0.2;
       }
 
       return { row, score };
@@ -282,6 +302,13 @@ export async function findSmartInspectionMatch(args: {
         dismissedLabels.has(txt(row.matched_label))
       ) {
         score -= 0.35;
+      }
+
+      if (
+        acceptedIds.has(row.menu_repair_item_id ?? row.id) ||
+        acceptedLabels.has(txt(row.matched_label))
+      ) {
+        score += 0.2;
       }
 
       return { row, score };
