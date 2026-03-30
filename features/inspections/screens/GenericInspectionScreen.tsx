@@ -612,6 +612,10 @@ type SmartMatchRow = {
   menuRepairItemId?: string | null;
   autoAcceptReady?: boolean;
   matchTier?: "high" | "medium" | "low";
+  acceptedCount?: number | null;
+  acceptanceRate?: number | null;
+  pricingStatus?: "fresh" | "stale" | "expired";
+  pricingValidUntil?: string | null;
 };
 
   const sp = useMemo(() => {
@@ -914,6 +918,11 @@ type SmartMatchRow = {
               score?: number | null;
               confidence?: number | null;
               menuItemId?: string | null;
+              menuRepairItemId?: string | null;
+              acceptedCount?: number | null;
+              acceptanceRate?: number | null;
+              pricingStatus?: "fresh" | "stale" | "expired";
+              pricingValidUntil?: string | null;
             } | null;
           }
         | null;
@@ -941,7 +950,31 @@ type SmartMatchRow = {
             confidence:
               typeof match.confidence === "number" ? match.confidence : null,
             menuItemId: match.menuItemId ?? null,
-            menuRepairItemId: match.menuItemId ?? null,
+            menuRepairItemId:
+              match.menuRepairItemId ?? match.menuItemId ?? null,
+            acceptedCount:
+              typeof match.acceptedCount === "number"
+                ? match.acceptedCount
+                : null,
+            acceptanceRate:
+              typeof match.acceptanceRate === "number"
+                ? match.acceptanceRate
+                : null,
+            pricingStatus: match.pricingStatus ?? "expired",
+            pricingValidUntil: match.pricingValidUntil ?? null,
+            autoAcceptReady:
+              Boolean(match.menuRepairItemId ?? match.menuItemId) &&
+              typeof match.confidence === "number" &&
+              match.confidence >= 0.9 &&
+              match.pricingStatus === "fresh",
+            matchTier:
+              typeof match.confidence === "number"
+                ? match.confidence >= 0.9
+                  ? "high"
+                  : match.confidence >= 0.7
+                    ? "medium"
+                    : "low"
+                : "low",
           }
         : null;
 
@@ -1183,7 +1216,8 @@ type SmartMatchRow = {
         match.autoAcceptReady === true ||
         (Boolean(match.menuRepairItemId) &&
           typeof match.confidence === "number" &&
-          match.confidence >= 0.9);
+          match.confidence >= 0.9 &&
+          match.pricingStatus === "fresh");
 
       toast.success(
         autoAcceptReady

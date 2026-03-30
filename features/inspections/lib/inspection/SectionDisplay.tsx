@@ -74,6 +74,8 @@ type SmartInspectionMatch = {
   menuRepairItemId?: string | null;
   pricingStatus?: "fresh" | "stale" | "expired";
   pricingValidUntil?: string | null;
+  acceptedCount?: number | null;
+  acceptanceRate?: number | null;
 };
 
 type ItemExtended = InspectionSection["items"][number] & {
@@ -128,6 +130,26 @@ function isSubmittedItem(item: ItemExtended): boolean {
 function submittedAt(item: ItemExtended): string | null {
   const raw = item.estimateSubmittedAt;
   return typeof raw === "string" && raw.trim() ? raw : null;
+}
+
+function smartPricingText(
+  status: "fresh" | "stale" | "expired" | undefined,
+): string {
+  if (status === "fresh") return "Fresh pricing — safe for auto-add.";
+  if (status === "stale") return "Stale pricing — review before add.";
+  return "Expired pricing — auto-add blocked until pricing is refreshed.";
+}
+
+function smartPricingBadgeClass(
+  status: "fresh" | "stale" | "expired" | undefined,
+): string {
+  if (status === "fresh") {
+    return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
+  }
+  if (status === "stale") {
+    return "border-amber-500/40 bg-amber-500/10 text-amber-200";
+  }
+  return "border-red-500/40 bg-red-500/10 text-red-200";
 }
 
 export default function SectionDisplay(props: SectionDisplayProps) {
@@ -398,6 +420,16 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                     isEditing || (partsOpenByKey[k] ?? !submitted);
 
                   const lockInputs = submitted && !isEditing;
+
+                  const smartMatch = props.smartMatchByKey?.[k] ?? null;
+                  const smartMatchLoading =
+                    props.smartMatchLoadingByKey?.[k] ?? false;
+                  const pricingText = smartPricingText(
+                    smartMatch?.pricingStatus,
+                  );
+                  const pricingBadgeClass = smartPricingBadgeClass(
+                    smartMatch?.pricingStatus,
+                  );
 
                   return (
                     <div
@@ -684,6 +716,89 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                           </div>
                         );
                       })()}
+
+                      {(smartMatchLoading || smartMatch) && isFailOrRec && note.length > 0 ? (
+                        <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                          {smartMatchLoading ? (
+                            <div className="text-[11px] text-neutral-400">
+                              Checking smart match…
+                            </div>
+                          ) : smartMatch ? (
+                            <>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-200">
+                                  {typeof smartMatch.confidence === "number"
+                                    ? `Confidence ${Math.round(smartMatch.confidence * 100)}%`
+                                    : "Smart match"}
+                                </span>
+
+                                {typeof smartMatch.acceptanceRate === "number" ? (
+                                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-neutral-300">
+                                    Win rate {Math.round(smartMatch.acceptanceRate * 100)}%
+                                  </span>
+                                ) : null}
+
+                                {typeof smartMatch.acceptedCount === "number" ? (
+                                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-neutral-300">
+                                    Accepted {smartMatch.acceptedCount}
+                                  </span>
+                                ) : null}
+
+                                <span className={`rounded-full border px-2 py-0.5 text-[11px] ${pricingBadgeClass}`}>
+                                  {smartMatch.pricingStatus ?? "expired"}
+                                </span>
+                              </div>
+
+                              <div className="mt-2 text-[12px] font-semibold text-neutral-100">
+                                {smartMatch.label}
+                              </div>
+
+                              {smartMatch.correction ? (
+                                <div className="mt-1 text-[11px] text-neutral-400">
+                                  {smartMatch.correction}
+                                </div>
+                              ) : null}
+
+                              <div className="mt-2 text-[11px] text-neutral-400">
+                                {pricingText}
+                              </div>
+
+                              <div className="mt-1 text-[11px] text-neutral-500">
+                                Pricing valid until: {smartMatch.pricingValidUntil ?? "No active pricing snapshot"}
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="px-3"
+                                  onClick={() =>
+                                    props.onDismissSmartMatch?.(sectionIndex, itemIndex)
+                                  }
+                                >
+                                  Dismiss
+                                </Button>
+
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="px-3"
+                                  disabled={!props.onAcceptSmartMatch}
+                                  onClick={() =>
+                                    props.onAcceptSmartMatch?.(sectionIndex, itemIndex)
+                                  }
+                                >
+                                  {smartMatch.pricingStatus === "fresh"
+                                    ? "Add matched repair"
+                                    : "Review match"}
+                                </Button>
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       {canShowSubmit && (
                         <div className="mt-2 flex items-center justify-end gap-2">
