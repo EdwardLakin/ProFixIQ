@@ -610,6 +610,8 @@ type SmartMatchRow = {
   confidence?: number | null;
   menuItemId?: string | null;
   menuRepairItemId?: string | null;
+  autoAcceptReady?: boolean;
+  matchTier?: "high" | "medium" | "low";
 };
 
   const sp = useMemo(() => {
@@ -1133,7 +1135,32 @@ type SmartMatchRow = {
         });
       }
 
-      toast.success("Matched repair added to work order.");
+
+      await fetch("/api/inspections/smart-match/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemLabel: label,
+          note,
+          suggestedMatchId: match.id,
+          suggestedLabel: match.label,
+          menuRepairItemId: match.menuRepairItemId ?? null,
+          action: "accepted",
+          vehicle: asVehicleForSmartMatch(vehicle),
+        }),
+      });
+
+      const autoAcceptReady =
+        match.autoAcceptReady === true ||
+        (Boolean(match.menuRepairItemId) &&
+          typeof match.confidence === "number" &&
+          match.confidence >= 0.9);
+
+      toast.success(
+        autoAcceptReady
+          ? "High-confidence matched repair added to work order."
+          : "Matched repair added to work order.",
+      );
       dismissSmartMatch(sectionIndex, itemIndex);
     } catch (error) {
       toast.error(

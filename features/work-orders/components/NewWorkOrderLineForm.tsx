@@ -32,6 +32,8 @@ type SmartRepairMatch = {
   confidence?: number | null;
   menuItemId?: string | null;
   menuRepairItemId?: string | null;
+  autoAcceptReady?: boolean;
+  matchTier?: "high" | "medium" | "low";
 };
 
 type VehicleLite = Pick<
@@ -168,7 +170,25 @@ export function NewWorkOrderLineForm(props: {
           return;
         }
 
-        setSmartMatch(json?.match ?? null);
+        const raw = json?.match ?? null;
+        const confidence =
+          raw && typeof raw.confidence === "number" ? raw.confidence : 0;
+
+        setSmartMatch(
+          raw
+            ? {
+                ...raw,
+                autoAcceptReady:
+                  Boolean(raw.menuRepairItemId) && confidence >= 0.9,
+                matchTier:
+                  confidence >= 0.9
+                    ? "high"
+                    : confidence >= 0.7
+                      ? "medium"
+                      : "low",
+              }
+            : null,
+        );
       } catch {
         setSmartMatch(null);
       } finally {
@@ -372,6 +392,16 @@ export function NewWorkOrderLineForm(props: {
                   {smartMatch.menuRepairItemId && (
                     <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
                       vehicle-specific repair
+                    </span>
+                  )}
+                  {smartMatch.matchTier && (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      {smartMatch.matchTier} confidence tier
+                    </span>
+                  )}
+                  {smartMatch.autoAcceptReady && (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      quote-skip ready
                     </span>
                   )}
                 </div>

@@ -4457,12 +4457,93 @@ export type Database = {
           },
         ]
       }
+      inspection_smart_match_feedback: {
+        Row: {
+          action: string
+          created_at: string
+          drivetrain: string | null
+          engine: string | null
+          id: string
+          item_label: string | null
+          menu_repair_item_id: string | null
+          note: string | null
+          shop_id: string
+          suggested_label: string | null
+          suggested_match_id: string | null
+          transmission: string | null
+          user_id: string | null
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_year: number | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          drivetrain?: string | null
+          engine?: string | null
+          id?: string
+          item_label?: string | null
+          menu_repair_item_id?: string | null
+          note?: string | null
+          shop_id: string
+          suggested_label?: string | null
+          suggested_match_id?: string | null
+          transmission?: string | null
+          user_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          drivetrain?: string | null
+          engine?: string | null
+          id?: string
+          item_label?: string | null
+          menu_repair_item_id?: string | null
+          note?: string | null
+          shop_id?: string
+          suggested_label?: string | null
+          suggested_match_id?: string | null
+          transmission?: string | null
+          user_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_smart_match_feedback_menu_repair_item_id_fkey"
+            columns: ["menu_repair_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_repair_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_smart_match_feedback_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_smart_match_feedback_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspection_smart_match_history: {
         Row: {
           confidence: number | null
           correction: string | null
           created_at: string | null
           created_work_order_line_id: string | null
+          drivetrain: string | null
+          engine: string | null
           id: string
           inspection_id: string | null
           item_label: string | null
@@ -4473,6 +4554,10 @@ export type Database = {
           parts: Json | null
           section_title: string | null
           shop_id: string
+          transmission: string | null
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_year: number | null
           work_order_id: string | null
         }
         Insert: {
@@ -4480,6 +4565,8 @@ export type Database = {
           correction?: string | null
           created_at?: string | null
           created_work_order_line_id?: string | null
+          drivetrain?: string | null
+          engine?: string | null
           id?: string
           inspection_id?: string | null
           item_label?: string | null
@@ -4490,6 +4577,10 @@ export type Database = {
           parts?: Json | null
           section_title?: string | null
           shop_id: string
+          transmission?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
           work_order_id?: string | null
         }
         Update: {
@@ -4497,6 +4588,8 @@ export type Database = {
           correction?: string | null
           created_at?: string | null
           created_work_order_line_id?: string | null
+          drivetrain?: string | null
+          engine?: string | null
           id?: string
           inspection_id?: string | null
           item_label?: string | null
@@ -4507,6 +4600,10 @@ export type Database = {
           parts?: Json | null
           section_title?: string | null
           shop_id?: string
+          transmission?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
           work_order_id?: string | null
         }
         Relationships: []
