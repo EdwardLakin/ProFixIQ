@@ -32,6 +32,7 @@ import type {
 
 import { MobileWorkOrderLines } from "@/features/work-orders/mobile/MobileWorkOrderLines";
 import { MobileJobLineAdd } from "@/features/work-orders/mobile/MobileJobLineAdd";
+import NewWorkOrderLineForm from "@/features/work-orders/components/NewWorkOrderLineForm";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 
@@ -1346,6 +1347,18 @@ export default function MobileCreateWorkOrderPage() {
                 defaultJobType="diagnosis"
                 onCreated={fetchLines}
               />
+
+              <div className="mt-4">
+                <NewWorkOrderLineForm
+                  workOrderId={wo.id}
+                  vehicleId={vehicle.id}
+                  defaultJobType="repair"
+                  shopId={shopId}
+                  onCreated={fetchLines}
+                />
+              </div>
+
+
             </div>
 
             <button

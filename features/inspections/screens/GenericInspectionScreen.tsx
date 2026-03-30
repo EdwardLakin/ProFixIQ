@@ -1122,6 +1122,17 @@ type SmartMatchRow = {
         }),
       });
 
+
+      if (createdWorkOrderLineId) {
+        await fetch("/api/menu-repair-items/upsert-from-line", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderLineId: createdWorkOrderLineId,
+          }),
+        });
+      }
+
       toast.success("Matched repair added to work order.");
       dismissSmartMatch(sectionIndex, itemIndex);
     } catch (error) {
