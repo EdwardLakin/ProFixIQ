@@ -60,6 +60,7 @@ interface SectionDisplayProps {
 
 type PartRow = { description: string; qty: number };
 
+
 type SmartInspectionMatch = {
   id: string;
   label: string;
@@ -71,6 +72,8 @@ type SmartInspectionMatch = {
   confidence?: number | null;
   menuItemId?: string | null;
   menuRepairItemId?: string | null;
+  pricingStatus?: "fresh" | "stale" | "expired";
+  pricingValidUntil?: string | null;
 };
 
 type ItemExtended = InspectionSection["items"][number] & {
