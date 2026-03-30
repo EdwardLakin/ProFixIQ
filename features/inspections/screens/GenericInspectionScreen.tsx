@@ -994,9 +994,22 @@ type SmartMatchRow = {
     const key = itemKey(sectionIndex, itemIndex);
     const match = smartMatchByKey[key];
     const sec = session?.sections?.[sectionIndex];
-    const item = sec?.items?.[itemIndex];
+    const item = sec?.items?.[itemIndex] as
+      | (InspectionSection["items"][number] & {
+          estimateSubmitted?: boolean;
+          estimateSubmittedAt?: string | null;
+          estimateLastUpdatedAt?: string | null;
+          estimateWorkOrderLineId?: string | null;
+          estimateQuoteLineId?: string | null;
+        })
+      | undefined;
 
     if (!match || !workOrderId || !item) return;
+    if (item.estimateSubmitted && item.estimateWorkOrderLineId) {
+      toast.message("Repair already added for this inspection item.");
+      dismissSmartMatch(sectionIndex, itemIndex);
+      return;
+    }
 
     const note = safeTrimLocal((item as { notes?: unknown }).notes);
     const label = safeTrimLocal(
@@ -1005,6 +1018,8 @@ type SmartMatchRow = {
     );
 
     try {
+      let createdWorkOrderLineId: string | null = null;
+
       if (match.menuRepairItemId) {
         const res = await fetch("/api/work-orders/lines/add-from-menu-repair", {
           method: "POST",
@@ -1019,14 +1034,19 @@ type SmartMatchRow = {
         });
 
         const json = (await res.json().catch(() => null)) as
-          | { ok?: boolean; error?: string }
+          | { ok?: boolean; error?: string; workOrderLineId?: string | null }
           | null;
 
         if (!res.ok || !json?.ok) {
           throw new Error(json?.error || "Failed to add matched repair");
         }
+
+        createdWorkOrderLineId =
+          typeof json?.workOrderLineId === "string" && json.workOrderLineId
+            ? json.workOrderLineId
+            : null;
       } else {
-        await addWorkOrderLineFromSuggestion({
+        const created = await addWorkOrderLineFromSuggestion({
           workOrderId,
           description: match.label || label || "Matched repair",
           section: safeTrimLocal(sec?.title),
@@ -1062,7 +1082,31 @@ type SmartMatchRow = {
           source: "inspection",
           jobType: "repair",
         });
+
+        const createdId = (created as { id?: unknown } | null)?.id;
+        createdWorkOrderLineId =
+          typeof createdId === "string" && createdId ? createdId : null;
       }
+
+      const nowIso = new Date().toISOString();
+
+      updateItem(sectionIndex, itemIndex, {
+        estimateSubmitted: true,
+        estimateSubmittedAt:
+          typeof item.estimateSubmittedAt === "string" && item.estimateSubmittedAt
+            ? item.estimateSubmittedAt
+            : nowIso,
+        estimateLastUpdatedAt: nowIso,
+        estimateWorkOrderLineId: createdWorkOrderLineId,
+      } as ItemPatch);
+
+      updateInspection({
+        voiceMeta: {
+          ...(session?.voiceMeta ?? {}),
+          linesAddedToWorkOrder:
+            (session?.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
+        } satisfies VoiceMeta,
+      });
 
       toast.success("Matched repair added to work order.");
       dismissSmartMatch(sectionIndex, itemIndex);
