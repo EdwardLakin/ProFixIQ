@@ -6123,8 +6123,246 @@ export type Database = {
         }
         Relationships: []
       }
+      menu_repair_item_parts: {
+        Row: {
+          created_at: string
+          fitment_notes: string | null
+          id: string
+          is_required: boolean
+          last_seen_supplier: string | null
+          menu_repair_item_id: string
+          part_name: string
+          part_number: string | null
+          part_role: string | null
+          qty: number
+          shop_id: string
+          sort_order: number
+          supplier_part_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          fitment_notes?: string | null
+          id?: string
+          is_required?: boolean
+          last_seen_supplier?: string | null
+          menu_repair_item_id: string
+          part_name: string
+          part_number?: string | null
+          part_role?: string | null
+          qty?: number
+          shop_id: string
+          sort_order?: number
+          supplier_part_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          fitment_notes?: string | null
+          id?: string
+          is_required?: boolean
+          last_seen_supplier?: string | null
+          menu_repair_item_id?: string
+          part_name?: string
+          part_number?: string | null
+          part_role?: string | null
+          qty?: number
+          shop_id?: string
+          sort_order?: number
+          supplier_part_number?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_repair_item_parts_menu_repair_item_id_fkey"
+            columns: ["menu_repair_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_repair_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_item_parts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_item_parts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_repair_item_pricing_parts: {
+        Row: {
+          availability: string | null
+          core_charge: number | null
+          created_at: string
+          freight: number | null
+          id: string
+          lead_time: string | null
+          match_confidence: number | null
+          menu_repair_item_part_id: string | null
+          notes: string | null
+          part_name: string
+          pricing_snapshot_id: string
+          qty: number
+          quoted_part_number: string | null
+          supplier_part_number: string | null
+          unit_cost: number | null
+          unit_sell: number | null
+        }
+        Insert: {
+          availability?: string | null
+          core_charge?: number | null
+          created_at?: string
+          freight?: number | null
+          id?: string
+          lead_time?: string | null
+          match_confidence?: number | null
+          menu_repair_item_part_id?: string | null
+          notes?: string | null
+          part_name: string
+          pricing_snapshot_id: string
+          qty?: number
+          quoted_part_number?: string | null
+          supplier_part_number?: string | null
+          unit_cost?: number | null
+          unit_sell?: number | null
+        }
+        Update: {
+          availability?: string | null
+          core_charge?: number | null
+          created_at?: string
+          freight?: number | null
+          id?: string
+          lead_time?: string | null
+          match_confidence?: number | null
+          menu_repair_item_part_id?: string | null
+          notes?: string | null
+          part_name?: string
+          pricing_snapshot_id?: string
+          qty?: number
+          quoted_part_number?: string | null
+          supplier_part_number?: string | null
+          unit_cost?: number | null
+          unit_sell?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_repair_item_pricing_parts_menu_repair_item_part_id_fkey"
+            columns: ["menu_repair_item_part_id"]
+            isOneToOne: false
+            referencedRelation: "menu_repair_item_parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_item_pricing_parts_pricing_snapshot_id_fkey"
+            columns: ["pricing_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "menu_repair_item_pricing_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_repair_item_pricing_snapshots: {
+        Row: {
+          created_at: string
+          currency: string
+          id: string
+          import_batch_id: string | null
+          menu_repair_item_id: string
+          pricing_valid_days: number
+          quote_reference: string | null
+          quote_source: string
+          quoted_at: string
+          shop_id: string
+          status: string
+          supplier_id: string | null
+          supplier_name: string | null
+          total_cost: number | null
+          total_sell: number | null
+          updated_at: string
+          uploaded_by: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          id?: string
+          import_batch_id?: string | null
+          menu_repair_item_id: string
+          pricing_valid_days?: number
+          quote_reference?: string | null
+          quote_source?: string
+          quoted_at?: string
+          shop_id: string
+          status?: string
+          supplier_id?: string | null
+          supplier_name?: string | null
+          total_cost?: number | null
+          total_sell?: number | null
+          updated_at?: string
+          uploaded_by?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          id?: string
+          import_batch_id?: string | null
+          menu_repair_item_id?: string
+          pricing_valid_days?: number
+          quote_reference?: string | null
+          quote_source?: string
+          quoted_at?: string
+          shop_id?: string
+          status?: string
+          supplier_id?: string | null
+          supplier_name?: string | null
+          total_cost?: number | null
+          total_sell?: number | null
+          updated_at?: string
+          uploaded_by?: string | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_repair_item_pricing_snapshots_menu_repair_item_id_fkey"
+            columns: ["menu_repair_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_repair_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_item_pricing_snapshots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_item_pricing_snapshots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_repair_item_pricing_snapshots_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       menu_repair_items: {
         Row: {
+          active_pricing_snapshot_id: string | null
           cause: string | null
           complaint: string | null
           correction: string | null
@@ -6136,10 +6374,14 @@ export type Database = {
           is_active: boolean
           labor_hours: number | null
           labor_rate: number | null
+          last_pricing_refresh_at: string | null
+          last_pricing_source: string | null
           name: string
           notes: string | null
           parts: Json
           price_estimate: number | null
+          pricing_status: string | null
+          pricing_valid_days: number | null
           shop_id: string
           source_work_order_id: string | null
           source_work_order_line_id: string | null
@@ -6153,6 +6395,7 @@ export type Database = {
           vehicle_year: number | null
         }
         Insert: {
+          active_pricing_snapshot_id?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
@@ -6164,10 +6407,14 @@ export type Database = {
           is_active?: boolean
           labor_hours?: number | null
           labor_rate?: number | null
+          last_pricing_refresh_at?: string | null
+          last_pricing_source?: string | null
           name: string
           notes?: string | null
           parts?: Json
           price_estimate?: number | null
+          pricing_status?: string | null
+          pricing_valid_days?: number | null
           shop_id: string
           source_work_order_id?: string | null
           source_work_order_line_id?: string | null
@@ -6181,6 +6428,7 @@ export type Database = {
           vehicle_year?: number | null
         }
         Update: {
+          active_pricing_snapshot_id?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
@@ -6192,10 +6440,14 @@ export type Database = {
           is_active?: boolean
           labor_hours?: number | null
           labor_rate?: number | null
+          last_pricing_refresh_at?: string | null
+          last_pricing_source?: string | null
           name?: string
           notes?: string | null
           parts?: Json
           price_estimate?: number | null
+          pricing_status?: string | null
+          pricing_valid_days?: number | null
           shop_id?: string
           source_work_order_id?: string | null
           source_work_order_line_id?: string | null
@@ -6209,6 +6461,13 @@ export type Database = {
           vehicle_year?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "menu_repair_items_active_pricing_snapshot_id_fkey"
+            columns: ["active_pricing_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "menu_repair_item_pricing_snapshots"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "menu_repair_items_shop_id_fkey"
             columns: ["shop_id"]
@@ -9601,6 +9860,7 @@ export type Database = {
           allow_self_booking: boolean | null
           created_at: string | null
           id: string
+          pricing_refresh_days: number | null
           province: string | null
           timezone: string | null
           user_id: string | null
@@ -9610,6 +9870,7 @@ export type Database = {
           allow_self_booking?: boolean | null
           created_at?: string | null
           id?: string
+          pricing_refresh_days?: number | null
           province?: string | null
           timezone?: string | null
           user_id?: string | null
@@ -9619,6 +9880,7 @@ export type Database = {
           allow_self_booking?: boolean | null
           created_at?: string | null
           id?: string
+          pricing_refresh_days?: number | null
           province?: string | null
           timezone?: string | null
           user_id?: string | null
@@ -11017,6 +11279,126 @@ export type Database = {
             columns: ["catalog_item_id"]
             isOneToOne: false
             referencedRelation: "supplier_catalog_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_quote_batch_rows: {
+        Row: {
+          batch_id: string
+          created_at: string
+          id: string
+          mapped_confidence: number | null
+          mapped_menu_repair_item_id: string | null
+          mapped_menu_repair_item_part_id: string | null
+          raw_description: string | null
+          raw_notes: string | null
+          raw_part_number: string | null
+          raw_qty: number | null
+          raw_sell: number | null
+          raw_unit_cost: number | null
+          review_status: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          id?: string
+          mapped_confidence?: number | null
+          mapped_menu_repair_item_id?: string | null
+          mapped_menu_repair_item_part_id?: string | null
+          raw_description?: string | null
+          raw_notes?: string | null
+          raw_part_number?: string | null
+          raw_qty?: number | null
+          raw_sell?: number | null
+          raw_unit_cost?: number | null
+          review_status?: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          id?: string
+          mapped_confidence?: number | null
+          mapped_menu_repair_item_id?: string | null
+          mapped_menu_repair_item_part_id?: string | null
+          raw_description?: string | null
+          raw_notes?: string | null
+          raw_part_number?: string | null
+          raw_qty?: number | null
+          raw_sell?: number | null
+          raw_unit_cost?: number | null
+          review_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_quote_batch_rows_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_quote_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_quote_batches: {
+        Row: {
+          created_at: string
+          file_name: string | null
+          id: string
+          processed_at: string | null
+          shop_id: string
+          source_type: string
+          status: string
+          storage_path: string | null
+          supplier_id: string | null
+          supplier_name: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          processed_at?: string | null
+          shop_id: string
+          source_type?: string
+          status?: string
+          storage_path?: string | null
+          supplier_id?: string | null
+          supplier_name?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          processed_at?: string | null
+          shop_id?: string
+          source_type?: string
+          status?: string
+          storage_path?: string | null
+          supplier_id?: string | null
+          supplier_name?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_quote_batches_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_quote_batches_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_quote_batches_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
