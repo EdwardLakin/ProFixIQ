@@ -1069,6 +1069,14 @@ type SmartMatchRow = {
       | undefined;
 
     if (!match || !workOrderId || !item) return;
+
+    if (match.pricingStatus === "expired") {
+      toast.error(
+        "Pricing is expired. Review or refresh pricing before adding this repair.",
+      );
+      return;
+    }
+
     if (item.estimateSubmitted && item.estimateWorkOrderLineId) {
       toast.message("Repair already added for this inspection item.");
       dismissSmartMatch(sectionIndex, itemIndex);
