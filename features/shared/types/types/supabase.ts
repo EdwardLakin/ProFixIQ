@@ -14728,6 +14728,39 @@ export type Database = {
         }
         Relationships: []
       }
+      v_menu_repair_item_match_stats: {
+        Row: {
+          acceptance_rate: number | null
+          accepted_count: number | null
+          dismissed_count: number | null
+          feedback_count: number | null
+          menu_repair_item_id: string | null
+          shop_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_smart_match_feedback_menu_repair_item_id_fkey"
+            columns: ["menu_repair_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_repair_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_smart_match_feedback_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_smart_match_feedback_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_my_conversation_ids: {
         Row: {
           conversation_id: string | null
