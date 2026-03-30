@@ -2836,6 +2836,12 @@ type SmartMatchRow = {
                               isSubmittingAI={(secIdx: number, itemIdx: number) =>
                                 isSubmittingAI(secIdx, itemIdx)
                               }
+                              smartMatchByKey={smartMatchByKey}
+                              smartMatchLoadingByKey={smartMatchLoadingByKey}
+                              onAcceptSmartMatch={(secIdx: number, itemIdx: number) => {
+                                void acceptSmartMatch(secIdx, itemIdx);
+                              }}
+                              onDismissSmartMatch={dismissSmartMatch}
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts } as ItemPatch);

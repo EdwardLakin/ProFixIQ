@@ -7,10 +7,25 @@ import type {
   InspectionItem,
   InspectionItemStatus,
 } from "@inspections/lib/inspection/types";
-import StatusButtons from "@inspections/lib/inspection/StatusButtons";
+import StatusButtons
+from "@inspections/lib/inspection/StatusButtons";
 import { Button } from "@shared/components/ui/Button";
 
 type PartLine = { description: string; qty: number };
+
+type SmartInspectionMatch = {
+  id: string;
+  label: string;
+  complaint?: string | null;
+  correction?: string | null;
+  laborHours?: number | null;
+  parts?: Array<{ name: string; qty?: number }>;
+  score?: number | null;
+  confidence?: number | null;
+  menuItemId?: string | null;
+  menuRepairItemId?: string | null;
+};
+
 
 type Props = {
   sectionIndex: number;
@@ -22,6 +37,11 @@ type Props = {
   requireNoteForAI?: boolean;
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
   isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
+
+  smartMatchByKey?: Record<string, SmartInspectionMatch | null>;
+  smartMatchLoadingByKey?: Record<string, boolean>;
+  onAcceptSmartMatch?: (sectionIndex: number, itemIndex: number) => void;
+  onDismissSmartMatch?: (sectionIndex: number, itemIndex: number) => void;
 
   onUpdateParts?: (
     sectionIndex: number,
@@ -35,6 +55,94 @@ type Props = {
     hours: number | null,
   ) => void;
 };
+
+
+function renderSmartMatchCard(args: {
+  match: SmartInspectionMatch | null;
+  loading: boolean;
+  onAccept?: () => void;
+  onDismiss?: () => void;
+}) {
+  const { match, loading, onAccept, onDismiss } = args;
+  if (!loading && !match) return null;
+
+  return (
+    <div className="mt-3 rounded-xl border border-[color:var(--pfq-copper,#C57A4A)]/30 bg-[color:var(--pfq-copper,#C57A4A)]/8 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-semibold text-white">
+              {loading ? "Checking previous repairs…" : match?.label || "Matched repair"}
+            </div>
+            {!loading && match ? (
+              <span className="rounded-full border border-[color:var(--pfq-copper,#C57A4A)]/35 bg-black/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--pfq-copper,#C57A4A)]">
+                Based on previous repairs
+              </span>
+            ) : null}
+          </div>
+
+          {!loading && match ? (
+            <>
+              {match.correction ? (
+                <div className="mt-1 text-xs text-neutral-300">
+                  {match.correction}
+                </div>
+              ) : null}
+
+              <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-neutral-400">
+                {typeof match.laborHours === "number" ? (
+                  <span>
+                    Labor:{" "}
+                    <span className="text-neutral-200">{match.laborHours} hr</span>
+                  </span>
+                ) : null}
+                {Array.isArray(match.parts) && match.parts.length > 0 ? (
+                  <span>
+                    Parts:{" "}
+                    <span className="text-neutral-200">
+                      {match.parts.map((p) => `${p.qty ?? 1}x ${p.name}`).join(", ")}
+                    </span>
+                  </span>
+                ) : null}
+                {typeof match.confidence === "number" ? (
+                  <span>
+                    Confidence:{" "}
+                    <span className="text-neutral-200">
+                      {Math.round(match.confidence * 100)}%
+                    </span>
+                  </span>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        {!loading && match ? (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="px-3"
+              onClick={onAccept}
+            >
+              Accept repair
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="px-3 opacity-80"
+              onClick={onDismiss}
+            >
+              Dismiss
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 type Side = "Left" | "Right";
 type DualPos = "Inner" | "Outer";
@@ -885,6 +993,12 @@ export default function TireGridHydraulic(props: Props) {
       <div className="rounded-xl border border-white/10 bg-black/25 p-3">
         <div className={tinyLabelCls()}>{label}</div>
 
+              {renderSmartMatchCard({
+                match: props.smartMatchByKey?.[`${sectionIndex}:${cell.idx}`] ?? null,
+                loading: props.smartMatchLoadingByKey?.[`${sectionIndex}:${cell.idx}`] ?? false,
+                onAccept: () => props.onAcceptSmartMatch?.(sectionIndex, cell.idx),
+                onDismiss: () => props.onDismissSmartMatch?.(sectionIndex, cell.idx),
+              })}
         <StatusButtons
           item={it}
           sectionIndex={sectionIndex}
