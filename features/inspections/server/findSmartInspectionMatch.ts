@@ -45,6 +45,16 @@ type FeedbackRow = {
   action: "accepted" | "dismissed";
 };
 
+
+type MatchStatRow = {
+  shop_id: string;
+  menu_repair_item_id: string;
+  accepted_count: number | null;
+  dismissed_count: number | null;
+  feedback_count: number | null;
+  acceptance_rate: number | null;
+};
+
 type MenuRepairItemRow = {
   id: string;
   name: string | null;
@@ -83,6 +93,8 @@ export type SmartInspectionMatch = {
   confidence?: number | null;
   menuItemId?: string | null;
   menuRepairItemId?: string | null;
+  acceptedCount?: number | null;
+  acceptanceRate?: number | null;
 };
 
 function txt(v: unknown): string {
@@ -192,7 +204,15 @@ export async function findSmartInspectionMatch(args: {
     .order("created_at", { ascending: false })
     .limit(200);
 
+  const { data: statRows } = await supabase
+    .from("v_menu_repair_item_match_stats")
+    .select("shop_id, menu_repair_item_id, accepted_count, dismissed_count, feedback_count, acceptance_rate")
+    .eq("shop_id", shopId);
+
   const feedback = (feedbackRows ?? []) as FeedbackRow[];
+  const statsByRepairId = new Map(
+    ((statRows ?? []) as MatchStatRow[]).map((row) => [row.menu_repair_item_id, row]),
+  );
 
   const dismissedIds = new Set(
     feedback
@@ -247,6 +267,15 @@ export async function findSmartInspectionMatch(args: {
       if (acceptedIds.has(row.id) || acceptedLabels.has(txt(row.name))) {
         score += 0.2;
       }
+
+      const stat = statsByRepairId.get(row.id);
+      const acceptanceRate =
+        stat && typeof stat.acceptance_rate === "number" ? stat.acceptance_rate : 0;
+      const acceptedCount =
+        stat && typeof stat.accepted_count === "number" ? stat.accepted_count : 0;
+
+      score += Math.min(acceptanceRate * 0.25, 0.25);
+      score += Math.min(acceptedCount * 0.03, 0.15);
 
       return { row, score };
     })
@@ -311,6 +340,16 @@ export async function findSmartInspectionMatch(args: {
       ) {
         score += 0.2;
       }
+
+      const stat =
+        row.menu_repair_item_id ? statsByRepairId.get(row.menu_repair_item_id) : undefined;
+      const acceptanceRate =
+        stat && typeof stat.acceptance_rate === "number" ? stat.acceptance_rate : 0;
+      const acceptedCount =
+        stat && typeof stat.accepted_count === "number" ? stat.accepted_count : 0;
+
+      score += Math.min(acceptanceRate * 0.2, 0.2);
+      score += Math.min(acceptedCount * 0.02, 0.12);
 
       return { row, score };
     })

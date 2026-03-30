@@ -34,6 +34,8 @@ type SmartRepairMatch = {
   menuRepairItemId?: string | null;
   autoAcceptReady?: boolean;
   matchTier?: "high" | "medium" | "low";
+  acceptedCount?: number | null;
+  acceptanceRate?: number | null;
 };
 
 type VehicleLite = Pick<
@@ -404,6 +406,19 @@ export function NewWorkOrderLineForm(props: {
                       quote-skip ready
                     </span>
                   )}
+
+                  {typeof smartMatch.acceptedCount === "number" &&
+                  smartMatch.acceptedCount > 0 ? (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      {smartMatch.acceptedCount} accepted
+                    </span>
+                  ) : null}
+                  {typeof smartMatch.acceptanceRate === "number" &&
+                  smartMatch.acceptanceRate > 0 ? (
+                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
+                      {Math.round(smartMatch.acceptanceRate * 100)}% win rate
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
