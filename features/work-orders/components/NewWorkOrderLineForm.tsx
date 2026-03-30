@@ -198,7 +198,9 @@ export function NewWorkOrderLineForm(props: {
             ? {
                 ...raw,
                 autoAcceptReady:
-                  Boolean(raw.menuRepairItemId) && confidence >= 0.9,
+                  Boolean(raw.menuRepairItemId) &&
+                  confidence >= 0.9 &&
+                  raw.pricingStatus === "fresh",
                 matchTier:
                   confidence >= 0.9
                     ? "high"
@@ -243,6 +245,12 @@ export function NewWorkOrderLineForm(props: {
       return "border-amber-500/40 bg-amber-500/10 text-amber-200";
     }
     return "border-red-500/40 bg-red-500/10 text-red-200";
+  }
+
+  function pricingMessage(status: SmartRepairMatch["pricingStatus"]): string {
+    if (status === "fresh") return "Fresh pricing — safe for auto-add.";
+    if (status === "stale") return "Stale pricing — review before using.";
+    return "Expired pricing — auto-add blocked until pricing is refreshed.";
   }
 
   async function addLine() {
@@ -576,6 +584,10 @@ export function NewWorkOrderLineForm(props: {
 
           <div className="mt-2 text-[11px] text-neutral-400">
             Pricing valid until: {smartMatch.pricingValidUntil ?? "No active pricing snapshot"}
+          </div>
+
+          <div className="mt-1 text-[11px] text-neutral-400">
+            {pricingMessage(smartMatch.pricingStatus)}
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
