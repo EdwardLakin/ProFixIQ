@@ -1108,6 +1108,20 @@ type SmartMatchRow = {
         } satisfies VoiceMeta,
       });
 
+      await fetch("/api/inspections/smart-match/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inspectionId: session?.id,
+          workOrderId,
+          sectionTitle: sec?.title,
+          itemLabel: label,
+          note,
+          match,
+          createdWorkOrderLineId,
+        }),
+      });
+
       toast.success("Matched repair added to work order.");
       dismissSmartMatch(sectionIndex, itemIndex);
     } catch (error) {
