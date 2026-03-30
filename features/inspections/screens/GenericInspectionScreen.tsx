@@ -980,13 +980,42 @@ type SmartMatchRow = {
     }
   };
 
-  const dismissSmartMatch = (
-    sectionIndex: number,
-    itemIndex: number,
-  ): void => {
+  const dismissSmartMatch = async (sectionIndex: number, itemIndex: number) => {
     const key = itemKey(sectionIndex, itemIndex);
+    const sec = session.sections?.[sectionIndex];
+    const item = sec?.items?.[itemIndex];
+    const match = smartMatchByKey[key];
+
     setSmartMatchByKey((prev) => ({ ...prev, [key]: null }));
     setSmartMatchLoadingByKey((prev) => ({ ...prev, [key]: false }));
+
+    if (!match) return;
+
+    try {
+      await fetch("/api/inspections/smart-match/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemLabel:
+            typeof item?.item === "string"
+              ? item.item
+              : typeof (item as { name?: unknown } | undefined)?.name === "string"
+                ? (item as { name?: string }).name
+                : null,
+          note:
+            typeof (item as { notes?: unknown } | undefined)?.notes === "string"
+              ? (item as { notes?: string }).notes
+              : null,
+          suggestedMatchId: match.id,
+          suggestedLabel: match.label,
+          menuRepairItemId: match.menuRepairItemId ?? null,
+          action: "dismissed",
+          vehicle: asVehicleForSmartMatch(vehicle),
+        }),
+      });
+    } catch {
+      // fail open
+    }
   };
 
   const acceptSmartMatch = async (
