@@ -89,6 +89,7 @@ function txt(v: unknown): string {
   return typeof v === "string" ? v.trim().toLowerCase() : "";
 }
 
+
 function normalizeParts(raw: unknown): Array<{ name: string; qty?: number }> {
   if (!Array.isArray(raw)) return [];
 
