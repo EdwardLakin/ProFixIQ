@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { createPricingSnapshotFromWorkOrderLine } from "@/features/menu-repair-items/server/createPricingSnapshotFromWorkOrderLine";
 
 export const runtime = "nodejs";
 
@@ -395,6 +396,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(body, { status: 400 });
     }
 
+    try {
+      await createPricingSnapshotFromWorkOrderLine({
+        supabase,
+        workOrderLineId: lineId,
+        menuRepairItemId: existing.id,
+        pricingValidDays: 30,
+        uploadedBy: user.id,
+        quoteSource: "work_order_capture",
+        quoteReference: lineId,
+      });
+    } catch {
+      // fail open: repair promotion should still succeed even if snapshot creation fails
+    }
+
     return NextResponse.json({
       ok: true,
       menuRepairItemId: existing.id,
@@ -415,6 +430,20 @@ export async function POST(req: NextRequest) {
       detail: insErr?.message ?? "Failed to create repair item",
     };
     return NextResponse.json(body, { status: 400 });
+  }
+
+  try {
+    await createPricingSnapshotFromWorkOrderLine({
+      supabase,
+      workOrderLineId: lineId,
+      menuRepairItemId: created.id,
+      pricingValidDays: 30,
+      uploadedBy: user.id,
+      quoteSource: "work_order_capture",
+      quoteReference: lineId,
+    });
+  } catch {
+    // fail open: repair promotion should still succeed even if snapshot creation fails
   }
 
   return NextResponse.json({
