@@ -4457,6 +4457,60 @@ export type Database = {
           },
         ]
       }
+      inspection_smart_match_history: {
+        Row: {
+          confidence: number | null
+          correction: string | null
+          created_at: string | null
+          created_work_order_line_id: string | null
+          id: string
+          inspection_id: string | null
+          item_label: string | null
+          labor_hours: number | null
+          matched_label: string | null
+          menu_repair_item_id: string | null
+          note: string | null
+          parts: Json | null
+          section_title: string | null
+          shop_id: string
+          work_order_id: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          correction?: string | null
+          created_at?: string | null
+          created_work_order_line_id?: string | null
+          id?: string
+          inspection_id?: string | null
+          item_label?: string | null
+          labor_hours?: number | null
+          matched_label?: string | null
+          menu_repair_item_id?: string | null
+          note?: string | null
+          parts?: Json | null
+          section_title?: string | null
+          shop_id: string
+          work_order_id?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          correction?: string | null
+          created_at?: string | null
+          created_work_order_line_id?: string | null
+          id?: string
+          inspection_id?: string | null
+          item_label?: string | null
+          labor_hours?: number | null
+          matched_label?: string | null
+          menu_repair_item_id?: string | null
+          note?: string | null
+          parts?: Json | null
+          section_title?: string | null
+          shop_id?: string
+          work_order_id?: string | null
+        }
+        Relationships: []
+      }
       inspection_template_suggestions: {
         Row: {
           applies_to: string
