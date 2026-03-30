@@ -37,6 +37,14 @@ type SmartHistoryRow = {
   created_at: string | null;
 };
 
+
+type FeedbackRow = {
+  suggested_match_id: string | null;
+  suggested_label: string | null;
+  menu_repair_item_id: string | null;
+  action: "accepted" | "dismissed";
+};
+
 type MenuRepairItemRow = {
   id: string;
   name: string | null;
@@ -176,6 +184,27 @@ export async function findSmartInspectionMatch(args: {
 
   if (!noteText) return null;
 
+  const { data: feedbackRows } = await supabase
+    .from("inspection_smart_match_feedback")
+    .select("suggested_match_id, suggested_label, menu_repair_item_id, action")
+    .eq("shop_id", shopId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  const dismissedIds = new Set(
+    ((feedbackRows ?? []) as FeedbackRow[])
+      .filter((r) => r.action === "dismissed")
+      .map((r) => r.menu_repair_item_id ?? r.suggested_match_id ?? "")
+      .filter(Boolean),
+  );
+
+  const dismissedLabels = new Set(
+    ((feedbackRows ?? []) as FeedbackRow[])
+      .filter((r) => r.action === "dismissed")
+      .map((r) => txt(r.suggested_label))
+      .filter(Boolean),
+  );
+
   const { data: repairItems } = await supabase
     .from("menu_repair_items")
     .select(
@@ -193,6 +222,10 @@ export async function findSmartInspectionMatch(args: {
 
       let score = tokenScore(noteText, haystack);
       score = addVehicleScore(score, row, body);
+
+      if (dismissedIds.has(row.id) || dismissedLabels.has(txt(row.name))) {
+        score -= 0.35;
+      }
 
       return { row, score };
     })
@@ -243,6 +276,13 @@ export async function findSmartInspectionMatch(args: {
 
       let score = tokenScore(noteText, haystack);
       score = addVehicleScore(score, row, body);
+
+      if (
+        dismissedIds.has(row.menu_repair_item_id ?? row.id) ||
+        dismissedLabels.has(txt(row.matched_label))
+      ) {
+        score -= 0.35;
+      }
 
       return { row, score };
     })
