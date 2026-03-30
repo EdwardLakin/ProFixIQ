@@ -95,10 +95,24 @@ export type SmartInspectionMatch = {
   menuRepairItemId?: string | null;
   acceptedCount?: number | null;
   acceptanceRate?: number | null;
+  pricingStatus?: "fresh" | "stale" | "expired";
+  pricingValidUntil?: string | null;
 };
 
 function txt(v: unknown): string {
   return typeof v === "string" ? v.trim().toLowerCase() : "";
+}
+
+function computePricingStatusFromDate(validUntil: string | null | undefined): "fresh" | "stale" | "expired" {
+  if (!validUntil) return "expired";
+
+  const ts = new Date(validUntil).getTime();
+  if (!Number.isFinite(ts)) return "expired";
+
+  const now = Date.now();
+  if (ts < now) return "expired";
+  if (ts < now + 3 * 24 * 60 * 60 * 1000) return "stale";
+  return "fresh";
 }
 
 
@@ -251,6 +265,24 @@ export async function findSmartInspectionMatch(args: {
     .order("updated_at", { ascending: false })
     .limit(60);
 
+
+  // 🔥 Load active pricing snapshots
+  const { data: pricingSnapshots } = await supabase
+    .from("menu_repair_item_pricing_snapshots")
+    .select("menu_repair_item_id, valid_until, total_sell")
+    .eq("shop_id", shopId)
+    .eq("status", "fresh");
+
+  const pricingMap = new Map(
+    (pricingSnapshots ?? []).map((p) => [
+      p.menu_repair_item_id,
+      {
+        validUntil: p.valid_until,
+        totalSell: p.total_sell,
+      },
+    ]),
+  );
+
   const rankedRepairItems = ((repairItems ?? []) as MenuRepairItemRow[])
     .map((row) => {
       const haystack = [row.name ?? "", row.complaint ?? "", row.correction ?? ""]
@@ -284,6 +316,8 @@ export async function findSmartInspectionMatch(args: {
 
   const bestRepairItem = rankedRepairItems[0];
   if (bestRepairItem?.row?.id && (bestRepairItem.row.name || bestRepairItem.row.complaint)) {
+    const pricing = pricingMap.get(bestRepairItem.row.id);
+
     return {
       id: bestRepairItem.row.id,
       label:
@@ -301,6 +335,8 @@ export async function findSmartInspectionMatch(args: {
           : Math.min(0.97, 0.6 + bestRepairItem.score * 0.3),
       menuRepairItemId: bestRepairItem.row.id,
       menuItemId: null,
+      pricingStatus: computePricingStatusFromDate(pricing?.validUntil ?? null),
+      pricingValidUntil: pricing?.validUntil ?? null,
     };
   }
 
