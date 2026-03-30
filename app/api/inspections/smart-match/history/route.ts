@@ -15,7 +15,27 @@ export async function POST(req: Request) {
       note,
       match,
       createdWorkOrderLineId,
+      vehicle,
     } = await req.json();
+
+    const vehicleYear =
+      typeof vehicle?.year === "number"
+        ? vehicle.year
+        : Number(vehicle?.year ?? 0) || null;
+    const vehicleMake =
+      typeof vehicle?.make === "string" ? vehicle.make.trim() || null : null;
+    const vehicleModel =
+      typeof vehicle?.model === "string" ? vehicle.model.trim() || null : null;
+    const engine =
+      typeof vehicle?.engine === "string" ? vehicle.engine.trim() || null : null;
+    const drivetrain =
+      typeof vehicle?.drivetrain === "string"
+        ? vehicle.drivetrain.trim() || null
+        : null;
+    const transmission =
+      typeof vehicle?.transmission === "string"
+        ? vehicle.transmission.trim() || null
+        : null;
 
     const {
       data: { user },
@@ -50,6 +70,12 @@ export async function POST(req: Request) {
       confidence: match.confidence ?? null,
       menu_repair_item_id: match.menuRepairItemId ?? null,
       created_work_order_line_id: createdWorkOrderLineId ?? null,
+      vehicle_year: vehicleYear,
+      vehicle_make: vehicleMake,
+      vehicle_model: vehicleModel,
+      engine,
+      drivetrain,
+      transmission,
     });
 
     return NextResponse.json({ ok: true });
