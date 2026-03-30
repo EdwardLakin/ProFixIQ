@@ -7,128 +7,114 @@ type DB = Database;
 
 type Body = {
   item?: string;
-  notes?: string | null;
-  section?: string | null;
-  status?: "fail" | "recommend" | string | null;
+  notes?: string;
+  section?: string;
+  status?: string;
   vehicle?: {
     year?: string | number | null;
     make?: string | null;
     model?: string | null;
     engine?: string | null;
-    transmission?: string | null;
     drivetrain?: string | null;
+    transmission?: string | null;
     fuel_type?: string | null;
   } | null;
 };
 
-type SmartMatchResult = {
-  source: "menu_item" | "learned_template" | "work_order_intelligence";
-  id: string;
-  label: string;
-  score: number;
-  laborHours: number | null;
-  parts: Array<{ name: string; qty: number }>;
-  complaint: string | null;
-  correction: string | null;
-  menuItemId?: string;
-};
+type MenuRepairMatchRow = Pick<
+  DB["public"]["Tables"]["menu_repair_items"]["Row"],
+  | "id"
+  | "name"
+  | "complaint"
+  | "correction"
+  | "labor_hours"
+  | "parts"
+  | "vehicle_year"
+  | "vehicle_make"
+  | "vehicle_model"
+  | "engine"
+  | "drivetrain"
+  | "transmission"
+  | "usage_count"
+>;
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
+function txt(v: unknown): string {
+  return typeof v === "string" ? v.trim().toLowerCase() : "";
 }
 
-function s(v: unknown): string {
+function safeTrim(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function n(v: unknown): number | null {
+function asYear(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v.trim()) {
-    const parsed = Number(v);
-    return Number.isFinite(parsed) ? parsed : null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
   }
   return null;
 }
 
-function norm(v: unknown): string {
-  return s(v).toLowerCase();
-}
-
-function tokenize(...parts: Array<unknown>): string[] {
-  return parts
-    .map((p) => norm(p))
-    .join(" ")
-    .replace(/[^\w\s]/g, " ")
+function tokenize(v: string): string[] {
+  return v
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 3)
-    .slice(0, 32);
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
-function parseParts(raw: unknown): Array<{ name: string; qty: number }> {
+function overlapScore(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 100;
+  if (b.includes(a)) return 90;
+  if (a.includes(b)) return 75;
+
+  const ta = new Set(tokenize(a));
+  const tb = new Set(tokenize(b));
+  if (ta.size === 0 || tb.size === 0) return 0;
+
+  let overlap = 0;
+  for (const tok of ta) {
+    if (tb.has(tok)) overlap += 1;
+  }
+
+  const ratio = overlap / Math.max(ta.size, tb.size);
+  return Math.round(ratio * 60);
+}
+
+function normalizeParts(
+  raw: unknown,
+): Array<{ name: string; qty: number }> {
   if (!Array.isArray(raw)) return [];
+
   return raw
-    .map((entry) => {
-      if (!isRecord(entry)) return null;
+    .map((part) => {
+      const row = (part ?? {}) as {
+        name?: unknown;
+        description?: unknown;
+        item?: unknown;
+        qty?: unknown;
+        quantity?: unknown;
+      };
 
       const name =
-        s(entry.name) ||
-        s(entry.description) ||
-        s(entry.item) ||
-        s(entry.label);
+        safeTrim(row.name) ||
+        safeTrim(row.description) ||
+        safeTrim(row.item);
 
       if (!name) return null;
 
-      const qty = n(entry.qty) ?? n(entry.quantity) ?? 1;
-      return {
-        name,
-        qty: qty > 0 ? qty : 1,
-      };
+      const qty =
+        typeof row.qty === "number" && Number.isFinite(row.qty)
+          ? row.qty
+          : typeof row.quantity === "number" && Number.isFinite(row.quantity)
+            ? row.quantity
+            : 1;
+
+      return { name, qty: qty > 0 ? qty : 1 };
     })
-    .filter((x): x is { name: string; qty: number } => Boolean(x));
-}
-
-function scoreText(tokens: string[], haystack: string): number {
-  const h = haystack.toLowerCase();
-  let score = 0;
-
-  for (const token of tokens) {
-    if (h.includes(token)) score += 4;
-  }
-
-  if (tokens.length >= 2) {
-    for (let i = 0; i < tokens.length - 1; i += 1) {
-      const phrase = `${tokens[i]} ${tokens[i + 1]}`;
-      if (h.includes(phrase)) score += 6;
-    }
-  }
-
-  return score;
-}
-
-function vehicleScore(args: {
-  queryYear: number | null;
-  queryMake: string;
-  queryModel: string;
-  rowYear: number | null;
-  rowMake: string;
-  rowModel: string;
-}): number {
-  let score = 0;
-
-  if (args.queryYear != null && args.rowYear != null && args.queryYear === args.rowYear) {
-    score += 18;
-  }
-
-  if (args.queryMake && args.rowMake && args.queryMake === args.rowMake) {
-    score += 18;
-  }
-
-  if (args.queryModel && args.rowModel && args.queryModel === args.rowModel) {
-    score += 18;
-  }
-
-  return score;
+    .filter((v): v is { name: string; qty: number } => Boolean(v));
 }
 
 export async function POST(req: Request) {
@@ -136,226 +122,125 @@ export async function POST(req: Request) {
     const supabase = createRouteHandlerClient<DB>({ cookies });
     const body = (await req.json().catch(() => null)) as Body | null;
 
-    const item = s(body?.item);
-    const notes = s(body?.notes);
-    const section = s(body?.section);
-    const status = norm(body?.status);
-    const year = n(body?.vehicle?.year);
-    const make = norm(body?.vehicle?.make);
-    const model = norm(body?.vehicle?.model);
+    const item = txt(body?.item);
+    const notes = txt(body?.notes);
+    const section = txt(body?.section);
+    const status = txt(body?.status);
+
+    const year = asYear(body?.vehicle?.year);
+    const make = txt(body?.vehicle?.make);
+    const model = txt(body?.vehicle?.model);
+    const engine = txt(body?.vehicle?.engine);
+    const drivetrain = txt(body?.vehicle?.drivetrain);
+    const transmission = txt(body?.vehicle?.transmission);
 
     const queryText = [item, notes, section, status].filter(Boolean).join(" ").trim();
+
     if (!queryText) {
-      return NextResponse.json({ ok: true, match: null, suggestions: [] });
+      return NextResponse.json({ match: null });
     }
 
     const {
       data: { user },
-      error: authError,
+      error: authErr,
     } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    if (authErr || !user) {
+      return NextResponse.json({ match: null }, { status: 401 });
     }
 
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from("profiles")
       .select("shop_id")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (profileError) {
-      return NextResponse.json({ ok: false, error: profileError.message }, { status: 500 });
+    if (!profile?.shop_id) {
+      return NextResponse.json({ match: null });
     }
 
-    const shopId = s((profile as { shop_id?: unknown } | null)?.shop_id);
-    if (!shopId) {
-      return NextResponse.json({ ok: true, match: null, suggestions: [] });
-    }
-
-    const tokens = tokenize(item, notes, section, status);
-
-    const suggestions: SmartMatchResult[] = [];
-
-    // 1) vehicle-specific / shop-specific menu repairs
-    const { data: menuRows, error: menuError } = await supabase
+    const { data: rows, error } = await supabase
       .from("menu_repair_items")
-      .select([
-        "id",
-        "name",
-        "complaint",
-        "cause",
-        "correction",
-        "vehicle_year",
-        "vehicle_make",
-        "vehicle_model",
-        "engine",
-        "drivetrain",
-        "transmission",
-        "labor_hours",
-        "parts",
-        "usage_count",
-        "is_active",
-      ].join(","))
-      .eq("shop_id", shopId)
+      .select(
+        "id, name, complaint, correction, labor_hours, parts, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, transmission, usage_count",
+      )
+      .eq("shop_id", profile.shop_id)
       .eq("is_active", true)
-      .limit(200);
+      .order("usage_count", { ascending: false })
+      .limit(100);
 
-    if (menuError) {
-      return NextResponse.json({ ok: false, error: menuError.message }, { status: 500 });
+    if (error) {
+      return NextResponse.json(
+        { match: null, error: error.message },
+        { status: 400 },
+      );
     }
 
-    for (const raw of menuRows ?? []) {
-      if (!isRecord(raw)) continue;
-
-      const haystack = [
-        s(raw.name),
-        s(raw.description),
-        s(raw.complaint),
-        s(raw.correction),
-      ].join(" ").trim();
-
-      const score =
-        scoreText(tokens, haystack) +
-        vehicleScore({
-          queryYear: year,
-          queryMake: make,
-          queryModel: model,
-          rowYear: n(raw.vehicle_year),
-          rowMake: norm(raw.vehicle_make),
-          rowModel: norm(raw.vehicle_model),
-        });
-
-      if (score < 18) continue;
-
-      suggestions.push({
-        source: "menu_item",
-        id: s(raw.id),
-        label: s(raw.name) || s(raw.description) || s(raw.complaint) || "Matched repair",
-        score,
-        laborHours: n(raw.labor_hours) ?? n(raw.base_labor_hours),
-        parts: [],
-        complaint: s(raw.complaint) || null,
-        correction: s(raw.correction) || null,
-        menuItemId: s(raw.id),
-      });
-    }
-
-    // 2) learned repair templates
-    const { data: templateRows, error: templateError } = await supabase
-      .from("learned_job_templates")
-      .select([
-        "id",
-        "label",
-        "job_category",
-        "default_labor_hours",
-        "default_parts",
-        "usage_count",
-        "confidence_score",
-        "tags",
-      ].join(","))
-      .eq("shop_id", shopId)
-      .limit(150);
-
-    if (!templateError) {
-      for (const raw of templateRows ?? []) {
-        if (!isRecord(raw)) continue;
-
+    const ranked = ((rows ?? []) as MenuRepairMatchRow[])
+      .map((row) => {
         const haystack = [
-          s(raw.label),
-          s(raw.job_category),
-          ...(Array.isArray(raw.tags) ? raw.tags.map((v) => s(v)) : []),
-        ].join(" ").trim();
+          txt(row.name),
+          txt(row.complaint),
+          txt(row.correction),
+        ]
+          .filter(Boolean)
+          .join(" ");
 
-        const score =
-          scoreText(tokens, haystack) +
-          Math.min(20, Math.round((n(raw.usage_count) ?? 0) * 2)) +
-          Math.round((n(raw.confidence_score) ?? 0) * 10);
+        let score = overlapScore(queryText, haystack);
 
-        if (score < 16) continue;
+        if (make && txt(row.vehicle_make) === make) score += 18;
+        if (model && txt(row.vehicle_model) === model) score += 18;
+        if (year && row.vehicle_year === year) score += 12;
+        if (engine && txt(row.engine) === engine) score += 8;
+        if (drivetrain && txt(row.drivetrain) === drivetrain) score += 7;
+        if (transmission && txt(row.transmission) === transmission) score += 7;
 
-        suggestions.push({
-          source: "learned_template",
-          id: s(raw.id),
-          label: s(raw.label) || s(raw.job_category) || "Learned repair",
-          score,
-          laborHours: n(raw.default_labor_hours),
-          parts: parseParts(raw.default_parts),
-          complaint: null,
-          correction: null,
-        });
-      }
+        const usageBoost =
+          typeof row.usage_count === "number" && row.usage_count > 1
+            ? Math.min(row.usage_count, 10)
+            : 0;
+
+        score += usageBoost;
+
+        return { row, score };
+      })
+      .filter((entry) => entry.score >= 35)
+      .sort((a, b) => b.score - a.score);
+
+    if (ranked.length === 0) {
+      return NextResponse.json({ match: null });
     }
 
-    // 3) raw work order intelligence history
-    const { data: intelRows, error: intelError } = await supabase
-      .from("work_order_intelligence")
-      .select([
-        "id",
-        "complaint",
-        "symptom",
-        "cause",
-        "correction",
-        "labor_time",
-        "parts",
-        "job_category",
-        "vehicle_year",
-        "vehicle_make",
-        "vehicle_model",
-      ].join(","))
-      .eq("shop_id", shopId)
-      .limit(150);
+    const top = ranked[0].row;
+    const topScore = ranked[0].score;
 
-    if (!intelError) {
-      for (const raw of intelRows ?? []) {
-        if (!isRecord(raw)) continue;
-
-        const haystack = [
-          s(raw.complaint),
-          s(raw.symptom),
-          s(raw.cause),
-          s(raw.correction),
-          s(raw.job_category),
-        ].join(" ").trim();
-
-        const score =
-          scoreText(tokens, haystack) +
-          vehicleScore({
-            queryYear: year,
-            queryMake: make,
-            queryModel: model,
-            rowYear: n(raw.vehicle_year),
-            rowMake: norm(raw.vehicle_make),
-            rowModel: norm(raw.vehicle_model),
-          });
-
-        if (score < 16) continue;
-
-        suggestions.push({
-          source: "work_order_intelligence",
-          id: s(raw.id),
-          label: s(raw.job_category) || s(raw.complaint) || "Previous quoted repair",
-          score,
-          laborHours: n(raw.labor_time),
-          parts: parseParts(raw.parts),
-          complaint: s(raw.complaint) || s(raw.symptom) || null,
-          correction: s(raw.correction) || s(raw.cause) || null,
-        });
-      }
-    }
-
-    const ranked = suggestions
-      .filter((x) => x.id && x.label)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
+    const confidence =
+      topScore >= 95 ? 0.95 :
+      topScore >= 75 ? 0.82 :
+      topScore >= 55 ? 0.67 :
+      0.45;
 
     return NextResponse.json({
-      ok: true,
-      match: ranked[0] ?? null,
-      suggestions: ranked,
+      match: {
+        id: String(top.id),
+        label: top.name ?? top.complaint ?? "Matched repair",
+        complaint: top.complaint ?? null,
+        correction: top.correction ?? null,
+        laborHours:
+          typeof top.labor_hours === "number" ? top.labor_hours : null,
+        parts: normalizeParts(top.parts),
+        score: topScore,
+        confidence,
+        menuItemId: String(top.id),
+      },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        match: null,
+        error: error instanceof Error ? error.message : "Unexpected error",
+      },
+      { status: 500 },
+    );
   }
 }
