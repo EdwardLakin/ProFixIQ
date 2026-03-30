@@ -36,6 +36,8 @@ type SmartRepairMatch = {
   matchTier?: "high" | "medium" | "low";
   acceptedCount?: number | null;
   acceptanceRate?: number | null;
+  pricingStatus?: "fresh" | "stale" | "expired";
+  pricingValidUntil?: string | null;
 };
 
 
@@ -231,6 +233,16 @@ export function NewWorkOrderLineForm(props: {
       setLabor(String(match.laborHours));
     }
     setJobType("repair");
+  }
+
+  function pricingBadgeClass(status: SmartRepairMatch["pricingStatus"]): string {
+    if (status === "fresh") {
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
+    }
+    if (status === "stale") {
+      return "border-amber-500/40 bg-amber-500/10 text-amber-200";
+    }
+    return "border-red-500/40 bg-red-500/10 text-red-200";
   }
 
   async function addLine() {
@@ -527,6 +539,56 @@ export function NewWorkOrderLineForm(props: {
           </select>
         </div>
       </div>
+
+      {smartMatch && (
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 px-3 py-3 text-xs text-neutral-200">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-neutral-100">
+              Smart repair match:
+            </span>
+            <span>{smartMatch.label}</span>
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${pricingBadgeClass(
+                smartMatch.pricingStatus,
+              )}`}
+            >
+              {smartMatch.pricingStatus ?? "expired"}
+            </span>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-neutral-400">
+            <span>
+              Confidence:{" "}
+              {typeof smartMatch.confidence === "number"
+                ? smartMatch.confidence.toFixed(2)
+                : "—"}
+            </span>
+            <span>
+              Accepted: {typeof smartMatch.acceptedCount === "number" ? smartMatch.acceptedCount : 0}
+            </span>
+            <span>
+              Win rate:{" "}
+              {typeof smartMatch.acceptanceRate === "number"
+                ? `${Math.round(smartMatch.acceptanceRate * 100)}%`
+                : "—"}
+            </span>
+          </div>
+
+          <div className="mt-2 text-[11px] text-neutral-400">
+            Pricing valid until: {smartMatch.pricingValidUntil ?? "No active pricing snapshot"}
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => applySmartMatch(smartMatch)}
+              className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-200"
+            >
+              Use smart match
+            </button>
+          </div>
+        </div>
+      )}
 
       {err && (
         <div className="rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs text-red-200">
