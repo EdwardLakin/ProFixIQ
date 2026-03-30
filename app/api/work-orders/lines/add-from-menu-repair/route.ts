@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { getActiveMenuRepairPricingSnapshot } from "@/features/parts/server/getActiveMenuRepairPricingSnapshot";
 
 type DB = Database;
 
@@ -74,6 +75,30 @@ export async function POST(req: Request) {
         ? body.laborHours
         : null;
 
+    const activeSnapshot = await getActiveMenuRepairPricingSnapshot({
+      supabase,
+      menuRepairItemId: repairItem.id,
+    });
+
+    const activePrice =
+      activeSnapshot?.pricingStatus !== "expired"
+        ? activeSnapshot?.totalSell ?? null
+        : null;
+
+    const pricingStatus = activeSnapshot?.pricingStatus ?? "expired";
+    const pricingNotes = [
+      notes,
+      activeSnapshot?.supplierName
+        ? `Pricing supplier: ${activeSnapshot.supplierName}`
+        : null,
+      activeSnapshot?.validUntil
+        ? `Pricing valid until: ${activeSnapshot.validUntil}`
+        : null,
+      `Pricing status: ${pricingStatus}`,
+    ]
+      .filter(Boolean)
+      .join(" • ");
+
     const insertRow: DB["public"]["Tables"]["work_order_lines"]["Insert"] = {
       work_order_id: workOrderId,
       shop_id: repairItem.shop_id,
@@ -81,9 +106,9 @@ export async function POST(req: Request) {
       complaint: notes || repairItem.complaint || null,
       cause: repairItem.cause || null,
       correction: repairItem.correction || null,
-      notes,
+      notes: pricingNotes || null,
       labor_time: laborOverride ?? repairItem.labor_hours ?? null,
-      price_estimate: repairItem.price_estimate ?? null,
+      price_estimate: activePrice ?? repairItem.price_estimate ?? null,
       job_type: "repair",
       approval_state: "pending",
       status: "awaiting_approval",
@@ -102,6 +127,9 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       workOrderLineId: created?.id ?? null,
+      pricingStatus,
+      activePricingSnapshotId: activeSnapshot?.snapshotId ?? null,
+      validUntil: activeSnapshot?.validUntil ?? null,
     });
   } catch (error) {
     return NextResponse.json(
