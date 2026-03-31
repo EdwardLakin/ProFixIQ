@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
 
 type DB = Database;
 
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   // 4) Ensure the line belongs to this work order
   const { data: line, error: lineErr } = await supabase
     .from("work_order_lines")
-    .select("id, work_order_id")
+    .select("id, work_order_id, price_estimate, labor_time, status, approval_state")
     .eq("id", lineId)
     .eq("work_order_id", workOrderId)
     .maybeSingle();
@@ -102,11 +103,68 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         ? { approval_state: "declined" as const, status: "declined" as const }
         : { approval_state: null, status: "awaiting_approval" as const };
 
-  const { error: updErr } = await supabase.from("work_order_lines").update(patch).eq("id", lineId);
+  const beforeLine = line
+    ? {
+        id: String(line.id),
+        price_estimate:
+          typeof (line as { price_estimate?: unknown }).price_estimate === "number"
+            ? ((line as { price_estimate: number }).price_estimate)
+            : null,
+        labor_time:
+          typeof (line as { labor_time?: unknown }).labor_time === "number"
+            ? ((line as { labor_time: number }).labor_time)
+            : null,
+        status:
+          typeof (line as { status?: unknown }).status === "string"
+            ? ((line as { status: string }).status)
+            : null,
+        approval_state:
+          typeof (line as { approval_state?: unknown }).approval_state === "string"
+            ? ((line as { approval_state: string }).approval_state)
+            : null,
+      }
+    : null;
+
+  const { data: afterLine, error: updErr } = await supabase
+    .from("work_order_lines")
+    .update(patch)
+    .eq("id", lineId)
+    .select("id, price_estimate, labor_time, status, approval_state")
+    .maybeSingle();
 
   if (updErr) {
     return NextResponse.json({ ok: false, error: updErr.message }, { status: 500 });
   }
+
+  await maybeRefreshPricingSnapshotForLine({
+    supabase,
+    userId: user.id,
+    before: beforeLine,
+    after: afterLine
+      ? {
+          id: String(afterLine.id),
+          price_estimate:
+            typeof (afterLine as { price_estimate?: unknown }).price_estimate === "number"
+              ? ((afterLine as { price_estimate: number }).price_estimate)
+              : null,
+          labor_time:
+            typeof (afterLine as { labor_time?: unknown }).labor_time === "number"
+              ? ((afterLine as { labor_time: number }).labor_time)
+              : null,
+          status:
+            typeof (afterLine as { status?: unknown }).status === "string"
+              ? ((afterLine as { status: string }).status)
+              : null,
+          approval_state:
+            typeof (afterLine as { approval_state?: unknown }).approval_state === "string"
+              ? ((afterLine as { approval_state: string }).approval_state)
+              : null,
+        }
+      : null,
+    pricingValidDays: 30,
+    quoteSource: "portal_line_decision",
+    quoteReference: lineId,
+  });
 
   return NextResponse.json({ ok: true });
 }

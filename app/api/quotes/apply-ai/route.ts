@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { recordQuoteTraining } from "@/features/integrations/ai";
+import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
 
 type DB = Database;
 
@@ -57,16 +58,43 @@ function getSupabaseEnv(): { url: string; key: string } | null {
 async function resolveShopAndPrimaryLocationId(
   sb: SupabaseClient<DB>,
   workOrderLineId: string,
-): Promise<{ shopId: string; locationId: string } | null> {
+): Promise<{ shopId: string; locationId: string; beforeLine: {
+  id: string;
+  price_estimate: number | null;
+  labor_time: number | null;
+  status: string | null;
+  approval_state: string | null;
+} | null } | null> {
   const { data: line, error: lineErr } = await sb
     .from("work_order_lines")
-    .select("shop_id")
+    .select("id, shop_id, price_estimate, labor_time, status, approval_state")
     .eq("id", workOrderLineId)
     .maybeSingle();
 
   if (lineErr) return null;
 
   const shopId = typeof line?.shop_id === "string" ? line.shop_id : null;
+  const beforeLine = line
+    ? {
+        id: String(line.id),
+        price_estimate:
+          typeof (line as { price_estimate?: unknown }).price_estimate === "number"
+            ? ((line as { price_estimate: number }).price_estimate)
+            : null,
+        labor_time:
+          typeof (line as { labor_time?: unknown }).labor_time === "number"
+            ? ((line as { labor_time: number }).labor_time)
+            : null,
+        status:
+          typeof (line as { status?: unknown }).status === "string"
+            ? ((line as { status: string }).status)
+            : null,
+        approval_state:
+          typeof (line as { approval_state?: unknown }).approval_state === "string"
+            ? ((line as { approval_state: string }).approval_state)
+            : null,
+      }
+    : null;
   if (!shopId) return null;
 
   const { data: locs, error: locErr } = await sb
@@ -81,7 +109,7 @@ async function resolveShopAndPrimaryLocationId(
   const locationId = typeof locs?.[0]?.id === "string" ? locs[0].id : null;
   if (!locationId) return null;
 
-  return { shopId, locationId };
+  return { shopId, locationId, beforeLine };
 }
 
 /* ---------------------------------- Route ---------------------------------- */
@@ -171,10 +199,12 @@ export async function POST(req: Request) {
     }
 
     // Mark as "quoted" flow started (keep workflow status; set approval_state)
-    const { error: updateErr } = await sb
+    const { data: afterLine, error: updateErr } = await sb
       .from("work_order_lines")
       .update({ approval_state: "pending" })
-      .eq("id", workOrderLineId);
+      .eq("id", workOrderLineId)
+      .select("id, price_estimate, labor_time, status, approval_state")
+      .maybeSingle();
 
     if (updateErr) {
       return NextResponse.json(
@@ -213,6 +243,36 @@ export async function POST(req: Request) {
       // eslint-disable-next-line no-console
       console.warn("AI training for apply-ai quote failed:", trainErr);
     }
+
+    await maybeRefreshPricingSnapshotForLine({
+      supabase: sb,
+      userId: "system_apply_ai",
+      before: resolved.beforeLine ?? null,
+      after: afterLine
+        ? {
+            id: String(afterLine.id),
+            price_estimate:
+              typeof (afterLine as { price_estimate?: unknown }).price_estimate === "number"
+                ? ((afterLine as { price_estimate: number }).price_estimate)
+                : null,
+            labor_time:
+              typeof (afterLine as { labor_time?: unknown }).labor_time === "number"
+                ? ((afterLine as { labor_time: number }).labor_time)
+                : null,
+            status:
+              typeof (afterLine as { status?: unknown }).status === "string"
+                ? ((afterLine as { status: string }).status)
+                : null,
+            approval_state:
+              typeof (afterLine as { approval_state?: unknown }).approval_state === "string"
+                ? ((afterLine as { approval_state: string }).approval_state)
+                : null,
+          }
+        : null,
+      pricingValidDays: 30,
+      quoteSource: "quote_apply_ai",
+      quoteReference: workOrderLineId,
+    });
 
     return NextResponse.json({ ok: true, unmatched });
   } catch (e: unknown) {
