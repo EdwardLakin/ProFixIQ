@@ -16268,7 +16268,6 @@ export type Database = {
       create_work_order_with_custom_id:
         | {
             Args: {
-              p_advisor_id?: string
               p_customer_id: string
               p_is_waiter?: boolean
               p_notes?: string
@@ -16351,10 +16350,11 @@ export type Database = {
           }
         | {
             Args: {
+              p_advisor_id?: string
               p_customer_id: string
-              p_is_waiter: boolean
-              p_notes: string
-              p_priority: number
+              p_is_waiter?: boolean
+              p_notes?: string
+              p_priority?: number
               p_shop_id: string
               p_vehicle_id: string
             }
