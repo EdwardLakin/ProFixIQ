@@ -10,6 +10,7 @@ import type {
 } from "@inspections/lib/inspection/types";
 import InspectionItemCard from "./InspectionItemCard";
 import { Button } from "@shared/components/ui/Button";
+import { pricingStatusClass, pricingStatusText } from "@/features/menu-repair-items/lib/pricingStatus";
 
 interface SectionDisplayProps {
   title: string;
@@ -168,6 +169,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     requireNoteForAI,
     onSubmitAI,
     isSubmittingAI,
+    smartMatchByKey,
+    smartMatchLoadingByKey,
+    onAcceptSmartMatch,
+    onDismissSmartMatch,
     onUpdateParts,
     onUpdateLaborHours,
     isCollapsed,
@@ -458,6 +463,93 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         onUpload={onUpload}
                         variant="row"
                       />
+
+                      {(() => {
+                        const smartKey = `${sectionIndex}:${itemIndex}`;
+                        const match = smartMatchByKey?.[smartKey] ?? null;
+                        const loadingMatch = smartMatchLoadingByKey?.[smartKey] ?? false;
+
+                        if (!isFailOrRec) return null;
+                        if (loadingMatch) {
+                          return (
+                            <div className="mt-2 rounded-lg border border-sky-500/20 bg-sky-950/20 px-3 py-2 text-[11px] text-sky-200">
+                              Checking smart repair match...
+                            </div>
+                          );
+                        }
+
+                        if (!match) return null;
+
+                        const canAutoAdd = match.pricingStatus === "fresh";
+                        const statusText = pricingStatusText(match.pricingStatus);
+                        const actionText =
+                          match.pricingStatus === "fresh"
+                            ? "Auto-add eligible"
+                            : match.pricingStatus === "stale"
+                              ? "Review recommended"
+                              : "Auto-add blocked";
+
+                        return (
+                          <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="text-[12px] font-semibold text-neutral-100">
+                                  Suggested repair: {match.label}
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  <span
+                                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${pricingStatusClass(
+                                      match.pricingStatus,
+                                    )}`}
+                                  >
+                                    {statusText}
+                                  </span>
+                                  <span className="text-[10px] text-neutral-400">
+                                    {actionText}
+                                  </span>
+                                  {match.pricingValidUntil ? (
+                                    <span className="text-[10px] text-neutral-500">
+                                      Valid until {new Date(match.pricingValidUntil).toLocaleDateString()}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {match.correction ? (
+                                  <div className="mt-2 text-[11px] text-neutral-300">
+                                    {match.correction}
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-white/15 bg-black/30 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-white/5"
+                                  onClick={() => onDismissSmartMatch?.(sectionIndex, itemIndex)}
+                                >
+                                  Dismiss
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!canAutoAdd}
+                                  className={[
+                                    "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
+                                    canAutoAdd
+                                      ? "border border-emerald-500/40 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-900/30"
+                                      : "cursor-not-allowed border border-red-500/20 bg-red-950/20 text-red-200/70",
+                                  ].join(" ")}
+                                  onClick={() => {
+                                    if (canAutoAdd) {
+                                      onAcceptSmartMatch?.(sectionIndex, itemIndex);
+                                    }
+                                  }}
+                                >
+                                  {canAutoAdd ? "Add matched repair" : "Pricing review required"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Parts + Labor UI (manual entry) */}
                       {(() => {
