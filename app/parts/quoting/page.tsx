@@ -11,6 +11,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
+import { pricingStatusClass, pricingStatusText } from "@/features/menu-repair-items/lib/pricingStatus";
 
 const PartsDrawer = dynamic(() => import("@/features/parts/components/PartsDrawer"), {
   ssr: false,
@@ -26,6 +27,9 @@ type QueueRow = WorkOrderLine & {
   work_order: WorkOrder | null;
   vehicle: Vehicle | null;
   customer: Customer | null;
+  pricing_status?: "fresh" | "stale" | "expired";
+  pricing_valid_until?: string | null;
+  menu_repair_item_id?: string | null;
 };
 
 type MenuUpsertResponse = {
@@ -92,6 +96,17 @@ function tryParseJson<T>(raw: string): T | null {
   } catch {
     return null;
   }
+}
+
+
+function computePricingStatus(validUntil: string | null | undefined): "fresh" | "stale" | "expired" {
+  if (!validUntil) return "expired";
+  const ts = new Date(validUntil).getTime();
+  if (!Number.isFinite(ts)) return "expired";
+  const now = Date.now();
+  if (ts < now) return "expired";
+  if (ts < now + 3 * 24 * 60 * 60 * 1000) return "stale";
+  return "fresh";
 }
 
 export default function QuotingQueuePage(): JSX.Element {
@@ -183,11 +198,58 @@ export default function QuotingQueuePage(): JSX.Element {
       const cById = new Map<string, Customer>();
       (custRes.data ?? []).forEach((c) => cById.set((c as Customer).id, c as Customer));
 
+      const menuRepairIds = [
+        ...new Set(
+          wol
+            .map((l) => {
+              const raw = (l as WorkOrderLine & { menu_repair_item_id?: string | null }).menu_repair_item_id;
+              return typeof raw === "string" && raw ? raw : null;
+            })
+            .filter(Boolean) as string[],
+        ),
+      ];
+
+      const pricingByMenuRepairId = new Map<string, { valid_until: string | null }>();
+
+      if (menuRepairIds.length > 0) {
+        const { data: pricingRows } = await supabase
+          .from("menu_repair_item_pricing_snapshots")
+          .select("menu_repair_item_id, valid_until, status")
+          .in("menu_repair_item_id", menuRepairIds)
+          .eq("status", "fresh");
+
+        (pricingRows ?? []).forEach((row) => {
+          const id =
+            typeof row.menu_repair_item_id === "string" ? row.menu_repair_item_id : null;
+          if (!id || pricingByMenuRepairId.has(id)) return;
+          pricingByMenuRepairId.set(id, {
+            valid_until: typeof row.valid_until === "string" ? row.valid_until : null,
+          });
+        });
+      }
+
       const out: QueueRow[] = wol.map((l) => {
         const wo = l.work_order_id ? woById.get(l.work_order_id) ?? null : null;
         const vehicle = wo?.vehicle_id ? vById.get(wo.vehicle_id) ?? null : null;
         const customer = wo?.customer_id ? cById.get(wo.customer_id) ?? null : null;
-        return { ...l, work_order: wo, vehicle, customer };
+
+        const menuRepairItemId =
+          typeof (l as WorkOrderLine & { menu_repair_item_id?: string | null }).menu_repair_item_id === "string"
+            ? ((l as WorkOrderLine & { menu_repair_item_id?: string | null }).menu_repair_item_id ?? null)
+            : null;
+
+        const pricing = menuRepairItemId ? pricingByMenuRepairId.get(menuRepairItemId) : null;
+        const pricingValidUntil = pricing?.valid_until ?? null;
+
+        return {
+          ...l,
+          work_order: wo,
+          vehicle,
+          customer,
+          menu_repair_item_id: menuRepairItemId,
+          pricing_valid_until: pricingValidUntil,
+          pricing_status: computePricingStatus(pricingValidUntil),
+        };
       });
 
       setRows(out);
@@ -549,6 +611,22 @@ export default function QuotingQueuePage(): JSX.Element {
               <div>
                 <div className={SMALL}>Description</div>
                 <div className="font-semibold text-white">{selected.description ?? "—"}</div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${pricingStatusClass(
+                      selected.pricing_status,
+                    )}`}
+                  >
+                    {pricingStatusText(selected.pricing_status)}
+                  </span>
+
+                  {selected.pricing_valid_until ? (
+                    <span className="text-[10px] text-neutral-500">
+                      Valid until {format(new Date(selected.pricing_valid_until), "MMM d, yyyy")}
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               <div>
