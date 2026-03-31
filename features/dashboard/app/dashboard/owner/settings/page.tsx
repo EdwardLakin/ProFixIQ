@@ -1,7 +1,10 @@
+//features/dashboard/app/dashboard/owner/settings/page.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 
@@ -221,6 +224,11 @@ export default function OwnerSettingsPage() {
   const [autoGeneratePdf, setAutoGeneratePdf] = useState(false);
   const [autoSendQuoteEmail, setAutoSendQuoteEmail] = useState(false);
 
+  // Pricing validity
+  const [pricingValidDays, setPricingValidDays] = useState<number>(30);
+  const [pricingValidDaysLoading, setPricingValidDaysLoading] = useState(false);
+  const [pricingValidDaysSaving, setPricingValidDaysSaving] = useState(false);
+
   // Hours + time off
   const [hours, setHours] = useState<HourRow[]>(
     Array.from({ length: 7 }, (_, i) => ({
@@ -404,6 +412,24 @@ try {
     setTrialEndIso((billing?.stripe_trial_end as string | null) ?? null);
     setPeriodEndIso((billing?.stripe_current_period_end as string | null) ?? null);
 
+    // pricing validity days
+    try {
+      setPricingValidDaysLoading(true);
+      const pricingRes = await fetch("/api/settings/pricing-valid-days", {
+        cache: "no-store",
+      });
+      if (pricingRes.ok) {
+        const pricingJson = (await pricingRes.json()) as { ok?: boolean; days?: number };
+        if (pricingJson?.ok && typeof pricingJson.days === "number") {
+          setPricingValidDays(pricingJson.days);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPricingValidDaysLoading(false);
+    }
+
     // Organization + Locations
     const resolvedOrgId =
       (shop?.organization_id as string | null) ?? profile.organization_id ?? null;
@@ -550,6 +576,33 @@ try {
 
   const handleGenerateLogo = () => {
     toast.info("AI Logo generation coming soon…");
+  };
+
+  const savePricingValidDays = async () => {
+    if (!guardUnlock()) return;
+
+    setPricingValidDaysSaving(true);
+    try {
+      const res = await fetch("/api/settings/pricing-valid-days", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: pricingValidDays }),
+      });
+
+      const j = await res.json().catch(() => ({} as { ok?: boolean; days?: number; error?: string }));
+      if (!res.ok || !j?.ok) {
+        toast.error(j?.error || "Failed to save pricing validity window");
+        return;
+      }
+
+      if (typeof j.days === "number") {
+        setPricingValidDays(j.days);
+      }
+
+      toast.success("Pricing validity window updated.");
+    } finally {
+      setPricingValidDaysSaving(false);
+    }
   };
 
   const saveHours = async () => {
@@ -1106,9 +1159,12 @@ try {
               </Button>
 
               {logoUrl && (
-                <img
+                <Image
                   src={logoUrl}
                   alt="Logo"
+                  width={128}
+                  height={80}
+                  unoptimized
                   className="mt-2 h-20 w-32 rounded bg-white p-1 object-contain"
                 />
               )}
@@ -1143,6 +1199,76 @@ try {
                   placeholder={taxLabel}
                   disabled={!isUnlocked}
                 />
+              </div>
+            </section>
+
+            <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-neutral-50">Pricing validity</h2>
+                  <p className="text-[11px] text-neutral-400">
+                    Controls how many days menu repair pricing stays fresh before it becomes stale or expired.
+                  </p>
+                </div>
+                <Button
+                  onClick={savePricingValidDays}
+                  disabled={!isUnlocked || pricingValidDaysLoading || pricingValidDaysSaving}
+                  size="sm"
+                >
+                  {pricingValidDaysSaving ? "Saving..." : "Save pricing"}
+                </Button>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[160px_1fr] text-sm">
+                <Input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={String(pricingValidDays)}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setPricingValidDays(Number.isFinite(next) ? next : 30);
+                  }}
+                  disabled={!isUnlocked || pricingValidDaysLoading || pricingValidDaysSaving}
+                />
+                <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-[11px] text-neutral-400">
+                  Default is 30 days. Allowed range is 1 to 90 days. Fresh pricing can auto-flow faster; stale or expired pricing requires more review.
+                </div>
+              </div>
+            </section>
+
+            <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-neutral-50">Pricing validity</h2>
+                  <p className="text-[11px] text-neutral-400">
+                    Controls how many days menu repair pricing stays fresh before it becomes stale or expired.
+                  </p>
+                </div>
+                <Button
+                  onClick={savePricingValidDays}
+                  disabled={!isUnlocked || pricingValidDaysLoading || pricingValidDaysSaving}
+                  size="sm"
+                >
+                  {pricingValidDaysSaving ? "Saving..." : "Save pricing"}
+                </Button>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[160px_1fr] text-sm">
+                <Input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={String(pricingValidDays)}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setPricingValidDays(Number.isFinite(next) ? next : 30);
+                  }}
+                  disabled={!isUnlocked || pricingValidDaysLoading || pricingValidDaysSaving}
+                />
+                <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-[11px] text-neutral-400">
+                  Default is 30 days. Allowed range is 1 to 90 days. Fresh pricing can auto-flow faster; stale or expired pricing requires more review.
+                </div>
               </div>
             </section>
 
@@ -1372,7 +1498,14 @@ try {
             <h2 className="text-sm font-semibold text-neutral-50">Invoice preview</h2>
             <div className="space-y-2 rounded bg-white p-3 text-xs text-black shadow">
               {logoUrl && (
-                <img src={logoUrl} alt="Logo" className="h-12 object-contain" />
+                <Image
+                  src={logoUrl}
+                  alt="Logo"
+                  width={160}
+                  height={48}
+                  unoptimized
+                  className="h-12 object-contain"
+                />
               )}
               <div className="font-semibold">{shopName || "Your shop name"}</div>
               <div>
