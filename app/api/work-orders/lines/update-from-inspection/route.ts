@@ -7,6 +7,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { maybeRefreshPricingSnapshotForLine } from "@/features/work-orders/server/maybeRefreshPricingSnapshotForLine";
 
 type DB = Database;
 
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
     // Ensure line exists + belongs to WO (prevents cross-WO updates)
     const { data: line, error: loadErr } = await supabase
       .from("work_order_lines")
-      .select("id, work_order_id, status, approval_state, punchable")
+      .select("id, work_order_id, status, approval_state, punchable, price_estimate, labor_time")
       .eq("id", workOrderLineId)
       .maybeSingle();
 
@@ -124,10 +125,12 @@ export async function POST(req: Request) {
     update.approval_state = "pending";
     update.punchable = false;
 
-    const { error: updErr } = await supabase
+    const { data: afterLine, error: updErr } = await supabase
       .from("work_order_lines")
       .update(update)
-      .eq("id", workOrderLineId);
+      .eq("id", workOrderLineId)
+      .select("id, price_estimate, labor_time, status, approval_state")
+      .maybeSingle();
 
     if (updErr) {
       const e = updErr as PostgrestError;
@@ -136,6 +139,56 @@ export async function POST(req: Request) {
         { status: 500 },
       );
     }
+
+    await maybeRefreshPricingSnapshotForLine({
+      supabase,
+      userId: "system_inspection_update",
+      before: line
+        ? {
+            id: String(line.id),
+            price_estimate:
+              typeof (line as { price_estimate?: unknown }).price_estimate === "number"
+                ? ((line as { price_estimate: number }).price_estimate)
+                : null,
+            labor_time:
+              typeof (line as { labor_time?: unknown }).labor_time === "number"
+                ? ((line as { labor_time: number }).labor_time)
+                : null,
+            status:
+              typeof (line as { status?: unknown }).status === "string"
+                ? ((line as { status: string }).status)
+                : null,
+            approval_state:
+              typeof (line as { approval_state?: unknown }).approval_state === "string"
+                ? ((line as { approval_state: string }).approval_state)
+                : null,
+          }
+        : null,
+      after: afterLine
+        ? {
+            id: String(afterLine.id),
+            price_estimate:
+              typeof (afterLine as { price_estimate?: unknown }).price_estimate === "number"
+                ? ((afterLine as { price_estimate: number }).price_estimate)
+                : null,
+            labor_time:
+              typeof (afterLine as { labor_time?: unknown }).labor_time === "number"
+                ? ((afterLine as { labor_time: number }).labor_time)
+                : null,
+            status:
+              typeof (afterLine as { status?: unknown }).status === "string"
+                ? ((afterLine as { status: string }).status)
+                : null,
+            approval_state:
+              typeof (afterLine as { approval_state?: unknown }).approval_state === "string"
+                ? ((afterLine as { approval_state: string }).approval_state)
+                : null,
+          }
+        : null,
+      pricingValidDays: 30,
+      quoteSource: "inspection_update",
+      quoteReference: workOrderLineId,
+    });
 
     return NextResponse.json({ ok: true, updated: true });
   } catch (e: unknown) {
