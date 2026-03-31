@@ -185,7 +185,6 @@ export async function POST(req: Request) {
                 : null,
           }
         : null,
-      pricingValidDays: 30,
       quoteSource: "inspection_update",
       quoteReference: workOrderLineId,
     });

@@ -161,7 +161,6 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
               : null,
         }
       : null,
-    pricingValidDays: 30,
     quoteSource: "portal_line_decision",
     quoteReference: lineId,
   });
