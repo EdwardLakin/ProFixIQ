@@ -816,11 +816,18 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    const lineId = getEffectiveWorkOrderLineId(target.req, target.items);
-    if (!lineId || !isUuid(lineId)) {
-      toast.error("Missing or invalid work order line id (must be a UUID).");
-      return;
-    }
+    let lineId = getEffectiveWorkOrderLineId(target.req, target.items);
+
+// 🔥 Fallback: auto-pick first available line
+if ((!lineId || !isUuid(lineId)) && lineById.size > 0) {
+  lineId = Array.from(lineById.keys())[0];
+}
+
+// Still block if truly nothing exists
+if (!lineId || !isUuid(lineId)) {
+  toast.error("No work order line available to attach this part.");
+  return;
+}
 
     const locId = defaultLocationId || "";
 
@@ -1118,7 +1125,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                           <button
                             className={btnGhost}
                             onClick={() => void addRow(r.req.id)}
-                            disabled={busy || !hasValidLineId}
+                            disabled={busy}
                             title={!hasValidLineId ? "Missing work order line link" : undefined}
                             type="button"
                           >
@@ -1458,7 +1465,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           onClick={() =>
                                             void addAndAttach(r.req.id, String(it.id))
                                           }
-                                          disabled={rowBusy || !hasValidLineId || !it.ui_part_id}
+                                          disabled={rowBusy || !it.ui_part_id}
                                           title={!hasValidLineId ? "Missing work order line link" : undefined}
                                           type="button"
                                         >
