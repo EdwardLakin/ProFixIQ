@@ -110,9 +110,10 @@ function resolveWorkOrderLineId(
 }
 
 function isRowComplete(it: UiItem): boolean {
-  const hasPart = isNonEmptyString(it.part_id ?? it.ui_part_id ?? null);
-  const hasPrice = it.quoted_price != null || it.ui_price != null;
-  const qty = toNum(it.qty ?? it.ui_qty, 0);
+  // ONLY persisted values count
+  const hasPart = isNonEmptyString(it.part_id ?? null);
+  const hasPrice = it.quoted_price != null;
+  const qty = toNum(it.qty, 0);
   return hasPart && hasPrice && qty > 0;
 }
 
@@ -1228,10 +1229,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                                 : (p?.name ??
                                                     it.description ??
                                                     "").trim(),
-                                              ui_price:
-                                                p?.price == null
-                                                  ? undefined
-                                                  : toNum(p.price, 0),
+                                              ui_price: it.ui_price ?? (p?.price == null ? undefined : toNum(p.price, 0)),
                                             });
                                           }}
                                           disabled={rowBusy}
@@ -1460,7 +1458,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           onClick={() =>
                                             void addAndAttach(r.req.id, String(it.id))
                                           }
-                                          disabled={rowBusy || !hasValidLineId}
+                                          disabled={rowBusy || !hasValidLineId || !it.ui_part_id}
                                           title={!hasValidLineId ? "Missing work order line link" : undefined}
                                           type="button"
                                         >
