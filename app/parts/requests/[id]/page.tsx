@@ -116,14 +116,20 @@ function isRowComplete(it: UiItem): boolean {
   return hasPart && hasPrice && qty > 0;
 }
 
+function isPersistedRowComplete(it: UiItem): boolean {
+  const hasPart = isNonEmptyString(it.part_id ?? null);
+  const hasPrice = it.quoted_price != null;
+  const qty = toNum(it.qty, 0);
+  return hasPart && hasPrice && qty > 0;
+}
+
 function computeRequestBadge(
   req: RequestRow,
   items: UiItem[],
 ): "needs_quote" | "quoted" {
   const status = (req.status ?? "requested").toLowerCase();
-  if (status === "quoted" || status === "approved" || status === "fulfilled")
-    return "quoted";
-  const allDone = items.length > 0 && items.every((it) => isRowComplete(it));
+  if (status === "approved" || status === "fulfilled") return "quoted";
+  const allDone = items.length > 0 && items.every((it) => isPersistedRowComplete(it));
   return allDone ? "quoted" : "needs_quote";
 }
 
@@ -233,6 +239,19 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
     return m;
   }, [pos, supplierNameById]);
+
+
+  function getEffectiveWorkOrderLineId(req: RequestRow, items: UiItem[]): string | null {
+    const linked = resolveWorkOrderLineId(req, items);
+    if (linked && isUuid(linked)) return linked;
+
+    if (lineById.size === 1) {
+      const only = Array.from(lineById.keys())[0];
+      return isUuid(only) ? only : null;
+    }
+
+    return null;
+  }
 
   async function resolveWorkOrder(
     idOrCustom: string,
@@ -357,33 +376,22 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     setRequests(uiRequests);
 
-    // ✅ Load job complaint/description for each request's line (for UI + prefills)
+    // ✅ Load all line complaint/description for this work order (used for UI + fallback linking)
     {
-      const lineIds = new Set<string>();
+      const { data: lines, error: lErr } = await supabase
+        .from("work_order_lines")
+        .select("id, complaint, description")
+        .eq("work_order_id", woRow.id);
 
-      for (const r of uiRequests) {
-        const id = resolveWorkOrderLineId(r.req, r.items);
-        if (id && isUuid(id)) lineIds.add(id);
-      }
-
-      if (lineIds.size > 0) {
-        const { data: lines, error: lErr } = await supabase
-          .from("work_order_lines")
-          .select("id, complaint, description")
-          .in("id", Array.from(lineIds));
-
-        if (lErr) {
-          toast.warning(lErr.message);
-          setLineById(new Map());
-        } else {
-          const m = new Map<string, LineLite>();
-          for (const l of (lines ?? []) as LineLite[]) {
-            m.set(String(l.id), l);
-          }
-          setLineById(m);
-        }
-      } else {
+      if (lErr) {
+        toast.warning(lErr.message);
         setLineById(new Map());
+      } else {
+        const m = new Map<string, LineLite>();
+        for (const l of (lines ?? []) as LineLite[]) {
+          m.set(String(l.id), l);
+        }
+        setLineById(m);
       }
     }
 
@@ -486,7 +494,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const target = requests.find((r) => r.req.id === reqId);
     if (!target) return;
 
-    const resolvedLineId = resolveWorkOrderLineId(target.req, target.items);
+    const resolvedLineId = getEffectiveWorkOrderLineId(target.req, target.items);
     if (!resolvedLineId || !isUuid(resolvedLineId)) {
       toast.error("This parts request is not attached to a valid work order line yet.");
       return;
@@ -494,7 +502,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     setSavingReqId(reqId);
     try {
-      const lineId = resolveWorkOrderLineId(target.req, target.items);
+      const lineId = getEffectiveWorkOrderLineId(target.req, target.items);
       const safeLineId = lineId && isUuid(lineId) ? lineId : null;
       const lineText =
         safeLineId ? lineLabelFrom(lineById.get(safeLineId)) : "";
@@ -807,7 +815,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    const lineId = resolveWorkOrderLineId(target.req, target.items);
+    const lineId = getEffectiveWorkOrderLineId(target.req, target.items);
     if (!lineId || !isUuid(lineId)) {
       toast.error("Missing or invalid work order line id (must be a UUID).");
       return;
@@ -1049,8 +1057,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                 const badge = computeRequestBadge(r.req, r.items);
                 const busy = savingReqId === r.req.id;
 
-                const lineId = resolveWorkOrderLineId(r.req, r.items);
+                const linkedLineId = resolveWorkOrderLineId(r.req, r.items);
+                const lineId = getEffectiveWorkOrderLineId(r.req, r.items);
                 const hasValidLineId = !!lineId && isUuid(lineId);
+                const isFallbackLinked =
+                  !linkedLineId && !!lineId && isUuid(lineId);
                 const jobText =
                   hasValidLineId
                     ? lineLabelFrom(lineById.get(lineId))
@@ -1081,6 +1092,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                             <div className="mt-1 text-xs text-neutral-500">
                               Job:{" "}
                               <span className="text-neutral-300">{jobText}</span>
+                              {isFallbackLinked ? (
+                                <span className="ml-2 text-amber-300">
+                                  (using only work order line)
+                                </span>
+                              ) : null}
                             </div>
                           ) : !hasValidLineId ? (
                             <div className="mt-1 text-xs text-amber-300">
