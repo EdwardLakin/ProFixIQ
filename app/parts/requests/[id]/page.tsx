@@ -153,6 +153,7 @@ function lineLabelFrom(line?: LineLite): string {
   return b;
 }
 
+
 export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const { id: routeId } = useParams<{ id: string }>();
   const router = useRouter();
@@ -485,16 +486,23 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const target = requests.find((r) => r.req.id === reqId);
     if (!target) return;
 
+    const resolvedLineId = resolveWorkOrderLineId(target.req, target.items);
+    if (!resolvedLineId || !isUuid(resolvedLineId)) {
+      toast.error("This parts request is not attached to a valid work order line yet.");
+      return;
+    }
+
     setSavingReqId(reqId);
     try {
       const lineId = resolveWorkOrderLineId(target.req, target.items);
+      const safeLineId = lineId && isUuid(lineId) ? lineId : null;
       const lineText =
-        lineId && isUuid(lineId) ? lineLabelFrom(lineById.get(lineId)) : "";
+        safeLineId ? lineLabelFrom(lineById.get(safeLineId)) : "";
 
       const insertPayload: DB["public"]["Tables"]["part_request_items"]["Insert"] =
         {
           request_id: target.req.id,
-          work_order_line_id: lineId,
+          work_order_line_id: safeLineId,
           description: lineText ? `(${lineText})` : "",
           qty: 1,
           quoted_price: null,
@@ -800,7 +808,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
 
     const lineId = resolveWorkOrderLineId(target.req, target.items);
-    if (!lineId) {
+    if (!lineId || !isUuid(lineId)) {
       toast.error("Missing or invalid work order line id (must be a UUID).");
       return;
     }
@@ -1042,8 +1050,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                 const busy = savingReqId === r.req.id;
 
                 const lineId = resolveWorkOrderLineId(r.req, r.items);
+                const hasValidLineId = !!lineId && isUuid(lineId);
                 const jobText =
-                  lineId && isUuid(lineId)
+                  hasValidLineId
                     ? lineLabelFrom(lineById.get(lineId))
                     : "";
 
@@ -1065,13 +1074,17 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                               ? new Date(r.req.created_at).toLocaleString()
                               : "—"}
                             <span className="mx-2 text-neutral-600">·</span>
-                            Line: {lineId ? lineId.slice(0, 8) : "—"}
+                            Line: {hasValidLineId ? lineId.slice(0, 8) : "Not linked"}
                           </div>
 
                           {jobText ? (
                             <div className="mt-1 text-xs text-neutral-500">
                               Job:{" "}
                               <span className="text-neutral-300">{jobText}</span>
+                            </div>
+                          ) : !hasValidLineId ? (
+                            <div className="mt-1 text-xs text-amber-300">
+                              This request is not linked to a valid work order line yet.
                             </div>
                           ) : null}
                         </div>
@@ -1088,7 +1101,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                           <button
                             className={btnGhost}
                             onClick={() => void addRow(r.req.id)}
-                            disabled={busy}
+                            disabled={busy || !hasValidLineId}
+                            title={!hasValidLineId ? "Missing work order line link" : undefined}
                             type="button"
                           >
                             {busy ? "Working…" : "＋ Add part row"}
@@ -1430,7 +1444,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           onClick={() =>
                                             void addAndAttach(r.req.id, String(it.id))
                                           }
-                                          disabled={rowBusy}
+                                          disabled={rowBusy || !hasValidLineId}
+                                          title={!hasValidLineId ? "Missing work order line link" : undefined}
                                           type="button"
                                         >
                                           {rowBusy ? "Saving…" : "Add"}
