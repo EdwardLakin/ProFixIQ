@@ -10666,6 +10666,7 @@ export type Database = {
           logo_url: string | null
           max_lead_days: number | null
           max_users: number | null
+          menu_repair_pricing_valid_days: number
           min_notice_minutes: number | null
           name: string | null
           organization_id: string | null
@@ -10727,6 +10728,7 @@ export type Database = {
           logo_url?: string | null
           max_lead_days?: number | null
           max_users?: number | null
+          menu_repair_pricing_valid_days?: number
           min_notice_minutes?: number | null
           name?: string | null
           organization_id?: string | null
@@ -10788,6 +10790,7 @@ export type Database = {
           logo_url?: string | null
           max_lead_days?: number | null
           max_users?: number | null
+          menu_repair_pricing_valid_days?: number
           min_notice_minutes?: number | null
           name?: string | null
           organization_id?: string | null
