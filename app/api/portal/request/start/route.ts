@@ -113,6 +113,7 @@ export async function POST(req: Request) {
       status: "awaiting_approval",
       approval_state: "pending",
       is_waiter: visitType === "waiter",
+      scheduled_at: startsAt,
       notes: (body.notes ?? "").trim() || null,
     };
 

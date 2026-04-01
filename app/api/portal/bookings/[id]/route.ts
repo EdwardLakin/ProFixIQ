@@ -144,6 +144,7 @@ export async function PATCH(req: Request): Promise<Response> {
       status: "awaiting_approval",
       approval_state: "pending",
       is_waiter: false,
+      scheduled_at: booking.starts_at,
       notes: booking.notes ?? null,
     };
 
