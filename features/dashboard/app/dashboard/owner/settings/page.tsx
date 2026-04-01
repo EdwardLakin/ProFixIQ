@@ -31,9 +31,10 @@ type HourRow = {
 
 type TimeOffRow = {
   id: string;
-  starts_at: string;
-  ends_at: string;
-  reason: string | null;
+  start_date: string;
+  end_date: string;
+  label: string | null;
+  notes?: string | null;
 };
 
 type StripeSubStatus =
@@ -1482,8 +1483,8 @@ try {
             ) : (
               <ul className="space-y-2">
                 {timeOff.map((t) => {
-                  const start = new Date(t.starts_at);
-                  const end = new Date(t.ends_at);
+                  const start = new Date(t.start_date);
+                  const end = new Date(t.end_date);
                   return (
                     <li
                       key={t.id}
@@ -1493,8 +1494,8 @@ try {
                         <div className="text-neutral-100">
                           {start.toLocaleString()} → {end.toLocaleString()}
                         </div>
-                        {t.reason && (
-                          <div className="text-xs text-neutral-400">Reason: {t.reason}</div>
+                        {t.label && (
+                          <div className="text-xs text-neutral-400">Reason: {t.label}</div>
                         )}
                       </div>
                       <Button
