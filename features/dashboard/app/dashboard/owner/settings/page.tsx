@@ -722,6 +722,27 @@ try {
     router.refresh();
   };
 
+
+;
+
+;
+
+;
+
+
+
+  const lockOwnerSettings = async () => {
+    const res = await fetch("/api/shop/owner-pin/clear", { method: "POST" });
+    const j = await res.json().catch(() => ({} as { error?: string }));
+    if (!res.ok) {
+      toast.error(j?.error || "Failed to lock owner settings");
+      return;
+    }
+    setPinExpiresAt(undefined);
+    toast.success("Owner settings locked.");
+  };
+
+
   if (loading) {
     return (
       <div className="p-6 text-muted-foreground">Loading shop settings…</div>
@@ -835,6 +856,9 @@ try {
           <OwnerPinBadge expiresAt={pinExpiresAt} />
           <Button size="sm" onClick={() => setPinModalOpen(true)}>
             {isUnlocked ? "Re-unlock" : "Unlock"}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => void lockOwnerSettings()}>
+            Lock
           </Button>
           <Button size="sm" onClick={handleSave} disabled={!isUnlocked}>
             {isUnlocked ? "Save all" : "Unlock to save"}
