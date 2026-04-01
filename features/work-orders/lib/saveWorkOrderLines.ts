@@ -23,8 +23,19 @@ export async function saveWorkOrderLines(
   vehicleId: string,
   workOrderId: string,
 ) {
+  const { data: workOrder, error: workOrderError } = await supabase
+    .from("work_orders")
+    .select("shop_id")
+    .eq("id", workOrderId)
+    .single();
+
+  if (workOrderError || !workOrder?.shop_id) {
+    throw new Error(workOrderError?.message ?? "Work order missing shop_id");
+  }
+
   const payload: InsertLine[] = lines.map((l) => ({
     user_id: userId,
+    shop_id: workOrder.shop_id,
     vehicle_id: vehicleId,
     work_order_id: workOrderId,
     complaint: l.complaint ?? null,

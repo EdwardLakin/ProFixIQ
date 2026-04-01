@@ -5,14 +5,13 @@ import { createPricingSnapshotFromWorkOrderLine } from "@/features/menu-repair-i
 
 type DB = Database;
 
-type WorkOrderLineLite = Pick<
-  DB["public"]["Tables"]["work_order_lines"]["Row"],
-  | "id"
-  | "price_estimate"
-  | "labor_time"
-  | "status"
-  | "approval_state"
->;
+type WorkOrderLineLite = {
+  id: string;
+  price_estimate: number | null;
+  labor_time: number | null;
+  status: string | null;
+  approval_state: string | null;
+};
 
 function numOrNull(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;

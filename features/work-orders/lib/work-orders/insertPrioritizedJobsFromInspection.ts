@@ -70,6 +70,12 @@ export async function insertPrioritizedJobsFromInspection(
     return { ok: false, error: "Inspection not found." };
   }
 
+  if (!inspection.shop_id) {
+    return { ok: false, error: "Inspection is missing shop_id." };
+  }
+
+  const shopId = inspection.shop_id;
+
   // Some generated supabase types don't include `result` on inspections.Row.
   const result = (inspection as unknown as { result?: unknown })?.result as
     | InspectionResult
@@ -119,6 +125,7 @@ export async function insertPrioritizedJobsFromInspection(
       if (item.notes) complaintParts.push(`- ${item.notes}`);
 
       const job: WorkOrderLineInsert = {
+        shop_id: shopId,
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
         complaint: complaintParts.join(" "),

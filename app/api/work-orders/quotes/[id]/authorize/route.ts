@@ -33,13 +33,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Quote line not found" }, { status: 404 });
     }
 
+    if (!q.shop_id) {
+      return NextResponse.json({ error: "Quote line is missing shop_id" }, { status: 400 });
+    }
+
     // 2) Turn it into a punchable job line
     const newLine: WorkOrderLineInsert = {
+      shop_id: q.shop_id,
       work_order_id: q.work_order_id,
       vehicle_id: q.vehicle_id,
       description: q.description,
       job_type: q.job_type ?? "repair",
-      status: "queued",
+      status: "awaiting",
       labor_time: q.est_labor_hours ?? null,
       complaint: q.ai_complaint ?? q.description,
       cause: q.ai_cause ?? null,

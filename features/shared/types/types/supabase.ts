@@ -1454,24 +1454,24 @@ export type Database = {
       }
       chat_participants: {
         Row: {
-          chat_id: string | null
+          chat_id: string
           id: string
           joined_at: string | null
-          profile_id: string | null
+          profile_id: string
           role: string | null
         }
         Insert: {
-          chat_id?: string | null
+          chat_id: string
           id?: string
           joined_at?: string | null
-          profile_id?: string | null
+          profile_id: string
           role?: string | null
         }
         Update: {
-          chat_id?: string | null
+          chat_id?: string
           id?: string
           joined_at?: string | null
-          profile_id?: string | null
+          profile_id?: string
           role?: string | null
         }
         Relationships: [
@@ -2324,24 +2324,24 @@ export type Database = {
       conversation_participants: {
         Row: {
           added_at: string | null
-          conversation_id: string | null
+          conversation_id: string
           id: string
           role: string | null
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           added_at?: string | null
-          conversation_id?: string | null
+          conversation_id: string
           id?: string
           role?: string | null
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           added_at?: string | null
-          conversation_id?: string | null
+          conversation_id?: string
           id?: string
           role?: string | null
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -4267,7 +4267,7 @@ export type Database = {
           user_id: string | null
           vehicle_id: string | null
           work_order_id: string | null
-          work_order_line_id: string | null
+          work_order_line_id: string
         }
         Insert: {
           completed_at?: string | null
@@ -4281,7 +4281,7 @@ export type Database = {
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null
-          work_order_line_id?: string | null
+          work_order_line_id: string
         }
         Update: {
           completed_at?: string | null
@@ -4295,7 +4295,7 @@ export type Database = {
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null
-          work_order_line_id?: string | null
+          work_order_line_id?: string
         }
         Relationships: [
           {
@@ -4773,9 +4773,9 @@ export type Database = {
           pdf_url: string | null
           photo_urls: string[] | null
           quote_id: string | null
-          shop_id: string | null
+          shop_id: string
           started_at: string | null
-          status: string | null
+          status: string
           summary: Json | null
           template_id: string | null
           updated_at: string | null
@@ -4800,9 +4800,9 @@ export type Database = {
           pdf_url?: string | null
           photo_urls?: string[] | null
           quote_id?: string | null
-          shop_id?: string | null
+          shop_id: string
           started_at?: string | null
-          status?: string | null
+          status?: string
           summary?: Json | null
           template_id?: string | null
           updated_at?: string | null
@@ -4827,9 +4827,9 @@ export type Database = {
           pdf_url?: string | null
           photo_urls?: string[] | null
           quote_id?: string | null
-          shop_id?: string | null
+          shop_id?: string
           started_at?: string | null
-          status?: string | null
+          status?: string
           summary?: Json | null
           template_id?: string | null
           updated_at?: string | null
@@ -4911,6 +4911,27 @@ export type Database = {
           },
           {
             foreignKeyName: "inspections_work_order_line_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_line_id_fkey"
             columns: ["work_order_line_id"]
             isOneToOne: false
             referencedRelation: "work_order_lines"
@@ -8844,12 +8865,12 @@ export type Database = {
           photo_urls: string[] | null
           price: number | null
           quantity: number | null
-          status: string | null
+          status: string
           title: string
           total: number | null
           updated_at: string | null
           user_id: string | null
-          work_order_id: string | null
+          work_order_id: string
         }
         Insert: {
           created_at?: string | null
@@ -8867,12 +8888,12 @@ export type Database = {
           photo_urls?: string[] | null
           price?: number | null
           quantity?: number | null
-          status?: string | null
+          status: string
           title: string
           total?: number | null
           updated_at?: string | null
           user_id?: string | null
-          work_order_id?: string | null
+          work_order_id: string
         }
         Update: {
           created_at?: string | null
@@ -8890,12 +8911,12 @@ export type Database = {
           photo_urls?: string[] | null
           price?: number | null
           quantity?: number | null
-          status?: string | null
+          status?: string
           title?: string
           total?: number | null
           updated_at?: string | null
           user_id?: string | null
-          work_order_id?: string | null
+          work_order_id?: string
         }
         Relationships: [
           {
@@ -13156,21 +13177,21 @@ export type Database = {
           approved_by: string | null
           id: string
           method: string | null
-          work_order_id: string | null
+          work_order_id: string
         }
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
           id?: string
           method?: string | null
-          work_order_id?: string | null
+          work_order_id: string
         }
         Update: {
           approved_at?: string | null
           approved_by?: string | null
           id?: string
           method?: string | null
-          work_order_id?: string | null
+          work_order_id?: string
         }
         Relationships: [
           {
@@ -13484,8 +13505,8 @@ export type Database = {
           shop_id: string
           signals: string[]
           summary: string | null
-          work_order_id: string | null
-          work_order_line_id: string | null
+          work_order_id: string
+          work_order_line_id: string
         }
         Insert: {
           confidence?: number
@@ -13498,8 +13519,8 @@ export type Database = {
           shop_id: string
           signals?: string[]
           summary?: string | null
-          work_order_id?: string | null
-          work_order_line_id?: string | null
+          work_order_id: string
+          work_order_line_id: string
         }
         Update: {
           confidence?: number
@@ -13512,8 +13533,8 @@ export type Database = {
           shop_id?: string
           signals?: string[]
           summary?: string | null
-          work_order_id?: string | null
-          work_order_line_id?: string | null
+          work_order_id?: string
+          work_order_line_id?: string
         }
         Relationships: [
           {
@@ -13792,10 +13813,10 @@ export type Database = {
           punched_out_at: string | null
           quoted_at: string | null
           service_code: string | null
-          shop_id: string | null
+          shop_id: string
           source_intake_id: string | null
           source_row_id: string | null
-          status: string | null
+          status: string
           template_id: string | null
           tools: string | null
           updated_at: string | null
@@ -13806,7 +13827,7 @@ export type Database = {
           voided_by: string | null
           voided_note: string | null
           voided_reason: string | null
-          work_order_id: string | null
+          work_order_id: string
         }
         Insert: {
           approval_at?: string | null
@@ -13850,10 +13871,10 @@ export type Database = {
           punched_out_at?: string | null
           quoted_at?: string | null
           service_code?: string | null
-          shop_id?: string | null
+          shop_id: string
           source_intake_id?: string | null
           source_row_id?: string | null
-          status?: string | null
+          status?: string
           template_id?: string | null
           tools?: string | null
           updated_at?: string | null
@@ -13864,7 +13885,7 @@ export type Database = {
           voided_by?: string | null
           voided_note?: string | null
           voided_reason?: string | null
-          work_order_id?: string | null
+          work_order_id: string
         }
         Update: {
           approval_at?: string | null
@@ -13908,10 +13929,10 @@ export type Database = {
           punched_out_at?: string | null
           quoted_at?: string | null
           service_code?: string | null
-          shop_id?: string | null
+          shop_id?: string
           source_intake_id?: string | null
           source_row_id?: string | null
-          status?: string | null
+          status?: string
           template_id?: string | null
           tools?: string | null
           updated_at?: string | null
@@ -13922,7 +13943,7 @@ export type Database = {
           voided_by?: string | null
           voided_note?: string | null
           voided_reason?: string | null
-          work_order_id?: string | null
+          work_order_id?: string
         }
         Relationships: [
           {
@@ -14262,7 +14283,7 @@ export type Database = {
           shop_id: string | null
           total_price: number | null
           unit_price: number | null
-          work_order_id: string | null
+          work_order_id: string
           work_order_line_id: string | null
         }
         Insert: {
@@ -14273,7 +14294,7 @@ export type Database = {
           shop_id?: string | null
           total_price?: number | null
           unit_price?: number | null
-          work_order_id?: string | null
+          work_order_id: string
           work_order_line_id?: string | null
         }
         Update: {
@@ -14284,7 +14305,7 @@ export type Database = {
           shop_id?: string | null
           total_price?: number | null
           unit_price?: number | null
-          work_order_id?: string | null
+          work_order_id?: string
           work_order_line_id?: string | null
         }
         Relationships: [
@@ -14555,12 +14576,12 @@ export type Database = {
           quote: Json | null
           quote_url: string | null
           scheduled_at: string | null
-          shop_id: string | null
+          shop_id: string
           source_fleet_program_id: string | null
           source_fleet_service_request_id: string | null
           source_intake_id: string | null
           source_row_id: string | null
-          status: string | null
+          status: string
           type: string | null
           updated_at: string | null
           user_id: string | null
@@ -14622,12 +14643,12 @@ export type Database = {
           quote?: Json | null
           quote_url?: string | null
           scheduled_at?: string | null
-          shop_id?: string | null
+          shop_id: string
           source_fleet_program_id?: string | null
           source_fleet_service_request_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
-          status?: string | null
+          status?: string
           type?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -14689,12 +14710,12 @@ export type Database = {
           quote?: Json | null
           quote_url?: string | null
           scheduled_at?: string | null
-          shop_id?: string | null
+          shop_id?: string
           source_fleet_program_id?: string | null
           source_fleet_service_request_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
-          status?: string | null
+          status?: string
           type?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -16397,12 +16418,12 @@ export type Database = {
               quote: Json | null
               quote_url: string | null
               scheduled_at: string | null
-              shop_id: string | null
+              shop_id: string
               source_fleet_program_id: string | null
               source_fleet_service_request_id: string | null
               source_intake_id: string | null
               source_row_id: string | null
-              status: string | null
+              status: string
               type: string | null
               updated_at: string | null
               user_id: string | null
@@ -16481,12 +16502,12 @@ export type Database = {
               quote: Json | null
               quote_url: string | null
               scheduled_at: string | null
-              shop_id: string | null
+              shop_id: string
               source_fleet_program_id: string | null
               source_fleet_service_request_id: string | null
               source_intake_id: string | null
               source_row_id: string | null
-              status: string | null
+              status: string
               type: string | null
               updated_at: string | null
               user_id: string | null
