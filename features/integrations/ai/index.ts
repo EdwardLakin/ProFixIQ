@@ -1,3 +1,5 @@
+//features/integrations/ai/index.ts
+
 import { openai } from "lib/server/openai";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -177,22 +179,23 @@ export interface AITrainingEvent {
 async function insertTrainingEvent(event: AITrainingEvent): Promise<void> {
   const supabase = createAdminSupabase();
 
-  const { id, source, shopId, vehicleYmm, payload, createdAt } = event;
+  const { id, source, shopId, payload } = event;
 
-  const { error } = await supabase.from("ai_training_events").insert({
+  const { error } = await supabase.rpc("insert_ai_event", {
+      p_event_type: "training.event",
     id,
-    source,
-    shop_id: shopId,
-    vehicle_ymm: vehicleYmm ?? null,
-    payload,
-    created_at: createdAt ?? new Date().toISOString(),
+    trainingSource: source,
+    p_shop_id: shopId,
+    
+    payload: payload,
+    // removed created_at: createdAt ?? new Date().toISOString(),
   } as any);
 
   if (error) {
     // Never block the user flow on training errors; just log.
     // eslint-disable-next-line no-console
     console.error("[AI] Failed to insert training event", {
-      source,
+      trainingSource: source,
       shopId,
       error,
     });
@@ -220,7 +223,7 @@ export async function recordQuoteTraining(
     vehicleYmm,
     workOrderId,
     workOrderLineId,
-    payload,
+    payload: payload,
     createdAt,
   } = input;
 
@@ -258,7 +261,7 @@ export async function recordWorkOrderTraining(
     workOrderLineId,
     shopId,
     vehicleYmm,
-    payload,
+    payload: payload,
     createdAt,
   } = input;
 
@@ -288,7 +291,7 @@ export type RecordInspectionToQuoteTrainingInput = {
 export async function recordInspectionToQuoteTraining(
   input: RecordInspectionToQuoteTrainingInput,
 ): Promise<void> {
-  const { shopId, vehicleYmm, payload, createdAt } = input;
+  const { shopId, vehicleYmm, payload: payload, createdAt } = input;
 
   await insertTrainingEvent({
     source: "inspection_to_quote",

@@ -1,4 +1,4 @@
-// /app/api/ai/quote-suggest/route.ts
+//app/api/ai/quote-suggest/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -157,13 +157,13 @@ export async function POST(req: Request) {
           output: suggestion,
         } as unknown as Json;
 
-        const { error: logErr } = await supabase.from("ai_events").insert({
-          event_type: "message", // ✅ valid in your allowed list
-          payload,
-          shop_id: shopId,
-          user_id: user.id,
-          entity_id: null,
-          entity_table: "inspection_results",
+        const { error: logErr } = await supabase.rpc("insert_ai_event", {
+          p_event_type: "quote.suggested", // ✅ valid in your allowed list
+          p_payload: payload,
+          p_shop_id: shopId,
+          p_user_id: user.id,
+          p_entity_id: undefined,
+          p_entity_table: "inspection_results",
         });
 
         if (logErr) {

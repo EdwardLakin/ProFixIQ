@@ -956,10 +956,18 @@ export type Database = {
             referencedRelation: "ai_events"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ai_training_data_source_event_id_fkey"
+            columns: ["source_event_id"]
+            isOneToOne: false
+            referencedRelation: "ai_training_events_v"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ai_training_events: {
         Row: {
+          ai_event_id: string | null
           created_at: string
           id: string
           payload: Json
@@ -968,6 +976,7 @@ export type Database = {
           vehicle_ymm: string | null
         }
         Insert: {
+          ai_event_id?: string | null
           created_at?: string
           id?: string
           payload?: Json
@@ -976,6 +985,7 @@ export type Database = {
           vehicle_ymm?: string | null
         }
         Update: {
+          ai_event_id?: string | null
           created_at?: string
           id?: string
           payload?: Json
@@ -1344,7 +1354,7 @@ export type Database = {
           ends_at: string
           id: string
           notes: string | null
-          shop_id: string | null
+          shop_id: string
           starts_at: string
           status: string
           vehicle_id: string | null
@@ -1357,7 +1367,7 @@ export type Database = {
           ends_at: string
           id?: string
           notes?: string | null
-          shop_id?: string | null
+          shop_id: string
           starts_at: string
           status?: string
           vehicle_id?: string | null
@@ -1370,7 +1380,7 @@ export type Database = {
           ends_at?: string
           id?: string
           notes?: string | null
-          shop_id?: string | null
+          shop_id?: string
           starts_at?: string
           status?: string
           vehicle_id?: string | null
@@ -1584,6 +1594,7 @@ export type Database = {
       }
       content_assets: {
         Row: {
+          asset_id: string
           asset_type: Database["public"]["Enums"]["content_asset_type"]
           content_event_id: string
           created_at: string
@@ -1605,6 +1616,7 @@ export type Database = {
           width: number | null
         }
         Insert: {
+          asset_id: string
           asset_type: Database["public"]["Enums"]["content_asset_type"]
           content_event_id: string
           created_at?: string
@@ -1626,6 +1638,7 @@ export type Database = {
           width?: number | null
         }
         Update: {
+          asset_id?: string
           asset_type?: Database["public"]["Enums"]["content_asset_type"]
           content_event_id?: string
           created_at?: string
@@ -1647,6 +1660,13 @@ export type Database = {
           width?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "content_assets_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "content_assets_content_event_id_fkey"
             columns: ["content_event_id"]
@@ -1764,6 +1784,7 @@ export type Database = {
       }
       content_events: {
         Row: {
+          ai_event_id: string | null
           ai_prompt_version: string | null
           approved_at: string | null
           approved_by: string | null
@@ -1787,6 +1808,7 @@ export type Database = {
           work_order_line_id: string | null
         }
         Insert: {
+          ai_event_id?: string | null
           ai_prompt_version?: string | null
           approved_at?: string | null
           approved_by?: string | null
@@ -1810,6 +1832,7 @@ export type Database = {
           work_order_line_id?: string | null
         }
         Update: {
+          ai_event_id?: string | null
           ai_prompt_version?: string | null
           approved_at?: string | null
           approved_by?: string | null
@@ -14531,6 +14554,7 @@ export type Database = {
           priority: number | null
           quote: Json | null
           quote_url: string | null
+          scheduled_at: string | null
           shop_id: string | null
           source_fleet_program_id: string | null
           source_fleet_service_request_id: string | null
@@ -14597,6 +14621,7 @@ export type Database = {
           priority?: number | null
           quote?: Json | null
           quote_url?: string | null
+          scheduled_at?: string | null
           shop_id?: string | null
           source_fleet_program_id?: string | null
           source_fleet_service_request_id?: string | null
@@ -14663,6 +14688,7 @@ export type Database = {
           priority?: number | null
           quote?: Json | null
           quote_url?: string | null
+          scheduled_at?: string | null
           shop_id?: string | null
           source_fleet_program_id?: string | null
           source_fleet_service_request_id?: string | null
@@ -14750,6 +14776,48 @@ export type Database = {
       }
     }
     Views: {
+      ai_training_events_v: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          payload: Json | null
+          shop_id: string | null
+          source: string | null
+          vehicle_ymm: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          payload?: Json | null
+          shop_id?: string | null
+          source?: string | null
+          vehicle_ymm?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          payload?: Json | null
+          shop_id?: string | null
+          source?: string | null
+          vehicle_ymm?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fitment_stats: {
         Row: {
           allocations: number | null
@@ -14921,6 +14989,19 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      unified_events: {
+        Row: {
+          created_at: string | null
+          entity_id: string | null
+          entity_table: string | null
+          event_type: string | null
+          id: string | null
+          payload: Json | null
+          shop_id: string | null
+          source_system: string | null
+        }
+        Relationships: []
       }
       v_fleet_inspection_buckets: {
         Row: {
@@ -16315,6 +16396,7 @@ export type Database = {
               priority: number | null
               quote: Json | null
               quote_url: string | null
+              scheduled_at: string | null
               shop_id: string | null
               source_fleet_program_id: string | null
               source_fleet_service_request_id: string | null
@@ -16398,6 +16480,7 @@ export type Database = {
               priority: number | null
               quote: Json | null
               quote_url: string | null
+              scheduled_at: string | null
               shop_id: string | null
               source_fleet_program_id: string | null
               source_fleet_service_request_id: string | null
@@ -16495,6 +16578,18 @@ export type Database = {
       increment_user_limit: {
         Args: { increment_by?: number; input_shop_id: string }
         Returns: undefined
+      }
+      insert_ai_event: {
+        Args: {
+          p_entity_id?: string
+          p_entity_table?: string
+          p_event_type: string
+          p_payload: Json
+          p_shop_id: string
+          p_training_source?: string
+          p_user_id?: string
+        }
+        Returns: string
       }
       invoice_is_locked: {
         Args: { issued_at: string; s: string }

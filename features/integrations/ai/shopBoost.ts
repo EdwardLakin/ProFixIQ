@@ -1462,13 +1462,12 @@ async function logTrainingEvents(
 ): Promise<void> {
   const content = ["Shop Health Snapshot:", JSON.stringify(snapshot, null, 2)].join("\n");
 
-  const { data: eventRows, error: eventErr } = await supabase
-    .from("ai_training_events")
-    .insert({
-      source: "shop_boost",
-      shop_id: snapshot.shopId,
-      vehicle_ymm: null,
-      payload: snapshot,
+  const { data: eventRows, error: eventErr } = await supabase.rpc("insert_ai_event", {
+      p_event_type: "training.shopboost",
+      p_training_source: "shop_boost",
+      p_shop_id: snapshot.shopId,
+      
+      p_payload: snapshot,
     })
     .select("id")
     .limit(1);
@@ -1483,7 +1482,7 @@ async function logTrainingEvents(
   if (!sourceEventId) return;
 
   const { error: trainingErr } = await supabase.from("ai_training_data").insert({
-    shop_id: snapshot.shopId,
+    p_shop_id: snapshot.shopId,
     source_event_id: sourceEventId,
     content,
     embedding: null,
