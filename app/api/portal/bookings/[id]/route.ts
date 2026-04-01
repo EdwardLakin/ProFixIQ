@@ -174,6 +174,21 @@ export async function PATCH(req: Request): Promise<Response> {
 
   if (upErr || !updated) return jsonError("Failed to update booking", 500);
 
+  if (
+    staff &&
+    updated.work_order_id &&
+    typeof patch.starts_at !== "undefined"
+  ) {
+    const { error: woUpdateErr } = await supabase
+      .from("work_orders")
+      .update({ scheduled_at: updated.starts_at })
+      .eq("id", updated.work_order_id);
+
+    if (woUpdateErr) {
+      return jsonError("Failed to sync work order schedule", 500);
+    }
+  }
+
   return NextResponse.json({ booking: updated }, { status: 200 });
 }
 
