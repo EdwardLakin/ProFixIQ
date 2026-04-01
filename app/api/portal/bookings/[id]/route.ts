@@ -83,7 +83,7 @@ export async function PATCH(req: Request): Promise<Response> {
 
   const { data: booking, error: bErr } = await supabase
     .from("bookings")
-    .select("id, shop_id, customer_id, status, starts_at, ends_at, notes")
+    .select("id, shop_id, customer_id, vehicle_id, work_order_id, status, starts_at, ends_at, notes")
     .eq("id", bookingId)
     .maybeSingle();
 
@@ -130,6 +130,34 @@ export async function PATCH(req: Request): Promise<Response> {
   if (nextStart && nextEnd) {
     patch.starts_at = nextStart.toISOString();
     patch.ends_at = nextEnd.toISOString();
+  }
+
+  if (
+    staff &&
+    body.status === "confirmed" &&
+    !booking.work_order_id
+  ) {
+    const insertWo: Database["public"]["Tables"]["work_orders"]["Insert"] = {
+      shop_id: booking.shop_id,
+      customer_id: booking.customer_id,
+      vehicle_id: booking.vehicle_id ?? null,
+      status: "awaiting_approval",
+      approval_state: "pending",
+      is_waiter: false,
+      notes: booking.notes ?? null,
+    };
+
+    const { data: createdWo, error: woErr } = await supabase
+      .from("work_orders")
+      .insert(insertWo)
+      .select("id")
+      .single();
+
+    if (woErr || !createdWo?.id) {
+      return jsonError("Failed to create work order for booking", 500);
+    }
+
+    patch.work_order_id = createdWo.id;
   }
 
   if (Object.keys(patch).length === 0) {

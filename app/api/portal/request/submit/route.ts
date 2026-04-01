@@ -154,7 +154,8 @@ export async function POST(req: Request) {
 
     // Finalize booking (Option B)
     const bookingUpdate: DB["public"]["Tables"]["bookings"]["Update"] = {
-      status: booking.status ?? "pending",
+      status: "confirmed",
+      work_order_id: wo.id,
     };
 
     const { error: updErr } = await supabase.from("bookings").update(bookingUpdate).eq("id", booking.id);

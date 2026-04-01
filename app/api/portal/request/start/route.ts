@@ -129,13 +129,13 @@ export async function POST(req: Request) {
     // 2) Reserve the booking slot now (Option B)
     const insertBooking: DB["public"]["Tables"]["bookings"]["Insert"] = {
       shop_id: customer.shop_id,
+      customer_id: customer.id,
+      vehicle_id: body.vehicleId ?? null,
+      work_order_id: createdWo.id,
       starts_at: startsAt,
       ends_at: endsAt,
       status: "pending",
-      notes: null,
-
-      // ✅ Recommended (if you add this column):
-      // work_order_id: createdWo.id,
+      notes: (body.notes ?? "").trim() || null,
     };
 
     const { data: createdBooking, error: bErr } = await supabase
