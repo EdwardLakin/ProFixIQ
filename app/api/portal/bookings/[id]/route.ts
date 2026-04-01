@@ -1,225 +1,154 @@
-// app/api/portal/bookings/[id]/route.ts
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
-export const runtime = "nodejs";
+type DB = Database;
+
+const STAFF_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 type PatchBody = {
-  status?: "pending" | "confirmed" | "completed" | "cancelled";
+  status?: "pending" | "confirmed" | "cancelled" | "completed";
+  notes?: string | null;
   starts_at?: string;
   ends_at?: string;
-  notes?: string | null;
 };
 
-function jsonError(msg: string, status = 400) {
-  return NextResponse.json({ error: msg }, { status });
-}
+async function getAuthedContext(supabase: ReturnType<typeof createRouteHandlerClient<DB>>) {
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
 
-function getIdFromUrl(url: string): string {
-  const { pathname } = new URL(url);
-  return pathname.split("/").pop() ?? "";
-}
+  if (userErr || !user) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
 
-const STAFF_ROLES = new Set([
-  "owner",
-  "admin",
-  "manager",
-  "advisor",
-  "mechanic",
-  "parts",
-]);
-
-async function isStaffForShop(
-  supabase: ReturnType<typeof createRouteHandlerClient<Database>>,
-  userId: string,
-  shopId: string,
-): Promise<boolean> {
-  const { data: profile } = await supabase
+  const { data: profile, error: profileErr } = await supabase
     .from("profiles")
     .select("id, role, shop_id")
-    .eq("id", userId)
-    .maybeSingle();
+    .eq("id", user.id)
+    .single();
 
-  if (!profile) return false;
-  return STAFF_ROLES.has(profile.role ?? "") && profile.shop_id === shopId;
+  if (profileErr || !profile?.shop_id) {
+    return { error: NextResponse.json({ error: "Profile/shop not found" }, { status: 403 }) };
+  }
+
+  if (!STAFF_ROLES.has(String(profile.role ?? ""))) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  return {
+    user,
+    profile: {
+      id: profile.id,
+      role: String(profile.role ?? ""),
+      shop_id: profile.shop_id,
+    },
+  };
 }
 
-async function isCustomerOwner(
-  supabase: ReturnType<typeof createRouteHandlerClient<Database>>,
-  userId: string,
-  customerId: string | null,
-): Promise<boolean> {
-  if (!customerId) return false;
-  const { data } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("id", customerId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  return !!data;
-}
-
-export async function PATCH(req: Request): Promise<Response> {
-  const bookingId = getIdFromUrl(req.url);
-  if (!bookingId) return jsonError("Missing booking id");
-
-  const supabase = createRouteHandlerClient<Database>({ cookies });
-
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-
-  if (authErr || !user) return jsonError("Not authenticated", 401);
-
-  let body: PatchBody;
+export async function PATCH(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
   try {
-    body = (await req.json()) as PatchBody;
-  } catch {
-    return jsonError("Invalid JSON body");
-  }
+    const { id } = await ctx.params;
+    const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const { data: booking, error: bErr } = await supabase
-    .from("bookings")
-    .select("id, shop_id, customer_id, vehicle_id, work_order_id, status, starts_at, ends_at, notes")
-    .eq("id", bookingId)
-    .maybeSingle();
+    const auth = await getAuthedContext(supabase);
+    if ("error" in auth) return auth.error;
 
-  if (bErr || !booking) return jsonError("Booking not found", 404);
+    const body = (await req.json().catch(() => ({}))) as PatchBody;
 
-  const staff = await isStaffForShop(supabase, user.id, booking.shop_id);
-  const owner = await isCustomerOwner(supabase, user.id, booking.customer_id);
-
-  if (!staff && !owner) return jsonError("Not allowed", 403);
-
-  // Customers can only cancel, not reschedule or mark complete.
-  if (owner) {
-    if (body.starts_at || body.ends_at) {
-      return jsonError("Customers may not reschedule bookings", 403);
-    }
-    if (body.status && body.status !== "cancelled") {
-      return jsonError("Customers may only cancel a booking", 403);
-    }
-  }
-
-  // Validate reschedule times (staff only)
-  let nextStart: Date | null = null;
-  let nextEnd: Date | null = null;
-  if (body.starts_at || body.ends_at) {
-    if (!staff) return jsonError("Only staff can reschedule", 403);
-
-    if (!body.starts_at || !body.ends_at) {
-      return jsonError("starts_at and ends_at are required to reschedule");
-    }
-
-    nextStart = new Date(body.starts_at);
-    nextEnd = new Date(body.ends_at);
-
-    if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime())) {
-      return jsonError("Invalid starts_at/ends_at");
-    }
-    if (nextEnd <= nextStart) return jsonError("ends_at must be after starts_at");
-  }
-
-  const patch: Partial<Database["public"]["Tables"]["bookings"]["Update"]> = {};
-
-  if (typeof body.notes !== "undefined") patch.notes = body.notes ?? null;
-  if (body.status) patch.status = body.status;
-  if (nextStart && nextEnd) {
-    patch.starts_at = nextStart.toISOString();
-    patch.ends_at = nextEnd.toISOString();
-  }
-
-  if (
-    staff &&
-    body.status === "confirmed" &&
-    !booking.work_order_id
-  ) {
-    const insertWo: Database["public"]["Tables"]["work_orders"]["Insert"] = {
-      shop_id: booking.shop_id,
-      customer_id: booking.customer_id,
-      vehicle_id: booking.vehicle_id ?? null,
-      status: "awaiting_approval",
-      approval_state: "pending",
-      is_waiter: false,
-      scheduled_at: booking.starts_at,
-      notes: booking.notes ?? null,
-    };
-
-    const { data: createdWo, error: woErr } = await supabase
-      .from("work_orders")
-      .insert(insertWo)
-      .select("id")
+    const { data: booking, error: bookingErr } = await supabase
+      .from("bookings")
+      .select("id, shop_id")
+      .eq("id", id)
       .single();
 
-    if (woErr || !createdWo?.id) {
-      return jsonError("Failed to create work order for booking", 500);
+    if (bookingErr || !booking) {
+      return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
-    patch.work_order_id = createdWo.id;
-  }
-
-  if (Object.keys(patch).length === 0) {
-    return jsonError("Nothing to update");
-  }
-
-  const { data: updated, error: upErr } = await supabase
-    .from("bookings")
-    .update(patch)
-    .eq("id", bookingId)
-    .select("*")
-    .maybeSingle();
-
-  if (upErr || !updated) return jsonError("Failed to update booking", 500);
-
-  if (
-    staff &&
-    updated.work_order_id &&
-    typeof patch.starts_at !== "undefined"
-  ) {
-    const { error: woUpdateErr } = await supabase
-      .from("work_orders")
-      .update({ scheduled_at: updated.starts_at })
-      .eq("id", updated.work_order_id);
-
-    if (woUpdateErr) {
-      return jsonError("Failed to sync work order schedule", 500);
+    if (booking.shop_id !== auth.profile.shop_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-  }
 
-  return NextResponse.json({ booking: updated }, { status: 200 });
+    const update: DB["public"]["Tables"]["bookings"]["Update"] = {};
+
+    if (body.status) update.status = body.status;
+    if (body.notes !== undefined) update.notes = body.notes;
+    if (body.starts_at) update.starts_at = body.starts_at;
+    if (body.ends_at) update.ends_at = body.ends_at;
+
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    }
+
+    const { data: updated, error: updateErr } = await supabase
+      .from("bookings")
+      .update(update)
+      .eq("id", id)
+      .eq("shop_id", auth.profile.shop_id)
+      .select("id, starts_at, ends_at, status, notes, customer_id, vehicle_id, work_order_id")
+      .single();
+
+    if (updateErr || !updated) {
+      return NextResponse.json(
+        { error: updateErr?.message || "Failed to update booking" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(updated);
+  } catch (err) {
+    console.error("portal booking PATCH error", err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
 }
 
-export async function DELETE(req: Request): Promise<Response> {
-  const bookingId = getIdFromUrl(req.url);
-  if (!bookingId) return jsonError("Missing booking id");
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await ctx.params;
+    const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+    const auth = await getAuthedContext(supabase);
+    if ("error" in auth) return auth.error;
 
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
+    const { data: booking, error: bookingErr } = await supabase
+      .from("bookings")
+      .select("id, shop_id")
+      .eq("id", id)
+      .single();
 
-  if (authErr || !user) return jsonError("Not authenticated", 401);
+    if (bookingErr || !booking) {
+      return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
 
-  const { data: booking, error: bErr } = await supabase
-    .from("bookings")
-    .select("id, shop_id, customer_id")
-    .eq("id", bookingId)
-    .maybeSingle();
+    if (booking.shop_id !== auth.profile.shop_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-  if (bErr || !booking) return jsonError("Booking not found", 404);
+    const { error: deleteErr } = await supabase
+      .from("bookings")
+      .delete()
+      .eq("id", id)
+      .eq("shop_id", auth.profile.shop_id);
 
-  const staff = await isStaffForShop(supabase, user.id, booking.shop_id);
-  const owner = await isCustomerOwner(supabase, user.id, booking.customer_id);
+    if (deleteErr) {
+      return NextResponse.json(
+        { error: deleteErr.message || "Failed to delete booking" },
+        { status: 500 }
+      );
+    }
 
-  if (!staff && !owner) return jsonError("Not allowed", 403);
-
-  const { error: delErr } = await supabase.from("bookings").delete().eq("id", bookingId);
-  if (delErr) return jsonError("Failed to delete booking", 500);
-
-  return NextResponse.json({ ok: true }, { status: 200 });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("portal booking DELETE error", err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
 }
