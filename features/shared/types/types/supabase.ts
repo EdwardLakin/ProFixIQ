@@ -13633,6 +13633,7 @@ export type Database = {
           shop_id: string
           summary: Json | null
           updated_at: string
+          updated_by: string | null
           vehicle_id: string | null
           work_order_id: string
           work_order_line_id: string
@@ -13646,6 +13647,7 @@ export type Database = {
           shop_id: string
           summary?: Json | null
           updated_at?: string
+          updated_by?: string | null
           vehicle_id?: string | null
           work_order_id: string
           work_order_line_id: string
@@ -13659,6 +13661,7 @@ export type Database = {
           shop_id?: string
           summary?: Json | null
           updated_at?: string
+          updated_by?: string | null
           vehicle_id?: string | null
           work_order_id?: string
           work_order_line_id?: string
