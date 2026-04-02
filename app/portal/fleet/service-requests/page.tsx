@@ -8,16 +8,16 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { PortalServiceRequest } from "app/api/fleet/service-requests/route";
 
-const COPPER = "#C57A4A";
+const COPPER = "#38BDF8";
 
 const shell = "space-y-5 text-white";
 const glassCard =
-  "rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-card " +
+  "rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl " +
   "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]";
 
 const softInput =
   "w-full rounded-xl border border-white/12 bg-black/25 px-3 py-2 text-sm text-white " +
-  "placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(197,122,74,0.55)]";
+  "placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/35";
 
 const softPill =
   "rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition";
@@ -161,7 +161,7 @@ export default function PortalFleetServiceRequestsPage() {
           {/* Portal wash */}
           <div
             aria-hidden
-            className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+            className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
           />
 
           <div className={shell}>
@@ -208,8 +208,8 @@ export default function PortalFleetServiceRequestsPage() {
                         onClick={() => setStatusFilter(st)}
                         className={`${softPill} ${
                           active
-                            ? "text-black shadow-[0_0_16px_rgba(197,122,74,0.55)]"
-                            : "border border-white/12 bg-black/20 text-neutral-300 hover:bg-black/35"
+                            ? "text-black shadow-[0_0_16px_rgba(56,189,248,0.28)]"
+                            : "border border-white/10 bg-black/30 text-neutral-300 hover:bg-black/40"
                         }`}
                         style={active ? { backgroundColor: COPPER } : undefined}
                       >
@@ -239,8 +239,8 @@ export default function PortalFleetServiceRequestsPage() {
                         onClick={() => setSeverityFilter(sev)}
                         className={`${softPill} ${
                           active
-                            ? "bg-black/40 text-neutral-100 border border-white/12"
-                            : "border border-white/12 bg-black/20 text-neutral-300 hover:bg-black/35"
+                            ? "bg-sky-500/10 text-sky-100 border border-sky-400/30"
+                            : "border border-white/10 bg-black/30 text-neutral-300 hover:bg-black/40"
                         }`}
                       >
                         {sev === "all"

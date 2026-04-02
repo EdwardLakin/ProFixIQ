@@ -9,7 +9,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { FleetUnitListItem } from "app/api/fleet/units/route";
 
-const COPPER = "#C57A4A";
+const COPPER = "#38BDF8";
 const CARD =
   "rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md " +
   "shadow-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]";
@@ -76,7 +76,7 @@ export default function PortalFleetUnitPage() {
       <div className="px-4 py-6 text-white">
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),#020617_78%)]"
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),#020617_78%)]"
         />
 
         <div className="mx-auto w-full max-w-3xl space-y-5">

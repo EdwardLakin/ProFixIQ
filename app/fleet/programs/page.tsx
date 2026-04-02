@@ -12,7 +12,7 @@ type FleetInsert = DB["public"]["Tables"]["fleets"]["Insert"];
 
 type FormMode = "create" | "edit";
 
-const COPPER = "#C57A4A";
+const COPPER = "#38BDF8";
 
 type FleetFormState = {
   id: string | null;
@@ -193,7 +193,7 @@ export default function FleetProgramsPage(): JSX.Element {
     >
       <div className="space-y-6 text-white">
         {/* Top header card */}
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-[0_24px_70px_rgba(0,0,0,0.85)] sm:p-6">
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Programs / groups</h2>
@@ -207,7 +207,7 @@ export default function FleetProgramsPage(): JSX.Element {
             <button
               type="button"
               onClick={() => router.push("/fleet")}
-              className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-neutral-200 hover:bg-black/80"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-neutral-200 hover:bg-black/55"
             >
               <span aria-hidden>←</span>
               Back to fleet
@@ -237,7 +237,7 @@ export default function FleetProgramsPage(): JSX.Element {
                   Fleet name
                 </label>
                 <input
-                  className="w-full rounded-lg border border-white/12 bg-black/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                  className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40"
                   placeholder="e.g. Linehaul, Local P&D, Trailers"
                   value={form.name}
                   onChange={(e) =>
@@ -252,7 +252,7 @@ export default function FleetProgramsPage(): JSX.Element {
                     Contact name
                   </label>
                   <input
-                    className="w-full rounded-lg border border-white/12 bg-black/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                    className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40"
                     placeholder="Dispatcher / supervisor"
                     value={form.contact_name}
                     onChange={(e) =>
@@ -269,7 +269,7 @@ export default function FleetProgramsPage(): JSX.Element {
                   </label>
                   <input
                     type="email"
-                    className="w-full rounded-lg border border-white/12 bg-black/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                    className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40"
                     placeholder="contact@example.com"
                     value={form.contact_email}
                     onChange={(e) =>
@@ -288,7 +288,7 @@ export default function FleetProgramsPage(): JSX.Element {
                 </label>
                 <textarea
                   rows={3}
-                  className="w-full rounded-lg border border-white/12 bg-black/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+                  className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40"
                   placeholder="Optional: program notes, maintenance rules, or contract details."
                   value={form.notes}
                   onChange={(e) =>
@@ -302,7 +302,7 @@ export default function FleetProgramsPage(): JSX.Element {
                   type="button"
                   onClick={() => void handleSubmit()}
                   disabled={saving || loading || !shopId}
-                  className="inline-flex items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_26px_rgba(197,122,74,0.85)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center justify-center rounded-full bg-[linear-gradient(to_right,#0EA5E9,#38BDF8)] px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_26px_rgba(56,189,248,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving
                     ? mode === "create"
@@ -374,7 +374,7 @@ export default function FleetProgramsPage(): JSX.Element {
                       <span className="font-medium text-white">
                         {f.name || "Unnamed fleet"}
                       </span>
-                      <span className="rounded-full border border-white/16 bg-black/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-neutral-300">
+                      <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-neutral-300">
                         Tap to edit
                       </span>
                     </div>
