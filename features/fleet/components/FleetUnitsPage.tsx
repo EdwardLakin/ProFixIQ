@@ -104,19 +104,19 @@ export default function FleetUnitsPage({ shopId }: Props) {
         {/* Copper wash */}
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
         />
 
         {/* Header */}
         <div className={card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),transparent_65%)]"
+            className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.22),transparent_65%)]"
           />
           <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1
-                className="text-xl font-bold tracking-[0.22em] text-[rgba(248,113,22,0.9)] md:text-2xl uppercase"
+                className="text-xl font-bold tracking-[0.22em] text-sky-300 md:text-2xl uppercase"
                 style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
               >
                 Fleet Units
@@ -134,7 +134,7 @@ export default function FleetUnitsPage({ shopId }: Props) {
               <select
                 value={fleetFilter}
                 onChange={(e) => setFleetFilter(e.target.value)}
-                className="min-w-[180px] rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-xs text-white"
+                className="min-w-[180px] rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white shadow-card backdrop-blur-xl"
               >
                 <option value="all">All fleets</option>
                 {fleets.map((f) => (
@@ -153,7 +153,7 @@ export default function FleetUnitsPage({ shopId }: Props) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by unit, plate, VIN, location…"
-                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[rgba(248,113,22,0.55)]"
+                className="w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 shadow-card backdrop-blur-xl focus:outline-none focus:ring-2 focus:ring-sky-400/40"
               />
             </div>
 

@@ -35,20 +35,20 @@ export default function AccountPlanPanel() {
       }
     };
 
-    fetchUserPlan();
+    void fetchUserPlan();
   }, []);
 
   return (
     <div className="mb-8 rounded-2xl border border-white/10 bg-black/30 p-6 text-white shadow-card backdrop-blur-xl">
-      <h2 className="mb-2 text-lg font-semibold text-white">Account &amp; Plan</h2>
+      <h2 className="mb-2 text-lg font-semibold text-[var(--accent-copper-light)]">
+        Account &amp; Plan
+      </h2>
       <div className="mb-2 text-sm text-neutral-400">
         Logged in as: {email || "Loading..."}
       </div>
-      <div className="mt-2 text-sm text-neutral-300">
-        <span className="font-medium text-neutral-400">Current Plan: </span>
-        <span className="font-semibold text-[var(--accent-copper-light)]">
-          {plan || "Loading..."}
-        </span>
+      <div className="mt-2 text-sm text-neutral-200">
+        <span className="font-medium">Current Plan: </span>
+        <span className="font-semibold">{plan || "Loading..."}</span>
       </div>
       <button
         className="mt-4 inline-flex items-center justify-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"

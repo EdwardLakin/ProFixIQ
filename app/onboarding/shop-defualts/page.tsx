@@ -35,7 +35,7 @@ export default function ShopDefaultsStep2Page() {
   const [suppliesPercent, setSuppliesPercent] = useState("");
 
   useEffect(() => {
-    (async () => {
+    void (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -82,9 +82,6 @@ export default function ShopDefaultsStep2Page() {
   const taxLabel = country === "CA" ? "Tax rate (GST/PST/HST %)" : "Tax rate (Sales tax %)";
   const currency = country === "CA" ? "CAD" : "USD";
 
-  const fieldClassName =
-    "w-full rounded-md border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500";
-
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -120,7 +117,7 @@ export default function ShopDefaultsStep2Page() {
   if (loading) {
     return (
       <div className="grid min-h-screen place-items-center bg-black text-white">
-        <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-neutral-300 shadow-card backdrop-blur-md">
+        <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-neutral-300 shadow-card backdrop-blur-xl">
           Loading step 2…
         </div>
       </div>
@@ -129,15 +126,12 @@ export default function ShopDefaultsStep2Page() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <header className="border-b border-white/10 bg-black/40 px-4 py-4 backdrop-blur-xl sm:px-6">
+      <header className="border-b border-white/10 bg-black/30 px-4 py-4 shadow-card backdrop-blur-xl sm:px-6">
         <div className="mx-auto max-w-3xl">
           <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
             ProFixIQ • Onboarding
           </p>
-          <h1
-            className="text-xl tracking-[0.08em] text-[var(--accent-copper-light)]"
-            style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
-          >
+          <h1 className="text-xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
             Shop defaults (Step 2 of 2)
           </h1>
           <p className="text-xs text-neutral-400">
@@ -162,7 +156,7 @@ export default function ShopDefaultsStep2Page() {
                 <select
                   value={country}
                   onChange={(e) => setCountry(e.target.value as "US" | "CA")}
-                  className={fieldClassName}
+                  className="input"
                 >
                   <option value="US">United States</option>
                   <option value="CA">Canada</option>
@@ -174,7 +168,7 @@ export default function ShopDefaultsStep2Page() {
                 <select
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
-                  className={fieldClassName}
+                  className="input"
                 >
                   {TIMEZONES.map((tz) => (
                     <option key={tz} value={tz}>
@@ -189,7 +183,7 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={province}
                   onChange={(e) => setProvince(e.target.value)}
-                  className={fieldClassName}
+                  className="input"
                   placeholder={provinceLabel}
                 />
               </div>
@@ -212,7 +206,7 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={laborRate}
                   onChange={(e) => setLaborRate(e.target.value)}
-                  className={fieldClassName}
+                  className="input"
                   inputMode="decimal"
                 />
               </div>
@@ -222,7 +216,7 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={taxRate}
                   onChange={(e) => setTaxRate(e.target.value)}
-                  className={fieldClassName}
+                  className="input"
                   inputMode="decimal"
                 />
               </div>
@@ -234,7 +228,7 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={diagnosticFee}
                   onChange={(e) => setDiagnosticFee(e.target.value)}
-                  className={fieldClassName}
+                  className="input"
                   inputMode="decimal"
                   placeholder="Optional"
                 />
@@ -247,7 +241,7 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={suppliesPercent}
                   onChange={(e) => setSuppliesPercent(e.target.value)}
-                  className={fieldClassName}
+                  className="input"
                   inputMode="decimal"
                   placeholder="Optional"
                 />
@@ -256,7 +250,7 @@ export default function ShopDefaultsStep2Page() {
           </section>
 
           {error && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 shadow-card backdrop-blur-xl">
               {error}
             </div>
           )}
@@ -264,7 +258,7 @@ export default function ShopDefaultsStep2Page() {
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              className="inline-flex items-center justify-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.18)] transition hover:brightness-110"
+              className="inline-flex items-center justify-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
             >
               Finish setup
             </button>

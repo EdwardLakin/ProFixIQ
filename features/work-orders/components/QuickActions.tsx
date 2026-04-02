@@ -1,4 +1,6 @@
-import { useRouter } from "next/router";
+"use client";
+
+import { useRouter } from "next/navigation";
 
 export default function QuickActions() {
   const router = useRouter();
@@ -17,7 +19,7 @@ export default function QuickActions() {
         <button
           key={action.path}
           onClick={() => router.push(action.path)}
-          className="rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-neutral-100 shadow-card backdrop-blur-md transition hover:-translate-y-[1px] hover:border-[var(--accent-copper-soft)] hover:bg-black/40"
+          className="rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-sm font-semibold text-neutral-100 shadow-card backdrop-blur-xl transition hover:bg-black/40"
         >
           {action.label}
         </button>

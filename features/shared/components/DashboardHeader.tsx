@@ -7,10 +7,7 @@ export default function DashboardHeader() {
     <header className="mb-6 w-full rounded-2xl border border-white/10 bg-black/30 p-6 text-white shadow-card backdrop-blur-xl">
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex flex-col items-start">
-          <h1
-            className="text-3xl tracking-[0.08em] text-[var(--accent-copper-light)]"
-            style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
-          >
+          <h1 className="text-3xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
             ProFixIQ
           </h1>
           <p className="mt-1 text-sm text-neutral-400">

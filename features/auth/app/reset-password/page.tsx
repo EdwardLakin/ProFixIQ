@@ -16,17 +16,12 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const inputClassName =
-    "w-full rounded-md border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-white placeholder:text-neutral-500";
-  const buttonClassName =
-    "w-full rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 font-semibold text-black transition hover:brightness-110";
-
   useEffect(() => {
     const access_token = searchParams.get("access_token");
     const refresh_token = searchParams.get("refresh_token");
 
     if (access_token && refresh_token) {
-      supabase.auth
+      void supabase.auth
         .setSession({ access_token, refresh_token })
         .then(({ error }) => {
           if (error) setError("Invalid or expired password reset link.");
@@ -65,38 +60,35 @@ export default function ResetPasswordPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-black px-4 text-white">
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/30 p-6 shadow-card backdrop-blur-xl">
-        <h1
-          className="mb-4 text-3xl tracking-[0.08em] text-[var(--accent-copper-light)]"
-          style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
-        >
+        <h1 className="mb-4 text-3xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
           Reset Password
         </h1>
 
         {loading ? (
-          <p className="text-neutral-400">Loading...</p>
+          <p>Loading...</p>
         ) : error ? (
-          <p className="text-red-400">{error}</p>
+          <p className="text-red-500">{error}</p>
         ) : (
           <form onSubmit={handleReset} className="space-y-4">
-            {success && <p className="text-green-400">{success}</p>}
+            {success && <p className="text-green-500">{success}</p>}
 
             <div>
-              <label className="mb-1 block text-sm text-neutral-300">New Password</label>
+              <label className="mb-1 block text-sm">New Password</label>
               <input
                 type="password"
                 required
-                className={inputClassName}
+                className="input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm text-neutral-300">Confirm Password</label>
+              <label className="mb-1 block text-sm">Confirm Password</label>
               <input
                 type="password"
                 required
-                className={inputClassName}
+                className="input"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
               />
@@ -105,7 +97,7 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className={buttonClassName}
+              className="w-full rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
             >
               {loading ? "Resetting..." : "Reset Password"}
             </button>
@@ -113,7 +105,7 @@ export default function ResetPasswordPage() {
         )}
 
         <button
-          className="mt-6 text-sm font-medium text-[var(--accent-copper-light)] underline underline-offset-2 hover:text-white"
+          className="mt-6 text-sm text-[var(--accent-copper-light)] underline underline-offset-2 transition hover:text-white"
           onClick={() => router.push("/sign-in")}
         >
           Back to Sign In

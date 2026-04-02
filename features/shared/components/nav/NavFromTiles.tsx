@@ -36,16 +36,19 @@ export default function NavFromTiles({
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    void (async () => {
       setLoading(true);
       try {
         const {
           data: { user },
         } = await supabase.auth.getUser();
+
         if (!user) {
           if (!cancelled) setRoles([]);
           return;
         }
+
         const { data: profile } = await supabase
           .from("profiles")
           .select("role")
@@ -58,6 +61,7 @@ export default function NavFromTiles({
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -66,15 +70,15 @@ export default function NavFromTiles({
   if (loading) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <h1
-          className="mb-2 text-3xl tracking-[0.08em] text-[var(--accent-copper-light)]"
-          style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
-        >
+        <h1 className="mb-2 text-3xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
           {heading}
         </h1>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-2xl border border-white/10 bg-black/30 backdrop-blur-md" />
+            <div
+              key={i}
+              className="h-24 animate-pulse rounded-2xl border border-white/10 bg-black/30 shadow-card backdrop-blur-xl"
+            />
           ))}
         </div>
       </div>

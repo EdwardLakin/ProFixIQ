@@ -1,20 +1,21 @@
 "use client";
 
+import type { ChangeEvent } from "react";
 import useVehicleInfo from "@shared/hooks/useVehicleInfo";
 
 export default function VehicleSelector() {
   const { vehicleInfo, updateVehicle, clearVehicle } = useVehicleInfo();
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { value } = e.target;
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
 
     updateVehicle({
-      year: vehicleInfo?.year || "",
-      make: vehicleInfo?.make || "",
-      model: vehicleInfo?.model || "",
-      engine: vehicleInfo?.engine || "",
-      plate: vehicleInfo?.plate || "",
-      id: value,
+      year: name === "year" ? value : vehicleInfo?.year || "",
+      make: name === "make" ? value : vehicleInfo?.make || "",
+      model: name === "model" ? value : vehicleInfo?.model || "",
+      engine: name === "engine" ? value : vehicleInfo?.engine || "",
+      plate: name === "plate" ? value : vehicleInfo?.plate || "",
+      id: vehicleInfo?.id || "",
     });
   };
 
@@ -31,7 +32,7 @@ export default function VehicleSelector() {
           placeholder="Year"
           value={vehicleInfo?.year || ""}
           onChange={handleChange}
-          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
+          className="input"
         />
         <input
           type="text"
@@ -39,7 +40,7 @@ export default function VehicleSelector() {
           placeholder="Make"
           value={vehicleInfo?.make || ""}
           onChange={handleChange}
-          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
+          className="input"
         />
         <input
           type="text"
@@ -47,7 +48,7 @@ export default function VehicleSelector() {
           placeholder="Model"
           value={vehicleInfo?.model || ""}
           onChange={handleChange}
-          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
+          className="input"
         />
         <input
           type="text"
@@ -55,7 +56,7 @@ export default function VehicleSelector() {
           placeholder="Engine"
           value={vehicleInfo?.engine || ""}
           onChange={handleChange}
-          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
+          className="input"
         />
         <input
           type="text"
@@ -63,14 +64,14 @@ export default function VehicleSelector() {
           placeholder="Plate"
           value={vehicleInfo?.plate || ""}
           onChange={handleChange}
-          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
+          className="input"
         />
       </div>
 
       {vehicleInfo && (
         <button
           onClick={clearVehicle}
-          className="mt-2 text-sm font-medium text-[var(--accent-copper-light)] underline underline-offset-2 hover:text-white"
+          className="text-sm text-[var(--accent-copper-light)] underline underline-offset-2 transition hover:text-white"
         >
           Change Vehicle
         </button>

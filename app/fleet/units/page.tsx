@@ -33,7 +33,7 @@ export default async function FleetUnitsRoutePage() {
     <main className="relative min-h-[calc(100vh-3rem)] bg-black text-white">
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
       />
       <Container className="py-6">
         <FleetUnitsPage shopId={shopId} />

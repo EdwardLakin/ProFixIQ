@@ -34,9 +34,10 @@ export default function JobQueue({
   filterTechId,
   title = "Technician Job Queue",
 }: JobQueueProps) {
-  const filteredJobs = (filterTechId
-    ? jobs.filter((job) => (job.assigned_tech_id ?? null) === filterTechId)
-    : jobs
+  const filteredJobs = (
+    filterTechId
+      ? jobs.filter((job) => (job.assigned_tech_id ?? null) === filterTechId)
+      : jobs
   ).slice();
 
   filteredJobs.sort((a, b) => {
@@ -56,15 +57,15 @@ export default function JobQueue({
   return (
     <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-white shadow-card backdrop-blur-xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold tracking-[0.08em] text-[var(--accent-copper-light)]">
+        <h2 className="text-base font-semibold tracking-wide text-[var(--accent-copper-light)]">
           {title}
         </h2>
         <div className="flex items-center gap-3 text-xs text-neutral-400">
-          <span className="rounded-full border border-white/10 px-2 py-0.5 text-neutral-300">
+          <span className="rounded-full border border-white/10 px-2 py-0.5">
             {filteredJobs.length} job{filteredJobs.length === 1 ? "" : "s"}
           </span>
           {filterTechId && (
-            <span className="rounded-full border border-blue-500/60 bg-blue-500/10 px-2 py-0.5 text-blue-200">
+            <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-sky-200">
               Tech: {activeLabel || filterTechId}
             </span>
           )}

@@ -6,7 +6,6 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import JobQueueCard from "@shared/components/JobQueueCard";
 
-// Use the raw DB row for work_order_lines
 type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 
 export default function TechJobScreen() {
@@ -20,6 +19,7 @@ export default function TechJobScreen() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     if (!user) {
       setJobs([]);
       setLoading(false);
@@ -45,7 +45,7 @@ export default function TechJobScreen() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_order_lines" },
-        () => void fetchJobs()
+        () => void fetchJobs(),
       )
       .subscribe();
 
@@ -58,6 +58,7 @@ export default function TechJobScreen() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     if (!user) return;
 
     setActiveJobId(job.id ?? null);
@@ -92,35 +93,38 @@ export default function TechJobScreen() {
   );
 
   const activeJob = jobs.find((j) => j.id === activeJobId) ?? null;
-  const readyJobs = jobs.filter((j) => j.status === "awaiting" && j.id !== activeJobId);
+  const readyJobs = jobs.filter(
+    (j) => j.status === "awaiting" && j.id !== activeJobId,
+  );
   const onHoldJobs = jobs.filter((j) => j.status === "on_hold");
 
   return (
-    <div className="space-y-6 p-4">
-      <h1
-        className="text-xl tracking-[0.08em] text-[var(--accent-copper-light)]"
-        style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
-      >
+    <div className="space-y-6 p-4 text-white">
+      <h1 className="text-xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
         Technician Job Queue
       </h1>
 
       {loading && <p className="text-sm text-neutral-500">Loading jobs…</p>}
 
       {activeJob ? (
-        <section>
-          <h2 className="mb-2 text-lg font-semibold text-white">Current Job</h2>
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold text-neutral-100">Current Job</h2>
           {renderJobCard(activeJob)}
         </section>
       ) : (
-        <section>
-          <h2 className="mb-2 text-lg font-semibold text-white">Available Jobs</h2>
-          {readyJobs.length > 0 ? readyJobs.map(renderJobCard) : <p className="text-neutral-400">No jobs available.</p>}
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold text-neutral-100">Available Jobs</h2>
+          {readyJobs.length > 0 ? (
+            readyJobs.map(renderJobCard)
+          ) : (
+            <p className="text-neutral-400">No jobs available.</p>
+          )}
         </section>
       )}
 
       {onHoldJobs.length > 0 && (
-        <section>
-          <h2 className="mb-2 text-lg font-semibold text-white">On Hold</h2>
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold text-neutral-100">On Hold</h2>
           {onHoldJobs.map(renderJobCard)}
         </section>
       )}

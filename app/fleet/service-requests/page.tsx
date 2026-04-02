@@ -83,7 +83,7 @@ export default function FleetServiceRequestsPage() {
     <main className="min-h-[calc(100vh-3rem)] px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-5xl">
         <h1
-          className="mb-6 text-3xl"
+          className="mb-6 text-3xl text-sky-300"
           style={{ fontFamily: "var(--font-blackops)" }}
         >
           Fleet Service Requests
@@ -97,7 +97,7 @@ export default function FleetServiceRequestsPage() {
               onClick={() => setStatusFilter(st)}
               className={`rounded-lg px-3 py-1 text-sm transition ${
                 statusFilter === st
-                  ? "bg-[var(--accent-copper)] text-black"
+                  ? "bg-sky-300 text-black"
                   : "border border-white/10 bg-black/40 text-neutral-300 hover:bg-neutral-900"
               }`}
             >
@@ -144,7 +144,7 @@ export default function FleetServiceRequestsPage() {
                   className="self-start rounded-full px-2 py-1 text-[10px] uppercase tracking-wide"
                   style={{
                     border: "1px solid rgba(255,255,255,0.12)",
-                    backgroundColor: "rgba(193,102,59,0.18)",
+                    backgroundColor: "rgba(56,189,248,0.18)",
                   }}
                 >
                   {req.status}
