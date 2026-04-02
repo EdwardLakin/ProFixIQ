@@ -28,6 +28,11 @@ type DtcAnalysisSummary = {
   laborHours: number | null;
 };
 
+type DtcSuggestResponse = {
+  reply: string;
+  summary: DtcAnalysisSummary;
+};
+
 type DtcThreadRow = DB["public"]["Tables"]["work_order_line_dtc_threads"]["Row"];
 
 type VehicleContext = {
