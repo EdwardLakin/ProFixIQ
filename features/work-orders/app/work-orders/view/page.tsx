@@ -1,10 +1,3 @@
-// features/work-orders/app/work-orders/view/page.tsx
-// ✅ FULL FILE REPLACEMENT
-// - Adds "Tech rollup" (derived from work_order_lines statuses) so view page matches queue logic
-// - Treats WO.status="completed" as the invoice-review stage
-//   → if invoice review passes, auto-advances WO.status to "ready_to_invoice"
-// - Keeps existing status filter + status picker role gating
-
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
@@ -28,6 +21,7 @@ type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 type Row = WorkOrder & {
+  is_waiter?: boolean | null;
   customers:
     | Pick<Customer, "first_name" | "last_name" | "phone" | "email">
     | null;
@@ -36,11 +30,9 @@ type Row = WorkOrder & {
     | null;
 };
 
-/* --------------------------- Invoice Review Types --------------------------- */
 type ReviewIssue = { kind: string; lineId?: string; message: string };
 type ReviewResponse = { ok: boolean; issues: ReviewIssue[] };
 
-/* --------------------------- Status badges --------------------------- */
 type StatusKey =
   | "awaiting_approval"
   | "awaiting"
@@ -52,29 +44,8 @@ type StatusKey =
   | "ready_to_invoice"
   | "invoiced";
 
-const BADGE_BASE =
-  "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[0.7rem] font-medium tracking-[0.08em] uppercase";
+type TechRollup = "awaiting" | "in_progress" | "on_hold" | "completed";
 
-const STATUS_BADGE: Record<StatusKey, string> = {
-  awaiting_approval: "bg-blue-500/10 border-blue-400/60 text-blue-100",
-  awaiting: "bg-sky-500/10 border-sky-400/60 text-sky-100",
-  queued: "bg-indigo-500/10 border-indigo-400/60 text-indigo-100",
-  in_progress:
-    "bg-[var(--accent-copper)]/15 border-[var(--accent-copper-light)]/70 text-[var(--accent-copper-light)]",
-  on_hold: "bg-amber-500/10 border-amber-400/70 text-amber-100",
-  planned: "bg-purple-500/10 border-purple-400/70 text-purple-100",
-  completed: "bg-green-500/10 border-green-400/70 text-green-100",
-  ready_to_invoice: "bg-emerald-500/10 border-emerald-400/70 text-emerald-100",
-  invoiced: "bg-teal-500/10 border-teal-400/70 text-teal-100",
-};
-
-const chip = (s: string | null | undefined) => {
-  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as StatusKey;
-  const cls = STATUS_BADGE[key] ?? STATUS_BADGE.awaiting;
-  return `${BADGE_BASE} ${cls}`;
-};
-
-/** Default “Active” filter */
 const ACTIVE_FLOW_STATUSES: StatusKey[] = [
   "awaiting_approval",
   "awaiting",
@@ -84,22 +55,14 @@ const ACTIVE_FLOW_STATUSES: StatusKey[] = [
   "planned",
 ];
 
-// roles that can assign techs from this view
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
-
-// roles that can change WO status from this view
 const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
-/* --------------------------- Themed input styles --------------------------- */
 const INPUT_DARK =
-  "w-full rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 placeholder:text-neutral-500 " +
-  "shadow-[0_0_18px_rgba(0,0,0,0.8)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
+  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:ring-2 focus:ring-[var(--accent-copper)]/35";
+
 const SELECT_DARK =
-  "w-full rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 " +
-  "shadow-[0_0_18px_rgba(0,0,0,0.8)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
-const BUTTON_MUTED =
-  "rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 shadow-[0_0_14px_rgba(0,0,0,0.7)] " +
-  "transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15 hover:text-white active:opacity-80";
+  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent-copper-light)] focus:ring-2 focus:ring-[var(--accent-copper)]/35";
 
 function isStatusKey(x: string): x is StatusKey {
   return (
@@ -115,31 +78,125 @@ function isStatusKey(x: string): x is StatusKey {
   );
 }
 
-/* --------------------------- Tech rollup (from lines) --------------------------- */
-type TechRollup = "awaiting" | "in_progress" | "on_hold" | "completed";
-
-const TECH_ROLLUP_BADGE: Record<TechRollup, string> = {
-  awaiting: "bg-slate-500/10 border-slate-400/50 text-slate-100",
-  in_progress:
-    "bg-[var(--accent-copper)]/15 border-[var(--accent-copper-light)]/70 text-[var(--accent-copper-light)]",
-  on_hold: "bg-amber-500/10 border-amber-400/70 text-amber-100",
-  completed: "bg-green-500/10 border-green-400/70 text-green-100",
-};
-
 function rollupTechStatus(lines: Array<Pick<Line, "status">>): TechRollup {
   const s = new Set(
     (lines ?? []).map((l) => String(l.status ?? "awaiting").toLowerCase()),
   );
+
   if (s.has("in_progress")) return "in_progress";
   if (s.has("on_hold")) return "on_hold";
-  // treat fully completed as completed
-  if ((lines ?? []).length > 0 && (lines ?? []).every((l) => (l.status ?? "") === "completed"))
+  if (
+    (lines ?? []).length > 0 &&
+    (lines ?? []).every((l) => (l.status ?? "") === "completed")
+  ) {
     return "completed";
+  }
   return "awaiting";
 }
 
-function techChip(rollup: TechRollup): string {
-  return `${BADGE_BASE} ${TECH_ROLLUP_BADGE[rollup]}`;
+function stageAccent(status: string | null | undefined): {
+  badge: string;
+  border: string;
+  progress: string;
+} {
+  const key = String(status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
+
+  if (key === "in_progress") {
+    return {
+      badge:
+        "border-[var(--accent-copper-light)]/70 bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)]",
+      border: "border-[var(--accent-copper)]/30",
+      progress: "bg-[linear-gradient(90deg,#f59e0b,#c57a4a)]",
+    };
+  }
+
+  if (key === "awaiting_approval") {
+    return {
+      badge: "border-blue-400/60 bg-blue-500/10 text-blue-100",
+      border: "border-blue-500/25",
+      progress: "bg-blue-400",
+    };
+  }
+
+  if (key === "queued") {
+    return {
+      badge: "border-indigo-400/60 bg-indigo-500/10 text-indigo-100",
+      border: "border-indigo-500/25",
+      progress: "bg-indigo-400",
+    };
+  }
+
+  if (key === "on_hold") {
+    return {
+      badge: "border-amber-400/70 bg-amber-500/10 text-amber-100",
+      border: "border-amber-500/30",
+      progress: "bg-amber-400",
+    };
+  }
+
+  if (key === "planned") {
+    return {
+      badge: "border-purple-400/70 bg-purple-500/10 text-purple-100",
+      border: "border-purple-500/30",
+      progress: "bg-purple-400",
+    };
+  }
+
+  if (key === "completed" || key === "ready_to_invoice") {
+    return {
+      badge: "border-emerald-400/70 bg-emerald-500/10 text-emerald-100",
+      border: "border-emerald-500/25",
+      progress: "bg-emerald-400",
+    };
+  }
+
+  if (key === "invoiced") {
+    return {
+      badge: "border-teal-400/70 bg-teal-500/10 text-teal-100",
+      border: "border-teal-500/25",
+      progress: "bg-teal-400",
+    };
+  }
+
+  return {
+    badge: "border-sky-400/60 bg-sky-500/10 text-sky-100",
+    border: "border-sky-500/25",
+    progress: "bg-sky-400",
+  };
+}
+
+function techRollupChip(rollup: TechRollup): string {
+  if (rollup === "in_progress") {
+    return "border-[var(--accent-copper-light)]/70 bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)]";
+  }
+  if (rollup === "on_hold") {
+    return "border-amber-400/70 bg-amber-500/10 text-amber-100";
+  }
+  if (rollup === "completed") {
+    return "border-emerald-400/70 bg-emerald-500/10 text-emerald-100";
+  }
+  return "border-slate-400/50 bg-slate-500/10 text-slate-100";
+}
+
+function priorityLabel(priority: number | null | undefined): string | null {
+  if (priority === 1) return "Urgent";
+  if (priority === 2) return "High";
+  if (priority === 3) return "Normal";
+  if (priority === 4) return "Low";
+  return null;
+}
+
+function priorityChip(priority: number | null | undefined): string {
+  if (priority === 1) {
+    return "border-red-500/50 bg-red-500/15 text-red-200";
+  }
+  if (priority === 2) {
+    return "border-orange-500/50 bg-orange-500/15 text-orange-200";
+  }
+  if (priority === 4) {
+    return "border-slate-500/40 bg-slate-500/10 text-slate-300";
+  }
+  return "border-white/10 bg-white/5 text-neutral-300";
 }
 
 export default function WorkOrdersView(): JSX.Element {
@@ -152,7 +209,6 @@ export default function WorkOrdersView(): JSX.Element {
   const [status, setStatus] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
 
-  // assigning
   const [assigningFor, setAssigningFor] = useState<string | null>(null);
   const [techs, setTechs] = useState<
     Array<Pick<Profile, "id" | "full_name" | "role">>
@@ -160,24 +216,16 @@ export default function WorkOrdersView(): JSX.Element {
   const [selectedTechId, setSelectedTechId] = useState<string>("");
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
-
-  // 🔁 version counter to force assigned summary to refetch
   const [, setAssignVersion] = useState(0);
 
-  // ✅ invoice review loading indicator per row
   const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
-
-  // ✅ store review result per work order (gate + indicators)
   const [reviewByWo, setReviewByWo] = useState<
     Record<string, ReviewResponse | undefined>
   >({});
+  const [techRollupByWo, setTechRollupByWo] = useState<
+    Record<string, TechRollup>
+  >({});
 
-  // ✅ derived tech rollup per work order
-  const [techRollupByWo, setTechRollupByWo] = useState<Record<string, TechRollup>>(
-    {},
-  );
-
-  // ✅ status picker modal
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [statusPickerWoId, setStatusPickerWoId] = useState<string | null>(null);
   const [statusPickerCurrent, setStatusPickerCurrent] =
@@ -212,22 +260,17 @@ export default function WorkOrdersView(): JSX.Element {
     [supabase],
   );
 
-  // -------------------------------------------------------------------
-  // Load work orders (+ derived tech rollups from lines)
-  // -------------------------------------------------------------------
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
 
     let query = supabase
       .from("work_orders")
-      .select(
-        `
+      .select(`
         *,
         customers:customers(first_name,last_name,phone,email),
         vehicles:vehicles(year,make,model,license_plate)
-      `,
-      )
+      `)
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -238,6 +281,7 @@ export default function WorkOrdersView(): JSX.Element {
     }
 
     const { data, error } = await query;
+
     if (error) {
       setErr(error.message);
       setRows([]);
@@ -246,9 +290,9 @@ export default function WorkOrdersView(): JSX.Element {
       return;
     }
 
-    const workOrders = data as Row[];
-
+    const workOrders = (data ?? []) as Row[];
     const qlc = q.trim().toLowerCase();
+
     const filtered =
       qlc.length === 0
         ? workOrders
@@ -257,7 +301,9 @@ export default function WorkOrdersView(): JSX.Element {
               .filter(Boolean)
               .join(" ")
               .toLowerCase();
+
             const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
+
             const ymm = [
               r.vehicles?.year ?? "",
               r.vehicles?.make ?? "",
@@ -265,7 +311,9 @@ export default function WorkOrdersView(): JSX.Element {
             ]
               .join(" ")
               .toLowerCase();
+
             const cid = (r.custom_id ?? "").toLowerCase();
+
             return (
               r.id.toLowerCase().includes(qlc) ||
               cid.includes(qlc) ||
@@ -277,7 +325,6 @@ export default function WorkOrdersView(): JSX.Element {
 
     setRows(filtered);
 
-    // derived tech rollup: fetch minimal line statuses for these WOs
     const ids = filtered.map((r) => r.id).filter(Boolean);
     if (ids.length === 0) {
       setTechRollupByWo({});
@@ -314,9 +361,6 @@ export default function WorkOrdersView(): JSX.Element {
     setLoading(false);
   }, [q, status, supabase]);
 
-  // -------------------------------------------------------------------
-  // Invoice review gate (AI)
-  // -------------------------------------------------------------------
   const runInvoiceReview = useCallback(
     async (woId: string) => {
       try {
@@ -369,24 +413,30 @@ export default function WorkOrdersView(): JSX.Element {
         if (safeResult.ok) {
           toast.success("Invoice review passed ✅");
 
-          // ✅ If WO is currently "completed", advance it to "ready_to_invoice"
           const current = rows.find((r) => r.id === woId);
-          const statusLower = String(current?.status ?? "").toLowerCase().replaceAll(" ", "_");
+          const statusLower = String(current?.status ?? "")
+            .toLowerCase()
+            .replaceAll(" ", "_");
+
           if (statusLower === "completed") {
             const { error } = await supabase
               .from("work_orders")
-              .update({ status: "ready_to_invoice" } as DB["public"]["Tables"]["work_orders"]["Update"])
+              .update({
+                status: "ready_to_invoice",
+              } as DB["public"]["Tables"]["work_orders"]["Update"])
               .eq("id", woId)
               .eq("status", "completed");
 
             if (error) {
-              console.warn("[invoice-review] could not advance status:", error.message);
+              console.warn(
+                "[invoice-review] could not advance status:",
+                error.message,
+              );
             } else {
               toast.success("Moved to Ready to invoice");
             }
           }
 
-          // refresh list + rollups
           await load();
         } else {
           toast.error(
@@ -405,9 +455,6 @@ export default function WorkOrdersView(): JSX.Element {
     [load, rows, supabase],
   );
 
-  // -------------------------------------------------------------------
-  // Auth + portal role + mechanics
-  // -------------------------------------------------------------------
   useEffect(() => {
     (async () => {
       const {
@@ -420,6 +467,7 @@ export default function WorkOrdersView(): JSX.Element {
           .select("role")
           .eq("id", user.id)
           .maybeSingle();
+
         setCurrentRole(prof?.role ?? null);
       }
 
@@ -428,6 +476,7 @@ export default function WorkOrdersView(): JSX.Element {
         const json = (await res.json()) as {
           data?: Array<Pick<Profile, "id" | "full_name" | "role">>;
         };
+
         if (res.ok) {
           setTechs(json.data ?? []);
         } else {
@@ -480,14 +529,15 @@ export default function WorkOrdersView(): JSX.Element {
         .eq("work_order_id", id);
 
       if (lineErr) {
-        alert("Failed to delete job lines: " + lineErr.message);
+        alert(`Failed to delete job lines: ${lineErr.message}`);
         setRows(prev);
         return;
       }
 
       const { error } = await supabase.from("work_orders").delete().eq("id", id);
+
       if (error) {
-        alert("Failed to delete: " + error.message);
+        alert(`Failed to delete: ${error.message}`);
         setRows(prev);
       } else {
         setTechRollupByWo((m) => {
@@ -517,12 +567,16 @@ export default function WorkOrdersView(): JSX.Element {
             only_unassigned: true,
           }),
         });
+
         const json = (await res.json()) as { error?: string };
+
         if (!res.ok) {
           alert(json.error || "Failed to assign.");
           return;
         }
+
         setAssigningFor(null);
+        setSelectedTechId("");
         await load();
         setAssignVersion((v) => v + 1);
         toast.success("Work order assigned to mechanic.");
@@ -566,38 +620,74 @@ export default function WorkOrdersView(): JSX.Element {
     [rows],
   );
 
+  const waiterCount = useMemo(
+    () => rows.filter((r) => Boolean(r.is_waiter)).length,
+    [rows],
+  );
+
+  const urgentCount = useMemo(
+    () => rows.filter((r) => Number(r.priority ?? 3) === 1).length,
+    [rows],
+  );
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6 bg-background px-4 py-6 text-foreground">
-      {/* Header card */}
-      <section className="metal-panel metal-panel--card rounded-2xl border border-white/10 px-4 py-4 shadow-card">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-foreground">
+      <section className="rounded-3xl border border-white/10 bg-black/20 p-4 backdrop-blur md:p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-lg font-blackops tracking-[0.18em] text-[var(--accent-copper-light)]">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              Board
+            </div>
+            <h1
+              className="mt-1 text-2xl text-white md:text-3xl"
+              style={{ fontFamily: "var(--font-blackops)" }}
+            >
               Work Orders
             </h1>
-            <p className="mt-1 text-[0.75rem] text-neutral-300">
-              Advisor view. WO status is business workflow; Tech status is derived from job lines.
+            <p className="mt-2 text-sm text-neutral-300">
+              Advisor view with full actions. Same workflow logic, updated board-style layout.
             </p>
+
+            {!loading && !err ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                  Active: <span className="text-white">{activeCount}</span>
+                </div>
+                <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                  Awaiting approval:{" "}
+                  <span className="text-white">{awaitingApprovalCount}</span>
+                </div>
+                <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                  Waiters: <span className="text-white">{waiterCount}</span>
+                </div>
+                <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                  Urgent: <span className="text-white">{urgentCount}</span>
+                </div>
+                <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                  Total: <span className="text-white">{total}</span>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/assistant?pageType=work_orders&pageTitle=Work%20Orders"
-              className="inline-flex items-center justify-center rounded-full border border-orange-400/40 bg-orange-500/10 px-3.5 py-1.5 text-sm font-semibold text-orange-200 shadow-[0_0_26px_rgba(0,0,0,0.9)] transition hover:bg-orange-500/15"
+              className="inline-flex items-center justify-center rounded-full border border-orange-400/40 bg-orange-500/10 px-3.5 py-1.5 text-sm font-semibold text-orange-200 transition hover:bg-orange-500/15"
             >
               Ask Assistant
             </Link>
 
             <Link
               href="/agent/planner?planner=ops&allowCreate=0&goal=Review%20the%20current%20work%20order%20queue%20and%20suggest%20the%20best%20next%20actions"
-              className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-sm font-semibold text-neutral-100 shadow-[0_0_26px_rgba(0,0,0,0.9)] transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+              className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
             >
               Open Planner
             </Link>
 
             <Link
               href="/work-orders/create"
-              className="inline-flex items-center justify-center rounded-full bg-[var(--accent-copper)] px-3.5 py-1.5 text-sm font-semibold text-black shadow-[0_0_26px_rgba(0,0,0,0.9)] transition hover:opacity-90"
+              className="inline-flex items-center justify-center rounded-full bg-[var(--accent-copper)] px-3.5 py-1.5 text-sm font-semibold text-black transition hover:opacity-90"
             >
               <span className="mr-1.5 text-base leading-none">+</span>
               New work order
@@ -606,311 +696,324 @@ export default function WorkOrdersView(): JSX.Element {
         </div>
       </section>
 
-      {/* Filters + stats strip */}
-      <section className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/35 p-3 text-xs shadow-[0_0_40px_rgba(0,0,0,0.8)] backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="min-w-[220px] flex-1">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void load()}
-              placeholder="Search id, custom id, customer, plate, YMM…"
-              className={INPUT_DARK}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className={SELECT_DARK + " min-w-[200px]"}
-              aria-label="Filter by status"
-            >
-              <option value="">Active</option>
-              <option value="awaiting_approval">Awaiting approval</option>
-              <option value="awaiting">Awaiting</option>
-              <option value="queued">Queued</option>
-              <option value="in_progress">In progress</option>
-              <option value="on_hold">On hold</option>
-              <option value="planned">Planned</option>
-              <option value="completed">Completed (review)</option>
-              <option value="ready_to_invoice">Ready to invoice</option>
-              <option value="invoiced">Invoiced</option>
-            </select>
-            <button
-              onClick={() => {
-                void load();
-                setAssignVersion((v) => v + 1);
-              }}
-              className={BUTTON_MUTED}
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
+      <section className="rounded-3xl border border-white/10 bg-black/20 p-4 backdrop-blur">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void load()}
+            placeholder="Search work order, custom id, customer, plate, YMM…"
+            className={INPUT_DARK}
+          />
 
-        <div className="flex items-center gap-4 text-[0.7rem] text-neutral-300">
-          <div className="flex flex-col">
-            <span className="uppercase tracking-[0.13em] text-neutral-500">
-              Total
-            </span>
-            <span className="text-sm font-semibold text-white">{total}</span>
-          </div>
-          <div className="h-7 w-px bg-white/10" />
-          <div className="flex flex-col">
-            <span className="uppercase tracking-[0.13em] text-neutral-500">
-              Active
-            </span>
-            <span className="text-sm font-semibold text-sky-200">
-              {activeCount}
-            </span>
-          </div>
-          <div className="h-7 w-px bg-white/10" />
-          <div className="flex flex-col">
-            <span className="uppercase tracking-[0.13em] text-neutral-500">
-              Awaiting approval
-            </span>
-            <span className="text-sm font-semibold text-blue-200">
-              {awaitingApprovalCount}
-            </span>
-          </div>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className={SELECT_DARK}
+            aria-label="Filter by status"
+          >
+            <option value="">Active</option>
+            <option value="awaiting_approval">Awaiting approval</option>
+            <option value="awaiting">Awaiting</option>
+            <option value="queued">Queued</option>
+            <option value="in_progress">In progress</option>
+            <option value="on_hold">On hold</option>
+            <option value="planned">Planned</option>
+            <option value="completed">Completed (review)</option>
+            <option value="ready_to_invoice">Ready to invoice</option>
+            <option value="invoiced">Invoiced</option>
+          </select>
+
+          <button
+            onClick={() => {
+              void load();
+              setAssignVersion((v) => v + 1);
+            }}
+            className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+          >
+            Refresh
+          </button>
         </div>
       </section>
 
-      {err && (
-        <div className="rounded-xl border border-red-500/50 bg-red-950/60 px-3 py-2 text-xs text-red-100">
+      {err ? (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
           {err}
         </div>
-      )}
+      ) : null}
 
       {loading ? (
-        <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-300 shadow-[0_0_40px_rgba(0,0,0,0.7)]">
-          Loading work orders…
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-64 animate-pulse rounded-2xl border border-white/10 bg-white/5"
+            />
+          ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/20 bg-black/40 p-6 text-sm text-neutral-400 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
+        <div className="rounded-2xl border border-white/10 bg-black/25 p-6 text-sm text-neutral-300">
           No work orders match your current filters.
         </div>
       ) : (
-        <section className="overflow-hidden rounded-2xl border border-white/12 bg-black/30 shadow-[0_0_50px_rgba(0,0,0,0.9)] backdrop-blur">
-          <div className="hidden border-b border-white/8 bg-black/45 px-4 py-2 text-[0.7rem] uppercase tracking-[0.12em] text-neutral-500 sm:grid sm:grid-cols-[110px,1.6fr,1.1fr,auto] sm:gap-3">
-            <div>Date</div>
-            <div>Work order / customer / vehicle</div>
-            <div>Assigned to</div>
-            <div className="text-right">Actions</div>
-          </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {rows.map((r) => {
+            const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
+            const isAssigning = assigningFor === r.id;
 
-          <div className="divide-y divide-white/8">
-            {rows.map((r) => {
-              const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
-              const isAssigning = assigningFor === r.id;
+            const customerName = r.customers
+              ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
+                  .filter(Boolean)
+                  .join(" ")
+              : "";
 
-              const customerName = r.customers
-                ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
-                    .filter(Boolean)
-                    .join(" ")
-                : "";
+            const vehicleLabel = r.vehicles
+              ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""}`
+                  .trim()
+              : "";
 
-              const vehicleLabel = r.vehicles
-                ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""}`.trim()
-                : "";
+            const plate = r.vehicles?.license_plate ?? "";
+            const statusLower = String(r.status ?? "")
+              .toLowerCase()
+              .replaceAll(" ", "_");
 
-              const plate = r.vehicles?.license_plate ?? "";
+            const isInvoiceStage =
+              statusLower === "ready_to_invoice" || statusLower === "completed";
 
-              const statusLower = String(r.status ?? "").toLowerCase().replaceAll(" ", "_");
-              const isInvoiceStage =
-                statusLower === "ready_to_invoice" || statusLower === "completed";
+            const review = reviewByWo[r.id];
+            const reviewedOk = Boolean(review?.ok);
+            const issueCount = review?.issues?.length ?? 0;
+            const techRollup = techRollupByWo[r.id] ?? "awaiting";
 
-              const review = reviewByWo[r.id];
-              const reviewedOk = Boolean(review?.ok);
-              const issueCount = review?.issues?.length ?? 0;
+            const accent = stageAccent(r.status);
+            const priority = priorityLabel(r.priority);
+            const progressPct =
+              techRollup === "completed"
+                ? 100
+                : techRollup === "in_progress"
+                  ? 55
+                  : techRollup === "on_hold"
+                    ? 25
+                    : 8;
 
-              const techRollup = techRollupByWo[r.id] ?? "awaiting";
-
-              return (
-                <div
-                  key={r.id}
-                  className="flex flex-col gap-3 bg-gradient-to-br from-black/60 to-black/40 px-3 py-3 text-sm sm:grid sm:grid-cols-[110px,1.6fr,1.1fr,auto] sm:items-center sm:gap-3 hover:bg-black/70"
-                >
-                  {/* Date */}
-                  <div className="text-[0.7rem] text-neutral-400">
-                    {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
-                  </div>
-
-                  {/* Main */}
-                  <div className="min-w-0 space-y-1">
+            return (
+              <div
+                key={r.id}
+                className={`rounded-2xl border bg-black/25 p-4 backdrop-blur transition hover:bg-black/30 ${accent.border}`}
+                style={{
+                  boxShadow:
+                    "0 0 0 1px rgba(255,255,255,0.04) inset, 0 0 24px rgba(0,0,0,0.22)",
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={href}
-                        className="text-sm font-semibold text-white underline decoration-neutral-600/50 underline-offset-2 hover:decoration-[var(--accent-copper-light)]"
+                        className="text-sm font-extrabold text-white hover:text-[var(--accent-copper-light)]"
                       >
-                        {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
+                        {r.custom_id ?? `#${r.id.slice(0, 8)}`}
                       </Link>
 
-                      {r.custom_id && (
-                        <span className="rounded-full border border-white/15 bg-black/60 px-1.5 py-0.5 text-[0.65rem] font-mono text-neutral-400">
-                          #{r.id.slice(0, 6)}
-                        </span>
-                      )}
-
-                      {/* Business status */}
-                      <span className={chip(r.status)}>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${accent.badge}`}
+                      >
                         {(r.status ?? "awaiting").replaceAll("_", " ")}
                       </span>
 
-                      {/* Tech rollup status */}
-                      <span className={techChip(techRollup)}>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${techRollupChip(
+                          techRollup,
+                        )}`}
+                      >
                         Tech: {techRollup.replaceAll("_", " ")}
                       </span>
 
+                      {r.is_waiter ? (
+                        <span className="rounded-full border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-100">
+                          Waiting
+                        </span>
+                      ) : null}
+
+                      {priority ? (
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${priorityChip(
+                            r.priority,
+                          )}`}
+                        >
+                          {priority}
+                        </span>
+                      ) : null}
+
                       {review ? (
                         reviewedOk ? (
-                          <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[0.65rem] text-emerald-200">
+                          <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
                             Reviewed ✓
                           </span>
                         ) : (
-                          <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[0.65rem] text-amber-200">
+                          <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-200">
                             Issues: {issueCount}
                           </span>
                         )
                       ) : null}
                     </div>
 
-                    <div className="truncate text-[0.8rem] text-neutral-300">
-                      {customerName || "No customer"}{" "}
-                      <span className="mx-1 text-neutral-600">•</span>
-                      {vehicleLabel || "No vehicle"}
-                      {plate ? (
-                        <span className="ml-1 text-neutral-400">({plate})</span>
-                      ) : null}
+                    <div className="mt-2 truncate text-sm font-semibold text-neutral-200">
+                      {customerName || "No customer"}
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
+                      {vehicleLabel ? <span>{vehicleLabel}</span> : <span>No vehicle</span>}
+                      {plate ? <span>({plate})</span> : null}
                     </div>
                   </div>
 
-                  {/* Assigned */}
-                  <div className="text-[0.75rem] text-neutral-300">
-                    <WorkOrderAssignedSummary workOrderId={r.id} />
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Link
-                      href={href}
-                      className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/20"
-                    >
-                      Open
-                    </Link>
-
-                    {canPickStatus && (
-                      <button
-                        onClick={() => openStatusPicker(r)}
-                        className="rounded-full border border-purple-500/60 bg-purple-500/10 px-2.5 py-1 text-xs text-purple-100 transition hover:bg-purple-500/20"
-                        title="Change work order status"
-                      >
-                        Status
-                      </button>
-                    )}
-
-                    {isInvoiceStage && (
-                      <button
-                        onClick={() => void runInvoiceReview(r.id)}
-                        disabled={reviewLoadingId === r.id || reviewedOk}
-                        className={
-                          reviewedOk
-                            ? "rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100 opacity-70"
-                            : "rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
-                        }
-                        title={
-                          reviewedOk
-                            ? "Already reviewed"
-                            : "Check required fields before invoicing"
-                        }
-                      >
-                        {reviewedOk
-                          ? "Reviewed"
-                          : reviewLoadingId === r.id
-                            ? "Reviewing…"
-                            : "Invoice review"}
-                      </button>
-                    )}
-
-                    {statusLower === "ready_to_invoice" && (
-                      <button
-                        onClick={() => openInvoicePage(r.id)}
-                        disabled={!reviewedOk}
-                        className={
-                          reviewedOk
-                            ? "rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper)]/15 px-2.5 py-1 text-xs text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/25"
-                            : "rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-neutral-500 opacity-60"
-                        }
-                        title={
-                          reviewedOk
-                            ? "Open invoice page"
-                            : "Run invoice review first"
-                        }
-                      >
-                        Invoice
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => void handleDelete(r.id)}
-                      className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
-                    >
-                      Delete
-                    </button>
-
-                    {canAssign && (
-                      <>
-                        {!isAssigning ? (
-                          <button
-                            onClick={() => setAssigningFor(r.id)}
-                            className="rounded-full border border-sky-500/60 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-100 transition hover:bg-sky-500/25"
-                          >
-                            Assign
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <select
-                              value={selectedTechId}
-                              onChange={(e) => setSelectedTechId(e.target.value)}
-                              className={
-                                SELECT_DARK +
-                                " h-8 min-w-[150px] px-2 py-1 text-[0.7rem]"
-                              }
-                            >
-                              <option value="">Pick mechanic…</option>
-                              {techs.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.full_name ?? "(no name)"}{" "}
-                                  {t.role ? `(${t.role})` : ""}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              onClick={() => void handleAssignAll(r.id)}
-                              className="rounded-full bg-[var(--accent-copper)] px-2 py-1 text-[0.7rem] font-semibold text-black shadow-[0_0_18px_rgba(0,0,0,0.9)] hover:opacity-90"
-                            >
-                              Apply
-                            </button>
-                            <button
-                              onClick={() => setAssigningFor(null)}
-                              className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[0.7rem] text-neutral-200 hover:bg-white/10"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    )}
+                  <div className="shrink-0 text-right">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                      Created
+                    </div>
+                    <div className="mt-1 text-sm font-bold text-neutral-200">
+                      {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
+                    </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </section>
+
+                <div className="mt-4">
+                  <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                    <span>Workflow health</span>
+                    <span>{progressPct}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/8">
+                    <div
+                      className={`h-full rounded-full ${accent.progress}`}
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex min-h-[30px] items-center">
+                  <WorkOrderAssignedSummary workOrderId={r.id} />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    href={href}
+                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/20"
+                  >
+                    Open
+                  </Link>
+
+                  {canPickStatus ? (
+                    <button
+                      onClick={() => openStatusPicker(r)}
+                      className="rounded-full border border-purple-500/60 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold text-purple-100 transition hover:bg-purple-500/20"
+                      title="Change work order status"
+                    >
+                      Status
+                    </button>
+                  ) : null}
+
+                  {isInvoiceStage ? (
+                    <button
+                      onClick={() => void runInvoiceReview(r.id)}
+                      disabled={reviewLoadingId === r.id || reviewedOk}
+                      className={
+                        reviewedOk
+                          ? "rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 opacity-70"
+                          : "rounded-full border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                      }
+                    >
+                      {reviewedOk
+                        ? "Reviewed"
+                        : reviewLoadingId === r.id
+                          ? "Reviewing…"
+                          : "Invoice review"}
+                    </button>
+                  ) : null}
+
+                  {statusLower === "ready_to_invoice" ? (
+                    <button
+                      onClick={() => openInvoicePage(r.id)}
+                      disabled={!reviewedOk}
+                      className={
+                        reviewedOk
+                          ? "rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper)]/15 px-3 py-1.5 text-xs font-semibold text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/25"
+                          : "rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-500 opacity-60"
+                      }
+                    >
+                      Invoice
+                    </button>
+                  ) : null}
+
+                  <button
+                    onClick={() => void handleDelete(r.id)}
+                    className="rounded-full border border-red-500/60 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:bg-red-500/20"
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                {canAssign ? (
+                  <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
+                    {!isAssigning ? (
+                      <button
+                        onClick={() => {
+                          setAssigningFor(r.id);
+                          setSelectedTechId("");
+                        }}
+                        className="rounded-full border border-sky-500/60 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/25"
+                      >
+                        Assign work order
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                          Assign unassigned lines
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={selectedTechId}
+                            onChange={(e) => setSelectedTechId(e.target.value)}
+                            className={`${SELECT_DARK} min-w-[180px] px-3 py-2 text-xs`}
+                          >
+                            <option value="">Pick mechanic…</option>
+                            {techs.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.full_name ?? "(no name)"}{" "}
+                                {t.role ? `(${t.role})` : ""}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            onClick={() => void handleAssignAll(r.id)}
+                            className="rounded-full bg-[var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black transition hover:opacity-90"
+                          >
+                            Apply
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setAssigningFor(null);
+                              setSelectedTechId("");
+                            }}
+                            className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-white/10"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      {/* ✅ Status Picker Modal */}
-      {statusPickerOpen && statusPickerWoId && (
+      {statusPickerOpen && statusPickerWoId ? (
         <StatusPickerModal
           isOpen={statusPickerOpen}
           onClose={() => setStatusPickerOpen(false)}
@@ -922,7 +1025,7 @@ export default function WorkOrdersView(): JSX.Element {
             await load();
           }}
         />
-      )}
+      ) : null}
     </div>
   );
 }
