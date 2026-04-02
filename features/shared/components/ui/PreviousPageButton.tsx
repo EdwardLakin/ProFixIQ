@@ -4,19 +4,17 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
+import { cn } from "@shared/lib/utils";
 
 type PreviousPageButtonProps = {
-  /**
-   * Optional explicit target.
-   * If omitted, will try history.back(), with a safe fallback list route.
-   */
   to?: string;
   label?: string;
   className?: string;
 };
 
 const baseClasses =
-  "inline-flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-950/70 px-3 py-1.5 text-xs font-medium text-neutral-200 shadow-sm hover:border-neutral-500 hover:bg-neutral-900/80 transition-colors";
+  "inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-medium text-neutral-200 shadow-sm backdrop-blur-sm transition " +
+  "hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/40";
 
 export default function PreviousPageButton({
   to,
@@ -26,20 +24,17 @@ export default function PreviousPageButton({
   const router = useRouter();
 
   const handleClick = React.useCallback(() => {
-    // If an explicit target is provided, respect it.
     if (to) {
       router.push(to);
       return;
     }
 
-    // Otherwise, try to go back in history first.
     if (typeof window !== "undefined") {
       if (window.history.length > 1) {
         router.back();
         return;
       }
 
-      // No history: choose a sensible fallback based on current path.
       const pathname = window.location.pathname || "";
       const fallback = pathname.startsWith("/mobile")
         ? "/mobile/work-orders"
@@ -53,7 +48,7 @@ export default function PreviousPageButton({
     <button
       type="button"
       onClick={handleClick}
-      className={`${baseClasses} ${className}`.trim()}
+      className={cn(baseClasses, className)}
     >
       <ChevronLeft className="h-4 w-4" />
       <span>{label}</span>

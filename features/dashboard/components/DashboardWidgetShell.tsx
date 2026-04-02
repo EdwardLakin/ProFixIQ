@@ -28,7 +28,6 @@ export default function DashboardWidgetShell({
   return (
     <Card
       className={cn(
-        "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.05),rgba(0,0,0,0.82))]",
         compact ? "px-4 py-4" : "px-5 py-5",
         className,
       )}
@@ -36,7 +35,7 @@ export default function DashboardWidgetShell({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           {eyebrow ? (
-            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
               {eyebrow}
             </div>
           ) : null}
@@ -46,7 +45,7 @@ export default function DashboardWidgetShell({
           </h2>
 
           {subtitle ? (
-            <p className="mt-1 text-xs text-neutral-400 sm:text-sm">
+            <p className="mt-1 max-w-2xl text-xs text-neutral-400 sm:text-sm">
               {subtitle}
             </p>
           ) : null}

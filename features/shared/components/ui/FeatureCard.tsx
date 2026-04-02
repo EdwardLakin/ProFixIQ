@@ -83,8 +83,8 @@ export default function FeatureCard(props: FeatureCardProps) {
       aria-label={title}
       className={cn(
         "group relative overflow-hidden rounded-3xl border p-5",
-        "bg-black/35 backdrop-blur-2xl",
-        "transition-transform duration-200 hover:-translate-y-[2px]",
+        "bg-black/30 backdrop-blur-2xl",
+        "transition duration-200 hover:-translate-y-[2px]",
         "shadow-[0_22px_60px_rgba(0,0,0,0.85)]",
         className,
       )}
@@ -92,7 +92,6 @@ export default function FeatureCard(props: FeatureCardProps) {
         borderColor: "rgba(255,255,255,0.10)",
       }}
     >
-      {/* sheen + copper edge glow */}
       <div className="pointer-events-none absolute inset-0">
         <div
           className="absolute inset-0 opacity-[0.10]"
@@ -110,18 +109,18 @@ export default function FeatureCard(props: FeatureCardProps) {
         />
         <div
           className="absolute -right-24 -top-24 h-56 w-56 rounded-full blur-3xl opacity-0 transition-opacity duration-200 group-hover:opacity-40"
-          style={{ backgroundColor: "rgba(193,102,59,0.28)" }}
+          style={{ backgroundColor: "rgba(193,102,59,0.24)" }}
         />
         <div
           className="absolute -left-28 -bottom-28 h-64 w-64 rounded-full blur-3xl opacity-0 transition-opacity duration-200 group-hover:opacity-25"
-          style={{ backgroundColor: "rgba(227,154,110,0.18)" }}
+          style={{ backgroundColor: "rgba(227,154,110,0.15)" }}
         />
       </div>
 
       <div
         className="pointer-events-none absolute inset-0 rounded-3xl opacity-0 transition-opacity duration-200 group-hover:opacity-100"
         style={{
-          boxShadow: "0 0 0 1px rgba(193,102,59,0.20) inset",
+          boxShadow: "0 0 0 1px rgba(193,102,59,0.16) inset",
         }}
       />
 
@@ -167,7 +166,7 @@ export default function FeatureCard(props: FeatureCardProps) {
         </div>
 
         <span
-          className="shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold"
+          className="shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
           style={statusPillStyle}
         >
           {statusLabel ?? "ProFixIQ"}

@@ -30,7 +30,7 @@ export default function SectionHeader({
     >
       <div className="min-w-0">
         {eyebrow ? (
-          <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
             {eyebrow}
           </div>
         ) : null}
@@ -40,7 +40,7 @@ export default function SectionHeader({
         </h2>
 
         {subtitle ? (
-          <p className="mt-1 text-xs text-neutral-400 sm:text-sm">
+          <p className="mt-1 max-w-2xl text-xs text-neutral-400 sm:text-sm">
             {subtitle}
           </p>
         ) : null}

@@ -34,7 +34,7 @@ export default function DashboardSection(props: {
         />
       ) : null}
 
-      <div className={contentClassName}>{children}</div>
+      <div className={cn("space-y-0", contentClassName)}>{children}</div>
     </section>
   );
 }

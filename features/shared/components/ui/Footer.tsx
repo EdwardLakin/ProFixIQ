@@ -7,7 +7,6 @@ const COPPER_LIGHT = "var(--accent-copper-light)";
 export default function Footer({ className }: { className?: string }) {
   return (
     <div className={cn("w-full", className)}>
-      {/* PRE-FOOTER CTA BAND */}
       <div className="mx-auto max-w-6xl px-4">
         <div className="relative mb-6 overflow-hidden rounded-3xl border border-white/10 bg-black/20 p-6 backdrop-blur-xl">
           <div
@@ -42,13 +41,13 @@ export default function Footer({ className }: { className?: string }) {
             <div className="flex flex-wrap items-center gap-2">
               <a
                 href="#"
-                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 py-2 text-sm font-semibold text-neutral-200 hover:border-white/20 hover:bg-black/35"
+                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 py-2 text-sm font-semibold text-neutral-200 transition hover:border-white/20 hover:bg-black/35"
               >
                 See what’s included
               </a>
               <a
                 href="#"
-                className="inline-flex items-center justify-center rounded-full px-5 py-2 text-sm font-extrabold text-black"
+                className="inline-flex items-center justify-center rounded-full px-5 py-2 text-sm font-extrabold text-black transition hover:brightness-110"
                 style={{
                   backgroundColor: "rgba(197,122,74,0.95)",
                   boxShadow: "0 0 30px rgba(197,122,74,0.25)",
@@ -59,7 +58,6 @@ export default function Footer({ className }: { className?: string }) {
             </div>
           </div>
 
-          {/* hint strip for future: socials + reviews */}
           <div className="relative mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
             <div className="text-xs text-neutral-500">
               Next: social links + verified shop reviews
@@ -71,15 +69,14 @@ export default function Footer({ className }: { className?: string }) {
         </div>
       </div>
 
-      {/* FOOTER */}
       <footer
         className={cn(
-          "w-full text-center py-8 px-4 border-t border-white/10",
-          "bg-black/25 backdrop-blur-xl text-neutral-400 text-sm transition-all",
+          "w-full border-t border-white/10 px-4 py-8 text-center",
+          "bg-black/25 text-sm text-neutral-400 backdrop-blur-xl transition-all",
           "hover:text-white",
         )}
       >
-        <p className="font-mono tracking-wide text-xs sm:text-sm">
+        <p className="font-mono text-xs tracking-wide sm:text-sm">
           © {new Date().getFullYear()}{" "}
           <span className="font-semibold" style={{ color: COPPER_LIGHT }}>
             ProFixIQ

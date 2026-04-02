@@ -139,7 +139,6 @@ export default function RealShopDayFlow() {
   const [mode, setMode] = useState<QuoteMode>("profixiq");
 
   const preview = useMemo(() => {
-    // A concrete example that matches HD/fleet reality + your workflow
     const concern = "Rear brake pads low";
     const measurement = "2mm";
     const line = "Rear brake pads + hardware";
@@ -159,7 +158,6 @@ export default function RealShopDayFlow() {
   return (
     <section className="relative">
       <div className="mx-auto w-full max-w-[1400px] px-4 py-12 sm:py-14">
-        {/* Header */}
         <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
@@ -204,20 +202,19 @@ export default function RealShopDayFlow() {
 
             <Link
               href="#features"
-              className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-neutral-100 transition hover:bg-black/30"
+              className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-neutral-100 transition hover:border-white/20 hover:bg-black/30"
             >
               See what’s included
             </Link>
           </div>
         </div>
 
-        {/* Flow grid */}
-        <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur sm:p-5">
+        <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
           <div className="grid gap-3 md:grid-cols-2">
             {STEPS.map((s) => (
               <div
                 key={s.n}
-                className="rounded-xl border border-white/10 bg-black/15 px-4 py-4"
+                className="rounded-xl border border-white/10 bg-black/15 px-4 py-4 backdrop-blur-sm"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -269,8 +266,7 @@ export default function RealShopDayFlow() {
           </div>
         </div>
 
-        {/* Interactive proof quote preview (placed immediately after the flow) */}
-        <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur sm:p-5">
+        <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
@@ -299,7 +295,6 @@ export default function RealShopDayFlow() {
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-            {/* Left: preview card */}
             <div className="rounded-xl border border-white/10 bg-black/15 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -319,257 +314,101 @@ export default function RealShopDayFlow() {
                         Measured:{" "}
                         <span className="ml-1 text-neutral-100">{preview.measurement}</span>
                       </Badge>
-                      <Badge>Evidence attached</Badge>
                     </div>
-                  ) : (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge>Parts + labor</Badge>
-                      <Badge>No proof attached</Badge>
-                      <Badge>Approval via phone/email</Badge>
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  className="hidden sm:block rounded-full border px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.18em]"
-                  style={{
-                    borderColor: "rgba(255,255,255,0.14)",
-                    backgroundColor: mode === "profixiq" ? "rgba(197,122,74,0.10)" : "rgba(255,255,255,0.04)",
-                    color: mode === "profixiq" ? COPPER_LIGHT : "rgba(255,255,255,0.70)",
-                  }}
-                >
-                  {mode === "profixiq" ? "Proof-based" : "Basic"}
-                </div>
-              </div>
-
-              {/* Evidence block (only shows in ProFixIQ mode) */}
-              {mode === "profixiq" && (
-                <div className="mt-4 grid gap-3 md:grid-cols-[0.55fr_0.45fr]">
-                  <div
-                    className="rounded-xl border border-white/10 bg-black/30 p-3"
-                    style={{
-                      background:
-                        "radial-gradient(circle at 30% 20%, rgba(197,122,74,0.14), rgba(0,0,0,0.25) 70%)",
-                    }}
-                  >
-                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                      Evidence
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <div className="aspect-[4/3] rounded-lg border border-white/10 bg-black/40" />
-                      <div className="aspect-[4/3] rounded-lg border border-white/10 bg-black/40" />
-                    </div>
-                    <div className="mt-2 text-xs text-neutral-400">
-                      Photos/measurements stay attached to the job and portal history.
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                      Measurement
-                    </div>
-                    <div className="mt-2 text-3xl font-extrabold text-white">
-                      {preview.measurement}
-                    </div>
-                    <div className="mt-1 text-xs text-neutral-400">
-                      Captured during inspection.
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge>Inspection</Badge>
-                      <Badge>Repair line</Badge>
-                      <Badge>Portal approval</Badge>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Pricing block */}
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-extrabold text-white">Estimate</div>
-                  <div className="text-sm font-extrabold text-white">
-                    ${preview.subtotal.toFixed(2)}
-                  </div>
-                </div>
-
-                <div className="mt-2 space-y-1 text-sm text-neutral-300">
-                  <div className="flex items-center justify-between">
-                    <span>Labor ({preview.laborHours.toFixed(1)}h @ ${preview.laborRate}/h)</span>
-                    <span>${preview.labor.toFixed(2)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Parts</span>
-                    <span>${preview.partsTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <div className="mt-3 border-t border-white/10 pt-3 text-xs text-neutral-400">
-                  {mode === "profixiq"
-                    ? "Customer/fleet sees the proof and approves inside the portal."
-                    : "Customer/fleet sees a list and asks questions (slow approvals)."}
-                </div>
-              </div>
-            </div>
-
-            {/* Right: approval “portal feel” */}
-            <div className="rounded-xl border border-white/10 bg-black/15 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                    Approval experience
-                  </div>
-                  <div className="mt-1 text-lg font-extrabold text-white">
-                    {mode === "profixiq" ? "Portal approval (fast)" : "Back-and-forth (slow)"}
-                  </div>
+                  ) : null}
                 </div>
 
                 <span
                   className="rounded-full border px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.18em]"
                   style={{
                     borderColor: "rgba(255,255,255,0.14)",
-                    backgroundColor: "rgba(0,0,0,0.30)",
-                    color: "rgba(255,255,255,0.75)",
+                    backgroundColor:
+                      mode === "profixiq"
+                        ? "rgba(197,122,74,0.10)"
+                        : "rgba(255,255,255,0.06)",
+                    color:
+                      mode === "profixiq"
+                        ? COPPER_LIGHT
+                        : "rgba(255,255,255,0.78)",
                   }}
                 >
-                  {mode === "profixiq" ? "Evidence shown" : "Evidence missing"}
+                  {mode === "profixiq" ? "Proof-first" : "Basic quote"}
                 </span>
               </div>
 
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
-                <div className="text-sm font-extrabold text-white">
-                  {preview.line}
-                </div>
-
-                <div className="mt-2 text-sm text-neutral-300">
-                  {mode === "profixiq" ? (
-                    <>
-                      Rear pads measured at <span className="text-neutral-100 font-semibold">{preview.measurement}</span>. Photos +
-                      inspection notes attached. Approve/decline below.
-                    </>
-                  ) : (
-                    <>
-                      Rear pads + hardware. Customer asks: “How bad is it?” “Do you have photos?” “Can I wait?”
-                    </>
-                  )}
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {mode === "profixiq" ? (
-                    <>
-                      <Badge>Proof</Badge>
-                      <Badge>Clear scope</Badge>
-                      <Badge>One-click decision</Badge>
-                    </>
-                  ) : (
-                    <>
-                      <Badge>Questions</Badge>
-                      <Badge>Phone tag</Badge>
-                      <Badge>Delays</Badge>
-                    </>
-                  )}
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="rounded-xl px-4 py-2 text-sm font-extrabold text-black transition active:scale-[0.99]"
-                    style={{
-                      background:
-                        "linear-gradient(to right, var(--accent-copper-soft), var(--accent-copper))",
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      boxShadow: "0 0 26px rgba(197,122,74,0.22)",
-                      opacity: mode === "profixiq" ? 1 : 0.55,
-                      cursor: mode === "profixiq" ? "pointer" : "default",
-                    }}
-                    disabled={mode !== "profixiq"}
+              <div className="mt-5 space-y-3">
+                {preview.parts.map((part) => (
+                  <div
+                    key={part.name}
+                    className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm"
                   >
-                    Approve
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-extrabold text-neutral-100 transition hover:bg-black/30 active:scale-[0.99]"
-                    style={{
-                      opacity: mode === "profixiq" ? 1 : 0.55,
-                      cursor: mode === "profixiq" ? "pointer" : "default",
-                    }}
-                    disabled={mode !== "profixiq"}
-                  >
-                    Decline
-                  </button>
-                </div>
-
-                <div className="mt-3 text-xs text-neutral-500">
-                  {mode === "profixiq"
-                    ? "This is what your customer/fleet sees in the portal."
-                    : "This is why traditional systems stall approvals."}
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
-                    What changes operationally
+                    <div className="text-neutral-200">
+                      {part.qty} × {part.name}
+                    </div>
+                    <div className="font-semibold text-white">
+                      ${part.price.toFixed(0)}
+                    </div>
                   </div>
-                  <Dot />
+                ))}
+
+                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm">
+                  <div className="text-neutral-200">
+                    Labor ({preview.laborHours.toFixed(1)}h @ ${preview.laborRate}/h)
+                  </div>
+                  <div className="font-semibold text-white">
+                    ${preview.labor.toFixed(0)}
+                  </div>
                 </div>
 
-                <ul className="mt-2 space-y-2 text-sm text-neutral-300">
-                  <li className="flex gap-2">
-                    <span style={{ color: COPPER_LIGHT }}>•</span>
-                    Tech enters the truth once (parts + labor + proof).
-                  </li>
-                  <li className="flex gap-2">
-                    <span style={{ color: COPPER_LIGHT }}>•</span>
-                    Parts quotes without breaking the workflow.
-                  </li>
-                  <li className="flex gap-2">
-                    <span style={{ color: COPPER_LIGHT }}>•</span>
-                    Advisor reviews — not retypes — then sends approvals.
-                  </li>
-                  <li className="flex gap-2">
-                    <span style={{ color: COPPER_LIGHT }}>•</span>
-                    Portal decisions update job + parts flow automatically.
-                  </li>
-                </ul>
+                <div className="flex items-center justify-between border-t border-white/10 pt-3 text-sm">
+                  <div className="font-semibold text-neutral-300">Subtotal</div>
+                  <div className="text-base font-extrabold text-white">
+                    ${preview.subtotal.toFixed(0)}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Footer CTA */}
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-            <div className="text-xs text-neutral-400">
-              Want this exact flow? It’s already how ProFixIQ is designed to run.
-            </div>
+            <div className="rounded-xl border border-white/10 bg-black/15 p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                Approval experience
+              </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Link
-                href="/demo/instant-shop-analysis"
-                className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
-              >
-                See a real snapshot
-              </Link>
-              <Link
-                href="/onboarding/profile"
-                className="rounded-xl px-4 py-2 text-sm font-extrabold text-black"
-                style={{
-                  background: "var(--pfq-copper)",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  boxShadow: "0 0 26px rgba(197,122,74,0.20)",
-                }}
-              >
-                Start onboarding
-              </Link>
+              {mode === "traditional" ? (
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-white/10 bg-black/18 px-4 py-3 text-sm text-neutral-300">
+                    Replace rear brake pads and hardware.
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/18 px-4 py-3 text-sm text-neutral-500">
+                    No measurements shown.
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/18 px-4 py-3 text-sm text-neutral-500">
+                    No supporting evidence attached.
+                  </div>
+                  <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-100">
+                    Customer has to trust the quote without seeing what you saw.
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-white/10 bg-black/18 px-4 py-3 text-sm text-neutral-300">
+                    Rear brake pads measured at <span className="font-semibold text-white">2mm</span>.
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/18 px-4 py-3 text-sm text-neutral-300">
+                    Evidence and inspection notes stay attached to the job.
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/18 px-4 py-3 text-sm text-neutral-300">
+                    Portal approval happens with context, not guesswork.
+                  </div>
+                  <div className="rounded-xl border border-[rgba(197,122,74,0.28)] bg-[rgba(197,122,74,0.10)] px-4 py-3 text-sm text-neutral-100">
+                    Customer sees the proof, understands the urgency, and approves faster.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* soft copper wash */}
-      <div
-        className="pointer-events-none absolute left-[-120px] top-[40%] h-72 w-72 rounded-full blur-3xl"
-        style={{ background: "rgba(197,122,74,0.12)" }}
-      />
     </section>
   );
 }

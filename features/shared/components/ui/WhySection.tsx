@@ -55,21 +55,16 @@ export default function WhySection() {
         </p>
       </div>
 
-      {/* TABLE + DEPTH BACKPLATE */}
       <div className="relative mt-10 overflow-hidden rounded-3xl border border-white/10 bg-black/20 backdrop-blur-xl">
-        {/* depth layers */}
         <div className="pointer-events-none absolute inset-0">
-          {/* copper wash */}
           <div
             className="absolute -right-24 -top-24 h-80 w-80 rounded-full blur-3xl"
             style={{ background: "rgba(197,122,74,0.12)" }}
           />
-          {/* steel wash */}
           <div
             className="absolute -left-28 -bottom-28 h-96 w-96 rounded-full blur-3xl"
             style={{ background: "rgba(15,23,42,0.42)" }}
           />
-          {/* brushed grain */}
           <div
             className="absolute inset-0 opacity-[0.10]"
             style={{
@@ -77,7 +72,6 @@ export default function WhySection() {
                 "repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.00) 3px, rgba(0,0,0,0.45) 9px)",
             }}
           />
-          {/* inner groove */}
           <div
             className="absolute inset-0"
             style={{
@@ -87,12 +81,9 @@ export default function WhySection() {
           />
         </div>
 
-        {/* header row */}
         <div className="relative grid grid-cols-12 gap-0 border-b border-white/10 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
           <div className="col-span-12 sm:col-span-3">Area</div>
           <div className="col-span-12 sm:col-span-4">Traditional</div>
-
-          {/* ProFixIQ header gets a subtle copper “active” cue */}
           <div className="col-span-12 sm:col-span-5">
             <span className="inline-flex items-center gap-2">
               <span
@@ -108,7 +99,6 @@ export default function WhySection() {
           </div>
         </div>
 
-        {/* rows */}
         <div className="relative divide-y divide-white/10">
           {ROWS.map((r) => (
             <div key={r.label} className="grid grid-cols-12 gap-0 px-5 py-5">
@@ -120,7 +110,6 @@ export default function WhySection() {
                 {r.oldWay}
               </div>
 
-              {/* ProFixIQ column highlight: faint border + glow + inset */}
               <div className="col-span-12 mt-2 sm:col-span-5 sm:mt-0">
                 <div
                   className="relative rounded-2xl border border-white/10 bg-black/15 px-4 py-3"
@@ -154,7 +143,6 @@ export default function WhySection() {
           ))}
         </div>
 
-        {/* micro-CTA row */}
         <div className="relative border-t border-white/10 px-5 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-neutral-400">
@@ -164,14 +152,14 @@ export default function WhySection() {
             <div className="flex flex-wrap items-center gap-2">
               <a
                 href="#plans"
-                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-semibold text-neutral-200 hover:border-white/20 hover:bg-black/35"
+                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-semibold text-neutral-200 transition hover:border-white/20 hover:bg-black/35"
               >
                 See plans
               </a>
 
               <a
                 href="#"
-                className="inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-extrabold text-black"
+                className="inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-extrabold text-black transition hover:brightness-110"
                 style={{
                   backgroundColor: "rgba(197,122,74,0.95)",
                   boxShadow: "0 0 30px rgba(197,122,74,0.25)",
@@ -184,7 +172,6 @@ export default function WhySection() {
         </div>
       </div>
 
-      {/* bottom punch line */}
       <div className="relative mt-6 overflow-hidden rounded-3xl border border-white/10 bg-black/15 p-6 backdrop-blur-xl">
         <div
           className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"

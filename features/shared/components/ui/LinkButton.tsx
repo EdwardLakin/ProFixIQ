@@ -3,7 +3,6 @@
 import Link from "next/link";
 import clsx from "clsx";
 
-
 type Variant = "default" | "secondary" | "destructive" | "ghost" | "outline";
 type Size = "sm" | "md" | "lg";
 
@@ -18,12 +17,16 @@ interface LinkButtonProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> 
 }
 
 const variantClasses: Record<Variant, string> = {
-  default: "bg-orange-600 hover:bg-orange-700 text-white",
-  secondary: "bg-zinc-700 hover:bg-zinc-600 text-white",
-  destructive: "bg-red-600 hover:bg-red-700 text-white",
-  ghost: "bg-transparent hover:bg-zinc-800 text-white border border-zinc-600",
+  default:
+    "text-white border border-white/10 bg-black/30 hover:bg-white/5",
+  secondary:
+    "text-neutral-200 border border-white/15 bg-black/20 hover:bg-white/5",
+  destructive:
+    "text-white border border-red-500/50 bg-red-700/60 hover:bg-red-600/70",
+  ghost:
+    "text-neutral-200 border border-white/10 bg-transparent hover:bg-white/5",
   outline:
-    "bg-transparent border border-orange-500 text-orange-400 hover:bg-orange-500 hover:text-white",
+    "text-[color:var(--accent-copper-light,#fdba74)] border border-[color:var(--accent-copper-soft,#fdba74)] bg-transparent hover:bg-[color:var(--accent-copper,#f97316)]/10",
 };
 
 const sizeClasses: Record<Size, string> = {
@@ -46,7 +49,8 @@ function LinkButton({
     <Link
       href={href}
       className={clsx(
-        "inline-flex items-center justify-center rounded font-semibold transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500",
+        "inline-flex items-center justify-center rounded-md font-semibold transition duration-150 ease-in-out",
+        "backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.45)] focus:ring-offset-2 focus:ring-offset-black",
         variantClasses[variant],
         sizeClasses[size],
         className,

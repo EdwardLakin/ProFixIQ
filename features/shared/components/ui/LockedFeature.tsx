@@ -24,22 +24,25 @@ export default function LockedFeature({
   return (
     <div
       className={clsx(
-        "border border-red-600 bg-red-950/40 rounded-xl p-6 text-center flex flex-col items-center gap-4 shadow-md backdrop-blur-sm",
+        "rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(184,115,51,0.10),rgba(0,0,0,0.82))] p-6",
+        "text-center shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl",
+        "flex flex-col items-center gap-4",
         className,
       )}
     >
-      <div className="flex items-center gap-2 text-red-400 font-bold text-lg">
-        <LockIcon className="w-5 h-5" />
-        Feature Locked
+      <div className="flex items-center gap-2 text-[color:var(--accent-copper-light,#fdba74)]">
+        <LockIcon className="h-5 w-5" />
+        <span className="text-lg font-semibold">Feature Locked</span>
       </div>
 
-      <p className="text-sm text-red-200 max-w-md">{reason}</p>
+      <p className="max-w-md text-sm text-neutral-300">{reason}</p>
 
-      <div className="flex flex-wrap justify-center gap-4 mt-2">
+      <div className="flex flex-wrap justify-center gap-3 mt-1">
         {showUpgradeButton && (
           <button
+            type="button"
             onClick={() => router.push("/onboarding/plan")}
-            className="bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2 rounded-lg transition"
+            className="rounded-full border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-5 py-2 text-sm font-semibold text-amber-100 transition hover:bg-[rgba(184,115,51,0.16)]"
           >
             Upgrade Plan
           </button>
@@ -47,8 +50,9 @@ export default function LockedFeature({
 
         {showTryNowButton && featureId && (
           <button
+            type="button"
             onClick={() => router.push(`/pay-per-use/${featureId}`)}
-            className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-5 py-2 rounded-lg transition"
+            className="rounded-full border border-white/10 bg-black/30 px-5 py-2 text-sm font-semibold text-neutral-200 transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/40"
           >
             Try Now
           </button>

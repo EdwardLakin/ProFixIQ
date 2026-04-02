@@ -1,7 +1,6 @@
 "use client";
 
-
-import { cn } from "@shared/lib/utils"; // If you're using Tailwind's classnames helper
+import { cn } from "@shared/lib/utils";
 
 interface LoadingSpinnerProps {
   size?: "sm" | "md" | "lg";
@@ -22,10 +21,10 @@ export default function LoadingSpinner({
     <div
       role="status"
       aria-label="Loading"
-      className={cn("flex justify-center items-center", className)}
+      className={cn("flex items-center justify-center", className)}
     >
       <svg
-        className={cn("animate-spin text-orange-500", sizeMap[size])}
+        className={cn("animate-spin text-[color:var(--accent-copper,#f97316)]", sizeMap[size])}
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
         viewBox="0 0 24 24"

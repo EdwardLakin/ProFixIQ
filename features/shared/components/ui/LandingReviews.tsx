@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-const COPPER = "var(--pfq-copper)";
 const COPPER_LIGHT = "var(--accent-copper-light)";
 
 type ReviewRow = Database["public"]["Tables"]["shop_reviews"]["Row"];
@@ -112,9 +111,6 @@ export default function LandingReviews() {
     void (async () => {
       setLoading(true);
 
-      // IMPORTANT:
-      // For landing page visibility, you likely want an explicit public-read policy.
-      // Until you add an "is_public" flag + policy, this may return 0 rows under RLS.
       const { data, error } = await supabase
         .from("shop_reviews")
         .select("id,shop_id,rating,comment,created_at,shop_owner_reply,replied_at")
@@ -124,7 +120,6 @@ export default function LandingReviews() {
       if (!alive) return;
 
       if (error) {
-        // fail closed (don’t leak anything, don’t hard-crash)
         setReviews([]);
         setLoading(false);
         return;
@@ -168,7 +163,6 @@ export default function LandingReviews() {
 
   return (
     <section className="relative mx-auto max-w-[1400px] overflow-x-hidden px-4 py-16 md:py-20">
-      {/* backplate */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div
           className="absolute inset-0"
@@ -212,10 +206,8 @@ export default function LandingReviews() {
         </p>
       </div>
 
-      {/* main card */}
       <div className="mt-10 overflow-hidden rounded-3xl border border-white/10 bg-black/20 backdrop-blur-xl">
         <div className="grid gap-0 lg:grid-cols-[420px_1fr]">
-          {/* left: stats */}
           <div className="relative border-b border-white/10 p-6 lg:border-b-0 lg:border-r">
             <div
               className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
@@ -283,7 +275,6 @@ export default function LandingReviews() {
             </div>
           </div>
 
-          {/* right: review cards */}
           <div className="p-6">
             {loading ? (
               <div className="text-sm text-neutral-400">Loading reviews…</div>
@@ -297,7 +288,7 @@ export default function LandingReviews() {
                   return (
                     <div
                       key={r.id}
-                      className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/15 p-5"
+                      className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/15 p-5 backdrop-blur-sm"
                     >
                       <div
                         className="pointer-events-none absolute inset-0"
@@ -318,46 +309,29 @@ export default function LandingReviews() {
                       <div className="relative">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="text-sm font-extrabold text-white">
-                              Verified shop user
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                              Shop review
                             </div>
-                            <div className="mt-1 flex items-center gap-2">
+                            <div className="mt-2">
                               <Stars value={Number.isFinite(rating) ? rating : 0} />
-                              <div className="text-[11px] text-neutral-400">
-                                {Number.isFinite(rating) ? rating.toFixed(1) : "—"}
-                              </div>
                             </div>
                           </div>
 
-                          <div className="text-[11px] text-neutral-400">
+                          <div className="text-[11px] text-neutral-500">
                             {formatDate(r.created_at)}
                           </div>
                         </div>
 
-                        {r.comment ? (
-                          <p className="mt-3 text-sm leading-relaxed text-neutral-200">
-                            {r.comment}
-                          </p>
-                        ) : (
-                          <p className="mt-3 text-sm text-neutral-400">
-                            (No written comment)
-                          </p>
-                        )}
+                        <p className="mt-4 text-sm leading-relaxed text-neutral-200">
+                          {r.comment?.trim() || "No comment provided."}
+                        </p>
 
                         {r.shop_owner_reply ? (
-                          <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div
-                                className="text-[11px] font-semibold uppercase tracking-[0.18em]"
-                                style={{ color: COPPER_LIGHT }}
-                              >
-                                Owner reply
-                              </div>
-                              <div className="text-[11px] text-neutral-500">
-                                {formatDate(r.replied_at)}
-                              </div>
+                          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                              Shop reply
                             </div>
-                            <p className="mt-2 text-sm text-neutral-200">
+                            <p className="mt-2 text-sm leading-relaxed text-neutral-300">
                               {r.shop_owner_reply}
                             </p>
                           </div>
@@ -368,23 +342,9 @@ export default function LandingReviews() {
                 })}
               </div>
             )}
-
-            <div className="mt-6 flex flex-wrap items-center gap-2 text-xs text-neutral-400">
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: COPPER }}
-              />
-              Reviews shown here depend on public visibility policies
-              <span className="text-white/10">•</span>
-              Evidence-first workflow
-              <span className="text-white/10">•</span>
-              No paywalls
-            </div>
           </div>
         </div>
       </div>
-
-      <div className="mt-10 h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
     </section>
   );
 }

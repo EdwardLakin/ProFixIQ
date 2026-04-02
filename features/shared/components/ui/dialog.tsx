@@ -23,7 +23,7 @@ export const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-40 bg-black/70 backdrop-blur-sm transition-opacity data-[state=open]:opacity-100 data-[state=closed]:opacity-0",
+      "fixed inset-0 z-40 bg-black/75 backdrop-blur-sm transition-opacity data-[state=open]:opacity-100 data-[state=closed]:opacity-0",
       className
     )}
     {...props}
@@ -40,7 +40,8 @@ export const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-white/10 bg-black/80 p-6 shadow-xl backdrop-blur-xl",
+        "fixed left-1/2 top-1/2 z-50 w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10",
+        "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.05),rgba(0,0,0,0.88))] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.85)] backdrop-blur-xl",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
         "data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
@@ -74,7 +75,7 @@ export const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300",
+      "text-lg font-semibold uppercase tracking-[0.16em] text-neutral-100",
       className
     )}
     {...props}

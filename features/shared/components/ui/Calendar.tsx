@@ -21,7 +21,11 @@ function addMonths(d: Date, n: number) {
 }
 function isSameDay(a?: Date | null, b?: Date | null) {
   if (!a || !b) return false;
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 function isToday(d: Date) {
   const t = new Date();
@@ -39,7 +43,11 @@ export default function Calendar({
   const grid = useMemo(() => {
     const first = startOfMonth(month);
     const startWeekday = (first.getDay() + 7) % 7;
-    const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+    const daysInMonth = new Date(
+      month.getFullYear(),
+      month.getMonth() + 1,
+      0,
+    ).getDate();
     const cells: { date: Date; inMonth: boolean }[] = [];
 
     for (let i = 0; i < startWeekday; i++) {
@@ -75,26 +83,35 @@ export default function Calendar({
   });
 
   return (
-    <div className={clsx("rounded-xl border border-white/5 bg-background/40 text-foreground", className)}>
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
+    <div
+      className={clsx(
+        "rounded-2xl border border-white/10 bg-black/30 text-foreground backdrop-blur-md",
+        className,
+      )}
+    >
+      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
         <button
+          type="button"
           onClick={() => onMonthChange(addMonths(month, -1))}
-          className="h-7 w-7 rounded-md border border-white/5 text-sm hover:bg-white/5"
+          className="h-8 w-8 rounded-md border border-white/10 bg-black/20 text-sm text-neutral-200 transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/35"
         >
           ‹
         </button>
-        <div className="text-xs font-medium text-muted-foreground/90">{monthFmt.format(month)}</div>
+        <div className="text-xs font-medium text-neutral-300">
+          {monthFmt.format(month)}
+        </div>
         <button
+          type="button"
           onClick={() => onMonthChange(addMonths(month, 1))}
-          className="h-7 w-7 rounded-md border border-white/5 text-sm hover:bg-white/5"
+          className="h-8 w-8 rounded-md border border-white/10 bg-black/20 text-sm text-neutral-200 transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/35"
         >
           ›
         </button>
       </div>
 
-      <div className="grid grid-cols-7 text-[0.6rem] uppercase tracking-wide text-muted-foreground px-3 pt-3">
+      <div className="grid grid-cols-7 px-3 pt-3 text-[0.6rem] uppercase tracking-wide text-neutral-500">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-          <div key={d} className="text-center py-1">
+          <div key={d} className="py-1 text-center">
             {d}
           </div>
         ))}
@@ -109,15 +126,18 @@ export default function Calendar({
           return (
             <button
               key={i}
+              type="button"
               disabled={isDisabled}
               onClick={() => onChange?.(date)}
               className={clsx(
-                "aspect-square rounded-lg text-sm transition border border-transparent",
-                inMonth ? "text-foreground" : "text-muted-foreground/40",
-                !isDisabled && "hover:bg-white/5",
-                isDisabled && "opacity-40 cursor-not-allowed",
-                selected && "bg-white/10 border-white/10",
-                !selected && today && "ring-1 ring-white/15"
+                "aspect-square rounded-lg border text-sm transition",
+                inMonth ? "text-foreground" : "text-neutral-500/50",
+                isDisabled
+                  ? "cursor-not-allowed border-transparent opacity-40"
+                  : "border-transparent hover:bg-white/5",
+                selected &&
+                  "border-[color:var(--accent-copper-soft,#fdba74)] bg-[color:var(--accent-copper,#f97316)]/12 text-white",
+                !selected && today && "border-white/10 bg-white/[0.03]",
               )}
             >
               {date.getDate()}

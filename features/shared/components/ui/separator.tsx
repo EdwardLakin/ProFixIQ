@@ -9,7 +9,7 @@ export function Separator({
     <div
       className={
         orientation === "vertical"
-          ? `w-px h-full bg-white/10 ${className || ""}`
+          ? `h-full w-px bg-white/10 ${className || ""}`
           : `h-px w-full bg-white/10 ${className || ""}`
       }
     />

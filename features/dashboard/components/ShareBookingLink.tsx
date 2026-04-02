@@ -9,7 +9,7 @@ import type { Database } from "@shared/types/types/supabase";
 type StaffRole = "owner" | "admin" | "manager" | "advisor" | "parts";
 
 export default function ShareBookingLink() {
-    const supabase = createClientComponentClient<Database>();
+  const supabase = createClientComponentClient<Database>();
 
   const [slug, setSlug] = useState<string | null>(null);
   const [isStaff, setIsStaff] = useState<boolean>(false);
@@ -55,7 +55,7 @@ export default function ShareBookingLink() {
   return (
     <Link
       href={`/portal/shop/${encodeURIComponent(slug)}`}
-      className="rounded-md border border-orange-500 px-3 py-1.5 text-sm font-semibold text-orange-400 hover:bg-orange-500 hover:text-black transition"
+      className="inline-flex items-center justify-center rounded-full border border-[rgba(184,115,51,0.45)] bg-[rgba(184,115,51,0.10)] px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-[rgba(184,115,51,0.16)]"
     >
       Share booking link
     </Link>

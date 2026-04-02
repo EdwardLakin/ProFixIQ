@@ -37,7 +37,6 @@ export default function LandingHero() {
   return (
     <section className="relative overflow-x-hidden">
       <style jsx>{`
-        /* Copper “signal sweep” across the rail line */
         @keyframes pfqSweep {
           0% {
             transform: translateX(-30%);
@@ -58,7 +57,6 @@ export default function LandingHero() {
           }
         }
 
-        /* Active-node hop across 6 steps (discrete, not sliding) */
         @keyframes pfqHop6 {
           0% {
             transform: translateX(0%);
@@ -98,7 +96,6 @@ export default function LandingHero() {
           }
         }
 
-        /* Subtle “breathing” glow on the active dot */
         @keyframes pfqBreathe {
           0% {
             transform: scale(1);
@@ -115,12 +112,9 @@ export default function LandingHero() {
         }
       `}</style>
 
-      {/* Full-bleed hero area */}
       <div className="mx-auto w-full max-w-[1400px] px-4 pb-10 pt-14 sm:pt-16 md:pt-20">
         <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
-          {/* LEFT */}
           <div className="relative">
-            {/* subtle “premium” label (less shouty, more crisp) */}
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
               <SignalDot />
               <span style={{ color: COPPER_LIGHT }}>
@@ -132,7 +126,6 @@ export default function LandingHero() {
               </span>
             </div>
 
-            {/* ✅ Category creator headline, with emphasis trick on “operating system” */}
             <h1
               className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
               style={{
@@ -153,12 +146,10 @@ export default function LandingHero() {
               <span className="block">for modern repair shops.</span>
             </h1>
 
-            {/* ✅ Credibility line (quick “this is for you” confirmation) */}
             <p className="mt-4 max-w-2xl text-sm font-semibold text-neutral-200 sm:text-base">
               Built for heavy-duty, automotive, and fleet repair operations.
             </p>
 
-            {/* ✅ Outcome-forward supporting copy (less feature list, more flow truth) */}
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-neutral-300 sm:text-base md:text-lg">
               Technicians capture evidence once. Quotes build automatically.
               Customers approve instantly. Parts and invoices stay in sync.
@@ -174,7 +165,6 @@ export default function LandingHero() {
               Heavy-Duty • Automotive • Fleet
             </div>
 
-            {/* CTAs */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
                 href="/demo/instant-shop-analysis"
@@ -191,15 +181,14 @@ export default function LandingHero() {
 
               <Link
                 href="#features"
-                className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-neutral-100 transition hover:bg-black/30"
+                className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-neutral-100 transition hover:border-white/20 hover:bg-black/30"
               >
                 See what’s included
               </Link>
             </div>
 
-            {/* Proof bullets (rewritten more “outcome / no re-entry / speed”) */}
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
+              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/12 px-4 py-3 backdrop-blur-sm">
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
@@ -211,7 +200,7 @@ export default function LandingHero() {
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
+              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/12 px-4 py-3 backdrop-blur-sm">
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
@@ -223,7 +212,7 @@ export default function LandingHero() {
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/10 px-4 py-3">
+              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/12 px-4 py-3 backdrop-blur-sm">
                 <SignalDot />
                 <div>
                   <div className="text-sm font-extrabold text-white">
@@ -237,9 +226,8 @@ export default function LandingHero() {
             </div>
           </div>
 
-          {/* RIGHT */}
           <div className="relative">
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-5 backdrop-blur">
+            <div className="rounded-2xl border border-white/10 bg-black/22 p-5 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.38)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
@@ -267,7 +255,6 @@ export default function LandingHero() {
                 — so fleets and customers see the same truth your bay sees.
               </p>
 
-              {/* Workflow rail (ANIMATED) */}
               <div className="mt-5">
                 <div className="flex items-center justify-between text-[11px] text-neutral-400">
                   <span className="font-semibold uppercase tracking-[0.18em]">
@@ -278,10 +265,8 @@ export default function LandingHero() {
 
                 <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-4">
                   <div className="relative">
-                    {/* base steel line */}
                     <div className="absolute left-2 right-2 top-[13px] h-px bg-white/10" />
 
-                    {/* copper sweep line */}
                     <div className="pointer-events-none absolute left-2 right-2 top-[12px] h-[3px] overflow-hidden">
                       <div
                         className="h-full w-[30%] rounded-full"
@@ -295,7 +280,6 @@ export default function LandingHero() {
                       />
                     </div>
 
-                    {/* active node glow hops across the 6 nodes */}
                     <div className="pointer-events-none absolute left-0 right-0 top-[2px]">
                       <div
                         className="grid grid-cols-6 gap-2"
@@ -317,39 +301,25 @@ export default function LandingHero() {
                                 backgroundColor: "rgba(197,122,74,0.98)",
                                 boxShadow:
                                   "0 0 22px rgba(197,122,74,0.60)",
-                                animation:
-                                  "pfqBreathe 1.2s ease-in-out infinite",
+                                animation: "pfqBreathe 1.2s ease-in-out infinite",
                               }}
                             />
                           </div>
                         </div>
-                        <div />
-                        <div />
-                        <div />
-                        <div />
-                        <div />
                       </div>
                     </div>
 
-                    {/* rail nodes */}
-                    <div className="grid grid-cols-6 gap-2">
-                      {RAIL.map((s) => (
-                        <div key={s.key} className="text-center">
-                          <div className="mx-auto flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/40">
-                            <span
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{
-                                backgroundColor: "rgba(197,122,74,0.45)",
-                                boxShadow:
-                                  "0 0 10px rgba(197,122,74,0.14)",
-                              }}
-                            />
+                    <div className="relative grid grid-cols-6 gap-2">
+                      {RAIL.map((step) => (
+                        <div key={step.key} className="flex flex-col items-center text-center">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/30 text-[11px] font-extrabold text-white">
+                            {step.label.charAt(0)}
                           </div>
-                          <div className="mt-2 text-[11px] font-extrabold text-white">
-                            {s.label}
+                          <div className="mt-2 text-[11px] font-semibold text-white">
+                            {step.label}
                           </div>
-                          <div className="mt-1 text-[10px] leading-snug text-neutral-400">
-                            {s.hint}
+                          <div className="mt-1 text-[10px] leading-tight text-neutral-500">
+                            {step.hint}
                           </div>
                         </div>
                       ))}
@@ -358,82 +328,37 @@ export default function LandingHero() {
                 </div>
               </div>
 
-              {/* Included highlights (copy tightened) */}
-              <div className="mt-5 grid gap-2">
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                    <SignalDot />
-                    Onboard from uploads, day one
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-white/10 bg-black/18 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                    Less screen time
                   </div>
-                  <span className="text-[11px] text-neutral-400">
-                    Day-one ready
-                  </span>
+                  <div className="mt-1 text-sm text-neutral-100">
+                    Techs stay in flow.
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                    <SignalDot />
-                    Capture once, reuse everywhere
+                <div className="rounded-xl border border-white/10 bg-black/18 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                    Faster approvals
                   </div>
-                  <span className="text-[11px] text-neutral-400">
-                    Less typing
-                  </span>
+                  <div className="mt-1 text-sm text-neutral-100">
+                    Proof moves decisions.
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                    <SignalDot />
-                    Approvals trigger parts + invoice
-                  </div>
-                  <span className="text-[11px] text-neutral-400">
+                <div className="rounded-xl border border-white/10 bg-black/18 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
                     One truth
-                  </span>
+                  </div>
+                  <div className="mt-1 text-sm text-neutral-100">
+                    Inspection to invoice.
+                  </div>
                 </div>
-              </div>
-
-              {/* Tiny portal links */}
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4 text-xs text-neutral-400">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                    Entry
-                  </span>
-                  <span className="text-white/10">•</span>
-                  <Link
-                    href="/portal"
-                    className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200"
-                  >
-                    Customer portal
-                  </Link>
-                  <span className="text-white/10">•</span>
-                  <Link
-                    href="/portal/fleet"
-                    className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200"
-                  >
-                    Fleet portal
-                  </Link>
-                </div>
-
-                <Link
-                  href="/sign-in"
-                  className="underline decoration-white/20 underline-offset-4 hover:text-neutral-200"
-                >
-                  Sign in
-                </Link>
               </div>
             </div>
-
-            {/* copper signal wash */}
-            <div
-              className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full blur-3xl"
-              style={{ background: "rgba(197,122,74,0.16)" }}
-            />
           </div>
         </div>
-      </div>
-
-      {/* thin rail divider */}
-      <div className="mx-auto max-w-[1400px] px-4 pb-2">
-        <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       </div>
     </section>
   );

@@ -81,7 +81,7 @@ function SignalDot() {
 
 function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/10">
+    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/12 backdrop-blur-xl">
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -101,7 +101,7 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
       />
 
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.12]"
+        className="pointer-events-none absolute inset-0 opacity-[0.10]"
         style={{
           backgroundImage:
             "repeating-linear-gradient(115deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.00) 2px, rgba(0,0,0,0.35) 6px)",
@@ -142,7 +142,7 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
           {p.includes.map((x) => (
             <div
               key={x}
-              className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3"
+              className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/18 px-4 py-3"
             >
               <span
                 className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
@@ -228,7 +228,7 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
           ))}
         </div>
 
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/10 p-6 backdrop-blur-xl">
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/12 p-6 backdrop-blur-xl">
           <div
             className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
             style={{ background: "rgba(197,122,74,0.12)" }}
