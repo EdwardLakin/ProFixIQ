@@ -91,7 +91,7 @@ export default function BookingsWidget() {
   }, [rows]);
 
   return (
-    <section className="rounded-xl border border-border bg-card p-4">
+    <section className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/80 via-slate-950/90 to-black/80 p-4 shadow-[0_20px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-neutral-50">Bookings</h3>
@@ -108,19 +108,19 @@ export default function BookingsWidget() {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+        <div className="rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/30 p-3">
           <div className="text-[11px] text-neutral-400">Today</div>
           <div className="mt-1 text-lg font-semibold text-neutral-100">
             {loading ? "…" : today}
           </div>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+        <div className="rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/30 p-3">
           <div className="text-[11px] text-neutral-400">Pending</div>
           <div className="mt-1 text-lg font-semibold text-amber-300">
             {loading ? "…" : pending}
           </div>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+        <div className="rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/30 p-3">
           <div className="text-[11px] text-neutral-400">Confirmed</div>
           <div className="mt-1 text-lg font-semibold text-emerald-300">
             {loading ? "…" : confirmed}
@@ -128,7 +128,7 @@ export default function BookingsWidget() {
         </div>
       </div>
 
-      <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3">
+      <div className="mt-3 rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/30 p-3">
         <div className="text-[11px] text-neutral-400">Next up</div>
         <div className="mt-1 text-sm text-neutral-100">
           {loading
