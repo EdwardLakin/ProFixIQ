@@ -111,7 +111,7 @@ export async function POST(req: Request) {
       price_estimate: activePrice ?? repairItem.price_estimate ?? null,
       job_type: "repair",
       approval_state: "pending",
-      status: "awaiting_approval",
+      status: "awaiting",
     };
 
     const { data: created, error: createErr } = await supabase

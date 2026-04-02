@@ -167,7 +167,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     // ✅ Tech-approval gate (your allowed values)
     approval_state: "pending",
-    status: "awaiting_approval",
+    status: "awaiting",
   };
 
   const { data: created, error: createErr } = await supabase
