@@ -19,7 +19,7 @@ function cardClass() {
 }
 
 function inputWrapClass() {
-  return "w-full rounded-xl border border-white/10 bg-[var(--glass-bg)] p-2 text-sm text-white outline-none";
+  return "w-full rounded-xl border border-white/10 bg-black/40 p-2 text-sm text-white outline-none";
 }
 
 function copperButtonStyle(): React.CSSProperties {
@@ -217,7 +217,7 @@ export default function PortalSettingsPage() {
       <div className="mx-auto max-w-2xl space-y-4 text-white">
         <Toaster position="top-center" />
         <header className="space-y-1">
-          <h1 className="text-lg uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
             Settings
           </h1>
         </header>
@@ -237,7 +237,7 @@ export default function PortalSettingsPage() {
       <Toaster position="top-center" />
 
       <header className="space-y-1">
-        <h1 className="text-lg uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
+        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
           Settings
         </h1>
         <p className="text-xs text-neutral-400">

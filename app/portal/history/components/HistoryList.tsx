@@ -83,7 +83,7 @@ export default function HistoryList({ items }: Props) {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500"
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500"
               placeholder="Search vehicle, work order, notes…"
             />
           </div>
@@ -95,7 +95,7 @@ export default function HistoryList({ items }: Props) {
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="min-w-[170px] rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white outline-none"
+              className="min-w-[170px] rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
             >
               <option value="">All statuses</option>
               <option value="awaiting">Awaiting</option>

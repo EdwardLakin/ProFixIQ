@@ -253,7 +253,7 @@ export default function PortalBookingPage() {
               setSelectedDate(undefined);
               router.replace(`/portal/booking?shop=${encodeURIComponent(slug)}`);
             }}
-            className="min-w-[200px] rounded-md border border-white/10 bg-[var(--glass-bg)] px-2 py-1 text-sm text-white outline-none"
+            className="min-w-[200px] rounded-md border border-white/10 bg-black/40 px-2 py-1 text-sm text-white outline-none"
           >
             {shops.map((s) => (
               <option key={s.id} value={s.slug as string}>

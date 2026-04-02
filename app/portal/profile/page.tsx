@@ -35,7 +35,7 @@ function cardClass() {
 }
 
 function inputClass() {
-  return "w-full rounded-xl border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500";
+  return "w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500";
 }
 
 function readOnlyClass() {
@@ -171,7 +171,7 @@ export default function PortalProfilePage() {
   return (
     <div className="mx-auto max-w-xl space-y-5 text-white">
       <header className="space-y-1">
-        <h1 className="text-lg uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
+        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
           My profile
         </h1>
         <p className="text-xs text-neutral-400">

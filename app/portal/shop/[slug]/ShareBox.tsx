@@ -61,7 +61,7 @@ export default function ShareBox({
           <input
             readOnly
             value={bookingUrl}
-            className="flex-1 rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white outline-none"
+            className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
           />
           <button
             onClick={copyLink}
