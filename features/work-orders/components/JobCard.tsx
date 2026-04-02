@@ -1,212 +1,130 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
+import { formatDistanceToNow } from "date-fns";
+import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, Wrench } from "lucide-react";
+
 import type { Database } from "@shared/types/types/supabase";
-import { UsePartButton } from "@work-orders/components/UsePartButton";
-import { PartsUsedList } from "@work-orders/components/PartsUsedList";
+import { Button } from "@shared/components/ui/Button";
+import Card from "@shared/components/ui/Card";
+import StatusBadge from "@shared/components/ui/StatusBadge";
+import { cn } from "@shared/lib/utils";
 
-type DB = Database;
-
-export type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
-
-export type AllocationRow =
-  DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
-    parts?: { name: string | null } | null;
-  };
-
-export type TechnicianInfo = {
-  id: string;
-  full_name: string | null;
-  role: string | null;
-};
-
-export type JobCardPricing = {
-  partsTotal?: number | null;
-  laborTotal?: number | null;
-  lineTotal?: number | null;
-  currency?: string; // e.g. "CAD", "USD"
-};
-
-/** Optional per-line review signal from AI invoice review */
-export type ReviewIssue = { kind: string; lineId?: string; message: string };
-
-export type JobCardProps = {
-  index: number;
-  line: WorkOrderLine;
-  parts: AllocationRow[];
-  technicians: TechnicianInfo[];
-  canAssign?: boolean;
-  isPunchedIn?: boolean;
-  onOpen: () => void;
-  onAssign?: () => void;
-  onOpenInspection?: () => void;
-  onAddPart?: () => void;
-
-  /** ✅ NEW: delete/void button inside card */
-  canDelete?: boolean;
-  onDelete?: () => void;
-
-  /** Optional pricing info – we’ll wire this from the page later */
-  pricing?: JobCardPricing;
-
-  /**
-   * ✅ Optional AI review results for THIS line.
-   * - Pass issues that belong to this lineId only.
-   * - If omitted, card still shows local checks (missing cause/correction, no parts).
-   */
-  reviewIssues?: ReviewIssue[];
-  /** ✅ Optional: if the overall WO review has passed */
-  reviewOk?: boolean;
-};
-
-/* ---------------------------- Status visuals ---------------------------- */
+type WorkOrderLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrderPartAllocation =
+  Database["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 
 type KnownStatus =
-  | "awaiting_approval"
   | "awaiting"
-  | "queued"
   | "in_progress"
   | "on_hold"
-  | "planned"
-  | "new"
   | "completed"
   | "ready_to_invoice"
   | "invoiced";
 
-/** EXACT same pill basis */
-const BASE_BADGE =
-  "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide";
-
-/**
- * ✅ Make in_progress pop more:
- * - higher bg opacity
- * - brighter text
- * - glow shadow
- */
-const BADGE: Record<KnownStatus, string> = {
-  awaiting_approval: "bg-blue-900/30 border-blue-400/50 text-blue-100",
-  awaiting: "bg-slate-900/40 border-slate-400/60 text-slate-100",
-  queued: "bg-indigo-900/35 border-indigo-400/55 text-indigo-100",
-  in_progress:
-    "bg-[color:var(--accent-copper,#f97316)]/25 border-[color:var(--accent-copper-soft,#fdba74)]/90 text-white shadow-[0_0_16px_rgba(249,115,22,0.55)]",
-  on_hold: "bg-amber-900/30 border-amber-400/55 text-amber-100",
-  planned: "bg-purple-900/30 border-purple-400/55 text-purple-100",
-  new: "bg-neutral-950/70 border-neutral-600/60 text-neutral-100",
-  completed: "bg-emerald-900/25 border-emerald-400/60 text-emerald-100",
-  ready_to_invoice: "bg-emerald-900/30 border-emerald-400/60 text-emerald-100",
-  invoiced: "bg-teal-900/30 border-teal-400/60 text-teal-100",
+type ReviewIssue = {
+  kind?: string | null;
+  message?: string | null;
 };
-
-const STATUS_ICON: Record<KnownStatus, string> = {
-  awaiting_approval: "⏳",
-  awaiting: "●",
-  queued: "📋",
-  in_progress: "🔧",
-  on_hold: "⏸",
-  planned: "🧩",
-  new: "✨",
-  completed: "✅",
-  ready_to_invoice: "💳",
-  invoiced: "📄",
-};
-
-const statusChip = (s: string | null | undefined): string => {
-  const key = (s ?? "awaiting")
-    .toLowerCase()
-    .replaceAll(" ", "_") as KnownStatus;
-  return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
-};
-
-/** EXACT surface system but with stronger hero presence */
-const CARD_SURFACE: Record<
-  KnownStatus,
-  { border: string; surface: string; ring: string; rail: string }
-> = {
-  awaiting_approval: {
-    border: "border-sky-500/60",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),rgba(15,23,42,0.98))]",
-    ring: "ring-sky-400/70",
-    rail: "from-sky-500/70 via-sky-400/40 to-transparent",
-  },
-  awaiting: {
-    border: "border-slate-600/70",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.16),rgba(15,23,42,0.98))]",
-    ring: "ring-slate-300/70",
-    rail: "from-slate-400/70 via-slate-300/40 to-transparent",
-  },
-  queued: {
-    border: "border-indigo-500/70",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.18),rgba(15,23,42,0.98))]",
-    ring: "ring-indigo-400/80",
-    rail: "from-indigo-400/80 via-indigo-300/40 to-transparent",
-  },
-  in_progress: {
-    border: "border-[color:var(--accent-copper-soft,#fdba74)]",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.34),rgba(15,23,42,0.98))]",
-    ring: "ring-[color:var(--accent-copper-soft,#fdba74)]/90",
-    rail:
-      "from-[color:var(--accent-copper,#f97316)] via-[color:var(--accent-copper-soft,#fdba74)]/70 to-transparent",
-  },
-  on_hold: {
-    border: "border-amber-400/80",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.24),rgba(15,23,42,0.97))]",
-    ring: "ring-amber-300/80",
-    rail: "from-amber-400 via-amber-300/60 to-transparent",
-  },
-  planned: {
-    border: "border-purple-400/80",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(192,132,252,0.20),rgba(15,23,42,0.98))]",
-    ring: "ring-purple-300/80",
-    rail: "from-purple-400 via-purple-300/60 to-transparent",
-  },
-  new: {
-    border: "border-neutral-700/80",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.12),rgba(15,23,42,0.99))]",
-    ring: "ring-neutral-400/80",
-    rail: "from-neutral-500 via-neutral-400/60 to-transparent",
-  },
-  completed: {
-    border: "border-teal-400/80",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.26),rgba(15,23,42,0.97))]",
-    ring: "ring-teal-300/80",
-    rail: "from-teal-400 via-teal-300/60 to-transparent",
-  },
-  ready_to_invoice: {
-    border: "border-emerald-400/80",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.26),rgba(15,23,42,0.96))]",
-    ring: "ring-emerald-300/80",
-    rail: "from-emerald-400 via-emerald-300/60 to-transparent",
-  },
-  invoiced: {
-    border: "border-teal-400/85",
-    surface:
-      "bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.30),rgba(15,23,42,0.96))]",
-    ring: "ring-teal-300/80",
-    rail: "from-teal-400 via-teal-300/60 to-transparent",
-  },
-};
-
-/* ---------------------------- Review indicators ---------------------------- */
 
 type ReviewFlags = {
   missingCause: boolean;
   missingCorrection: boolean;
-  noParts: boolean;
   missingComplaint: boolean;
+  noParts: boolean;
   otherIssues: number;
+};
+
+type PricingSummary = {
+  laborTotal?: number | null;
+  partsTotal?: number | null;
+  lineTotal?: number | null;
+};
+
+type JobCardProps = {
+  index: number;
+  line: WorkOrderLine;
+  parts: WorkOrderPartAllocation[];
+  technicians: Pick<ProfileRow, "id" | "full_name">[];
+  canAssign: boolean;
+  canDelete?: boolean;
+  isPunchedIn: boolean;
+  onOpen: () => void;
+  onAssign?: (techId: string) => void;
+  onOpenInspection?: () => void;
+  onAddPart?: () => void;
+  onDelete?: () => void;
+  pricing?: PricingSummary | null;
+  reviewIssues?: ReviewIssue[];
+  reviewOk?: boolean;
+};
+
+const CARD_SURFACE: Record<
+  KnownStatus,
+  {
+    badgeVariant: "info" | "active" | "warning" | "success";
+    railClass: string;
+    surfaceClass: string;
+    label: string;
+  }
+> = {
+  awaiting: {
+    badgeVariant: "info",
+    railClass: "bg-slate-400/80",
+    surfaceClass:
+      "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.12),rgba(10,10,10,0.96))]",
+    label: "Awaiting",
+  },
+  in_progress: {
+    badgeVariant: "active",
+    railClass:
+      "bg-[linear-gradient(180deg,var(--accent-copper,#f97316),var(--accent-copper-light,#fdba74))]",
+    surfaceClass:
+      "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),rgba(10,10,10,0.96))]",
+    label: "In Progress",
+  },
+  on_hold: {
+    badgeVariant: "warning",
+    railClass: "bg-amber-400/85",
+    surfaceClass:
+      "bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.14),rgba(10,10,10,0.96))]",
+    label: "On Hold",
+  },
+  completed: {
+    badgeVariant: "success",
+    railClass: "bg-emerald-400/85",
+    surfaceClass:
+      "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(10,10,10,0.96))]",
+    label: "Completed",
+  },
+  ready_to_invoice: {
+    badgeVariant: "success",
+    railClass: "bg-emerald-400/85",
+    surfaceClass:
+      "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(10,10,10,0.96))]",
+    label: "Ready to Invoice",
+  },
+  invoiced: {
+    badgeVariant: "success",
+    railClass: "bg-emerald-400/85",
+    surfaceClass:
+      "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(10,10,10,0.96))]",
+    label: "Invoiced",
+  },
 };
 
 function norm(s: unknown): string {
   return String(s ?? "").trim().toLowerCase();
+}
+
+function formatCurrency(value: number | null | undefined): string {
+  const amount = Number(value ?? 0);
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 2,
+  }).format(amount);
 }
 
 function computeReviewFlags(args: {
@@ -214,21 +132,19 @@ function computeReviewFlags(args: {
   partsCount: number;
   reviewIssues?: ReviewIssue[];
 }): ReviewFlags {
-  // Local checks (works even without AI review)
   const localMissingCause = !norm(args.line.cause);
   const localMissingCorrection = !norm(args.line.correction);
   const localMissingComplaint =
-    !norm(args.line.complaint) && !norm(args.line.description);
+    !norm(args.line.complaint) &&
+    !norm(args.line.description);
   const localNoParts = args.partsCount === 0;
 
   const issues = Array.isArray(args.reviewIssues) ? args.reviewIssues : [];
 
-  // If AI issues exist, use them to drive flags (but keep local as fallback)
   let aiMissingCause = false;
   let aiMissingCorrection = false;
   let aiMissingComplaint = false;
   let aiNoParts = false;
-
   let other = 0;
 
   for (const it of issues) {
@@ -237,10 +153,7 @@ function computeReviewFlags(args: {
 
     const hasCause = k.includes("cause") || m.includes("cause");
     const hasCorrection = k.includes("correction") || m.includes("corr");
-    const hasComplaint =
-      k.includes("complaint") ||
-      m.includes("complaint") ||
-      m.includes("description");
+    const hasComplaint = k.includes("complaint") || m.includes("description");
     const hasParts = k.includes("part") || m.includes("part");
 
     if (hasCause) aiMissingCause = true;
@@ -259,27 +172,56 @@ function computeReviewFlags(args: {
   };
 }
 
-function ReviewIcon({
-  title,
+function ReviewPill({
   label,
   tone,
+  title,
 }: {
-  title: string;
   label: string;
   tone: "ok" | "warn" | "info";
+  title: string;
 }) {
-  const base =
-    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide";
-  const cls =
-    tone === "ok"
-      ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-100"
-      : tone === "warn"
-        ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
-        : "border-white/15 bg-black/40 text-neutral-200";
+  const icon =
+    tone === "ok" ? (
+      <CircleCheck className="h-3.5 w-3.5" />
+    ) : tone === "warn" ? (
+      <CircleAlert className="h-3.5 w-3.5" />
+    ) : (
+      <Wrench className="h-3.5 w-3.5" />
+    );
+
   return (
-    <span className={`${base} ${cls}`} title={title}>
+    <span
+      title={title}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
+        tone === "ok"
+          ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-100"
+          : tone === "warn"
+            ? "border-amber-400/60 bg-amber-400/10 text-amber-100"
+            : "border-white/10 bg-white/5 text-neutral-200",
+      )}
+    >
+      {icon}
       {label}
     </span>
+  );
+}
+
+function MetaTile({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+        {label}
+      </div>
+      <div className="mt-1 text-sm text-neutral-100">{value}</div>
+    </div>
   );
 }
 
@@ -289,12 +231,12 @@ export function JobCard({
   parts,
   technicians,
   canAssign,
+  canDelete,
   isPunchedIn,
   onOpen,
   onAssign,
   onOpenInspection,
   onAddPart,
-  canDelete,
   onDelete,
   pricing,
   reviewIssues,
@@ -305,9 +247,8 @@ export function JobCard({
     .replaceAll(" ", "_") as KnownStatus;
 
   const surfaceCfg = CARD_SURFACE[statusKey] ?? CARD_SURFACE.awaiting;
-  const [partsOpen, setPartsOpen] = useState(false);
 
-  const isCompletedLike = (): boolean => {
+  const isCompletedLike = () => {
     const s = (line.status ?? "").toLowerCase();
     return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
   };
@@ -320,399 +261,200 @@ export function JobCard({
   }, [line.status]);
 
   const jobLabel = line.description || line.complaint || "Untitled job";
+  const assignedTech = useMemo(() => {
+    const techId = line.assigned_tech_id;
+    return technicians.find((tech) => tech.id === techId)?.full_name || "Unassigned";
+  }, [line.assigned_tech_id, technicians]);
 
-  const laborText =
-    typeof line.labor_time === "number" ? `${line.labor_time}h` : "—";
+  const reviewFlags = computeReviewFlags({
+    line,
+    partsCount: parts.length,
+    reviewIssues,
+  });
 
-  const jobTypeText = String(line.job_type ?? "job").replaceAll("_", " ");
-  const statusText = String(line.status ?? "awaiting").replaceAll("_", " ");
+  const createdLabel = line.created_at
+    ? formatDistanceToNow(new Date(line.created_at), { addSuffix: true })
+    : "—";
 
-  const showPricingRow =
-    pricing &&
-    (pricing.partsTotal != null ||
-      pricing.laborTotal != null ||
-      pricing.lineTotal != null);
+  const lineTotal =
+    pricing?.lineTotal ??
+    (Number(pricing?.laborTotal ?? 0) + Number(pricing?.partsTotal ?? 0));
 
-  const currency =
-    pricing?.currency && pricing.currency.trim().length > 0
-      ? pricing.currency
-      : undefined;
-
-  const formatMoney = (v: number | null | undefined): string => {
-    if (v == null || Number.isNaN(v)) return "—";
-    const n = Number(v);
-    return `${currency ?? "$"}${n.toFixed(2)}`;
-  };
-
-  const partsCount = parts.length;
-  const partsSummary =
-    partsCount === 0
-      ? "No parts yet"
-      : `${partsCount} part${partsCount === 1 ? "" : "s"}`;
-
-  const handleCardClick = (): void => {
-    onOpen();
-  };
-
-  const toggleCollapsed = (e: React.MouseEvent<HTMLButtonElement>): void => {
-    e.stopPropagation();
-    setCollapsed((c) => !c);
-  };
-
-  const statusIcon = STATUS_ICON[statusKey] ?? "●";
-
-  const reviewFlags = useMemo(
-    () =>
-      computeReviewFlags({
-        line,
-        partsCount,
-        reviewIssues,
-      }),
-    [line, partsCount, reviewIssues],
-  );
-
-  const showReviewRow = isCompletedLike();
+  void canDelete;
+  void onDelete;
 
   return (
-    <div
-      className={[
-        "group relative cursor-pointer overflow-hidden rounded-2xl border p-3 md:p-4 transition-transform duration-150",
-        surfaceCfg.border,
-        surfaceCfg.surface,
-        "shadow-[0_18px_45px_rgba(0,0,0,0.90)] hover:-translate-y-[1px] hover:shadow-[0_26px_60px_rgba(0,0,0,0.95)]",
-        isPunchedIn ? `ring-2 ${surfaceCfg.ring}` : "ring-0",
-      ].join(" ")}
-      title="Open focused job"
-      onClick={handleCardClick}
+    <Card
+      className={cn(
+        "relative overflow-hidden p-0",
+        "transition hover:-translate-y-[1px] hover:border-[color:var(--accent-copper-soft,#fdba74)]",
+        surfaceCfg.surfaceClass,
+      )}
     >
-      {/* subtle copper glow on hover */}
-      <div className="pointer-events-none absolute inset-0 opacity-0 mix-blend-screen blur-xl transition-opacity duration-150 group-hover:opacity-70">
-        <div className="absolute inset-x-10 -top-10 h-32 bg-[radial-gradient(circle,_rgba(249,115,22,0.22),transparent_65%)]" />
-      </div>
+      <div className={cn("absolute inset-y-0 left-0 w-1", surfaceCfg.railClass)} />
 
-      <div className="relative z-0 flex gap-3">
-        <div className="mt-1 hidden h-[calc(100%-0.5rem)] w-[3px] rounded-full bg-gradient-to-b from-transparent via-white/30 to-transparent opacity-60 sm:block" />
+      <div className="relative p-5 pl-6">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge variant={surfaceCfg.badgeVariant}>
+                  {surfaceCfg.label}
+                </StatusBadge>
+                <StatusBadge variant={isPunchedIn ? "active" : "neutral"}>
+                  {isPunchedIn ? "Punched In" : "Not Punched In"}
+                </StatusBadge>
+                {reviewOk ? (
+                  <StatusBadge variant="success">Review Ready</StatusBadge>
+                ) : null}
+              </div>
 
-        <div className="relative z-10 min-w-0 flex-1 space-y-1.5">
-          <div className="flex flex-wrap items-start gap-2">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="inline-flex h-6 min-w-[1.75rem] items-center justify-center rounded-full border border-white/15 bg-black/40 text-[11px] font-semibold text-neutral-200 shadow-[0_0_12px_rgba(0,0,0,0.8)]">
+              <div className="mt-3 flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-neutral-200">
                   {index + 1}
-                </span>
-                <div className="truncate text-sm font-semibold text-white">
-                  {jobLabel}
+                </div>
+
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-white sm:text-lg">
+                    {jobLabel}
+                  </h3>
+                  <p className="mt-1 text-xs uppercase tracking-[0.16em] text-neutral-500">
+                    Created {createdLabel}
+                  </p>
                 </div>
               </div>
-
-              {canAssign && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAssign?.();
-                  }}
-                  className="inline-flex items-center gap-1 rounded-full border border-sky-500/70 bg-sky-900/20 px-2.5 py-0.5 text-[11px] font-medium text-sky-100 shadow-[0_0_14px_rgba(8,47,73,0.9)] hover:bg-sky-900/40"
-                  title="Assign mechanic to this line"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-sky-300" />
-                  Assign mechanic
-                </button>
-              )}
-
-              {line.job_type === "inspection" && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenInspection?.();
-                  }}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
-                    isCompletedLike()
-                      ? "border-teal-400 bg-teal-900/20 text-teal-100 hover:bg-teal-900/35"
-                      : "border-orange-400 bg-orange-900/10 text-orange-100 hover:bg-orange-900/25"
-                  }`}
-                >
-                  {isCompletedLike() ? "View inspection" : "Open inspection"}
-                </button>
-              )}
             </div>
 
-            <div className="ml-auto flex items-center gap-2">
-              {/* ✅ NEW: delete/void inside card */}
-              {canDelete && onDelete && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
-                  className="
-                    hidden items-center gap-1 rounded-full
-                    border border-red-500/45 bg-red-950/30
-                    px-2.5 py-1 text-[11px] font-semibold text-red-100
-                    shadow-[0_0_14px_rgba(239,68,68,0.35)]
-                    hover:border-red-400/65 hover:bg-red-950/45
-                    sm:inline-flex
-                  "
-                  title="Delete or void this line"
-                >
-                  🗑 <span className="hidden md:inline">Delete</span>
-                </button>
-              )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={onOpen}>
+                Open
+              </Button>
 
-              <button
+              {onOpenInspection ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={onOpenInspection}
+                >
+                  Inspection
+                </Button>
+              ) : null}
+
+              {onAddPart ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={onAddPart}
+                >
+                  Add Part
+                </Button>
+              ) : null}
+
+              <Button
                 type="button"
-                onClick={toggleCollapsed}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-black/40 text-[11px] text-white/80 shadow-[0_0_14px_rgba(0,0,0,0.75)] hover:border-white/25 hover:bg-black/70 hover:text-white"
-                title={collapsed ? "Expand job details" : "Collapse job details"}
+                variant="ghost"
+                size="sm"
+                onClick={() => setCollapsed((v) => !v)}
+                className="border border-white/10 bg-black/20"
               >
-                <span
-                  className={`inline-block transform text-[11px] transition-transform ${
-                    collapsed ? "" : "rotate-90"
-                  }`}
-                >
-                  ▶
-                </span>
-              </button>
-
-              <span className={statusChip(line.status)}>
-                <span className="mr-1">{statusIcon}</span>
-                {statusText}
-              </span>
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAddPart?.();
-                }}
-                className="hidden items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1 text-[11px] font-medium text-white/85 shadow-[0_0_14px_rgba(0,0,0,0.8)] hover:border-[color:var(--accent-copper-soft,#fdba74)]/80 hover:bg-white/5 hover:text-white sm:inline-flex"
-                title="Add / use part on this job"
-              >
-                ＋ <span className="hidden md:inline">Add part</span>
-              </button>
-
-              <div className="sm:hidden">
-                <UsePartButton
-                  workOrderLineId={line.id}
-                  onApplied={() =>
-                    window.dispatchEvent(new CustomEvent("wo:parts-used"))
-                  }
-                  label="Add part"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* ✅ Review icons row (only after completed-like) */}
-          {showReviewRow && (
-            <div className="flex flex-wrap items-center gap-2 text-[11px]">
-              {reviewOk ? (
-                <ReviewIcon
-                  tone="ok"
-                  title="AI invoice review passed for this work order"
-                  label="✅ Reviewed"
-                />
-              ) : (
-                <ReviewIcon
-                  tone="info"
-                  title="Review not passed yet (or not run). Icons below show what needs fixing."
-                  label="🧠 Review"
-                />
-              )}
-
-              {reviewFlags.missingCause && (
-                <ReviewIcon tone="warn" title="Cause is missing" label="⚠ Cause" />
-              )}
-              {reviewFlags.missingCorrection && (
-                <ReviewIcon
-                  tone="warn"
-                  title="Correction is missing"
-                  label="⚠ Correction"
-                />
-              )}
-              {reviewFlags.noParts && (
-                <ReviewIcon
-                  tone="warn"
-                  title="No parts recorded on this job line"
-                  label="⚠ No parts"
-                />
-              )}
-              {reviewFlags.missingComplaint && (
-                <ReviewIcon
-                  tone="warn"
-                  title="Complaint / description is missing"
-                  label="⚠ No complaint"
-                />
-              )}
-              {reviewFlags.otherIssues > 0 && (
-                <ReviewIcon
-                  tone="warn"
-                  title="Other review issues exist for this line"
-                  label={`⚠ +${reviewFlags.otherIssues}`}
-                />
-              )}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-white/60" />
-              {jobTypeText}
-            </span>
-            <span className="text-neutral-500">•</span>
-            <span>Est. labor: {laborText}</span>
-            <span className="text-neutral-500">•</span>
-            <span className="text-neutral-300/90">
-              Status: <span className="capitalize">{statusText}</span>
-            </span>
-            {isPunchedIn && (
-              <>
-                <span className="text-neutral-500">•</span>
-                <span className="inline-flex items-center gap-1 text-emerald-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.9)]" />
-                  Punched in
-                </span>
-              </>
-            )}
-          </div>
-
-          {isCompletedLike() && (
-            <div className="text-[10px] text-emerald-200/80">
-              {collapsed
-                ? "Completed job – use the chevron to view details."
-                : "Completed job – use the chevron to collapse details."}
-            </div>
-          )}
-
-          {!collapsed && (
-            <>
-              {technicians.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {technicians.map((tech) => (
-                    <span
-                      key={tech.id}
-                      className="inline-flex items-center gap-1 rounded-full bg-sky-900/45 px-2.5 py-0.5 text-[10px] text-sky-100 shadow-[0_0_14px_rgba(8,47,73,0.9)]"
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-sky-300" />
-                      {tech.full_name ?? "Mechanic"}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {(line.complaint || line.cause || line.correction) && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg bg-black/30 px-2 py-1.5 text-[11px] text-neutral-200">
-                  {line.complaint && (
-                    <span className="font-medium text-neutral-100">
-                      Cmpl:{" "}
-                      <span className="font-normal text-neutral-300">
-                        {line.complaint}
-                      </span>
-                    </span>
-                  )}
-                  {line.cause && (
-                    <span className="text-neutral-400">
-                      | Cause:{" "}
-                      <span className="font-normal text-neutral-200">
-                        {line.cause}
-                      </span>
-                    </span>
-                  )}
-                  {line.correction && (
-                    <span className="text-neutral-400">
-                      | Corr:{" "}
-                      <span className="font-normal text-neutral-200">
-                        {line.correction}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              )}
-
-              <div className="mt-2 rounded-xl border border-white/10 bg-black/40">
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPartsOpen((open) => !open);
-                  }}
-                >
-                  <div className="flex flex-col">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-200">
-                      Parts used
-                    </span>
-                    <span className="text-[10px] text-neutral-400">
-                      {partsSummary}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAddPart?.();
-                      }}
-                      className="inline-flex items-center rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[11px] font-medium text-white/85 hover:border-white/25 hover:bg-white/5 hover:text-white sm:hidden"
-                    >
-                      ＋ Part
-                    </button>
-
-                    <span
-                      className={`text-[10px] text-white/60 transition-transform ${
-                        partsOpen ? "rotate-90" : ""
-                      }`}
-                    >
-                      ▶
-                    </span>
-                  </div>
-                </button>
-
-                {partsOpen && (
-                  <div
-                    className="border-t border-white/10 px-2.5 pb-2 pt-1.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <PartsUsedList allocations={parts} />
-                  </div>
+                {collapsed ? (
+                  <>
+                    Expand <ChevronDown className="ml-1 h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    Collapse <ChevronUp className="ml-1 h-4 w-4" />
+                  </>
                 )}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <ReviewPill
+              tone={reviewFlags.missingComplaint ? "warn" : "ok"}
+              label={reviewFlags.missingComplaint ? "Complaint missing" : "Complaint ok"}
+              title="Complaint / description completeness"
+            />
+            <ReviewPill
+              tone={reviewFlags.missingCause ? "warn" : "ok"}
+              label={reviewFlags.missingCause ? "Cause missing" : "Cause ok"}
+              title="Cause completeness"
+            />
+            <ReviewPill
+              tone={reviewFlags.missingCorrection ? "warn" : "ok"}
+              label={reviewFlags.missingCorrection ? "Correction missing" : "Correction ok"}
+              title="Correction completeness"
+            />
+            <ReviewPill
+              tone={reviewFlags.noParts ? "warn" : "ok"}
+              label={reviewFlags.noParts ? "No parts" : "Parts added"}
+              title="Parts completeness"
+            />
+            {reviewFlags.otherIssues > 0 ? (
+              <ReviewPill
+                tone="info"
+                label={`${reviewFlags.otherIssues} other`}
+                title="Additional review issues"
+              />
+            ) : null}
+          </div>
+
+          {!collapsed ? (
+            <>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <MetaTile label="Assigned Tech" value={assignedTech} />
+                <MetaTile label="Parts" value={String(parts.length)} />
+                <MetaTile
+                  label="Labor"
+                  value={formatCurrency(pricing?.laborTotal ?? 0)}
+                />
+                <MetaTile label="Line Total" value={formatCurrency(lineTotal)} />
               </div>
 
-              {showPricingRow && (
-                <div className="mt-2 flex flex-wrap items-center justify-end gap-3 text-[11px] text-neutral-300">
-                  {pricing?.partsTotal != null && (
-                    <span className="flex items-center gap-1">
-                      <span className="text-neutral-400">Parts</span>
-                      <span className="font-semibold">
-                        {formatMoney(pricing.partsTotal)}
+              {canAssign && onAssign ? (
+                <div className="rounded-xl border border-white/10 bg-black/25 p-4">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    Assign technician
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {technicians.length === 0 ? (
+                      <span className="text-sm text-neutral-400">
+                        No technicians available.
                       </span>
-                    </span>
-                  )}
-                  {pricing?.laborTotal != null && (
-                    <span className="flex items-center gap-1">
-                      <span className="text-neutral-400">Labor</span>
-                      <span className="font-semibold">
-                        {formatMoney(pricing.laborTotal)}
-                      </span>
-                    </span>
-                  )}
-                  {pricing?.lineTotal != null && (
-                    <span className="flex items-center gap-1">
-                      <span className="text-neutral-400">Line total</span>
-                      <span className="font-semibold text-[color:var(--accent-copper-light,#fed7aa)]">
-                        {formatMoney(pricing.lineTotal)}
-                      </span>
-                    </span>
-                  )}
+                    ) : (
+                      technicians.map((tech) => {
+                        const isAssigned = tech.id === line.assigned_tech_id;
+
+                        return (
+                          <button
+                            key={tech.id}
+                            type="button"
+                            onClick={() => onAssign(tech.id)}
+                            className={cn(
+                              "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                              isAssigned
+                                ? "border-[color:var(--accent-copper-soft,#fdba74)] bg-[color:var(--accent-copper,#f97316)]/15 text-[color:var(--accent-copper-light,#fdba74)]"
+                                : "border-white/10 bg-white/5 text-neutral-200 hover:border-white/20 hover:bg-white/10",
+                            )}
+                          >
+                            {tech.full_name || "Unnamed tech"}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-              )}
+              ) : null}
             </>
-          )}
+          ) : null}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
+
+export default JobCard;

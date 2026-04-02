@@ -1,23 +1,40 @@
 "use client";
 
 import type { ReactNode } from "react";
+import SectionHeader from "@shared/components/ui/SectionHeader";
+import { cn } from "@shared/lib/utils";
 
 export default function DashboardSection(props: {
   title?: string;
   subtitle?: string;
+  eyebrow?: string;
+  actions?: ReactNode;
   children: ReactNode;
+  className?: string;
+  contentClassName?: string;
 }) {
-  const { title, subtitle, children } = props;
+  const {
+    title,
+    subtitle,
+    eyebrow,
+    actions,
+    children,
+    className,
+    contentClassName,
+  } = props;
 
   return (
-    <section className="space-y-3">
+    <section className={cn("space-y-4", className)}>
       {title ? (
-        <div>
-          <div className="text-sm font-medium text-neutral-200">{title}</div>
-          {subtitle ? <div className="mt-1 text-xs text-neutral-500">{subtitle}</div> : null}
-        </div>
+        <SectionHeader
+          eyebrow={eyebrow}
+          title={title}
+          subtitle={subtitle}
+          actions={actions}
+        />
       ) : null}
-      {children}
+
+      <div className={contentClassName}>{children}</div>
     </section>
   );
 }
