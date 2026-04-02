@@ -245,7 +245,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // assign mechanic
   const [assignOpen, setAssignOpen] = useState(false);
-  const [assignLineId, setAssignLineId] = useState<string | null>(null);
+  const [assignLineId] = useState<string | null>(null);
 
   // delete/void line modal
   const [delOpen, setDelOpen] = useState(false);
@@ -891,14 +891,6 @@ export default function WorkOrderIdClient(): JSX.Element {
   const canApprove = currentUserRole ? APPROVAL_ROLES.has(currentUserRole) : false;
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
-
-  const assignablesById = useMemo(() => {
-    const m: Record<string, { full_name: string | null; role: string | null }> = {};
-    assignables.forEach((a) => {
-      m[a.id] = { full_name: a.full_name, role: a.role };
-    });
-    return m;
-  }, [assignables]);
 
   const selectedDelLine = useMemo(() => {
     if (!delLineId) return null;
@@ -1642,30 +1634,45 @@ export default function WorkOrderIdClient(): JSX.Element {
                       if (!orderedTechIds.includes(tid)) orderedTechIds.push(tid);
                     });
 
-                    const technicians = orderedTechIds.map((tid) => {
-                      const info = assignablesById[tid];
-                      return {
-                        id: tid,
-                        full_name: info?.full_name ?? null,
-                        role: info?.role ?? null,
-                      };
-                    });
-
                     return (
                       <div key={ln.id} className="relative">
                         <JobCard
                           index={idx}
                           line={ln}
                           parts={partsForLine}
-                          technicians={technicians}
+                          technicians={assignables}
                           canAssign={canAssign}
                           isPunchedIn={punchedIn}
                           onOpen={() => openFocusedJob(ln.id)}
                           onAssign={
                             canAssign
-                              ? () => {
-                                  setAssignLineId(ln.id);
-                                  setAssignOpen(true);
+                              ? async (techId: string) => {
+                                  try {
+                                    const res = await fetch("/api/work-orders/assign-line", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        work_order_line_id: ln.id,
+                                        tech_id: techId,
+                                      }),
+                                    });
+
+                                    const json = await res.json().catch(() => ({}));
+
+                                    if (!res.ok) {
+                                      throw new Error(
+                                        typeof json?.error === "string"
+                                          ? json.error
+                                          : "Failed to assign technician."
+                                      );
+                                    }
+
+                                    toast.success("Technician assigned.");
+                                    await fetchAll();
+                                  } catch (e) {
+                                    const msg = e instanceof Error ? e.message : "Failed to assign technician.";
+                                    toast.error(msg);
+                                  }
                                 }
                               : undefined
                           }
