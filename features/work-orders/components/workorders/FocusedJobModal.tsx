@@ -17,6 +17,7 @@ import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
+import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -157,7 +158,7 @@ export default function FocusedJobModal(props: {
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
   const [openAi, setOpenAi] = useState(false);
-  const [_openDtc, setOpenDtc] = useState(false);
+  const [openDtc, setOpenDtc] = useState(false);
   const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
 
   const [prefillCause, setPrefillCause] = useState("");
@@ -198,6 +199,7 @@ export default function FocusedJobModal(props: {
     setOpenChat(false);
     setOpenAddJob(false);
     setOpenAi(false);
+    setOpenDtc(false);
     setOpenVehicleHistory(false);
   }, []);
 
@@ -1057,6 +1059,53 @@ export default function FocusedJobModal(props: {
           onRelease={line.hold_reason ? releaseHold : undefined}
           canRelease={!!line.hold_reason}
           defaultReason={line.hold_reason || "Awaiting parts"}
+        />
+      ) : null}
+
+
+      {openDtc && line?.id ? (
+        <DtcSuggestionModal
+          isOpen={openDtc}
+          onClose={() => setOpenDtc(false)}
+          jobId={line.id}
+          vehicle={
+            vehicle
+              ? {
+                  year: vehicle.year ? String(vehicle.year) : null,
+                  make: vehicle.make ?? null,
+                  model: vehicle.model ?? null,
+                  engine:
+                    "engine" in vehicle && typeof vehicle.engine === "string"
+                      ? vehicle.engine
+                      : null,
+                  fuelType:
+                    "fuel_type" in vehicle && typeof vehicle.fuel_type === "string"
+                      ? vehicle.fuel_type
+                      : null,
+                  drivetrain:
+                    "drivetrain" in vehicle && typeof vehicle.drivetrain === "string"
+                      ? vehicle.drivetrain
+                      : null,
+                  transmission:
+                    "transmission" in vehicle && typeof vehicle.transmission === "string"
+                      ? vehicle.transmission
+                      : null,
+                }
+              : null
+          }
+          onApplied={async (payload: {
+            summary: string;
+            commonRepairs: string;
+            laborHours: number | null;
+            applyCause: string | null;
+            applyCorrection: string | null;
+          }) => {
+            setPrefillCause(payload.summary);
+            setPrefillCorrection(payload.commonRepairs);
+            setOpenDtc(false);
+            setOpenComplete(true);
+            await refresh();
+          }}
         />
       ) : null}
 

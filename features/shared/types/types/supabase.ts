@@ -4267,7 +4267,7 @@ export type Database = {
           user_id: string | null
           vehicle_id: string | null
           work_order_id: string | null
-          work_order_line_id: string
+          work_order_line_id: string | null
         }
         Insert: {
           completed_at?: string | null
@@ -4281,7 +4281,7 @@ export type Database = {
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null
-          work_order_line_id: string
+          work_order_line_id?: string | null
         }
         Update: {
           completed_at?: string | null
@@ -4295,7 +4295,7 @@ export type Database = {
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null
-          work_order_line_id?: string
+          work_order_line_id?: string | null
         }
         Relationships: [
           {
@@ -13623,6 +13623,126 @@ export type Database = {
           },
         ]
       }
+      work_order_line_dtc_threads: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dtc_code: string | null
+          id: string
+          messages: Json
+          shop_id: string
+          summary: Json | null
+          updated_at: string
+          vehicle_id: string | null
+          work_order_id: string
+          work_order_line_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dtc_code?: string | null
+          id?: string
+          messages?: Json
+          shop_id: string
+          summary?: Json | null
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id: string
+          work_order_line_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dtc_code?: string | null
+          id?: string
+          messages?: Json
+          shop_id?: string
+          summary?: Json | null
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id?: string
+          work_order_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_line_dtc_threads_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: true
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: true
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_dtc_threads_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: true
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_order_line_history: {
         Row: {
           created_at: string
@@ -16558,7 +16678,7 @@ export type Database = {
         Returns: string
       }
       generate_work_order_custom_id: {
-        Args: { p_shop_id: string; p_work_order_id: string }
+        Args: { p_shop_id: string; p_user_id: string }
         Returns: string
       }
       get_default_stock_location: {
