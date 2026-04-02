@@ -1603,6 +1603,107 @@ export default function CreateWorkOrderPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Visit setup */}
+            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                  Visit Setup
+                </h2>
+                <span className="text-[11px] text-neutral-500">Applies before save</span>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr]">
+                <div className="rounded-2xl border border-[color:var(--copper)]/20 bg-[color:var(--copper)]/5 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                        Customer waiting
+                      </div>
+                      <p className="mt-1 text-[11px] text-neutral-500">
+                        Marks this work order as a waiter across queues and boards.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isWaiter}
+                      onClick={() => setIsWaiter((v) => !v)}
+                      disabled={loading}
+                      className={[
+                        "relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border transition",
+                        isWaiter
+                          ? "border-[color:var(--copper)]/70 bg-[color:var(--copper)]/20"
+                          : "border-white/10 bg-black/50",
+                        loading ? "opacity-60" : "hover:bg-white/5",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "inline-block h-5 w-5 rounded-full transition",
+                          isWaiter
+                            ? "translate-x-8 bg-[color:var(--copper)] shadow-[0_0_16px_rgba(197,122,74,0.55)]"
+                            : "translate-x-1 bg-neutral-500",
+                        ].join(" ")}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span
+                      className={[
+                        "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]",
+                        isWaiter
+                          ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
+                          : "border-white/10 bg-black/40 text-neutral-400",
+                      ].join(" ")}
+                    >
+                      {isWaiter ? "Waiter" : "Drop-off"}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                    Priority
+                  </label>
+                  <select
+                    value={priority}
+                    onChange={(e) => setPriority(Number(e.target.value))}
+                    className="input"
+                    disabled={loading}
+                  >
+                    <option value={1}>Urgent</option>
+                    <option value={2}>High</option>
+                    <option value={3}>Normal</option>
+                    <option value={4}>Low</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-neutral-500">
+                    Used to highlight urgent jobs in queues and dashboards.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                    Default job type
+                  </label>
+                  <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value as WOType)}
+                    className="input"
+                    disabled={loading}
+                  >
+                    <option value="maintenance">Maintenance</option>
+                    <option value="diagnosis">Diagnosis</option>
+                    <option value="inspection">Inspection</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-neutral-500">
+                    Sets the default for new lines you add on this work order.
+                  </p>
+                </div>
+              </div>
+            </section>
+
             {/* Customer & Vehicle */}
             <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
@@ -1622,7 +1723,6 @@ export default function CreateWorkOrderPage() {
                 shopId={wo?.shop_id ?? currentShopId}
                 handlers={{
                   onCustomerChange,
-                  // ✅ cast to keep props serializable + avoid leaking internal types
                   onVehicleChange: onVehicleChange as unknown as (
                     field: keyof SessionVehicle,
                     value: string | null,
@@ -1735,7 +1835,7 @@ export default function CreateWorkOrderPage() {
                 <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
                   Uploads
                 </h2>
-                <span className="text-[11px] text-neutral-500">Optional</span>
+                <span className="text-[11px] text-neutral-500">Editable before save</span>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
@@ -1766,6 +1866,28 @@ export default function CreateWorkOrderPage() {
                   />
                 </div>
               </div>
+            </section>
+
+            {/* Internal notes */}
+            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
+              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                  Internal Notes
+                </h2>
+                <span className="text-[11px] text-neutral-500">Saved with the work order</span>
+              </div>
+
+              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                Notes
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="input"
+                rows={3}
+                placeholder="Optional notes for technician"
+                disabled={loading}
+              />
             </section>
 
             {/* Menu quick add */}
@@ -1882,90 +2004,6 @@ export default function CreateWorkOrderPage() {
               )}
             </section>
 
-            {/* Options */}
-            <section className="rounded-2xl border border-white/10 bg-black/50 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.55)] sm:p-5">
-              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
-                  Work order options
-                </h2>
-                <span className="text-[11px] text-neutral-500">Defaults</span>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                    Default job type
-                  </label>
-                  <select
-                    value={type}
-                    onChange={(e) => setType(e.target.value as WOType)}
-                    className="input"
-                    disabled={loading}
-                  >
-                    <option value="maintenance">Maintenance</option>
-                    <option value="diagnosis">Diagnosis</option>
-                    <option value="inspection">Inspection</option>
-                  </select>
-                  <p className="mt-1 text-[11px] text-neutral-500">
-                    Sets the default for new lines you add on this work order.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                    Priority
-                  </label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(Number(e.target.value))}
-                    className="input"
-                    disabled={loading}
-                  >
-                    <option value={1}>Urgent</option>
-                    <option value={2}>High</option>
-                    <option value={3}>Normal</option>
-                    <option value={4}>Low</option>
-                  </select>
-                  <p className="mt-1 text-[11px] text-neutral-500">
-                    Used to highlight urgent jobs in queues and dashboards.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                    Customer waiting (waiter)
-                  </label>
-                  <select
-                    value={isWaiter ? "waiter" : "dropoff"}
-                    onChange={(e) => setIsWaiter(e.target.value === "waiter")}
-                    className="input"
-                    disabled={loading}
-                  >
-                    <option value="dropoff">Drop-off / not waiting</option>
-                    <option value="waiter">Customer waiting (waiter)</option>
-                  </select>
-                  <p className="mt-1 text-[11px] text-neutral-500">
-                    When set to waiter, the work order will show a{" "}
-                    <span className="font-semibold text-neutral-300">WAITING</span>{" "}
-                    status badge.
-                  </p>
-                </div>
-
-                <div className="md:col-span-3">
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                    Notes
-                  </label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className="input"
-                    rows={3}
-                    placeholder="Optional notes for technician"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </section>
 
             {/* Footer actions */}
             <div className="flex flex-wrap items-center gap-3">
