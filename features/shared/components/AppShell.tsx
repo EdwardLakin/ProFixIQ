@@ -17,7 +17,6 @@ import { cn } from "@/features/shared/utils/cn";
 import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
-import BookingsWidget from "@/features/dashboard/widgets/BookingsWidget";
 
 const NON_APP_ROUTES = [
   "/",
@@ -452,7 +451,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </ActionButton>
             </div>
           </header>
-      <div className="px-4 pt-3"><BookingsWidget /></div>
 
           {/* floating shift panel */}
           {punchOpen && userId ? (

@@ -15,6 +15,7 @@ import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActi
 import ReportsPerformanceWidget from "@/features/owner/reports/ReportsPerformanceWidget";
 import AdvisorQueueWidget from "@/features/work-orders/components/dashboard/AdvisorQueueWidget";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
+import BookingsWidget from "@/features/dashboard/widgets/BookingsWidget";
 import {
   ShopPulseWidget,
   ApprovalRiskWidget,
@@ -46,7 +47,6 @@ const CLOSED_PART_STATUSES = ["fulfilled", "rejected", "cancelled"] as const;
 const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
 
 function sqlTextIn(values: readonly string[]): string {
-  // PostgREST expects: ('a','b','c') for text columns
   return `(${values.map((v) => `'${v}'`).join(",")})`;
 }
 
@@ -55,7 +55,6 @@ function isTechRole(role: string | null): boolean {
   return r === "tech" || r === "mechanic" || r === "technician";
 }
 
-// ✅ owners/admin/managers get the owner widget stack
 function canViewOwnerDashboard(role: string | null): boolean {
   const r = (role ?? "").toLowerCase();
   return r === "owner" || r === "admin" || r === "manager";
@@ -85,12 +84,10 @@ export default function DashboardPage() {
     partsRequests: null,
   });
 
-  // ✅ Tech performance snapshot for dashboard tiles
   const [perfRange] = useState<TimeRange>("weekly");
   const [perfLoading, setPerfLoading] = useState(false);
   const [perfRow, setPerfRow] = useState<TechLeaderboardRow | null>(null);
 
-  // current punched-in job for this user
   const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
   const [currentJobWorkOrder, setCurrentJobWorkOrder] =
     useState<WorkOrder | null>(null);
@@ -99,7 +96,6 @@ export default function DashboardPage() {
   );
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
 
-  // fetch profile + user id
   useEffect(() => {
     (async () => {
       const {
@@ -123,10 +119,6 @@ export default function DashboardPage() {
     })();
   }, [supabase]);
 
-  /* ---------------------------------------------------------------------- */
-  /* Counts (role-aware + shop-aware)                                       */
-  /* ---------------------------------------------------------------------- */
-
   useEffect(() => {
     if (!userId) return;
     if (!shopId) return;
@@ -134,7 +126,6 @@ export default function DashboardPage() {
     (async () => {
       const tech = isTechRole(role);
 
-      // Default "…" while loading
       setCounts({
         appointments: null,
         workOrders: null,
@@ -142,9 +133,6 @@ export default function DashboardPage() {
       });
 
       if (tech) {
-        // TECH DASHBOARD COUNTS
-        // - workOrders: count of non-completed assigned lines
-        // - partsRequests: count of open part requests involving me (requested_by OR assigned_tech_id)
         const [myJobs, myParts] = await Promise.all([
           supabase
             .from("work_order_lines")
@@ -160,7 +148,7 @@ export default function DashboardPage() {
         ]);
 
         setCounts({
-          appointments: 0, // tech doesn't need appointment count; keep simple
+          appointments: 0,
           workOrders: myJobs.error ? 0 : myJobs.count ?? 0,
           partsRequests: myParts.error ? 0 : myParts.count ?? 0,
         });
@@ -168,7 +156,6 @@ export default function DashboardPage() {
         return;
       }
 
-      // SHOP DASHBOARD COUNTS (owner/admin/advisor/manager)
       const [appt, wo, parts] = await Promise.all([
         supabase
           .from("bookings")
@@ -192,10 +179,6 @@ export default function DashboardPage() {
       });
     })();
   }, [supabase, userId, shopId, role]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Tech performance snapshot (for the circled tiles)                      */
-  /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
     if (!userId) return;
@@ -228,7 +211,6 @@ export default function DashboardPage() {
           },
         );
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error("[Dashboard] performance snapshot load failed", e);
         setPerfRow(null);
       } finally {
@@ -236,10 +218,6 @@ export default function DashboardPage() {
       }
     })();
   }, [userId, shopId, role, perfRange, name]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Current job – job this user is actively punched in on                  */
-  /* ---------------------------------------------------------------------- */
 
   const loadCurrentJob = useCallback(
     async (uid: string | null) => {
@@ -265,7 +243,6 @@ export default function DashboardPage() {
           .maybeSingle();
 
         if (error) {
-          // eslint-disable-next-line no-console
           console.error("[Dashboard] current job load error:", error);
           setCurrentJob(null);
           setCurrentJobWorkOrder(null);
@@ -282,7 +259,6 @@ export default function DashboardPage() {
           return;
         }
 
-        // related work order
         const { data: wo, error: woErr } = await supabase
           .from("work_orders")
           .select("id, custom_id, vehicle_id")
@@ -290,7 +266,6 @@ export default function DashboardPage() {
           .maybeSingle<WorkOrder>();
 
         if (woErr) {
-          // eslint-disable-next-line no-console
           console.error("[Dashboard] current job WO load error:", woErr);
           setCurrentJobWorkOrder(null);
           setCurrentJobVehicle(null);
@@ -308,7 +283,6 @@ export default function DashboardPage() {
             .maybeSingle<Vehicle>();
 
           if (vehErr) {
-            // eslint-disable-next-line no-console
             console.error("[Dashboard] current job vehicle load error:", vehErr);
             setCurrentJobVehicle(null);
           } else {
@@ -342,7 +316,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      {/* welcome panel */}
       <section className="flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/80 via-slate-950/90 to-black/80 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
         <div>
           <h1 className="text-2xl font-semibold text-white">
@@ -367,167 +340,163 @@ export default function DashboardPage() {
           title="Suggested Actions"
         />
       </div>
+
+      {!tech && (
+        <div className="mb-4">
+          <BookingsWidget />
+        </div>
+      )}
+
       <div className="relative space-y-8 fade-in">
-      {/* soft gradient background for this page (extra metal wash) */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
-      />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+        />
 
-      {/* Owner / manager AI widget stack */}
-      {!tech && showOwnerDashboard && shopId && (
-        <>
-          <section>
-            <ReportsPerformanceWidget />
-          </section>
-
-          <section className="grid gap-4 xl:grid-cols-2">
-            <ShopPulseWidget shopId={shopId} />
-            <RevenueWatchWidget shopId={shopId} />
-          </section>
-
-          <section className="grid gap-4 xl:grid-cols-3">
-            <ApprovalRiskWidget shopId={shopId} />
-            <WaitingPartsWidget shopId={shopId} />
-            <TechLoadWidget shopId={shopId} />
-          </section>
-
-          <section>
-            <ComebackRiskWidget shopId={shopId} />
-          </section>
-        </>
-      )}
-
-      {/* active job pill – only for tech/mechanic roles */}
-      {tech && (
-        <section>
-          <ActiveJobCard
-            loading={loadingCurrentJob}
-            job={currentJob}
-            workOrder={currentJobWorkOrder}
-            vehicle={currentJobVehicle}
-          />
-        </section>
-      )}
-
-      {/* overview cards */}
-      <section className="grid gap-4 md:grid-cols-4">
-        {tech ? (
+        {!tech && showOwnerDashboard && shopId && (
           <>
-            <OverviewCard
-              title="My assigned jobs"
-              value={counts.workOrders === null ? "…" : String(counts.workOrders)}
-              href="/tech/queue"
-            />
+            <section>
+              <ReportsPerformanceWidget />
+            </section>
 
-            <OverviewCard
-              title="Hours worked"
-              value={workedText}
-              href="/tech/performance"
-            />
-            <OverviewCard
-              title="Billed hours"
-              value={billedText}
-              href="/tech/performance"
-            />
-            <OverviewCard
-              title="Efficiency"
-              value={effText}
-              href="/tech/performance"
-            />
-          </>
-        ) : (
-          <>
-            <OverviewCard
-              title="Today’s appointments"
-              value={
-                counts.appointments === null ? "…" : String(counts.appointments)
-              }
-              href="/dashboard/appointments"
-            />
-            <OverviewCard
-              title="Open work orders"
-              value={counts.workOrders === null ? "…" : String(counts.workOrders)}
-              href="/work-orders/view"
-            />
-            <OverviewCard
-              title="Parts requests"
-              value={
-                counts.partsRequests === null ? "…" : String(counts.partsRequests)
-              }
-              href="/parts/requests"
-            />
-            <OverviewCard title="Team chat" value="Open" href="/chat" />
+            <section className="grid gap-4 xl:grid-cols-2">
+              <ShopPulseWidget shopId={shopId} />
+              <RevenueWatchWidget shopId={shopId} />
+            </section>
+
+            <section className="grid gap-4 xl:grid-cols-3">
+              <ApprovalRiskWidget shopId={shopId} />
+              <WaitingPartsWidget shopId={shopId} />
+              <TechLoadWidget shopId={shopId} />
+            </section>
+
+            <section>
+              <ComebackRiskWidget shopId={shopId} />
+            </section>
           </>
         )}
-      </section>
 
-      {/* Work Order Board (shop widget) */}
-      {!tech && (
-        <section className="metal-card rounded-3xl p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
-                Work board
-              </div>
-              <div className="mt-1 text-sm font-semibold text-neutral-100">
-                Live shop status
-              </div>
-            </div>
+        {tech && (
+          <section>
+            <ActiveJobCard
+              loading={loadingCurrentJob}
+              job={currentJob}
+              workOrder={currentJobWorkOrder}
+              vehicle={currentJobVehicle}
+            />
+          </section>
+        )}
 
-            <Link
-              href="/work-orders/board"
-              className="text-xs text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
-            >
-              Open full board →
-            </Link>
-          </div>
-
-          <WorkOrderBoardWidget variant="shop" href="/work-orders/board" />
-        </section>
-      )}
-
-      {/* Advisor Queue Widget */}
-      {!tech && (
-        <section>
-          <AdvisorQueueWidget />
-        </section>
-      )}
-
-      {/* quick actions */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-neutral-300">Quick actions</h2>
-        <div className="flex flex-wrap gap-3">
+        <section className="grid gap-4 md:grid-cols-4">
           {tech ? (
             <>
-              <QuickButton href="/tech/queue">My job queue</QuickButton>
-              <QuickButton href="/parts/requests?mine=1">
-                My parts requests
-              </QuickButton>
-              <QuickButton href="/ai/assistant">AI assistant</QuickButton>
+              <OverviewCard
+                title="My assigned jobs"
+                value={counts.workOrders === null ? "…" : String(counts.workOrders)}
+                href="/tech/queue"
+              />
+
+              <OverviewCard
+                title="Hours worked"
+                value={workedText}
+                href="/tech/performance"
+              />
+              <OverviewCard
+                title="Billed hours"
+                value={billedText}
+                href="/tech/performance"
+              />
+              <OverviewCard
+                title="Efficiency"
+                value={effText}
+                href="/tech/performance"
+              />
             </>
           ) : (
             <>
-              <QuickButton href="/work-orders/create?autostart=1">
-                New work order
-              </QuickButton>
-              <QuickButton href="/dashboard/appointments">Appointments</QuickButton>
-              <QuickButton href="/ai/assistant">AI assistant</QuickButton>
-              {role === "owner" || role === "admin" ? (
-                <QuickButton href="/dashboard/owner/reports">Reports</QuickButton>
-              ) : null}
+              <OverviewCard
+                title="Today’s appointments"
+                value={
+                  counts.appointments === null ? "…" : String(counts.appointments)
+                }
+                href="/dashboard/appointments"
+              />
+              <OverviewCard
+                title="Open work orders"
+                value={counts.workOrders === null ? "…" : String(counts.workOrders)}
+                href="/work-orders/view"
+              />
+              <OverviewCard
+                title="Parts requests"
+                value={
+                  counts.partsRequests === null ? "…" : String(counts.partsRequests)
+                }
+                href="/parts/requests"
+              />
+              <OverviewCard title="Team chat" value="Open" href="/chat" />
             </>
           )}
-        </div>
-      </section>
+        </section>
+
+        {!tech && (
+          <section className="metal-card rounded-3xl p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+                  Work board
+                </div>
+                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                  Live shop status
+                </div>
+              </div>
+
+              <Link
+                href="/work-orders/board"
+                className="text-xs text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
+              >
+                Open full board →
+              </Link>
+            </div>
+
+            <WorkOrderBoardWidget variant="shop" href="/work-orders/board" />
+          </section>
+        )}
+
+        {!tech && (
+          <section>
+            <AdvisorQueueWidget />
+          </section>
+        )}
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-neutral-300">Quick actions</h2>
+          <div className="flex flex-wrap gap-3">
+            {tech ? (
+              <>
+                <QuickButton href="/tech/queue">My job queue</QuickButton>
+                <QuickButton href="/parts/requests?mine=1">
+                  My parts requests
+                </QuickButton>
+                <QuickButton href="/ai/assistant">AI assistant</QuickButton>
+              </>
+            ) : (
+              <>
+                <QuickButton href="/work-orders/create?autostart=1">
+                  New work order
+                </QuickButton>
+                <QuickButton href="/dashboard/appointments">Appointments</QuickButton>
+                <QuickButton href="/ai/assistant">AI assistant</QuickButton>
+                {role === "owner" || role === "admin" ? (
+                  <QuickButton href="/dashboard/owner/reports">Reports</QuickButton>
+                ) : null}
+              </>
+            )}
+          </div>
+        </section>
       </div>
     </>
   );
 }
-
-/* ------------------------------------------------------------------------ */
-/* Active Job Card                                                          */
-/* ------------------------------------------------------------------------ */
 
 function ActiveJobCard({
   loading,
@@ -609,10 +578,6 @@ function ActiveJobCard({
     </Link>
   );
 }
-
-/* ------------------------------------------------------------------------ */
-/* Existing cards/buttons                                                   */
-/* ------------------------------------------------------------------------ */
 
 function OverviewCard({
   title,

@@ -113,7 +113,7 @@ export async function syncAssistantNotifications(params: {
       status:
         existing?.status === "acknowledged"
           ? "acknowledged"
-          : "active",
+          : "open",
       metadata: {},
       first_seen_at: existing?.first_seen_at ?? now,
       last_seen_at: now,
@@ -161,7 +161,7 @@ export async function syncAssistantNotifications(params: {
     .select("*")
     .eq("shop_id", shopId)
     .eq("source", "ops")
-    .in("status", ["active", "acknowledged"])
+    .in("status", ["open", "acknowledged"])
     .order("last_seen_at", { ascending: false });
 
   if (finalError) {
