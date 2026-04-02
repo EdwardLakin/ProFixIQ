@@ -132,6 +132,15 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
       size="sm"
     >
       <div className="space-y-3">
+        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
+            Job photo
+          </div>
+          <div className="mt-1 text-xs text-neutral-400">
+            Attach supporting evidence for the job card, approval flow, and future history.
+          </div>
+        </div>
+
         <div className="flex items-end justify-between gap-3">
           <div className="space-y-1">
             <label className="block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
@@ -180,7 +189,7 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
         )}
 
         {/* preview */}
-        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/50 p-3">
+        <div className="rounded-2xl border border-white/10 bg-black/40 p-3">
           {file ? (
             <div className="flex items-start gap-3">
               {previewUrl ? (

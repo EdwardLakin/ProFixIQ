@@ -110,6 +110,15 @@ export default function HoldModal({
       submitText="Apply Hold"
     >
       <div className="space-y-4">
+        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
+            Operational hold
+          </div>
+          <div className="mt-1 text-xs text-neutral-400">
+            Pause the line with a clear reason so advisors, parts, and technicians all see the same state.
+          </div>
+        </div>
+
         <p className="text-[0.8rem] text-neutral-300">
           Park this job with a clear reason so advisors and techs know why it&apos;s
           on hold.
@@ -156,7 +165,7 @@ export default function HoldModal({
         </div>
 
         {/* Auto-release card */}
-        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/50 px-3 py-3 shadow-[0_12px_30px_rgba(0,0,0,0.75)]">
+        <div className="rounded-2xl border border-white/10 bg-black/40 px-3 py-3 shadow-[0_12px_30px_rgba(0,0,0,0.75)]">
           <div className="mb-2 flex items-center justify-between text-[0.7rem] text-neutral-400">
             <span>
               Hold placed at:{" "}

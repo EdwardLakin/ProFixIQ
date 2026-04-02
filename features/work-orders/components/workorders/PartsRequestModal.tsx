@@ -204,6 +204,15 @@ export default function PartsRequestModal({
       submitText={submitting ? "Submitting…" : "Submit to Parts"}
     >
       <div className="space-y-4">
+        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
+            Parts request
+          </div>
+          <div className="mt-1 text-xs text-neutral-400">
+            Send a clean request to parts without losing the work order and job context.
+          </div>
+        </div>
+
         {/* Header meta */}
         <div className="flex flex-col gap-2 text-[0.7rem] text-neutral-400 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -246,7 +255,7 @@ export default function PartsRequestModal({
         </div>
 
         {/* Items grid */}
-        <div className="overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-black/60 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
           {/* Header row */}
           <div className="grid grid-cols-12 bg-gradient-to-r from-slate-900/90 via-slate-950 to-black px-3 py-2 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
             <div className="col-span-8">Description*</div>

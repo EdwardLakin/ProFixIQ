@@ -1718,7 +1718,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
           {/* ---------------- RIGHT COLUMN (PANEL) ---------------- */}
           {showPanel ? (
-            <div className="sticky top-24 h-[calc(100vh-7rem)]">
+            <div className="sticky top-24 self-start">
               <FocusedJobModal
                 key={focusedJobId}
                 isOpen={true}

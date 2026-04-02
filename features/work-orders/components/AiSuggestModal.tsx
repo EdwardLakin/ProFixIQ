@@ -218,6 +218,15 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
       }
     >
       <div className="space-y-3">
+        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
+            AI quick build
+          </div>
+          <div className="mt-1 text-xs text-neutral-400">
+            Turn the concern into suggested jobs, then add the ones you want into the work order.
+          </div>
+        </div>
+
         <div>
           <p className="text-xs text-neutral-400">
             Describe the concern. We’ll suggest jobs and add them as{" "}
@@ -243,7 +252,7 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
             value={complaint}
             onChange={(e) => setComplaint(e.target.value)}
             placeholder="Example: Customer reports vibration at highway speeds, no dash lights on. Recently replaced front tires."
-            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
           />
         </div>
 

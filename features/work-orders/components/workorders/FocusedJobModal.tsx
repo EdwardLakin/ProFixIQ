@@ -1,10 +1,3 @@
-// features/work-orders/components/workorders/FocusedJobModal.tsx (FULL FILE REPLACEMENT)
-// ✅ Reusable for:
-//   - modal overlay (mobile)  -> variant="modal"
-//   - right-side panel (desktop) -> variant="panel"
-// ✅ IMPORTANT: Do NOT early-return before hooks (react-hooks/rules-of-hooks).
-//    If you want "render nothing when closed", return null AFTER hooks are declared.
-
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
@@ -16,16 +9,12 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
-
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
-
 import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
-
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
-
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 
@@ -52,19 +41,20 @@ const chip = (s: string | null) =>
   statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
   "text-neutral-200";
 
-const btnBase = "rounded-md border text-sm px-3 py-2 transition-colors text-left";
+const btnBase =
+  "inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium transition";
 const btnNeutral =
-  btnBase + " border-white/15 bg-black/40 text-neutral-100 hover:bg-white/5";
+  btnBase + " border-white/10 bg-black/35 text-neutral-100 hover:bg-white/5";
 const btnWarn =
   btnBase +
-  " border-amber-400/80 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
+  " border-amber-400/45 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
 const btnDanger =
-  btnBase + " border-red-500/80 bg-red-500/10 text-red-100 hover:bg-red-500/20";
+  btnBase + " border-red-500/45 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnInfo =
-  btnBase + " border-sky-500/80 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
+  btnBase + " border-sky-500/45 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
 const btnAccent =
   btnBase +
-  " border-[var(--accent-copper-light)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]";
+  " border-[var(--accent-copper-soft)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]/20";
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -87,6 +77,49 @@ type WorkflowStatus =
   | "completed"
   | "assigned"
   | "unassigned";
+
+function SectionCard({
+  title,
+  children,
+  titleRight,
+}: {
+  title?: string;
+  children: React.ReactNode;
+  titleRight?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/32 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      {title ? (
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            {title}
+          </div>
+          {titleRight}
+        </div>
+      ) : null}
+      {children}
+    </div>
+  );
+}
+
+function MetaStat({
+  label,
+  value,
+  valueClassName = "text-neutral-100",
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+        {label}
+      </div>
+      <div className={`mt-1 text-sm font-medium ${valueClassName}`}>{value}</div>
+    </div>
+  );
+}
 
 export default function FocusedJobModal(props: {
   isOpen: boolean;
@@ -117,7 +150,6 @@ export default function FocusedJobModal(props: {
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
 
-  // sub-modals
   const [openComplete, setOpenComplete] = useState(false);
   const [openParts, setOpenParts] = useState(false);
   const [openHold, setOpenHold] = useState(false);
@@ -126,7 +158,6 @@ export default function FocusedJobModal(props: {
   const [openAddJob, setOpenAddJob] = useState(false);
   const [openAi, setOpenAi] = useState(false);
   const [_openDtc, setOpenDtc] = useState(false);
-
   const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
 
   const [prefillCause, setPrefillCause] = useState("");
@@ -137,7 +168,6 @@ export default function FocusedJobModal(props: {
 
   const showErr = (prefix: string, err?: { message?: string } | null) => {
     toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
-    // eslint-disable-next-line no-console
     console.error(prefix, err);
   };
 
@@ -171,18 +201,14 @@ export default function FocusedJobModal(props: {
     setOpenVehicleHistory(false);
   }, []);
 
-  // ✅ Reset sub-modals when closing OR switching lines (panel mode)
   useEffect(() => {
     if (!isOpen) {
       closeAllSubModals();
       return;
     }
-    // if the focused line changes while open, close any sub-modals (prevents “stuck” modals)
     closeAllSubModals();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, workOrderLineId]);
+  }, [isOpen, workOrderLineId, closeAllSubModals]);
 
-  // ✅ Load job + WO + vehicle/customer
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
 
@@ -218,7 +244,6 @@ export default function FocusedJobModal(props: {
             try {
               await ensureShopContext(sid);
             } catch (e) {
-              // eslint-disable-next-line no-console
               console.warn("[FocusedJob] set_current_shop_id failed:", e);
             }
           }
@@ -266,7 +291,6 @@ export default function FocusedJobModal(props: {
     };
   }, [isOpen, workOrderLineId, supabase, ensureShopContext]);
 
-  // ✅ Realtime: job line updates
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
 
@@ -292,9 +316,7 @@ export default function FocusedJobModal(props: {
     return () => {
       try {
         void supabase.removeChannel(ch);
-      } catch {
-        //
-      }
+      } catch {}
     };
   }, [isOpen, workOrderLineId, supabase]);
 
@@ -310,7 +332,6 @@ export default function FocusedJobModal(props: {
       if (error) throw error;
       setAllocs((data as AllocationRow[]) ?? []);
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.warn("[FocusedJob] load allocations failed", e);
     } finally {
       setAllocsLoading(false);
@@ -322,7 +343,6 @@ export default function FocusedJobModal(props: {
     void loadAllocations();
   }, [isOpen, loadAllocations]);
 
-  // ✅ Realtime: allocations updates
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
 
@@ -343,9 +363,7 @@ export default function FocusedJobModal(props: {
     return () => {
       try {
         void supabase.removeChannel(ch);
-      } catch {
-        //
-      }
+      } catch {}
     };
   }, [isOpen, workOrderLineId, supabase, loadAllocations]);
 
@@ -402,12 +420,10 @@ export default function FocusedJobModal(props: {
 
     window.addEventListener("inspection:completed", onInspectionDone);
     return () => window.removeEventListener("inspection:completed", onInspectionDone);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workOrderLineId]);
+  }, [workOrderLineId, closeAllSubModals]);
 
   const applyHold = async (reason: string, notes?: string) => {
-    if (busy) return;
-    if (!line) return;
+    if (busy || !line) return;
 
     setBusy(true);
     try {
@@ -527,399 +543,416 @@ export default function FocusedJobModal(props: {
     line?.status === "declined" ||
     (!!line?.approval_state && line.approval_state !== "approved");
 
-  // ✅ NOW it's safe to "render nothing when closed" (hooks already ran)
   if (!isOpen) return null;
 
   const Body = (
     <div
-      className={`rounded-lg border border-white/15 bg-neutral-950/95 p-5 text-foreground shadow-xl ${
+      className={`relative overflow-hidden rounded-[26px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.14),rgba(10,10,10,0.97)_36%,rgba(5,5,5,0.99)_100%)] text-foreground shadow-[0_28px_90px_rgba(0,0,0,0.96)] ${
         variant === "panel"
-          ? "h-[calc(100vh-10rem)] overflow-y-auto"
+          ? "h-[calc(100vh-7.5rem)]"
           : openAi
             ? ""
-            : "max-h-[75vh] overflow-y-auto"
+            : "max-h-[82vh]"
       }`}
     >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="text-lg font-semibold tracking-tight">
-          <span className={chip(line?.status ?? null)}>{titleText}</span>
-          {workOrder ? (
-            <span className="ml-2 text-xs font-normal text-neutral-400">
-              WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
+      <div className="absolute inset-x-0 top-0 h-[3px] bg-[linear-gradient(90deg,rgba(184,115,51,0),rgba(184,115,51,0.95),rgba(253,186,116,0.95),rgba(184,115,51,0))]" />
+      <div className="pointer-events-none absolute inset-x-12 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(184,115,51,0.18),transparent_72%)]" />
+
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="sticky top-0 z-20 border-b border-white/10 bg-[rgba(5,5,5,0.82)] px-4 py-3 backdrop-blur-xl sm:px-5">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-lg font-semibold tracking-tight text-white">
+                {titleText}
+              </div>
+              {workOrder ? (
+                <div className="mt-1 text-xs text-neutral-400">
+                  WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {workOrder?.id ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded-xl border border-[var(--accent-copper-soft)] bg-[var(--accent-copper-faint)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper-soft)]/20"
+                  onClick={() => {
+                    closeAllSubModals();
+                    setOpenAddJob(true);
+                  }}
+                  disabled={busy}
+                >
+                  + Job
+                </button>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => {
+                  closeAllSubModals();
+                  onClose();
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/40 text-xs text-neutral-200 transition hover:border-[var(--accent-copper-soft)] hover:bg-white/5 hover:text-white"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <span className={`inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${chip(line?.status ?? null)}`}>
+              {String(line?.status || "awaiting").replaceAll("_", " ")}
             </span>
-          ) : null}
-          {line?.status === "awaiting_approval" && (
-            <span className="ml-2 rounded border border-blue-500/80 px-2 py-0.5 text-[0.65rem] text-blue-100">
-              Awaiting approval
-            </span>
-          )}
-          {line?.status === "declined" && (
-            <span className="ml-2 rounded border border-red-500/80 px-2 py-0.5 text-[0.65rem] text-red-100">
-              Declined
-            </span>
-          )}
+
+            {line?.status === "awaiting_approval" ? (
+              <span className="inline-flex rounded-full border border-blue-500/40 bg-blue-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-100">
+                Awaiting approval
+              </span>
+            ) : null}
+
+            {line?.status === "declined" ? (
+              <span className="inline-flex rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-red-100">
+                Declined
+              </span>
+            ) : null}
+
+            {line?.approval_state ? (
+              <span className="inline-flex rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-300">
+                Approval {line.approval_state}
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {workOrder?.id && (
-            <button
-              type="button"
-              className="rounded-md border border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_12px_rgba(248,113,22,0.35)] hover:bg-[var(--accent-copper-light)]"
-              onClick={() => {
-                closeAllSubModals();
-                setOpenAddJob(true);
-              }}
-              disabled={busy}
-            >
-              + Job
-            </button>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+          {busy && !line ? (
+            <div className="grid gap-3">
+              <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
+              <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
+            </div>
+          ) : !line ? (
+            <div className="text-sm text-neutral-300">No job found.</div>
+          ) : (
+            <div className="space-y-4">
+              <SectionCard title="Quick status">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <MetaStat
+                    label="Start"
+                    value={createdStart}
+                  />
+                  <MetaStat
+                    label="Finish"
+                    value={createdFinish}
+                  />
+                  <MetaStat
+                    label="Hold reason"
+                    value={line.hold_reason ?? "—"}
+                  />
+                  <MetaStat
+                    label="Job type"
+                    value={String(line.job_type ?? "—").replaceAll("_", " ")}
+                  />
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Vehicle & customer">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Vehicle
+                    </div>
+                    <div className="mt-1 text-sm text-neutral-100">
+                      {vehicle
+                        ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+                            .trim()
+                            .replace(/\s+/g, " ") || "—"
+                        : "—"}
+                    </div>
+                    <div className="mt-1 text-[11px] text-neutral-400">
+                      VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Customer
+                    </div>
+                    <div className="mt-1 text-sm text-neutral-100">
+                      {customer
+                        ? [customer.first_name ?? "", customer.last_name ?? ""]
+                            .filter(Boolean)
+                            .join(" ") || "—"
+                        : "—"}
+                    </div>
+                    <div className="mt-1 text-[11px] text-neutral-400">
+                      {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
+
+              {mode === "tech" && line.status !== "completed" ? (
+                <SectionCard title="Punch controls">
+                  <JobPunchButton
+                    lineId={line.id}
+                    punchedInAt={line.punched_in_at}
+                    punchedOutAt={line.punched_out_at}
+                    status={line.status as WorkflowStatus}
+                    onFinishRequested={() => {
+                      closeAllSubModals();
+                      setPrefillCause(line.cause ?? "");
+                      setPrefillCorrection(line.correction ?? "");
+                      setOpenComplete(true);
+                    }}
+                    onUpdated={refresh}
+                    disabled={completionBlocked}
+                  />
+                  {completionBlocked ? (
+                    <div className="mt-2 text-[11px] text-amber-300">
+                      {line.status === "awaiting_approval"
+                        ? "Awaiting approval — punching disabled"
+                        : line.status === "declined"
+                          ? "Declined — punching disabled"
+                          : line.approval_state && line.approval_state !== "approved"
+                            ? "Not approved — punching disabled"
+                            : ""}
+                    </div>
+                  ) : null}
+                </SectionCard>
+              ) : null}
+
+              <SectionCard title="Actions">
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {mode === "tech" ? (
+                    <>
+                      <button
+                        type="button"
+                        className={btnAccent}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setPrefillCause(line?.cause ?? "");
+                          setPrefillCorrection(line?.correction ?? "");
+                          setOpenComplete(true);
+                        }}
+                        disabled={completionBlocked}
+                      >
+                        Complete
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnDanger}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenParts(true);
+                        }}
+                        disabled={busy}
+                      >
+                        Request Parts
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnWarn}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenHold(true);
+                        }}
+                        disabled={busy}
+                      >
+                        {line.status === "on_hold" ? "On Hold" : "Hold"}
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenPhoto(true);
+                        }}
+                        disabled={busy}
+                      >
+                        Add Photo
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenChat(true);
+                        }}
+                      >
+                        Chat
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenAi(true);
+                        }}
+                      >
+                        AI Assist
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          if (!vehicle?.id) {
+                            toast.error("No vehicle linked to this work order yet.");
+                            return;
+                          }
+                          setOpenVehicleHistory(true);
+                        }}
+                        disabled={busy || !vehicle?.id}
+                      >
+                        Vehicle History
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenChat(true);
+                        }}
+                      >
+                        Chat
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenAi(true);
+                        }}
+                      >
+                        AI Assist
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenDtc(true);
+                        }}
+                        disabled={busy}
+                      >
+                        DTC Assist
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          if (!vehicle?.id) {
+                            toast.error("No vehicle linked to this work order yet.");
+                            return;
+                          }
+                          setOpenVehicleHistory(true);
+                        }}
+                        disabled={busy || !vehicle?.id}
+                      >
+                        Vehicle History
+                      </button>
+                    </>
+                  )}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Parts used">
+                {allocsLoading ? (
+                  <div className="text-sm text-neutral-300">Loading…</div>
+                ) : allocs.length === 0 ? (
+                  <div className="text-sm text-neutral-300">No parts used yet.</div>
+                ) : (
+                  <div className="overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                    <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                      <div className="col-span-7">Part</div>
+                      <div className="col-span-3">Location</div>
+                      <div className="col-span-2 text-right">Qty</div>
+                    </div>
+                    <ul className="max-h-56 overflow-auto divide-y divide-white/5">
+                      {allocs.map((a) => {
+                        const qty =
+                          (a as unknown as { qty?: number | null }).qty ??
+                          (a as unknown as { quantity?: number | null }).quantity ??
+                          0;
+
+                        return (
+                          <li key={a.id} className="grid grid-cols-12 items-center px-3 py-2 text-sm">
+                            <div className="col-span-7 truncate text-neutral-100">
+                              {a.parts?.name ?? "Part"}
+                            </div>
+                            <div className="col-span-3 truncate text-neutral-400">
+                              {(a as unknown as { location_id?: string | null }).location_id
+                                ? `loc ${String((a as unknown as { location_id?: string | null }).location_id).slice(0, 6)}…`
+                                : "—"}
+                            </div>
+                            <div className="col-span-2 text-right font-semibold text-neutral-100">
+                              {qty}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+              </SectionCard>
+
+              <SectionCard title="Tech notes">
+                <textarea
+                  rows={4}
+                  value={techNotes}
+                  onChange={(e) => setTechNotes(e.target.value)}
+                  onBlur={saveNotes}
+                  disabled={savingNotes}
+                  className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+                  placeholder="Add notes for this job…"
+                />
+              </SectionCard>
+
+              <SectionCard title="AI suggested repairs">
+                {line && workOrder ? (
+                  <SuggestedQuickAdd
+                    jobId={line.id}
+                    workOrderId={workOrder.id}
+                    vehicleId={vehicle?.id ?? null}
+                    onAdded={async () => {
+                      toast.success("Suggested line added");
+                      await refresh();
+                    }}
+                  />
+                ) : (
+                  <div className="text-sm text-neutral-300">Vehicle/work order details required.</div>
+                )}
+              </SectionCard>
+
+              <div className="px-1 text-xs text-neutral-500">
+                Job ID: {line.id}
+                {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
+                {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
+                {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
+              </div>
+            </div>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              closeAllSubModals();
-              onClose();
-            }}
-            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs text-neutral-200 hover:bg-white/5"
-            title="Close"
-          >
-            ✕
-          </button>
         </div>
       </div>
-
-      {busy && !line ? (
-        <div className="grid gap-3">
-          <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
-          <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
-        </div>
-      ) : !line ? (
-        <div className="text-sm text-neutral-300">No job found.</div>
-      ) : (
-        <div className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                Status
-              </div>
-              <div className={`mt-1 text-sm font-semibold ${chip(line.status ?? null)}`}>
-                {String(line.status || "awaiting").replaceAll("_", " ")}
-              </div>
-            </div>
-
-            <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Start</div>
-              <div className="mt-1 text-sm text-neutral-100">{createdStart}</div>
-            </div>
-
-            <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Finish</div>
-              <div className="mt-1 text-sm text-neutral-100">{createdFinish}</div>
-            </div>
-
-            <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                Hold Reason
-              </div>
-              <div className="mt-1 text-sm text-neutral-100">{line.hold_reason ?? "—"}</div>
-            </div>
-          </div>
-
-          <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3 text-sm">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                  Vehicle
-                </div>
-                <div className="mt-1 truncate text-neutral-100">
-                  {vehicle
-                    ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
-                        .trim()
-                        .replace(/\s+/g, " ") || "—"
-                    : "—"}
-                </div>
-                <div className="mt-0.5 text-[11px] text-neutral-400">
-                  VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
-                  Customer
-                </div>
-                <div className="mt-1 truncate text-neutral-100">
-                  {customer
-                    ? [customer.first_name ?? "", customer.last_name ?? ""]
-                        .filter(Boolean)
-                        .join(" ") || "—"
-                    : "—"}
-                </div>
-                <div className="mt-0.5 text-[11px] text-neutral-400">
-                  {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {mode === "tech" && line && line.status !== "completed" && (
-            <div className="glass-card relative z-[5] rounded-2xl border border-white/10 bg-black/40 p-3">
-              <JobPunchButton
-                lineId={line.id}
-                punchedInAt={line.punched_in_at}
-                punchedOutAt={line.punched_out_at}
-                status={line.status as WorkflowStatus}
-                onFinishRequested={() => {
-                  closeAllSubModals();
-                  setPrefillCause(line.cause ?? "");
-                  setPrefillCorrection(line.correction ?? "");
-                  setOpenComplete(true);
-                }}
-                onUpdated={refresh}
-                disabled={completionBlocked}
-              />
-              {completionBlocked && (
-                <div className="mt-2 text-[11px] text-amber-300">
-                  {line.status === "awaiting_approval"
-                    ? "Awaiting approval — punching disabled"
-                    : line.status === "declined"
-                      ? "Declined — punching disabled"
-                      : line.approval_state && line.approval_state !== "approved"
-                        ? "Not approved — punching disabled"
-                        : ""}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {mode === "tech" ? (
-              <>
-                <button
-                  type="button"
-                  className={btnAccent}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setPrefillCause(line?.cause ?? "");
-                    setPrefillCorrection(line?.correction ?? "");
-                    setOpenComplete(true);
-                  }}
-                  disabled={completionBlocked}
-                >
-                  Complete (Cause / Correction)
-                </button>
-
-                <button
-                  type="button"
-                  className={btnDanger}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setOpenParts(true);
-                  }}
-                  disabled={busy}
-                >
-                  Request Parts
-                </button>
-
-                <button
-                  type="button"
-                  className={btnWarn}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setOpenHold(true);
-                  }}
-                  disabled={busy}
-                >
-                  {line.status === "on_hold" ? "On Hold" : "Hold"}
-                </button>
-
-                <button
-                  type="button"
-                  className={btnNeutral}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setOpenPhoto(true);
-                  }}
-                  disabled={busy}
-                >
-                  Add Photo
-                </button>
-
-                <button
-                  type="button"
-                  className={btnNeutral}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setOpenChat(true);
-                  }}
-                >
-                  Chat
-                </button>
-
-                <button
-                  type="button"
-                  className={btnInfo}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setOpenAi(true);
-                  }}
-                >
-                  AI Assist
-                </button>
-
-                <button
-                  type="button"
-                  className={btnNeutral}
-                  onClick={() => {
-                    if (!vehicle?.id) {
-                      toast.error("No vehicle linked to this work order yet.");
-                      return;
-                    }
-                    setOpenVehicleHistory(true);
-                  }}
-                  disabled={busy || !vehicle?.id}
-                >
-                  Vehicle History
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className={btnNeutral}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setOpenChat(true);
-                  }}
-                >
-                  Chat
-                </button>
-
-                <button
-                  type="button"
-                  className={btnInfo}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setOpenAi(true);
-                  }}
-                >
-                  AI Assist
-                </button>
-
-                <button
-                  type="button"
-                  className={btnInfo}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setOpenDtc(true);
-                  }}
-                  disabled={busy}
-                >
-                  DTC Assist (AI)
-                </button>
-
-                <button
-                  type="button"
-                  className={btnNeutral}
-                  onClick={() => {
-                    if (!vehicle?.id) {
-                      toast.error("No vehicle linked to this work order yet.");
-                      return;
-                    }
-                    setOpenVehicleHistory(true);
-                  }}
-                  disabled={busy || !vehicle?.id}
-                >
-                  Vehicle History
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-            <div className="mb-2 text-sm font-medium text-neutral-100">Parts used</div>
-
-            {allocsLoading ? (
-              <div className="text-sm text-neutral-300">Loading…</div>
-            ) : allocs.length === 0 ? (
-              <div className="text-sm text-neutral-300">No parts used yet.</div>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
-                <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                  <div className="col-span-7">Part</div>
-                  <div className="col-span-3">Location</div>
-                  <div className="col-span-2 text-right">Qty</div>
-                </div>
-                <ul className="max-h-56 overflow-auto divide-y divide-white/5">
-                  {allocs.map((a) => {
-                    const qty =
-                      (a as unknown as { qty?: number | null }).qty ??
-                      (a as unknown as { quantity?: number | null }).quantity ??
-                      0;
-
-                    return (
-                      <li key={a.id} className="grid grid-cols-12 items-center px-3 py-2 text-sm">
-                        <div className="col-span-7 truncate text-neutral-100">
-                          {a.parts?.name ?? "Part"}
-                        </div>
-                        <div className="col-span-3 truncate text-neutral-400">
-                          {(a as unknown as { location_id?: string | null }).location_id
-                            ? `loc ${String((a as unknown as { location_id?: string | null }).location_id).slice(0, 6)}…`
-                            : "—"}
-                        </div>
-                        <div className="col-span-2 text-right font-semibold text-neutral-100">
-                          {qty}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-          </div>
-
-          <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-            <label className="mb-1 block text-sm font-medium text-neutral-100">Tech Notes</label>
-            <textarea
-              rows={4}
-              value={techNotes}
-              onChange={(e) => setTechNotes(e.target.value)}
-              onBlur={saveNotes}
-              disabled={savingNotes}
-              className="w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]"
-              placeholder="Add notes for this job…"
-            />
-          </div>
-
-          <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
-            <h3 className="mb-2 text-sm font-medium text-neutral-100">AI Suggested Repairs</h3>
-            {line && workOrder ? (
-              <SuggestedQuickAdd
-                jobId={line.id}
-                workOrderId={workOrder.id}
-                vehicleId={vehicle?.id ?? null}
-                onAdded={async () => {
-                  toast.success("Suggested line added");
-                  await refresh();
-                }}
-              />
-            ) : (
-              <div className="text-sm text-neutral-300">Vehicle/work order details required.</div>
-            )}
-          </div>
-
-          <div className="text-xs text-neutral-400">
-            Job ID: {line.id}
-            {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
-            {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-            {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
-          </div>
-        </div>
-      )}
     </div>
   );
 
   const Shell =
     variant === "panel" ? (
-      <div className="relative">{Body}</div>
+      <div className="relative h-full">{Body}</div>
     ) : (
       <Dialog
         open={isOpen}
@@ -929,7 +962,7 @@ export default function FocusedJobModal(props: {
         }}
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+        <div className="fixed inset-0 z-[100] bg-black/72 backdrop-blur-sm" aria-hidden="true" />
         <div
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()}
@@ -952,7 +985,7 @@ export default function FocusedJobModal(props: {
         />
       ) : null}
 
-      {openComplete && line && (
+      {openComplete && line ? (
         <CauseCorrectionModal
           isOpen={openComplete}
           onClose={() => setOpenComplete(false)}
@@ -1005,18 +1038,18 @@ export default function FocusedJobModal(props: {
             await refresh();
           }}
         />
-      )}
+      ) : null}
 
-      {openParts && workOrder?.id && line && (
+      {openParts && workOrder?.id && line ? (
         <PartsRequestModal
           isOpen={openParts}
           workOrderId={workOrder.id}
           jobId={line.id}
           requestNote={line.description ?? ""}
         />
-      )}
+      ) : null}
 
-      {openHold && line && (
+      {openHold && line ? (
         <HoldModal
           isOpen={openHold}
           onClose={() => setOpenHold(false)}
@@ -1025,17 +1058,17 @@ export default function FocusedJobModal(props: {
           canRelease={!!line.hold_reason}
           defaultReason={line.hold_reason || "Awaiting parts"}
         />
-      )}
+      ) : null}
 
-      {openPhoto && (
+      {openPhoto ? (
         <PhotoCaptureModal
           isOpen={openPhoto}
           onClose={() => setOpenPhoto(false)}
           onCapture={uploadPhoto}
         />
-      )}
+      ) : null}
 
-      {openChat && (
+      {openChat ? (
         <NewChatModal
           isOpen={openChat}
           onClose={() => setOpenChat(false)}
@@ -1044,9 +1077,9 @@ export default function FocusedJobModal(props: {
           context_type="work_order_line"
           context_id={line?.id ?? null}
         />
-      )}
+      ) : null}
 
-      {openAi && (
+      {openAi ? (
         <AIAssistantModal
           isOpen={openAi}
           onClose={() => setOpenAi(false)}
@@ -1061,9 +1094,9 @@ export default function FocusedJobModal(props: {
               : undefined
           }
         />
-      )}
+      ) : null}
 
-      {openAddJob && workOrder?.id && (
+      {openAddJob && workOrder?.id ? (
         <AddJobModal
           isOpen={openAddJob}
           onClose={() => setOpenAddJob(false)}
@@ -1078,7 +1111,7 @@ export default function FocusedJobModal(props: {
             setOpenAddJob(false);
           }}
         />
-      )}
+      ) : null}
     </>
   );
 }

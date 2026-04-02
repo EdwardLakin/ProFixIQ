@@ -119,6 +119,14 @@ export default function CauseCorrectionModal({
         className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
+        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
+            Job completion story
+          </div>
+          <div className="mt-1 text-xs text-neutral-400">
+            Capture what failed and exactly what was done so this line is complete, searchable, and useful later.
+          </div>
+        </div>
         <div className="flex items-center justify-between text-[0.7rem] text-neutral-400">
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="font-semibold uppercase tracking-[0.18em]">
@@ -221,7 +229,7 @@ export default function CauseCorrectionModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="inline-flex items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5 disabled:opacity-60"
+            className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/45 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5 disabled:opacity-60"
           >
             Cancel
           </button>
