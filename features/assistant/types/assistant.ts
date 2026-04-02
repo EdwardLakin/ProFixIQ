@@ -33,7 +33,7 @@ export type AssistantAction =
     };
 
 export type AssistantNotification = {
-  level: "info" | "warning" | "urgent";
+  level: "info" | "warning" | "critical";
   code: string;
   title: string;
   message: string;

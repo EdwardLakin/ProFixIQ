@@ -1,6 +1,6 @@
 //features/assistant/types/suggested-actions.ts
 
-export type SuggestedActionLevel = "info" | "warning" | "urgent";
+export type SuggestedActionLevel = "info" | "warning" | "critical";
 
 export type SuggestedActionContext = {
   workOrderId?: string;

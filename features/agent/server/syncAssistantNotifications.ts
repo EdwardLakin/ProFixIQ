@@ -9,7 +9,7 @@ export type PersistedAssistantNotification = {
   source: string;
   fingerprint: string;
   code: string;
-  level: "info" | "warning" | "urgent";
+  level: "info" | "warning" | "critical";
   title: string;
   message: string;
   href: string | null;
@@ -104,7 +104,7 @@ export async function syncAssistantNotifications(params: {
       source: "ops",
       fingerprint,
       code: item.code,
-      level: item.level,
+      level: item.level === "urgent" ? "critical" : item.level,
       title: item.title,
       message: item.message,
       href: item.href ?? null,

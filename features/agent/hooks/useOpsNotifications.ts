@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type OpsNotification = {
   id: string;
-  level: "info" | "warning" | "urgent";
+  level: "info" | "warning" | "critical";
   code:
     | "quote_waiting"
     | "approval_waiting"
@@ -118,19 +118,19 @@ export function useOpsNotifications(
   }, [enabled, pollMs, load]);
 
   const counts = useMemo(() => {
-    let urgent = 0;
+    let critical = 0;
     let warning = 0;
     let info = 0;
 
     for (const item of items) {
-      if (item.level === "urgent") urgent += 1;
+      if (item.level === "critical") critical += 1;
       else if (item.level === "warning") warning += 1;
       else info += 1;
     }
 
     return {
       total: items.length,
-      urgent,
+      critical,
       warning,
       info,
     };

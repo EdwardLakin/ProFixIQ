@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useOpsNotifications } from "@/features/agent/hooks/useOpsNotifications";
 
-function levelClasses(level: "info" | "warning" | "urgent"): string {
-  if (level === "urgent") {
+function levelClasses(level: "info" | "warning" | "critical"): string {
+  if (level === "critical") {
     return "border-red-500/40 bg-red-500/10 text-red-200";
   }
   if (level === "warning") {
@@ -58,7 +58,7 @@ export default function OpsNotificationsBell() {
               </div>
               <div className="mt-1 text-sm text-neutral-300">
                 {counts.total} total
-                {counts.urgent > 0 ? ` • ${counts.urgent} urgent` : ""}
+                {counts.critical > 0 ? ` • ${counts.critical} critical` : ""}
                 {counts.warning > 0 ? ` • ${counts.warning} warning` : ""}
               </div>
             </div>

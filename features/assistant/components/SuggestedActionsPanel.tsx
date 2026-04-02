@@ -5,8 +5,8 @@ import Link from "next/link";
 import type { SuggestedActionContext } from "../types/suggested-actions";
 import { useSuggestedActions } from "../hooks/useSuggestedActions";
 
-function levelClasses(level: "info" | "warning" | "urgent"): string {
-  if (level === "urgent") {
+function levelClasses(level: "info" | "warning" | "critical"): string {
+  if (level === "critical") {
     return "border-red-500/30 bg-red-500/10 text-red-200";
   }
   if (level === "warning") {
@@ -54,7 +54,7 @@ export default function SuggestedActionsPanel({
   const items = useMemo(() => {
     if (!data || "error" in data) return [];
     const sorted = [...data.items].sort((a, b) => {
-      const rank = { urgent: 0, warning: 1, info: 2 } as const;
+      const rank = { critical: 0, warning: 1, info: 2 } as const;
       return rank[a.level] - rank[b.level];
     });
     return sorted;

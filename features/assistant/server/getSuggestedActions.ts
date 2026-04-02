@@ -241,7 +241,7 @@ export async function getSuggestedActions(
     items.push({
       id: `${notification.code}:${notification.entityId ?? notification.title}`,
       level:
-        notification.level === "urgent" || notification.level === "warning"
+        notification.level === "critical" || notification.level === "warning"
           ? notification.level
           : "info",
       title: notification.title,

@@ -127,7 +127,7 @@ function buildFallbackResponse(params: {
     .slice(0, 4)
     .map((item) => ({
       level:
-        item.level === "urgent" || item.level === "warning"
+        item.level === "critical" || item.level === "warning"
           ? item.level
           : "info",
       code: item.code,
