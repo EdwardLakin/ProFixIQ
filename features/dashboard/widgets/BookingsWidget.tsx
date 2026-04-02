@@ -101,7 +101,7 @@ export default function BookingsWidget() {
         </div>
         <Link
           href="/dashboard/bookings"
-          className="text-xs font-medium text-orange-400 hover:text-orange-300"
+          className="text-xs font-medium text-[var(--accent-copper-light)] hover:text-white"
         >
           Open bookings
         </Link>

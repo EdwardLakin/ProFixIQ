@@ -12,14 +12,13 @@ export default function NavFromTiles({
   scope = "all",
   heading = "Navigation",
   description,
-  rolesOverride,                    // ← NEW
+  rolesOverride,
 }: {
   scope?: Scope | "all";
   heading?: string;
   description?: string;
-  rolesOverride?: Role[];           // ← NEW
+  rolesOverride?: Role[];
 }) {
-  // If roles are provided, don't fetch.
   if (rolesOverride && rolesOverride.length > 0) {
     return (
       <RoleHubTiles
@@ -31,7 +30,6 @@ export default function NavFromTiles({
     );
   }
 
-  // (existing fetch path)
   const supabase = createClientComponentClient<Database>();
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,10 +66,15 @@ export default function NavFromTiles({
   if (loading) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <h1 className="mb-2 text-3xl font-bold text-orange-400">{heading}</h1>
+        <h1
+          className="mb-2 text-3xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+          style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+        >
+          {heading}
+        </h1>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-lg border border-neutral-800 bg-neutral-900" />
+            <div key={i} className="h-24 animate-pulse rounded-2xl border border-white/10 bg-black/30 backdrop-blur-md" />
           ))}
         </div>
       </div>

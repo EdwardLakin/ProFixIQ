@@ -12,7 +12,7 @@ import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWid
 
 import { resolvePortalMode } from "@/features/portal/lib/resolvePortalMode";
 
-const COPPER = "#C57A4A";
+const COPPER = "var(--accent-copper-light)";
 
 type DB = Database;
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
@@ -33,7 +33,7 @@ function StatCard({
 }) {
   // ✅ Fix cssConflict warnings: do NOT combine shadow-card with explicit shadow-[...]
   return (
-    <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
+    <div className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl">
       <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
         {title}
       </div>
@@ -59,9 +59,9 @@ function ActionCard({
     <Link
       href={href}
       className="
-        rounded-2xl border border-white/12 bg-black/25 p-4 text-sm font-semibold
-        text-neutral-100 backdrop-blur-md shadow-[0_18px_50px_rgba(0,0,0,0.55)]
-        transition hover:bg-black/35
+        rounded-2xl border border-white/10 bg-black/30 p-4 text-sm font-semibold
+        text-neutral-100 shadow-card backdrop-blur-xl
+        transition hover:bg-black/40
       "
     >
       <div className="flex items-center justify-between">
@@ -282,7 +282,7 @@ export default function PortalHomePage() {
       </div>
 
             {/* Live status board (customer portal) */}
-      <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
+      <div className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
@@ -295,7 +295,7 @@ export default function PortalHomePage() {
 
           <Link
             href="/portal/status"
-            className="text-xs text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100"
+            className="text-xs text-neutral-300 underline underline-offset-4 hover:text-neutral-100"
             style={{ textDecorationColor: "rgba(197,122,74,0.65)" }}
           >
             Details →
@@ -325,7 +325,7 @@ export default function PortalHomePage() {
       </div>
 
       {/* Recent activity + deep links */}
-      <div className="rounded-2xl border border-white/12 bg-black/25 p-4 backdrop-blur-md shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
+      <div className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-neutral-50">
             Recent activity

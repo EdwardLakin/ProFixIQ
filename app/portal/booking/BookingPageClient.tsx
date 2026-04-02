@@ -23,8 +23,6 @@ type HourRow = { weekday: number; open_time: string; close_time: string };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-
-
 const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 const toYMD = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -52,14 +50,12 @@ export default function PortalBookingPage() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [hours, setHours] = useState<HourRow[]>([]);
 
-  // Keep state in sync if the URL changes
   useEffect(() => {
     const urlShop = search.get("shop") || "";
     setShopSlug((prev) => (prev === urlShop ? prev : urlShop));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // Load shops that accept online booking
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
@@ -88,7 +84,6 @@ export default function PortalBookingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
-  // Visible month range
   const range = useMemo(() => {
     const y = month.getFullYear();
     const m = month.getMonth();
@@ -97,7 +92,6 @@ export default function PortalBookingPage() {
     return { start: toYMD(first), end: toYMD(last) };
   }, [month]);
 
-  // Fetch shop hours
   useEffect(() => {
     const shop = shops.find((s) => (s.slug as string) === shopSlug);
     if (!shop) return;
@@ -144,7 +138,6 @@ export default function PortalBookingPage() {
       .join(", ");
   }, [closedWeekdays]);
 
-  // Fetch availability when shop/month changes
   useEffect(() => {
     if (!shopSlug) return;
 
@@ -179,7 +172,6 @@ export default function PortalBookingPage() {
     })();
   }, [shopSlug, range.start, range.end]);
 
-  // Group slots by day
   const slotsByDay = useMemo(() => {
     const map = new Map<string, Slot[]>();
     (slots || []).forEach((s) => {
@@ -222,11 +214,10 @@ export default function PortalBookingPage() {
     }
   }
 
-  // ✅ IMPORTANT: don’t disable everything while loading / before slots arrive
   const disabledDate = (d: Date) => {
     if (closedWeekdays.has(d.getDay())) return true;
     if (loading) return false;
-    if (slotsByDay.size === 0) return false; // allow picking a day even if none available
+    if (slotsByDay.size === 0) return false;
     return !slotsByDay.has(toYMD(d));
   };
 
@@ -239,7 +230,10 @@ export default function PortalBookingPage() {
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+          <h1
+            className="text-lg tracking-[0.18em] text-[var(--accent-copper-light)]"
+            style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+          >
             Book an appointment
           </h1>
           <p className="mt-1 text-xs text-neutral-400">
@@ -247,7 +241,7 @@ export default function PortalBookingPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-2 shadow-card backdrop-blur-xl">
           <label className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
             Shop
           </label>
@@ -259,7 +253,7 @@ export default function PortalBookingPage() {
               setSelectedDate(undefined);
               router.replace(`/portal/booking?shop=${encodeURIComponent(slug)}`);
             }}
-            className="min-w-[200px] rounded-md border border-white/10 bg-black/60 px-2 py-1 text-sm text-white outline-none focus:border-white/20"
+            className="min-w-[200px] rounded-md border border-white/10 bg-[var(--glass-bg)] px-2 py-1 text-sm text-white outline-none"
           >
             {shops.map((s) => (
               <option key={s.id} value={s.slug as string}>
@@ -275,19 +269,18 @@ export default function PortalBookingPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md shadow-card">
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-3 shadow-card backdrop-blur-xl">
           <Calendar
             className="shadow-inner"
             month={month}
             onMonthChange={setMonth}
-            /* ✅ FIX: your Calendar wrapper likely wants selected/onSelect */
             value={selectedDate}
             onChange={setSelectedDate}
             disabled={disabledDate}
           />
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl">
           <h2 className="mb-1 font-semibold text-white">Available times</h2>
           <p className="mb-3 text-xs text-neutral-400">
             Times shown in <span className="font-medium">{tz}</span>.
@@ -322,9 +315,9 @@ export default function PortalBookingPage() {
                 <li key={i}>
                   <button
                     onClick={() => book(s.start, s.end)}
-                    className="w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-neutral-100 transition hover:bg-white/5"
+                    className="w-full rounded-xl border border-[rgba(193,102,59,0.28)] bg-black/40 px-3 py-2 text-sm font-medium text-neutral-100 transition hover:border-[rgba(193,102,59,0.45)] hover:bg-[rgba(193,102,59,0.10)]"
                     style={{
-                      boxShadow: "inset 0 0 0 1px rgba(197,122,74,0.25)",
+                      boxShadow: "inset 0 0 0 1px rgba(193,102,59,0.12)",
                     }}
                   >
                     {fmtTime(s.start, tz)} – {fmtTime(s.end, tz)}

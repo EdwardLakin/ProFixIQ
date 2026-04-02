@@ -17,7 +17,11 @@ export default function SignUpClient() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Compute origin for prod/preview/local
+  const inputClassName =
+    "w-full rounded-md border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-white placeholder:text-neutral-500";
+  const buttonClassName =
+    "w-full rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 font-semibold text-black transition hover:brightness-110";
+
   const origin = useMemo(() => {
     if (typeof window !== "undefined") return window.location.origin;
     if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
@@ -25,14 +29,12 @@ export default function SignUpClient() {
     return "http://localhost:3000";
   }, []);
 
-  // ✅ Magic link / OAuth callback goes to /auth/callback and preserves ?redirect
   const emailRedirectTo = useMemo(() => {
     const redirect = sp.get("redirect");
     const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
     return `${origin}/auth/callback${tail}`;
   }, [origin, sp]);
 
-  // Prefill from Stripe if present
   useEffect(() => {
     const sid = sp.get("session_id");
     if (!sid) return;
@@ -42,12 +44,11 @@ export default function SignUpClient() {
         const data = await res.json();
         if (data?.email) setEmail(data.email);
       } catch {
-        /* ignore */
+        //
       }
     })();
   }, [sp]);
 
-  // Already signed in? send to redirect (if any) else dashboard
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
@@ -58,13 +59,11 @@ export default function SignUpClient() {
     })();
   }, [router, sp, supabase]);
 
-  // Ensure cookies sync to RSC/middleware before navigating
   const go = async (href: string) => {
-    await supabase.auth.getSession(); // hydrate cookies
+    await supabase.auth.getSession();
     router.refresh();
     router.replace(href);
 
-    // Hard fallback for stubborn mobile caches
     setTimeout(() => {
       if (
         typeof window !== "undefined" &&
@@ -93,7 +92,6 @@ export default function SignUpClient() {
       return;
     }
 
-    // If email confirmation is required, there won't be a session yet
     if (!data.session) {
       setNotice(
         "Check your email to confirm your account. After confirming, we’ll take you to your dashboard."
@@ -102,45 +100,51 @@ export default function SignUpClient() {
       return;
     }
 
-    // Session exists (e.g., confirm disabled) → go to redirect or dashboard
     const redirect = sp.get("redirect");
     await go(redirect || "/dashboard");
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white px-4 font-blackops">
-      <h1 className="text-3xl mb-6 text-orange-500">Create Account</h1>
-      <form onSubmit={handleSignUp} className="w-full max-w-md space-y-4">
-        <input
-          type="email"
-          placeholder="Email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full p-2 rounded bg-gray-900 border border-orange-500"
-          autoComplete="email"
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full p-2 rounded bg-gray-900 border border-orange-500"
-          autoComplete="new-password"
-          minLength={6}
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded"
+    <div className="flex min-h-screen flex-col items-center justify-center bg-black px-4 text-white">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/30 p-6 shadow-card backdrop-blur-xl">
+        <h1
+          className="mb-6 text-3xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+          style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
         >
-          {loading ? "Creating Account..." : "Sign Up"}
-        </button>
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-        {notice && <p className="text-green-400 text-sm">{notice}</p>}
-      </form>
+          Create Account
+        </h1>
+        <form onSubmit={handleSignUp} className="space-y-4">
+          <input
+            type="email"
+            placeholder="Email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={inputClassName}
+            autoComplete="email"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={inputClassName}
+            autoComplete="new-password"
+            minLength={6}
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className={buttonClassName}
+          >
+            {loading ? "Creating Account..." : "Sign Up"}
+          </button>
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          {notice && <p className="text-sm text-green-400">{notice}</p>}
+        </form>
+      </div>
     </div>
   );
 }

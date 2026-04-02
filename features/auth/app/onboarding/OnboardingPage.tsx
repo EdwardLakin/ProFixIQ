@@ -49,11 +49,9 @@ export default function OnboardingPage() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [hasSession, setHasSession] = useState(false);
 
-  // NA defaults
   const [country, setCountry] = useState<"US" | "CA">("US");
   const [timezone, setTimezone] = useState<string>("America/New_York");
 
-  // profile fields
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>("owner");
@@ -63,7 +61,6 @@ export default function OnboardingPage() {
   const [userProvince, setUserProvince] = useState("");
   const [userPostal, setUserPostal] = useState("");
 
-  // shop fields
   const [businessName, setBusinessName] = useState("");
   const [shopName, setShopName] = useState("");
   const [shopStreet, setShopStreet] = useState("");
@@ -76,7 +73,12 @@ export default function OnboardingPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // magic link exchange
+  const fieldClassName =
+    "w-full rounded-md border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500";
+
+  const sectionClassName =
+    "rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl sm:p-5";
+
   useEffect(() => {
     const code = searchParams.get("code");
     if (!code) return;
@@ -95,7 +97,6 @@ export default function OnboardingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // session check + skip if already linked
   useEffect(() => {
     (async () => {
       const {
@@ -115,7 +116,7 @@ export default function OnboardingPage() {
             body: JSON.stringify({ sessionId: sid, userId: user.id }),
           });
         } catch {
-          /* ignore */
+          //
         }
       }
 
@@ -165,7 +166,6 @@ export default function OnboardingPage() {
       return;
     }
 
-    // Update profile (keep address label flexible)
     const { error: updateErr } = await supabase
       .from("profiles")
       .update({
@@ -186,7 +186,6 @@ export default function OnboardingPage() {
       return;
     }
 
-    // Owner bootstrap
     if (asOwner) {
       if (!ownerPin || ownerPin.length < 4) {
         setError("Please provide an Owner PIN (min 4 characters).");
@@ -228,13 +227,11 @@ export default function OnboardingPage() {
         return;
       }
 
-      // 🔸 NEW: after creating the shop, go to the Shop Boost WOW step
       router.replace("/onboarding/shop-boost");
       setLoading(false);
       return;
     }
 
-    // staff → dashboard
     const finalRole: Role = asOwner ? "owner" : role;
     router.replace(staffRedirect[finalRole] || "/dashboard");
     setLoading(false);
@@ -242,8 +239,8 @@ export default function OnboardingPage() {
 
   if (!sessionChecked) {
     return (
-      <div className="min-h-screen grid place-items-center bg-black text-white">
-        <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-neutral-300">
+      <div className="grid min-h-screen place-items-center bg-black text-white">
+        <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-neutral-300 shadow-card backdrop-blur-md">
           Checking your session…
         </div>
       </div>
@@ -252,9 +249,12 @@ export default function OnboardingPage() {
 
   if (!hasSession) {
     return (
-      <div className="min-h-screen grid place-items-center bg-black text-white px-6">
-        <div className="max-w-md space-y-4 rounded-xl border border-neutral-800 bg-neutral-950 px-6 py-5">
-          <h1 className="text-2xl font-blackops text-orange-400">
+      <div className="grid min-h-screen place-items-center bg-black px-6 text-white">
+        <div className="max-w-md space-y-4 rounded-2xl border border-white/10 bg-black/30 px-6 py-5 shadow-card backdrop-blur-xl">
+          <h1
+            className="text-2xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+            style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+          >
             Confirm your email
           </h1>
           <p className="text-sm text-neutral-300">
@@ -264,7 +264,7 @@ export default function OnboardingPage() {
           </p>
           <a
             href="/sign-in"
-            className="inline-flex items-center justify-center rounded-md border border-orange-500 px-4 py-2 text-sm font-medium text-orange-100 hover:bg-orange-500/10"
+            className="inline-flex items-center justify-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-medium text-black transition hover:brightness-110"
           >
             Already confirmed? Sign in
           </a>
@@ -275,13 +275,16 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <header className="border-b border-neutral-900 bg-neutral-950/70 px-4 py-4 sm:px-6">
+      <header className="border-b border-white/10 bg-black/40 px-4 py-4 backdrop-blur-xl sm:px-6">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
               ProFixIQ
             </p>
-            <h1 className="text-xl font-blackops text-orange-400">
+            <h1
+              className="text-xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+              style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+            >
               Get your workspace ready
             </h1>
             <p className="text-xs text-neutral-400">
@@ -294,8 +297,7 @@ export default function OnboardingPage() {
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
         <div className="flex-1 space-y-6">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* North America setup (drives labels everywhere) */}
-            <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+            <section className={sectionClassName}>
               <div className="mb-4">
                 <h2 className="text-sm font-semibold text-neutral-100">
                   Region defaults
@@ -310,10 +312,8 @@ export default function OnboardingPage() {
                   <label className="text-xs text-neutral-300">Country</label>
                   <select
                     value={country}
-                    onChange={(e) =>
-                      setCountry(e.target.value as "US" | "CA")
-                    }
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                    onChange={(e) => setCountry(e.target.value as "US" | "CA")}
+                    className={fieldClassName}
                   >
                     {NA_COUNTRIES.map((c) => (
                       <option key={c.value} value={c.value}>
@@ -327,7 +327,7 @@ export default function OnboardingPage() {
                   <select
                     value={timezone}
                     onChange={(e) => setTimezone(e.target.value)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                    className={fieldClassName}
                   >
                     {TIMEZONES.map((tz) => (
                       <option key={tz} value={tz}>
@@ -339,8 +339,7 @@ export default function OnboardingPage() {
               </div>
             </section>
 
-            {/* Your info */}
-            <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+            <section className={sectionClassName}>
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-neutral-100">
@@ -350,7 +349,7 @@ export default function OnboardingPage() {
                     We use this for your profile and invoices.
                   </p>
                 </div>
-                <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
+                <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] text-neutral-400">
                   Required
                 </span>
               </div>
@@ -363,7 +362,7 @@ export default function OnboardingPage() {
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    className={fieldClassName}
                   />
                 </div>
 
@@ -374,7 +373,7 @@ export default function OnboardingPage() {
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    className={fieldClassName}
                   />
                 </div>
 
@@ -388,7 +387,7 @@ export default function OnboardingPage() {
                     placeholder="Street address"
                     value={userStreet}
                     onChange={(e) => setUserStreet(e.target.value)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    className={fieldClassName}
                   />
                   <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
                     <input
@@ -397,7 +396,7 @@ export default function OnboardingPage() {
                       placeholder="City"
                       value={userCity}
                       onChange={(e) => setUserCity(e.target.value)}
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      className={fieldClassName}
                     />
                     <input
                       type="text"
@@ -405,7 +404,7 @@ export default function OnboardingPage() {
                       placeholder={provinceLabel}
                       value={userProvince}
                       onChange={(e) => setUserProvince(e.target.value)}
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      className={fieldClassName}
                     />
                     <input
                       type="text"
@@ -413,7 +412,7 @@ export default function OnboardingPage() {
                       placeholder={postalLabel}
                       value={userPostal}
                       onChange={(e) => setUserPostal(e.target.value)}
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      className={fieldClassName}
                     />
                   </div>
                 </div>
@@ -424,7 +423,7 @@ export default function OnboardingPage() {
                     required
                     value={role}
                     onChange={(e) => setRole(e.target.value as Role)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                    className={fieldClassName}
                   >
                     <option value="owner">Owner</option>
                     <option value="admin">Admin</option>
@@ -437,7 +436,7 @@ export default function OnboardingPage() {
                       type="checkbox"
                       checked={asOwner}
                       onChange={(e) => setAsOwner(e.target.checked)}
-                      className="h-4 w-4 rounded border-neutral-600 bg-neutral-900"
+                      className="h-4 w-4 rounded border-white/10 bg-black/40 text-[var(--accent-copper)]"
                     />
                     <span>
                       I&apos;m setting this up for my shop{" "}
@@ -450,8 +449,7 @@ export default function OnboardingPage() {
               </div>
             </section>
 
-            {/* Shop info */}
-            <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+            <section className={sectionClassName}>
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-neutral-100">
@@ -462,11 +460,11 @@ export default function OnboardingPage() {
                   </p>
                 </div>
                 {asOwner ? (
-                  <span className="rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] text-orange-300">
+                  <span className="rounded-full border border-[rgba(193,102,59,0.35)] bg-[rgba(193,102,59,0.10)] px-2 py-0.5 text-[10px] text-[var(--accent-copper-light)]">
                     Required for owners
                   </span>
                 ) : (
-                  <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
+                  <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] text-neutral-400">
                     Optional for staff
                   </span>
                 )}
@@ -481,7 +479,7 @@ export default function OnboardingPage() {
                     type="text"
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    className={fieldClassName}
                     required={asOwner}
                   />
                 </div>
@@ -492,7 +490,7 @@ export default function OnboardingPage() {
                     type="text"
                     value={shopName}
                     onChange={(e) => setShopName(e.target.value)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    className={fieldClassName}
                   />
                 </div>
 
@@ -504,7 +502,7 @@ export default function OnboardingPage() {
                     type="text"
                     value={shopStreet}
                     onChange={(e) => setShopStreet(e.target.value)}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    className={fieldClassName}
                     required={asOwner}
                   />
                   <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -513,7 +511,7 @@ export default function OnboardingPage() {
                       value={shopCity}
                       onChange={(e) => setShopCity(e.target.value)}
                       placeholder="City"
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      className={fieldClassName}
                       required={asOwner}
                     />
                     <input
@@ -521,7 +519,7 @@ export default function OnboardingPage() {
                       value={shopProvince}
                       onChange={(e) => setShopProvince(e.target.value)}
                       placeholder={provinceLabel}
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      className={fieldClassName}
                       required={asOwner}
                     />
                     <input
@@ -529,7 +527,7 @@ export default function OnboardingPage() {
                       value={shopPostal}
                       onChange={(e) => setShopPostal(e.target.value)}
                       placeholder={postalLabel}
-                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      className={fieldClassName}
                       required={asOwner}
                     />
                   </div>
@@ -545,7 +543,7 @@ export default function OnboardingPage() {
                       type="password"
                       value={ownerPin}
                       onChange={(e) => setOwnerPin(e.target.value)}
-                      className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      className={fieldClassName}
                       required
                     />
                     <p className="text-[11px] text-neutral-500">
@@ -560,13 +558,13 @@ export default function OnboardingPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.18)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading
                   ? "Saving…"
                   : asOwner
-                  ? "Continue to Shop Boost"
-                  : "Complete onboarding"}
+                    ? "Continue to Shop Boost"
+                    : "Complete onboarding"}
               </button>
               {error && <p className="text-xs text-red-400">{error}</p>}
             </div>
@@ -574,7 +572,7 @@ export default function OnboardingPage() {
         </div>
 
         <aside className="w-full space-y-4 lg:w-72">
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl">
             <h3 className="mb-2 text-sm font-semibold text-neutral-100">
               Next step
             </h3>

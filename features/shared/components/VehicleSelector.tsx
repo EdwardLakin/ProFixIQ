@@ -1,6 +1,5 @@
 "use client";
 
-
 import useVehicleInfo from "@shared/hooks/useVehicleInfo";
 
 export default function VehicleSelector() {
@@ -21,18 +20,18 @@ export default function VehicleSelector() {
 
   return (
     <div className="mb-6 space-y-4 text-left">
-      <h3 className="font-header text-xl text-accent font-bold">
+      <h3 className="text-xl font-semibold text-[var(--accent-copper-light)]">
         Vehicle Info
       </h3>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <input
           type="text"
           name="year"
           placeholder="Year"
           value={vehicleInfo?.year || ""}
           onChange={handleChange}
-          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
+          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
         />
         <input
           type="text"
@@ -40,7 +39,7 @@ export default function VehicleSelector() {
           placeholder="Make"
           value={vehicleInfo?.make || ""}
           onChange={handleChange}
-          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
+          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
         />
         <input
           type="text"
@@ -48,7 +47,7 @@ export default function VehicleSelector() {
           placeholder="Model"
           value={vehicleInfo?.model || ""}
           onChange={handleChange}
-          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
+          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
         />
         <input
           type="text"
@@ -56,7 +55,7 @@ export default function VehicleSelector() {
           placeholder="Engine"
           value={vehicleInfo?.engine || ""}
           onChange={handleChange}
-          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
+          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
         />
         <input
           type="text"
@@ -64,14 +63,14 @@ export default function VehicleSelector() {
           placeholder="Plate"
           value={vehicleInfo?.plate || ""}
           onChange={handleChange}
-          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
+          className="w-full rounded-md border border-white/10 bg-[var(--glass-bg)] p-3 text-white placeholder:text-neutral-500"
         />
       </div>
 
       {vehicleInfo && (
         <button
           onClick={clearVehicle}
-          className="mt-2 text-sm text-blue-400 underline hover:text-blue-200"
+          className="mt-2 text-sm font-medium text-[var(--accent-copper-light)] underline underline-offset-2 hover:text-white"
         >
           Change Vehicle
         </button>

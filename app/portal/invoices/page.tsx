@@ -8,7 +8,7 @@ import { requireAuthedUser, requirePortalCustomer } from "@/features/portal/serv
 
 export const dynamic = "force-dynamic";
 
-const COPPER = "#C57A4A";
+const COPPER = "var(--accent-copper-light)";
 
 type DB = Database;
 
@@ -60,7 +60,7 @@ type InvoiceListItem = {
 };
 
 function errorCardClass() {
-  return "rounded-3xl border border-red-500/35 bg-red-900/20 p-4 text-sm text-red-100 backdrop-blur-md shadow-card";
+  return "rounded-3xl border border-red-500/35 bg-red-900/20 p-4 text-sm text-red-100 shadow-card backdrop-blur-xl";
 }
 
 function safeNumber(v: unknown): number | null {
@@ -265,7 +265,7 @@ export default async function PortalInvoicesIndexPage() {
       <div className="space-y-6 text-white">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
+            <h1 className="text-2xl" style={{ color: COPPER, fontFamily: "var(--font-blackops), system-ui, sans-serif" }}>
               Invoices
             </h1>
             <p className="mt-1 text-sm text-neutral-400">View and download invoices for completed work orders.</p>
@@ -273,7 +273,7 @@ export default async function PortalInvoicesIndexPage() {
 
           <Link
             href="/portal"
-            className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/70 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/55 hover:text-white"
           >
             <span aria-hidden className="text-base leading-none">
               ←
@@ -282,7 +282,7 @@ export default async function PortalInvoicesIndexPage() {
           </Link>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card ring-1 ring-inset ring-white/5">
+        <div className="rounded-3xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl ring-1 ring-inset ring-white/5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Your invoices</div>
             <div className="text-[11px] text-neutral-500">{items.length === 0 ? "No invoices yet" : `${items.length} invoice(s)`}</div>
@@ -363,7 +363,7 @@ export default async function PortalInvoicesIndexPage() {
     return (
       <div className="space-y-4 text-white">
         <div>
-          <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
+          <h1 className="text-2xl" style={{ color: COPPER, fontFamily: "var(--font-blackops), system-ui, sans-serif" }}>
             Invoices
           </h1>
           <p className="mt-1 text-sm text-neutral-400">View and download invoices for completed work orders.</p>

@@ -1,4 +1,3 @@
-
 import { useRouter } from "next/router";
 
 export default function QuickActions() {
@@ -13,12 +12,12 @@ export default function QuickActions() {
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
+    <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
       {actions.map((action) => (
         <button
           key={action.path}
           onClick={() => router.push(action.path)}
-          className="bg-surface text-accent shadow-card rounded-lg p-4 hover:shadow-lg transition"
+          className="rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-neutral-100 shadow-card backdrop-blur-md transition hover:-translate-y-[1px] hover:border-[var(--accent-copper-soft)] hover:bg-black/40"
         >
           {action.label}
         </button>

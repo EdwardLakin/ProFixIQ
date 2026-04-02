@@ -25,13 +25,12 @@ export default function ShopDefaultsStep2Page() {
   const [shopId, setShopId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  // Defaults
   const [country, setCountry] = useState<"US" | "CA">("US");
   const [province, setProvince] = useState("");
   const [timezone, setTimezone] = useState<string>("America/New_York");
 
   const [laborRate, setLaborRate] = useState("150");
-  const [taxRate, setTaxRate] = useState("5"); // percent in UI
+  const [taxRate, setTaxRate] = useState("5");
   const [diagnosticFee, setDiagnosticFee] = useState("");
   const [suppliesPercent, setSuppliesPercent] = useState("");
 
@@ -59,7 +58,6 @@ export default function ShopDefaultsStep2Page() {
 
       setShopId(prof.shop_id);
 
-      // Prefill from shops if available
       const { data: shop } = await supabase
         .from("shops")
         .select("country, province, timezone, labor_rate, tax_rate, diagnostic_fee, supplies_percent")
@@ -81,8 +79,11 @@ export default function ShopDefaultsStep2Page() {
   }, [router, supabase]);
 
   const provinceLabel = country === "CA" ? "Province" : "State";
-  const taxLabel = country === "CA" ? "Tax rate (GST/PST/HST %)": "Tax rate (Sales tax %)";
+  const taxLabel = country === "CA" ? "Tax rate (GST/PST/HST %)" : "Tax rate (Sales tax %)";
   const currency = country === "CA" ? "CAD" : "USD";
+
+  const fieldClassName =
+    "w-full rounded-md border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500";
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,8 +119,8 @@ export default function ShopDefaultsStep2Page() {
 
   if (loading) {
     return (
-      <div className="min-h-screen grid place-items-center bg-black text-white">
-        <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-neutral-300">
+      <div className="grid min-h-screen place-items-center bg-black text-white">
+        <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-neutral-300 shadow-card backdrop-blur-md">
           Loading step 2…
         </div>
       </div>
@@ -128,12 +129,15 @@ export default function ShopDefaultsStep2Page() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <header className="border-b border-neutral-900 bg-neutral-950/70 px-4 py-4 sm:px-6">
+      <header className="border-b border-white/10 bg-black/40 px-4 py-4 backdrop-blur-xl sm:px-6">
         <div className="mx-auto max-w-3xl">
           <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
             ProFixIQ • Onboarding
           </p>
-          <h1 className="text-xl font-blackops text-orange-400">
+          <h1
+            className="text-xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+            style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+          >
             Shop defaults (Step 2 of 2)
           </h1>
           <p className="text-xs text-neutral-400">
@@ -141,10 +145,10 @@ export default function ShopDefaultsStep2Page() {
           </p>
         </div>
       </header>
-212 
+
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <form onSubmit={onSubmit} className="space-y-6">
-          <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+          <section className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl sm:p-5">
             <h2 className="text-sm font-semibold text-neutral-100">
               Location + formatting
             </h2>
@@ -158,7 +162,7 @@ export default function ShopDefaultsStep2Page() {
                 <select
                   value={country}
                   onChange={(e) => setCountry(e.target.value as "US" | "CA")}
-                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  className={fieldClassName}
                 >
                   <option value="US">United States</option>
                   <option value="CA">Canada</option>
@@ -170,7 +174,7 @@ export default function ShopDefaultsStep2Page() {
                 <select
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
-                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  className={fieldClassName}
                 >
                   {TIMEZONES.map((tz) => (
                     <option key={tz} value={tz}>
@@ -185,14 +189,14 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={province}
                   onChange={(e) => setProvince(e.target.value)}
-                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  className={fieldClassName}
                   placeholder={provinceLabel}
                 />
               </div>
             </div>
           </section>
 
-          <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+          <section className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl sm:p-5">
             <h2 className="text-sm font-semibold text-neutral-100">
               Money defaults
             </h2>
@@ -208,7 +212,7 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={laborRate}
                   onChange={(e) => setLaborRate(e.target.value)}
-                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  className={fieldClassName}
                   inputMode="decimal"
                 />
               </div>
@@ -218,7 +222,7 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={taxRate}
                   onChange={(e) => setTaxRate(e.target.value)}
-                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  className={fieldClassName}
                   inputMode="decimal"
                 />
               </div>
@@ -230,7 +234,7 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={diagnosticFee}
                   onChange={(e) => setDiagnosticFee(e.target.value)}
-                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  className={fieldClassName}
                   inputMode="decimal"
                   placeholder="Optional"
                 />
@@ -243,7 +247,7 @@ export default function ShopDefaultsStep2Page() {
                 <input
                   value={suppliesPercent}
                   onChange={(e) => setSuppliesPercent(e.target.value)}
-                  className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
+                  className={fieldClassName}
                   inputMode="decimal"
                   placeholder="Optional"
                 />
@@ -260,7 +264,7 @@ export default function ShopDefaultsStep2Page() {
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400"
+              className="inline-flex items-center justify-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.18)] transition hover:brightness-110"
             >
               Finish setup
             </button>

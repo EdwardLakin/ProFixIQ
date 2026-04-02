@@ -10,6 +10,11 @@ export default function ForgotPasswordPage() {
   );
   const [error, setError] = useState("");
 
+  const inputClassName =
+    "w-full rounded-md border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-white placeholder:text-neutral-500";
+  const buttonClassName =
+    "w-full rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 font-semibold text-black transition hover:brightness-110";
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus("sending");
@@ -31,38 +36,45 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center font-blackops p-4">
-      <h1 className="text-3xl mb-4 text-orange-500">Forgot Password</h1>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-black px-4 text-white">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/30 p-6 shadow-card backdrop-blur-xl">
+        <h1
+          className="mb-4 text-3xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+          style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+        >
+          Forgot Password
+        </h1>
 
-      {status === "sent" ? (
-        <p className="text-green-500">Password reset email sent!</p>
-      ) : (
-        <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4">
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-2 bg-gray-900 text-white border border-orange-500 rounded"
-            placeholder="Enter your email"
-          />
-          <button
-            type="submit"
-            disabled={status === "sending"}
-            className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded"
-          >
-            {status === "sending" ? "Sending..." : "Send Reset Link"}
-          </button>
-          {status === "error" && <p className="text-red-500">{error}</p>}
-        </form>
-      )}
+        {status === "sent" ? (
+          <p className="text-green-400">Password reset email sent!</p>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={inputClassName}
+              placeholder="Enter your email"
+            />
+            <button
+              type="submit"
+              disabled={status === "sending"}
+              className={buttonClassName}
+            >
+              {status === "sending" ? "Sending..." : "Send Reset Link"}
+            </button>
+            {status === "error" && <p className="text-sm text-red-400">{error}</p>}
+          </form>
+        )}
 
-      <button
-        className="mt-6 text-orange-400 underline"
-        onClick={() => (window.location.href = "/sign-in")}
-      >
-        Back to Sign In
-      </button>
+        <button
+          className="mt-6 text-sm font-medium text-[var(--accent-copper-light)] underline underline-offset-2 hover:text-white"
+          onClick={() => (window.location.href = "/sign-in")}
+        >
+          Back to Sign In
+        </button>
+      </div>
     </div>
   );
 }

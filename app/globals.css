@@ -8,16 +8,17 @@
 :root {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  /* Copper accent */
   --accent-copper: #C1663B;
   --accent-copper-soft: #7E4023;
   --accent-copper-light: #E39A6E;
 
-  /* Dark “brushed metal” neutrals */
   --metal-bg: #050910;
   --metal-panel: #050b12;
   --metal-border-soft: rgba(148, 163, 184, 0.3);
   --metal-border-strong: rgba(148, 163, 184, 0.6);
+
+  --glass-bg: rgba(0, 0, 0, 0.3);
+  --glass-bg-soft: rgba(0, 0, 0, 0.22);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -30,13 +31,10 @@ html {
 }
 
 body {
-  /* base dark background */
   @apply bg-neutral-950 text-white antialiased;
-  /* Main app font (Inter via next/font variable) */
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Optional: force Black Ops anywhere (landing/hero only) */
 .font-blackops,
 .landing-heading {
   font-family: var(--font-blackops), var(--font-inter), system-ui, sans-serif;
@@ -46,25 +44,25 @@ body {
 /* 🧾 Inputs / Forms */
 /* -------------------------------------------------------------------------- */
 .input {
-  @apply w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700
-         text-white placeholder:text-neutral-400;
+  @apply w-full rounded-md border px-3 py-2 text-white placeholder:text-neutral-400;
+  background-color: var(--glass-bg);
+  border-color: rgba(255, 255, 255, 0.1);
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease,
     background-color 0.15s ease;
 }
 
-/* Ensure all native fields stay legible */
 input,
 textarea,
 select {
   color: white;
 }
+
 ::placeholder {
-  color: rgb(163 163 163); /* neutral-400 */
+  color: rgb(163 163 163);
 }
 
-/* Copper focus ring */
 :focus-visible {
   outline: none;
   box-shadow:
@@ -72,7 +70,6 @@ select {
     0 0 0 3px rgba(193, 102, 59, 0.4);
 }
 
-/* Make .input focus feel a bit stronger */
 .input:focus-visible {
   border-color: var(--accent-copper);
 }
@@ -90,18 +87,18 @@ select {
     transform: translateY(0);
   }
 }
+
 .fade-in {
   animation: fade-in 0.6s ease-out forwards;
 }
 
 /* -------------------------------------------------------------------------- */
-/* 🧱 UI Elements – Copper + Metal                                            */
+/* 🧱 Legacy Utility Layer – keep for compatibility                           */
 /* -------------------------------------------------------------------------- */
 .btn {
-  @apply inline-flex items-center justify-center px-4 py-2 font-medium rounded transition-colors;
+  @apply inline-flex items-center justify-center rounded px-4 py-2 font-medium transition-colors;
 }
 
-/* Primary accent button – copper */
 .btn-orange {
   @apply text-black;
   background-color: var(--accent-copper);
@@ -111,20 +108,20 @@ select {
     box-shadow 0.15s ease;
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.7);
 }
+
 .btn-orange:hover {
   background-color: var(--accent-copper-soft);
 }
+
 .btn-orange:active {
   transform: translateY(1px) scale(0.99);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.8);
 }
 
-/* Simple outline button still available */
 .btn-outline {
   @apply border border-white text-white hover:bg-white hover:text-black;
 }
 
-/* Generic card updated to dark metal feel */
 .card {
   @apply rounded-xl p-6;
   background-color: var(--metal-panel);
@@ -141,31 +138,29 @@ select {
     repeating-linear-gradient(
       0deg,
       rgba(255, 255, 255, 0.04) 0px,
-      rgba(255, 255, 255, 0.0) 1px,
+      rgba(255, 255, 255, 0) 1px,
       rgba(0, 0, 0, 0.2) 2px
     );
 }
 
-/* Explicit metal bar – use for top / bottom nav, mobile headers */
 .metal-bar {
   background-color: var(--metal-bg);
   background-image:
     linear-gradient(
       120deg,
       rgba(255, 255, 255, 0.06),
-      rgba(255, 255, 255, 0.0) 40%
+      rgba(255, 255, 255, 0) 40%
     ),
     repeating-linear-gradient(
       90deg,
       rgba(255, 255, 255, 0.04),
-      rgba(0, 0, 0, 0.10) 1px,
-      rgba(0, 0, 0, 0.20) 3px,
+      rgba(0, 0, 0, 0.1) 1px,
+      rgba(0, 0, 0, 0.2) 3px,
       rgba(255, 255, 255, 0.02) 4px
     );
   border-bottom: 1px solid var(--metal-border-soft);
 }
 
-/* Explicit metal card – for mobile tiles / panels */
 .metal-card {
   background-color: var(--metal-panel);
   background-image:
@@ -177,7 +172,7 @@ select {
     repeating-linear-gradient(
       0deg,
       rgba(255, 255, 255, 0.04) 0px,
-      rgba(255, 255, 255, 0.0) 1px,
+      rgba(255, 255, 255, 0) 1px,
       rgba(0, 0, 0, 0.2) 2px
     );
   border: 1px solid var(--metal-border-soft);
@@ -186,7 +181,6 @@ select {
     inset 0 0 0 1px rgba(15, 23, 42, 0.55);
 }
 
-/* Small copper pill / chip (for statuses, WO IDs, etc.) */
 .accent-chip {
   border-radius: 9999px;
   border: 1px solid var(--accent-copper-light);
@@ -200,13 +194,16 @@ select {
 ::-webkit-scrollbar {
   width: 8px;
 }
+
 ::-webkit-scrollbar-thumb {
   background: var(--accent-copper-soft);
   border-radius: 8px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-copper);
 }
+
 ::-webkit-scrollbar-track {
   background: #050810;
 }
@@ -233,6 +230,7 @@ select {
       opacity 180ms ease,
       transform 180ms ease;
   }
+
   dialog.wo-modal[open] {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -243,6 +241,7 @@ select {
     backdrop-filter: blur(2px);
     transition: background 180ms ease;
   }
+
   dialog.wo-modal[open]::backdrop {
     background: rgba(0, 0, 0, 0.6);
   }

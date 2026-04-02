@@ -12,19 +12,19 @@ type Customer = Database["public"]["Tables"]["customers"]["Row"];
 type SettingsRow = Database["public"]["Tables"]["customer_settings"]["Row"];
 type SettingsInsert = Database["public"]["Tables"]["customer_settings"]["Insert"];
 
-const COPPER = "#C57A4A";
+const COPPER = "var(--accent-copper)";
 
 function cardClass() {
-  return "rounded-3xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card";
+  return "rounded-3xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl";
 }
 
 function inputWrapClass() {
-  return "w-full rounded-xl border border-white/10 bg-black/35 p-2 text-sm text-white outline-none focus:border-white/20 focus:ring-1 focus:ring-white/10";
+  return "w-full rounded-xl border border-white/10 bg-[var(--glass-bg)] p-2 text-sm text-white outline-none";
 }
 
 function copperButtonStyle(): React.CSSProperties {
   return {
-    borderColor: "rgba(197,122,74,0.55)",
+    borderColor: "rgba(197,122,74,0.45)",
     color: "rgba(245,225,205,0.95)",
     background: "rgba(197,122,74,0.10)",
   };
@@ -217,12 +217,12 @@ export default function PortalSettingsPage() {
       <div className="mx-auto max-w-2xl space-y-4 text-white">
         <Toaster position="top-center" />
         <header className="space-y-1">
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+          <h1 className="text-lg uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
             Settings
           </h1>
         </header>
 
-        <div className="space-y-3 rounded-3xl border border-red-500/35 bg-red-900/20 p-4 text-sm backdrop-blur-md shadow-card">
+        <div className="space-y-3 rounded-3xl border border-red-500/35 bg-red-900/20 p-4 text-sm shadow-card backdrop-blur-xl">
           <p className="text-red-100">{error}</p>
           <LinkButton href="/portal" variant="outline" size="sm">
             Go to profile
@@ -237,7 +237,7 @@ export default function PortalSettingsPage() {
       <Toaster position="top-center" />
 
       <header className="space-y-1">
-        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+        <h1 className="text-lg uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
           Settings
         </h1>
         <p className="text-xs text-neutral-400">

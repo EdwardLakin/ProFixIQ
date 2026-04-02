@@ -37,9 +37,8 @@ export default function JobQueue({
   const filteredJobs = (filterTechId
     ? jobs.filter((job) => (job.assigned_tech_id ?? null) === filterTechId)
     : jobs
-  ).slice(); // shallow copy before sort
+  ).slice();
 
-  // sort by status priority, then by created_at
   filteredJobs.sort((a, b) => {
     const sa = STATUS_ORDER[String(a.status ?? "").toLowerCase()] ?? 50;
     const sb = STATUS_ORDER[String(b.status ?? "").toLowerCase()] ?? 50;
@@ -55,13 +54,13 @@ export default function JobQueue({
     techOptions.find((t) => t.id === filterTechId)?.full_name;
 
   return (
-    <div className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 text-white shadow-card">
+    <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-white shadow-card backdrop-blur-xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold tracking-wide text-orange-400">
+        <h2 className="text-base font-semibold tracking-[0.08em] text-[var(--accent-copper-light)]">
           {title}
         </h2>
         <div className="flex items-center gap-3 text-xs text-neutral-400">
-          <span className="rounded-full border border-neutral-700 px-2 py-0.5">
+          <span className="rounded-full border border-white/10 px-2 py-0.5 text-neutral-300">
             {filteredJobs.length} job{filteredJobs.length === 1 ? "" : "s"}
           </span>
           {filterTechId && (

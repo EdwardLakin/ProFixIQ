@@ -31,11 +31,11 @@ const emptyForm: CustomerForm = {
 };
 
 function cardClass() {
-  return "rounded-3xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card";
+  return "rounded-3xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl";
 }
 
 function inputClass() {
-  return "w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-white/20 focus:ring-1 focus:ring-white/10";
+  return "w-full rounded-xl border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500";
 }
 
 function readOnlyClass() {
@@ -171,7 +171,7 @@ export default function PortalProfilePage() {
   return (
     <div className="mx-auto max-w-xl space-y-5 text-white">
       <header className="space-y-1">
-        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+        <h1 className="text-lg uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
           My profile
         </h1>
         <p className="text-xs text-neutral-400">
@@ -260,12 +260,7 @@ export default function PortalProfilePage() {
         </div>
 
         <button
-          className={subtleButtonClass() + " mt-1"}
-          style={{
-            borderColor: "rgba(197,122,74,0.55)",
-            color: "rgba(245,225,205,0.95)",
-            background: "rgba(197,122,74,0.10)",
-          }}
+          className={subtleButtonClass() + " mt-1 border-[rgba(197,122,74,0.45)] bg-[rgba(197,122,74,0.10)] text-neutral-100 hover:bg-[rgba(197,122,74,0.16)]"}
           onClick={onSave}
           disabled={saving}
         >

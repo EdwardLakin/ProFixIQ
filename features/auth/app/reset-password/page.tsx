@@ -16,6 +16,11 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const inputClassName =
+    "w-full rounded-md border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-white placeholder:text-neutral-500";
+  const buttonClassName =
+    "w-full rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 font-semibold text-black transition hover:brightness-110";
+
   useEffect(() => {
     const access_token = searchParams.get("access_token");
     const refresh_token = searchParams.get("refresh_token");
@@ -31,8 +36,7 @@ export default function ResetPasswordPage() {
       setError("Missing access or refresh token.");
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]); // supabase is stable from the factory; no need in deps
+  }, [searchParams, supabase.auth]);
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,55 +63,62 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white px-4 font-blackops">
-      <h1 className="text-3xl text-orange-500 mb-4">Reset Password</h1>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-black px-4 text-white">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/30 p-6 shadow-card backdrop-blur-xl">
+        <h1
+          className="mb-4 text-3xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+          style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+        >
+          Reset Password
+        </h1>
 
-      {loading ? (
-        <p>Loading...</p>
-      ) : error ? (
-        <p className="text-red-500">{error}</p>
-      ) : (
-        <form onSubmit={handleReset} className="w-full max-w-md space-y-4">
-          {success && <p className="text-green-500">{success}</p>}
+        {loading ? (
+          <p className="text-neutral-400">Loading...</p>
+        ) : error ? (
+          <p className="text-red-400">{error}</p>
+        ) : (
+          <form onSubmit={handleReset} className="space-y-4">
+            {success && <p className="text-green-400">{success}</p>}
 
-          <div>
-            <label className="block text-sm mb-1">New Password</label>
-            <input
-              type="password"
-              required
-              className="w-full p-2 rounded bg-gray-900 text-white border border-orange-500"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
+            <div>
+              <label className="mb-1 block text-sm text-neutral-300">New Password</label>
+              <input
+                type="password"
+                required
+                className={inputClassName}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm mb-1">Confirm Password</label>
-            <input
-              type="password"
-              required
-              className="w-full p-2 rounded bg-gray-900 text-white border border-orange-500"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-            />
-          </div>
+            <div>
+              <label className="mb-1 block text-sm text-neutral-300">Confirm Password</label>
+              <input
+                type="password"
+                required
+                className={inputClassName}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded"
-          >
-            {loading ? "Resetting..." : "Reset Password"}
-          </button>
-        </form>
-      )}
+            <button
+              type="submit"
+              disabled={loading}
+              className={buttonClassName}
+            >
+              {loading ? "Resetting..." : "Reset Password"}
+            </button>
+          </form>
+        )}
 
-      <button
-        className="mt-6 text-orange-400 underline"
-        onClick={() => router.push("/sign-in")}
-      >
-        Back to Sign In
-      </button>
+        <button
+          className="mt-6 text-sm font-medium text-[var(--accent-copper-light)] underline underline-offset-2 hover:text-white"
+          onClick={() => router.push("/sign-in")}
+        >
+          Back to Sign In
+        </button>
+      </div>
     </div>
   );
 }

@@ -90,8 +90,6 @@ export default function PublicProfileClient({ slug }: Props) {
             "images",
             "geo_lat",
             "geo_lng",
-            // "description",
-            // "website",
           ].join(","),
         )
         .eq("slug", slug)
@@ -117,8 +115,6 @@ export default function PublicProfileClient({ slug }: Props) {
         images: row.images ?? null,
         geo_lat: row.geo_lat ?? null,
         geo_lng: row.geo_lng ?? null,
-        // description: (row as any).description ?? null,
-        // website: (row as any).website ?? null,
       });
 
       setLoading(false);
@@ -136,7 +132,7 @@ export default function PublicProfileClient({ slug }: Props) {
   const gallery = images.slice(1);
 
   const Card =
-    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
+    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-xl shadow-card sm:p-6";
 
   if (loading) {
     return (
@@ -148,8 +144,11 @@ export default function PublicProfileClient({ slug }: Props) {
 
   if (notFound) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-8 space-y-2">
-        <h1 className="text-2xl font-blackops" style={{ color: COPPER }}>
+      <div className="mx-auto max-w-4xl space-y-2 px-4 py-8">
+        <h1
+          className="text-2xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+          style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+        >
           Shop not found
         </h1>
         <p className="text-sm text-neutral-400">
@@ -162,9 +161,8 @@ export default function PublicProfileClient({ slug }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
-      {/* Hero */}
       {hero ? (
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card">
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/25 shadow-card backdrop-blur-xl">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={hero}
@@ -174,14 +172,16 @@ export default function PublicProfileClient({ slug }: Props) {
         </div>
       ) : null}
 
-      {/* Header */}
       <header className="space-y-2">
         <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
           <SignalDot />
           Public shop profile
         </div>
 
-        <h1 className="text-3xl font-blackops" style={{ color: COPPER }}>
+        <h1
+          className="text-3xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+          style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+        >
           {data.name}
         </h1>
 
@@ -190,7 +190,6 @@ export default function PublicProfileClient({ slug }: Props) {
         ) : null}
       </header>
 
-      {/* Contact / Location */}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className={Card}>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
@@ -206,8 +205,7 @@ export default function PublicProfileClient({ slug }: Props) {
                   href={data.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="underline underline-offset-2"
-                  style={{ color: COPPER }}
+                  className="underline underline-offset-2 text-[var(--accent-copper-light)]"
                 >
                   {data.website}
                 </a>
@@ -229,8 +227,7 @@ export default function PublicProfileClient({ slug }: Props) {
           {data.geo_lat !== null && data.geo_lng !== null ? (
             <p className="mt-2 text-sm">
               <a
-                className="underline underline-offset-2"
-                style={{ color: COPPER }}
+                className="underline underline-offset-2 text-[var(--accent-copper-light)]"
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
                   `${data.geo_lat},${data.geo_lng}`,
                 )}`}
@@ -244,7 +241,6 @@ export default function PublicProfileClient({ slug }: Props) {
         </div>
       </section>
 
-      {/* Gallery */}
       {gallery.length > 0 ? (
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-neutral-50">Gallery</h2>
@@ -255,28 +251,29 @@ export default function PublicProfileClient({ slug }: Props) {
                 key={url}
                 src={url}
                 alt="Shop photo"
-                className="h-40 w-full rounded-2xl border border-white/10 object-cover bg-black/25"
+                className="h-40 w-full rounded-2xl border border-white/10 bg-black/25 object-cover"
               />
             ))}
           </div>
         </section>
       ) : null}
 
-      {/* Primary CTA to book */}
       <div className="pt-2">
         <Link
           href={`/portal/booking?shop=${encodeURIComponent(slug)}`}
-          className="inline-flex items-center rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-100 backdrop-blur transition hover:bg-white/5"
+          className="inline-flex items-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
           style={{
             boxShadow: "0 0 26px rgba(197,122,74,0.18)",
           }}
         >
-          <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: COPPER }} />
+          <span
+            className="mr-2 inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: COPPER }}
+          />
           Book an appointment
         </Link>
       </div>
 
-      {/* Reviews */}
       {data.id ? (
         <section className="space-y-4 pt-4">
           <div className="flex items-center justify-between gap-2">

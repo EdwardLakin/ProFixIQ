@@ -39,8 +39,11 @@ export default function BookingConfirmationClient() {
   }, [id, supabase]);
 
   return (
-    <div className="mx-auto max-w-xl space-y-4 rounded-2xl border border-white/10 bg-black/30 p-5 text-white backdrop-blur-md shadow-card">
-      <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+    <div className="mx-auto max-w-xl space-y-4 rounded-2xl border border-white/10 bg-black/30 p-5 text-white shadow-card backdrop-blur-xl">
+      <h1
+        className="text-lg tracking-[0.18em] text-[var(--accent-copper-light)]"
+        style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+      >
         Appointment confirmed
       </h1>
 
@@ -65,13 +68,13 @@ export default function BookingConfirmationClient() {
 
       <div className="flex flex-wrap gap-3 pt-2">
         <button
-          className="rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/55"
+          className="rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-black/55"
           onClick={() => router.push("/portal")}
         >
           Go to portal
         </button>
         <button
-          className="rounded-lg border border-orange-600 px-4 py-2 text-sm font-semibold text-orange-300 transition hover:bg-orange-600 hover:text-black"
+          className="rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
           onClick={() => router.push("/portal/booking")}
         >
           Make another booking

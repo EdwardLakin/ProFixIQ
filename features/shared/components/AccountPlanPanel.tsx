@@ -39,17 +39,19 @@ export default function AccountPlanPanel() {
   }, []);
 
   return (
-    <div className="bg-surface text-accent p-6 rounded-md shadow-card mb-8">
-      <h2 className="text-lg font-semibold mb-2">Account &amp; Plan</h2>
-      <div className="text-muted text-sm mb-2">
+    <div className="mb-8 rounded-2xl border border-white/10 bg-black/30 p-6 text-white shadow-card backdrop-blur-xl">
+      <h2 className="mb-2 text-lg font-semibold text-white">Account &amp; Plan</h2>
+      <div className="mb-2 text-sm text-neutral-400">
         Logged in as: {email || "Loading..."}
       </div>
-      <div className="mt-2">
-        <span className="font-medium">Current Plan: </span>
-        <span className="font-semibold">{plan || "Loading..."}</span>
+      <div className="mt-2 text-sm text-neutral-300">
+        <span className="font-medium text-neutral-400">Current Plan: </span>
+        <span className="font-semibold text-[var(--accent-copper-light)]">
+          {plan || "Loading..."}
+        </span>
       </div>
       <button
-        className="mt-4 px-4 py-2 rounded bg-accent text-white hover:bg-accent/90 transition"
+        className="mt-4 inline-flex items-center justify-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
         onClick={() => (window.location.href = "/account")}
       >
         Manage Account

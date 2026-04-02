@@ -38,19 +38,19 @@ type VehicleForm = {
 
 
 function cardClass() {
-  return "rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card";
+  return "rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl";
 }
 
 function inputClass() {
-  return "w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-white/20 focus:ring-1 focus:ring-white/10";
+  return "w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500";
 }
 
 function copperButtonStyle(): React.CSSProperties {
   return {
-    borderColor: "rgba(197,122,74,0.55)",
+    borderColor: "rgba(197,122,74,0.45)",
     color: "rgba(255,255,255,0.92)",
     background: "rgba(197,122,74,0.10)",
-    boxShadow: "inset 0 0 0 1px rgba(197,122,74,0.20)",
+    boxShadow: "inset 0 0 0 1px rgba(197,122,74,0.16)",
   };
 }
 
@@ -272,7 +272,7 @@ export default function PortalVehiclesPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 text-white">
       <header className="space-y-1">
-        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+        <h1 className="text-lg uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
           My vehicles
         </h1>
         <p className="text-xs text-neutral-400">
@@ -281,7 +281,7 @@ export default function PortalVehiclesPage() {
       </header>
 
       {error && (
-        <div className="rounded-2xl border border-red-500/35 bg-red-900/20 px-3 py-2 text-sm text-red-100 backdrop-blur-md shadow-card">
+        <div className="rounded-2xl border border-red-500/35 bg-red-900/20 px-3 py-2 text-sm text-red-100 shadow-card backdrop-blur-xl">
           {error}
         </div>
       )}

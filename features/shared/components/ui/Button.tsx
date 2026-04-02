@@ -3,25 +3,13 @@
 import React from "react";
 import clsx from "clsx";
 
-/* -------------------------------------------------------------------------- */
-/*  THEME TOKENS — adjust these in one place if you tweak color later         */
-/* -------------------------------------------------------------------------- */
-
-const COPPER = "rgb(184 115 51)"; // burnt copper hex: #B87333
-const COPPER_HOVER = "rgb(168 105 45)";
-const COPPER_SOFT = "rgba(184, 115, 51, 0.55)";
-const COPPER_FAINT = "rgba(184, 115, 51, 0.28)";
-const METAL_BORDER = "rgba(255,255,255,0.10)";
-const METAL_BORDER_STRONG = "rgba(255,255,255,0.18)";
-const GLASS_BG = "rgba(0,0,0,0.30)"; // dark glass background
-
 type Variant =
   | "default"
   | "secondary"
   | "destructive"
   | "ghost"
   | "outline"
-  | "copper"; // new instead of "orange"
+  | "copper";
 
 type Size = "xs" | "sm" | "md" | "lg";
 
@@ -35,82 +23,51 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   iconRight?: React.ReactNode;
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Base styling                                                              */
-/* -------------------------------------------------------------------------- */
-
 const base =
-  "inline-flex items-center justify-center rounded-md font-semibold transition duration-150 " +
-  "ease-in-out backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-offset-2 " +
+  "inline-flex items-center justify-center rounded-md font-semibold transition duration-150 ease-in-out " +
+  "backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-offset-2 " +
   "focus:ring-[rgba(184,115,51,0.45)] focus:ring-offset-black";
 
-/* -------------------------------------------------------------------------- */
-/*  Metallic / Glass Variants                                                 */
-/* -------------------------------------------------------------------------- */
-
 const variantClasses: Record<Exclude<Variant, "copper">, string> = {
-  /** Glass default */
   default: clsx(
     "text-white",
-    "border",
-    "border-[--metal-border]", // resolved via CSS var
-    "bg-[--glass-bg]",
-    "hover:bg-[rgba(255,255,255,0.05)]",
+    "border border-[var(--metal-border-soft)]",
+    "bg-[var(--glass-bg)]",
+    "hover:bg-white/5",
   ),
-
-  /** Slightly dimmer glass */
   secondary: clsx(
     "text-neutral-200",
-    "border border-[--metal-border-strong]",
-    "bg-[rgba(0,0,0,0.22)]",
-    "hover:bg-[rgba(255,255,255,0.06)]",
+    "border border-[var(--metal-border-strong)]",
+    "bg-[var(--glass-bg-soft)]",
+    "hover:bg-white/5",
   ),
-
-  /** Strong red destructive */
   destructive: clsx(
     "text-white",
     "border border-red-500/50",
     "bg-red-700/60",
     "hover:bg-red-600/70",
   ),
-
-  /** Transparent ghost */
   ghost: clsx(
     "text-neutral-200",
-    "border border-[--metal-border]",
+    "border border-[var(--metal-border-soft)]",
     "bg-transparent",
-    "hover:bg-[rgba(255,255,255,0.05)]",
+    "hover:bg-white/5",
   ),
-
-  /** Outline-only metallic border */
   outline: clsx(
     "text-white",
-    "border border-[--metal-border-strong]",
+    "border border-[var(--metal-border-strong)]",
     "bg-transparent",
-    "hover:bg-[rgba(255,255,255,0.06)]",
+    "hover:bg-white/5",
   ),
 };
 
-/* -------------------------------------------------------------------------- */
-/*  COPPER ACCENT VARIANT                                                     */
-/* -------------------------------------------------------------------------- */
-
-/**
- * IMPORTANT:
- * Tailwind can't compile runtime template strings like `bg-[${COPPER}]`.
- * So we use CSS variables and static class strings instead.
- */
 const copperClass = clsx(
   "text-black",
-  "bg-[--copper]",
-  "hover:bg-[--copper-hover]",
-  "border border-[--copper-soft]",
-  "shadow-[0_0_0_1px_var(--copper-faint),0_0_12px_var(--copper-faint)]",
+  "bg-[var(--accent-copper)]",
+  "hover:brightness-110",
+  "border border-[rgba(193,102,59,0.35)]",
+  "shadow-[0_0_0_1px_rgba(193,102,59,0.12),0_0_16px_rgba(193,102,59,0.18)]",
 );
-
-/* -------------------------------------------------------------------------- */
-/*  Sizing                                                                    */
-/* -------------------------------------------------------------------------- */
 
 const sizeClasses: Record<Size, string> = {
   xs: "text-xs px-2 py-1",
@@ -138,27 +95,13 @@ export function buttonClasses({
       : variantClasses[variant as Exclude<Variant, "copper">];
 
   return clsx(
-    // theme variables (now also include copper + hover + soft/faint)
-    {
-      "--metal-border": METAL_BORDER,
-      "--metal-border-strong": METAL_BORDER_STRONG,
-      "--glass-bg": GLASS_BG,
-      "--copper": COPPER,
-      "--copper-hover": COPPER_HOVER,
-      "--copper-soft": COPPER_SOFT,
-      "--copper-faint": COPPER_FAINT,
-    } as React.CSSProperties,
     base,
     applied,
     sizeClasses[size],
-    disabled || isLoading ? "opacity-50 cursor-not-allowed" : "",
+    disabled || isLoading ? "cursor-not-allowed opacity-50" : "",
     className,
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/*  Component                                                                 */
-/* -------------------------------------------------------------------------- */
 
 export const Button = ({
   children,

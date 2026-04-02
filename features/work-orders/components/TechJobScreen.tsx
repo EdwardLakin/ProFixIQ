@@ -26,7 +26,6 @@ export default function TechJobScreen() {
       return;
     }
 
-    // Pull the queue directly with the DB row type
     const { data } = await supabase
       .from("work_order_lines")
       .select("*")
@@ -97,26 +96,31 @@ export default function TechJobScreen() {
   const onHoldJobs = jobs.filter((j) => j.status === "on_hold");
 
   return (
-    <div className="p-4 space-y-6">
-      <h1 className="text-xl font-bold text-accent">Technician Job Queue</h1>
+    <div className="space-y-6 p-4">
+      <h1
+        className="text-xl tracking-[0.08em] text-[var(--accent-copper-light)]"
+        style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+      >
+        Technician Job Queue
+      </h1>
 
       {loading && <p className="text-sm text-neutral-500">Loading jobs…</p>}
 
       {activeJob ? (
         <section>
-          <h2 className="text-lg font-semibold mb-2">Current Job</h2>
+          <h2 className="mb-2 text-lg font-semibold text-white">Current Job</h2>
           {renderJobCard(activeJob)}
         </section>
       ) : (
         <section>
-          <h2 className="text-lg font-semibold mb-2">Available Jobs</h2>
-          {readyJobs.length > 0 ? readyJobs.map(renderJobCard) : <p>No jobs available.</p>}
+          <h2 className="mb-2 text-lg font-semibold text-white">Available Jobs</h2>
+          {readyJobs.length > 0 ? readyJobs.map(renderJobCard) : <p className="text-neutral-400">No jobs available.</p>}
         </section>
       )}
 
       {onHoldJobs.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold mb-2">On Hold</h2>
+          <h2 className="mb-2 text-lg font-semibold text-white">On Hold</h2>
           {onHoldJobs.map(renderJobCard)}
         </section>
       )}
