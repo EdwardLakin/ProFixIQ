@@ -48,7 +48,7 @@ const emptyPublic: PublicFields = {
   website: null,
 };
 
-const COPPER = "var(--pfq-copper)";
+const COPPER = "var(--accent-copper-light)";
 
 function SignalDot() {
   return (
