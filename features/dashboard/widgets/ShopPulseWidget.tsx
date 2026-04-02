@@ -5,9 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
+import StatusBadge from "@shared/components/ui/StatusBadge";
+import { cn } from "@shared/lib/utils";
 
 type DB = Database;
-
 type BoardRow = DB["public"]["Views"]["v_work_order_board_cards_shop"]["Row"];
 
 function ageLabel(iso: string | null | undefined): string {
@@ -20,6 +21,34 @@ function ageLabel(iso: string | null | undefined): string {
   if (h >= 1) return `${h}h`;
   const m = Math.floor(ms / 60000);
   return `${Math.max(1, m)}m`;
+}
+
+function MetricTile(props: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "danger" | "accent";
+}) {
+  const { label, value, tone = "neutral" } = props;
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-1 text-lg font-semibold",
+          tone === "danger"
+            ? "text-rose-300"
+            : tone === "accent"
+              ? "text-[color:var(--accent-copper-light,#fdba74)]"
+              : "text-neutral-100",
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
 }
 
 export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
@@ -86,6 +115,7 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
       active: active.length,
       danger: danger.length,
       messages,
+      latest: rows[0]?.activity_at ? ageLabel(rows[0].activity_at) : "—",
     };
   }, [rows]);
 
@@ -97,7 +127,7 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
       rightSlot={
         <Link
           href="/work-orders/board"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/45"
         >
           Open board →
         </Link>
@@ -112,26 +142,16 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
           {error}
         </div>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="grid gap-3 lg:grid-cols-[0.85fr_1.15fr]">
           <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
             <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
               Live totals
             </div>
+
             <div className="mt-3 grid grid-cols-3 gap-3">
-              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Active</div>
-                <div className="mt-1 text-lg font-semibold text-white">{pulse.active}</div>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">High risk</div>
-                <div className="mt-1 text-lg font-semibold text-rose-300">{pulse.danger}</div>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Latest</div>
-                <div className="mt-1 text-lg font-semibold text-neutral-100">
-                  {rows[0]?.activity_at ? ageLabel(rows[0].activity_at) : "—"}
-                </div>
-              </div>
+              <MetricTile label="Active" value={String(pulse.active)} />
+              <MetricTile label="High risk" value={String(pulse.danger)} tone="danger" />
+              <MetricTile label="Latest" value={pulse.latest} tone="accent" />
             </div>
           </div>
 
@@ -146,19 +166,19 @@ export default function ShopPulseWidget({ shopId }: { shopId: string | null }) {
               </div>
             ) : (
               <div className="mt-3 flex flex-wrap gap-2">
-                {pulse.messages.map((msg) => (
-                  <span
-                    key={msg}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-neutral-100"
+                {pulse.messages.map((msg, index) => (
+                  <StatusBadge
+                    key={`${msg}-${index}`}
+                    variant={msg.includes("high-risk") ? "danger" : "neutral"}
                   >
                     {msg}
-                  </span>
+                  </StatusBadge>
                 ))}
               </div>
             )}
 
             <div className="mt-4 text-xs text-neutral-500">
-              This is a compact action summary. Use the work board and queue widgets below to drill in.
+              Compact action summary only. Use the work board and queue widgets below to drill in.
             </div>
           </div>
         </div>

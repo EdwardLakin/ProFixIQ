@@ -1,25 +1,37 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Card from "@shared/components/ui/Card";
+import { cn } from "@shared/lib/utils";
 
-export default function DashboardWidgetShell(props: {
+type DashboardWidgetShellProps = {
   eyebrow?: string;
   title: string;
   subtitle?: string;
   rightSlot?: ReactNode;
   children: ReactNode;
   compact?: boolean;
-}) {
-  const { eyebrow, title, subtitle, rightSlot, children, compact = false } = props;
+  className?: string;
+  contentClassName?: string;
+};
 
+export default function DashboardWidgetShell({
+  eyebrow,
+  title,
+  subtitle,
+  rightSlot,
+  children,
+  compact = false,
+  className,
+  contentClassName,
+}: DashboardWidgetShellProps) {
   return (
-    <section
-      className={[
-        "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)]",
-        "bg-gradient-to-br from-black/80 via-slate-950/90 to-black/85",
-        "shadow-[0_20px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl",
-        compact ? "px-4 py-4" : "px-4 py-4 sm:px-5 sm:py-5",
-      ].join(" ")}
+    <Card
+      className={cn(
+        "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.05),rgba(0,0,0,0.82))]",
+        compact ? "px-4 py-4" : "px-5 py-5",
+        className,
+      )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -34,14 +46,16 @@ export default function DashboardWidgetShell(props: {
           </h2>
 
           {subtitle ? (
-            <p className="mt-1 text-xs text-neutral-400 sm:text-sm">{subtitle}</p>
+            <p className="mt-1 text-xs text-neutral-400 sm:text-sm">
+              {subtitle}
+            </p>
           ) : null}
         </div>
 
         {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
       </div>
 
-      <div className="mt-4">{children}</div>
-    </section>
+      <div className={cn("mt-4", contentClassName)}>{children}</div>
+    </Card>
   );
 }
