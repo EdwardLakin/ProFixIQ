@@ -744,13 +744,13 @@ export default function QuoteReviewView(props: {
       bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
     `;
 
-  const containerCls = embedded ? "mx-auto w-full max-w-none" : "mx-auto max-w-6xl";
+  const containerCls = embedded ? "mx-auto w-full max-w-none" : "mx-auto max-w-7xl";
   const padX = embedded ? "px-3" : "px-5";
   const padY = embedded ? "py-3" : "py-4";
 
   // ✅ Force panel-friendly layout (NOT viewport-based lg columns)
-  const mainGridCls = embedded ? "mt-3 grid gap-3" : "mt-4 grid gap-4 lg:grid-cols-3";
-  const linesColCls = embedded ? "" : "lg:col-span-2";
+  const mainGridCls = embedded ? "mt-3 grid gap-3" : "mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_380px]";
+  const linesColCls = "";
   const sideColCls = embedded ? "" : "space-y-4";
 
   // ✅ Smaller action buttons when embedded
@@ -823,8 +823,8 @@ export default function QuoteReviewView(props: {
           <div
             className={
               embedded
-                ? "flex flex-col gap-3"
-                : "flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"
+                ? "grid gap-3"
+                : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.15fr)_auto]"
             }
           >
             {/* left */}
@@ -902,7 +902,7 @@ export default function QuoteReviewView(props: {
             </div>
 
             {/* right */}
-            <div className={embedded ? "text-left" : "text-right"}>
+            <div className={embedded ? "text-left" : "text-right self-start"}>
               <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
                 Labor rate
               </div>
@@ -968,21 +968,23 @@ export default function QuoteReviewView(props: {
 
                     return (
                       <div key={l.id} className={`${padX} py-4`}>
-                        <QuoteLineCard
-                          title={title}
-                          statusLabel="Issue Found"
-                          statusTone={tone}
-                          issueText={issueText}
-                          photoUrl={null}
-                          recommendedText={recText}
-                          partsTotal={partsAmt}
-                          laborTotal={laborAmt}
-                          showActions
-                          onApprove={() => void setDecision(l.id, "approve")}
-                          onDecline={() => void setDecision(l.id, "decline")}
-                          onDefer={() => void setDecision(l.id, "defer")}
-                          footerNote={`approval_state=${l.approval_state ?? "null"} • status=${l.status ?? "null"}`}
-                        />
+                        <div className="rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.10),rgba(0,0,0,0.88)_42%,rgba(2,6,23,0.96)_100%)] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.65)]">
+                          <QuoteLineCard
+                            title={title}
+                            statusLabel="Issue Found"
+                            statusTone={tone}
+                            issueText={issueText}
+                            photoUrl={null}
+                            recommendedText={recText}
+                            partsTotal={partsAmt}
+                            laborTotal={laborAmt}
+                            showActions
+                            onApprove={() => void setDecision(l.id, "approve")}
+                            onDecline={() => void setDecision(l.id, "decline")}
+                            onDefer={() => void setDecision(l.id, "defer")}
+                            footerNote={`approval_state=${l.approval_state ?? "null"} • status=${l.status ?? "null"}`}
+                          />
+                        </div>
 
                         {/* ✅ Restored editor usage under the card (fixes “unused” lint + keeps ops tools) */}
                         {(() => {
@@ -1052,16 +1054,17 @@ export default function QuoteReviewView(props: {
                               setOpenDetails((p) => ({ ...p, [l.id]: !p[l.id] }))
                             }
                             className="
-                              w-full rounded-xl border border-white/10 bg-black/35
-                              px-4 py-2 text-sm font-semibold text-neutral-200
-                              hover:bg-black/45
+                              w-full rounded-2xl border border-white/10 bg-black/45
+                              px-4 py-2.5 text-sm font-semibold text-neutral-200
+                              shadow-[0_12px_35px_rgba(0,0,0,0.45)]
+                              hover:bg-black/55
                             "
                           >
                             {openDetails[l.id] ? "Hide details" : "Show details"}
                           </button>
 
                           {openDetails[l.id] ? (
-                            <div className="mt-3 rounded-2xl border border-white/10 bg-black/30 p-4">
+                            <div className="mt-3 rounded-[24px] border border-white/10 bg-black/40 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
                               {/* line editor */}
                               <div className={embedded ? "grid gap-3" : "grid gap-3 md:grid-cols-2"}>
                                 <label className="text-xs text-neutral-400">
@@ -1129,7 +1132,7 @@ export default function QuoteReviewView(props: {
                               </div>
 
                               {/* parts editor */}
-                              <div className="mt-4 rounded-xl border border-white/10 bg-black/35 p-4">
+                              <div className="mt-4 rounded-2xl border border-white/10 bg-black/45 p-4">
                                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
                                   Parts
                                 </div>
@@ -1160,7 +1163,7 @@ export default function QuoteReviewView(props: {
                                           key={a.id}
                                           className="
                                             flex flex-wrap items-center justify-between gap-3
-                                            rounded-xl border border-white/10 bg-black/45 px-3 py-3
+                                            rounded-2xl border border-white/10 bg-black/55 px-3 py-3
                                           "
                                         >
                                           <div className="min-w-0">
