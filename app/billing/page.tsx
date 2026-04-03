@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -16,36 +17,78 @@ type Row = WorkOrder & {
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
 };
 
-// ✅ Exclude null so <select> value is always a string (or "")
 type Status = Exclude<WorkOrder["status"], null> | "ready_to_invoice" | "invoiced";
 
 const BILLING_STATUSES: Status[] = ["completed", "ready_to_invoice", "invoiced"];
 
-const BADGE: Record<string, string> = {
-  completed: "bg-sky-900/20 border-sky-500/40 text-sky-200",
-  ready_to_invoice: "bg-amber-900/20 border-amber-500/40 text-amber-200",
-  invoiced: "bg-emerald-900/20 border-emerald-500/40 text-emerald-200",
-};
+const INPUT_DARK =
+  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:ring-2 focus:ring-[var(--accent-copper)]/35";
 
-const chip = (s: string | null | undefined) =>
-  `inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium ${
-    BADGE[s ?? "completed"] ?? BADGE.completed
-  }`;
+const SELECT_DARK =
+  "w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent-copper-light)] focus:ring-2 focus:ring-[var(--accent-copper)]/35";
 
-const btnBase = "rounded-md border text-sm px-3 py-2 transition-colors";
-const btnNeutral =
-  btnBase + " border-white/15 bg-black/40 text-neutral-100 hover:bg-white/5";
-const btnInfo =
-  btnBase + " border-sky-500/60 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
-const btnWarn =
-  btnBase +
-  " border-amber-400/70 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
-const btnOk =
-  btnBase +
-  " border-emerald-400/70 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20";
+function stageAccent(status: string | null | undefined): {
+  badge: string;
+  border: string;
+  progress: string;
+} {
+  const key = String(status ?? "completed").toLowerCase().replaceAll(" ", "_");
+
+  if (key === "ready_to_invoice") {
+    return {
+      badge: "border-amber-400/70 bg-amber-500/10 text-amber-100",
+      border: "border-amber-500/30",
+      progress: "bg-amber-400",
+    };
+  }
+
+  if (key === "invoiced") {
+    return {
+      badge: "border-emerald-400/70 bg-emerald-500/10 text-emerald-100",
+      border: "border-emerald-500/25",
+      progress: "bg-emerald-400",
+    };
+  }
+
+  return {
+    badge: "border-sky-400/60 bg-sky-500/10 text-sky-100",
+    border: "border-sky-500/25",
+    progress: "bg-sky-400",
+  };
+}
+
+function priorityLabel(priority: number | null | undefined): string | null {
+  if (priority === 1) return "Urgent";
+  if (priority === 2) return "High";
+  if (priority === 3) return "Normal";
+  if (priority === 4) return "Low";
+  return null;
+}
+
+function priorityChip(priority: number | null | undefined): string {
+  if (priority === 1) {
+    return "border-red-500/50 bg-red-500/15 text-red-200";
+  }
+  if (priority === 2) {
+    return "border-orange-500/50 bg-orange-500/15 text-orange-200";
+  }
+  if (priority === 4) {
+    return "border-slate-500/40 bg-slate-500/10 text-slate-300";
+  }
+  return "border-white/10 bg-white/5 text-neutral-300";
+}
+
+function formatMoney(value: number | null | undefined): string {
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 2,
+  }).format(Number(value ?? 0));
+}
 
 export default function BillingPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -75,6 +118,7 @@ export default function BillingPage(): JSX.Element {
     }
 
     const { data, error } = await query;
+
     if (error) {
       setErr(error.message);
       setRows([]);
@@ -82,18 +126,30 @@ export default function BillingPage(): JSX.Element {
       return;
     }
 
+    const baseRows = (data ?? []) as Row[];
     const qlc = q.trim().toLowerCase();
+
     const filtered =
       qlc.length === 0
-        ? (data as Row[])
-        : (data as Row[]).filter((r) => {
-            const name = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
+        ? baseRows
+        : baseRows.filter((r) => {
+            const name = [
+              r.customers?.first_name ?? "",
+              r.customers?.last_name ?? "",
+            ]
               .join(" ")
               .toLowerCase();
+
             const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
-            const ymm = [r.vehicles?.year ?? "", r.vehicles?.make ?? "", r.vehicles?.model ?? ""]
+
+            const ymm = [
+              r.vehicles?.year ?? "",
+              r.vehicles?.make ?? "",
+              r.vehicles?.model ?? "",
+            ]
               .join(" ")
               .toLowerCase();
+
             const cid = (r.custom_id ?? "").toLowerCase();
 
             return (
@@ -113,35 +169,79 @@ export default function BillingPage(): JSX.Element {
     void load();
   }, [load]);
 
-  const handleAiReview = useCallback(async (id: string) => {
-    const res = await fetch(`/api/work-orders/${id}/ai-review`, { method: "POST" });
-    const j = (await res.json()) as {
-      ok: boolean;
-      issues: { kind: string; lineId?: string; message: string }[];
-      suggested?: unknown;
+  useEffect(() => {
+    const ch = supabase
+      .channel("billing:list")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_orders" },
+        () => {
+          setTimeout(() => void load(), 60);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        /* ignore */
+      }
     };
+  }, [supabase, load]);
 
-    if (!res.ok || !j.ok) {
-      alert(
-        j.issues?.length
-          ? `Found issues:\n- ${j.issues.map((i) => i.message).join("\n- ")}`
-          : "AI review failed.",
-      );
-      return;
+  const handleAiReview = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/work-orders/${id}/ai-review`, {
+        method: "POST",
+      });
+
+      const j = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            issues?: { kind: string; lineId?: string; message: string }[];
+            error?: string;
+          }
+        | null;
+
+      if (!res.ok || !j?.ok) {
+        const msg =
+          j?.issues?.length
+            ? `Found issues: ${j.issues.map((i) => i.message).join(" • ")}`
+            : j?.error || "AI review failed.";
+        toast.error(msg);
+        return;
+      }
+
+      toast.success("AI review passed. You can mark ready to invoice.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "AI review failed.";
+      toast.error(msg);
     }
-
-    alert("AI review passed. You can mark Ready to Invoice.");
   }, []);
 
   const handleMarkReady = useCallback(
     async (id: string) => {
-      const res = await fetch(`/api/work-orders/${id}/mark-ready`, { method: "POST" });
-      const j = (await res.json()) as { ok: boolean; error?: string };
-      if (!res.ok || !j.ok) {
-        alert(j.error ?? "Failed to mark ready.");
-        return;
+      try {
+        const res = await fetch(`/api/work-orders/${id}/mark-ready`, {
+          method: "POST",
+        });
+
+        const j = (await res.json().catch(() => null)) as
+          | { ok?: boolean; error?: string }
+          | null;
+
+        if (!res.ok || !j?.ok) {
+          toast.error(j?.error ?? "Failed to mark ready.");
+          return;
+        }
+
+        toast.success("Marked ready to invoice.");
+        await load();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to mark ready.";
+        toast.error(msg);
       }
-      void load();
     },
     [load],
   );
@@ -149,148 +249,344 @@ export default function BillingPage(): JSX.Element {
   const handleInvoice = useCallback(
     async (id: string) => {
       if (!confirm("Create and email a Stripe invoice to the customer?")) return;
-      const res = await fetch(`/api/work-orders/${id}/invoice`, { method: "POST" });
-      const j = (await res.json()) as { ok: boolean; stripeInvoiceId?: string; error?: string };
-      if (!res.ok || !j.ok) {
-        alert(j.error ?? "Failed to create invoice.");
-        return;
+
+      try {
+        const res = await fetch(`/api/work-orders/${id}/invoice`, {
+          method: "POST",
+        });
+
+        const j = (await res.json().catch(() => null)) as
+          | { ok?: boolean; stripeInvoiceId?: string; error?: string }
+          | null;
+
+        if (!res.ok || !j?.ok) {
+          toast.error(j?.error ?? "Failed to create invoice.");
+          return;
+        }
+
+        toast.success("Invoice created and emailed.");
+        await load();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to create invoice.";
+        toast.error(msg);
       }
-      alert("Invoice created and emailed.");
-      void load();
     },
     [load],
   );
 
+  const total = rows.length;
+  const completedCount = useMemo(
+    () =>
+      rows.filter(
+        (r) => String(r.status ?? "").toLowerCase().replaceAll(" ", "_") === "completed",
+      ).length,
+    [rows],
+  );
+
+  const readyCount = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          String(r.status ?? "").toLowerCase().replaceAll(" ", "_") ===
+          "ready_to_invoice",
+      ).length,
+    [rows],
+  );
+
+  const invoicedCount = useMemo(
+    () =>
+      rows.filter(
+        (r) => String(r.status ?? "").toLowerCase().replaceAll(" ", "_") === "invoiced",
+      ).length,
+    [rows],
+  );
+
   return (
-    <div className="mx-auto max-w-6xl p-6 text-white">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Operations</div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--accent-copper-light)]">
-            Billing
-          </h1>
+    <div className="mx-auto max-w-7xl space-y-6 bg-background px-4 py-6 text-foreground">
+      <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.12),rgba(0,0,0,0.92)_38%,rgba(2,6,23,0.98)_100%)] shadow-[0_0_60px_rgba(0,0,0,0.8)]">
+        <div className="border-b border-white/8 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+                Operations
+              </div>
+              <h1
+                className="mt-2 text-3xl text-white"
+                style={{ fontFamily: "var(--font-blackops)" }}
+              >
+                Billing
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm text-neutral-300">
+                Review completed work, move it to ready to invoice, and send invoices
+                without leaving the operations flow.
+              </p>
+
+              {!loading && !err ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                    Total: <span className="text-white">{total}</span>
+                  </div>
+                  <div className="rounded-full border border-sky-500/20 bg-sky-500/5 px-3 py-1 text-[11px] font-semibold text-sky-100">
+                    Completed: <span className="text-white">{completedCount}</span>
+                  </div>
+                  <div className="rounded-full border border-amber-500/20 bg-amber-500/5 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                    Ready: <span className="text-white">{readyCount}</span>
+                  </div>
+                  <div className="rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1 text-[11px] font-semibold text-emerald-100">
+                    Invoiced: <span className="text-white">{invoicedCount}</span>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href="/work-orders/view"
+                className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
+              >
+                Open work orders
+              </Link>
+
+              <Link
+                href="/work-orders/quote-review"
+                className="inline-flex items-center justify-center rounded-full border border-[var(--accent-copper-light)]/35 bg-[var(--accent-copper)]/12 px-4 py-2 text-sm font-semibold text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/20"
+              >
+                Quote review
+              </Link>
+            </div>
+          </div>
         </div>
 
-        <div className="ml-auto flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <div className="glass-card flex items-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-2">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void load()}
-              placeholder="Search id, custom id, name, plate, YMM…"
-              className="w-full bg-transparent text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none sm:w-72"
-            />
-          </div>
+        <div className="px-5 py-4 sm:px-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="flex-1">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void load()}
+                placeholder="Search work order, custom id, customer, plate, YMM..."
+                className={INPUT_DARK}
+              />
+            </div>
 
-          <div className="glass-card flex items-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-2">
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as Status | "")}
-              className="w-full bg-transparent text-sm text-neutral-100 focus:outline-none"
-              aria-label="Filter by status"
-            >
-              <option value="">All (completed → invoiced)</option>
-              <option value="completed">Completed</option>
-              <option value="ready_to_invoice">Ready to invoice</option>
-              <option value="invoiced">Invoiced</option>
-            </select>
-          </div>
+            <div className="flex gap-3 lg:w-auto">
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as Status | "")}
+                className={SELECT_DARK + " min-w-[220px]"}
+                aria-label="Filter billing status"
+              >
+                <option value="">All billing stages</option>
+                <option value="completed">Completed</option>
+                <option value="ready_to_invoice">Ready to invoice</option>
+                <option value="invoiced">Invoiced</option>
+              </select>
 
-          <button onClick={() => void load()} className={btnNeutral}>
-            Refresh
-          </button>
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-white transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/10"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
       {err ? (
-        <div className="mb-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+        <div className="rounded-2xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
       ) : null}
 
       {loading ? (
-        <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-300">
-          Loading…
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-64 animate-pulse rounded-[24px] border border-white/10 bg-white/5"
+            />
+          ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-400">
-          Nothing here yet.
+        <div className="rounded-[24px] border border-white/10 bg-black/25 p-6 text-sm text-neutral-400">
+          No billing work orders match your current filters.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((r) => {
             const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
+            const accent = stageAccent(r.status);
 
             const customerName = r.customers
-              ? [r.customers.first_name ?? "", r.customers.last_name ?? ""].filter(Boolean).join(" ") || "—"
-              : "—";
+              ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
+                  .filter(Boolean)
+                  .join(" ") || "No customer"
+              : "No customer";
 
             const vehicleText = r.vehicles
-              ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""}`.trim().replace(/\s+/g, " ")
-              : "—";
+              ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""}`
+                  .trim()
+                  .replace(/\s+/g, " ") || "No vehicle"
+              : "No vehicle";
 
             const plateText = r.vehicles?.license_plate ? `(${r.vehicles.license_plate})` : "";
+            const priorityText = priorityLabel(r.priority);
+            const statusLower = String(r.status ?? "").toLowerCase().replaceAll(" ", "_");
+
+            const laborTotal = Number(r.labor_total ?? 0);
+            const partsTotal = Number(r.parts_total ?? 0);
+            const invoiceTotal =
+              Number(r.invoice_total ?? 0) > 0
+                ? Number(r.invoice_total ?? 0)
+                : laborTotal + partsTotal;
+
+            const progressValue =
+              statusLower === "invoiced"
+                ? 100
+                : statusLower === "ready_to_invoice"
+                  ? 78
+                  : 52;
 
             return (
               <div
                 key={r.id}
-                className="flex flex-wrap items-center gap-3 border-b border-white/5 px-4 py-3 last:border-b-0"
+                className={[
+                  "overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] shadow-[0_0_40px_rgba(0,0,0,0.55)]",
+                  accent.border,
+                ].join(" ")}
               >
-                <div className="w-28 text-xs text-neutral-400">
-                  {r.updated_at ? format(new Date(r.updated_at), "PP") : "—"}
+                <div className="border-b border-white/8 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={href}
+                          className="text-2xl font-semibold text-white hover:text-[var(--accent-copper-light)]"
+                        >
+                          {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
+                        </Link>
+
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${accent.badge}`}
+                        >
+                          {String(r.status ?? "completed").replaceAll("_", " ")}
+                        </span>
+
+                        {priorityText ? (
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${priorityChip(
+                              r.priority,
+                            )}`}
+                          >
+                            {priorityText}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 text-base font-semibold text-white">
+                        {customerName}
+                      </div>
+                      <div className="mt-1 text-sm text-neutral-300">
+                        {vehicleText} {plateText}
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+                        Updated
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-white">
+                        {r.updated_at ? format(new Date(r.updated_at), "PP") : "—"}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="px-4 py-4">
+                  <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                    <span>Billing progress</span>
+                    <span>{progressValue}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className={`h-full rounded-full ${accent.progress}`}
+                      style={{ width: `${progressValue}%` }}
+                    />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                        Labor
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-white">
+                        {formatMoney(laborTotal)}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                        Parts
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-white">
+                        {formatMoney(partsTotal)}
+                      </div>
+                    </div>
+
+                    <div className="col-span-2 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                        Invoice total
+                      </div>
+                      <div className="mt-1 text-lg font-semibold text-[var(--accent-copper-light)]">
+                        {formatMoney(invoiceTotal)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <Link
                       href={href}
-                      className="font-semibold text-neutral-100 underline decoration-white/10 underline-offset-4 hover:decoration-[var(--accent-copper-light)]"
+                      className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15"
                     >
-                      {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
+                      Open WO
                     </Link>
 
-                    {/* keep ONE id display only (no duplicate “#” chips) */}
-                    <span className={chip(r.status)}>
-                      {String(r.status ?? "completed").replaceAll("_", " ")}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleAiReview(r.id)}
+                      className="rounded-full border border-sky-500/60 bg-sky-500/10 px-3 py-1.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20"
+                      title="Run AI checklist"
+                    >
+                      AI Review
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleMarkReady(r.id)}
+                      disabled={r.status === "invoiced" || r.status === "ready_to_invoice"}
+                      className="rounded-full border border-amber-400/70 bg-amber-500/10 px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Mark ready to invoice"
+                    >
+                      Mark Ready
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleInvoice(r.id)}
+                      disabled={r.status === "invoiced"}
+                      className="rounded-full border border-emerald-400/70 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Create and email Stripe invoice"
+                    >
+                      Invoice
+                    </button>
                   </div>
-
-                  <div className="truncate text-sm text-neutral-300">
-                    {customerName} • {vehicleText} {plateText}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => void handleAiReview(r.id)}
-                    className={btnInfo}
-                    title="Run AI checklist"
-                  >
-                    AI Review
-                  </button>
-
-                  <button
-                    onClick={() => void handleMarkReady(r.id)}
-                    className={btnWarn + " disabled:opacity-50"}
-                    disabled={r.status === "invoiced" || r.status === "ready_to_invoice"}
-                    title="Mark as Ready to invoice"
-                  >
-                    Mark Ready
-                  </button>
-
-                  <button
-                    onClick={() => void handleInvoice(r.id)}
-                    className={btnOk + " disabled:opacity-50"}
-                    disabled={r.status === "invoiced"}
-                    title="Create & email Stripe invoice"
-                  >
-                    Invoice
-                  </button>
                 </div>
               </div>
             );
           })}
-        </div>
+        </section>
       )}
     </div>
   );
