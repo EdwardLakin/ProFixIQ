@@ -1,3 +1,4 @@
+
 // /features/work-orders/app/work-orders/create/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
@@ -2003,7 +2004,6 @@ export default function CreateWorkOrderPage() {
                 </div>
               )}
             </section>
-
 
             {/* Footer actions */}
             <div className="flex flex-wrap items-center gap-3">
