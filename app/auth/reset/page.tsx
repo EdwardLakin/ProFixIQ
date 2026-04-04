@@ -1,83 +1,130 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
+
+function parseHashParams(hash: string): URLSearchParams {
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  return new URLSearchParams(raw);
+}
 
 export default function AuthResetPage() {
   const router = useRouter();
-  const sp = useSearchParams();
-  const supabase = createClientComponentClient<Database>();
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+
+  const [message, setMessage] = useState("Preparing password reset…");
+  const [details, setDetails] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      // Make sure we have the updated session after the email link bounce
-      await supabase.auth.getSession();
+    let cancelled = false;
 
-      const redirect = sp.get("redirect");
-      const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
-      router.replace(`/auth/set-password${tail}`);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    async function run() {
+      try {
+        const code = searchParams.get("code")?.trim() ?? "";
+        const next = searchParams.get("redirect")?.trim() || "/auth/set-password";
+
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) {
+            if (!cancelled) {
+              setMessage("Reset link could not be verified.");
+              setDetails(error.message);
+            }
+            return;
+          }
+
+          if (!cancelled) {
+            router.replace(next);
+          }
+          return;
+        }
+
+        const hashParams =
+          typeof window !== "undefined"
+            ? parseHashParams(window.location.hash)
+            : new URLSearchParams();
+
+        const accessToken = hashParams.get("access_token")?.trim() ?? "";
+        const refreshToken = hashParams.get("refresh_token")?.trim() ?? "";
+        const type = hashParams.get("type")?.trim() ?? "";
+
+        if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          if (error) {
+            if (!cancelled) {
+              setMessage("Reset link could not be verified.");
+              setDetails(error.message);
+            }
+            return;
+          }
+
+          if (!cancelled) {
+            router.replace(next);
+          }
+          return;
+        }
+
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          if (!cancelled) {
+            setMessage("Unable to validate reset session.");
+            setDetails(error.message);
+          }
+          return;
+        }
+
+        if (session) {
+          if (!cancelled) {
+            router.replace(next);
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setMessage(
+            type === "recovery"
+              ? "Recovery session was not created."
+              : "This reset link is missing required recovery information.",
+          );
+          setDetails("Request a new reset email and try again.");
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown reset error";
+
+        if (!cancelled) {
+          setMessage("Password reset failed.");
+          setDetails(msg);
+        }
+      }
+    }
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, searchParams, supabase]);
 
   return (
-    <div
-      className="
-        min-h-screen px-4 text-foreground
-        bg-background
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
-      "
-    >
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center py-8">
-        <div
-          className="
-            w-full rounded-3xl border
-            border-[color:var(--metal-border-soft,#1f2937)]
-            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.2),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
-            shadow-[0_32px_80px_rgba(0,0,0,0.95)]
-            px-6 py-7 sm:px-8 sm:py-9
-            text-center
-          "
-        >
-          <div
-            className="
-              inline-flex items-center gap-1 rounded-full border
-              border-[color:var(--metal-border-soft,#1f2937)]
-              bg-black/70
-              px-3 py-1 text-[11px]
-              uppercase tracking-[0.22em]
-              text-neutral-300
-            "
-          >
-            <span
-              className="text-[10px] font-semibold text-[var(--accent-copper-light)]"
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              ProFixIQ
-            </span>
-            <span className="h-1 w-1 rounded-full bg-[var(--accent-copper-light)]" />
-            <span>Password reset</span>
-          </div>
-
-          <h1
-            className="mt-3 text-2xl sm:text-3xl font-semibold text-white"
-            style={{ fontFamily: "var(--font-blackops), system-ui" }}
-          >
-            Preparing…
-          </h1>
-
-          <p className="mt-2 text-xs text-muted-foreground sm:text-sm">
-            One moment while we verify your reset session.
-          </p>
-
-          <div className="mt-5 text-[11px] text-neutral-500">
-            If this takes more than a few seconds, go back and open the reset
-            link again.
-          </div>
-        </div>
+    <main className="flex min-h-screen items-center justify-center bg-black px-6 py-10 text-white">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-neutral-950/80 p-6 shadow-2xl">
+        <h1 className="text-xl font-semibold text-white">Password reset</h1>
+        <p className="mt-3 text-sm text-neutral-300">{message}</p>
+        {details ? <p className="mt-2 text-xs text-red-300">{details}</p> : null}
       </div>
-    </div>
+    </main>
   );
 }

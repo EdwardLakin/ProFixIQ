@@ -1,98 +1,148 @@
-// app/api/stripe/portal/route.ts
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import Stripe from "stripe";
-import { cookies as nextCookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-});
+type ProfileScope = Pick<
+  DB["public"]["Tables"]["profiles"]["Row"],
+  "id" | "role" | "shop_id"
+>;
 
-function getBaseUrl(): string {
-  const site = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (site) return site.replace(/\/$/, "");
-  const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${vercel.replace(/\/$/, "")}`;
-  return "http://localhost:3000";
+type ShopScope = Pick<
+  DB["public"]["Tables"]["shops"]["Row"],
+  "id" | "email" | "shop_name" | "name" | "stripe_customer_id"
+>;
+
+const ALLOWED_ROLES = new Set(["owner", "admin", "manager"]);
+
+function mustEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || !value.trim()) {
+    throw new Error(`Missing required env: ${name}`);
+  }
+  return value;
 }
 
-type Payload = { shopId?: string };
+function getSiteUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    process.env.SHOP_BOOST_APP_BASE_URL?.trim() ||
+    "http://localhost:3000"
+  ).replace(/\/+$/, "");
+}
 
-type ShopRow = {
-  id: string;
-  stripe_customer_id: string | null;
-};
+function getShopDisplayName(shop: { shop_name?: string | null; name?: string | null }): string {
+  return (shop.shop_name ?? shop.name ?? "").trim() || "ProFixIQ Shop";
+}
 
-type ProfileRow = {
-  id: string;
-  shop_id: string | null;
-  organization_id: string | null;
-};
+async function createCustomerIfMissing(
+  stripe: Stripe,
+  supabase: ReturnType<typeof createRouteHandlerClient<DB>>,
+  shop: ShopScope,
+): Promise<string> {
+  const existingCustomerId = (shop.stripe_customer_id ?? "").trim();
+  if (existingCustomerId) return existingCustomerId;
 
-export async function POST(req: Request) {
+  const customer = await stripe.customers.create({
+    email: shop.email ?? undefined,
+    name: getShopDisplayName(shop),
+    metadata: {
+      shop_id: shop.id,
+      source: "profixiq",
+    },
+  });
+
+  const { error: updateError } = await supabase
+    .from("shops")
+    .update({
+      stripe_customer_id: customer.id,
+    } as DB["public"]["Tables"]["shops"]["Update"])
+    .eq("id", shop.id);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  return customer.id;
+}
+
+export async function POST() {
   try {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
-    }
+    const stripe = new Stripe(mustEnv("STRIPE_SECRET_KEY"), {
+      apiVersion: "2025-02-24.acacia",
+    });
 
-    const supabase = createRouteHandlerClient<DB>({ cookies: nextCookies });
+    const supabase = createRouteHandlerClient<DB>({ cookies });
 
     const {
       data: { user },
-      error: uErr,
+      error: authError,
     } = await supabase.auth.getUser();
 
-    if (uErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const body = (await req.json().catch(() => null)) as Payload | null;
-    const shopId = body?.shopId ?? null;
-    if (!shopId) return NextResponse.json({ error: "Missing shopId" }, { status: 400 });
-
-    // Load profile scope
-    const { data: prof, error: pErr } = await supabase
-      .from("profiles")
-      .select("id, shop_id, organization_id")
-      .eq("id", user.id)
-      .maybeSingle<ProfileRow>();
-
-    if (pErr || !prof) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
-
-    // Load shop + enforce scope:
-    const { data: shop, error: sErr } = await supabase
-      .from("shops")
-      .select("id, stripe_customer_id, organization_id")
-      .eq("id", shopId)
-      .maybeSingle<ShopRow & { organization_id: string | null }>();
-
-    if (sErr || !shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 });
-
-    // Scope rule: allow if same shop OR same organization
-    const sameShop = prof.shop_id === shop.id;
-    const sameOrg =
-      prof.organization_id && shop.organization_id && prof.organization_id === shop.organization_id;
-
-    if (!sameShop && !sameOrg) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-    const customerId = shop.stripe_customer_id?.trim() ?? null;
-    if (!customerId || !customerId.startsWith("cus_")) {
-      return NextResponse.json({ error: "No Stripe customer found for this location" }, { status: 409 });
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const base = getBaseUrl();
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, role, shop_id")
+      .eq("id", user.id)
+      .maybeSingle<ProfileScope>();
 
-    const portal = await stripe.billingPortal.sessions.create({
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
+    if (!profile?.shop_id) {
+      return NextResponse.json({ error: "No shop found for this account." }, { status: 400 });
+    }
+
+    const role = String(profile.role ?? "").trim().toLowerCase();
+    if (!ALLOWED_ROLES.has(role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { data: shop, error: shopError } = await supabase
+      .from("shops")
+      .select("id, email, shop_name, name, stripe_customer_id")
+      .eq("id", profile.shop_id)
+      .maybeSingle<ShopScope>();
+
+    if (shopError) {
+      return NextResponse.json({ error: shopError.message }, { status: 500 });
+    }
+
+    if (!shop) {
+      return NextResponse.json({ error: "Shop not found." }, { status: 404 });
+    }
+
+    const customerId = await createCustomerIfMissing(stripe, supabase, shop);
+    const returnUrl = `${getSiteUrl()}/dashboard/owner/settings#billing`;
+
+    const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: `${base}/dashboard/owner/settings`,
+      return_url: returnUrl,
     });
 
-    return NextResponse.json({ url: portal.url }, { status: 200 });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({
+      ok: true,
+      customerId,
+      url: session.url,
+      returnUrl,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to create billing portal session.";
+
+    console.error("[stripe/portal] error", error);
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

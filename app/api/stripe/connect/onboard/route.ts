@@ -1,150 +1,163 @@
-//app/api/stripe/connect/onboard/route.ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import Stripe from "stripe";
-import { cookies as nextCookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-});
+type ProfileScope = Pick<
+  DB["public"]["Tables"]["profiles"]["Row"],
+  "id" | "role" | "shop_id"
+>;
 
-const ADMIN_ROLES = new Set<string>(["owner", "admin", "manager"]);
+type ShopScope = Pick<
+  DB["public"]["Tables"]["shops"]["Row"],
+  "id" | "country" | "timezone" | "shop_name" | "name" | "stripe_account_id"
+>;
 
-function getBaseUrl(): string {
-  const site = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (site) return site.replace(/\/$/, "");
-  const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${vercel.replace(/\/$/, "")}`;
-  return "http://localhost:3000";
+const ALLOWED_ROLES = new Set(["owner", "admin", "manager"]);
+
+function mustEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || !value.trim()) {
+    throw new Error(`Missing required env: ${name}`);
+  }
+  return value;
 }
 
-type Payload = {
-  shopId?: string;
-};
+function normalizeCountry(value: string | null | undefined): "US" | "CA" {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase() === "CA"
+    ? "CA"
+    : "US";
+}
 
-type ProfileScope = {
-  role: string | null;
-  shop_id: string | null;
-};
+function getSiteUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    process.env.SHOP_BOOST_APP_BASE_URL?.trim() ||
+    "http://localhost:3000"
+  ).replace(/\/+$/, "");
+}
 
-export async function POST(req: Request) {
+function getShopDisplayName(shop: { shop_name?: string | null; name?: string | null }): string {
+  return (shop.shop_name ?? shop.name ?? "").trim() || "ProFixIQ Shop";
+}
+
+export async function POST() {
   try {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
-    }
+    const stripe = new Stripe(mustEnv("STRIPE_SECRET_KEY"), {
+      apiVersion: "2025-02-24.acacia",
+    });
 
-    const supabase = createRouteHandlerClient<DB>({ cookies: nextCookies });
+    const supabase = createRouteHandlerClient<DB>({ cookies });
 
     const {
       data: { user },
-      error: userErr,
+      error: authError,
     } = await supabase.auth.getUser();
 
-    if (userErr || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await req.json().catch(() => null)) as Payload | null;
-    const shopId = body?.shopId ?? null;
-    if (!shopId) {
-      return NextResponse.json({ error: "Missing shopId" }, { status: 400 });
-    }
-
-    const { data: prof, error: profErr } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("role, shop_id")
+      .select("id, role, shop_id")
       .eq("id", user.id)
       .maybeSingle<ProfileScope>();
 
-    if (profErr) return NextResponse.json({ error: profErr.message }, { status: 500 });
-    if (!prof?.shop_id || prof.shop_id !== shopId) {
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
+    if (!profile?.shop_id) {
+      return NextResponse.json({ error: "No shop found for this account." }, { status: 400 });
+    }
+
+    const role = String(profile.role ?? "").trim().toLowerCase();
+    if (!ALLOWED_ROLES.has(role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const role = String(prof.role ?? "").toLowerCase();
-    if (!ADMIN_ROLES.has(role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // Load shop
-    const { data: shop, error: shopErr } = await supabase
+    const { data: shop, error: shopError } = await supabase
       .from("shops")
-      .select("id, email, phone_number, business_name, shop_name, name, stripe_account_id, stripe_default_currency")
-      .eq("id", shopId)
-      .maybeSingle<{
-        id: string;
-        email: string | null;
-        phone_number: string | null;
-        business_name: string | null;
-        shop_name: string | null;
-        name: string | null;
-        stripe_account_id: string | null;
-        stripe_default_currency: string | null;
-      }>();
+      .select("id, country, timezone, shop_name, name, stripe_account_id")
+      .eq("id", profile.shop_id)
+      .maybeSingle<ShopScope>();
 
-    if (shopErr) return NextResponse.json({ error: shopErr.message }, { status: 500 });
-    if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 });
+    if (shopError) {
+      return NextResponse.json({ error: shopError.message }, { status: 500 });
+    }
 
-    const displayName =
-      shop.shop_name?.trim() ||
-      shop.name?.trim() ||
-      shop.business_name?.trim() ||
-      "ProFixIQ Shop";
+    if (!shop) {
+      return NextResponse.json({ error: "Shop not found." }, { status: 404 });
+    }
 
-    let accountId = shop.stripe_account_id?.trim() ?? null;
+    const siteUrl = getSiteUrl();
+    const settingsUrl = `${siteUrl}/dashboard/owner/settings#billing`;
+    const country = normalizeCountry(shop.country);
+    const displayName = getShopDisplayName(shop);
 
-    // Create account if missing
-    if (!accountId) {
+    let stripeAccountId = (shop.stripe_account_id ?? "").trim();
+    let created = false;
+
+    if (!stripeAccountId) {
       const account = await stripe.accounts.create({
         type: "express",
-        country: "US", // Stripe Connect country of account holder — keep US default unless you plan CA accounts.
-        email: shop.email ?? undefined,
+        country,
+        business_type: "company",
         business_profile: {
           name: displayName,
-          product_description: "Auto repair services",
-        },
-        capabilities: {
-          card_payments: { requested: true },
-          transfers: { requested: true },
         },
         metadata: {
-          shop_id: shopId,
-        },
-        settings: {
-          payouts: {
-            schedule: { interval: "daily" },
-          },
+          shop_id: shop.id,
+          source: "profixiq",
         },
       });
 
-      accountId = account.id;
+      stripeAccountId = account.id;
+      created = true;
 
-      const { error: updErr } = await supabase
+      const { error: updateError } = await supabase
         .from("shops")
-        .update({ stripe_account_id: accountId } as DB["public"]["Tables"]["shops"]["Update"])
-        .eq("id", shopId);
+        .update({
+          stripe_account_id: stripeAccountId,
+        } as DB["public"]["Tables"]["shops"]["Update"])
+        .eq("id", shop.id);
 
-      if (updErr) {
-        return NextResponse.json({ error: updErr.message }, { status: 500 });
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 500 });
       }
     }
 
-    const base = getBaseUrl();
-
-    const link = await stripe.accountLinks.create({
-      account: accountId,
-      refresh_url: `${base}/dashboard/owner/settings?stripe=refresh`,
-      return_url: `${base}/dashboard/owner/settings?stripe=return`,
+    const accountLink = await stripe.accountLinks.create({
+      account: stripeAccountId,
+      refresh_url: settingsUrl,
+      return_url: settingsUrl,
       type: "account_onboarding",
     });
 
-    return NextResponse.json({ url: link.url }, { status: 200 });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({
+      ok: true,
+      created,
+      stripeAccountId,
+      onboardingUrl: accountLink.url,
+      settingsUrl,
+      country,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to create Stripe onboarding link.";
+
+    console.error("[stripe/connect/onboard] error", error);
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

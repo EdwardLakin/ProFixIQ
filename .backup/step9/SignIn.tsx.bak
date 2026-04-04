@@ -65,7 +65,7 @@ export default function AuthPage() {
     }, 60);
   };
 
-  // If already signed in, route to set-password / dashboard / mobile / onboarding
+  // If already signed in, route to dashboard / mobile / onboarding
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -74,14 +74,9 @@ export default function AuthPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("completed_onboarding, shop_id, must_change_password")
+        .select("completed_onboarding, shop_id")
         .eq("id", session.user.id)
         .maybeSingle();
-
-      if (profile?.must_change_password) {
-        await go("/auth/set-password");
-        return;
-      }
 
       const hasShop = !!profile?.shop_id;
       const isOnboarded = !!profile?.completed_onboarding || hasShop;
@@ -137,15 +132,9 @@ export default function AuthPage() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("completed_onboarding, shop_id, must_change_password")
+      .select("completed_onboarding, shop_id")
       .eq("id", u.user.id)
       .maybeSingle();
-
-    if (profile?.must_change_password) {
-      await go("/auth/set-password");
-      setLoading(false);
-      return;
-    }
 
     const hasShop = !!profile?.shop_id;
     const isOnboarded = !!profile?.completed_onboarding || hasShop;

@@ -50,7 +50,7 @@ type StripeSubStatus =
 
 type ShopBillingScope = Pick<
   Database["public"]["Tables"]["shops"]["Row"],
-  "stripe_subscription_status" | "stripe_trial_end" | "stripe_current_period_end" | "stripe_account_id"
+  "stripe_subscription_status" | "stripe_trial_end" | "stripe_current_period_end"
 >;
 
 type OrgScope = Pick<
@@ -177,10 +177,6 @@ export default function OwnerSettingsPage() {
   const [subStatus, setSubStatus] = useState<StripeSubStatus>("unknown");
   const [trialEndIso, setTrialEndIso] = useState<string | null>(null);
   const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
-  const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
-  const [connectLoading, setConnectLoading] = useState(false);
-  const [portalLoading, setPortalLoading] = useState(false);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   const trialDaysLeft = daysUntil(trialEndIso);
   const periodDaysLeft = daysUntil(periodEndIso);
@@ -409,11 +405,10 @@ try {
     // billing fields
     const { data: billing } = await supabase
       .from("shops")
-      .select("stripe_subscription_status, stripe_trial_end, stripe_current_period_end, stripe_account_id")
+      .select("stripe_subscription_status, stripe_trial_end, stripe_current_period_end")
       .eq("id", sid)
       .maybeSingle<ShopBillingScope>();
 
-    setStripeAccountId((billing?.stripe_account_id as string | null) ?? null);
     setSubStatus(parseStripeStatus(billing?.stripe_subscription_status));
     setTrialEndIso((billing?.stripe_trial_end as string | null) ?? null);
     setPeriodEndIso((billing?.stripe_current_period_end as string | null) ?? null);
@@ -737,92 +732,6 @@ try {
 
 
 
-  const openStripeConnect = async () => {
-    if (!guardUnlock()) return;
-
-    try {
-      setConnectLoading(true);
-
-      const res = await fetch("/api/stripe/connect/onboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const j = await res.json().catch(
-        () => ({} as { ok?: boolean; error?: string; onboardingUrl?: string }),
-      );
-
-      if (!res.ok || !j?.ok || !j?.onboardingUrl) {
-        toast.error(j?.error || "Failed to start Stripe onboarding");
-        return;
-      }
-
-      window.location.href = j.onboardingUrl;
-    } finally {
-      setConnectLoading(false);
-    }
-  };
-
-  const openStripePortal = async () => {
-    if (!guardUnlock()) return;
-
-    try {
-      setPortalLoading(true);
-
-      const res = await fetch("/api/stripe/portal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const j = await res.json().catch(
-        () => ({} as { ok?: boolean; error?: string; url?: string }),
-      );
-
-      if (!res.ok || !j?.ok || !j?.url) {
-        toast.error(j?.error || "Failed to open billing portal");
-        return;
-      }
-
-      window.location.href = j.url;
-    } finally {
-      setPortalLoading(false);
-    }
-  };
-
-  const startSubscriptionCheckout = async () => {
-    if (!guardUnlock()) return;
-
-    try {
-      setCheckoutLoading(true);
-
-      const res = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          planKey: plan === "unknown" ? "starter" : plan,
-          shopId,
-          successPath: "/dashboard/owner/settings#billing",
-          cancelPath: "/dashboard/owner/settings#billing",
-          enableTrial: subStatus !== "active" && subStatus !== "trialing",
-        }),
-      });
-
-      const j = await res.json().catch(
-        () => ({} as { ok?: boolean; error?: string; details?: string; url?: string }),
-      );
-
-      if (!res.ok || !j?.ok || !j?.url) {
-        toast.error(j?.error || j?.details || "Failed to start checkout");
-        return;
-      }
-
-      window.location.href = j.url;
-    } finally {
-      setCheckoutLoading(false);
-    }
-  };
-
-
   const lockOwnerSettings = async () => {
     const res = await fetch("/api/shop/owner-pin/clear", { method: "POST" });
     const j = await res.json().catch(() => ({} as { error?: string }));
@@ -1139,18 +1048,11 @@ try {
           <div className="flex items-center gap-2">{billingPill}</div>
         </div>
 
-        <div className="grid gap-2 md:grid-cols-4 text-sm">
+        <div className="grid gap-2 md:grid-cols-3 text-sm">
           <div className="rounded-lg border border-white/10 bg-black/25 p-3">
             <div className="text-[11px] text-neutral-400">Status</div>
             <div className="mt-1 text-sm font-semibold text-neutral-100">
               {String(subStatus).toUpperCase()}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-            <div className="text-[11px] text-neutral-400">Stripe Connect</div>
-            <div className="mt-1 text-sm font-semibold text-neutral-100">
-              {stripeAccountId ? "Connected" : "Not connected"}
             </div>
           </div>
 
@@ -1166,47 +1068,6 @@ try {
             <div className="mt-1 text-sm font-semibold text-neutral-100">
               {formatDate(periodEndIso)}
             </div>
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-[1.2fr_1fr]">
-          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-            <div className="text-[11px] text-neutral-400">Connected payout account</div>
-            <div className="mt-1 break-all text-sm font-semibold text-neutral-100">
-              {stripeAccountId || "No Stripe Connect account linked yet"}
-            </div>
-            <p className="mt-2 text-[11px] text-neutral-400">
-              Connect is used for shop payment onboarding. Billing portal manages the ProFixIQ subscription for this location.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-black/25 p-3">
-            <Button
-              onClick={openStripeConnect}
-              disabled={!isUnlocked || connectLoading}
-            >
-              {connectLoading
-                ? "Opening Stripe..."
-                : stripeAccountId
-                ? "Resume Stripe setup"
-                : "Connect Stripe"}
-            </Button>
-
-            <Button
-              variant="secondary"
-              onClick={startSubscriptionCheckout}
-              disabled={!isUnlocked || checkoutLoading}
-            >
-              {checkoutLoading ? "Opening checkout..." : "Open subscription checkout"}
-            </Button>
-
-            <Button
-              variant="secondary"
-              onClick={openStripePortal}
-              disabled={!isUnlocked || portalLoading}
-            >
-              {portalLoading ? "Opening portal..." : "Open billing portal"}
-            </Button>
           </div>
         </div>
       </section>
