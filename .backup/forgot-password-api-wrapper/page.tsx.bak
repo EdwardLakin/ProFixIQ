@@ -1,25 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 type Status = "idle" | "sending" | "sent" | "error";
-
-type ResetResponse = {
-  ok?: boolean;
-  message?: string;
-  error?: string;
-  details?: string;
-};
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const sp = useSearchParams();
+  const supabase = createClientComponentClient<Database>();
 
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const origin = useMemo(() => {
+    if (typeof window !== "undefined") return window.location.origin;
+    if (process.env.NEXT_PUBLIC_SITE_URL) {
+      return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
+    }
+    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+    return "http://localhost:3000";
+  }, []);
+
+  const emailRedirectTo = useMemo(() => {
+    const redirect = sp.get("redirect");
+    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
+    return `${origin}/auth/reset${tail}`;
+  }, [origin, sp]);
 
   const goBack = () => {
     const redirect = sp.get("redirect");
@@ -42,25 +53,17 @@ export default function ForgotPasswordPage() {
     }
 
     try {
-      const res = await fetch("/api/auth/send-reset", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: trimmed,
-        }),
+      const { error: err } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo: emailRedirectTo,
       });
 
-      const data = (await res.json().catch(() => ({}))) as ResetResponse;
-
-      if (!res.ok || !data?.ok) {
-        setError(data?.error || data?.details || "Unable to send reset email.");
+      if (err) {
+        setError(err.message || "Unable to send reset email.");
         setStatus("error");
         return;
       }
 
-      setNotice(data.message || "Reset email sent. Check your inbox.");
+      setNotice(`Reset email sent. Redirect: ${emailRedirectTo}`);
       setStatus("sent");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to send reset email.");
