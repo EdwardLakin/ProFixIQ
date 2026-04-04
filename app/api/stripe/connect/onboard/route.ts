@@ -53,7 +53,7 @@ function getShopDisplayName(shop: { shop_name?: string | null; name?: string | n
 export async function POST() {
   try {
     const stripe = new Stripe(mustEnv("STRIPE_SECRET_KEY"), {
-      apiVersion: "2025-02-24.acacia",
+      apiVersion: "2022-11-15",
     });
 
     const supabase = createRouteHandlerClient<DB>({ cookies });

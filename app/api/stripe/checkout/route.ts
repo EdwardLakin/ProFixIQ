@@ -118,7 +118,7 @@ async function createCustomerIfMissing(
 export async function POST(req: Request) {
   try {
     const stripe = new Stripe(mustEnv("STRIPE_SECRET_KEY"), {
-      apiVersion: "2025-02-24.acacia",
+      apiVersion: "2022-11-15",
     });
 
     const supabase = createRouteHandlerClient<DB>({ cookies });
