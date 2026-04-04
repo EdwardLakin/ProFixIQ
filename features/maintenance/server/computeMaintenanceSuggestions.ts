@@ -1,178 +1,131 @@
-// /features/maintenance/server/computeMaintenanceSuggestions.ts
-import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/types/supabase";
+import type {
+  DB,
+  MaintenanceRuleRow,
+  MaintenanceServiceRow,
+  MaintenanceSuggestionItem,
+  VehicleRow,
+  WorkOrderRow,
+} from "./types";
+import { getVehicleMaintenanceHistory } from "./getVehicleMaintenanceHistory";
+import { resolveMaintenanceMenuMap } from "./resolveMaintenanceMenuMap";
 
-type DB = Database;
+function parseMileage(value: string | number | null | undefined): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
 
-export type MaintenanceSuggestionItem = {
-  name: string;
-  serviceCode: string;
-  laborHours: number;
-  jobType: "diagnosis" | "repair" | "maintenance" | "tech-suggested";
-  notes: string;
-  aiComplaint?: string;
-  aiCause?: string;
-  aiCorrection?: string;
-};
-
-type MaintenanceServiceRow = {
-  code: string;
-  label: string;
-  default_job_type: string | null;
-  default_labor_hours: number | null;
-  default_notes: string | null;
-};
-
-type MaintenanceRuleRow = {
-  id: string;
-  service_code: string;
-  make: string | null;
-  model: string | null;
-  year_from: number | null;
-  year_to: number | null;
-  engine_family: string | null;
-  distance_km_normal: number | null;
-  distance_km_severe: number | null;
-  time_months_normal: number | null;
-  time_months_severe: number | null;
-  first_due_km: number | null;
-  first_due_months: number | null;
-  is_critical: boolean;
-};
-
-type ServiceHistory = {
-  lastMileage: number | null;
-  lastDate: string | null;
-};
-
-type VehicleRow = {
-  id: string;
-  year: number | null;
-  make: string | null;
-  model: string | null;
-  mileage: string | null; // existing schema
-  engine_family: string | null;
-};
-
-type WorkOrderRow = {
-  id: string;
-  vehicle_id: string | null;
-  odometer_km: number | null;
-  created_at: string;
-};
-
-type WorkOrderLineHistoryRow = {
-  service_code: string | null;
-  odometer_km: number | null;
-  created_at: string | null;
-};
-
-function norm(v: string | null | undefined): string {
-  return String(v ?? "").trim().toLowerCase();
-}
-
-function parseMileage(mileage: string | number | null | undefined): number | null {
-  if (mileage == null) return null;
-
-  if (typeof mileage === "number") {
-    return Number.isFinite(mileage) ? mileage : null;
-  }
-
-  // handle "123,456", "123 456", etc.
-  const cleaned = String(mileage).replace(/[, ]/g, "").trim();
+  const cleaned = value.replace(/,/g, "").trim();
   if (!cleaned) return null;
 
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function ruleAppliesToVehicle(rule: MaintenanceRuleRow, vehicle: VehicleRow): boolean {
-  const make = norm(vehicle.make);
-  const model = norm(vehicle.model);
-  const engineFamily = norm(vehicle.engine_family);
+function normalizeText(value: string | null | undefined): string | null {
+  const next = value?.trim().toLowerCase() ?? "";
+  return next.length ? next : null;
+}
+
+function ruleMatchesVehicle(
+  vehicle: VehicleRow,
+  rule: MaintenanceRuleRow,
+): boolean {
   const year = vehicle.year ?? null;
 
-  // If rule specifies a constraint, vehicle must have value and it must match
-  if (rule.make) {
-    const r = norm(rule.make);
-    if (!make) return false;
-    if (r !== make) return false;
-  }
+  if (year != null && rule.year_from != null && year < rule.year_from) return false;
+  if (year != null && rule.year_to != null && year > rule.year_to) return false;
 
-  if (rule.model) {
-    const r = norm(rule.model);
-    if (!model) return false;
-    if (r !== model) return false;
-  }
+  const vehicleMake = normalizeText(vehicle.make);
+  const ruleMake = normalizeText(rule.make);
+  if (ruleMake && vehicleMake && ruleMake !== vehicleMake) return false;
 
-  if (rule.engine_family) {
-    const r = norm(rule.engine_family);
-    if (!engineFamily) return false;
-    if (r !== engineFamily) return false;
-  }
+  const vehicleModel = normalizeText(vehicle.model);
+  const ruleModel = normalizeText(rule.model);
+  if (ruleModel && vehicleModel && ruleModel !== vehicleModel) return false;
 
-  if (year != null) {
-    if (rule.year_from != null && year < rule.year_from) return false;
-    if (rule.year_to != null && year > rule.year_to) return false;
-  }
+  const vehicleEngine = normalizeText(vehicle.engine_family);
+  const ruleEngine = normalizeText(rule.engine_family);
+  if (ruleEngine && vehicleEngine && ruleEngine !== vehicleEngine) return false;
 
   return true;
 }
 
-function isServiceDue(
+function monthsBetween(fromIso: string | null, now: Date): number | null {
+  if (!fromIso) return null;
+  const from = new Date(fromIso);
+  if (Number.isNaN(from.getTime())) return null;
+
+  return (now.getFullYear() - from.getFullYear()) * 12 + (now.getMonth() - from.getMonth());
+}
+
+function computeTriggerMileageKm(
+  historyMileageKm: number | null,
   rule: MaintenanceRuleRow,
-  ctx: {
-    mode: "normal" | "severe";
-    currentMileageKm: number | null;
-    currentAgeMonths: number | null;
-    history: ServiceHistory | null;
-  },
-): boolean {
-  const distanceInterval =
-    ctx.mode === "severe"
-      ? rule.distance_km_severe ?? rule.distance_km_normal
-      : rule.distance_km_normal;
-
-  const timeInterval =
-    ctx.mode === "severe"
-      ? rule.time_months_severe ?? rule.time_months_normal
-      : rule.time_months_normal;
-
-  if (distanceInterval == null && timeInterval == null) return false;
-
-  const lastMileage = ctx.history?.lastMileage ?? null;
-  const lastDateStr = ctx.history?.lastDate ?? null;
-
-  let kmSince: number | null = null;
-  if (ctx.currentMileageKm != null && lastMileage != null) {
-    kmSince = Math.max(0, ctx.currentMileageKm - lastMileage);
-  } else if (ctx.currentMileageKm != null && lastMileage == null) {
-    // No recorded history => treat as "since baseline"
-    kmSince = Math.max(0, ctx.currentMileageKm);
+): number | null {
+  if (historyMileageKm != null) {
+    const interval = rule.distance_km_severe ?? rule.distance_km_normal ?? null;
+    return interval != null ? historyMileageKm + interval : null;
   }
 
-  let monthsSince: number | null = null;
-  if (lastDateStr) {
-    const lastDate = new Date(lastDateStr);
-    const now = new Date();
-    if (!Number.isNaN(lastDate.getTime())) {
-      monthsSince =
-        (now.getFullYear() - lastDate.getFullYear()) * 12 +
-        (now.getMonth() - lastDate.getMonth());
-      monthsSince = Math.max(0, monthsSince);
-    }
-  } else if (ctx.currentAgeMonths != null) {
-    monthsSince = Math.max(0, ctx.currentAgeMonths);
+  return rule.first_due_km ?? null;
+}
+
+function evaluateDue(
+  currentMileageKm: number | null,
+  currentAgeMonths: number | null,
+  lastCompletedMileageKm: number | null,
+  lastCompletedAt: string | null,
+  rule: MaintenanceRuleRow,
+  now: Date,
+): {
+  dueNow: boolean;
+  overdue: boolean;
+  triggerMileageKm: number | null;
+  triggerAgeMonths: number | null;
+} {
+  const triggerMileageKm = computeTriggerMileageKm(
+    lastCompletedMileageKm,
+    rule,
+  );
+
+  let triggerAgeMonths: number | null = null;
+  if (lastCompletedAt) {
+    const monthsSince = monthsBetween(lastCompletedAt, now);
+    const ageInterval = rule.time_months_severe ?? rule.time_months_normal ?? null;
+    triggerAgeMonths =
+      monthsSince != null && ageInterval != null ? monthsSince + ageInterval : null;
+  } else {
+    triggerAgeMonths = rule.first_due_months ?? null;
   }
 
-  const distanceDue =
-    distanceInterval != null && kmSince != null ? kmSince >= distanceInterval : false;
+  const mileageDue =
+    currentMileageKm != null && triggerMileageKm != null
+      ? currentMileageKm >= triggerMileageKm
+      : false;
 
-  const timeDue =
-    timeInterval != null && monthsSince != null ? monthsSince >= timeInterval : false;
+  const ageDue =
+    currentAgeMonths != null && triggerAgeMonths != null
+      ? currentAgeMonths >= triggerAgeMonths
+      : false;
 
-  return distanceDue || timeDue;
+  const dueNow = mileageDue || ageDue;
+
+  const mileageOverdue =
+    currentMileageKm != null && triggerMileageKm != null
+      ? currentMileageKm > triggerMileageKm
+      : false;
+
+  const ageOverdue =
+    currentAgeMonths != null && triggerAgeMonths != null
+      ? currentAgeMonths > triggerAgeMonths
+      : false;
+
+  return {
+    dueNow,
+    overdue: mileageOverdue || ageOverdue,
+    triggerMileageKm,
+    triggerAgeMonths,
+  };
 }
 
 /**
@@ -188,20 +141,19 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 }): Promise<{ suggestions: MaintenanceSuggestionItem[] }> {
   const { supabase, workOrderId } = opts;
 
-  // 1) Load work order
   const { data: wo, error: woError } = await supabase
     .from("work_orders")
-    .select("id, vehicle_id, odometer_km, created_at")
+    .select("id, shop_id, vehicle_id, odometer_km, created_at")
     .eq("id", workOrderId)
     .maybeSingle();
 
   if (woError) throw woError;
   if (!wo) throw new Error("Work order not found");
   if (!wo.vehicle_id) throw new Error("Work order has no vehicle linked");
+  if (!wo.shop_id) throw new Error("Work order has no shop linked");
 
   const workOrder = wo as WorkOrderRow;
 
-  // 2) Load vehicle
   const { data: vehicleRow, error: vehicleError } = await supabase
     .from("vehicles")
     .select("id, year, make, model, mileage, engine_family")
@@ -213,18 +165,15 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 
   const vehicle = vehicleRow as VehicleRow;
 
-  // 3) Compute mileage & age (approx: age since Jan 1 of vehicle year)
   const currentMileageKm = workOrder.odometer_km ?? parseMileage(vehicle.mileage) ?? null;
-
   const vehicleYear = vehicle.year ?? null;
   const now = new Date();
 
   const currentAgeMonths =
     vehicleYear != null
-      ? (now.getFullYear() - vehicleYear) * 12 + now.getMonth() // 0..11 month index
+      ? (now.getFullYear() - vehicleYear) * 12 + now.getMonth()
       : null;
 
-  // 4) Load rules & services
   const { data: servicesData, error: servicesError } = await supabase
     .from("maintenance_services")
     .select("*");
@@ -233,7 +182,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 
   const services = (servicesData ?? []) as MaintenanceServiceRow[];
   const servicesByCode = new Map<string, MaintenanceServiceRow>(
-    services.map((s) => [s.code, s]),
+    services.map((service) => [service.code, service]),
   );
 
   const { data: rulesData, error: rulesError } = await supabase
@@ -244,151 +193,95 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 
   const rules = (rulesData ?? []) as MaintenanceRuleRow[];
 
-  // 5) Load service history for this vehicle
-  const { data: historyData, error: historyError } = await supabase
-    .from("work_order_lines")
-    .select("service_code, odometer_km, created_at")
-    .eq("vehicle_id", vehicle.id)
-    .not("service_code", "is", null);
-
-  if (historyError) throw historyError;
-
-  const historyLines: WorkOrderLineHistoryRow[] =
-    (historyData as WorkOrderLineHistoryRow[]) ?? [];
-
-  const historyByCode = new Map<string, ServiceHistory>();
-
-  for (const row of historyLines) {
-    const code = row.service_code;
-    if (!code) continue;
-
-    const createdAt = row.created_at;
-    if (!createdAt) continue;
-
-    const prev = historyByCode.get(code) ?? { lastMileage: null, lastDate: null };
-    const newer = prev.lastDate == null || createdAt > prev.lastDate;
-
-    // Only overwrite mileage when this row is newer AND has mileage
-    const nextMileage =
-      newer && row.odometer_km != null ? row.odometer_km : prev.lastMileage;
-
-    historyByCode.set(code, {
-      lastMileage: nextMileage,
-      lastDate: newer ? createdAt : prev.lastDate,
-    });
-  }
-
-  // 6) Evaluate rules → suggestions
+  const matchedRules = rules.filter((rule) => ruleMatchesVehicle(vehicle, rule));
   const suggestions: MaintenanceSuggestionItem[] = [];
 
-  const mode: "normal" | "severe" = "severe"; // TODO: make configurable later (shop/vehicle setting)
-
-  const isEverRecommended = (rule: MaintenanceRuleRow): boolean => {
-    const firstKm =
-      rule.first_due_km ??
-      rule.distance_km_normal ??
-      rule.distance_km_severe;
-
-    const firstMonths =
-      rule.first_due_months ??
-      rule.time_months_normal ??
-      rule.time_months_severe;
-
-    const hasMileageTrigger =
-      firstKm != null && currentMileageKm != null && currentMileageKm >= firstKm;
-
-    const hasTimeTrigger =
-      firstMonths != null && currentAgeMonths != null && currentAgeMonths >= firstMonths;
-
-    if (firstKm == null && firstMonths == null) {
-      return currentMileageKm != null || currentAgeMonths != null;
-    }
-
-    return hasMileageTrigger || hasTimeTrigger;
-  };
-
-  // If you want due items to bubble up, keep metadata locally for sorting
-  const ranked: Array<{ item: MaintenanceSuggestionItem; dueNow: boolean; critical: boolean }> = [];
-
-  for (const rule of rules) {
-    if (!ruleAppliesToVehicle(rule, vehicle)) continue;
-
+  for (const rule of matchedRules) {
     const service = servicesByCode.get(rule.service_code);
     if (!service) continue;
 
-    if (!isEverRecommended(rule)) continue;
-
-    const history = historyByCode.get(rule.service_code) ?? null;
-
-    const dueNow = isServiceDue(rule, {
-      mode,
-      currentMileageKm,
-      currentAgeMonths,
-      history,
+    const mapping = await resolveMaintenanceMenuMap({
+      supabase,
+      shopId: workOrder.shop_id,
+      serviceCode: service.code,
+      vehicle: {
+        year: vehicle.year ?? null,
+        make: vehicle.make ?? null,
+        model: vehicle.model ?? null,
+        engineFamily: vehicle.engine_family ?? null,
+      },
     });
 
-    const jobType: MaintenanceSuggestionItem["jobType"] =
-      service.default_job_type === "diagnosis" ||
-      service.default_job_type === "repair" ||
-      service.default_job_type === "maintenance" ||
-      service.default_job_type === "tech-suggested"
-        ? service.default_job_type
-        : "maintenance";
-
-    const metaNoteParts: string[] = [];
-
-    if (rule.is_critical) metaNoteParts.push("CRITICAL schedule item.");
-
-    if (dueNow) {
-      metaNoteParts.push("Due now based on mileage/age.");
-    } else if (!history) {
-      metaNoteParts.push("Recommended in schedule; no previous service recorded for this vehicle.");
-    } else {
-      metaNoteParts.push("Previously performed; verify interval vs current mileage/age.");
-      if (history.lastMileage != null) metaNoteParts.push(`Last recorded at ~${history.lastMileage} km.`);
-      if (history.lastDate) metaNoteParts.push(`Last recorded date: ${history.lastDate}.`);
-    }
-
-    const combinedNotes = [service.default_notes ?? "", ...metaNoteParts]
-      .filter((s) => s && s.trim().length > 0)
-      .join(" ");
-
-    const item: MaintenanceSuggestionItem = {
-      name: service.label,
+    const history = await getVehicleMaintenanceHistory({
+      supabase,
+      vehicleId: vehicle.id,
+      shopId: workOrder.shop_id,
       serviceCode: service.code,
-      laborHours: service.default_labor_hours ?? 1,
-      jobType,
-      notes: combinedNotes,
-    };
+      menuItemId: mapping.menuItemId,
+      label: service.label,
+    });
 
-    ranked.push({ item, dueNow, critical: rule.is_critical });
-  }
-
-  // Sort: due-now first, then critical, then name
-  ranked.sort((a, b) => {
-    if (a.dueNow !== b.dueNow) return a.dueNow ? -1 : 1;
-    if (a.critical !== b.critical) return a.critical ? -1 : 1;
-    return a.item.name.localeCompare(b.item.name);
-  });
-
-  for (const r of ranked) suggestions.push(r.item);
-
-  // 7) Upsert into maintenance_suggestions cache (check errors!)
-  const { error: upsertError } = await supabase
-    .from("maintenance_suggestions")
-    .upsert(
-      {
-        work_order_id: workOrder.id,
-        vehicle_id: vehicle.id,
-        mileage_km: currentMileageKm,
-        status: "ready",
-        suggestions, // jsonb
-        error_message: null,
-      },
-      { onConflict: "work_order_id" },
+    const dueEval = evaluateDue(
+      currentMileageKm,
+      currentAgeMonths,
+      history.lastCompletedMileageKm,
+      history.lastCompletedAt,
+      rule,
+      now,
     );
 
-  if (upsertError) throw upsertError;
+    if (!dueEval.dueNow) {
+      continue;
+    }
+
+    suggestions.push({
+      serviceCode: service.code,
+      label: service.label,
+      jobType: service.default_job_type ?? "maintenance",
+      laborHours: service.default_labor_hours ?? null,
+      notes: service.default_notes ?? null,
+      isCritical: Boolean(rule.is_critical),
+      dueNow: dueEval.dueNow,
+      overdue: dueEval.overdue,
+      currentMileageKm,
+      currentAgeMonths,
+      triggerMileageKm: dueEval.triggerMileageKm,
+      triggerAgeMonths: dueEval.triggerAgeMonths,
+      lastCompletedAt: history.lastCompletedAt,
+      lastCompletedMileageKm: history.lastCompletedMileageKm,
+      historyMatchSource: history.historyMatchSource,
+      menuItemId: mapping.menuItemId,
+      menuRepairItemId: mapping.menuRepairItemId,
+      addPath: mapping.menuItemId ? "menu_item" : "generic",
+      mappingSource: mapping.mappingSource,
+      suppressed: false,
+      suppressedReason: null,
+    });
+  }
+
+  suggestions.sort((a, b) => {
+    if (a.isCritical !== b.isCritical) return a.isCritical ? -1 : 1;
+    if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+    return a.label.localeCompare(b.label);
+  });
+
+  const upsertPayload = {
+    work_order_id: workOrderId,
+    vehicle_id: vehicle.id,
+    mileage_km: currentMileageKm,
+    status: "ready",
+    suggestions,
+    error_message: null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error: upsertError } = await supabase
+    .from("maintenance_suggestions")
+    .upsert(upsertPayload, { onConflict: "work_order_id" });
+
+  if (upsertError) {
+    throw upsertError;
+  }
 
   return { suggestions };
 }

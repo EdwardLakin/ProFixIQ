@@ -14,6 +14,7 @@ import VinCaptureModal from "app/vehicle/VinCaptureModal";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import { useCustomerVehicleDraft } from "app/work-orders/state/useCustomerVehicleDraft";
 
+import MaintenanceSuggestionsCard from "@/features/maintenance/components/MaintenanceSuggestionsCard";
 // UI
 import CustomerVehicleForm from "@/features/inspections/components/inspection/CustomerVehicleForm";
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
@@ -540,7 +541,30 @@ export default function CreateWorkOrderPage() {
   }, []); // one-time hydration is intentional
 
   // keep waiter state in sync with an existing WO (editing case)
-  useEffect(() => {
+    const getCurrentProfileId = useCallback(
+    async (userId: string): Promise<string | null> => {
+    const byUserId = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle<Pick<ProfileRow, "id">>();
+
+    if (byUserId.error) throw byUserId.error;
+    if (byUserId.data?.id) return byUserId.data.id;
+
+    const byId = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle<Pick<ProfileRow, "id">>();
+
+    if (byId.error) throw byId.error;
+    return byId.data?.id ?? null;
+    },
+    [supabase],
+  );
+
+useEffect(() => {
     if (!wo) return;
     const flag = (wo as WorkOrderWaiterRow).is_waiter ?? false;
     setIsWaiter(Boolean(flag));
@@ -567,7 +591,7 @@ export default function CreateWorkOrderPage() {
         setCurrentProfileId(null);
       }
     })();
-  }, [supabase]);
+  }, [supabase, getCurrentProfileId]);
 
   async function getOrLinkShopId(userId: string): Promise<string | null> {
     const byUserId = await supabase
@@ -615,25 +639,7 @@ export default function CreateWorkOrderPage() {
   }
 
   // ✅ advisor ownership helper
-  async function getCurrentProfileId(userId: string): Promise<string | null> {
-    const byUserId = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle<Pick<ProfileRow, "id">>();
 
-    if (byUserId.error) throw byUserId.error;
-    if (byUserId.data?.id) return byUserId.data.id;
-
-    const byId = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("id", userId)
-      .maybeSingle<Pick<ProfileRow, "id">>();
-
-    if (byId.error) throw byId.error;
-    return byId.data?.id ?? null;
-  }
 
   const buildCustomerInsert = (c: CustomerWithBusiness, shopId: string) => ({
     business_name: strOrNull(c.business_name ?? null),
@@ -1901,6 +1907,7 @@ export default function CreateWorkOrderPage() {
                   <span className="text-[11px] text-neutral-500">Saved services</span>
                 </div>
                 <MenuQuickAdd workOrderId={wo.id} />
+      <MaintenanceSuggestionsCard className="mt-4" />
               </section>
             )}
 

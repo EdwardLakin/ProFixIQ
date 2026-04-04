@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { computeMaintenanceSuggestionsForWorkOrder } from "@/features/maintenance/server/computeMaintenanceSuggestions";
+import { addMaintenanceSuggestionToWorkOrder } from "@/features/maintenance/server/addMaintenanceSuggestionToWorkOrder";
 
 type DB = Database;
+
+type RequestBody = {
+  workOrderId?: string;
+  serviceCode?: string;
+};
 
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
@@ -18,38 +23,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json().catch(() => null)) as
-    | { workOrderId?: string }
-    | null;
+  const body = (await req.json().catch(() => null)) as RequestBody | null;
 
   const workOrderId = body?.workOrderId?.trim();
-  if (!workOrderId) {
+  const serviceCode = body?.serviceCode?.trim();
+
+  if (!workOrderId || !serviceCode) {
     return NextResponse.json(
-      { error: "workOrderId is required" },
+      { error: "workOrderId and serviceCode are required" },
       { status: 400 },
     );
   }
 
   try {
-    const result = await computeMaintenanceSuggestionsForWorkOrder({
+    const result = await addMaintenanceSuggestionToWorkOrder({
       supabase,
       workOrderId,
+      serviceCode,
+      userId: user.id,
     });
 
-    return NextResponse.json({
-      ok: true,
-      workOrderId,
-      suggestions: result.suggestions,
-    });
+    return NextResponse.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to compute suggestions";
+      error instanceof Error ? error.message : "Failed to add maintenance suggestion";
 
     return NextResponse.json(
-      {
-        ok: false,
-        error: message,
-      },
+      { error: message },
       { status: 500 },
     );
   }
