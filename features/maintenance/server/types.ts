@@ -66,6 +66,8 @@ export type MaintenanceHistoryMatchSource =
 
 export type MaintenanceAddPath = "menu_item" | "generic";
 
+export type MaintenanceAdvisorBucket = "urgent" | "due_soon" | "bundle";
+
 export type MaintenanceSuggestionItem = {
   serviceCode: string;
   label: string;
@@ -83,9 +85,19 @@ export type MaintenanceSuggestionItem = {
   lastCompletedMileageKm: number | null;
   historyMatchSource: MaintenanceHistoryMatchSource | null;
   menuItemId: string | null;
+  menuItemName: string | null;
   menuRepairItemId: string | null;
   addPath: MaintenanceAddPath;
   mappingSource: "shop_map" | "vehicle_menu" | "none";
   suppressed: boolean;
   suppressedReason: string | null;
+  advisorPriority: number;
+  advisorBucket: MaintenanceAdvisorBucket;
+  revenueScore: number;
+  bundleKey: string | null;
+  whyDue: string | null;
+  sellOrder: number;
+  estimatedPackagePrice: number | null;
+  menuItemPrice: number | null;
+  effectivePrice: number | null;
 };

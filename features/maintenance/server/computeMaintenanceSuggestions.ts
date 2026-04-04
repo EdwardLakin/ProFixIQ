@@ -70,6 +70,81 @@ function computeTriggerMileageKm(
   return rule.first_due_km ?? null;
 }
 
+function classifyBundleKey(serviceCode: string, label: string): string | null {
+  const code = serviceCode.toLowerCase();
+  const text = label.toLowerCase();
+
+  if (code.includes("oil") || text.includes("oil")) return "pm_service";
+  if (code.includes("filter") || text.includes("filter")) return "pm_service";
+  if (code.includes("rotate") || text.includes("rotate")) return "tire_service";
+  if (code.includes("tire") || text.includes("tire")) return "tire_service";
+  if (code.includes("brake") || text.includes("brake")) return "brake_service";
+  if (code.includes("fluid") || text.includes("fluid")) return "fluid_service";
+  if (code.includes("coolant") || text.includes("coolant")) return "fluid_service";
+
+  return null;
+}
+
+function computeRevenueScore(laborHours: number | null, mapped: boolean): number {
+  const laborScore = laborHours != null ? Math.min(laborHours * 20, 100) : 20;
+  const mappedBonus = mapped ? 15 : 0;
+  return laborScore + mappedBonus;
+}
+
+function computeAdvisorPriority(input: {
+  isCritical: boolean;
+  overdue: boolean;
+  revenueScore: number;
+  mapped: boolean;
+}): number {
+  let score = 0;
+
+  if (input.isCritical) score += 100;
+  if (input.overdue) score += 50;
+  score += input.revenueScore;
+  if (input.mapped) score += 10;
+
+  return score;
+}
+
+function computeAdvisorBucket(input: {
+  isCritical: boolean;
+  overdue: boolean;
+  bundleKey: string | null;
+}): "urgent" | "due_soon" | "bundle" {
+  if (input.isCritical || input.overdue) return "urgent";
+  if (input.bundleKey) return "bundle";
+  return "due_soon";
+}
+
+function buildWhyDue(input: {
+  overdue: boolean;
+  currentMileageKm: number | null;
+  triggerMileageKm: number | null;
+  lastCompletedAt: string | null;
+}): string | null {
+  if (input.overdue && input.currentMileageKm != null && input.triggerMileageKm != null) {
+    return `Over interval: current ${input.currentMileageKm.toLocaleString()} km vs trigger ${input.triggerMileageKm.toLocaleString()} km`;
+  }
+
+  if (input.currentMileageKm != null && input.triggerMileageKm != null) {
+    return `Due by mileage: current ${input.currentMileageKm.toLocaleString()} km vs trigger ${input.triggerMileageKm.toLocaleString()} km`;
+  }
+
+  if (input.lastCompletedAt) {
+    return `Due based on prior service history`;
+  }
+
+  return "Due based on maintenance schedule";
+}
+
+function estimatePackagePrice(laborHours: number | null, mapped: boolean): number | null {
+  const laborRate = 145;
+  const laborTotal = laborHours != null ? laborHours * laborRate : 0;
+  const base = laborTotal + (mapped ? 40 : 0);
+  return base > 0 ? Math.round(base) : null;
+}
+
 function evaluateDue(
   currentMileageKm: number | null,
   currentAgeMonths: number | null,
@@ -234,6 +309,43 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
       continue;
     }
 
+    const revenueScore = computeRevenueScore(
+      service.default_labor_hours ?? null,
+      Boolean(mapping.menuItemId || mapping.menuRepairItemId),
+    );
+
+    const bundleKey = classifyBundleKey(service.code, service.label);
+
+    const advisorPriority = computeAdvisorPriority({
+      isCritical: Boolean(rule.is_critical),
+      overdue: dueEval.overdue,
+      revenueScore,
+      mapped: Boolean(mapping.menuItemId || mapping.menuRepairItemId),
+    });
+
+    const advisorBucket = computeAdvisorBucket({
+      isCritical: Boolean(rule.is_critical),
+      overdue: dueEval.overdue,
+      bundleKey,
+    });
+
+    const sellOrder =
+      (Boolean(rule.is_critical) ? 1000 : 0) +
+      (dueEval.overdue ? 100 : 0) +
+      Math.round(revenueScore);
+
+    const whyDue = buildWhyDue({
+      overdue: dueEval.overdue,
+      currentMileageKm,
+      triggerMileageKm: dueEval.triggerMileageKm,
+      lastCompletedAt: history.lastCompletedAt,
+    });
+
+    const estimatedPackagePrice = estimatePackagePrice(
+      service.default_labor_hours ?? null,
+      Boolean(mapping.menuItemId || mapping.menuRepairItemId),
+    );
+
     suggestions.push({
       serviceCode: service.code,
       label: service.label,
@@ -251,17 +363,28 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
       lastCompletedMileageKm: history.lastCompletedMileageKm,
       historyMatchSource: history.historyMatchSource,
       menuItemId: mapping.menuItemId,
+      menuItemName: null,
       menuRepairItemId: mapping.menuRepairItemId,
       addPath: mapping.menuItemId ? "menu_item" : "generic",
       mappingSource: mapping.mappingSource,
       suppressed: false,
       suppressedReason: null,
+      advisorPriority,
+      advisorBucket,
+      revenueScore,
+      bundleKey,
+      whyDue,
+      sellOrder,
+      estimatedPackagePrice,
+      menuItemPrice: null,
+      effectivePrice: estimatedPackagePrice,
     });
   }
 
   suggestions.sort((a, b) => {
-    if (a.isCritical !== b.isCritical) return a.isCritical ? -1 : 1;
-    if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+    if (a.advisorPriority !== b.advisorPriority) {
+      return b.advisorPriority - a.advisorPriority;
+    }
     return a.label.localeCompare(b.label);
   });
 

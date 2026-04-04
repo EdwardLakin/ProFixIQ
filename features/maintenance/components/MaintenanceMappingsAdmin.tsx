@@ -23,12 +23,19 @@ type Suggestion = {
   reason: string;
 };
 
+type MenuItemOption = {
+  id: string;
+  name: string;
+};
+
 export default function MaintenanceMappingsAdmin() {
   const [rows, setRows] = useState<MappingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingCode, setSavingCode] = useState<string | null>(null);
   const [suggestingCode, setSuggestingCode] = useState<string | null>(null);
   const [menuItemEdits, setMenuItemEdits] = useState<Record<string, string>>({});
+  const [menuSearch, setMenuSearch] = useState<Record<string, string>>({});
+  const [menuOptions, setMenuOptions] = useState<Record<string, MenuItemOption[]>>({});
   const [message, setMessage] = useState<string | null>(null);
 
   async function load() {
@@ -58,6 +65,34 @@ export default function MaintenanceMappingsAdmin() {
   useEffect(() => {
     void load();
   }, []);
+
+  async function searchMenuItems(serviceCode: string, q: string) {
+    try {
+      const res = await fetch(
+        `/api/maintenance/menu-items/search?q=${encodeURIComponent(q)}`,
+        { cache: "no-store" },
+      );
+
+      const json = (await res.json()) as {
+        ok?: boolean;
+        items?: MenuItemOption[];
+        error?: string;
+      };
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to search menu items");
+      }
+
+      setMenuOptions((prev) => ({
+        ...prev,
+        [serviceCode]: Array.isArray(json.items) ? json.items : [],
+      }));
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Failed to search menu items",
+      );
+    }
+  }
 
   async function suggest(serviceCode: string, label: string) {
     setSuggestingCode(serviceCode);
@@ -197,8 +232,22 @@ export default function MaintenanceMappingsAdmin() {
                   </div>
                 ) : null}
 
-                <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+                <div className="space-y-3">
                   <input
+                    value={menuSearch[row.serviceCode] ?? ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setMenuSearch((prev) => ({
+                        ...prev,
+                        [row.serviceCode]: value,
+                      }));
+                      void searchMenuItems(row.serviceCode, value);
+                    }}
+                    placeholder="Search menu items by name"
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  />
+
+                  <select
                     value={menuItemEdits[row.serviceCode] ?? ""}
                     onChange={(e) =>
                       setMenuItemEdits((prev) => ({
@@ -206,30 +255,38 @@ export default function MaintenanceMappingsAdmin() {
                         [row.serviceCode]: e.target.value,
                       }))
                     }
-                    placeholder="menu_item_id"
-                    className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
-                  />
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void suggest(row.serviceCode, row.label)}
-                    disabled={isSuggesting}
-                    className="border-white/15 bg-white/5 text-xs text-neutral-200 hover:bg-white/10"
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
                   >
-                    {isSuggesting ? "Suggesting…" : "Auto-suggest"}
-                  </Button>
+                    <option value="">Select a menu item</option>
+                    {(menuOptions[row.serviceCode] ?? []).map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
 
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => void save(row.serviceCode)}
-                    disabled={isSaving}
-                    className="bg-orange-500 text-black hover:bg-orange-400"
-                  >
-                    {isSaving ? "Saving…" : "Save"}
-                  </Button>
+                  <div className="grid gap-3 md:grid-cols-[auto_auto]">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void suggest(row.serviceCode, row.label)}
+                      disabled={isSuggesting}
+                      className="border-white/15 bg-white/5 text-xs text-neutral-200 hover:bg-white/10"
+                    >
+                      {isSuggesting ? "Suggesting…" : "Auto-suggest"}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void save(row.serviceCode)}
+                      disabled={isSaving}
+                      className="bg-orange-500 text-black hover:bg-orange-400"
+                    >
+                      {isSaving ? "Saving…" : "Save"}
+                    </Button>
+                  </div>
                 </div>
               </div>
             );

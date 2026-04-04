@@ -43,6 +43,44 @@ function getBadgeTone(item: MaintenanceSuggestionItem): string {
   return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
 }
 
+function bucketTitle(bucket: MaintenanceSuggestionItem["advisorBucket"]): string {
+  if (bucket === "urgent") return "🔥 Urgent";
+  if (bucket === "bundle") return "🧾 Maintenance Bundle";
+  return "⚠️ Due Soon";
+}
+
+function bundleTitle(bundleKey: string | null): string {
+  if (bundleKey === "pm_service") return "Preventive Maintenance Package";
+  if (bundleKey === "tire_service") return "Tire Service Package";
+  if (bundleKey === "brake_service") return "Brake Service Package";
+  if (bundleKey === "fluid_service") return "Fluid Service Package";
+  return "Maintenance Bundle";
+}
+
+function sumLaborHours(items: MaintenanceSuggestionItem[]): number {
+  return items.reduce((sum, item) => sum + (item.laborHours ?? 0), 0);
+}
+
+function sumEffectivePrice(items: MaintenanceSuggestionItem[]): number {
+  return items.reduce((sum, item) => sum + (item.effectivePrice ?? 0), 0);
+}
+
+function countMapped(items: MaintenanceSuggestionItem[]): number {
+  return items.filter((item) => Boolean(item.menuItemId)).length;
+}
+
+
+function getSelectedBundleItems(
+  items: MaintenanceSuggestionItem[],
+  selectedCodes: Record<string, boolean>,
+  bundleKey: string | null,
+): MaintenanceSuggestionItem[] {
+  if (!bundleKey) return [];
+  return items.filter(
+    (item) => item.bundleKey === bundleKey && Boolean(selectedCodes[item.serviceCode]),
+  );
+}
+
 export default function MaintenanceSuggestionsCard({
   workOrderId,
   className,
@@ -62,6 +100,8 @@ export default function MaintenanceSuggestionsCard({
 
   const [loading, setLoading] = useState(false);
   const [addingServiceCode, setAddingServiceCode] = useState<string | null>(null);
+  const [addingBundleKey, setAddingBundleKey] = useState<string | null>(null);
+  const [selectedCodes, setSelectedCodes] = useState<Record<string, boolean>>({});
   const [suggestions, setSuggestions] = useState<MaintenanceSuggestionItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,6 +146,114 @@ export default function MaintenanceSuggestionsCard({
   useEffect(() => {
     void loadSuggestions();
   }, [loadSuggestions]);
+
+  useEffect(() => {
+    setSelectedCodes((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const item of suggestions) {
+        if (prev[item.serviceCode]) next[item.serviceCode] = true;
+      }
+      return next;
+    });
+  }, [suggestions]);
+
+
+  async function handleAddBundle(bundleKey: string) {
+    if (!resolvedWorkOrderId) return;
+
+    const bundleItems = suggestions.filter(
+      (item) => item.bundleKey === bundleKey,
+    );
+
+    if (bundleItems.length === 0) return;
+
+    setAddingBundleKey(bundleKey);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/work-orders/maintenance-suggestions/add-bundle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workOrderId: resolvedWorkOrderId,
+          serviceCodes: bundleItems.map((item) => item.serviceCode),
+        }),
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            added?: Array<{ serviceCode: string }>;
+            skipped?: Array<{ serviceCode: string; error: string }>;
+            error?: string;
+          }
+        | null;
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Failed to add maintenance bundle");
+      }
+
+      await loadSuggestions();
+      router.refresh();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to add maintenance bundle";
+      setError(message);
+    } finally {
+      setAddingBundleKey(null);
+    }
+  }
+
+  async function handleAddSelected(bundleKey: string) {
+    if (!resolvedWorkOrderId) return;
+
+    const bundleItems = suggestions.filter(
+      (item) => item.bundleKey === bundleKey && selectedCodes[item.serviceCode],
+    );
+
+    if (bundleItems.length === 0) {
+      setError("Select at least one bundle item first");
+      return;
+    }
+
+    setAddingBundleKey(bundleKey);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/work-orders/maintenance-suggestions/add-bundle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workOrderId: resolvedWorkOrderId,
+          serviceCodes: bundleItems.map((item) => item.serviceCode),
+        }),
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            error?: string;
+          }
+        | null;
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Failed to add selected bundle items");
+      }
+
+      await loadSuggestions();
+      router.refresh();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to add selected bundle items";
+      setError(message);
+    } finally {
+      setAddingBundleKey(null);
+    }
+  }
 
   async function handleAdd(serviceCode: string) {
     if (!resolvedWorkOrderId) return;
@@ -193,81 +341,238 @@ export default function MaintenanceSuggestionsCard({
       ) : null}
 
       {resolvedWorkOrderId && suggestions.length > 0 ? (
-        <div className="space-y-3">
-          {suggestions.map((item) => {
-            const isAdding = addingServiceCode === item.serviceCode;
-
-            return (
-              <div
-                key={item.serviceCode}
-                className="rounded-xl border border-white/10 bg-white/5 p-3"
-              >
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-sm font-semibold text-neutral-100">
-                        {item.label}
+        <div className="space-y-5">
+          {(["urgent", "due_soon", "bundle"] as const)
+            .map((bucket) => ({
+              bucket,
+              items: suggestions.filter((item) => item.advisorBucket === bucket),
+            }))
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
+              <div key={group.bucket} className="space-y-3">
+                <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                        {group.bucket === "bundle"
+                          ? bundleTitle(group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
+                          : bucketTitle(group.bucket)}
                       </div>
 
-                      <span
-                        className={[
-                          "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                          getBadgeTone(item),
-                        ].join(" ")}
-                      >
-                        {item.isCritical ? "Critical" : item.overdue ? "Overdue" : "Due"}
-                      </span>
-
-                      <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
-                        {item.serviceCode}
-                      </span>
-
-                      {item.menuItemId ? (
-                        <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-sky-200">
-                          mapped menu
-                        </span>
+                      {group.bucket === "bundle" ? (
+                        <div className="mt-1 text-xs text-neutral-400">
+                          {group.items.length} items • {sumLaborHours(group.items).toFixed(1)} labor hrs • ${sumEffectivePrice(group.items).toLocaleString()}
+                        </div>
                       ) : null}
                     </div>
 
-                    <div className="mt-2 grid gap-2 text-xs text-neutral-400 md:grid-cols-2">
-                      <div>
-                        <span className="text-neutral-500">Last completed:</span>{" "}
-                        <span className="text-neutral-300">{formatDate(item.lastCompletedAt)}</span>
-                      </div>
-                      <div>
-                        <span className="text-neutral-500">Last mileage:</span>{" "}
-                        <span className="text-neutral-300">{formatKm(item.lastCompletedMileageKm)}</span>
-                      </div>
-                      <div>
-                        <span className="text-neutral-500">Current mileage:</span>{" "}
-                        <span className="text-neutral-300">{formatKm(item.currentMileageKm)}</span>
-                      </div>
-                      <div>
-                        <span className="text-neutral-500">Trigger mileage:</span>{" "}
-                        <span className="text-neutral-300">{formatKm(item.triggerMileageKm)}</span>
-                      </div>
-                    </div>
+                    {group.bucket === "bundle" ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const firstBundleKey =
+                              group.items.find((item) => item.bundleKey)?.bundleKey ?? null;
+                            if (firstBundleKey) {
+                              void handleAddBundle(firstBundleKey);
+                            }
+                          }}
+                          disabled={
+                            addingBundleKey ===
+                            (group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
+                          }
+                          className="border-white/15 bg-white/5 text-xs text-neutral-200 hover:bg-white/10"
+                        >
+                          {addingBundleKey ===
+                          (group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
+                            ? "Adding bundle..."
+                            : "Add full bundle"}
+                        </Button>
 
-                    {item.notes ? (
-                      <p className="mt-2 text-xs text-neutral-300">{item.notes}</p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            const firstBundleKey =
+                              group.items.find((item) => item.bundleKey)?.bundleKey ?? null;
+                            if (firstBundleKey) {
+                              void handleAddSelected(firstBundleKey);
+                            }
+                          }}
+                          disabled={
+                            addingBundleKey ===
+                            (group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
+                          }
+                          className="bg-orange-500 text-black hover:bg-orange-400"
+                        >
+                          {addingBundleKey ===
+                          (group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
+                            ? "Adding..."
+                            : "Add selected"}
+                        </Button>
+                      </div>
                     ) : null}
                   </div>
-
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => void handleAdd(item.serviceCode)}
-                      disabled={isAdding}
-                      className="bg-orange-500 text-black hover:bg-orange-400"
-                    >
-                      {isAdding ? "Adding..." : "Add to work order"}
-                    </Button>
-                  </div>
                 </div>
+
+                {group.bucket === "bundle" &&
+                (() => {
+                  const bundleKey =
+                    group.items.find((item) => item.bundleKey)?.bundleKey ?? null;
+                  const selectedItems = getSelectedBundleItems(
+                    group.items,
+                    selectedCodes,
+                    bundleKey,
+                  );
+
+                  if (selectedItems.length === 0) return null;
+
+                  return (
+                    <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-200">
+                        Selected bundle summary
+                      </div>
+                      <div className="mt-2 grid gap-2 text-xs text-neutral-300 md:grid-cols-2">
+                        <div>
+                          <span className="text-neutral-500">Selected items:</span>{" "}
+                          {selectedItems.length}
+                        </div>
+                        <div>
+                          <span className="text-neutral-500">Mapped items:</span>{" "}
+                          {countMapped(selectedItems)}
+                        </div>
+                        <div>
+                          <span className="text-neutral-500">Labor:</span>{" "}
+                          {sumLaborHours(selectedItems).toFixed(1)} hrs
+                        </div>
+                        <div>
+                          <span className="text-neutral-500">Total:</span>{" "}
+                          ${sumEffectivePrice(selectedItems).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {group.items.map((item) => {
+                  const isAdding = addingServiceCode === item.serviceCode;
+
+                  return (
+                    <div
+                      key={item.serviceCode}
+                      className="rounded-xl border border-white/10 bg-white/5 p-3"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0 flex-1">
+                          {group.bucket === "bundle" ? (
+                            <label className="mb-2 flex items-center gap-2 text-xs text-neutral-300">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(selectedCodes[item.serviceCode])}
+                                onChange={(e) =>
+                                  setSelectedCodes((prev) => ({
+                                    ...prev,
+                                    [item.serviceCode]: e.target.checked,
+                                  }))
+                                }
+                              />
+                              Select for package
+                            </label>
+                          ) : null}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-sm font-semibold text-neutral-100">
+                              {item.label}
+                            </div>
+
+                            <span
+                              className={[
+                                "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                                getBadgeTone(item),
+                              ].join(" ")}
+                            >
+                              {item.isCritical ? "Critical" : item.overdue ? "Overdue" : "Due"}
+                            </span>
+
+                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
+                              {item.serviceCode}
+                            </span>
+
+                            {item.menuItemId ? (
+                              <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-sky-200">
+                                mapped menu
+                              </span>
+                            ) : null}
+
+                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
+                              priority {item.advisorPriority}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 grid gap-2 text-xs text-neutral-400 md:grid-cols-2">
+                            <div>
+                              <span className="text-neutral-500">Last completed:</span>{" "}
+                              <span className="text-neutral-300">{formatDate(item.lastCompletedAt)}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Last mileage:</span>{" "}
+                              <span className="text-neutral-300">{formatKm(item.lastCompletedMileageKm)}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Current mileage:</span>{" "}
+                              <span className="text-neutral-300">{formatKm(item.currentMileageKm)}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Trigger mileage:</span>{" "}
+                              <span className="text-neutral-300">{formatKm(item.triggerMileageKm)}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Sell order:</span>{" "}
+                              <span className="text-neutral-300">{item.sellOrder}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Price:</span>{" "}
+                              <span className="text-neutral-300">
+                                {item.effectivePrice != null
+                                  ? `$${item.effectivePrice.toLocaleString()}`
+                                  : "—"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {item.menuItemName ? (
+                            <p className="mt-2 text-xs text-sky-200">
+                              Mapped menu item: {item.menuItemName}
+                            </p>
+                          ) : null}
+
+                          {item.whyDue ? (
+                            <p className="mt-2 text-xs text-amber-200">{item.whyDue}</p>
+                          ) : null}
+
+                          {item.notes ? (
+                            <p className="mt-2 text-xs text-neutral-300">{item.notes}</p>
+                          ) : null}
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => void handleAdd(item.serviceCode)}
+                            disabled={isAdding}
+                            className="bg-orange-500 text-black hover:bg-orange-400"
+                          >
+                            {isAdding ? "Adding..." : "Add to work order"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            ))}
         </div>
       ) : null}
     </section>
